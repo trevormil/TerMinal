@@ -269,9 +269,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                           </Badge>
                         )}
                         {t.horizon !== 'now' && <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>}
-                        {t.priority !== 'medium' && (
-                          <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
-                        )}
+                        <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
                       </button>
                     ))}
                 </div>
