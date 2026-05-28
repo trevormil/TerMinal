@@ -14,6 +14,9 @@ import { randomUUID } from 'node:crypto'
 import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { getPersona } from './personas'
+import { composeSteps, pipelineLabel, type Step } from './pipelines'
+
+export { listPipelines, type PipelineId } from './pipelines'
 
 export type Engine = 'codex' | 'claude'
 
@@ -272,54 +275,16 @@ function buildCmd(engine: Engine, worktree: string, prompt: string): string {
   return `codex exec -s danger-full-access -C ${shq(worktree)} ${shq(prompt)}`
 }
 
-// --- pipelines: a chain of stages run sequentially in ONE worktree ----------
-// The first step is the task itself; pipeline stages append review/iterate
-// passes after it. All stages share the worktree + branch, so a later stage
-// sees what an earlier one committed.
-type Step = { label: string; prompt: string }
-
-const REVIEW_STAGE: Step = {
-  label: 'review',
-  prompt:
-    'Now act as a meticulous senior reviewer of the work just done on this branch. Inspect `git diff` against the base branch and `git log`. Evaluate correctness, security, architecture, and quality. Fix any real issues you find directly in this worktree — with tests — and commit. If a PR is open for this branch, update it. End with a concise review summary: what you found and what you changed.',
-}
-const ITERATE_STAGE: Step = {
-  label: 'iterate',
-  prompt:
-    'Now iterate until this branch is merge-ready: resolve any remaining review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit your work and update the PR if one is open. End with the final status (tests/build green?) and a short summary.',
-}
-
-export type PipelineId = 'single' | 'review' | 'review-iterate'
-const PIPELINES: Record<PipelineId, { id: PipelineId; title: string; description: string; stages: Step[] }> = {
-  single: { id: 'single', title: 'Single run', description: 'Just the task — one pass.', stages: [] },
-  review: {
-    id: 'review',
-    title: 'Review',
-    description: 'Task → a reviewer pass that fixes issues it finds.',
-    stages: [REVIEW_STAGE],
-  },
-  'review-iterate': {
-    id: 'review-iterate',
-    title: 'Review + Iterate',
-    description: 'Task → review → iterate until merge-ready.',
-    stages: [REVIEW_STAGE, ITERATE_STAGE],
-  },
-}
-
-export function listPipelines(): { id: PipelineId; title: string; description: string }[] {
-  return Object.values(PIPELINES).map(({ id, title, description }) => ({ id, title, description }))
-}
-
-// Compose the runnable steps: prepend the persona framing (if any) to each
-// stage, and tack the pipeline stages onto the base task.
+// Pipeline definitions + composition are pure (see ./pipelines, unit-tested).
+// All stages share the worktree + branch, so a later stage sees what an earlier
+// one committed. buildSteps just resolves the persona prompt off disk first.
 function buildSteps(repoRoot: string, base: Step, personaId?: string, pipelineId?: string) {
   const p = personaId ? getPersona(repoRoot, personaId) : null
-  const pipeline = PIPELINES[(pipelineId as PipelineId) || 'single'] || PIPELINES.single
-  const steps: Step[] = [base, ...pipeline.stages].map((s) => ({
-    label: s.label,
-    prompt: p ? `${p.prompt}\n\n---\n\n${s.prompt}` : s.prompt,
-  }))
-  return { steps, persona: p?.title, pipeline: pipeline.id === 'single' ? undefined : pipeline.title }
+  return {
+    steps: composeSteps(base, p?.prompt ?? null, pipelineId),
+    persona: p?.title,
+    pipeline: pipelineLabel(pipelineId),
+  }
 }
 
 type RunSpec = {

@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { telegramControlEnabled } from './settings'
-import { readAgents, runAgent, listRuns, cancelRun, type Engine } from './agents'
+import { readAgents, runAgent, listRuns, cancelRun } from './agents'
 import { readPersonas } from './personas'
+import { parseCommand, classifyRunArgs, parsePollLine } from './telegram-parse'
 
 // Two-way AFK control over the /notify Telegram bridge: the user texts the bot
 // from their phone to launch/cancel/inspect agent runs. telegram-poll.sh only
@@ -12,7 +13,6 @@ import { readPersonas } from './personas'
 // boundary — the bot acts on no one else.
 const POLL = join(homedir(), '.claude', 'bin', 'telegram-poll.sh')
 const NOTIFY = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
-const PIPELINES = new Set(['single', 'review', 'review-iterate'])
 const STATUS_EMOJI: Record<string, string> = {
   running: '⏳',
   done: '✅',
@@ -120,19 +120,8 @@ function cmdStatus() {
 
 function cmdRun(args: string[]) {
   if (!args.length) return reply('Usage: /run <agent> [codex|claude] [persona] [pipeline] [@repo]')
-  const agentId = args[0]
-  let engine: Engine = 'codex'
+  const { agentId, engine, pipeline, repoToken, personaCandidates } = classifyRunArgs(args)
   let persona = ''
-  let pipeline = 'single'
-  let repoToken: string | undefined
-  const personaCandidates: string[] = []
-  for (const tok of args.slice(1)) {
-    const t = tok.toLowerCase()
-    if (t === 'codex' || t === 'claude') engine = t
-    else if (t.startsWith('@')) repoToken = tok
-    else if (PIPELINES.has(t)) pipeline = t
-    else personaCandidates.push(tok)
-  }
   const repo = resolveRepo(repoToken)
   if (!repo) return reply('No repo — /repos to see options or open a session.')
   if (!readAgents(repo.repoRoot).some((a) => a.id === agentId))
@@ -160,9 +149,7 @@ function cmdCancel(args: string[]) {
 }
 
 function handle(text: string) {
-  const parts = text.trim().split(/\s+/)
-  const cmd = parts[0].toLowerCase()
-  const args = parts.slice(1)
+  const { cmd, args } = parseCommand(text)
   switch (cmd) {
     case '/help':
     case '/start':
@@ -194,12 +181,8 @@ export function pollTelegramOnce() {
     polling = false
     if (err || !stdout) return
     for (const line of stdout.split('\n')) {
-      const tab = line.indexOf('\t')
-      if (tab < 0) continue // continuation of a multi-line message — commands are single-line
-      const ts = Date.parse(line.slice(0, tab))
-      if (!Number.isNaN(ts) && ts < enabledAt - 5_000) continue // skip pre-enable backlog
-      const text = line.slice(tab + 1).trim()
-      if (text.startsWith('/')) handle(text)
+      const cmd = parsePollLine(line, enabledAt)
+      if (cmd) handle(cmd)
     }
   })
 }

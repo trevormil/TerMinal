@@ -15,8 +15,9 @@ import { Badge } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
+import { groupJobsByStage } from '../lib/ci'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
-import type { MrDetail, Finding, CiInfo, CiJob } from '../lib/types'
+import type { MrDetail, Finding, CiInfo } from '../lib/types'
 
 const HLJS_LANG: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript',
@@ -260,13 +261,7 @@ function CiPanel({ ci }: { ci: CiInfo | null | undefined }) {
   if (ci === null)
     return <div className="mb-4 text-[11px] text-zinc-600">No CI pipeline for this MR.</div>
 
-  // group jobs by stage, stages in run order (ascending job id)
-  const stages: { stage: string; jobs: CiJob[] }[] = []
-  for (const j of [...ci.jobs].sort((a, b) => a.id - b.id)) {
-    let g = stages.find((s) => s.stage === j.stage)
-    if (!g) stages.push((g = { stage: j.stage, jobs: [] }))
-    g.jobs.push(j)
-  }
+  const stages = groupJobsByStage(ci.jobs)
 
   return (
     <div className="mb-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">

@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
   "include": ["src", "electron.vite.config.ts"]

@@ -9,16 +9,28 @@ import type { Tab, Mr, TabContext } from '../../lib/types'
 
 function MrList({
   mrs,
+  error,
   onOpen,
   onMerged,
 }: {
   mrs: Mr[] | null
+  error?: string
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
   if (mrs === null) return <div className="p-6 text-[12px] text-zinc-600">Loading MRs from glab…</div>
+  if (error)
+    return (
+      <div className="p-6 text-[12px] text-amber-400">
+        {error}.
+        <span className="mt-1 block text-zinc-600">
+          MRs come from <span className="font-mono">glab</span> — check it's installed and{' '}
+          <span className="font-mono">glab auth status</span> is logged in for this host.
+        </span>
+      </div>
+    )
   if (mrs.length === 0)
-    return <div className="p-6 text-[12px] text-zinc-600">No open MRs (or glab not authenticated for this repo).</div>
+    return <div className="p-6 text-[12px] text-zinc-600">No open MRs for this repo.</div>
   return (
     <div className="space-y-2 p-4">
       {mrs.map((m) => (
@@ -72,12 +84,18 @@ function MrList({
 
 function MrsTab({ ctx }: { ctx: TabContext }) {
   const [mrs, setMrs] = useState<Mr[] | null>(null)
+  const [error, setError] = useState<string | undefined>(undefined)
   const [selectedMrIid, setSelectedMrIid] = useState<number | null>(null)
 
   const hasRemote = !!ctx.repoPath
-  const refresh = () => window.gt.listMrs().then(setMrs)
+  const refresh = () =>
+    window.gt.listMrs().then((r) => {
+      setMrs(r.mrs)
+      setError(r.error)
+    })
   useEffect(() => {
     setMrs(null)
+    setError(undefined)
     setSelectedMrIid(null)
     if (!hasRemote) {
       setMrs([]) // no forge remote → nothing to fetch (e.g. a local-only repo)
@@ -115,7 +133,7 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             <span className="font-mono">origin</span>. Local-only repos (like this one) have none.
           </div>
         ) : (
-          <MrList mrs={mrs} onOpen={setSelectedMrIid} onMerged={refresh} />
+          <MrList mrs={mrs} error={error} onOpen={setSelectedMrIid} onMerged={refresh} />
         )}
       </div>
     </div>

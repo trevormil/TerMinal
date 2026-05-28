@@ -53,23 +53,38 @@ export type Mr = {
   review: Review | null
 }
 
+// `error` distinguishes a genuinely-empty list from a glab failure, so the UI
+// can show an accurate empty state instead of a misleading "not authenticated".
+export type MrListResult = { mrs: Mr[]; error?: string }
+
+/** Classify a glab failure into a short, accurate reason for the empty state. */
+export function glabErrorReason(err: Error | null, stderr?: string): string | undefined {
+  if (!err) return undefined
+  if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'glab not found on PATH'
+  const msg = `${stderr || ''} ${err.message || ''}`.toLowerCase()
+  if (/401|unauthor|\bauth\b|token|not logged in|login/.test(msg))
+    return 'glab not authenticated for this host'
+  return (stderr || err.message || 'glab error').trim().split('\n')[0] || 'glab error'
+}
+
 // Live MRs for the repo via glab (run in the repo so it auto-detects the
 // project + host), each enriched with its harness review/test verdict.
-export function listMrs(repoRoot: string): Promise<Mr[]> {
+export function listMrs(repoRoot: string): Promise<MrListResult> {
   return new Promise((resolve) => {
     execFile(
       'glab',
       ['mr', 'list', '-F', 'json', '-P', '50'],
       { cwd: repoRoot, timeout: 12_000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' },
-      (err, stdout) => {
-        if (err || !stdout) return resolve([])
+      (err, stdout, stderr) => {
+        if (err) return resolve({ mrs: [], error: glabErrorReason(err, stderr) })
+        if (!stdout) return resolve({ mrs: [] })
         let arr: any[]
         try {
           arr = JSON.parse(stdout)
         } catch {
-          return resolve([])
+          return resolve({ mrs: [] })
         }
-        if (!Array.isArray(arr)) return resolve([])
+        if (!Array.isArray(arr)) return resolve({ mrs: [] })
         const repo = repoForCwd(repoRoot)
         const mrs = arr.map((m): Mr => {
           const iid = m.iid ?? m.IID ?? m.number
@@ -86,7 +101,7 @@ export function listMrs(repoRoot: string): Promise<Mr[]> {
             review: dir ? reviewForPrDir(dir, headShort) : null,
           }
         })
-        resolve(mrs)
+        resolve({ mrs })
       },
     )
   })
@@ -103,7 +118,7 @@ export async function mrSummary(repoRoot: string): Promise<MrSummary> {
   if (hit && now - hit.ts < 60_000) {
     mrs = hit.mrs
   } else {
-    mrs = await listMrs(repoRoot)
+    mrs = (await listMrs(repoRoot)).mrs
     summaryCache.set(repoRoot, { ts: now, mrs })
   }
   const opened = mrs.filter((m) => m.state === 'opened')

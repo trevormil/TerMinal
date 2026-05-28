@@ -206,6 +206,7 @@ export type Mr = {
 
 export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }
 export type CiInfo = { status: string; webUrl: string; jobs: CiJob[] }
+export type MrListResult = { mrs: Mr[]; error?: string }
 
 export type TabContext = {
   cwd: string
@@ -367,7 +368,7 @@ export type GtApi = {
   }
   projectSessions: () => Promise<ProjectSession[]>
   getProjectSession: (slug: string) => Promise<ProjectSession | null>
-  listMrs: () => Promise<Mr[]>
+  listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
   getMrCi: (iid: number) => Promise<CiInfo | null>
