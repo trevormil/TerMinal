@@ -85,6 +85,51 @@ const DEFAULT_AGENTS: Agent[] = [
     prompt:
       'Act as the ticket & PR cleanup agent for this repository. Review the backlog/ tickets and the open PRs, and reconcile them with reality: close or icebox stale, duplicate, or obsolete tickets (add a brief closing note to each), fix inconsistent or missing metadata (status, priority, type, horizon), and close tickets whose work already shipped (unlink merged PRs). File new tickets for any gaps or follow-ups you discover. If your cleanup changes ticket files or code, commit and open a PR. End with a summary of what you closed, edited, and filed, plus the PR if one was opened.',
   },
+  {
+    id: 'test-coverage',
+    title: 'Strengthen tests',
+    description: 'Add meaningful tests for under-tested behavior, then open a PR.',
+    icon: 'TestTube2',
+    opensPr: true,
+    prompt:
+      'Act as a test-coverage agent for this repository. Identify the most important under-tested or untested behavior (prioritize core logic, error paths, and recently-changed code) and add meaningful, adversarial tests that would catch real regressions — no tautological or implementation-mirroring assertions. Follow the project test runner and conventions, keep changes surgical, and make sure new tests exercise a real entry point. Commit and open a PR. For larger coverage gaps you cannot finish in one pass, file a backlog ticket each (type: testing). End with a summary of what you covered and the PR URL.',
+  },
+  {
+    id: 'security-sweep',
+    title: 'Security sweep',
+    description: 'Focused security audit; ticket per finding, PR the safe fixes.',
+    icon: 'ShieldAlert',
+    opensPr: true,
+    prompt:
+      'Act as a focused security-sweep agent for this repository. Audit for exploitable vulnerabilities: injection (SQL/command/template), XSS/SSRF, broken authentication/authorization, insecure deserialization, secrets committed in code or git history, unsafe file/path handling, and vulnerable dependencies. For every finding, file a backlog ticket (type: security) with a precise title, a severity-aware priority, the affected files/lines, and a self-contained agent-runnable fix prompt. Apply only clearly-safe, self-contained fixes (with tests) and open a PR for those. End with a summary listing every ticket filed and the PR if one was opened.',
+  },
+  {
+    id: 'perf-pass',
+    title: 'Performance pass',
+    description: 'Find + fix the highest-impact runtime/memory issues; PR the wins.',
+    icon: 'Gauge',
+    opensPr: true,
+    prompt:
+      'Act as a performance agent for this repository. Find the highest-impact runtime and memory issues — N+1 queries, accidentally-quadratic loops, redundant work in hot paths, missing batching/streaming, and avoidable allocations. Measure before/after where feasible and record the numbers. Apply safe, well-scoped optimizations with tests (do not trade readability for marginal gains) and open a PR. File a backlog ticket (type: performance) for any larger optimization you cannot safely land in one pass. End with a summary of the wins and the PR URL.',
+  },
+  {
+    id: 'dep-upgrade',
+    title: 'Dependency hygiene',
+    description: 'Audit deps; bump safe pinned versions; PR with lockfile.',
+    icon: 'PackageCheck',
+    opensPr: true,
+    prompt:
+      'Act as a dependency-hygiene agent for this repository. Audit dependencies for known vulnerabilities and staleness. Upgrade safe, low-risk dependencies — pin exact versions (no ^ or ~), commit the lockfile, and only adopt versions at least 3 days old (a security-critical CVE fix may override the age rule; note it in the commit). Run the project audit and full test suite to confirm nothing breaks, then open a PR. File a backlog ticket for any risky or major upgrade that needs human judgment. End with a summary of what was bumped and the PR URL.',
+  },
+  {
+    id: 'dead-code',
+    title: 'Dead-code cleanup',
+    description: 'Remove provably-unused code safely; ticket the uncertain; PR.',
+    icon: 'Eraser',
+    opensPr: true,
+    prompt:
+      'Act as a dead-code cleanup agent for this repository. Find unused exports, unreachable branches, orphaned files, and stale feature flags. Remove only what is provably unused (verify with a references/usage search and the type checker/build), keeping changes surgical and reversible. Run the test suite and build to confirm nothing breaks, then open a PR. For anything you suspect is dead but cannot prove safely, file a backlog ticket instead of deleting. End with a summary of what you removed and the PR URL.',
+  },
 ]
 
 function readRepoAgents(repoRoot: string): Agent[] {

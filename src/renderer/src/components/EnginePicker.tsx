@@ -6,6 +6,11 @@ import {
   ShieldCheck,
   Gauge,
   Compass,
+  Sparkles,
+  Palette,
+  FlaskConical,
+  Accessibility,
+  Server,
   UserRound,
   Zap,
   Eye,
@@ -22,7 +27,16 @@ import anthropicLogo from '../assets/anthropic.svg'
 // engine + persona id ('' = none) + pipeline id ('single' = just the task).
 const LOGO: Record<Engine, string> = { codex: openaiLogo, claude: anthropicLogo }
 const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude' }
-const PERSONA_ICON: Record<string, LucideIcon> = { ShieldCheck, Gauge, Compass }
+const PERSONA_ICON: Record<string, LucideIcon> = {
+  ShieldCheck,
+  Gauge,
+  Compass,
+  Sparkles,
+  Palette,
+  FlaskConical,
+  Accessibility,
+  Server,
+}
 const PIPELINE_ICON: Record<string, LucideIcon> = {
   single: Zap,
   review: Eye,

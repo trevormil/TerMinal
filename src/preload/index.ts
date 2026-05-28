@@ -33,6 +33,10 @@ const gt = {
     list: () => ipcRenderer.invoke('snippets:list'),
     save: (list: unknown) => ipcRenderer.invoke('snippets:save', list),
   },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (key: string, value: boolean) => ipcRenderer.invoke('settings:set', key, value),
+  },
   typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
 
   // on-demand codex/claude agents

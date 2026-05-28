@@ -5,6 +5,11 @@ import {
   BookText,
   ScanSearch,
   ListChecks,
+  TestTube2,
+  ShieldAlert,
+  Gauge,
+  PackageCheck,
+  Eraser,
   Square,
   Trash2,
   FolderOpen,
@@ -16,7 +21,17 @@ import { EnginePicker } from '../../components/EnginePicker'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, AgentRun, Schedule, Engine, Cadence } from '../../lib/types'
 
-const AGENT_ICON: Record<string, LucideIcon> = { BookText, ScanSearch, ListChecks, Bot }
+const AGENT_ICON: Record<string, LucideIcon> = {
+  BookText,
+  ScanSearch,
+  ListChecks,
+  TestTube2,
+  ShieldAlert,
+  Gauge,
+  PackageCheck,
+  Eraser,
+  Bot,
+}
 const ENGINES: Engine[] = ['codex', 'claude']
 const CADENCES: (Cadence | 'off')[] = ['off', 'hourly', 'daily', 'weekly']
 const statusTone = (s: string): BadgeTone =>

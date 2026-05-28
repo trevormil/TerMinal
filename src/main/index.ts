@@ -23,6 +23,7 @@ import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, rem
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { scaffoldProject } from './scaffold'
 import { readSnippets, writeSnippets, type Snippet } from './snippets'
+import { readSettings, setSetting, type Settings } from './settings'
 import {
   readAgents,
   hasAgents as repoHasAgents,
@@ -355,6 +356,8 @@ ipcMain.handle('activity:list', () => readActivity())
 ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('snippets:list', () => readSnippets())
 ipcMain.handle('snippets:save', (_e, list: Snippet[]) => writeSnippets(list))
+ipcMain.handle('settings:get', () => readSettings())
+ipcMain.handle('settings:set', (_e, key: keyof Settings, value: boolean) => setSetting(key, value))
 ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))

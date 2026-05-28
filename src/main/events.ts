@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process'
 import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { telegramEnabled } from './settings'
 
 // Reuse the project-template /notify Telegram bridge for remote pings.
 const TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
@@ -26,6 +27,7 @@ function tgKind(ev: ActivityEvent): string {
   return 'info'
 }
 function sendTelegram(ev: ActivityEvent) {
+  if (!telegramEnabled()) return // opt-in, off by default
   if (!existsSync(TG_SCRIPT)) return // bridge not provisioned → skip silently
   try {
     const msg = ev.detail ? `${ev.title} — ${ev.detail}` : ev.title

@@ -8,6 +8,7 @@ import {
   Bot,
   TriangleAlert,
   Info,
+  Send,
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
@@ -53,10 +54,12 @@ type Scope = 'all' | 'repo' | 'session'
 function ActivityTab({ ctx }: { ctx: TabContext }) {
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [scope, setScope] = useState<Scope>('all')
+  const [telegram, setTelegram] = useState(false)
   const [, force] = useState(0) // re-tick relative times
   const newest = useRef<string>('') // id of the most recent event, for the live flash
 
   useEffect(() => {
+    window.gt.settings.get().then((s) => setTelegram(s.telegram))
     window.gt.activity.list().then((e) => {
       setEvents(e)
       newest.current = e[0]?.id || ''
@@ -85,6 +88,11 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
     setEvents([])
   }
 
+  const toggleTelegram = async () => {
+    const s = await window.gt.settings.set('telegram', !telegram)
+    setTelegram(s.telegram)
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--gt-border)] px-4 py-2">
@@ -105,6 +113,18 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
           this session
         </Chip>
         <div className="flex-1" />
+        <button
+          onClick={toggleTelegram}
+          title={telegram ? 'Telegram notifications on — click to disable' : 'Mirror notifications to Telegram'}
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
+            telegram
+              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+              : 'border-[var(--gt-border)] text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <Send size={11} strokeWidth={2} />
+          Telegram
+        </button>
         <span className="text-[11px] tabular-nums text-zinc-600">{shown.length}</span>
         <button
           onClick={clear}

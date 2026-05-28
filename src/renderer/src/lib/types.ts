@@ -108,6 +108,8 @@ export type NewTicket = { title: string; type: string; priority: string; status:
 
 export type Snippet = { id: string; title: string; body: string }
 
+export type Settings = { telegram: boolean }
+
 export type Engine = 'codex' | 'claude'
 export type Agent = {
   id: string
@@ -286,6 +288,10 @@ export type GtApi = {
   snippets: {
     list: () => Promise<Snippet[]>
     save: (list: Snippet[]) => Promise<boolean>
+  }
+  settings: {
+    get: () => Promise<Settings>
+    set: (key: keyof Settings, value: boolean) => Promise<Settings>
   }
   typeIntoActive: (text: string) => void
   agents: {
