@@ -46,6 +46,52 @@ export type CommandWidget = {
 
 export type CommandResult = { ok: boolean; stdout: string; code: number }
 
+export type Ticket = {
+  slug: string
+  id: number
+  title: string
+  status: string
+  priority: string
+  type: string
+  source: string
+  created: string
+  updated: string
+  prs: string[]
+  refs: string[]
+  body: string
+}
+
+export type NewTicket = { title: string; type: string; priority: string; status: string; body: string }
+
+export type Review = {
+  number: number
+  overall: number | null
+  verdict: string
+  testStatus: string
+  stale: boolean
+  commitsBehind: number
+}
+
+export type Mr = {
+  iid: number
+  title: string
+  state: string
+  author: string
+  webUrl: string
+  sourceBranch: string
+  draft: boolean
+  review: Review | null
+}
+
+export type TabContext = {
+  cwd: string
+  sessionId: string
+  repoRoot: string
+  repoPath: string
+  repoHost: string
+  hasBacklog: boolean
+}
+
 export type SessionMeta = {
   id: string
   cwd: string
@@ -102,6 +148,25 @@ export type GtApi = {
   listCommandWidgets: () => Promise<CommandWidget[]>
   runCommand: (command: string) => Promise<CommandResult>
   onTick: (cb: () => void) => () => void
+  tabContext: () => Promise<TabContext>
+  tickets: {
+    list: () => Promise<Ticket[]>
+    get: (slug: string) => Promise<Ticket | null>
+    create: (input: NewTicket) => Promise<Ticket>
+  }
+  listMrs: () => Promise<Mr[]>
+  openExternal: (url: string) => Promise<void>
+}
+
+/** A full-screen tab. Auto-discovered from src/renderer/src/tabs/<id>/index.tsx. */
+export type Tab = {
+  id: string
+  title: string
+  icon: string
+  order?: number
+  /** Whether this tab applies to the attached session's repo. */
+  appliesTo: (ctx: TabContext) => boolean
+  Component: (props: { ctx: TabContext }) => ReactNode
 }
 
 declare global {

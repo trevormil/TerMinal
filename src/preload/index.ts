@@ -42,6 +42,16 @@ const gt = {
   listCommandWidgets: () => ipcRenderer.invoke('widgets:list'),
   runCommand: (command: string) => ipcRenderer.invoke('widgets:run', command),
 
+  // tabs: repo context + tickets / MRs
+  tabContext: () => ipcRenderer.invoke('tab:context'),
+  tickets: {
+    list: () => ipcRenderer.invoke('tickets:list'),
+    get: (slug: string) => ipcRenderer.invoke('tickets:get', slug),
+    create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
+  },
+  listMrs: () => ipcRenderer.invoke('mrs:list'),
+  openExternal: (url: string) => ipcRenderer.invoke('open:external', url),
+
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {
     const h = () => cb()

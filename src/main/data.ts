@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { repoForCwd } from './repo'
+import { reviewForPrDir, newestPrDirForRepo } from './review'
 
 // ---------------------------------------------------------------------------
 // Claude Code transcript reader
@@ -267,10 +268,10 @@ export function listSessions(): SessionMeta[] {
 }
 
 // ---------------------------------------------------------------------------
-// Autopilot-harness TDD reader (repo-level; independent of the chosen session)
+// Autopilot-harness TDD reader — scoped to the attached session's repo.
+// Derives owner/repo from the cwd's git remote, reads that repo's newest
+// tracked PR review artifact (shared logic in review.ts).
 // ---------------------------------------------------------------------------
-
-const HARNESS = join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness')
 
 export type TddInfo = {
   ok: boolean
@@ -284,35 +285,6 @@ export type TddInfo = {
   ts: number
 }
 
-function fmField(md: string, key: string): string | null {
-  const fm = md.match(/^---\n([\s\S]*?)\n---/)
-  if (!fm) return null
-  const m = fm[1].match(new RegExp(`^\\s*${key}:\\s*"?([^"\\n]+?)"?\\s*$`, 'm'))
-  return m ? m[1].trim() : null
-}
-
-function parseRemote(url: string): { host: string; path: string } | null {
-  const u = url.trim().replace(/\.git$/, '')
-  let m = u.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
-  if (m) return { host: m[1], path: m[2] }
-  m = u.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/) // scp-like or ssh://
-  if (m) return { host: m[1], path: m[2] }
-  return null
-}
-
-function repoForCwd(cwd: string): { host: string; path: string } | null {
-  if (!cwd) return null
-  try {
-    const url = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return parseRemote(url)
-  } catch {
-    return null
-  }
-}
-
 let tddCache: { cwd: string; ts: number; info: TddInfo } | null = null
 export function readHarnessTdd(cwd: string): TddInfo {
   if (tddCache && tddCache.cwd === cwd && Date.now() - tddCache.ts < 2000) return tddCache.info
@@ -321,11 +293,9 @@ export function readHarnessTdd(cwd: string): TddInfo {
   return info
 }
 
-// Scoped to the attached session's repo: derive owner/repo from the cwd's git
-// remote, then read that repo's newest tracked PR under prs/<host>/<owner>/<repo>/.
 function computeHarnessTdd(cwd: string): TddInfo {
   const repo = repoForCwd(cwd)
-  const empty: TddInfo = {
+  const base: TddInfo = {
     ok: false,
     repo: repo?.path || '',
     number: 0,
@@ -336,76 +306,10 @@ function computeHarnessTdd(cwd: string): TddInfo {
     commitsBehind: 0,
     ts: Date.now(),
   }
-  if (!repo) return empty
-
-  const repoDir = join(HARNESS, 'prs', repo.host, ...repo.path.split('/'))
-  if (!existsSync(repoDir)) return empty
-
-  let best: { dir: string; mtime: number } | null = null
-  let nums: string[]
-  try {
-    nums = readdirSync(repoDir)
-  } catch {
-    return empty
-  }
-  for (const n of nums) {
-    const meta = join(repoDir, n, 'meta.json')
-    try {
-      if (existsSync(meta)) {
-        const m = statSync(meta).mtimeMs
-        if (!best || m > best.mtime) best = { dir: join(repoDir, n), mtime: m }
-      }
-    } catch {
-      /* skip */
-    }
-  }
-  if (!best) return empty
-  const bestDir = best.dir
-
-  let meta: any
-  try {
-    meta = JSON.parse(readFileSync(join(bestDir, 'meta.json'), 'utf8'))
-  } catch {
-    return empty
-  }
-  const commits: string[] = (meta.commits || []).map((c: any) =>
-    typeof c === 'string' ? c : c.sha || c.short || '',
-  )
-  const shortOf = (sha: string) => sha.slice(0, 7)
-
-  let artifactIdx = -1
-  for (let i = 0; i < commits.length; i++) {
-    const candidates = [`${commits[i]}.md`, `${shortOf(commits[i])}.md`]
-    if (candidates.some((c) => existsSync(join(bestDir, c)))) {
-      artifactIdx = i
-      break
-    }
-  }
-
-  let overall: number | null = null
-  let verdict = 'none'
-  let testStatus = 'none'
-  if (artifactIdx >= 0) {
-    const sha = commits[artifactIdx]
-    const file = [`${sha}.md`, `${shortOf(sha)}.md`]
-      .map((c) => join(bestDir, c))
-      .find((p) => existsSync(p))!
-    const md = readFileSync(file, 'utf8')
-    const ov = fmField(md, 'overall')
-    overall = ov ? Number(ov) : null
-    verdict = fmField(md, 'verdict') || 'none'
-    testStatus = fmField(md, 'test_status') || 'none'
-  }
-
-  return {
-    ok: true,
-    repo: meta.repo || repo.path,
-    number: Number(meta.number) || 0,
-    overall,
-    verdict,
-    testStatus,
-    stale: artifactIdx > 0 || artifactIdx === -1,
-    commitsBehind: artifactIdx === -1 ? commits.length : artifactIdx,
-    ts: Date.now(),
-  }
+  if (!repo) return base
+  const dir = newestPrDirForRepo(repo.host, repo.path)
+  if (!dir) return base
+  const r = reviewForPrDir(dir)
+  if (!r) return base
+  return { ...base, ok: true, ...r }
 }

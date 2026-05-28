@@ -2,11 +2,14 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
+import { statSync, existsSync } from 'node:fs'
 import * as pty from 'node-pty'
 import { readTranscriptStats, readHarnessTdd, listSessions, findSessionFile } from './data'
 import { readUsage } from './usage'
 import { listCommandWidgets, runCommand } from './widgets'
+import { repoRootOf, repoForCwd } from './repo'
+import { listTickets, getTicket, createTicket, type NewTicket } from './backlog'
+import { listMrs } from './mrs'
 
 const CLAUDE = process.env.GT_CLAUDE_BIN || 'claude'
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -146,6 +149,27 @@ ipcMain.handle('data:meta', () => ({ ...pinned, claude: CLAUDE }))
 // ---- command widgets (declarative, per-repo extensible) ----
 ipcMain.handle('widgets:list', () => listCommandWidgets(pinned.cwd))
 ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, pinned.cwd))
+
+// ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
+ipcMain.handle('tab:context', () => {
+  const repoRoot = repoRootOf(pinned.cwd)
+  const repo = repoForCwd(pinned.cwd)
+  return {
+    cwd: pinned.cwd,
+    sessionId: pinned.sessionId,
+    repoRoot,
+    repoPath: repo?.path || '',
+    repoHost: repo?.host || '',
+    hasBacklog: !!repoRoot && existsSync(join(repoRoot, 'backlog')),
+  }
+})
+ipcMain.handle('tickets:list', () => listTickets(repoRootOf(pinned.cwd)))
+ipcMain.handle('tickets:get', (_e, slug: string) => getTicket(repoRootOf(pinned.cwd), slug))
+ipcMain.handle('tickets:create', (_e, input: NewTicket) =>
+  createTicket(repoRootOf(pinned.cwd), input),
+)
+ipcMain.handle('mrs:list', () => listMrs(repoRootOf(pinned.cwd)))
+ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 
 app.whenReady().then(() => {
   createWindow()
