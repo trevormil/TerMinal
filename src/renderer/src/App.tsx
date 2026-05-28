@@ -18,10 +18,39 @@ const labelFor = (s: Sess) => {
   return s.choice.name || 'new'
 }
 
+// open sessions persist to localStorage so the window reopens to your workspace
+type Saved = { key: string; sessionId: string; cwd: string; name: string }
+const restored: Saved[] = (() => {
+  try {
+    return JSON.parse(localStorage.getItem('gt.openSessions') || '[]')
+  } catch {
+    return []
+  }
+})().filter((s: Saved) => s?.sessionId)
+
 export default function App() {
-  const [sessions, setSessions] = useState<Sess[]>([])
-  const [activeKey, setActiveKey] = useState<string | null>(null)
-  const [adding, setAdding] = useState(true)
+  const [sessions, setSessions] = useState<Sess[]>(() =>
+    restored.map((s) => ({
+      key: s.key,
+      choice: { mode: 'resume', sessionId: s.sessionId, cwd: s.cwd, name: s.name },
+      info: { sessionId: s.sessionId, cwd: s.cwd },
+    })),
+  )
+  const [activeKey, setActiveKey] = useState<string | null>(restored[restored.length - 1]?.key ?? null)
+  const [adding, setAdding] = useState(restored.length === 0)
+
+  // persist the open sessions (only those with a real session id, i.e. started)
+  useEffect(() => {
+    const data: Saved[] = sessions
+      .map((s) => ({
+        key: s.key,
+        sessionId: s.info.sessionId || (s.choice.mode === 'resume' ? s.choice.sessionId || '' : ''),
+        cwd: s.info.cwd || s.choice.cwd || '',
+        name: s.choice.name || '',
+      }))
+      .filter((s) => s.sessionId)
+    localStorage.setItem('gt.openSessions', JSON.stringify(data))
+  }, [sessions])
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])

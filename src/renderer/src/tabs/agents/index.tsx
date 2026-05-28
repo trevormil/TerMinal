@@ -20,7 +20,15 @@ const AGENT_ICON: Record<string, LucideIcon> = { BookText, ScanSearch, ListCheck
 const ENGINES: Engine[] = ['codex', 'claude']
 const CADENCES: (Cadence | 'off')[] = ['off', 'hourly', 'daily', 'weekly']
 const statusTone = (s: string): BadgeTone =>
-  s === 'done' ? 'green' : s === 'failed' ? 'red' : s === 'canceled' ? 'mute' : 'blue'
+  s === 'done'
+    ? 'green'
+    : s === 'failed'
+      ? 'red'
+      : s === 'interrupted'
+        ? 'yellow'
+        : s === 'canceled'
+          ? 'mute'
+          : 'blue'
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
 
 function reltime(ts: number): string {

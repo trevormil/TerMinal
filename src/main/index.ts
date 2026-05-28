@@ -32,6 +32,7 @@ import {
   cancelRun,
   removeWorktree,
   onAgentEvent,
+  loadPersistedRuns,
   type Engine,
 } from './agents'
 import {
@@ -262,6 +263,7 @@ function createWindow() {
   onActivity((ev) => send('activity:event', ev))
   startActivityTail() // surface externally-appended events (skills) live
   onAgentEvent((channel, payload) => send(channel, payload))
+  loadPersistedRuns() // restore past agent runs before the scheduler can add new ones
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
   // fire any due scheduled agent runs (interval-based cadence)
   if (!scheduleTimer)

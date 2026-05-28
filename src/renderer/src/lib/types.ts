@@ -118,7 +118,7 @@ export type Agent = {
   opensPr?: boolean
   engine?: Engine
 }
-export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled'
+export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
 export type AgentRun = {
   id: string
   agentId: string

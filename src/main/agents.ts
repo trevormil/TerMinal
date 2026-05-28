@@ -1,5 +1,13 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
+import {
+  readFileSync,
+  existsSync,
+  appendFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -22,7 +30,7 @@ export type Agent = {
   engine?: Engine // default engine; overridable per run
 }
 
-export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled'
+export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
 export type AgentRun = {
   id: string
   agentId: string
@@ -108,6 +116,76 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
   emit = fn
 }
 
+// --- persistence: one <id>.json (metadata) + <id>.log (output) per run --------
+const RUNS_DIR = join(homedir(), '.config', 'gauntlet-terminal', 'agent-runs')
+const KEEP_RUNS = 100
+const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
+const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+
+function persistMeta(run: AgentRun) {
+  try {
+    mkdirSync(RUNS_DIR, { recursive: true })
+    const { output: _o, ...meta } = run
+    writeFileSync(metaPath(run.id), JSON.stringify(meta))
+  } catch {
+    /* best effort */
+  }
+}
+function appendLog(id: string, chunk: string) {
+  try {
+    appendFileSync(logPath(id), chunk)
+  } catch {
+    /* best effort */
+  }
+}
+
+// Load past runs from disk into memory at startup. Runs still marked 'running'
+// were orphaned by an app quit → mark 'interrupted'. Prune to the newest N.
+let loaded = false
+export function loadPersistedRuns() {
+  if (loaded) return
+  loaded = true
+  let files: string[] = []
+  try {
+    files = readdirSync(RUNS_DIR).filter((f) => f.endsWith('.json'))
+  } catch {
+    return
+  }
+  const metas: AgentRun[] = []
+  for (const f of files) {
+    try {
+      const m = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8')) as AgentRun
+      if (m.status === 'running') m.status = 'interrupted'
+      let output = ''
+      try {
+        const buf = readFileSync(logPath(m.id), 'utf8')
+        output = buf.length > OUTPUT_CAP ? buf.slice(-OUTPUT_CAP) : buf
+      } catch {
+        /* no log */
+      }
+      metas.push({ ...m, output })
+    } catch {
+      /* skip corrupt */
+    }
+  }
+  metas.sort((a, b) => a.startedAt - b.startedAt)
+  // prune oldest beyond KEEP_RUNS (delete files too)
+  while (metas.length > KEEP_RUNS) {
+    const old = metas.shift()!
+    try {
+      rmSync(metaPath(old.id), { force: true })
+      rmSync(logPath(old.id), { force: true })
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const m of metas) {
+    if (runs.has(m.id)) continue // never clobber a live (in-memory) run
+    runs.set(m.id, m)
+    if (m.status === 'interrupted') persistMeta(m) // persist the corrected status
+  }
+}
+
 function defaultBase(repoRoot: string): string {
   const git = (args: string[]) =>
     execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
@@ -128,6 +206,7 @@ function defaultBase(repoRoot: string): string {
 }
 
 export function listRuns(): AgentRun[] {
+  loadPersistedRuns()
   return [...runs.values()].sort((a, b) => b.startedAt - a.startedAt)
 }
 export function getRun(id: string): AgentRun | null {
@@ -175,6 +254,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     output: `▸ ${spec.title} · ${spec.engine} · worktree ${worktree}\n▸ branch ${branch} (off ${base})\n▸ running…\n\n`,
   }
   runs.set(run.id, run)
+  persistMeta(run)
+  appendLog(run.id, run.output)
   emit('agent:status', run)
   emitActivity(
     { kind: 'agent-run', title: `Agent started · ${spec.title}`, detail: `${spec.engine} · ${repoLabel}`, repo: repoLabel, repoRoot },
@@ -188,17 +269,21 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   })
   procs.set(run.id, p)
   const append = (d: Buffer) => {
-    run.output += d.toString()
+    const chunk = d.toString()
+    run.output += chunk
     if (run.output.length > OUTPUT_CAP) run.output = run.output.slice(-OUTPUT_CAP)
-    emit('agent:output', { runId: run.id, chunk: d.toString() })
+    appendLog(run.id, chunk)
+    emit('agent:output', { runId: run.id, chunk })
   }
   p.stdout?.on('data', append)
   p.stderr?.on('data', append)
   p.on('error', (err) => {
     run.output += `\n[spawn error] ${err.message}\n`
+    appendLog(run.id, `\n[spawn error] ${err.message}\n`)
     run.status = 'failed'
     run.endedAt = Date.now()
     procs.delete(run.id)
+    persistMeta(run)
     emit('agent:status', run)
     emitActivity({ kind: 'agent-run', title: `Agent failed · ${spec.title}`, detail: err.message, repo: repoLabel, repoRoot })
   })
@@ -207,6 +292,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     run.endedAt = Date.now()
     run.exitCode = code ?? undefined
     procs.delete(run.id)
+    persistMeta(run)
     emit('agent:status', run)
     emitActivity({
       kind: 'agent-run',
@@ -243,7 +329,10 @@ export function runTicketAgent(
 export function cancelRun(runId: string): boolean {
   const run = runs.get(runId)
   const p = procs.get(runId)
-  if (run && run.status === 'running') run.status = 'canceled'
+  if (run && run.status === 'running') {
+    run.status = 'canceled'
+    persistMeta(run)
+  }
   p?.kill('SIGTERM')
   return !!p
 }
