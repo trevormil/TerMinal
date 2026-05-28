@@ -108,6 +108,41 @@ function slugify(title: string): string {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+// In-place edit of a ticket's frontmatter fields (status/priority), preserving
+// everything else. Scoped to the frontmatter block so body text can't match.
+export function updateTicket(
+  repoRoot: string,
+  slug: string,
+  patch: { status?: string; priority?: string },
+): boolean {
+  const safe = slug.replace(/[^\w-]/g, '')
+  const p = join(backlogDir(repoRoot), `${safe}.md`)
+  if (!existsSync(p)) return false
+  let md: string
+  try {
+    md = readFileSync(p, 'utf8')
+  } catch {
+    return false
+  }
+  const m = md.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/)
+  if (!m) return false
+  let fm = m[1]
+  const setField = (key: string, val: string) => {
+    const re = new RegExp(`^(${key}:[ \\t]*).*$`, 'm')
+    if (re.test(fm)) fm = fm.replace(re, `$1${val}`)
+    else fm = fm.replace(/\n---$/, `\n${key}: ${val}\n---`)
+  }
+  if (patch.status) setField('status', patch.status)
+  if (patch.priority) setField('priority', patch.priority)
+  setField('updated', today())
+  try {
+    writeFileSync(p, fm + m[2])
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function createTicket(repoRoot: string, input: NewTicket): Ticket {
   const dir = backlogDir(repoRoot)
   if (!existsSync(dir)) throw new Error('no backlog/ in this repo')

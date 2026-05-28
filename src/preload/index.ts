@@ -51,6 +51,8 @@ const gt = {
     list: () => ipcRenderer.invoke('tickets:list'),
     get: (slug: string) => ipcRenderer.invoke('tickets:get', slug),
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
+    update: (slug: string, patch: { status?: string; priority?: string }) =>
+      ipcRenderer.invoke('tickets:update', slug, patch),
   },
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),

@@ -186,6 +186,7 @@ export type GtApi = {
     list: () => Promise<Ticket[]>
     get: (slug: string) => Promise<Ticket | null>
     create: (input: NewTicket) => Promise<Ticket>
+    update: (slug: string, patch: { status?: string; priority?: string }) => Promise<boolean>
   }
   listMrs: () => Promise<Mr[]>
   getMr: (iid: number) => Promise<MrDetail | null>

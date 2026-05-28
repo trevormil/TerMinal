@@ -80,6 +80,8 @@ const BADGE_MAP: Record<BadgeTone, string> = {
   mute: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/25',
 }
 
+export const badgeClasses = (tone: BadgeTone) => BADGE_MAP[tone]
+
 export function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
   return (
     <span

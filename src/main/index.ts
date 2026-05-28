@@ -8,7 +8,7 @@ import { readTranscriptStats, readHarnessTdd, listSessions, findSessionFile } fr
 import { readUsage } from './usage'
 import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd, gitStatus } from './repo'
-import { listTickets, getTicket, createTicket, type NewTicket } from './backlog'
+import { listTickets, getTicket, createTicket, updateTicket, type NewTicket } from './backlog'
 import { listMrs, getMr, getMrDiff, mrSummary } from './mrs'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
@@ -189,6 +189,9 @@ ipcMain.handle('tickets:list', () => listTickets(repoRootOf(pinned.cwd)))
 ipcMain.handle('tickets:get', (_e, slug: string) => getTicket(repoRootOf(pinned.cwd), slug))
 ipcMain.handle('tickets:create', (_e, input: NewTicket) =>
   createTicket(repoRootOf(pinned.cwd), input),
+)
+ipcMain.handle('tickets:update', (_e, slug: string, patch: { status?: string; priority?: string }) =>
+  updateTicket(repoRootOf(pinned.cwd), slug, patch),
 )
 ipcMain.handle('mrs:list', () => listMrs(repoRootOf(pinned.cwd)))
 ipcMain.handle('mrs:get', (_e, iid: number) => getMr(repoRootOf(pinned.cwd), iid))

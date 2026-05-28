@@ -1,9 +1,36 @@
 import { useEffect, useState } from 'react'
-import { Badge } from '../../components/ui'
+import { Badge, badgeClasses } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { MrDetailView } from '../../components/MrDetail'
 import { statusTone, priorityTone, typeTone, verdictTone, testTone, stateTone } from '../../lib/badges'
+import type { BadgeTone } from '../../components/ui'
 import type { Tab, Ticket, Mr, TabContext } from '../../lib/types'
+
+function FieldSelect({
+  value,
+  options,
+  tone,
+  onChange,
+}: {
+  value: string
+  options: string[]
+  tone: BadgeTone
+  onChange: (v: string) => void
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`cursor-pointer appearance-none rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide outline-none ${badgeClasses(tone)}`}
+    >
+      {options.map((o) => (
+        <option key={o} value={o} className="bg-[var(--gt-panel)] normal-case text-zinc-200">
+          {o}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'performance']
@@ -290,9 +317,25 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                 <div className="p-5">
                   <div className="mb-1 flex items-center gap-2 text-[11px] text-zinc-600">
                     <span className="font-mono">#{selected.id}</span>
-                    <Badge tone={statusTone(selected.status)}>{selected.status}</Badge>
+                    <FieldSelect
+                      value={selected.status}
+                      options={STATUSES}
+                      tone={statusTone(selected.status)}
+                      onChange={async (v) => {
+                        await window.gt.tickets.update(selected.slug, { status: v })
+                        loadTickets()
+                      }}
+                    />
                     <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
-                    <Badge tone={priorityTone(selected.priority)}>{selected.priority}</Badge>
+                    <FieldSelect
+                      value={selected.priority}
+                      options={PRIORITIES}
+                      tone={priorityTone(selected.priority)}
+                      onChange={async (v) => {
+                        await window.gt.tickets.update(selected.slug, { priority: v })
+                        loadTickets()
+                      }}
+                    />
                   </div>
                   <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
                   <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
