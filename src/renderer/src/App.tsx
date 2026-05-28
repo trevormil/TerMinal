@@ -56,10 +56,21 @@ export default function App() {
   }, [allPlugins, known])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDrawer(false)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawer(false)
+      // Cmd/Ctrl+1..N → switch tabs (Terminal is 1)
+      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+        const order = ['terminal', ...tabs.map((t) => t.id)]
+        const target = order[Number(e.key) - 1]
+        if (target) {
+          e.preventDefault()
+          setActiveTab(target)
+        }
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [tabs])
 
   // once attached: branch for header, per-repo command widgets, tab context
   useEffect(() => {

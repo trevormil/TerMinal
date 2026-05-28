@@ -20,18 +20,29 @@ sidebar collapses. Plugins come in two flavors:
 
 There is no marketplace to publish to — fork the repo or drop a JSON entry.
 
-> Built in one night for a Gauntlet AI hackathon. macOS-first.
+> Built for a Gauntlet AI hackathon. macOS-first.
 
-```
-┌─ ◆ Gauntlet Terminal ───────────────┬──────────────────┐
-│ claude (real CLI, xterm.js)         │  COCKPIT  4 live │
-│ > building the feature…             │  🧠 Context  74.9%│
-│ ● Edit src/server.ts                │  ⚡ Now Doing  Edit│
-│ ● Bash bun test                     │  💸 Usage  $0.42  │
-│                                     │  🧪 TDD  86 ✓ pass│
-│                                     │  [ ⧉ Plugins · 4 ]│
-└─────────────────────────────────────┴──────────────────┘
-```
+## Tabs
+
+A title-bar tab switcher (Cmd+1…N) puts full-screen surfaces alongside the
+terminal. The terminal stays mounted when you switch away, so the session
+never drops. Tabs are repo-aware — they show based on the attached session.
+
+- **▸ Terminal** — the `claude` CLI + the cockpit sidebar (above).
+- **🎫 Tickets & MRs** — browse/filter/create tickets from the repo's
+  `backlog/` (inline status/priority edit writes back to the file). Live MR
+  list via `glab`, each MR opening a full review surface: rendered description,
+  the harness **review** body, **findings** + **suggestions** tabs, and a
+  file-by-file **diff** (syntax-highlighted, unified/split, per-file "viewed").
+- **🗒️ Notes** — markdown editor (edit/split/preview). Repo notes live at
+  `<repo>/.gauntlet-terminal/notes.md` (auto-gitignored, bound to the repo);
+  Global notes span everything. Both autosave + persist.
+- **📂 Files** — a lightweight editor: CodeMirror (syntax, find/replace) with
+  multi-file tabs, a file tree with new/rename/delete, and project-wide search
+  (`git grep`). ⌘S save · ⌘W close · ⌘F find · ⌘⇧F project search.
+
+New tab = a folder under `src/renderer/src/tabs/<id>/index.tsx` default-exporting
+`{ id, title, icon, appliesTo(ctx), Component }` — same auto-discovery as plugins.
 
 ## Install (macOS)
 
