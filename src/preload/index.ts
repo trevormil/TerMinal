@@ -27,6 +27,13 @@ const gt = {
     return () => ipcRenderer.removeListener('window:fullscreen', h)
   },
 
+  // saved prompts / snippets + inject into the active terminal
+  snippets: {
+    list: () => ipcRenderer.invoke('snippets:list'),
+    save: (list: unknown) => ipcRenderer.invoke('snippets:save', list),
+  },
+  typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
+
   // activity feed + notifications
   activity: {
     list: () => ipcRenderer.invoke('activity:list'),

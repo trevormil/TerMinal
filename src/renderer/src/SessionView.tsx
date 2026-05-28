@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { SquareTerminal, GitBranch, LayoutGrid, type LucideIcon } from 'lucide-react'
+import { SquareTerminal, GitBranch, LayoutGrid, ScrollText, type LucideIcon } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
+import { SnippetsDrawer } from './components/SnippetsDrawer'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { ALL_PLUGINS } from './plugins/registry'
@@ -48,6 +49,7 @@ export function SessionView({
   const [enabled, setEnabled] = useState<string[]>(() => load('gt.enabled', []))
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
   const [drawer, setDrawer] = useState(false)
+  const [snippets, setSnippets] = useState(false)
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
 
   const allPlugins = useMemo(
@@ -68,7 +70,10 @@ export function SessionView({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawer(false)
+      if (e.key === 'Escape') {
+        setDrawer(false)
+        setSnippets(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -159,14 +164,24 @@ export function SessionView({
           </span>
         )}
         {onTerminal && (
-          <button
-            style={noDrag}
-            onClick={() => setDrawer(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
-          >
-            <LayoutGrid size={12} strokeWidth={2} />
-            Plugins · {enabled.length}
-          </button>
+          <>
+            <button
+              style={noDrag}
+              onClick={() => setSnippets(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+            >
+              <ScrollText size={12} strokeWidth={2} />
+              Snippets
+            </button>
+            <button
+              style={noDrag}
+              onClick={() => setDrawer(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+            >
+              <LayoutGrid size={12} strokeWidth={2} />
+              Plugins · {enabled.length}
+            </button>
+          </>
         )}
       </header>
 
@@ -237,6 +252,16 @@ export function SessionView({
             enabled={enabled}
             onToggle={toggle}
             onClose={() => setDrawer(false)}
+          />
+        )}
+
+        {active && snippets && (
+          <SnippetsDrawer
+            onClose={() => setSnippets(false)}
+            onInject={(body) => {
+              window.gt.typeIntoActive(body)
+              setSnippets(false)
+            }}
           />
         )}
       </div>

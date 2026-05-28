@@ -22,6 +22,7 @@ import { readNotes, writeNotes, type NotesScope } from './notes'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { scaffoldProject } from './scaffold'
+import { readSnippets, writeSnippets, type Snippet } from './snippets'
 
 const CLAUDE = process.env.GT_CLAUDE_BIN || 'claude'
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -283,6 +284,16 @@ ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) =>
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 ipcMain.handle('activity:list', () => readActivity())
 ipcMain.handle('activity:clear', () => clearActivity())
+ipcMain.handle('snippets:list', () => readSnippets())
+ipcMain.handle('snippets:save', (_e, list: Snippet[]) => writeSnippets(list))
+// inject text into the ACTIVE session's terminal (snippet → prompt)
+ipcMain.on('pty:type', (_e, text: string) => {
+  try {
+    sessions.get(activeKey)?.pty.write(text)
+  } catch {
+    /* session gone */
+  }
+})
 
 // ---- PTY IPC (routed by session key) ----
 ipcMain.on('pty:input', (_e, key: string, data: string) => sessions.get(key)?.pty.write(data))

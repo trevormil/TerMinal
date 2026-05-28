@@ -105,6 +105,8 @@ export type ProjectSession = {
 
 export type NewTicket = { title: string; type: string; priority: string; status: string; body: string }
 
+export type Snippet = { id: string; title: string; body: string }
+
 export type Review = {
   number: number
   overall: number | null
@@ -217,6 +219,11 @@ export type GtApi = {
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
   isFullscreen: () => Promise<boolean>
   onFullscreen: (cb: (v: boolean) => void) => () => void
+  snippets: {
+    list: () => Promise<Snippet[]>
+    save: (list: Snippet[]) => Promise<boolean>
+  }
+  typeIntoActive: (text: string) => void
   activity: {
     list: () => Promise<ActivityEvent[]>
     clear: () => Promise<void>
