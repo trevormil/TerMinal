@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Layers, Ticket, GitPullRequest, ArrowUpRight, GitBranch } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { sessionStatusTone } from '../../lib/badges'
@@ -85,8 +86,18 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
                   <Badge tone={sessionStatusTone(s.status)}>{s.status}</Badge>
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-600">
-                  {s.tickets.length > 0 && <span>🎫 {s.tickets.length}</span>}
-                  {s.prs.length > 0 && <span>🔀 {s.prs.length}</span>}
+                  {s.tickets.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5">
+                      <Ticket size={11} strokeWidth={2} />
+                      {s.tickets.length}
+                    </span>
+                  )}
+                  {s.prs.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5">
+                      <GitPullRequest size={11} strokeWidth={2} />
+                      {s.prs.length}
+                    </span>
+                  )}
                   <span>{reldate(s.ended || s.started)}</span>
                 </div>
               </button>
@@ -116,14 +127,20 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
               )}
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
                 {sel.tickets.length > 0 && <span>tickets {sel.tickets.join(', ')}</span>}
-                {sel.branches.length > 0 && <span>⎇ {sel.branches.join(', ')}</span>}
+                {sel.branches.length > 0 && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <GitBranch size={11} strokeWidth={2} />
+                    {sel.branches.join(', ')}
+                  </span>
+                )}
                 {sel.prs.map((p) => (
                   <button
                     key={p}
                     onClick={() => window.gt.openExternal(p)}
-                    className="text-[var(--gt-accent-2)] hover:underline"
+                    className="inline-flex items-center gap-0.5 text-[var(--gt-accent-2)] hover:underline"
                   >
-                    {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')} ↗
+                    {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')}
+                    <ArrowUpRight size={11} strokeWidth={2} />
                   </button>
                 ))}
               </div>
@@ -143,7 +160,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
 const tab: Tab = {
   id: 'sessions',
   title: 'Sessions',
-  icon: '🗂️',
+  icon: Layers,
   order: 0,
   appliesTo: (ctx) => ctx.hasSessions,
   Component: SessionsTab,

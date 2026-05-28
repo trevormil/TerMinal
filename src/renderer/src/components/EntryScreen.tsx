@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { X, FolderOpen, Plus, GitBranch } from 'lucide-react'
 import type { SessionMeta } from '../lib/types'
+import logo from '../assets/logo.png'
 
 export type Choice = { mode: 'new' | 'resume'; sessionId?: string; cwd?: string; name?: string }
 
@@ -55,16 +57,17 @@ export function EntryScreen({
   return (
     <div className="h-full w-full overflow-y-auto bg-[var(--gt-bg)]">
       <div className="mx-auto max-w-2xl px-8 py-10">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-2xl text-[var(--gt-accent)]">◆</span>
-          <h1 className="text-2xl font-bold tracking-tight">Gauntlet Terminal</h1>
+        <div className="mb-1 flex items-center gap-2.5">
+          <img src={logo} alt="" draggable={false} className="h-9 w-9 rounded-lg" />
+          <h1 className="gt-grad-text text-2xl font-bold tracking-tight">Gauntlet Terminal</h1>
           <div className="flex-1" />
           {onCancel && (
             <button
               onClick={onCancel}
-              className="rounded-md px-2 py-1 text-[12px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
             >
-              ✕ cancel
+              <X size={13} strokeWidth={2} />
+              cancel
             </button>
           )}
         </div>
@@ -109,8 +112,12 @@ export function EntryScreen({
             Start a new session
           </div>
           <div className="mb-2 flex items-center gap-2">
-            <button onClick={browse} className={`${sel} shrink-0 hover:border-[var(--gt-accent)]/60`}>
-              📁 Folder
+            <button
+              onClick={browse}
+              className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+            >
+              <FolderOpen size={13} strokeWidth={2} />
+              Folder
             </button>
             <input
               value={cwd}
@@ -131,9 +138,10 @@ export function EntryScreen({
               onClick={() =>
                 onChoose({ mode: 'new', cwd: cwd.trim() || undefined, name: name.trim() || undefined })
               }
-              className="shrink-0 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
             >
-              ＋ New session
+              <Plus size={14} strokeWidth={2.5} />
+              New session
             </button>
           </div>
         </div>
@@ -172,7 +180,12 @@ export function EntryScreen({
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
                     <span className="font-mono">{tilde(s.cwd) || '~'}</span>
-                    {s.gitBranch && <span className="text-zinc-600">⎇ {s.gitBranch}</span>}
+                    {s.gitBranch && (
+                      <span className="inline-flex items-center gap-0.5 text-zinc-600">
+                        <GitBranch size={11} strokeWidth={2} />
+                        {s.gitBranch}
+                      </span>
+                    )}
                     <span className="text-zinc-600">· {s.turns} turns</span>
                   </div>
                 </div>

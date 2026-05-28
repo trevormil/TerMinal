@@ -45,6 +45,7 @@ export function PluginDrawer({
         <div className="space-y-2">
           {plugins.map((p) => {
             const on = enabled.includes(p.id)
+            const Icon = p.icon
             return (
               <button
                 key={p.id}
@@ -55,7 +56,11 @@ export function PluginDrawer({
                     : 'border-[var(--gt-border)] bg-black/20 hover:bg-white/5'
                 }`}
               >
-                <span className="mt-0.5 text-lg leading-none">{p.icon}</span>
+                <Icon
+                  size={18}
+                  strokeWidth={2}
+                  className={`mt-0.5 shrink-0 ${on ? 'text-[var(--gt-accent-light)]' : 'text-zinc-400'}`}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-semibold text-zinc-100">{p.title}</span>

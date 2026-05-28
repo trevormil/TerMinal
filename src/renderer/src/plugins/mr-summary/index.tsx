@@ -1,10 +1,11 @@
+import { GitPullRequest } from 'lucide-react'
 import { Card, Big, Row, Badge, Empty } from '../../components/ui'
 import type { Plugin, MrSummary } from '../../lib/types'
 
 const plugin: Plugin<MrSummary> = {
   id: 'mr-summary',
   title: 'Open MRs',
-  icon: '🔀',
+  icon: GitPullRequest,
   blurb: "Open MR count for the repo + review breakdown (glab, cached 60s).",
   order: 8,
   intervalMs: 60_000,
@@ -14,12 +15,12 @@ const plugin: Plugin<MrSummary> = {
     if (!d) return null
     if (d.open === 0)
       return (
-        <Card icon="🔀" title="Open MRs">
+        <Card icon={GitPullRequest} title="Open MRs">
           <Empty>No open MRs</Empty>
         </Card>
       )
     return (
-      <Card icon="🔀" title="Open MRs">
+      <Card icon={GitPullRequest} title="Open MRs">
         <div className="mb-2">
           <Big value={d.open} sub="open" />
         </div>

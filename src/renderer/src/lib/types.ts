@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
@@ -247,7 +248,7 @@ export type MrSummary = { open: number; approve: number; changes: number; needsR
 export type Tab = {
   id: string
   title: string
-  icon: string
+  icon: LucideIcon
   order?: number
   /** Whether this tab applies to the attached session's repo. */
   appliesTo: (ctx: TabContext) => boolean
@@ -268,7 +269,7 @@ declare global {
 export type Plugin<T = unknown> = {
   id: string
   title: string
-  icon: string
+  icon: LucideIcon
   blurb: string
   order?: number
   intervalMs: number

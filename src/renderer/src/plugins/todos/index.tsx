@@ -1,10 +1,13 @@
+import { ListChecks, CircleCheck, CircleDot, Circle } from 'lucide-react'
 import { Card, Empty } from '../../components/ui'
 import type { Plugin, TaskItem } from '../../lib/types'
 
 function Dot({ status }: { status: string }) {
-  if (status === 'completed') return <span className="text-[var(--gt-green)]">✓</span>
-  if (status === 'in_progress') return <span className="text-[var(--gt-yellow)]">◐</span>
-  return <span className="text-zinc-600">○</span>
+  if (status === 'completed')
+    return <CircleCheck size={12} strokeWidth={2.25} className="text-[var(--gt-green)]" />
+  if (status === 'in_progress')
+    return <CircleDot size={12} strokeWidth={2.25} className="gt-pulse text-[var(--gt-yellow)]" />
+  return <Circle size={12} strokeWidth={2.25} className="text-zinc-600" />
 }
 
 // The agent's live todo list (~/.claude/tasks/<session>/). Active tasks shown;
@@ -12,7 +15,8 @@ function Dot({ status }: { status: string }) {
 const plugin: Plugin<TaskItem[]> = {
   id: 'todos',
   title: 'Todos',
-  icon: '☑',
+  icon: ListChecks,
+  blurb: "The agent's live todo list — active items shown, completed collapsed to a count.",
   order: 3,
   intervalMs: 2500,
   realtime: true,
@@ -22,16 +26,19 @@ const plugin: Plugin<TaskItem[]> = {
     const tasks = d || []
     if (!tasks.length)
       return (
-        <Card icon="☑" title="Todos">
+        <Card icon={ListChecks} title="Todos">
           <Empty>no tasks</Empty>
         </Card>
       )
     const done = tasks.filter((t) => t.status === 'completed').length
     const active = tasks.filter((t) => t.status !== 'completed')
     return (
-      <Card icon="☑" title="Todos" right={<span className="text-[9px] tabular-nums text-zinc-600">{done}/{tasks.length}</span>}>
+      <Card icon={ListChecks} title="Todos" right={<span className="text-[9px] tabular-nums text-zinc-600">{done}/{tasks.length}</span>}>
         {active.length === 0 ? (
-          <div className="text-[11px] italic text-zinc-500">all {done} done ✓</div>
+          <div className="flex items-center gap-1 text-[11px] italic text-zinc-500">
+            <CircleCheck size={11} strokeWidth={2.25} className="text-[var(--gt-green)]" />
+            all {done} done
+          </div>
         ) : (
           <div className="space-y-0.5">
             {active.slice(0, 8).map((t) => (

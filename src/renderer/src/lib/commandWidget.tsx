@@ -1,3 +1,4 @@
+import { SquareTerminal } from 'lucide-react'
 import { Card, Row, Empty } from '../components/ui'
 import type { CommandWidget, Plugin } from './types'
 
@@ -32,11 +33,11 @@ function renderOut(out: string | null, mode: CommandWidget['mode']) {
 }
 
 /** Wrap a declarative command widget as a regular Plugin. */
-export function commandWidgetToPlugin(w: CommandWidget): Plugin<string> {
+export function commandWidgetToPlugin(w: CommandWidget): Plugin {
   return {
     id: w.id,
     title: w.title,
-    icon: w.icon || '▸',
+    icon: SquareTerminal,
     blurb: `$ ${w.command}`,
     order: 50,
     intervalMs: w.intervalMs,
@@ -47,7 +48,7 @@ export function commandWidgetToPlugin(w: CommandWidget): Plugin<string> {
     },
     render: (out) => (
       <Card
-        icon={w.icon || '▸'}
+        icon={SquareTerminal}
         title={w.title}
         right={<span className="text-[9px] uppercase tracking-wide text-zinc-600">{w.source}</span>}
       >

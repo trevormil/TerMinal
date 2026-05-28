@@ -1,4 +1,13 @@
 import { useEffect, useState } from 'react'
+import {
+  Ticket as TicketIcon,
+  GitPullRequest,
+  Hand,
+  Plus,
+  TriangleAlert,
+  GitBranch,
+  ArrowUpRight,
+} from 'lucide-react'
 import { Badge, badgeClasses } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { MrDetailView } from '../../components/MrDetail'
@@ -154,8 +163,16 @@ function MrList({ mrs, onOpen }: { mrs: Mr[] | null; onOpen: (iid: number) => vo
                 {m.review && <Badge tone={verdictTone(m.review.verdict)}>{m.review.verdict}</Badge>}
                 {m.review && <Badge tone={testTone(m.review.testStatus)}>tests {m.review.testStatus}</Badge>}
                 {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}
-                {m.review?.stale && <Badge tone="warn">⚠ stale</Badge>}
-                <span className="text-zinc-600">⎇ {m.sourceBranch}</span>
+                {m.review?.stale && (
+                  <Badge tone="warn">
+                    <TriangleAlert size={9} strokeWidth={2.5} />
+                    stale
+                  </Badge>
+                )}
+                <span className="inline-flex items-center gap-0.5 text-zinc-600">
+                  <GitBranch size={11} strokeWidth={2} />
+                  {m.sourceBranch}
+                </span>
                 {m.author && <span className="text-zinc-600">· @{m.author}</span>}
               </div>
             </div>
@@ -164,9 +181,10 @@ function MrList({ mrs, onOpen }: { mrs: Mr[] | null; onOpen: (iid: number) => vo
                 e.stopPropagation()
                 window.gt.openExternal(m.webUrl)
               }}
-              className="shrink-0 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
             >
-              open ↗
+              open
+              <ArrowUpRight size={12} strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -210,10 +228,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
   )
   const selected = tickets?.find((t) => t.slug === sel) || null
 
-  const seg = (m: 'tickets' | 'mrs', label: string) => (
+  const seg = (m: 'tickets' | 'mrs', label: React.ReactNode) => (
     <button
       onClick={() => setMode(m)}
-      className={`rounded-md px-3 py-1 text-[12px] font-medium ${
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium ${
         mode === m ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
       }`}
     >
@@ -226,8 +244,20 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       {/* sub-header */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {seg('tickets', `🎫 Tickets${tickets ? ` ${tickets.length}` : ''}`)}
-          {seg('mrs', '🔀 MRs')}
+          {seg(
+            'tickets',
+            <>
+              <TicketIcon size={13} strokeWidth={2} />
+              Tickets{tickets ? ` ${tickets.length}` : ''}
+            </>,
+          )}
+          {seg(
+            'mrs',
+            <>
+              <GitPullRequest size={13} strokeWidth={2} />
+              MRs
+            </>,
+          )}
         </div>
         <span className="text-[11px] text-zinc-600">{ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}</span>
         <div className="flex-1" />
@@ -244,9 +274,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                 setCreating(true)
                 setSel(null)
               }}
-              className="rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
+              className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
             >
-              ＋ New
+              <Plus size={14} strokeWidth={2.5} />
+              New
             </button>
           </>
         )}
@@ -278,7 +309,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
             </Chip>
           ))}
           <Chip active={fHitl} onClick={() => setFHitl((v) => !v)}>
-            🙋 HITL
+            <span className="inline-flex items-center gap-1">
+              <Hand size={11} strokeWidth={2} />
+              HITL
+            </span>
           </Chip>
         </div>
       )}
@@ -318,7 +352,11 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                   >
                     <span className="font-mono text-[11px] text-zinc-600">#{t.id}</span>
                     <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">{t.title}</span>
-                    {t.hitl && <Badge tone="red">🙋</Badge>}
+                    {t.hitl && (
+                      <Badge tone="red">
+                        <Hand size={10} strokeWidth={2.25} />
+                      </Badge>
+                    )}
                     {t.horizon !== 'now' && <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>}
                     {t.priority !== 'medium' && (
                       <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
@@ -361,7 +399,12 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                       }}
                     />
                     <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
-                    {selected.hitl && <Badge tone="red">🙋 HITL</Badge>}
+                    {selected.hitl && (
+                      <Badge tone="red">
+                        <Hand size={10} strokeWidth={2.25} />
+                        HITL
+                      </Badge>
+                    )}
                   </div>
                   <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
                   <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
@@ -371,9 +414,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                       <button
                         key={p}
                         onClick={() => window.gt.openExternal(p)}
-                        className="text-[var(--gt-accent-2)] hover:underline"
+                        className="inline-flex items-center gap-0.5 text-[var(--gt-accent-2)] hover:underline"
                       >
-                        {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')} ↗
+                        {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')}
+                        <ArrowUpRight size={11} strokeWidth={2} />
                       </button>
                     ))}
                   </div>
@@ -381,7 +425,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
-                  Select a ticket, or ＋ New.
+                  Select a ticket, or create a new one.
                 </div>
               )}
             </div>
@@ -395,7 +439,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
 const tab: Tab = {
   id: 'tickets',
   title: 'Tickets & MRs',
-  icon: '🎫',
+  icon: TicketIcon,
   order: 1,
   appliesTo: (ctx) => ctx.hasBacklog || !!ctx.repoPath,
   Component: TicketsTab,

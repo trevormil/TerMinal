@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  FileText,
+  ScanSearch,
+  TriangleAlert,
+  Lightbulb,
+  GitCompare,
+  ChevronLeft,
+  ArrowUpRight,
+  GitBranch,
+} from 'lucide-react'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
 import { Badge } from './ui'
@@ -255,7 +265,12 @@ function Overview({ mr }: { mr: MrDetail }) {
         {mr.reviewMeta && (
           <Badge tone={testTone(mr.reviewMeta.testStatus)}>tests {mr.reviewMeta.testStatus}</Badge>
         )}
-        {mr.reviewMeta?.stale && <Badge tone="warn">⚠ stale</Badge>}
+        {mr.reviewMeta?.stale && (
+          <Badge tone="warn">
+            <TriangleAlert size={9} strokeWidth={2.5} />
+            stale
+          </Badge>
+        )}
         {mr.artifactShortSha && <span className="font-mono text-zinc-600">artifact {mr.artifactShortSha}</span>}
       </div>
       {mr.description ? (
@@ -359,15 +374,15 @@ export function MrDetailView({
       </div>
     )
 
-  const sub = (k: typeof view, label: string, count?: number) => (
+  const sub = (k: typeof view, label: ReactNode, count?: number) => (
     <button
       onClick={() => setView(k)}
-      className={`rounded-md px-3 py-1 text-[12px] font-medium ${
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium ${
         view === k ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
       }`}
     >
       {label}
-      {count != null && count > 0 && <span className="ml-1 text-zinc-500">· {count}</span>}
+      {count != null && count > 0 && <span className="text-zinc-500">· {count}</span>}
     </button>
   )
 
@@ -376,9 +391,10 @@ export function MrDetailView({
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <button
           onClick={onBack}
-          className="rounded-md px-2 py-1 text-[12px] text-zinc-400 hover:bg-white/5"
+          className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-[12px] text-zinc-400 hover:bg-white/5"
         >
-          ‹ MRs
+          <ChevronLeft size={14} strokeWidth={2} />
+          MRs
         </button>
         <span className="font-mono text-[12px] text-zinc-500">!{mr.iid}</span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
@@ -386,19 +402,53 @@ export function MrDetailView({
         {mr.draft && <Badge tone="warn">draft</Badge>}
         <button
           onClick={() => window.gt.openExternal(mr.webUrl)}
-          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
         >
-          open ↗
+          open
+          <ArrowUpRight size={12} strokeWidth={2} />
         </button>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[var(--gt-border)] px-4 py-1.5">
-        {sub('overview', '📝 Overview')}
-        {sub('review', '🔍 Review')}
-        {sub('findings', '⚠ Findings', mr.findings.length)}
-        {sub('suggestions', '💡 Suggestions', mr.suggestions.length)}
-        {sub('diff', '🧬 Diff')}
-        <span className="ml-2 truncate text-[10px] text-zinc-700">
-          ⎇ {mr.sourceBranch} → {mr.targetBranch}
+        {sub(
+          'overview',
+          <>
+            <FileText size={13} strokeWidth={2} />
+            Overview
+          </>,
+        )}
+        {sub(
+          'review',
+          <>
+            <ScanSearch size={13} strokeWidth={2} />
+            Review
+          </>,
+        )}
+        {sub(
+          'findings',
+          <>
+            <TriangleAlert size={13} strokeWidth={2} />
+            Findings
+          </>,
+          mr.findings.length,
+        )}
+        {sub(
+          'suggestions',
+          <>
+            <Lightbulb size={13} strokeWidth={2} />
+            Suggestions
+          </>,
+          mr.suggestions.length,
+        )}
+        {sub(
+          'diff',
+          <>
+            <GitCompare size={13} strokeWidth={2} />
+            Diff
+          </>,
+        )}
+        <span className="ml-2 inline-flex items-center gap-0.5 truncate text-[10px] text-zinc-700">
+          <GitBranch size={11} strokeWidth={2} />
+          {mr.sourceBranch} → {mr.targetBranch}
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

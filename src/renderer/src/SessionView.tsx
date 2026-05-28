@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { SquareTerminal, GitBranch, LayoutGrid, type LucideIcon } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
@@ -95,16 +96,19 @@ export function SessionView({
   const ActiveTab = tabs.find((t) => t.id === activeTab)
   const onTerminal = !ActiveTab
 
-  const tabPill = (id: string, icon: string, label: string) => (
+  const tabPill = (id: string, Icon: LucideIcon, label: string) => (
     <button
       key={id}
       style={noDrag}
       onClick={() => setActiveTab(id)}
-      className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${
-        activeTab === id ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+        activeTab === id
+          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+          : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
       }`}
     >
-      {icon} {label}
+      <Icon size={13} strokeWidth={2} />
+      {label}
     </button>
   )
 
@@ -112,18 +116,24 @@ export function SessionView({
     <div className="flex h-full flex-col">
       <header className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300">
         <div className="flex items-center gap-0.5">
-          {tabPill('terminal', '▸', 'Terminal')}
+          {tabPill('terminal', SquareTerminal, 'Terminal')}
           {tabs.map((t) => tabPill(t.id, t.icon, t.title))}
         </div>
         <div className="flex-1" />
-        {branch && <span className="truncate text-[11px] text-zinc-600">⎇ {branch}</span>}
+        {branch && (
+          <span className="inline-flex items-center gap-1 truncate text-[11px] text-zinc-600">
+            <GitBranch size={11} strokeWidth={2} />
+            {branch}
+          </span>
+        )}
         {onTerminal && (
           <button
             style={noDrag}
             onClick={() => setDrawer(true)}
-            className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
           >
-            ⧉ Plugins · {enabled.length}
+            <LayoutGrid size={12} strokeWidth={2} />
+            Plugins · {enabled.length}
           </button>
         )}
       </header>

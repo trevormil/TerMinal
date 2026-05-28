@@ -1,3 +1,4 @@
+import { Flame } from 'lucide-react'
 import { Card, Big, Gauge } from '../../components/ui'
 import { fmtTokens } from '../../lib/format'
 import type { Plugin } from '../../lib/types'
@@ -7,7 +8,7 @@ type Burn = { total: number; ts: number; ratePerMin: number }
 const plugin: Plugin<Burn> = {
   id: 'burn-rate',
   title: 'Token Burn Rate',
-  icon: '🔥',
+  icon: Flame,
   blurb: 'Live tokens/min, computed from the delta between polls.',
   order: 5,
   intervalMs: 2000,
@@ -27,7 +28,7 @@ const plugin: Plugin<Burn> = {
     const rate = d?.ratePerMin ?? 0
     // scale gauge against 50k tok/min as "hot"
     return (
-      <Card icon="🔥" title="Token Burn Rate">
+      <Card icon={Flame} title="Token Burn Rate">
         <div className="mb-2">
           <Big value={fmtTokens(Math.round(rate))} sub="tok / min" />
         </div>

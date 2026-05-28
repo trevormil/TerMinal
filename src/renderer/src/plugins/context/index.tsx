@@ -1,3 +1,4 @@
+import { Brain } from 'lucide-react'
 import { Card, Gauge, Big, Empty } from '../../components/ui'
 import { fmtTokens } from '../../lib/format'
 import type { Plugin, TranscriptStats } from '../../lib/types'
@@ -5,7 +6,7 @@ import type { Plugin, TranscriptStats } from '../../lib/types'
 const plugin: Plugin<TranscriptStats> = {
   id: 'context',
   title: 'Context Window',
-  icon: '🧠',
+  icon: Brain,
   blurb: "Live % of the model's context window used on the current turn.",
   order: 1,
   intervalMs: 3000,
@@ -15,13 +16,13 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon="🧠" title="Context Window">
+        <Card icon={Brain} title="Context Window">
           <Empty>No active Claude session</Empty>
         </Card>
       )
     return (
       <Card
-        icon="🧠"
+        icon={Brain}
         title="Context Window"
         right={<span className="text-[10.5px] text-zinc-500">{fmtTokens(d.contextLimit)} cap</span>}
       >

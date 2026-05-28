@@ -145,6 +145,7 @@ function createWindow() {
     backgroundColor: '#0a0a0f',
     titleBarStyle: 'hiddenInset',
     title: 'Gauntlet Terminal',
+    icon: join(__dirname, '../../build/icon.png'),
     webPreferences: { preload: join(__dirname, '../preload/index.mjs'), sandbox: false },
   })
 
@@ -282,6 +283,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (watchTimer) clearInterval(watchTimer)
-  ptyProc?.kill()
+  for (const s of sessions.values()) s.pty.kill()
+  sessions.clear()
   if (process.platform !== 'darwin') app.quit()
 })

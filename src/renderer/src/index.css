@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* IBM Plex pairing: Sans for UI chrome, Mono for numerics/code/terminal.
+   Registered as Tailwind theme tokens so `font-sans`/`font-mono` use them. */
+@theme {
+  --font-sans:
+    'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:
+    'IBM Plex Mono', 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
 :root {
   /* palette inherited from the autopilot dashboard for a cohesive look */
   --gt-bg: #0b0b10;
@@ -14,6 +23,8 @@
   --gt-green: #4ade80;
   --gt-blue: #60a5fa;
   --gt-text-muted: #6b6b7b;
+  /* signature gradient lifted from the logo (teal → violet) */
+  --gt-grad: linear-gradient(135deg, #00e0c6 0%, #7c6ef6 100%);
 }
 
 html,
@@ -23,9 +34,19 @@ body,
   margin: 0;
   background: var(--gt-bg);
   color: #e7e7ee;
-  font-family:
-    'SF Mono', ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, monospace;
+  font-family: var(--font-sans);
+  font-feature-settings: 'ss03', 'cv05';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
+}
+
+/* the one brand flourish: gradient text for the wordmark */
+.gt-grad-text {
+  background: var(--gt-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* widget mount animation */

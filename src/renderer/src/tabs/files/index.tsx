@@ -1,4 +1,15 @@
 import { useEffect, useState } from 'react'
+import {
+  FolderTree,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Trash2,
+  Search,
+  FilePlus,
+  FolderPlus,
+  X,
+} from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -65,8 +76,14 @@ function TreeNode({
           sel ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
         }`}
       >
-        <span className="w-3 shrink-0 text-[9px] text-zinc-600">
-          {entry.dir ? (open ? '▾' : '▸') : ''}
+        <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
+          {entry.dir ? (
+            open ? (
+              <ChevronDown size={12} strokeWidth={2} />
+            ) : (
+              <ChevronRight size={12} strokeWidth={2} />
+            )
+          ) : null}
         </span>
         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
@@ -76,9 +93,9 @@ function TreeNode({
               act.onRename(entry.path)
             }}
             title="Rename"
-            className="rounded px-1 text-[10px] text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
           >
-            ✎
+            <Pencil size={11} strokeWidth={2} />
           </button>
           <button
             onClick={(e) => {
@@ -86,9 +103,9 @@ function TreeNode({
               act.onDelete(entry.path)
             }}
             title="Delete"
-            className="rounded px-1 text-[10px] text-zinc-500 hover:bg-white/10 hover:text-[var(--gt-red)]"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-[var(--gt-red)]"
           >
-            🗑
+            <Trash2 size={11} strokeWidth={2} />
           </button>
         </span>
       </div>
@@ -248,9 +265,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   e.stopPropagation()
                   closeFile(f.path)
                 }}
-                className="ml-1 rounded px-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                className="ml-1 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
               >
-                ×
+                <X size={11} strokeWidth={2.5} />
               </button>
             </div>
           ))
@@ -294,19 +311,21 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           <div className="flex shrink-0 border-b border-[var(--gt-border)] p-1.5">
             <button
               onClick={() => setSidebar('files')}
-              className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
                 sidebar === 'files' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
-              📁 Files
+              <FolderTree size={13} strokeWidth={2} />
+              Files
             </button>
             <button
               onClick={() => setSidebar('search')}
-              className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
                 sidebar === 'search' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
-              🔍 Search
+              <Search size={13} strokeWidth={2} />
+              Search
             </button>
           </div>
 
@@ -316,15 +335,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500">
                 <button
                   onClick={() => startPrompt({ kind: 'new-file', parent: selectedDir })}
-                  className="rounded px-1.5 py-0.5 hover:bg-white/10 hover:text-zinc-200"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-white/10 hover:text-zinc-200"
                 >
-                  ＋ File
+                  <FilePlus size={12} strokeWidth={2} />
+                  File
                 </button>
                 <button
                   onClick={() => startPrompt({ kind: 'new-folder', parent: selectedDir })}
-                  className="rounded px-1.5 py-0.5 hover:bg-white/10 hover:text-zinc-200"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-white/10 hover:text-zinc-200"
                 >
-                  ＋ Folder
+                  <FolderPlus size={12} strokeWidth={2} />
+                  Folder
                 </button>
                 <span className="ml-auto truncate font-mono text-[10px] text-zinc-600">
                   in&nbsp;/{selectedDir}
@@ -356,8 +377,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <button onClick={commitDelete} className="rounded bg-[var(--gt-red)]/20 px-1.5 py-0.5 text-[var(--gt-red)]">
                     delete
                   </button>
-                  <button onClick={() => setConfirmDelete(null)} className="px-1 text-zinc-500 hover:text-zinc-300">
-                    ✗
+                  <button
+                    onClick={() => setConfirmDelete(null)}
+                    className="flex items-center px-1 text-zinc-500 hover:text-zinc-300"
+                  >
+                    <X size={12} strokeWidth={2} />
                   </button>
                 </div>
               )}
@@ -425,7 +449,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 const tab: Tab = {
   id: 'files',
   title: 'Files',
-  icon: '📂',
+  icon: FolderTree,
   order: 3,
   appliesTo: (ctx) => !!(ctx.repoRoot || ctx.cwd),
   Component: FilesTab,

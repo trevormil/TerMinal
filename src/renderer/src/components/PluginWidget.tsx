@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { Plugin } from '../lib/types'
 
@@ -44,9 +45,9 @@ export function PluginWidget({
         <button
           onClick={() => onHide(plugin.id)}
           title={`Hide ${plugin.title}`}
-          className="absolute right-1.5 top-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-md text-[12px] text-zinc-500 hover:bg-white/10 hover:text-zinc-200 group-hover:flex"
+          className="absolute right-1.5 top-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-md text-zinc-500 hover:bg-white/10 hover:text-zinc-200 group-hover:flex"
         >
-          ×
+          <X size={12} strokeWidth={2.5} />
         </button>
       )}
       <ErrorBoundary label={plugin.title}>{plugin.render(data as never)}</ErrorBoundary>

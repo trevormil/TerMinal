@@ -1,10 +1,11 @@
+import { Bot } from 'lucide-react'
 import { Card, Row, Empty } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const plugin: Plugin<TranscriptStats> = {
   id: 'model',
   title: 'Model',
-  icon: '🤖',
+  icon: Bot,
   blurb: 'Which model the active session is running, plus turn count.',
   order: 6,
   intervalMs: 4000,
@@ -14,12 +15,12 @@ const plugin: Plugin<TranscriptStats> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon="🤖" title="Model">
+        <Card icon={Bot} title="Model">
           <Empty>No active Claude session</Empty>
         </Card>
       )
     return (
-      <Card icon="🤖" title="Model">
+      <Card icon={Bot} title="Model">
         <div className="mb-1 truncate text-[13px] font-semibold text-zinc-100" title={d.model}>
           {d.model}
         </div>

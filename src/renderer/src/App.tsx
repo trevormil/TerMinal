@@ -1,6 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react'
+import { Plus, X } from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { SessionView, type Info } from './SessionView'
+import logo from './assets/logo.png'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -51,7 +53,12 @@ export default function App() {
         style={drag}
         className="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] pl-[78px] pr-2"
       >
-        <span className="mr-1 text-[13px] font-bold text-[var(--gt-accent)]">◆</span>
+        <img
+          src={logo}
+          alt="Gauntlet Terminal"
+          draggable={false}
+          className="mr-1.5 h-5 w-5 rounded-md"
+        />
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {sessions.map((s) => {
             const on = s.key === activeKey
@@ -77,9 +84,9 @@ export default function App() {
                     e.stopPropagation()
                     closeSession(s.key)
                   }}
-                  className="ml-0.5 rounded px-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                  className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
                 >
-                  ×
+                  <X size={12} strokeWidth={2.5} />
                 </button>
               </div>
             )
@@ -88,9 +95,9 @@ export default function App() {
             style={noDrag}
             onClick={() => setAdding(true)}
             title="New session"
-            className="shrink-0 rounded-md px-2 py-1 text-[14px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            className="flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
           >
-            ＋
+            <Plus size={14} strokeWidth={2.5} />
           </button>
         </div>
       </header>

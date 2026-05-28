@@ -1,23 +1,24 @@
 import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 // Shared widget primitives. Plugins compose these so cards look consistent.
 
 export function Card({
-  icon,
+  icon: Icon,
   title,
   right,
   children,
 }: {
-  icon: string
+  icon: LucideIcon
   title: string
   right?: ReactNode
   children: ReactNode
 }) {
   return (
-    <div className="mb-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-2">
-      <div className="mb-1 flex items-center gap-1.5">
-        <span className="text-[11px] leading-none">{icon}</span>
-        <span className="flex-1 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
+    <div className="mb-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-2 transition-colors hover:border-[var(--gt-border)]/80">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <Icon size={12} strokeWidth={2.25} className="shrink-0 text-zinc-500" />
+        <span className="flex-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
           {title}
         </span>
         {right}
@@ -95,7 +96,7 @@ export const badgeClasses = (tone: BadgeTone) => BADGE_MAP[tone]
 export function Badge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
   return (
     <span
-      className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${BADGE_MAP[tone]}`}
+      className={`inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${BADGE_MAP[tone]}`}
     >
       {children}
     </span>

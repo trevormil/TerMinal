@@ -1,3 +1,4 @@
+import { Gauge as GaugeIcon } from 'lucide-react'
 import { Card, Gauge, Row, Badge, Empty } from '../../components/ui'
 import type { Plugin, Usage, UsageWindow } from '../../lib/types'
 
@@ -34,7 +35,7 @@ function WindowRow({ label, w }: { label: string; w: UsageWindow }) {
 const plugin: Plugin<Usage> = {
   id: 'usage',
   title: 'Plan Usage',
-  icon: '📊',
+  icon: GaugeIcon,
   blurb: 'Your Claude subscription 5-hour + weekly limits and overage — a live /usage summary.',
   order: 3,
   intervalMs: 30_000,
@@ -45,13 +46,13 @@ const plugin: Plugin<Usage> = {
     const planLabel = [d.plan, d.tier].filter(Boolean).join(' · ')
     if (!d.ok && !d.fiveHour && !d.sevenDay)
       return (
-        <Card icon="📊" title="Plan Usage">
+        <Card icon={GaugeIcon} title="Plan Usage">
           <Empty>{d.error || 'usage unavailable'}</Empty>
         </Card>
       )
     return (
       <Card
-        icon="📊"
+        icon={GaugeIcon}
         title="Plan Usage"
         right={
           d.stale ? (

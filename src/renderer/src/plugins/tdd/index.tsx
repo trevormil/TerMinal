@@ -1,3 +1,4 @@
+import { FlaskConical, TriangleAlert } from 'lucide-react'
 import { Card, Big, Badge, Row, Empty } from '../../components/ui'
 import type { Plugin, TddInfo } from '../../lib/types'
 
@@ -9,7 +10,7 @@ const testTone = (s: string): 'ok' | 'warn' | 'bad' | 'mute' =>
 const plugin: Plugin<TddInfo> = {
   id: 'tdd',
   title: 'TDD / Review',
-  icon: '🧪',
+  icon: FlaskConical,
   blurb: 'Latest code-review score + test status from the autopilot harness, with a stale flag.',
   order: 4,
   intervalMs: 2000,
@@ -18,17 +19,20 @@ const plugin: Plugin<TddInfo> = {
   render: (d) => {
     if (!d?.ok)
       return (
-        <Card icon="🧪" title="TDD / Review">
+        <Card icon={FlaskConical} title="TDD / Review">
           <Empty>{d?.repo ? `No tracked review · ${d.repo}` : 'Not a tracked repo'}</Empty>
         </Card>
       )
     return (
       <Card
-        icon="🧪"
+        icon={FlaskConical}
         title="TDD / Review"
         right={
           d.stale ? (
-            <Badge tone="warn">⚠ stale{d.commitsBehind ? ` ${d.commitsBehind}↓` : ''}</Badge>
+            <Badge tone="warn">
+              <TriangleAlert size={9} strokeWidth={2.5} />
+              stale{d.commitsBehind ? ` ${d.commitsBehind}↓` : ''}
+            </Badge>
           ) : (
             <Badge tone="ok">current</Badge>
           )
