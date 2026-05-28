@@ -108,7 +108,7 @@ export type NewTicket = { title: string; type: string; priority: string; status:
 
 export type Snippet = { id: string; title: string; body: string }
 
-export type Settings = { telegram: boolean }
+export type Settings = { telegram: boolean; telegramControl: boolean }
 
 export type Engine = 'codex' | 'claude'
 export type Agent = {

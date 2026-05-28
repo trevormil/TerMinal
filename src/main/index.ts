@@ -23,7 +23,8 @@ import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, rem
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { scaffoldProject } from './scaffold'
 import { readSnippets, writeSnippets, type Snippet } from './snippets'
-import { readSettings, setSetting, type Settings } from './settings'
+import { readSettings, setSetting, telegramControlEnabled, type Settings } from './settings'
+import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce } from './telegram'
 import {
   readAgents,
   hasAgents as repoHasAgents,
@@ -184,6 +185,7 @@ type TurnWatch = { file: string; mtime: number; lastTurnId: string }
 const turnWatch = new Map<string, TurnWatch>()
 let activityTimer: ReturnType<typeof setInterval> | null = null
 let scheduleTimer: ReturnType<typeof setInterval> | null = null
+let telegramTimer: ReturnType<typeof setInterval> | null = null
 function pollActivity() {
   for (const [key, s] of sessions) {
     const sid = s.pinned.sessionId
@@ -279,6 +281,28 @@ function createWindow() {
       }
     }, 60_000)
 
+  // Telegram AFK control: enumerate run targets from open sessions, prime the
+  // cursor if control was left on, and poll for inbound commands.
+  configureTelegramControl({
+    repos: () => {
+      const seen = new Set<string>()
+      const out: { label: string; repoRoot: string }[] = []
+      for (const s of sessions.values()) {
+        const root = repoRootOf(s.pinned.cwd)
+        if (!root || seen.has(root)) continue
+        seen.add(root)
+        out.push({ label: repoForCwd(s.pinned.cwd)?.path || basename(root), repoRoot: root })
+      }
+      return out
+    },
+    active: () => {
+      const root = repoRootOf(cur().cwd)
+      return root ? { label: repoForCwd(cur().cwd)?.path || basename(root), repoRoot: root } : null
+    },
+  })
+  if (telegramControlEnabled()) markTelegramControlEnabled(true, false) // restore cursor quietly
+  if (!telegramTimer) telegramTimer = setInterval(pollTelegramOnce, 5000)
+
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -357,7 +381,11 @@ ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('snippets:list', () => readSnippets())
 ipcMain.handle('snippets:save', (_e, list: Snippet[]) => writeSnippets(list))
 ipcMain.handle('settings:get', () => readSettings())
-ipcMain.handle('settings:set', (_e, key: keyof Settings, value: boolean) => setSetting(key, value))
+ipcMain.handle('settings:set', (_e, key: keyof Settings, value: boolean) => {
+  const next = setSetting(key, value)
+  if (key === 'telegramControl') markTelegramControlEnabled(value)
+  return next
+})
 ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))
@@ -506,6 +534,7 @@ app.on('window-all-closed', () => {
   if (watchTimer) clearInterval(watchTimer)
   if (activityTimer) clearInterval(activityTimer)
   if (scheduleTimer) clearInterval(scheduleTimer)
+  if (telegramTimer) clearInterval(telegramTimer)
   for (const s of sessions.values()) s.pty.kill()
   sessions.clear()
   if (process.platform !== 'darwin') app.quit()

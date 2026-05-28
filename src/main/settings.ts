@@ -6,8 +6,9 @@ import { homedir } from 'node:os'
 // a default here, expose it via settings:get/set, and it's available app-wide.
 export type Settings = {
   telegram: boolean // mirror notifications to the /notify Telegram bridge (opt-in)
+  telegramControl: boolean // accept inbound commands from Telegram (AFK remote, opt-in)
 }
-const DEFAULTS: Settings = { telegram: false }
+const DEFAULTS: Settings = { telegram: false, telegramControl: false }
 const FILE = join(homedir(), '.config', 'gauntlet-terminal', 'settings.json')
 
 let cache: Settings | null = null
@@ -34,3 +35,4 @@ export function setSetting<K extends keyof Settings>(key: K, value: Settings[K])
 }
 
 export const telegramEnabled = () => readSettings().telegram
+export const telegramControlEnabled = () => readSettings().telegramControl

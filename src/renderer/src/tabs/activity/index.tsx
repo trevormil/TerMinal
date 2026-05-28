@@ -9,6 +9,7 @@ import {
   TriangleAlert,
   Info,
   Send,
+  Smartphone,
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
@@ -55,11 +56,15 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [scope, setScope] = useState<Scope>('all')
   const [telegram, setTelegram] = useState(false)
+  const [telegramControl, setTelegramControl] = useState(false)
   const [, force] = useState(0) // re-tick relative times
   const newest = useRef<string>('') // id of the most recent event, for the live flash
 
   useEffect(() => {
-    window.gt.settings.get().then((s) => setTelegram(s.telegram))
+    window.gt.settings.get().then((s) => {
+      setTelegram(s.telegram)
+      setTelegramControl(s.telegramControl)
+    })
     window.gt.activity.list().then((e) => {
       setEvents(e)
       newest.current = e[0]?.id || ''
@@ -91,6 +96,10 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
   const toggleTelegram = async () => {
     const s = await window.gt.settings.set('telegram', !telegram)
     setTelegram(s.telegram)
+  }
+  const toggleTelegramControl = async () => {
+    const s = await window.gt.settings.set('telegramControl', !telegramControl)
+    setTelegramControl(s.telegramControl)
   }
 
   return (
@@ -124,6 +133,22 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
         >
           <Send size={11} strokeWidth={2} />
           Telegram
+        </button>
+        <button
+          onClick={toggleTelegramControl}
+          title={
+            telegramControl
+              ? 'Telegram remote control on — reply from your phone to /run, /runs, /cancel agents'
+              : 'Enable AFK control: launch/cancel agents by texting the bot'
+          }
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
+            telegramControl
+              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+              : 'border-[var(--gt-border)] text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <Smartphone size={11} strokeWidth={2} />
+          remote
         </button>
         <span className="text-[11px] tabular-nums text-zinc-600">{shown.length}</span>
         <button
