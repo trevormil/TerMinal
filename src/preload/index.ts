@@ -50,6 +50,8 @@ const gt = {
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
   },
   listMrs: () => ipcRenderer.invoke('mrs:list'),
+  getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
+  getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   openExternal: (url: string) => ipcRenderer.invoke('open:external', url),
 
   // fires the instant the attached session's transcript changes

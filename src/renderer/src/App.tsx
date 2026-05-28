@@ -175,8 +175,24 @@ export default function App() {
               {active.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-4 text-center text-[12px] text-zinc-600">
                   No plugins enabled.
-                  <br />
-                  Open <span className="text-zinc-400">⧉ Plugins</span> to add some.
+                  <button
+                    onClick={() =>
+                      setEnabled((e) =>
+                        Array.from(
+                          new Set([
+                            ...e,
+                            ...allPlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
+                          ]),
+                        ),
+                      )
+                    }
+                    className="mx-auto mt-2 block rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
+                  >
+                    Enable defaults
+                  </button>
+                  <div className="mt-2 text-[10.5px] text-zinc-700">
+                    or open <span className="text-zinc-500">⧉ Plugins</span>
+                  </div>
                 </div>
               ) : (
                 active.map((p) => (

@@ -9,7 +9,7 @@ import { readUsage } from './usage'
 import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd } from './repo'
 import { listTickets, getTicket, createTicket, type NewTicket } from './backlog'
-import { listMrs } from './mrs'
+import { listMrs, getMr, getMrDiff } from './mrs'
 
 const CLAUDE = process.env.GT_CLAUDE_BIN || 'claude'
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -169,6 +169,8 @@ ipcMain.handle('tickets:create', (_e, input: NewTicket) =>
   createTicket(repoRootOf(pinned.cwd), input),
 )
 ipcMain.handle('mrs:list', () => listMrs(repoRootOf(pinned.cwd)))
+ipcMain.handle('mrs:get', (_e, iid: number) => getMr(repoRootOf(pinned.cwd), iid))
+ipcMain.handle('mrs:diff', (_e, iid: number) => getMrDiff(repoRootOf(pinned.cwd), iid))
 ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 
 app.whenReady().then(() => {

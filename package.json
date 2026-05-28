@@ -12,7 +12,10 @@
     "postinstall": "electron-rebuild -f -w node-pty"
   },
   "dependencies": {
-    "node-pty": "1.0.0"
+    "node-pty": "1.0.0",
+    "parse-diff": "0.12.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@electron/rebuild": "3.7.1",

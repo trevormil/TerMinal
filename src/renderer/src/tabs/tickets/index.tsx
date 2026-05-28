@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '../../components/ui'
+import { Markdown } from '../../components/Markdown'
+import { MrDetailView } from '../../components/MrDetail'
 import type { Tab, Ticket, Mr, TabContext } from '../../lib/types'
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
@@ -26,30 +28,6 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
-  )
-}
-
-function Markdownish({ body }: { body: string }) {
-  return (
-    <div className="space-y-1 text-[13px] leading-relaxed text-zinc-300">
-      {body.split('\n').map((line, i) => {
-        if (/^#{1,6}\s/.test(line))
-          return (
-            <div key={i} className="mt-3 text-[13px] font-bold text-zinc-100">
-              {line.replace(/^#+\s/, '')}
-            </div>
-          )
-        if (/^\s*[-*]\s/.test(line))
-          return (
-            <div key={i} className="flex gap-2">
-              <span className="text-zinc-600">•</span>
-              <span>{line.replace(/^\s*[-*]\s/, '')}</span>
-            </div>
-          )
-        if (!line.trim()) return <div key={i} className="h-1.5" />
-        return <div key={i}>{line}</div>
-      })}
-    </div>
   )
 }
 
@@ -123,14 +101,18 @@ function NewTicketForm({ onClose, onCreated }: { onClose: () => void; onCreated:
   )
 }
 
-function MrList({ mrs }: { mrs: Mr[] | null }) {
+function MrList({ mrs, onOpen }: { mrs: Mr[] | null; onOpen: (iid: number) => void }) {
   if (mrs === null) return <div className="p-6 text-[12px] text-zinc-600">Loading MRs from glab…</div>
   if (mrs.length === 0)
     return <div className="p-6 text-[12px] text-zinc-600">No open MRs (or glab not authenticated for this repo).</div>
   return (
     <div className="space-y-2 p-4">
       {mrs.map((m) => (
-        <div key={m.iid} className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+        <div
+          key={m.iid}
+          onClick={() => onOpen(m.iid)}
+          className="cursor-pointer rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 transition-colors hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+        >
           <div className="flex items-start gap-2">
             <span className="font-mono text-[12px] text-zinc-500">!{m.iid}</span>
             <div className="min-w-0 flex-1">
@@ -153,7 +135,10 @@ function MrList({ mrs }: { mrs: Mr[] | null }) {
               </div>
             </div>
             <button
-              onClick={() => window.gt.openExternal(m.webUrl)}
+              onClick={(e) => {
+                e.stopPropagation()
+                window.gt.openExternal(m.webUrl)
+              }}
               className="shrink-0 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
             >
               open ↗
@@ -170,6 +155,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [mrs, setMrs] = useState<Mr[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
+  const [selectedMrIid, setSelectedMrIid] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [fStatus, setFStatus] = useState('all')
   const [fType, setFType] = useState('all')
@@ -184,6 +170,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       setMrs(null)
       window.gt.listMrs().then(setMrs)
     }
+    if (mode !== 'mrs' && selectedMrIid !== null) setSelectedMrIid(null)
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = (tickets || []).filter(
@@ -261,9 +248,17 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       {/* body */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === 'mrs' ? (
-          <div className="h-full overflow-y-auto">
-            <MrList mrs={mrs} />
-          </div>
+          selectedMrIid !== null ? (
+            <MrDetailView
+              iid={selectedMrIid}
+              repoLabel={ctx.repoPath || 'repo'}
+              onBack={() => setSelectedMrIid(null)}
+            />
+          ) : (
+            <div className="h-full overflow-y-auto">
+              <MrList mrs={mrs} onOpen={setSelectedMrIid} />
+            </div>
+          )
         ) : (
           <div className="flex h-full">
             <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
@@ -321,7 +316,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
                       </button>
                     ))}
                   </div>
-                  <Markdownish body={selected.body} />
+                  <Markdown>{selected.body}</Markdown>
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">

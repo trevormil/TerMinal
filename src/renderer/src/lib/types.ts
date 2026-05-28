@@ -72,6 +72,36 @@ export type Review = {
   commitsBehind: number
 }
 
+export type Finding = {
+  id?: string
+  severity?: string
+  title?: string
+  text?: string
+  body?: string
+  file?: string
+  line?: number
+  status?: string
+  agent_fix_prompt?: string
+  category?: string
+} & Record<string, unknown>
+
+export type MrDetail = {
+  iid: number
+  title: string
+  description: string
+  state: string
+  author: string
+  webUrl: string
+  sourceBranch: string
+  targetBranch: string
+  draft: boolean
+  reviewMd: string
+  reviewMeta: Review | null
+  findings: Finding[]
+  suggestions: Finding[]
+  artifactShortSha: string
+}
+
 export type Mr = {
   iid: number
   title: string
@@ -155,6 +185,8 @@ export type GtApi = {
     create: (input: NewTicket) => Promise<Ticket>
   }
   listMrs: () => Promise<Mr[]>
+  getMr: (iid: number) => Promise<MrDetail | null>
+  getMrDiff: (iid: number) => Promise<string>
   openExternal: (url: string) => Promise<void>
 }
 
