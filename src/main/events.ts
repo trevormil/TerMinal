@@ -1,6 +1,17 @@
 import { Notification } from 'electron'
-import { appendFileSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import {
+  appendFileSync,
+  readFileSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  statSync,
+  openSync,
+  readSync,
+  closeSync,
+  watch,
+} from 'node:fs'
+import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
@@ -66,8 +77,62 @@ export function emitActivity(
       /* notifications unavailable */
     }
   }
-  broadcast(ev)
+  // NOTE: don't broadcast here — the file tail (below) picks up this append and
+  // broadcasts it, so terminal-written and skill-written events flow through one
+  // path (no double feed entries). The notification above is the instant signal.
   return ev
+}
+
+// Tail the log so events appended by ANYTHING (project-template skills, scripts)
+// surface live in the Activity tab — not just events the app emits in-process.
+let tailSize = 0
+let tailing = false
+export function startActivityTail() {
+  if (tailing) return
+  tailing = true
+  try {
+    tailSize = existsSync(LOG) ? statSync(LOG).size : 0
+  } catch {
+    tailSize = 0
+  }
+  try {
+    mkdirSync(dirname(LOG), { recursive: true })
+    // watch the dir (the file may be created/rotated) and drain on changes
+    watch(dirname(LOG), (_evt, fn) => {
+      if (!fn || fn === basename(LOG)) drainTail()
+    })
+  } catch {
+    /* watch unavailable — feed still loads via activity:list */
+  }
+}
+
+function drainTail() {
+  let size = 0
+  try {
+    size = statSync(LOG).size
+  } catch {
+    return
+  }
+  if (size < tailSize) tailSize = 0 // truncated/cleared → restart
+  if (size <= tailSize) return
+  const len = size - tailSize
+  try {
+    const fd = openSync(LOG, 'r')
+    const buf = Buffer.alloc(len)
+    readSync(fd, buf, 0, len, tailSize)
+    closeSync(fd)
+    tailSize = size
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue
+      try {
+        broadcast(JSON.parse(line) as ActivityEvent)
+      } catch {
+        /* partial/garbled line — skip */
+      }
+    }
+  } catch {
+    /* read race — next change will catch up */
+  }
 }
 
 /** Newest-first, capped. */

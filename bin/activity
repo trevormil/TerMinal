@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# activity — append a workflow event to the Gauntlet Terminal activity feed.
+#
+#   activity <kind> "<title>" ["<detail>"]
+#
+# kinds: ticket-filed | pr-verdict | session-start | session-end | agent-run |
+#        task-complete | info | error
+#
+# Appends one JSON line to the global feed; the terminal tails it live. This is
+# the contract for the whole workflow — any skill/script can call it to surface
+# what just happened. Always exits 0, so it never breaks a skill if logging fails.
+set -uo pipefail
+
+KIND="${1:-info}"
+TITLE="${2:-}"
+DETAIL="${3:-}"
+LOG="${GT_ACTIVITY_LOG:-$HOME/.config/gauntlet-terminal/activity.jsonl}"
+
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || exit 0
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REPO="$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#.*[/:]([^/]+/[^/]+)$#\1#')"
+[ -n "$REPO" ] || REPO="$(basename "$ROOT")"
+
+python3 - "$KIND" "$TITLE" "$DETAIL" "$REPO" "$ROOT" >> "$LOG" 2>/dev/null <<'PY' || exit 0
+import json, sys, time, uuid
+kind, title, detail, repo, root = sys.argv[1:6]
+print(json.dumps({
+    "id": str(uuid.uuid4()), "ts": int(time.time() * 1000),
+    "kind": kind, "title": title, "detail": detail, "repo": repo, "repoRoot": root,
+}))
+PY
+exit 0

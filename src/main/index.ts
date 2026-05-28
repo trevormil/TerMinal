@@ -12,7 +12,7 @@ import {
   readSessionTasks,
   lastAssistantTurn,
 } from './data'
-import { emitActivity, readActivity, clearActivity, onActivity } from './events'
+import { emitActivity, readActivity, clearActivity, onActivity, startActivityTail } from './events'
 import { readUsage } from './usage'
 import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd, gitStatus } from './repo'
@@ -260,6 +260,7 @@ function createWindow() {
 
   // push activity events to the renderer; poll all sessions for turn completion
   onActivity((ev) => send('activity:event', ev))
+  startActivityTail() // surface externally-appended events (skills) live
   onAgentEvent((channel, payload) => send(channel, payload))
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
   // fire any due scheduled agent runs (interval-based cadence)
