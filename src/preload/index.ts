@@ -34,6 +34,25 @@ const gt = {
   },
   typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
 
+  // on-demand codex agents
+  agents: {
+    list: () => ipcRenderer.invoke('agents:list'),
+    run: (id: string) => ipcRenderer.invoke('agents:run', id),
+    runs: () => ipcRenderer.invoke('agents:runs'),
+    cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
+    removeWorktree: (runId: string) => ipcRenderer.invoke('agents:remove-worktree', runId),
+    onStatus: (cb: (run: unknown) => void) => {
+      const h = (_e: unknown, run: unknown) => cb(run)
+      ipcRenderer.on('agent:status', h)
+      return () => ipcRenderer.removeListener('agent:status', h)
+    },
+    onOutput: (cb: (p: unknown) => void) => {
+      const h = (_e: unknown, p: unknown) => cb(p)
+      ipcRenderer.on('agent:output', h)
+      return () => ipcRenderer.removeListener('agent:output', h)
+    },
+  },
+
   // activity feed + notifications
   activity: {
     list: () => ipcRenderer.invoke('activity:list'),

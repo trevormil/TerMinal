@@ -23,6 +23,15 @@ import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, rem
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { scaffoldProject } from './scaffold'
 import { readSnippets, writeSnippets, type Snippet } from './snippets'
+import {
+  readAgents,
+  hasAgents as repoHasAgents,
+  runAgent,
+  listRuns,
+  cancelRun,
+  removeWorktree,
+  onAgentEvent,
+} from './agents'
 
 const CLAUDE = process.env.GT_CLAUDE_BIN || 'claude'
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -239,6 +248,7 @@ function createWindow() {
 
   // push activity events to the renderer; poll all sessions for turn completion
   onActivity((ev) => send('activity:event', ev))
+  onAgentEvent((channel, payload) => send(channel, payload))
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -286,6 +296,11 @@ ipcMain.handle('activity:list', () => readActivity())
 ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('snippets:list', () => readSnippets())
 ipcMain.handle('snippets:save', (_e, list: Snippet[]) => writeSnippets(list))
+ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
+ipcMain.handle('agents:run', (_e, agentId: string) => runAgent(repoRootOf(cur().cwd), agentId))
+ipcMain.handle('agents:runs', () => listRuns())
+ipcMain.handle('agents:cancel', (_e, runId: string) => cancelRun(runId))
+ipcMain.handle('agents:remove-worktree', (_e, runId: string) => removeWorktree(runId))
 // inject text into the ACTIVE session's terminal (snippet → prompt)
 ipcMain.on('pty:type', (_e, text: string) => {
   try {
@@ -330,6 +345,7 @@ ipcMain.handle('tab:context', () => {
     repoHost: repo?.host || '',
     hasBacklog: !!repoRoot && existsSync(join(repoRoot, 'backlog')),
     hasSessions: repoHasSessions(repoRoot),
+    hasAgents: repoHasAgents(repoRoot),
   }
 })
 ipcMain.handle('sessions:project-list', () => listProjectSessions(repoRootOf(cur().cwd)))

@@ -107,6 +107,29 @@ export type NewTicket = { title: string; type: string; priority: string; status:
 
 export type Snippet = { id: string; title: string; body: string }
 
+export type Agent = {
+  id: string
+  title: string
+  description?: string
+  icon?: string
+  prompt: string
+  opensPr?: boolean
+}
+export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled'
+export type AgentRun = {
+  id: string
+  agentId: string
+  agentTitle: string
+  status: AgentRunStatus
+  startedAt: number
+  endedAt?: number
+  exitCode?: number
+  repoRoot: string
+  worktree: string
+  branch: string
+  output: string
+}
+
 export type Review = {
   number: number
   overall: number | null
@@ -165,6 +188,7 @@ export type TabContext = {
   repoHost: string
   hasBacklog: boolean
   hasSessions: boolean
+  hasAgents: boolean
 }
 
 export type SessionMeta = {
@@ -224,6 +248,15 @@ export type GtApi = {
     save: (list: Snippet[]) => Promise<boolean>
   }
   typeIntoActive: (text: string) => void
+  agents: {
+    list: () => Promise<Agent[]>
+    run: (id: string) => Promise<AgentRun | { error: string }>
+    runs: () => Promise<AgentRun[]>
+    cancel: (runId: string) => Promise<boolean>
+    removeWorktree: (runId: string) => Promise<boolean>
+    onStatus: (cb: (run: AgentRun) => void) => () => void
+    onOutput: (cb: (p: { runId: string; chunk: string }) => void) => () => void
+  }
   activity: {
     list: () => Promise<ActivityEvent[]>
     clear: () => Promise<void>

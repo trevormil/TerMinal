@@ -76,6 +76,8 @@ repo-aware — each shows based on the attached session's repo.
   "viewed").
 - **HITL** — tickets flagged `hitl: true`: the things waiting on a human
   (approvals, creds, merges). The tab carries a live count.
+- **Agents** — on-demand [Codex](https://github.com/openai/codex) agents you
+  **Run** from a button. See [Agents](#agents) below.
 - **Notes** — markdown editor (edit/split/preview). Repo notes live at
   `<repo>/.gauntlet-terminal/notes.md` (auto-gitignored); Global notes span
   everything. Both autosave.
@@ -83,6 +85,9 @@ repo-aware — each shows based on the attached session's repo.
   find/replace), multi-file tabs, a file tree with type icons + git-ignored
   dimming, and project-wide search (`git grep`). ⌘S save · ⌘W close · ⌘F find ·
   ⌘⇧F project search.
+- **Activity** — a realtime feed + macOS notifications: a session finishing a
+  turn, a ticket filed, a session start. Global store, filterable to this
+  repo/session.
 
 ## Cockpit widgets
 
@@ -98,6 +103,30 @@ Two kinds of widget — both auto-discovered, no marketplace:
 - **Code plugins** — a folder under `src/renderer/src/plugins/<id>/index.tsx`.
 - **Command widgets** — declarative "run this command every N seconds", in JSON,
   including **per-repo** widgets loaded from the attached repo.
+
+## <a name="agents"></a>Agents
+
+On-demand [Codex](https://github.com/openai/codex) agents you trigger from a
+**Run** button on the Agents tab. Each run gets its **own git worktree** off the
+default branch; `codex exec` does the work, files tickets for findings, and opens
+a **PR** for any code changes — all streamed live into the tab (with cancel +
+worktree controls). `codex` must be installed and authenticated.
+
+Three ship **by default on every repo**:
+
+- **Improve docs** — generate/improve developer docs, open a PR.
+- **Deep audit** — audit correctness/security/architecture/perf/dead-code/deps;
+  file a ticket per finding, PR any safe fixes.
+- **Ticket / PR cleanup** — reconcile the backlog + open PRs (close/dedupe/fix),
+  file follow-ups, PR changes.
+
+Override or add your own per-repo in `.agents/agents.json` (merged by id over the
+defaults):
+
+```json
+[{ "id": "perf", "title": "Perf pass", "icon": "Zap",
+   "prompt": "/document  …or any codex prompt; commit + open a PR", "opensPr": true }]
+```
 
 ## <a name="project-template"></a>Spin up new projects (project-template)
 
