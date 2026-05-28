@@ -17,6 +17,15 @@ const CLAUDE = process.env.GT_CLAUDE_BIN || 'claude'
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
 let win: BrowserWindow | null = null
+
+// Safe send: the PTY + watcher keep firing during window reload/close, and
+// win.webContents may already be destroyed — sending then throws an uncaught
+// "Object has been destroyed" that crashes the main process.
+function send(channel: string, ...args: unknown[]) {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+    win.webContents.send(channel, ...args)
+  }
+}
 let ptyProc: pty.IPty | null = null
 
 // the single session this window is attached to, for its whole life
@@ -60,8 +69,8 @@ function startSession(opts: StartOpts) {
     cwd,
     env: { ...process.env, TERM: 'xterm-256color' } as Record<string, string>,
   })
-  ptyProc.onData((d) => win?.webContents.send('pty:data', d))
-  ptyProc.onExit(({ exitCode }) => win?.webContents.send('pty:exit', exitCode))
+  ptyProc.onData((d) => send('pty:data', d))
+  ptyProc.onExit(({ exitCode }) => send('pty:exit', exitCode))
 
   return { sessionId, cwd }
 }
@@ -87,7 +96,7 @@ function watchSession() {
       const m = statSync(watchedFile).mtimeMs
       if (m !== lastMtime) {
         lastMtime = m
-        win?.webContents.send('gt:tick')
+        send('gt:tick')
       }
     } catch {
       watchedFile = ''
@@ -216,6 +225,10 @@ ipcMain.handle('files:create', (_e, rel: string, dir: boolean) => createEntry(fi
 ipcMain.handle('files:rename', (_e, from: string, to: string) => renameEntry(filesRoot(), from, to))
 ipcMain.handle('files:delete', (_e, rel: string) => removeEntry(filesRoot(), rel))
 
+// Safety net: never let a stray async error (e.g. a late PTY write) take down
+// the whole app.
+process.on('uncaughtException', (e) => console.error('[gt] uncaught:', e))
+
 app.whenReady().then(() => {
   createWindow()
   app.on('activate', () => {
@@ -224,6 +237,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  if (watchTimer) clearInterval(watchTimer)
   ptyProc?.kill()
   if (process.platform !== 'darwin') app.quit()
 })
