@@ -80,22 +80,16 @@ A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
 repo-aware — each shows based on the attached session's repo.
 
 - **Terminal** — the `claude` CLI plus the cockpit sidebar.
-- **Sessions** — the repo's working-state session docs
-  (`sessions/NNNN-slug/session.md`, the [project-template](#project-template)
-  convention): status, goal, linked tickets/branches/PRs, rendered body.
 - **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
   **grouped by status** (closed/icebox collapsed by default). Inline
   status/priority edits write back to the markdown file.
-- **PRs / MRs** — live pull/merge requests via `gh` (GitHub) or `glab` (GitLab),
+- **MRs / PRs** — live merge/pull requests via `glab` (GitLab) or `gh` (GitHub),
   **auto-detected per repo** from the remote (the tab + vocabulary switch between
-  "PR #N" and "MR !N"). Each opens a full review surface: description, the
+  "MR !N" and "PR #N"). Each opens a full review surface: description, the
   **review** body, **findings** + **suggestions**, a syntax-highlighted **diff**
   (unified/split, per-file "viewed"), forge **CI status**, and a **merge** button.
-- **HITL** — a **global, cross-repo inbox** (`~/.config/TerMinal/hitl.json`) of
-  the things waiting on a human: approvals, credentials, decisions, hard
-  blockers. Agents file items here (via `.claude/bin/hitl`), each fires a
-  Telegram ping, and the tab carries a live red count. Resolve / reopen / remove
-  from one place — no need to open each repo.
+- **Agents** — on-demand agents (**Codex** or **Claude**) you **Run** from a
+  button. See [Agents](#agents) below.
 - **Factory** — toggle the autonomous [`/factory`](#factory) orchestrator on for
   the attached repo, watch its live log, and read cross-repo **factory health**:
   throughput (24h/7d), **cycle time** (ticket-filed → PR-merged, with stage
@@ -106,8 +100,19 @@ repo-aware — each shows based on the attached session's repo.
   when TerMinal is closed. One **global** view across every repo with a per-repo
   filter, an **All runs** history (status / log per run), and a reconcile button
   that removes orphaned launchd jobs.
-- **Agents** — on-demand agents (**Codex** or **Claude**) you **Run** from a
-  button. See [Agents](#agents) below.
+- **Browser** — an in-app webview for quick lookups, plus **Open in Brave**
+  (configurable) to hand the URL to a real browser with your wallet extensions.
+- **HITL** — a **global, cross-repo inbox** (`~/.config/TerMinal/hitl.json`) of
+  the things waiting on a human: approvals, credentials, decisions, hard
+  blockers. Agents file items here (via `.claude/bin/hitl`), each fires a
+  Telegram ping, and the tab carries a live red count. Resolve / reopen / remove
+  from one place — no need to open each repo.
+- **Activity** — a realtime feed + macOS notifications: a session finishing a
+  turn, a ticket filed, a session start. Global store, filterable to this
+  repo/session.
+- **Sessions** — the repo's working-state session docs
+  (`sessions/NNNN-slug/session.md`, the [project-template](#project-template)
+  convention): status, goal, linked tickets/branches/PRs, rendered body.
 - **Notes** — markdown editor (edit/split/preview). Repo notes live at
   `<repo>/.TerMinal/notes.md` (auto-gitignored); Global notes span
   everything. Both autosave.
@@ -116,11 +121,8 @@ repo-aware — each shows based on the attached session's repo.
   dimming, and project-wide search (`git grep`). ⌘S save · ⌘W close · ⌘F find ·
   ⌘⇧F project search. Open the current file/dir in your editor (Cursor by
   default, configurable) from a button.
-- **Browser** — an in-app webview for quick lookups, plus **Open in Brave**
-  (configurable) to hand the URL to a real browser with your wallet extensions.
-- **Activity** — a realtime feed + macOS notifications: a session finishing a
-  turn, a ticket filed, a session start. Global store, filterable to this
-  repo/session.
+- **Help** — in-app reference for the tabs, cockpit widgets, and keyboard
+  shortcuts.
 
 ## Cockpit widgets
 
