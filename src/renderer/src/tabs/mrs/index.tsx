@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight } from 'lucide-react'
+import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight, ChevronDown, ChevronRight } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
@@ -7,22 +7,81 @@ import { MrMergeButton } from '../../components/MrMergeButton'
 import { verdictTone, testTone, stateTone } from '../../lib/badges'
 import type { Tab, Mr, TabContext } from '../../lib/types'
 
-type StateFilter = 'open' | 'merged' | 'closed' | 'all'
-const STATE_FILTERS: StateFilter[] = ['open', 'merged', 'closed', 'all']
-// UI filter → normalized forge state ('open' chip maps to the 'opened' state).
-function matchesFilter(state: string, f: StateFilter): boolean {
-  if (f === 'all') return true
-  if (f === 'open') return state === 'opened'
-  return state === f
+// Three buckets, Tickets-style. Default-collapsed groups match the "closed +
+// icebox collapsed" UX of the Tickets tab.
+type GroupId = 'open' | 'merged' | 'closed'
+const GROUPS: { id: GroupId; label: string; match: (state: string) => boolean }[] = [
+  { id: 'open', label: 'Open', match: (s) => s === 'opened' },
+  { id: 'merged', label: 'Merged', match: (s) => s === 'merged' },
+  { id: 'closed', label: 'Closed', match: (s) => s !== 'opened' && s !== 'merged' },
+]
+const DEFAULT_COLLAPSED: GroupId[] = ['merged', 'closed']
+
+function MrRow({
+  m,
+  sym,
+  onOpen,
+  onMerged,
+}: {
+  m: Mr
+  sym: string
+  onOpen: (iid: number) => void
+  onMerged: () => void
+}) {
+  return (
+    <div
+      onClick={() => onOpen(m.iid)}
+      className="cursor-pointer rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 transition-colors hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+    >
+      <div className="flex items-start gap-2">
+        <span className="font-mono text-[12px] text-zinc-500">{sym}{m.iid}</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] text-zinc-100">
+            {m.draft && <span className="mr-1 text-amber-400">[draft]</span>}
+            {m.title}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
+            <Badge tone={stateTone(m.state)}>{m.state}</Badge>
+            {m.review && <Badge tone={verdictTone(m.review.verdict)}>{m.review.verdict}</Badge>}
+            {m.review && <Badge tone={testTone(m.review.testStatus)}>tests {m.review.testStatus}</Badge>}
+            {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}
+            {m.review?.stale && (
+              <Badge tone="warn">
+                <TriangleAlert size={9} strokeWidth={2.5} />
+                stale
+              </Badge>
+            )}
+            <span className="inline-flex items-center gap-0.5 text-zinc-600">
+              <GitBranch size={11} strokeWidth={2} />
+              {m.sourceBranch}
+            </span>
+            {m.author && <span className="text-zinc-600">· @{m.author}</span>}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <PrAgentActions pr={m} sym={sym} />
+          {m.state === 'opened' && <MrMergeButton iid={m.iid} sym={sym} onMerged={onMerged} />}
+          <button
+            onClick={() => window.gt.openExternal(m.webUrl)}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+          >
+            open
+            <ArrowUpRight size={12} strokeWidth={2} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-function MrList({
+function GroupedMrList({
   mrs,
   error,
   label,
   sym,
   cli,
-  filter,
+  collapsed,
+  onToggle,
   onOpen,
   onMerged,
 }: {
@@ -31,12 +90,12 @@ function MrList({
   label: string
   sym: string
   cli: string
-  filter: StateFilter
+  collapsed: Set<GroupId>
+  onToggle: (id: GroupId) => void
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
-  if (mrs === null)
-    return <div className="p-6 text-[12px] text-zinc-600">Loading {label}s from {cli}…</div>
+  if (mrs === null) return <div className="p-6 text-[12px] text-zinc-600">Loading {label}s from {cli}…</div>
   if (error)
     return (
       <div className="p-6 text-[12px] text-amber-400">
@@ -48,58 +107,37 @@ function MrList({
       </div>
     )
   if (mrs.length === 0)
-    return (
-      <div className="p-6 text-[12px] text-zinc-600">
-        No {filter === 'all' ? '' : `${filter} `}{label}s for this repo.
-      </div>
-    )
+    return <div className="p-6 text-[12px] text-zinc-600">No {label}s for this repo.</div>
+
+  const groups = GROUPS.map((g) => ({ ...g, items: mrs.filter((m) => g.match(m.state)) })).filter(
+    (g) => g.items.length > 0,
+  )
+
   return (
-    <div className="space-y-2 p-4">
-      {mrs.map((m) => (
-        <div
-          key={m.iid}
-          onClick={() => onOpen(m.iid)}
-          className="cursor-pointer rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 transition-colors hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
-        >
-          <div className="flex items-start gap-2">
-            <span className="font-mono text-[12px] text-zinc-500">{sym}{m.iid}</span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] text-zinc-100">
-                {m.draft && <span className="mr-1 text-amber-400">[draft]</span>}
-                {m.title}
+    <div className="space-y-4 p-4">
+      {groups.map((g) => {
+        const isCollapsed = collapsed.has(g.id)
+        return (
+          <div key={g.id}>
+            <button
+              onClick={() => onToggle(g.id)}
+              className="mb-1.5 flex w-full items-center gap-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500 hover:text-zinc-300"
+            >
+              {isCollapsed ? <ChevronRight size={12} strokeWidth={2.5} /> : <ChevronDown size={12} strokeWidth={2.5} />}
+              {g.label}
+              <span className="text-zinc-700">·</span>
+              <span className="tabular-nums text-zinc-600">{g.items.length}</span>
+            </button>
+            {!isCollapsed && (
+              <div className="space-y-2">
+                {g.items.map((m) => (
+                  <MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />
+                ))}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
-                <Badge tone={stateTone(m.state)}>{m.state}</Badge>
-                {m.review && <Badge tone={verdictTone(m.review.verdict)}>{m.review.verdict}</Badge>}
-                {m.review && <Badge tone={testTone(m.review.testStatus)}>tests {m.review.testStatus}</Badge>}
-                {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}
-                {m.review?.stale && (
-                  <Badge tone="warn">
-                    <TriangleAlert size={9} strokeWidth={2.5} />
-                    stale
-                  </Badge>
-                )}
-                <span className="inline-flex items-center gap-0.5 text-zinc-600">
-                  <GitBranch size={11} strokeWidth={2} />
-                  {m.sourceBranch}
-                </span>
-                {m.author && <span className="text-zinc-600">· @{m.author}</span>}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <PrAgentActions pr={m} sym={sym} />
-              {m.state === 'opened' && <MrMergeButton iid={m.iid} sym={sym} onMerged={onMerged} />}
-              <button
-                onClick={() => window.gt.openExternal(m.webUrl)}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-              >
-                open
-                <ArrowUpRight size={12} strokeWidth={2} />
-              </button>
-            </div>
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -108,15 +146,20 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
   const [mrs, setMrs] = useState<Mr[] | null>(null)
   const [error, setError] = useState<string | undefined>(undefined)
   const [selectedMrIid, setSelectedMrIid] = useState<number | null>(null)
-  const [filter, setFilter] = useState<StateFilter>('open')
+  const [collapsed, setCollapsed] = useState<Set<GroupId>>(() => new Set(DEFAULT_COLLAPSED))
 
   const hasRemote = !!ctx.repoPath
   const label = ctx.forgeLabel
   const sym = ctx.forgeSym
   const cli = ctx.forgeKind === 'github' ? 'gh' : 'glab'
   const fullName = label === 'PR' ? 'Pull Requests' : 'Merge Requests'
-  const count = (f: StateFilter) => (mrs ? mrs.filter((m) => matchesFilter(m.state, f)).length : 0)
-  const visible = mrs ? mrs.filter((m) => matchesFilter(m.state, filter)) : mrs
+  const openCount = mrs ? mrs.filter((m) => m.state === 'opened').length : 0
+  const toggleGroup = (id: GroupId) =>
+    setCollapsed((c) => {
+      const n = new Set(c)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
   const refresh = () =>
     window.gt.listMrs().then((r) => {
       setMrs(r.mrs)
@@ -155,21 +198,9 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
         <span className="text-[12px] font-semibold text-zinc-200">{fullName}</span>
         <span className="text-[11px] text-zinc-600">{ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}</span>
         {hasRemote && mrs && (
-          <div className="ml-auto flex items-center gap-1">
-            {STATE_FILTERS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize transition-colors ${
-                  filter === f
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {f} <span className="tabular-nums text-zinc-500">{count(f)}</span>
-              </button>
-            ))}
-          </div>
+          <span className="ml-auto text-[11px] text-zinc-500">
+            <span className="tabular-nums text-zinc-300">{openCount}</span> open · {mrs.length} total
+          </span>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -179,13 +210,14 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             <span className="font-mono">origin</span>. Local-only repos (like this one) have none.
           </div>
         ) : (
-          <MrList
-            mrs={visible}
+          <GroupedMrList
+            mrs={mrs}
             error={error}
             label={label}
             sym={sym}
             cli={cli}
-            filter={filter}
+            collapsed={collapsed}
+            onToggle={toggleGroup}
             onOpen={setSelectedMrIid}
             onMerged={refresh}
           />

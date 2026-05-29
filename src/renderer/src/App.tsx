@@ -101,6 +101,19 @@ export default function App() {
     activate(key)
     setAdding(false)
   }
+
+  // Click "+" → immediately spawn a new session in the active session's cwd
+  // (or empty, which main resolves to the configured projects dir). Skips the
+  // EntryScreen middle picker; that screen still shows on first-launch or when
+  // every session is closed. Shift-click opens the picker for an explicit cwd.
+  const quickAdd = (withPicker = false) => {
+    if (withPicker) {
+      setAdding(true)
+      return
+    }
+    const activeSession = sessions.find((s) => s.key === activeKey)
+    addSession({ mode: 'new', cwd: activeSession?.info.cwd || '' })
+  }
   const closeSession = (key: string) => {
     window.gt.stopSession(key)
     setSessions((s) => {
@@ -192,8 +205,8 @@ export default function App() {
           })}
           <button
             style={noDrag}
-            onClick={() => setAdding(true)}
-            title="New session"
+            onClick={(e) => quickAdd(e.shiftKey)}
+            title="New session (shift-click to pick a folder)"
             className="flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
           >
             <Plus size={14} strokeWidth={2.5} />
@@ -253,7 +266,7 @@ export default function App() {
               }}
               onNew={() => {
                 setFleet(false)
-                setAdding(true)
+                quickAdd()
               }}
               onClose={() => setFleet(false)}
             />

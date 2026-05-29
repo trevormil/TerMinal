@@ -178,6 +178,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [picking, setPicking] = useState<{ id: string; title: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [editing, setEditing] = useState<Agent | 'new' | null>(null)
+  const [agentFilter, setAgentFilter] = useState<'all' | 'generic' | 'per-repo'>('all')
   const logRef = useRef<HTMLPreElement>(null)
 
   const reloadAgents = () => window.gt.agents.list().then(setAgents)
@@ -257,7 +258,24 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
         <div className="flex w-[44%] min-w-[340px] flex-col border-r border-[var(--gt-border)]">
           <div className="shrink-0 space-y-2 overflow-y-auto p-3" style={{ maxHeight: '58%' }}>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Agents</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Agents</span>
+                <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+                  {(['all', 'generic', 'per-repo'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setAgentFilter(f)}
+                      className={`rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
+                        agentFilter === f
+                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {f === 'per-repo' ? 'per-repo' : f}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 onClick={() => setEditing('new')}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
@@ -269,7 +287,14 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
             {agents === null ? (
               <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
             ) : (
-              agents.map((a) => {
+              agents
+                .filter((a) => {
+                  if (agentFilter === 'all') return true
+                  // "generic" = unmodified defaults; "per-repo" = override + custom
+                  if (agentFilter === 'generic') return a.source === 'default'
+                  return a.source === 'override' || a.source === 'repo'
+                })
+                .map((a) => {
                 const Icon = AGENT_ICON[a.icon || ''] || Bot
                 const busy = runningByAgent.has(a.id)
                 return (
