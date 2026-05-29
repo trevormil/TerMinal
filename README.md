@@ -76,6 +76,10 @@ See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 
 ## Tabs
 
+<p align="center">
+  <img src="docs/tabs.png" width="900" alt="TerMinal tab bar" />
+</p>
+
 A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
 repo-aware — each shows based on the attached session's repo.
 
