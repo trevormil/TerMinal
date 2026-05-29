@@ -23,6 +23,7 @@ import {
 import { Badge } from '../../components/ui'
 import { EnginePicker } from '../../components/EnginePicker'
 import { EngineLogo } from '../../components/EngineLogo'
+import { EngineModelPicker } from '../../components/EngineModelPicker'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, AgentRun, Engine } from '../../lib/types'
 
@@ -85,6 +86,7 @@ function AgentDesigner({
 }) {
   const [text, setText] = useState('')
   const [engine, setEngine] = useState<Engine>('claude')
+  const [model, setModel] = useState<string | undefined>(undefined)
   const [scope, setScope] = useState<'repo' | 'global'>('repo')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -98,7 +100,7 @@ function AgentDesigner({
     if (!t) return
     setBusy(true)
     setErr('')
-    const r = await window.gt.agents.design(t, engine, scope)
+    const r = await window.gt.agents.design(t, engine, scope, model)
     setBusy(false)
     if (r && 'error' in r) {
       setErr(r.error)
@@ -171,15 +173,8 @@ function AgentDesigner({
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Engine</span>
-            <select
-              value={engine}
-              onChange={(e) => setEngine(e.target.value as Engine)}
-              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none"
-            >
-              <option value="claude">claude</option>
-              <option value="codex">codex</option>
-            </select>
+            <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Engine + model</span>
+            <EngineModelPicker engine={engine} model={model} onChange={(e, m) => { setEngine(e); setModel(m) }} size="sm" />
           </label>
 
           <div className="ml-auto flex items-center gap-2">
@@ -290,25 +285,15 @@ function AgentEditor({
         />
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-            engine
-            <select value={engine} onChange={(e) => setEngine(e.target.value as Engine)} className={`${FIELD} w-auto`}>
-              <option value="codex">codex</option>
-              <option value="claude">claude</option>
-            </select>
-          </label>
-          <label
-            className="flex items-center gap-1.5 text-[11px] text-zinc-500"
-            title="Optional. Lets a lightweight agent (health, deps audit) avoid burning the largest model on every run."
-          >
-            model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className={`${FIELD} w-auto`}>
-              <option value="">(engine default)</option>
-              {(engine === 'claude' ? ['haiku', 'sonnet', 'opus'] : ['gpt-5-codex', 'gpt-5', 'o4-mini']).map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            engine + model
+            <EngineModelPicker
+              engine={engine}
+              model={model || undefined}
+              onChange={(e, m) => {
+                setEngine(e)
+                setModel(m || '')
+              }}
+            />
           </label>
           <label className="flex items-center gap-1.5 text-[12px] text-zinc-300">
             <input type="checkbox" checked={opensPr} onChange={(e) => setOpensPr(e.target.checked)} />

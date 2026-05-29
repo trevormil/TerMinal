@@ -452,7 +452,8 @@ export type GtApi = {
     list: () => Promise<Agent[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>
     reset: (id: string) => Promise<{ ok: true } | { error: string }>
-    design: (text: string, engine: Engine, scope: 'repo' | 'global') => Promise<AgentRun | { error: string }>
+    design: (text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
+      Promise<AgentRun | { error: string }>
     personas: () => Promise<Persona[]>
     pipelines: () => Promise<PipelineInfo[]>
     run: (
@@ -538,7 +539,7 @@ export type GtApi = {
     get: (slug: string) => Promise<Ticket | null>
     create: (input: NewTicket) => Promise<Ticket>
     update: (slug: string, patch: { status?: string; priority?: string }) => Promise<boolean>
-    spawn: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
+    spawn: (text: string, engine: Engine, model?: string) => Promise<AgentRun | { error: string }>
   }
   docs: {
     list: () => Promise<DocsTree>

@@ -4,6 +4,7 @@ import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
 import { EnginePicker } from './EnginePicker'
 import { EngineLogo } from './EngineLogo'
+import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import type { BadgeTone } from './ui'
@@ -174,6 +175,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [viewMrIid, setViewMrIid] = useState<number | null>(null)
   const [spawnText, setSpawnText] = useState('')
   const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
+  const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
   useEffect(() => {
     window.gt.settings.get().then((s) => setSpawnEngine(s.defaultEngine))
   }, [])
@@ -205,7 +207,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     if (!text || spawning) return
     setSpawning(true)
     try {
-      const r = await window.gt.tickets.spawn(text, spawnEngine)
+      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel)
       if (r && 'error' in r) {
         setSpawnMsg(`couldn't start: ${r.error}`)
       } else {
@@ -320,14 +322,17 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               placeholder="Describe a ticket — an agent files it to the backlog (⌘↵)"
               className="min-h-[32px] flex-1 resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
             />
-            <select
-              value={spawnEngine}
-              onChange={(e) => setSpawnEngine(e.target.value as Engine)}
-              className="mt-0.5 cursor-pointer rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1.5 text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-            >
-              <option value="codex">codex</option>
-              <option value="claude">claude</option>
-            </select>
+            <div className="mt-0.5">
+              <EngineModelPicker
+                engine={spawnEngine}
+                model={spawnModel}
+                onChange={(e, m) => {
+                  setSpawnEngine(e)
+                  setSpawnModel(m)
+                }}
+                align="right"
+              />
+            </div>
             <button
               onClick={doSpawn}
               disabled={!spawnText.trim() || spawning}

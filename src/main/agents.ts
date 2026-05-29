@@ -580,6 +580,7 @@ export function runDesignerSpawn(
   text: string,
   engine: Engine,
   scope: 'repo' | 'global',
+  model?: string,
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
@@ -634,6 +635,7 @@ DO NOT open a PR, do not modify other agents, do not invent extra files.`
     steps: [{ label: 'design agent', prompt }],
     engine,
     inPlace: true,
+    model,
   })
 }
 
@@ -733,6 +735,7 @@ export function runTicketSpawn(
   repoRoot: string,
   text: string,
   engine: Engine,
+  model?: string,
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
@@ -743,6 +746,7 @@ export function runTicketSpawn(
     steps: [{ label: 'file ticket', prompt }],
     engine,
     inPlace: true,
+    model,
   })
 }
 

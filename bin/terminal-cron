@@ -113,8 +113,11 @@ function fileHitl(item) {
     log(`hitl write failed: ${e}`)
   }
   try {
+    // HITL ALWAYS pings Telegram when bot+chat configured, regardless of the
+    // general activity-feed `telegram.notify` toggle. HITL is by definition the
+    // "I need attention" channel; never silence it.
     const t = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
-    if (t?.notify && t.botToken && t.chatId) {
+    if (t?.botToken && t?.chatId) {
       fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

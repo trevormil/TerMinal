@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
+import { EngineModelPicker } from '../../components/EngineModelPicker'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
 
@@ -150,11 +151,16 @@ function ScheduleForm({
           />
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-              engine
-              <select value={engine} onChange={(e) => setEngine(e.target.value as Engine)} className={`${FIELD} w-auto`}>
-                <option value="claude">claude</option>
-                <option value="codex">codex</option>
-              </select>
+              engine + model
+              <EngineModelPicker
+                engine={engine}
+                model={model || undefined}
+                onChange={(e, m) => {
+                  setEngine(e)
+                  setModel(m || '')
+                }}
+                size="sm"
+              />
             </label>
             {customErr && <span className="text-[11px] text-[var(--gt-red)]">{customErr}</span>}
             <div className="ml-auto flex items-center gap-2">
@@ -188,23 +194,15 @@ function ScheduleForm({
           ))}
         </select>
         <span className="text-[11px] text-zinc-500">via</span>
-        <select value={engine} onChange={(e) => setEngine(e.target.value as Engine)} className={FIELD}>
-          <option value="codex">codex</option>
-          <option value="claude">claude</option>
-        </select>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className={FIELD}
-          title="Optional model — leave blank to use the engine default. Cheap models (haiku, gpt-5) suit lightweight schedules (health, deps audit)."
-        >
-          <option value="">(default model)</option>
-          {(engine === 'claude' ? ['haiku', 'sonnet', 'opus'] : ['gpt-5-codex', 'gpt-5', 'o4-mini']).map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+        <EngineModelPicker
+          engine={engine}
+          model={model || undefined}
+          onChange={(e, m) => {
+            setEngine(e)
+            setModel(m || '')
+          }}
+          size="sm"
+        />
       </div>
 
       <div className="flex items-center gap-1">

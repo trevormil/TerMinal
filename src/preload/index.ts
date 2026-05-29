@@ -49,8 +49,8 @@ const gt = {
     list: () => ipcRenderer.invoke('agents:list'),
     save: (agent: unknown) => ipcRenderer.invoke('agents:save', agent),
     reset: (id: string) => ipcRenderer.invoke('agents:reset', id),
-    design: (text: string, engine: string, scope: 'repo' | 'global') =>
-      ipcRenderer.invoke('agents:design', text, engine, scope),
+    design: (text: string, engine: string, scope: 'repo' | 'global', model?: string) =>
+      ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
     run: (id: string, engine?: string, persona?: string, pipeline?: string) =>
@@ -155,7 +155,8 @@ const gt = {
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     update: (slug: string, patch: { status?: string; priority?: string }) =>
       ipcRenderer.invoke('tickets:update', slug, patch),
-    spawn: (text: string, engine: string) => ipcRenderer.invoke('tickets:spawn', text, engine),
+    spawn: (text: string, engine: string, model?: string) =>
+      ipcRenderer.invoke('tickets:spawn', text, engine, model),
   },
   docs: {
     list: () => ipcRenderer.invoke('docs:list'),

@@ -444,8 +444,10 @@ ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: s
   saveAgent(repoRootOf(cur().cwd), agent),
 )
 ipcMain.handle('agents:reset', (_e, id: string) => resetAgent(repoRootOf(cur().cwd), id))
-ipcMain.handle('agents:design', (_e, text: string, engine: Engine, scope: 'repo' | 'global') =>
-  runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope),
+ipcMain.handle(
+  'agents:design',
+  (_e, text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
+    runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope, model),
 )
 ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
   runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
@@ -618,8 +620,8 @@ ipcMain.handle('tickets:create', (_e, input: NewTicket) => {
   })
   return t
 })
-ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine) =>
-  runTicketSpawn(repoRootOf(cur().cwd), text, engine),
+ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string) =>
+  runTicketSpawn(repoRootOf(cur().cwd), text, engine, model),
 )
 ipcMain.handle('tickets:update', (_e, slug: string, patch: { status?: string; priority?: string }) => {
   const root = repoRootOf(cur().cwd)
