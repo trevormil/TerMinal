@@ -1,11 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Plus, Hand, ArrowUpRight, ChevronRight, ChevronDown, Bot } from 'lucide-react'
+import { Plus, Hand, ArrowUpRight, ChevronRight, ChevronDown, Bot, GitPullRequest } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
 import { EnginePicker } from './EnginePicker'
-import { statusTone, priorityTone, typeTone, horizonTone } from '../lib/badges'
+import { MrDetailView } from './MrDetail'
+import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import type { BadgeTone } from './ui'
-import type { Ticket, TabContext } from '../lib/types'
+import type { Ticket, TabContext, Mr } from '../lib/types'
+
+// A ticket's `prs:` entries are forge URLs (…/-/merge_requests/N or …/pull/N).
+// Parse the change number so we can link to the in-app MR view instead of
+// opening the upstream forge in a browser.
+function prIidFromUrl(url: string): number | null {
+  const m = url.match(/(?:\/-\/merge_requests\/|\/pull\/|\/merge_requests\/)(\d+)/)
+  return m ? Number(m[1]) : null
+}
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'performance']
@@ -146,11 +155,29 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(COLLAPSED_BY_DEFAULT))
   const [pickImpl, setPickImpl] = useState(false)
   const [started, setStarted] = useState(false)
+  const [mrByIid, setMrByIid] = useState<Map<number, Mr>>(() => new Map())
+  const [viewMrIid, setViewMrIid] = useState<number | null>(null)
 
   const loadTickets = () => window.gt.tickets.list().then(setTickets)
   useEffect(() => {
     loadTickets()
+    // Enrich ticket MR links with live state/verdict badges. All-states list, so
+    // merged/closed MRs (the common case for a closed ticket) resolve too.
+    window.gt
+      .listMrs()
+      .then((r) => setMrByIid(new Map((r.mrs || []).map((m) => [m.iid, m]))))
+      .catch(() => setMrByIid(new Map()))
   }, [ctx.sessionId])
+
+  // Aggregate tone for a ticket's MRs in the compact list (green if any landed/
+  // approved, amber if any wants changes, neutral otherwise).
+  const ticketMrTone = (t: Ticket): BadgeTone => {
+    const mrs = t.prs.map(prIidFromUrl).map((i) => (i != null ? mrByIid.get(i) : undefined))
+    if (mrs.some((m) => m?.state === 'merged' || m?.review?.verdict === 'approve')) return 'green'
+    if (mrs.some((m) => m?.review?.verdict === 'request-changes' || m?.review?.verdict === 'blocked'))
+      return 'warn'
+    return 'blue'
+  }
 
   const filtered = (tickets || []).filter((t) => {
     if (hitlOnly && !t.hitl) return false
@@ -175,6 +202,19 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       n.has(s) ? n.delete(s) : n.add(s)
       return n
     })
+
+  // Internal MR view — reuse the same detail pane as the MRs tab so a ticket's
+  // MR opens in-app instead of bouncing to the upstream forge in a browser.
+  if (viewMrIid !== null)
+    return (
+      <MrDetailView
+        iid={viewMrIid}
+        repoLabel={ctx.repoPath || 'repo'}
+        label={ctx.forgeLabel}
+        sym={ctx.forgeSym}
+        onBack={() => setViewMrIid(null)}
+      />
+    )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -266,6 +306,12 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       >
                         <span className="font-mono text-[11px] text-zinc-600">#{t.id}</span>
                         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">{t.title}</span>
+                        {t.prs.length > 0 && (
+                          <Badge tone={ticketMrTone(t)}>
+                            <GitPullRequest size={10} strokeWidth={2.25} />
+                            {t.prs.length}
+                          </Badge>
+                        )}
                         {t.hitl && !hitlOnly && (
                           <Badge tone="red">
                             <Hand size={10} strokeWidth={2.25} />
@@ -324,17 +370,43 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
                 {selected.created && <span>created {selected.created}</span>}
                 {selected.updated && <span>updated {selected.updated}</span>}
-                {selected.prs.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => window.gt.openExternal(p)}
-                    className="inline-flex items-center gap-0.5 text-[var(--gt-accent-2)] hover:underline"
-                  >
-                    {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')}
-                    <ArrowUpRight size={11} strokeWidth={2} />
-                  </button>
-                ))}
               </div>
+              {selected.prs.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  {selected.prs.map((p) => {
+                    const iid = prIidFromUrl(p)
+                    if (iid == null)
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => window.gt.openExternal(p)}
+                          className="inline-flex items-center gap-0.5 text-[11px] text-[var(--gt-accent-2)] hover:underline"
+                        >
+                          {p.replace(/^https?:\/\/[^/]+\//, '')}
+                          <ArrowUpRight size={11} strokeWidth={2} />
+                        </button>
+                      )
+                    const mr = mrByIid.get(iid)
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setViewMrIid(iid)}
+                        title={`View ${ctx.forgeLabel} ${ctx.forgeSym}${iid} in-app`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-1 text-[11px] hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+                      >
+                        <GitPullRequest size={12} strokeWidth={2} className="text-zinc-500" />
+                        <span className="font-mono text-zinc-300">
+                          {ctx.forgeSym}
+                          {iid}
+                        </span>
+                        {mr && <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>}
+                        {mr?.review && <Badge tone={verdictTone(mr.review.verdict)}>{mr.review.verdict}</Badge>}
+                        {mr?.review && <Badge tone={testTone(mr.review.testStatus)}>tests {mr.review.testStatus}</Badge>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setPickImpl(true)}
