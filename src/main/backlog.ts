@@ -60,7 +60,8 @@ export function listTickets(repoRoot: string): Ticket[] {
   if (!existsSync(dir)) return []
   const out: Ticket[] = []
   for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.md') || f === 'EXAMPLE.md') continue
+    // Tickets are NNNN-slug.md — a leading digit excludes README.md, EXAMPLE.md, etc.
+    if (!/^\d/.test(f) || !f.endsWith('.md')) continue
     try {
       out.push(toTicket(f.replace(/\.md$/, ''), readFileSync(join(dir, f), 'utf8')))
     } catch {
