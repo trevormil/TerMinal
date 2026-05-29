@@ -539,7 +539,17 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           <>
                             <div className="flex items-center gap-1.5 text-[10px]">
                               <Badge tone="blue">bash script</Badge>
-                              <span className="font-mono text-zinc-600">{scripts[a.id]!.path.replace(/^.*\//, '… /')}</span>
+                              <span className="min-w-0 flex-1 truncate font-mono text-zinc-600">
+                                {scripts[a.id]!.path}
+                              </span>
+                              <button
+                                onClick={() => window.gt.openInEditor(scripts[a.id]!.path)}
+                                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
+                                title="Open in your configured editor (Settings → Apps)"
+                              >
+                                <Pencil size={9} strokeWidth={2} />
+                                edit
+                              </button>
                             </div>
                             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--gt-border)] bg-[#0c0c11] p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300">
                               {scripts[a.id]!.body}

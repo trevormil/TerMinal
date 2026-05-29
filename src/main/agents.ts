@@ -177,31 +177,80 @@ function readRepoAgents(repoRoot: string): Agent[] {
 /** Built-in defaults, with the repo's .agents/agents.json overriding by id.
  *  Each agent is annotated with its `source` so the UI can distinguish a stock
  *  default, a default this repo has customized, and a repo-only agent. */
+// Discover script-only agents from a directory: any `<id>.sh` paired with an
+// optional sidecar `<id>.json` of metadata. No JSON entry in agents.json
+// required — drop the .sh and the agent shows up.
+function readScriptAgents(dir: string): Agent[] {
+  if (!existsSync(dir)) return []
+  const out: Agent[] = []
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return []
+  }
+  for (const f of entries) {
+    if (!f.endsWith('.sh')) continue
+    const id = f.slice(0, -3)
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) continue
+    // Sidecar JSON (optional) provides metadata; otherwise we synthesize sane defaults.
+    let meta: Partial<Agent> = {}
+    const sidecar = join(dir, `${id}.json`)
+    if (existsSync(sidecar)) {
+      try {
+        meta = JSON.parse(readFileSync(sidecar, 'utf8'))
+      } catch {
+        /* malformed sidecar — fall back to defaults */
+      }
+    }
+    out.push({
+      id,
+      title: meta.title || id,
+      description: meta.description,
+      icon: meta.icon || 'Wrench',
+      // The prompt is the canonical "what does this agent do" surface in the UI;
+      // for script-only agents we point at the file rather than duplicate the bash.
+      prompt: meta.prompt || `Script-based agent · body in ${dir.replace(homedir(), '~')}/${f}`,
+      opensPr: meta.opensPr,
+      engine: meta.engine,
+      model: meta.model,
+      inPlace: meta.inPlace,
+    })
+  }
+  return out
+}
+
 export function readAgents(repoRoot: string): Agent[] {
-  const defaultIds = new Set(DEFAULT_AGENTS.map((a) => a.id))
-  const global = readGlobalAgents()
-  const globalIds = new Set(global.map((a) => a.id))
-  const repo = readRepoAgents(repoRoot)
-  const repoIds = new Set(repo.map((a) => a.id))
-  const byId = new Map<string, Agent>()
-  // Order matters: defaults → global → repo. Later layers win by id and the
-  // provenance label reflects "any earlier layer also had this id" as override.
-  for (const a of DEFAULT_AGENTS)
-    byId.set(a.id, {
-      ...a,
-      source: repoIds.has(a.id) || globalIds.has(a.id) ? 'override' : 'default',
-    })
-  for (const a of global)
-    byId.set(a.id, {
-      ...a,
-      source: defaultIds.has(a.id) || repoIds.has(a.id) ? 'override' : 'global',
-    })
-  for (const a of repo)
-    byId.set(a.id, {
-      ...a,
-      source: defaultIds.has(a.id) || globalIds.has(a.id) ? 'override' : 'repo',
-    })
-  return [...byId.values()]
+  type Layered = { agent: Agent; layers: Set<'default' | 'global' | 'repo'> }
+  const byId = new Map<string, Layered>()
+  const merge = (a: Agent, layer: 'default' | 'global' | 'repo') => {
+    const existing = byId.get(a.id)
+    if (existing) {
+      existing.layers.add(layer)
+      // later layer wins for individual fields (only override fields it sets)
+      existing.agent = { ...existing.agent, ...a }
+    } else {
+      byId.set(a.id, { agent: { ...a }, layers: new Set([layer]) })
+    }
+  }
+  // Layer order: defaults → global (json then scripts) → repo (json then scripts).
+  // Script bodies are independent from the JSON metadata; the runtime branches
+  // on file existence, but the agent list cares only about the merged metadata.
+  for (const a of DEFAULT_AGENTS) merge(a, 'default')
+  for (const a of readGlobalAgents()) merge(a, 'global')
+  for (const a of readScriptAgents(join(homedir(), '.config', 'TerMinal', 'scripts'))) merge(a, 'global')
+  if (repoRoot) for (const a of readRepoAgents(repoRoot)) merge(a, 'repo')
+  if (repoRoot) for (const a of readScriptAgents(join(repoRoot, '.agents'))) merge(a, 'repo')
+
+  const out: Agent[] = []
+  for (const { agent, layers } of byId.values()) {
+    let source: Agent['source']
+    if (layers.has('repo')) source = layers.has('default') || layers.has('global') ? 'override' : 'repo'
+    else if (layers.has('global')) source = layers.has('default') ? 'override' : 'global'
+    else source = 'default'
+    out.push({ ...agent, source })
+  }
+  return out
 }
 
 /** Upsert an agent into <repo>/.agents/agents.json (creates it). Overriding a
@@ -616,51 +665,82 @@ export function runDesignerSpawn(
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const target =
+  const targetDir =
     scope === 'global'
-      ? join(homedir(), '.config', 'TerMinal', 'agents', 'global.json')
-      : join(repoRoot, '.agents', 'agents.json')
-  const scopeLabel = scope === 'global' ? "TerMinal's global agent registry (~/.config/TerMinal/agents/global.json)" : `this repo's .agents/agents.json`
-  const prompt = `You are designing a new TerMinal agent definition from the user's natural-language description below.
+      ? join(homedir(), '.config', 'TerMinal', 'scripts')
+      : join(repoRoot, '.agents')
+  const scopeLabel =
+    scope === 'global'
+      ? "TerMinal's GLOBAL script registry (~/.config/TerMinal/scripts/)"
+      : `this repo's .agents/ directory`
+  const prompt = `You are designing a new TerMinal agent as an EXECUTABLE BASH SCRIPT plus a small sidecar metadata JSON, per the scripts unification (see .agents/scripts.md).
 
 Target: ${scopeLabel}
-Target file (load JSON array if it exists, else create with parent dirs): ${target}
+Two files to write (mkdir -p the parent dir if needed):
+  ${targetDir}/<id>.sh    # the executable body — chmod 755 after writing
+  ${targetDir}/<id>.json  # sidecar metadata, validated by TerMinal
 
-The agent format is an entry in the target JSON array with these fields:
-  - id           kebab-case, unique in the target file
-  - title        short user-facing label (e.g. "Audit security")
-  - description  one-line summary
-  - icon         lucide-react icon name — use one already used by an existing agent in this repo (Bot, BookText, ScanSearch, ListChecks, TestTube2, ShieldAlert, Gauge, PackageCheck, Eraser, etc.) or any lucide name appropriate to the agent's purpose
-  - prompt       the prompt that runs the agent at execution time (write this BAKING IN this project's conventions — see below)
-  - opensPr      boolean — true if the agent ends with a PR
-  - engine       "claude" or "codex" — pick the better fit; the user can override per-run
-  - inPlace      optional boolean — true ONLY if the agent itself manages worktrees (rare; usually false)
+Pick a kebab-case <id> from the user's description.
 
-CONVENTIONS TO READ BEFORE DESIGNING THE PROMPT:
+The sidecar JSON shape (every field optional except id + title):
+  {
+    "id":          "kebab-case",
+    "title":       "short user-facing label (e.g. 'Audit security')",
+    "description": "one-line summary",
+    "icon":        "lucide-react icon name — Bot, BookText, ScanSearch, ListChecks, TestTube2, ShieldAlert, Gauge, PackageCheck, Eraser, Wrench, Activity, Zap, etc.",
+    "opensPr":     true | false,
+    "engine":      "claude" | "codex"  (hint; runtime can override),
+    "model":       "haiku" | "sonnet" | "opus" | "gpt-5" | "gpt-5-codex" | "o4-mini"  (hint; optional),
+    "inPlace":     true | false  (true ONLY if the agent manages worktrees itself — rare)
+  }
+
+The script body MUST follow this shape:
+  - First line: #!/usr/bin/env bash
+  - Use 'set -uo pipefail' (NOT -e — you want to inspect exit codes).
+  - Read these env vars the runner provides:
+      TERMINAL_REPO      — the repo root
+      TERMINAL_RUN_ID    — uuid of this run
+      TERMINAL_BRANCH    — worktree branch (or "main" if inPlace)
+      TERMINAL_WORKTREE  — worktree path (== TERMINAL_REPO if inPlace)
+      TERMINAL_ENGINE    — hint from sidecar / schedule override (default fallback when calling claude/codex)
+      TERMINAL_MODEL     — hint from sidecar / schedule override
+  - For LLM calls inside the script:
+      claude -p "<prompt>" --dangerously-skip-permissions --model "\${TERMINAL_MODEL:-sonnet}"
+      codex exec -s danger-full-access -C "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-gpt-5}" "<prompt>"
+  - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):
+      terminal-cli ticket "<title>" "<body>"   # file a backlog ticket on TERMINAL_REPO
+      terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping
+      terminal-cli activity <kind> "<title>" "<detail>"   # emit one activity-feed event
+      terminal-cli notify "<message>"          # raw Telegram message
+
+THE BODY MUST FOLLOW THE PROJECT'S WORKFLOW:
+  - The ticket + MR workflow uniformly. The MERGE TO MAIN IS HUMAN-ONLY — never \`gh pr merge\` / \`--auto\` / \`--merge\`.
+  - File backlog tickets via \`terminal-cli ticket\` for findings the script cannot fix in-pass.
+  - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, apply the \`auto-mergeable\` label per .agents/forge.md.
+  - Explicit success criteria (what makes the run "done"). \`exit 0\` on success; non-zero on failure.
+  - HITL only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli hitl\`.
+
+CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   1. CLAUDE.md (root) — project conventions and global rules.
-  2. .agents/forge.md — the auto-mergeable label convention and forge command mapping.
-  3. .agents/changelog.md or .agents/drift.md — examples of scheduled-agent specs.
-  4. backlog/EXAMPLE.md or .claude/skills/ticket/EXAMPLE.md — ticket conventions, including depends_on.
-  5. The agents already in .agents/agents.json (don't duplicate them; pick a distinct id).
-
-THE AGENT'S PROMPT MUST FOLLOW:
-  - The ticket + MR workflow uniformly: work in a worktree (the runner provides one unless you set inPlace), commit, push, open a PR via the project's pr-creation skill or gh/glab directly. The MERGE TO MAIN IS HUMAN-ONLY — never set --auto / --merge.
-  - File backlog tickets for findings the agent cannot fix in-pass (with depends_on linkage when the work cascades).
-  - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, the agent's prompt should instruct it to apply the auto-mergeable label per .agents/forge.md.
-  - Explicit success criteria (what makes the run "done").
-  - HITL only for true blockers (decisions, credentials, hard blockers) via .claude/bin/hitl.
+  2. .agents/scripts.md — the design + helper reference.
+  3. .agents/forge.md — auto-mergeable label + forge command mapping.
+  4. Existing example: .agents/health.sh — the cheap-precheck-then-LLM pattern.
+  5. backlog/EXAMPLE.md or .claude/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
+  6. Existing scripts in the target dir — don't duplicate ids; pick a distinct kebab-case id.
 
 User's description:
 > ${t}
 
 PROCESS:
-  1. Read the conventions listed above (enough to write a faithful prompt).
-  2. Pick a kebab-case id, short title, lucide icon, and engine.
-  3. Author the agent prompt — surgical, specific, with the workflow rules baked in.
-  4. Save the entry into ${target}. If the file exists, read its JSON array and append; if not, create with mkdir -p of the parent dir and an array containing just the new entry. Write valid JSON (2-space indent).
-  5. Confirm by printing the new entry as JSON and the target path.
+  1. Read the conventions above (enough to write a faithful script).
+  2. Pick the kebab-case id + title + icon + opensPr based on the description.
+  3. Decide whether this agent benefits from a deterministic precheck (a "cheap-then-escalate" pattern saves tokens). If yes, write the precheck FIRST in the script.
+  4. Author the bash body. Keep it small + readable; prefer terminal-cli over hand-rolled JSON manipulation.
+  5. Write \`${targetDir}/<id>.sh\` with the script body. \`chmod 755\` it.
+  6. Write \`${targetDir}/<id>.json\` with the sidecar metadata.
+  7. Confirm by printing the absolute paths of both files and the sidecar JSON contents.
 
-DO NOT open a PR, do not modify other agents, do not invent extra files.`
+DO NOT open a PR, do not modify any existing agents, do not invent extra files.`
   return runSpec(repoRoot, {
     id: `design-${scope}`,
     title: `Design agent · ${t.slice(0, 48)}`,

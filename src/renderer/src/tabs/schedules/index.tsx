@@ -316,6 +316,19 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     if (view === 'runs') reloadRuns()
   }, [view])
 
+  // Listen for the design-schedule run completing — when the spawn finishes
+  // writing to schedules.json, reconcile launchd so the new entry becomes a
+  // real LaunchAgent without the user having to click Reconcile.
+  useEffect(() => {
+    const off = window.gt.agents.onStatus(async (run) => {
+      if (run.agentId !== 'design-schedule' || run.status !== 'done') return
+      await window.gt.schedules.reconcile()
+      reload()
+      flash('schedule designed · launchd reconciled')
+    })
+    return () => off()
+  }, [])
+
   // Global view: repo options span every repo that has a schedule or a run —
   // no need to switch the active session to manage another repo's jobs.
   const repoOptions = useMemo(() => {
@@ -423,15 +436,11 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
               agents={agents}
               onCancel={() => setCreating(false)}
               onSave={save}
-              onCustomSpawned={async () => {
+              onCustomSpawned={() => {
                 setCreating(false)
-                flash('designer spawned · the schedule will appear after the run completes')
-                // After the designer finishes writing to schedules.json the app's
-                // next list/reconcile picks it up — give it a moment, then reconcile.
-                setTimeout(async () => {
-                  await window.gt.schedules.reconcile()
-                  reload()
-                }, 1500)
+                flash('designer spawned · schedule will appear when the run completes')
+                // No setTimeout — the useEffect onStatus listener above reconciles
+                // launchd + reloads the moment the design-schedule run finishes.
               }}
             />
           ) : (
