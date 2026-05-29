@@ -28,12 +28,15 @@ export function PluginWidget({
         /* transient read error — keep last good data */
       }
     }
-    tick()
+    // Defer the first poll by one frame so the cockpit mount (8+ widgets)
+    // doesn't dump N IPCs in the same tick as a session switch.
+    const raf = requestAnimationFrame(tick)
     const id = setInterval(tick, plugin.intervalMs)
     // realtime widgets also refresh the instant the transcript changes
     const offTick = plugin.realtime ? window.gt.onTick(tick) : undefined
     return () => {
       alive = false
+      cancelAnimationFrame(raf)
       clearInterval(id)
       offTick?.()
     }

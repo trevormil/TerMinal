@@ -80,17 +80,18 @@ export default function App() {
   }, [sessions.length])
   const statusByKey = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
 
-  // tell main which session is active (data IPC reads it). Also fired
-  // imperatively in `activate()` so cur() is updated in main BEFORE the newly
-  // active SessionView's child effects fetch context — otherwise that session
-  // would briefly read the previously-active session's repo/branch.
-  useEffect(() => {
-    if (activeKey) window.gt.setActiveSession(activeKey)
-  }, [activeKey])
-
-  // select a session: update cur() in main first, then flip the active key
-  const activate = (key: string) => {
-    window.gt.setActiveSession(key)
+  // select a session: tell main FIRST and await confirmation, THEN flip the
+  // active key locally. Awaiting kills a React effect-ordering race — child
+  // effects in the newly-active SessionView fire only after main's cur() has
+  // been updated, so they never briefly read the previously-active session's
+  // repo/branch. (Replaces a redundant useEffect on [activeKey] that double-
+  // fired setActiveSession and could race child effects.)
+  const activate = async (key: string) => {
+    try {
+      await window.gt.setActiveSession(key)
+    } catch {
+      /* main rejected (e.g. session removed) — fall through and flip locally */
+    }
     setActiveKey(key)
   }
 

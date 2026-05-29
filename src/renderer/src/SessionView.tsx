@@ -86,18 +86,24 @@ export function SessionView({
 
   // once this session is attached AND active: load branch + widgets + tab context.
   // (data IPC reads the active session in main, so only fetch when active.)
+  // Deferred by one frame so the session-switch paint wins the race against
+  // the IPC burst — otherwise the click can feel like it didn't register.
   useEffect(() => {
     if (!info.sessionId || !active) return
-    window.gt.transcript().then((t) => t.gitBranch && setBranch(t.gitBranch))
-    window.gt
-      .listCommandWidgets()
-      .then((ws) => setCmdPlugins(ws.map(commandWidgetToPlugin)))
-      .catch(() => {})
-    window.gt.tabContext().then(setCtx).catch(() => {})
+    const raf = requestAnimationFrame(() => {
+      window.gt.transcript().then((t) => t.gitBranch && setBranch(t.gitBranch))
+      window.gt
+        .listCommandWidgets()
+        .then((ws) => setCmdPlugins(ws.map(commandWidgetToPlugin)))
+        .catch(() => {})
+      window.gt.tabContext().then(setCtx).catch(() => {})
+    })
+    return () => cancelAnimationFrame(raf)
   }, [info.sessionId, active])
 
   // Poll tab badges (e.g. HITL count) for any tab that declares one — refresh
-  // on the transcript tick and a slow interval.
+  // on the transcript tick and a slow interval. Initial run also deferred by
+  // one frame to spread the post-switch IPC burst.
   useEffect(() => {
     if (!active || !ctx) return
     const withBadge = tabs.filter((t) => t.badge)
@@ -109,11 +115,12 @@ export function SessionView({
       )
       if (alive) setTabBadges((b) => ({ ...b, ...Object.fromEntries(entries) }))
     }
-    run()
+    const raf = requestAnimationFrame(run)
     const off = window.gt.onTick(run)
     const id = setInterval(run, 8000)
     return () => {
       alive = false
+      cancelAnimationFrame(raf)
       off()
       clearInterval(id)
     }
