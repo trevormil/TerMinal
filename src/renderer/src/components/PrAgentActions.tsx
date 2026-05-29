@@ -12,11 +12,11 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
   const [kind, setKind] = useState<'review' | 'iterate' | null>(null)
   const [done, setDone] = useState<{ msg: string; ok: boolean } | null>(null)
 
-  const launch = async (engine: Engine, persona: string, pipeline: string) => {
+  const launch = async (engine: Engine, persona: string, pipeline: string, model?: string) => {
     const k = kind
     setKind(null)
     if (!k) return
-    const r = await window.gt.agents.runPr(pr, k, engine, persona, pipeline)
+    const r = await window.gt.agents.runPr(pr, k, engine, persona, pipeline, model)
     const ok = !('error' in r)
     setDone({ msg: ok ? `${k} spun out` : (r as { error: string }).error, ok })
     setTimeout(() => setDone(null), ok ? 4000 : 6000)

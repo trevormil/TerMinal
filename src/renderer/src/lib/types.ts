@@ -461,12 +461,14 @@ export type GtApi = {
       engine?: Engine,
       persona?: string,
       pipeline?: string,
+      model?: string,
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,
       engine: Engine,
       persona?: string,
       pipeline?: string,
+      model?: string,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -474,6 +476,7 @@ export type GtApi = {
       engine: Engine,
       persona?: string,
       pipeline?: string,
+      model?: string,
     ) => Promise<AgentRun | { error: string }>
     runs: () => Promise<AgentRun[]>
     cancel: (runId: string) => Promise<boolean>

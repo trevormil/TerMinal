@@ -393,8 +393,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [sel, selectedRun && outputs[selectedRun.id]])
 
-  const run = async (id: string, engine: Engine, persona: string, pipeline: string) => {
-    const r = await window.gt.agents.run(id, engine, persona, pipeline)
+  const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string) => {
+    const r = await window.gt.agents.run(id, engine, persona, pipeline, model)
     if ('error' in r) {
       setOutputs((o) => ({ ...o, __err: r.error }))
       return
@@ -652,8 +652,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
         <EnginePicker
           title={`Run · ${picking.title}`}
           onClose={() => setPicking(null)}
-          onPick={(e, persona, pipeline) => {
-            run(picking.id, e, persona, pipeline)
+          onPick={(e, persona, pipeline, model) => {
+            run(picking.id, e, persona, pipeline, model)
             setPicking(null)
           }}
         />

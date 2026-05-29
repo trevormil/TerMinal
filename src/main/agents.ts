@@ -550,6 +550,7 @@ export function runAgent(
   engine?: Engine,
   personaId?: string,
   pipelineId?: string,
+  model?: string,
 ): AgentRun | { error: string } {
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
@@ -567,7 +568,7 @@ export function runAgent(
     persona,
     pipeline,
     inPlace: agent.inPlace,
-    model: agent.model,
+    model: model ?? agent.model,
   })
 }
 
@@ -723,10 +724,11 @@ export function runTicketAgent(
   engine: Engine,
   personaId?: string,
   pipelineId?: string,
+  model?: string,
 ): AgentRun | { error: string } {
   const base = `Implement backlog ticket #${ticket.id}: ${ticket.title}\n\n${ticket.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${ticket.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
   const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement #${ticket.id}`, prompt: base }, personaId, pipelineId)
-  return runSpec(repoRoot, { id: `ticket-${ticket.id}`, title: `Implement #${ticket.id}`, steps, engine, persona, pipeline })
+  return runSpec(repoRoot, { id: `ticket-${ticket.id}`, title: `Implement #${ticket.id}`, steps, engine, persona, pipeline, model })
 }
 
 /** Spawn an agent that files ONE backlog ticket from a freeform request. Runs
@@ -775,6 +777,7 @@ export function runPrAgent(
   engine: Engine,
   personaId?: string,
   pipelineId?: string,
+  model?: string,
 ): AgentRun | { error: string } {
   if (!pr?.sourceBranch) return { error: 'PR/MR has no source branch' }
   const f = forgeFor(repoRoot)
@@ -802,6 +805,7 @@ export function runPrAgent(
     persona,
     pipeline,
     prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
+    model,
   })
 }
 

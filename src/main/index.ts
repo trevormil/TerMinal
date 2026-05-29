@@ -454,14 +454,14 @@ ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string) =>
-  runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline),
+ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string) =>
+  runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model),
 )
-ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string) => {
+ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string) => {
   const root = repoRootOf(cur().cwd)
   const t = getTicket(root, slug)
   return t
-    ? runTicketAgent(root, { id: t.id, title: t.title, body: t.body }, engine, persona, pipeline)
+    ? runTicketAgent(root, { id: t.id, title: t.title, body: t.body }, engine, persona, pipeline, model)
     : { error: 'ticket not found' }
 })
 ipcMain.handle(
@@ -473,7 +473,8 @@ ipcMain.handle(
     engine: Engine,
     persona?: string,
     pipeline?: string,
-  ) => runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline),
+    model?: string,
+  ) => runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model),
 )
 ipcMain.handle('agents:runs', () => listRuns())
 ipcMain.handle('agents:cancel', (_e, runId: string) => cancelRun(runId))

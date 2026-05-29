@@ -53,17 +53,18 @@ const gt = {
       ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
-    run: (id: string, engine?: string, persona?: string, pipeline?: string) =>
-      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline),
-    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string) =>
-      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline),
+    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string) =>
+      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model),
+    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string) =>
+      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
       kind: 'review' | 'iterate',
       engine: string,
       persona?: string,
       pipeline?: string,
-    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline),
+      model?: string,
+    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model),
     runs: () => ipcRenderer.invoke('agents:runs'),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
     removeWorktree: (runId: string) => ipcRenderer.invoke('agents:remove-worktree', runId),

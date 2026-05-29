@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
+import { EngineModelPicker } from './EngineModelPicker'
 import openaiLogo from '../assets/openai.svg'
 import anthropicLogo from '../assets/anthropic.svg'
 
@@ -49,10 +50,11 @@ export function EnginePicker({
   onClose,
 }: {
   title: string
-  onPick: (engine: Engine, persona: string, pipeline: string) => void
+  onPick: (engine: Engine, persona: string, pipeline: string, model?: string) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
+  const [model, setModel] = useState<string | undefined>(undefined)
   const [persona, setPersona] = useState<string | null>(null) // null = not chosen, '' = none
   const [personas, setPersonas] = useState<Persona[]>([])
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
@@ -137,9 +139,23 @@ export function EnginePicker({
 
         {step === 2 && (
           <>
-            <p className="mb-3 text-[11.5px] text-zinc-500">
-              2 · Run as a persona? <span className="text-zinc-600">(via {engine})</span>
-            </p>
+            <div className="mb-3 flex items-center gap-2">
+              <p className="text-[11.5px] text-zinc-500">
+                2 · Run as a persona? <span className="text-zinc-600">(via {engine})</span>
+              </p>
+              <div className="ml-auto">
+                <EngineModelPicker
+                  engine={engine as Engine}
+                  model={model}
+                  onChange={(e, m) => {
+                    setEngine(e)
+                    setModel(m)
+                  }}
+                  size="sm"
+                  align="right"
+                />
+              </div>
+            </div>
             <div className="max-h-[320px] space-y-1.5 overflow-y-auto">
               <button
                 onClick={() => setPersona('')}
@@ -186,7 +202,7 @@ export function EnginePicker({
                 return (
                   <button
                     key={pl.id}
-                    onClick={() => onPick(engine as Engine, persona ?? '', pl.id)}
+                    onClick={() => onPick(engine as Engine, persona ?? '', pl.id, model)}
                     className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
                   >
                     <Icon size={17} strokeWidth={1.75} className="shrink-0 text-[var(--gt-accent-light)]" />
