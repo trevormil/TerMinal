@@ -13,7 +13,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13 # pinned for reproducible CI (matches local toolchain)
 
       # --ignore-scripts skips node-pty's electron-rebuild (native build not
       # needed for typecheck/test/bundle, and avoids CI flakiness).
