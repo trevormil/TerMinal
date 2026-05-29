@@ -8,6 +8,10 @@
   <img src="docs/screenshot.png" width="900" alt="TerMinal — the terminal tab with the live cockpit sidebar" />
 </p>
 
+<p align="center">
+  <img src="docs/tabs.png" width="900" alt="TerMinal tab bar" />
+</p>
+
 An alt-terminal for [Claude Code](https://claude.com/claude-code). One window
 hosts **many Claude sessions** as top tabs — each runs the real `claude` CLI in
 its own PTY and carries its own **cockpit**: a sidebar of live telemetry for
@@ -75,10 +79,6 @@ open "/Applications/TerMinal.app"   # right-click → Open the first time
 See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 
 ## Tabs
-
-<p align="center">
-  <img src="docs/tabs.png" width="900" alt="TerMinal tab bar" />
-</p>
 
 A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
 repo-aware — each shows based on the attached session's repo.
