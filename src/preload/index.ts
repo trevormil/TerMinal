@@ -183,6 +183,7 @@ const gt = {
   openInBrowser: (url: string) => ipcRenderer.invoke('open:in-browser', url),
   openInEditor: (path?: string) => ipcRenderer.invoke('open:in-editor', path),
   openConfigDir: () => ipcRenderer.invoke('open:config-dir'),
+  mcpInstall: () => ipcRenderer.invoke('mcp:install'),
   workspace: {
     isBootstrapped: (repoRoot: string) => ipcRenderer.invoke('workspace:is-bootstrapped', repoRoot),
     bootstrap: (repoRoot: string) => ipcRenderer.invoke('workspace:bootstrap', repoRoot),

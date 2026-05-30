@@ -14,6 +14,8 @@ extraResources:
     to: terminal-cron
   - from: bin/terminal-cli
     to: terminal-cli
+  - from: bin/terminal-mcp-server
+    to: terminal-mcp-server
 # node-pty ships a native .node binary that can't live inside the asar archive.
 asarUnpack:
   - '**/node_modules/node-pty/**'

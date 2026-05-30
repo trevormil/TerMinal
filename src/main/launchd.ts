@@ -67,6 +67,20 @@ export function installCli(srcPath: string): void {
   }
 }
 
+// MCP server for cross-session views (ticket #0003). Same path scheme so
+// agents can launch it via stdio.
+export function installMcpServer(srcPath: string): void {
+  try {
+    if (!existsSync(srcPath)) return
+    mkdirSync(join(CFG, 'bin'), { recursive: true })
+    const dest = join(CFG, 'bin', 'terminal-mcp-server')
+    copyFileSync(srcPath, dest)
+    chmodSync(dest, 0o755)
+  } catch {
+    /* best effort */
+  }
+}
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 function plistXml(s: Schedule): string {

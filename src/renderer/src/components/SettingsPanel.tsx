@@ -292,6 +292,13 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     setNotify({ busy: true })
     setNotify(await window.gt.installGtNotify())
   }
+  const [mcpState, setMcpState] = useState<{ busy?: boolean; ok?: boolean; installed?: string[]; error?: string } | null>(null)
+  const installMcp = async () => {
+    setMcpState({ busy: true })
+    const r = await window.gt.mcpInstall()
+    if ('error' in r) setMcpState({ error: r.error })
+    else setMcpState({ ok: true, installed: r.installed })
+  }
   const copySetupPrompt = async () => {
     const repo = s?.templateRepo || 'https://github.com/trevormil/project-template'
     const prompt = [
@@ -579,6 +586,22 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               {notify && !notify.busy && (
                 <div className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
                   {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
+                </div>
+              )}
+              <button
+                onClick={installMcp}
+                disabled={mcpState?.busy}
+                className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+              >
+                {mcpState?.busy ? <Loader2 size={14} className="animate-spin" /> : <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
+                Install MCP server (Claude Code)
+                <span className="ml-auto text-[10.5px] text-zinc-600">cross-session views</span>
+              </button>
+              {mcpState && !mcpState.busy && (
+                <div className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
+                  {mcpState.ok
+                    ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
+                    : mcpState.error}
                 </div>
               )}
               <button onClick={onRerunSetup} className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40">

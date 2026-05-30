@@ -621,6 +621,7 @@ export type GtApi = {
   openInBrowser: (url: string) => Promise<void>
   openInEditor: (path?: string) => Promise<void>
   openConfigDir: () => Promise<string>
+  mcpInstall: () => Promise<{ ok: true; installed: string[] } | { error: string }>
   workspace: {
     isBootstrapped: (repoRoot: string) => Promise<{ bootstrapped: boolean }>
     bootstrap: (repoRoot: string) => Promise<{ ok: true } | { error: string }>

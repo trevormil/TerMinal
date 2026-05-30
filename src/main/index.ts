@@ -3,7 +3,7 @@ import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync } from 'node:fs'
+import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
 import { spawn as cpSpawn } from 'node:child_process'
 import * as pty from 'node-pty'
 
@@ -91,6 +91,7 @@ import {
 import {
   installRunner,
   installCli,
+  installMcpServer,
   reconcileSchedules,
   syncSchedule,
   unscheduleJob,
@@ -347,6 +348,10 @@ function createWindow() {
     ? join(process.resourcesPath, 'terminal-cli')
     : join(moduleDir, '../../bin/terminal-cli')
   installCli(cliSrc)
+  const mcpSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-mcp-server')
+    : join(moduleDir, '../../bin/terminal-mcp-server')
+  installMcpServer(mcpSrc)
   try {
     reconcileSchedules()
   } catch {
@@ -713,6 +718,40 @@ ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
 ipcMain.handle('open:config-dir', () => shell.openPath(join(homedir(), '.config', 'TerMinal')))
+
+// Install the MCP server entry into ~/.claude/mcp.json (and ~/.codex's
+// equivalent if it exists). Read-only, stdio transport. Idempotent —
+// re-running just updates the binary path.
+ipcMain.handle('mcp:install', () => {
+  const binPath = join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-mcp-server')
+  if (!existsSync(binPath)) {
+    return { error: `terminal-mcp-server not installed at ${binPath}` }
+  }
+  const installed: string[] = []
+  // Claude Code: ~/.claude/mcp.json (per Anthropic CLI docs)
+  try {
+    const claudeMcp = join(homedir(), '.claude', 'mcp.json')
+    let cfg: any = {}
+    if (existsSync(claudeMcp)) {
+      try {
+        cfg = JSON.parse(readFileSync(claudeMcp, 'utf8'))
+      } catch {
+        cfg = {}
+      }
+    }
+    cfg.mcpServers ??= {}
+    cfg.mcpServers['terminal-harness'] = {
+      command: binPath,
+      args: [],
+    }
+    mkdirSync(dirname(claudeMcp), { recursive: true })
+    writeFileSync(claudeMcp, JSON.stringify(cfg, null, 2))
+    installed.push('Claude Code (~/.claude/mcp.json)')
+  } catch (e) {
+    return { error: `failed to write Claude config: ${(e as Error).message}` }
+  }
+  return { ok: true, installed }
+})
 
 // Workspace bootstrap helpers.
 // "Bootstrapped" === the project-template machinery is present in the repo

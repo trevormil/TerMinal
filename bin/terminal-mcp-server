@@ -1,0 +1,434 @@
+#!/usr/bin/env bun
+// terminal-mcp-server — Model Context Protocol server exposing TerMinal's
+// cross-session state (backlog tickets, PRs, schedules, agent runs) to
+// in-session Claude/Codex agents. Stdio transport, read-only.
+//
+// Closes ticket #0003. Sessions are sandboxed to one cwd; this server is the
+// bridge to the harness's persistent state.
+
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { join, basename, dirname, sep } from 'node:path'
+import { homedir } from 'node:os'
+
+const CFG = join(homedir(), '.config', 'TerMinal')
+const PRS_ROOT = join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness', 'prs')
+
+// ---------------------------------------------------------------------------
+// Frontmatter parser (mirrors the renderer-side parser; minimal, regex-only)
+// ---------------------------------------------------------------------------
+function parseFrontmatter(md) {
+  const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
+  if (!m) return { meta: {}, body: md }
+  const meta = {}
+  for (const line of m[1].split(/\r?\n/)) {
+    const lm = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/)
+    if (!lm) continue
+    const raw = lm[2].trim()
+    if (!raw) continue
+    let val = raw
+    if (raw === 'true' || raw === 'false') val = raw === 'true'
+    else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw)
+    else if (raw.startsWith('"') && raw.endsWith('"')) val = raw.slice(1, -1)
+    else if (raw.startsWith('[') && raw.endsWith(']')) {
+      val = raw
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean)
+    }
+    meta[lm[1]] = val
+  }
+  return { meta, body: m[2] || '' }
+}
+
+// ---------------------------------------------------------------------------
+// Resource readers — each delegates to existing on-disk shapes
+// ---------------------------------------------------------------------------
+
+function knownRepoRoots() {
+  // Repos known to the harness: anything with a schedule, anything in
+  // prs/cache.json, anything in the workspaces persisted state, anything in
+  // bg-tasks.json.
+  const roots = new Set()
+  // schedules.json
+  try {
+    const sf = join(CFG, 'schedules.json')
+    if (existsSync(sf)) {
+      const arr = JSON.parse(readFileSync(sf, 'utf8'))
+      for (const s of arr) if (s.repoRoot) roots.add(s.repoRoot)
+    }
+  } catch {}
+  // bg-tasks.json
+  try {
+    const bf = join(CFG, 'bg-tasks.json')
+    if (existsSync(bf)) {
+      const arr = JSON.parse(readFileSync(bf, 'utf8'))
+      for (const t of arr) if (t.repoRoot) roots.add(t.repoRoot)
+    }
+  } catch {}
+  // Walk common parent dir to find any repo not yet known
+  const parent = join(homedir(), 'CompSci', 'gauntlet')
+  if (existsSync(parent)) {
+    try {
+      for (const name of readdirSync(parent)) {
+        const p = join(parent, name)
+        if (name.startsWith('.')) continue
+        if (existsSync(join(p, '.git'))) roots.add(p)
+      }
+    } catch {}
+  }
+  return [...roots]
+}
+
+function findRepoRoot(repoArg) {
+  if (!repoArg) return null
+  const target = repoArg.toLowerCase()
+  for (const root of knownRepoRoots()) {
+    const b = basename(root).toLowerCase()
+    if (b === target || root.toLowerCase().endsWith(target)) return root
+  }
+  return null
+}
+
+// --- tickets ---------------------------------------------------------------
+
+function listTicketsForRoot(repoRoot, filter) {
+  const dir = join(repoRoot, 'backlog')
+  if (!existsSync(dir)) return []
+  const out = []
+  let files
+  try {
+    files = readdirSync(dir)
+  } catch {
+    return []
+  }
+  for (const f of files) {
+    if (!/^\d{4}-.*\.md$/.test(f)) continue
+    let raw
+    try {
+      raw = readFileSync(join(dir, f), 'utf8')
+    } catch {
+      continue
+    }
+    const { meta, body } = parseFrontmatter(raw)
+    const slug = f.replace(/\.md$/, '')
+    const ticket = {
+      slug,
+      id: typeof meta.id === 'number' ? meta.id : parseInt(slug.slice(0, 4), 10),
+      title: meta.title || slug,
+      status: meta.status || 'open',
+      priority: meta.priority || 'medium',
+      type: meta.type || 'feature',
+      horizon: meta.horizon || 'now',
+      hitl: meta.hitl === true,
+      created: meta.created,
+      updated: meta.updated,
+      prs: meta.prs || [],
+      repo: basename(repoRoot),
+      body: body.slice(0, 600), // truncate; agents can fetch full via get_ticket
+    }
+    if (filter?.status && ticket.status !== filter.status) continue
+    if (filter?.type && ticket.type !== filter.type) continue
+    out.push(ticket)
+  }
+  return out.sort((a, b) => a.id - b.id)
+}
+
+function listTicketsTool(args) {
+  const repo = args.repo
+  const roots = repo ? [findRepoRoot(repo)].filter(Boolean) : knownRepoRoots()
+  const filter = { status: args.status, type: args.type }
+  return roots.flatMap((r) => listTicketsForRoot(r, filter))
+}
+
+function getTicketTool(args) {
+  const slug = args.slug
+  if (!slug) return null
+  // Try every known repo until we find it
+  for (const root of knownRepoRoots()) {
+    const f = join(root, 'backlog', `${slug}.md`)
+    if (existsSync(f)) {
+      const raw = readFileSync(f, 'utf8')
+      const { meta, body } = parseFrontmatter(raw)
+      return {
+        slug,
+        repo: basename(root),
+        repoRoot: root,
+        ...meta,
+        body,
+      }
+    }
+  }
+  return null
+}
+
+// --- PRs / MRs (from autopilot-harness's prs/ artifact store) -------------
+
+function listPrs(args) {
+  if (!existsSync(PRS_ROOT)) return []
+  const out = []
+  // prs/<host>/<owner>/<name>/<num>/meta.json
+  const walk = (dir, depth = 0) => {
+    if (depth > 4) return
+    let names
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const p = join(dir, name)
+      let st
+      try {
+        st = statSync(p)
+      } catch {
+        continue
+      }
+      if (st.isDirectory()) walk(p, depth + 1)
+      else if (name === 'meta.json') {
+        try {
+          const meta = JSON.parse(readFileSync(p, 'utf8'))
+          if (args.repo && !meta.repo?.toLowerCase().includes(args.repo.toLowerCase())) continue
+          if (args.status && meta.state !== args.status) continue
+          out.push({
+            host: meta.host,
+            repo: meta.repo,
+            number: meta.number,
+            title: meta.title,
+            state: meta.state,
+            webUrl: meta.webUrl,
+            author: meta.author,
+            updatedAt: meta.updatedAt,
+            commits: (meta.commits || []).length,
+          })
+        } catch {}
+      }
+    }
+  }
+  walk(PRS_ROOT)
+  return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 50)
+}
+
+function getPrArtifact(args) {
+  const { host, repo, number, sha } = args
+  if (!host || !repo || !number) return null
+  const dir = join(PRS_ROOT, host, ...repo.split('/'), String(number))
+  if (!existsSync(dir)) return null
+  // Default sha = first commit in meta.json (newest)
+  let targetSha = sha
+  if (!targetSha) {
+    try {
+      const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'))
+      targetSha = meta.commits?.[0]?.slice(0, 7)
+    } catch {}
+  }
+  if (!targetSha) return null
+  const file = join(dir, `${targetSha}.md`)
+  if (!existsSync(file)) return null
+  const raw = readFileSync(file, 'utf8')
+  const { meta, body } = parseFrontmatter(raw)
+  return { host, repo, number, sha: targetSha, meta, body }
+}
+
+// --- schedules + agent runs -----------------------------------------------
+
+function listSchedules(args) {
+  const sf = join(CFG, 'schedules.json')
+  if (!existsSync(sf)) return []
+  try {
+    const arr = JSON.parse(readFileSync(sf, 'utf8'))
+    return arr.filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
+  } catch {
+    return []
+  }
+}
+
+function recentAgentRuns(args) {
+  const out = []
+  // cron-runs/
+  const cronDir = join(CFG, 'cron-runs')
+  if (existsSync(cronDir)) {
+    try {
+      for (const f of readdirSync(cronDir)) {
+        if (!f.endsWith('.json')) continue
+        try {
+          const r = JSON.parse(readFileSync(join(cronDir, f), 'utf8'))
+          if (args.repo && !r.repoLabel?.toLowerCase().includes(args.repo.toLowerCase())) continue
+          if (args.status && r.status !== args.status) continue
+          out.push({ ...r, source: 'cron' })
+        } catch {}
+      }
+    } catch {}
+  }
+  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, args.limit || 50)
+}
+
+function aiSpendToday(args) {
+  // Read ai-runs/ and roll up for today
+  const dir = join(CFG, 'ai-runs')
+  if (!existsSync(dir)) return { totalUsd: 0, totalRuns: 0, byModel: {}, byAgent: {} }
+  const dayStart = (() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d.getTime()
+  })()
+  let totalUsd = 0
+  let totalRuns = 0
+  const byModel = {}
+  const byAgent = {}
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue
+      try {
+        const r = JSON.parse(readFileSync(join(dir, f), 'utf8'))
+        if ((r.startedAt || 0) < dayStart) continue
+        if (args.repo) {
+          const b = basename(r.repoRoot || '')
+          if (!b.toLowerCase().includes(args.repo.toLowerCase())) continue
+        }
+        if (args.agent && r.agentId !== args.agent) continue
+        totalUsd += r.costUsd || 0
+        totalRuns++
+        byModel[r.model] = (byModel[r.model] || 0) + (r.costUsd || 0)
+        if (r.agentId) byAgent[r.agentId] = (byAgent[r.agentId] || 0) + (r.costUsd || 0)
+      } catch {}
+    }
+  } catch {}
+  return { totalUsd, totalRuns, byModel, byAgent }
+}
+
+// ---------------------------------------------------------------------------
+// MCP JSON-RPC server (stdio)
+//
+// We implement the minimal MCP slice: tools/list + tools/call + initialize.
+// No prompts, no resources, no completion. Reads stdin line-buffered.
+// ---------------------------------------------------------------------------
+
+const TOOLS = [
+  {
+    name: 'list_tickets',
+    description:
+      'List backlog tickets across managed repos. Filter by repo (basename), status (open|in-progress|closed|stuck|icebox), or type (bug|feature|...).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string' },
+        status: { type: 'string' },
+        type: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'get_ticket',
+    description: 'Fetch the full body + frontmatter of one ticket by its slug (e.g. "0042-fix-foo").',
+    inputSchema: { type: 'object', properties: { slug: { type: 'string' } }, required: ['slug'] },
+  },
+  {
+    name: 'list_prs',
+    description: 'List PRs / MRs the harness is tracking (newest first, capped at 50).',
+    inputSchema: { type: 'object', properties: { repo: { type: 'string' }, status: { type: 'string' } } },
+  },
+  {
+    name: 'get_pr_artifact',
+    description:
+      'Fetch the latest review+test artifact for one PR. SHA optional (defaults to newest commit).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        host: { type: 'string' },
+        repo: { type: 'string' },
+        number: { type: 'number' },
+        sha: { type: 'string' },
+      },
+      required: ['host', 'repo', 'number'],
+    },
+  },
+  {
+    name: 'list_scheduled_agents',
+    description: 'List scheduled cron agents (filterable by repo basename).',
+    inputSchema: { type: 'object', properties: { repo: { type: 'string' } } },
+  },
+  {
+    name: 'recent_agent_runs',
+    description: 'Recent scheduled-agent runs (cron-runs/ ledger). Filter by repo, status, limit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string' },
+        status: { type: 'string' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'ai_spend_today',
+    description: 'Cost summary for today (USD spent across the AI fleet). Filterable by repo or agent.',
+    inputSchema: { type: 'object', properties: { repo: { type: 'string' }, agent: { type: 'string' } } },
+  },
+]
+
+const HANDLERS = {
+  list_tickets: listTicketsTool,
+  get_ticket: getTicketTool,
+  list_prs: listPrs,
+  get_pr_artifact: getPrArtifact,
+  list_scheduled_agents: listSchedules,
+  recent_agent_runs: recentAgentRuns,
+  ai_spend_today: aiSpendToday,
+}
+
+function jsonRpc(id, result, error) {
+  const msg = error ? { jsonrpc: '2.0', id, error } : { jsonrpc: '2.0', id, result }
+  process.stdout.write(JSON.stringify(msg) + '\n')
+}
+
+function handleRequest(req) {
+  const { id, method, params } = req
+  if (method === 'initialize') {
+    return jsonRpc(id, {
+      protocolVersion: '2025-06-18',
+      capabilities: { tools: {} },
+      serverInfo: { name: 'terminal-harness', version: '0.1.0' },
+    })
+  }
+  if (method === 'notifications/initialized') return // notification, no reply
+  if (method === 'tools/list') {
+    return jsonRpc(id, { tools: TOOLS })
+  }
+  if (method === 'tools/call') {
+    const name = params?.name
+    const args = params?.arguments || {}
+    const handler = HANDLERS[name]
+    if (!handler) return jsonRpc(id, null, { code: -32601, message: `Unknown tool: ${name}` })
+    try {
+      const result = handler(args)
+      return jsonRpc(id, {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      })
+    } catch (e) {
+      return jsonRpc(id, null, { code: -32603, message: e.message })
+    }
+  }
+  jsonRpc(id, null, { code: -32601, message: `Method not found: ${method}` })
+}
+
+// Line-buffered stdin
+let buffer = ''
+process.stdin.on('data', (chunk) => {
+  buffer += chunk.toString()
+  let nl
+  while ((nl = buffer.indexOf('\n')) >= 0) {
+    const line = buffer.slice(0, nl).trim()
+    buffer = buffer.slice(nl + 1)
+    if (!line) continue
+    try {
+      const req = JSON.parse(line)
+      handleRequest(req)
+    } catch (e) {
+      // Parse error
+      process.stderr.write(`mcp-server: parse error: ${e.message}\n`)
+    }
+  }
+})
+
+process.stdin.on('end', () => process.exit(0))

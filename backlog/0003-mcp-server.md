@@ -1,7 +1,7 @@
 ---
 id: 3
 title: "MCP server: expose cross-session harness state to in-session agents"
-status: open
+status: closed
 priority: high
 horizon: next
 hitl: false
