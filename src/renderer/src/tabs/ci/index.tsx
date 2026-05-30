@@ -405,7 +405,7 @@ const tab: Tab = {
   id: 'ci',
   title: 'CI',
   icon: GitMerge,
-  order: 2.5, // right after MRs/PRs — same forge surface
+  order: 3.55, // after Agents (3) → Runs (3.45) → Schedules (3.5) cluster
   appliesTo: (ctx) => !!ctx.repoRoot,
   Component: ({ ctx }) => <CiTab ctx={ctx} />,
 }
