@@ -28,7 +28,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rea
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { execSync } from 'node:child_process'
+import { execSync, execFile } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
@@ -242,6 +242,85 @@ function stateCommand(sub, rest) {
   process.exit(2)
 }
 
+// terminal-cli mcp <tool> [k=v k=v ...] — shell-friendly invocation of the
+// MCP server's tools so bash agent scripts can call them without a JSON-RPC
+// client. Spawns the MCP server, sends initialize + tools/call, prints the
+// result text, exits.
+function mcpCommand(tool, kvArgs) {
+  if (!tool) {
+    console.error(
+      'usage: terminal-cli mcp <tool> [k=v k=v ...]\n' +
+        'examples:\n' +
+        '  terminal-cli mcp file_ticket repo=vellum-project title="fix flaky test" type=bug\n' +
+        '  terminal-cli mcp list_hitl status=open\n' +
+        '  terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=pr-opened\n',
+    )
+    process.exit(2)
+  }
+  // Parse k=v args. Values are JSON-parsed when possible so booleans/numbers
+  // round-trip; otherwise treated as strings.
+  const params = {}
+  for (const a of kvArgs) {
+    const eq = a.indexOf('=')
+    if (eq < 0) continue
+    const key = a.slice(0, eq)
+    const raw = a.slice(eq + 1)
+    let val = raw
+    try {
+      val = JSON.parse(raw)
+    } catch {
+      /* leave as string */
+    }
+    params[key] = val
+  }
+  // Spawn the MCP server as a subprocess
+  const serverBin = join(CFG, 'bin', 'terminal-mcp-server')
+  if (!existsSync(serverBin)) {
+    console.error(`terminal-cli mcp: server not installed at ${serverBin}`)
+    process.exit(2)
+  }
+  const child = execFile(serverBin, [], { timeout: 30_000 }, (err, stdout) => {
+    if (err && err.code === 'ETIMEDOUT') {
+      console.error('terminal-cli mcp: server timeout')
+      process.exit(1)
+    }
+    // Parse the responses — initialize + tools/call (we sent them as two
+    // requests). The last one is the result we want.
+    let result = null
+    for (const line of (stdout || '').split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const r = JSON.parse(line)
+        if (r.id === 2) result = r
+      } catch {}
+    }
+    if (!result) {
+      console.error('terminal-cli mcp: no response')
+      process.exit(1)
+    }
+    if (result.error) {
+      console.error(`terminal-cli mcp: ${result.error.message}`)
+      process.exit(1)
+    }
+    // Tool results come as { content: [{ type:'text', text:'<json>' }] }
+    const text = result.result?.content?.[0]?.text
+    if (text) console.log(text)
+    process.exit(0)
+  })
+  child.stdin.write(
+    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }) +
+      '\n' +
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: tool, arguments: params },
+      }) +
+      '\n',
+  )
+  child.stdin.end()
+}
+
 function fileTicket(title, body) {
   if (!repo) {
     console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
@@ -297,6 +376,9 @@ switch (cmd) {
     break
   case 'state':
     stateCommand(args[0], args.slice(1))
+    break
+  case 'mcp':
+    mcpCommand(args[0], args.slice(1))
     break
   default:
     console.error(

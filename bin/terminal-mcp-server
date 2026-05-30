@@ -554,6 +554,137 @@ function getAgentStateTool(args) {
   }
 }
 
+// --- list_activity --------------------------------------------------------
+
+function listActivityTool(args) {
+  const { kind, repo, sinceMs, limit = 50 } = args || {}
+  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'activity.jsonl')
+  if (!existsSync(file)) return []
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return []
+  }
+  const events = []
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const ev = JSON.parse(line)
+      if (kind && ev.kind !== kind) continue
+      if (repo && !(ev.repo || '').toLowerCase().includes(repo.toLowerCase())) continue
+      if (sinceMs && ev.ts < sinceMs) continue
+      events.push(ev)
+    } catch {}
+  }
+  return events.slice(-limit).reverse()
+}
+
+// --- list_hitl ------------------------------------------------------------
+
+function listHitlTool(args) {
+  const { status = 'open', repo, limit = 50 } = args || {}
+  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'hitl.json')
+  if (!existsSync(file)) return []
+  try {
+    const arr = JSON.parse(readFileSync(file, 'utf8'))
+    return arr
+      .filter((h) => (status === 'all' ? true : h.status === status))
+      .filter((h) => !repo || (h.repo || '').toLowerCase().includes(repo.toLowerCase()))
+      .slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
+// --- list_bg_tasks --------------------------------------------------------
+
+function listBgTasksTool(args) {
+  const { status, repo, limit = 20 } = args || {}
+  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'bg-tasks.json')
+  if (!existsSync(file)) return []
+  try {
+    const arr = JSON.parse(readFileSync(file, 'utf8'))
+    return arr
+      .filter((t) => !status || t.status === status)
+      .filter((t) => !repo || (t.repo || '').toLowerCase().includes(repo.toLowerCase()))
+      .slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
+// --- harness_status -------------------------------------------------------
+
+function harnessStatusTool() {
+  const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+  const hitlFile = join(cfg, 'hitl.json')
+  let hitlOpen = 0
+  try {
+    if (existsSync(hitlFile)) {
+      const arr = JSON.parse(readFileSync(hitlFile, 'utf8'))
+      hitlOpen = arr.filter((h) => h.status === 'open').length
+    }
+  } catch {}
+  const cronDir = join(cfg, 'cron-runs')
+  let cronRunning = 0
+  let cronFailed24h = 0
+  if (existsSync(cronDir)) {
+    const dayAgo = Date.now() - 86_400_000
+    try {
+      for (const f of readdirSync(cronDir)) {
+        if (!f.endsWith('.json')) continue
+        try {
+          const r = JSON.parse(readFileSync(join(cronDir, f), 'utf8'))
+          if (r.status === 'running') cronRunning++
+          if (r.status === 'failed' && r.startedAt >= dayAgo) cronFailed24h++
+        } catch {}
+      }
+    } catch {}
+  }
+  let bgRunning = 0
+  try {
+    const bf = join(cfg, 'bg-tasks.json')
+    if (existsSync(bf)) {
+      const arr = JSON.parse(readFileSync(bf, 'utf8'))
+      bgRunning = arr.filter((t) => t.status === 'running').length
+    }
+  } catch {}
+  const spend = aiSpendToday({})
+  return {
+    hitlOpen,
+    cronRunning,
+    cronFailed24h,
+    bgRunning,
+    spendTodayUsd: spend.totalUsd,
+    spendByModel: spend.byModel,
+  }
+}
+
+// --- set_run_outcome ------------------------------------------------------
+
+function setRunOutcomeTool(args) {
+  const { runId, outcome } = args
+  if (!runId || !outcome) throw new Error('runId and outcome are required')
+  const dir = join(process.env.HOME || '', '.config', 'TerMinal', 'ai-runs')
+  if (!existsSync(dir)) return { ok: false, reason: 'no ai-runs/ dir' }
+  // Find the AIRun by runId (the harness id), not the AIRun file's own id
+  let updated = 0
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.json')) continue
+    const path = join(dir, f)
+    try {
+      const r = JSON.parse(readFileSync(path, 'utf8'))
+      if (r.runId === runId) {
+        r.outcome = outcome
+        writeFileSync(path, JSON.stringify(r, null, 2))
+        updated++
+      }
+    } catch {}
+  }
+  return { ok: updated > 0, updated }
+}
+
 // ---------------------------------------------------------------------------
 // MCP JSON-RPC server (stdio)
 //
@@ -745,6 +876,65 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'list_activity',
+    description:
+      'Query the TerMinal activity feed. Returns recent events filtered by kind/repo/sinceMs. Use to check "what happened recently" before deciding what to do next.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', description: 'Filter by activity kind' },
+        repo: { type: 'string' },
+        sinceMs: { type: 'number', description: 'ms epoch — only events newer than this' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_hitl',
+    description:
+      'List human-in-the-loop items. Default = open only. Use at the start of an agent run to check "is anything blocking me right now?" and self-route around blockers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'resolved', 'all'] },
+        repo: { type: 'string' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_bg_tasks',
+    description:
+      'List background /bg tasks. Filter by status (running|done|failed|canceled) and repo. Use to see what async work is already in flight before spawning more.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        repo: { type: 'string' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'harness_status',
+    description:
+      'Snapshot of the whole harness right now: HITL open count, cron running, cron failures in last 24h, bg tasks running, today\'s spend by model. The single-call answer to "how is the fleet doing".',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'set_run_outcome',
+    description:
+      'Tag a run with its outcome (pr-opened | ticket-filed | merged | none). Call at the end of an agent run so the per-agent ROI column on the Spend tab populates. The runId is the harness run id (TERMINAL_RUN_ID env var).',
+    inputSchema: {
+      type: 'object',
+      required: ['runId', 'outcome'],
+      properties: {
+        runId: { type: 'string' },
+        outcome: { type: 'string', enum: ['pr-opened', 'ticket-filed', 'merged', 'none'] },
+      },
+    },
+  },
 ]
 
 const HANDLERS = {
@@ -763,6 +953,11 @@ const HANDLERS = {
   emit_activity: emitActivityTool,
   set_agent_state: setAgentStateTool,
   get_agent_state: getAgentStateTool,
+  list_activity: listActivityTool,
+  list_hitl: listHitlTool,
+  list_bg_tasks: listBgTasksTool,
+  harness_status: harnessStatusTool,
+  set_run_outcome: setRunOutcomeTool,
 }
 
 function jsonRpc(id, result, error) {

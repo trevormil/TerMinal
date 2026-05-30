@@ -424,6 +424,23 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [allRuns, setAllRuns] = useState<
     { id: string; agentId: string; status: string; startedAt: number; endedAt?: number }[]
   >([])
+  // Per-agent week-spend from the AI ledger (#0001). Joined into the
+  // Recent-runs header so the operator sees "Sonnet eats $4 this week"
+  // without flipping to the Spend tab.
+  const [agentSpendWeek, setAgentSpendWeek] = useState<
+    Record<string, { runs: number; usd: number }>
+  >({})
+  useEffect(() => {
+    const load = () =>
+      window.gt.observability.byAgent('week').then((rows) => {
+        const m: Record<string, { runs: number; usd: number }> = {}
+        for (const r of rows) m[r.agentId] = { runs: r.runs, usd: r.usd }
+        setAgentSpendWeek(m)
+      })
+    load()
+    const t = setInterval(load, 30_000)
+    return () => clearInterval(t)
+  }, [])
   useEffect(() => {
     const load = () => window.gt.agents.allRuns().then(setAllRuns)
     load()
@@ -961,6 +978,24 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       Recent runs
                       <span className="text-zinc-700">·</span>
                       <span className="tabular-nums text-zinc-600">{agentRuns.length}</span>
+                      {(() => {
+                        const s = agentSpendWeek[selectedAgent.id]
+                        if (!s || s.usd <= 0) return null
+                        return (
+                          <>
+                            <span className="text-zinc-700">·</span>
+                            <span
+                              className="font-mono tabular-nums normal-case text-[var(--gt-accent-light)]"
+                              title="Total spend across this agent's runs in the last 7 days"
+                            >
+                              ${s.usd.toFixed(2)} / 7d
+                            </span>
+                            <span className="font-mono tabular-nums normal-case text-zinc-600">
+                              · avg ${(s.usd / Math.max(s.runs, 1)).toFixed(3)}/run
+                            </span>
+                          </>
+                        )
+                      })()}
                     </h3>
                     {/* Sparkline: last 20 runs across cron + in-process, newest
                         on the right. Each bar is a tiny color-coded square

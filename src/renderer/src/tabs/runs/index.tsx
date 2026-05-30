@@ -55,15 +55,37 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   const logRef = useRef<HTMLPreElement>(null)
 
   const reload = () => window.gt.agents.allRuns().then(setRuns)
+  // Cost per runId from the AI ledger — joined into each row so the operator
+  // sees "this run cost $X" without flipping tabs.
+  const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
+  const reloadCosts = async () => {
+    try {
+      const ai = await window.gt.observability.runs(500)
+      const m = new Map<string, number>()
+      for (const a of ai) if (a.runId) m.set(a.runId, (m.get(a.runId) || 0) + a.costUsd)
+      setCostByRunId(m)
+    } catch {
+      /* ignore */
+    }
+  }
   useEffect(() => {
     reload()
+    reloadCosts()
     // Auto-refresh while at least one run is running. Cheap polling — the
     // list itself is in-memory + tiny files on disk.
     const t = setInterval(() => {
       if (runs && runs.some((r) => r.status === 'running')) reload()
+      reloadCosts()
     }, 2000)
     return () => clearInterval(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fmtUsd = (n: number) => {
+    if (n >= 10) return `$${n.toFixed(2)}`
+    if (n >= 0.01) return `$${n.toFixed(3).replace(/0$/, '')}`
+    if (n > 0) return `$${n.toFixed(4)}`
+    return '—'
+  }
 
   // Cross-tab nav: when another tab calls navigateTo('runs', { runId }) we
   // pre-select that run + scroll the list to it.
@@ -302,6 +324,12 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                     {r.engine}
                   </span>
                   <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">{dur}</span>
+                  <span
+                    className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
+                    title="Cost from the AI fleet ledger (joined by runId)"
+                  >
+                    {fmtUsd(costByRunId.get(r.id) || 0)}
+                  </span>
                   <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{fmtWhen(r.startedAt)}</span>
                 </button>
               )
