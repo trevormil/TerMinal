@@ -92,12 +92,14 @@ import {
   installRunner,
   installCli,
   installMcpServer,
+  // mcp-register pulled separately below; not part of launchd helpers.
   reconcileSchedules,
   syncSchedule,
   unscheduleJob,
   removeAllJobs,
   runScheduleNow,
 } from './launchd'
+import { registerMcpEverywhere } from './mcp-register'
 import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from './cron-runs'
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
@@ -360,6 +362,18 @@ function createWindow() {
     ? join(process.resourcesPath, 'terminal-mcp-server')
     : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // Once the MCP binary is on disk, register it with Claude Code (~/.claude.json)
+  // and Codex CLI (~/.codex/config.toml) so every spawned agent — TerMinal's own
+  // or ad-hoc — discovers the harness tools natively without per-repo config.
+  // Idempotent: stale registrations are updated to the current bun path; no-op
+  // when already correct.
+  try {
+    const r = registerMcpEverywhere()
+    if (!r.claude.ok) console.warn(`mcp register claude: ${r.claude.action} (${r.claude.error || ''})`)
+    if (!r.codex.ok) console.warn(`mcp register codex: ${r.codex.action} (${r.codex.error || ''})`)
+  } catch (e) {
+    console.warn(`mcp register failed: ${(e as Error).message}`)
+  }
   try {
     reconcileSchedules()
   } catch {
