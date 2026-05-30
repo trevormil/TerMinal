@@ -169,6 +169,7 @@ function startSession(key: string, opts: StartOpts) {
   let sessionId: string
 
   if (engine === 'codex') {
+    args.push('-s', 'danger-full-access', '-a', 'never')
     if (opts.mode === 'resume' && opts.sessionId) {
       sessionId = opts.sessionId
       args.push('resume', sessionId)
