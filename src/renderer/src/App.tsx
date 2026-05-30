@@ -6,7 +6,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
-import type { FleetSession } from './lib/types'
+import type { Engine, FleetSession } from './lib/types'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -249,13 +249,17 @@ export default function App() {
   // SessionView prop, which makes React see "new" props on every render and
   // bypass any downstream memoization in SessionView.
   const peersByKey = useMemo(() => {
-    const m = new Map<string, { key: string; label: string; status: string; mode: 'new' | 'resume' }[]>()
+    const m = new Map<
+      string,
+      { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: Engine }[]
+    >()
     for (const ws of workspaces) {
       const peers = ws.sessions.map((x, i) => ({
         key: x.key,
         label: labelForSession(x, i, autoNamesByKey),
         status: statusByKey[x.key] || 'idle',
         mode: x.choice.mode,
+        engine: x.choice.engine,
       }))
       for (const s of ws.sessions) m.set(s.key, peers)
     }

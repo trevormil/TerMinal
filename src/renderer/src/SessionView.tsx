@@ -6,10 +6,11 @@ import { PluginDrawer } from './components/PluginDrawer'
 import { SnippetsDrawer } from './components/SnippetsDrawer'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
+import { EngineLogo } from './components/EngineLogo'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { commandWidgetToPlugin } from './lib/commandWidget'
-import type { Plugin, TabContext } from './lib/types'
+import type { Engine, Plugin, TabContext } from './lib/types'
 import { onNavigate } from './lib/nav'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -118,7 +119,9 @@ export function SessionView({
   choice,
   active,
   onStarted,
-  peerSessions = [{ key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode }],
+  peerSessions = [
+    { key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode, engine: choice.engine },
+  ],
   onSwitchSession,
   onAddSession,
   onCloseSession,
@@ -131,7 +134,7 @@ export function SessionView({
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
-  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume' }[]
+  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: Engine }[]
   onSwitchSession?: (key: string) => void
   onAddSession?: () => void
   onCloseSession?: (key: string) => void
@@ -401,6 +404,7 @@ export function SessionView({
                               : 'bg-[var(--gt-accent-2)]'
                         }`}
                       />
+                      <EngineLogo engine={p.engine} size={10} className="opacity-80" />
                       {isEditing ? (
                         <input
                           autoFocus

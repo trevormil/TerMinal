@@ -185,12 +185,21 @@ function startSession(key: string, opts: StartOpts) {
   }
 
   const cmd = [enginePath(engine), ...args].map(shq).join(' ')
+  const env = {
+    ...process.env,
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    TERM_PROGRAM: process.env.TERM_PROGRAM || 'TerMinal',
+    CLICOLOR: '1',
+  } as Record<string, string>
+  delete env.NO_COLOR
+
   const proc = pty.spawn(LOGIN_SHELL, ['-l', '-c', cmd], {
     name: 'xterm-256color',
     cols: opts.cols || 80,
     rows: opts.rows || 30,
     cwd,
-    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
+    env,
   })
   proc.onData((d) => send('pty:data', key, d))
   proc.onExit(({ exitCode }) => send('pty:exit', key, exitCode))
