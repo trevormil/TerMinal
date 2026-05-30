@@ -168,15 +168,20 @@ function startSession(key: string, opts: StartOpts) {
   const args: string[] = []
   let sessionId: string
 
-  if (engine === 'claude' && opts.mode === 'resume' && opts.sessionId) {
+  if (engine === 'codex') {
+    if (opts.mode === 'resume' && opts.sessionId) {
+      sessionId = opts.sessionId
+      args.push('resume', sessionId)
+    } else {
+      sessionId = randomUUID()
+    }
+  } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
   } else {
     sessionId = randomUUID()
-    if (engine === 'claude') {
-      args.push('--session-id', sessionId)
-      if (opts.name) args.push('--name', opts.name)
-    }
+    args.push('--session-id', sessionId)
+    if (opts.name) args.push('--name', opts.name)
   }
 
   const cmd = [enginePath(engine), ...args].map(shq).join(' ')
@@ -185,14 +190,14 @@ function startSession(key: string, opts: StartOpts) {
     cols: opts.cols || 80,
     rows: opts.rows || 30,
     cwd,
-    env: { ...process.env, TERM: 'xterm-256color' } as Record<string, string>,
+    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
   })
   proc.onData((d) => send('pty:data', key, d))
   proc.onExit(({ exitCode }) => send('pty:exit', key, exitCode))
 
   sessions.set(key, {
     pty: proc,
-    pinned: { sessionId, cwd, mode: engine === 'codex' ? 'new' : opts.mode, name: opts.name || '', engine },
+    pinned: { sessionId, cwd, mode: opts.mode, name: opts.name || '', engine },
   })
   activeKey = key
   watchSession()

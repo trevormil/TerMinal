@@ -81,8 +81,9 @@ export function EntryScreen({
   }
 
   const all = sessions || []
-  const shown = filterDir ? all.filter((s) => underDir(s.cwd, filterDir)) : all
-  const countFor = (path: string) => all.filter((s) => underDir(s.cwd, path)).length
+  const byEngine = all.filter((s) => s.engine === engine)
+  const shown = filterDir ? byEngine.filter((s) => underDir(s.cwd, filterDir)) : byEngine
+  const countFor = (path: string) => byEngine.filter((s) => underDir(s.cwd, path)).length
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -293,7 +294,7 @@ export function EntryScreen({
         {/* resume */}
         <div className="mb-2 flex items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            Resume Claude{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
+            Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
           </span>
           {filterDir && (
             <button
@@ -308,14 +309,14 @@ export function EntryScreen({
           <div className="py-6 text-center text-[12px] text-zinc-600">Scanning sessions…</div>
         ) : shown.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
-            {filterDir ? 'No sessions for this folder — start a new one above.' : 'No prior Claude sessions found.'}
+            {filterDir ? 'No sessions for this folder — start a new one above.' : `No prior ${engine} sessions found.`}
           </div>
         ) : (
           <div className="space-y-2">
             {shown.slice(0, 300).map((s) => (
               <button
                 key={s.id}
-                onClick={() => onChoose({ mode: 'resume', engine: 'claude', sessionId: s.id, cwd: s.cwd })}
+                onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
                 className="flex w-full items-center gap-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 text-left hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <div className="min-w-0 flex-1">
@@ -323,6 +324,7 @@ export function EntryScreen({
                     {s.firstUserText || <span className="italic text-zinc-500">untitled session</span>}
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
+                    <EngineLogo engine={s.engine} size={10} />
                     <span className="font-mono">{tilde(s.cwd) || '~'}</span>
                     {s.gitBranch && (
                       <span className="inline-flex items-center gap-0.5 text-zinc-600">

@@ -52,7 +52,14 @@ const labelForSession = (
 }
 
 // open sessions persist to localStorage so the window reopens to your workspace
-type Saved = { key: string; sessionId: string; cwd: string; name: string; engine?: 'claude' | 'codex' }
+type Saved = {
+  key: string
+  sessionId: string
+  cwd: string
+  name: string
+  engine?: 'claude' | 'codex'
+  mode?: 'new' | 'resume'
+}
 const restored: Saved[] = (() => {
   try {
     return JSON.parse(localStorage.getItem('gt.openSessions') || '[]')
@@ -67,10 +74,13 @@ export default function App() {
       const engine = s.engine || 'claude'
       return {
         key: s.key,
-        choice:
-          engine === 'codex'
-            ? { mode: 'new', engine, cwd: s.cwd, name: s.name }
-            : { mode: 'resume', engine, sessionId: s.sessionId, cwd: s.cwd, name: s.name },
+        choice: {
+          mode: s.mode || 'resume',
+          engine,
+          sessionId: s.sessionId,
+          cwd: s.cwd,
+          name: s.name,
+        },
         info: { sessionId: s.sessionId, cwd: s.cwd },
       }
     }),
@@ -92,6 +102,7 @@ export default function App() {
         cwd: s.info.cwd || s.choice.cwd || '',
         name: s.choice.name || '',
         engine: s.choice.engine || 'claude',
+        mode: s.choice.mode,
       }))
       .filter((s) => s.sessionId)
     localStorage.setItem('gt.openSessions', JSON.stringify(data))

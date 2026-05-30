@@ -40,4 +40,10 @@ describe('listSkills', () => {
     expect(skill?.description).toBe('mirrored skill')
     expect(skill?.platforms).toEqual(['claude', 'codex'])
   })
+
+  test('sees this repo ticket skill as a Claude/Codex mirror', () => {
+    const skill = listSkills(process.cwd()).find((s) => s.scope === 'project' && s.name === 'ticket')
+
+    expect(skill?.platforms).toEqual(['claude', 'codex'])
+  })
 })

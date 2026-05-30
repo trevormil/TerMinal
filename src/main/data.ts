@@ -18,6 +18,7 @@ import { reviewForPrDir, newestReviewDirForRepo } from './review'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const TASKS_DIR = join(homedir(), '.claude', 'tasks')
+const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
 
 /** The agent's live todo list for a session (~/.claude/tasks/<id>/<n>.json). */
 export function readSessionTasks(sessionId: string): TaskItem[] {
@@ -75,6 +76,7 @@ export type TaskItem = { id: string; subject: string; status: string; activeForm
 
 export type SessionMeta = {
   id: string
+  engine: 'claude' | 'codex'
   cwd: string
   gitBranch: string
   model: string
@@ -325,9 +327,9 @@ export function readTranscriptStats(sessionId: string): TranscriptStats {
 }
 
 /** All sessions across all projects, newest first — for the entry picker. */
-export function listSessions(): SessionMeta[] {
-  if (!existsSync(PROJECTS_DIR)) return []
+function listClaudeSessions(): SessionMeta[] {
   const out: SessionMeta[] = []
+  if (!existsSync(PROJECTS_DIR)) return out
   for (const project of readdirSync(PROJECTS_DIR)) {
     const dir = join(PROJECTS_DIR, project)
     let files: string[]
@@ -343,6 +345,7 @@ export function listSessions(): SessionMeta[] {
       if (!s.ok) continue // skip empty / never-used sessions
       out.push({
         id,
+        engine: 'claude',
         cwd: s.cwd,
         gitBranch: s.gitBranch,
         model: s.model,
@@ -352,6 +355,99 @@ export function listSessions(): SessionMeta[] {
       })
     }
   }
+  return out
+}
+
+function walkJsonlFiles(dir: string, out: string[] = [], depth = 0): string[] {
+  if (depth > 6 || !existsSync(dir)) return out
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return out
+  }
+  for (const entry of entries) {
+    const p = join(dir, entry)
+    try {
+      const st = statSync(p)
+      if (st.isDirectory()) walkJsonlFiles(p, out, depth + 1)
+      else if (entry.endsWith('.jsonl')) out.push(p)
+    } catch {
+      /* skip */
+    }
+  }
+  return out
+}
+
+export function parseCodexSessionFile(file: string): SessionMeta | null {
+  let mtime = 0
+  try {
+    mtime = statSync(file).mtimeMs
+  } catch {
+    return null
+  }
+
+  let id = file.replace(/\.jsonl$/, '').split('/').pop() || ''
+  id = id.replace(/^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-/, '')
+  let cwd = ''
+  let model = ''
+  let firstUserText = ''
+  let turns = 0
+
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      continue
+    }
+    const payload = obj.payload || {}
+    if (obj.type === 'session_meta') {
+      if (typeof payload.id === 'string') id = payload.id
+      if (!cwd && typeof payload.cwd === 'string') cwd = payload.cwd
+    } else if (obj.type === 'turn_context') {
+      if (!cwd && typeof payload.cwd === 'string') cwd = payload.cwd
+      if (typeof payload.model === 'string') model = payload.model
+    } else if (obj.type === 'event_msg' && payload.type === 'user_message') {
+      turns++
+      if (!firstUserText && typeof payload.message === 'string') firstUserText = payload.message
+    } else if (obj.type === 'response_item' && payload.type === 'message' && payload.role === 'user') {
+      turns++
+      if (!firstUserText) firstUserText = textOf(payload.content)
+    }
+  }
+
+  if (!id || (!cwd && !firstUserText)) return null
+  return {
+    id,
+    engine: 'codex',
+    cwd,
+    gitBranch: '',
+    model: model || 'codex',
+    turns,
+    firstUserText,
+    mtime,
+  }
+}
+
+function listCodexSessions(): SessionMeta[] {
+  if (!existsSync(CODEX_SESSIONS_DIR)) return []
+  return walkJsonlFiles(CODEX_SESSIONS_DIR)
+    .map(parseCodexSessionFile)
+    .filter((s): s is SessionMeta => !!s)
+}
+
+/** All sessions across all engines, newest first — for the entry picker. */
+export function listSessions(): SessionMeta[] {
+  const out = [...listClaudeSessions(), ...listCodexSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)
 }
 

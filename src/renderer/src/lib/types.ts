@@ -474,6 +474,7 @@ export type TabContext = {
 
 export type SessionMeta = {
   id: string
+  engine: Engine
   cwd: string
   gitBranch: string
   model: string
