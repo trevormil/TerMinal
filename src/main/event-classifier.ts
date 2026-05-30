@@ -13,9 +13,10 @@ const PATTERNS: { pattern: RegExp; kind: ActivityKind }[] = [
   { pattern: /^ticket\s+(filed|created|opened)/i, kind: 'ticket-filed' },
   { pattern: /^ticket\s+(closed|resolved|done)/i, kind: 'ticket-closed' },
   // PRs / MRs
-  { pattern: /^(pr|mr)\s+(opened|created|filed)/i, kind: 'pr-opened' },
-  { pattern: /^(pr|mr)\s+merged/i, kind: 'pr-merged' },
-  { pattern: /^(pr|mr|review)\s+(verdict|reviewed|review)/i, kind: 'pr-verdict' },
+  // Allow optional iid like "PR !72" / "MR #14" between the prefix and verb.
+  { pattern: /^(pr|mr)\s+(?:[!#]?\d+\s+)?(opened|created|filed)/i, kind: 'pr-opened' },
+  { pattern: /^(pr|mr)\s+(?:[!#]?\d+\s+)?merged/i, kind: 'pr-merged' },
+  { pattern: /^(pr|mr|review)\s+(?:[!#]?\d+\s+)?(verdict|reviewed|review)/i, kind: 'pr-verdict' },
   // Tests
   { pattern: /^tests?\s+(pass(ed|ing)?|green)/i, kind: 'tests-pass' },
   { pattern: /^tests?\s+(fail(ed|ing)?|red)/i, kind: 'tests-fail' },

@@ -60,12 +60,44 @@ function pingTelegram(text) {
   }).catch(() => {})
 }
 
+// Deterministic kind inference — mirrors src/main/event-classifier.ts.
+// Saves agent scripts from having to memorize the activity-kind enum:
+// terminal-cli activity check "Drift · 3 findings" → kind:'check' automatically.
+const KIND_PATTERNS = [
+  [/^session\s+started?/i, 'session-start'],
+  [/^session\s+(end|closed?|wrapped)/i, 'session-end'],
+  [/^ticket\s+(filed|created|opened)/i, 'ticket-filed'],
+  [/^ticket\s+(closed|resolved|done)/i, 'ticket-closed'],
+  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?(opened|created|filed)/i, 'pr-opened'],
+  [/^(pr|mr)\s+(?:[!#]?\d+\s+)?merged/i, 'pr-merged'],
+  [/^(pr|mr|review)\s+(?:[!#]?\d+\s+)?(verdict|reviewed|review)/i, 'pr-verdict'],
+  [/^tests?\s+(pass(ed|ing)?|green)/i, 'tests-pass'],
+  [/^tests?\s+(fail(ed|ing)?|red)/i, 'tests-fail'],
+  [/^(check|drift|coverage|deps|deps-quality|dead-code|perf|health)\b/i, 'check'],
+  [/^scheduled\s+/i, 'agent-run'],
+  [/^(doc|docs|adr|changelog)\b/i, 'doc'],
+  [/^hitl\b/i, 'blocked'],
+  [/\b(blocked|blocker|need(s)?\s+human|waiting\s+on\s+human)\b/i, 'blocked'],
+  [/\bfail(ed|ing)?\b|\berror\b|\bexit\s+\d+\b/i, 'error'],
+  [/\b(crash|crashed|panic|exception)\b/i, 'error'],
+  [/^(task|run|agent)\s+(complete|done|finished)/i, 'task-complete'],
+  [/^agent\s+(started|running)/i, 'agent-run'],
+]
+function inferKind(title) {
+  if (!title) return 'info'
+  for (const [pat, k] of KIND_PATTERNS) if (pat.test(title)) return k
+  return 'info'
+}
+
 function emitActivity(kind, title, detail) {
   mkdirSync(CFG, { recursive: true })
+  // If caller passed 'info' (the default fallback) AND the title matches a
+  // pattern, upgrade to the specific kind. Explicit kinds stay as-is.
+  const resolvedKind = !kind || kind === 'info' ? inferKind(title) : kind
   const ev = {
     id: randomUUID(),
     ts: Date.now(),
-    kind: kind || 'info',
+    kind: resolvedKind,
     title: title || '',
     detail: detail || '',
     repo: repoLabel,
@@ -321,6 +353,100 @@ function mcpCommand(tool, kvArgs) {
   child.stdin.end()
 }
 
+// terminal-cli classify <ci|risk|kind> <input> — wraps the harness
+// classifiers for shell scripts. ci reads a log file path; risk takes
+// space-separated file paths + optional --diff-lines=N; kind just runs the
+// deterministic title→kind regex catalog locally.
+function classifyCommand(kind, args) {
+  if (kind === 'kind') {
+    const title = args.join(' ')
+    console.log(inferKind(title))
+    return
+  }
+  if (kind === 'ci') {
+    const logPath = args[0]
+    if (!logPath) {
+      console.error('usage: terminal-cli classify ci <log-file>')
+      process.exit(2)
+    }
+    let rawLog = ''
+    try {
+      rawLog = readFileSync(logPath, 'utf8')
+    } catch (e) {
+      console.error(`terminal-cli classify ci: ${e.message}`)
+      process.exit(1)
+    }
+    // Heuristic catalog mirrors src/main/ci-failure-classifier.ts. Skip the
+    // LLM fallback here — for shell scripts the deterministic answer is
+    // what's useful; scripts can call `terminal-cli mcp classify_ci` for the
+    // full version (TODO: wire that MCP tool later).
+    const PATTERNS = [
+      { class: 'prettier-formatting', re: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i },
+      { class: 'eslint-fixable', re: /\d+\s+(error|problem)s?.*eslint|eslint.*\d+\s+error/i },
+      { class: 'typecheck-isolated', re: /error TS\d+:|TS\d+\s+:|TypeScript:.*error/ },
+      { class: 'snapshot-mismatch', re: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i },
+      { class: 'test-real', re: /\d+\s+failing|\d+\s+failed|FAIL\s+|✗\s+|AssertionError|Expected.*Received/ },
+      { class: 'build-config', re: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i },
+      { class: 'lockfile-drift', re: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i },
+      { class: 'dependency', re: /npm ERR! code E\d+|EPEERINVALID|404 Not Found.*\.tgz|peer dep|ETIMEDOUT.*registry/i },
+      { class: 'flake-network', re: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i },
+      { class: 'deploy-infra', re: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i },
+    ]
+    const stripped = rawLog.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+    for (const p of PATTERNS) {
+      if (p.re.test(stripped)) {
+        console.log(p.class)
+        return
+      }
+    }
+    console.log('ambiguous')
+    return
+  }
+  if (kind === 'risk') {
+    // terminal-cli classify risk file1 file2 ... --diff-lines=N
+    const files = []
+    let diffLines = 0
+    for (const a of args) {
+      if (a.startsWith('--diff-lines=')) diffLines = parseInt(a.slice(13), 10) || 0
+      else files.push(a)
+    }
+    if (!files.length) {
+      console.error('usage: terminal-cli classify risk <file> [<file> ...] [--diff-lines=N]')
+      process.exit(2)
+    }
+    const HIGH = [
+      /(^|\/)migrations?\//i,
+      /(^|\/)db\//i,
+      /\bschema\.prisma$|\bschema\.sql$|\.sql$/i,
+      /\bauth\b|\bauthz?\b|\bsession\b|\boauth\b/i,
+      /\bpayments?\b|\bbilling\b|\bstripe\b|\bcheckout\b/i,
+      /(^|\/)k8s\/|(^|\/)kubernetes\/|(^|\/)helm\/|deployment\.ya?ml$/i,
+      /(^|\/)terraform\/|\.tf$/i,
+      /\bsecrets?\b|\.env(\.|$)|credentials/i,
+      /(^|\/)\.github\/workflows\//i,
+    ]
+    const LOW = [
+      /\.md$/i,
+      /(^|\/)docs?\//i,
+      /(^|\/)CHANGELOG\.md$/i,
+      /(^|\/)README/i,
+      /(^|\/)\.gitignore$/i,
+      /(^|\/)\.editorconfig$/i,
+      /(^|\/)LICENSE/i,
+      /(^|\/)\.prettierrc/i,
+      /(^|\/)snapshots?\//i,
+    ]
+    for (const f of files) for (const p of HIGH) if (p.test(f)) { console.log('high'); return }
+    if (diffLines > 500) { console.log('medium'); return }
+    if (files.every((f) => LOW.some((p) => p.test(f))) && diffLines <= 50) { console.log('low'); return }
+    if (files.every((f) => LOW.some((p) => p.test(f)))) { console.log('low'); return }
+    console.log('medium')
+    return
+  }
+  console.error('usage: terminal-cli classify <ci|risk|kind> <args>')
+  process.exit(2)
+}
+
 function fileTicket(title, body) {
   if (!repo) {
     console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
@@ -380,9 +506,12 @@ switch (cmd) {
   case 'mcp':
     mcpCommand(args[0], args.slice(1))
     break
+  case 'classify':
+    classifyCommand(args[0], args.slice(1))
+    break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|notify|state> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|notify|state|mcp|classify> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
