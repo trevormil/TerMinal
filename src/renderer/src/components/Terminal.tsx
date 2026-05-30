@@ -75,9 +75,10 @@ export function TerminalPane({
       for (const ch of data) {
         if (ch === '\r' || ch === '\n') {
           const rewritten = rewriteCodexSkillSubmit(lineBuffer, skillNames)
+          const clearLine = '\x7f'.repeat(lineBuffer.length)
           lineBuffer = ''
           if (rewritten) {
-            gt.pty.input(sessionKey, `\x15${rewritten}`)
+            gt.pty.input(sessionKey, `${clearLine}${rewritten}`)
           } else {
             gt.pty.input(sessionKey, ch)
           }
