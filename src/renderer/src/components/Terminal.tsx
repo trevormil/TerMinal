@@ -3,6 +3,7 @@ import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
+import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 
 // Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
 // process) runs the chosen engine. Same pattern VS Code's integrated
@@ -44,6 +45,54 @@ export function TerminalPane({
     fit.fit()
 
     const gt = window.gt
+    let skillNames = new Set<string>(choice.engine === 'codex' ? ['ticket'] : [])
+    if (choice.engine === 'codex') {
+      gt.listSkills()
+        .then((skills) => {
+          skillNames = new Set(
+            skills
+              .filter((s) => s.platforms.includes('codex'))
+              .map((s) => s.name),
+          )
+        })
+        .catch(() => {
+          /* the fallback set above keeps /ticket usable */
+        })
+    }
+
+    let lineBuffer = ''
+    const writeInput = (data: string) => {
+      if (choice.engine !== 'codex') {
+        gt.pty.input(sessionKey, data)
+        return
+      }
+      if (data.includes('\x1b')) {
+        lineBuffer = ''
+        gt.pty.input(sessionKey, data)
+        return
+      }
+
+      for (const ch of data) {
+        if (ch === '\r' || ch === '\n') {
+          const rewritten = rewriteCodexSkillSubmit(lineBuffer, skillNames)
+          lineBuffer = ''
+          if (rewritten) {
+            gt.pty.input(sessionKey, `\x15${rewritten}`)
+          } else {
+            gt.pty.input(sessionKey, ch)
+          }
+          continue
+        }
+        if (ch === '\x7f') {
+          lineBuffer = lineBuffer.slice(0, -1)
+          gt.pty.input(sessionKey, ch)
+          continue
+        }
+        if (ch === '\x03' || ch === '\x15') lineBuffer = ''
+        else if (ch >= ' ') lineBuffer += ch
+        gt.pty.input(sessionKey, ch)
+      }
+    }
 
     // Cmd+C / Cmd+V are handled natively by Electron's default Edit menu — don't
     // add a custom key handler too, or copy/paste fires twice (duplicates).
@@ -51,7 +100,7 @@ export function TerminalPane({
     const onContext = (e: MouseEvent) => {
       e.preventDefault()
       if (term.hasSelection()) gt.clipboardWrite(term.getSelection())
-      else gt.clipboardRead().then((t) => t && gt.pty.input(sessionKey, t))
+      else gt.clipboardRead().then((t) => t && writeInput(t))
     }
     el.addEventListener('contextmenu', onContext)
     // attach listeners BEFORE starting the pty so no early output is missed.
@@ -60,7 +109,7 @@ export function TerminalPane({
     const offExit = gt.pty.onExit(
       (key) => key === sessionKey && term.write('\r\n\x1b[2m── process exited ──\x1b[0m\r\n'),
     )
-    const onInput = term.onData((d) => gt.pty.input(sessionKey, d))
+    const onInput = term.onData(writeInput)
 
     // spawn the chosen engine attached to the session, sized to the live terminal
     gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) =>
