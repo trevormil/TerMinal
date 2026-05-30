@@ -193,6 +193,10 @@ const gt = {
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getMrCi: (iid: number) => ipcRenderer.invoke('mrs:ci', iid),
   mergeMr: (iid: number) => ipcRenderer.invoke('mrs:merge', iid),
+  ci: {
+    list: (limit?: number) => ipcRenderer.invoke('ci:list', limit),
+    jobs: (runId: string) => ipcRenderer.invoke('ci:jobs', runId),
+  },
   openExternal: (url: string) => ipcRenderer.invoke('open:external', url),
   openInBrowser: (url: string) => ipcRenderer.invoke('open:in-browser', url),
   openInEditor: (path?: string) => ipcRenderer.invoke('open:in-editor', path),

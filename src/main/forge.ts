@@ -132,8 +132,8 @@ export function overallStatus(statuses: string[]): string {
 
 // --- CLI execution -----------------------------------------------------------
 
-type RunResult = { err: Error | null; stdout: string; stderr: string }
-function run(
+export type RunResult = { err: Error | null; stdout: string; stderr: string }
+export function run(
   cli: string,
   args: string[],
   cwd: string,

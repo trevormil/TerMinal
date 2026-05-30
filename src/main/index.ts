@@ -722,6 +722,14 @@ ipcMain.handle('mrs:get', (_e, iid: number) => getMr(repoRootOf(cur().cwd), iid)
 ipcMain.handle('mrs:diff', (_e, iid: number) => getMrDiff(repoRootOf(cur().cwd), iid))
 ipcMain.handle('mrs:ci', (_e, iid: number) => getMrCi(repoRootOf(cur().cwd), iid))
 ipcMain.handle('mrs:merge', (_e, iid: number) => mergeMr(repoRootOf(cur().cwd), iid))
+ipcMain.handle('ci:list', async (_e, limit?: number) => {
+  const { listCiRuns } = await import('./ci')
+  return listCiRuns(repoRootOf(cur().cwd), limit)
+})
+ipcMain.handle('ci:jobs', async (_e, runId: string) => {
+  const { listCiJobs } = await import('./ci')
+  return listCiJobs(repoRootOf(cur().cwd), runId)
+})
 ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
