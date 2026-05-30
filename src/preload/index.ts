@@ -31,11 +31,6 @@ const gt = {
     return () => ipcRenderer.removeListener('window:fullscreen', h)
   },
 
-  // saved prompts / snippets + inject into the active terminal
-  snippets: {
-    list: () => ipcRenderer.invoke('snippets:list'),
-    save: (list: unknown) => ipcRenderer.invoke('snippets:save', list),
-  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     patch: (patch: unknown) => ipcRenderer.invoke('settings:patch', patch),
@@ -57,8 +52,6 @@ const gt = {
       ipcRenderer.invoke('classify:risk', input),
   },
   mrAuthorship: (iid: number, opts?: { refine?: boolean }) => ipcRenderer.invoke('mrs:authorship', iid, opts),
-  typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
-
   // on-demand codex/claude agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),

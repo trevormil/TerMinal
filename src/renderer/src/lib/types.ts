@@ -121,8 +121,6 @@ export type ProjectSession = {
 
 export type NewTicket = { title: string; type: string; priority: string; status: string; body: string }
 
-export type Snippet = { id: string; title: string; body: string }
-
 export type DocCategory = 'changelog' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
 export type DocEntry = {
   path: string
@@ -547,10 +545,6 @@ export type GtApi = {
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
   isFullscreen: () => Promise<boolean>
   onFullscreen: (cb: (v: boolean) => void) => () => void
-  snippets: {
-    list: () => Promise<Snippet[]>
-    save: (list: Snippet[]) => Promise<boolean>
-  }
   settings: {
     get: () => Promise<Settings>
     patch: (patch: SettingsPatch) => Promise<Settings>
@@ -609,7 +603,6 @@ export type GtApi = {
       evidence: string[]
     }[]
   } | null>
-  typeIntoActive: (text: string) => void
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
     runLog: (source: 'cron' | 'agent', runId: string) => Promise<string>
@@ -880,6 +873,8 @@ export type Plugin<T = unknown> = {
   order?: number
   intervalMs: number
   defaultEnabled: boolean
+  /** Restrict a plugin to engines whose data source actually exists. Omitted means all engines. */
+  engines?: Engine[]
   /** Re-poll immediately when the attached session's transcript changes (not just on interval). */
   realtime?: boolean
   /** Called on an interval. `prev` is the previous poll result (for rate/delta widgets). */

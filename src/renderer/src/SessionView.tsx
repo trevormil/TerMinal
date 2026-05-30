@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { SquareTerminal, GitBranch, LayoutGrid, ScrollText, X, Plus, type LucideIcon } from 'lucide-react'
+import { SquareTerminal, GitBranch, LayoutGrid, X, Plus, type LucideIcon } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
-import { SnippetsDrawer } from './components/SnippetsDrawer'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
@@ -152,12 +151,15 @@ export function SessionView({
   const [enabled, setEnabled] = useState<string[]>(() => load('gt.enabled', []))
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
   const [drawer, setDrawer] = useState(false)
-  const [snippets, setSnippets] = useState(false)
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
 
   const allPlugins = useMemo(
     () => [...ALL_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
     [cmdPlugins],
+  )
+  const availablePlugins = useMemo(
+    () => allPlugins.filter((p) => !p.engines || p.engines.includes(choice.engine)),
+    [allPlugins, choice.engine],
   )
   // Tab visibility: user can hide tabs they don't use via Settings → Tabs.
   // The hidden list lives in localStorage so a fresh window respects it
@@ -188,17 +190,16 @@ export function SessionView({
   useEffect(() => onNavigate((ev) => setActiveTab(ev.tabId)), [])
 
   useEffect(() => {
-    const fresh = allPlugins.filter((p) => !known.includes(p.id))
+    const fresh = availablePlugins.filter((p) => !known.includes(p.id))
     if (fresh.length === 0) return
     setKnown((k) => [...k, ...fresh.map((p) => p.id)])
     setEnabled((e) => [...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])
-  }, [allPlugins, known])
+  }, [availablePlugins, known])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setDrawer(false)
-        setSnippets(false)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -254,9 +255,9 @@ export function SessionView({
 
   const toggle = (id: string) =>
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
-  const activeWidgets = allPlugins.filter((p) => enabled.includes(p.id))
+  const activeWidgets = availablePlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
-  const showCockpit = choice.engine === 'claude'
+  const showCockpit = true
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -327,32 +328,20 @@ export function SessionView({
             </span>
           )
         })()}
-        {onTerminal && (
-          <>
-            <button
-              style={noDrag}
-              onClick={() => setSnippets(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
-            >
-              <ScrollText size={12} strokeWidth={2} />
-              Snippets
-            </button>
-            {showCockpit && (
-              <button
-                style={noDrag}
-                onClick={() => setDrawer(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
-              >
-                <LayoutGrid size={12} strokeWidth={2} />
-                Plugins · {enabled.length}
-              </button>
-            )}
-          </>
+        {onTerminal && showCockpit && (
+          <button
+            style={noDrag}
+            onClick={() => setDrawer(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+          >
+            <LayoutGrid size={12} strokeWidth={2} />
+            Plugins · {activeWidgets.length}
+          </button>
         )}
       </header>
 
       <div className="relative min-h-0 flex-1">
-        {/* Terminal + Claude cockpit. Always laid out (visibility, not display) so xterm
+        {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
             keeps its size while backgrounded — no refit-from-zero, no flicker. */}
         <div
           className="absolute inset-0 grid"
@@ -478,7 +467,7 @@ export function SessionView({
                       Array.from(
                         new Set([
                           ...e,
-                          ...allPlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
+                          ...availablePlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
                         ]),
                       ),
                     )
@@ -512,22 +501,13 @@ export function SessionView({
 
         {active && showCockpit && drawer && (
           <PluginDrawer
-            plugins={allPlugins}
+            plugins={availablePlugins}
             enabled={enabled}
             onToggle={toggle}
             onClose={() => setDrawer(false)}
           />
         )}
 
-        {active && snippets && (
-          <SnippetsDrawer
-            onClose={() => setSnippets(false)}
-            onInject={(body) => {
-              window.gt.typeIntoActive(body)
-              setSnippets(false)
-            }}
-          />
-        )}
       </div>
     </div>
   )

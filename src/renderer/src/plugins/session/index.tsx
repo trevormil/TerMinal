@@ -23,6 +23,7 @@ const plugin: Plugin<TranscriptStats> = {
   intervalMs: 4000,
   realtime: true,
   defaultEnabled: true,
+  engines: ['claude'],
   poll: (gt) => gt.transcript(),
   render: (d) => {
     if (!d?.ok)

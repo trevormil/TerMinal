@@ -11,6 +11,7 @@ const plugin: Plugin<TranscriptStats> = {
   intervalMs: 3000,
   realtime: true,
   defaultEnabled: true,
+  engines: ['claude'],
   poll: (gt) => gt.transcript(),
   render: (d) => {
     const a = d?.lastAction

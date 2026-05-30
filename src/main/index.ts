@@ -37,7 +37,6 @@ import {
   setAllDisabled as setAllSchedulesDisabled,
 } from './agents-disabled'
 import { scaffoldProject } from './scaffold'
-import { readSnippets, writeSnippets, type Snippet } from './snippets'
 import {
   readSettings,
   patchSettings,
@@ -499,8 +498,6 @@ ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) =>
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 ipcMain.handle('activity:list', () => readActivity())
 ipcMain.handle('activity:clear', () => clearActivity())
-ipcMain.handle('snippets:list', () => readSnippets())
-ipcMain.handle('snippets:save', (_e, list: Snippet[]) => writeSnippets(list))
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
@@ -685,15 +682,6 @@ ipcMain.handle('schedules:remove-all', () => {
   for (const s of readSchedules()) removeSchedule(s.id)
   return { removed: n }
 })
-// inject text into the ACTIVE session's terminal (snippet → prompt)
-ipcMain.on('pty:type', (_e, text: string) => {
-  try {
-    sessions.get(activeKey)?.pty.write(text)
-  } catch {
-    /* session gone */
-  }
-})
-
 // ---- PTY IPC (routed by session key) ----
 ipcMain.on('pty:input', (_e, key: string, data: string) => sessions.get(key)?.pty.write(data))
 ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number }) => {

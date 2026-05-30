@@ -12,6 +12,7 @@ const plugin: Plugin<TranscriptStats> = {
   intervalMs: 3000,
   realtime: true,
   defaultEnabled: false,
+  engines: ['claude'],
   poll: (gt) => gt.transcript(),
   render: (d) => {
     const entries = Object.entries(d?.toolCounts || {}).sort((a, b) => b[1] - a[1])

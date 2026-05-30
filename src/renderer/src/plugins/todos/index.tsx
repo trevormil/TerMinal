@@ -21,6 +21,7 @@ const plugin: Plugin<TaskItem[]> = {
   intervalMs: 2500,
   realtime: true,
   defaultEnabled: true,
+  engines: ['claude'],
   poll: (gt) => gt.sessionTasks(),
   render: (d) => {
     const tasks = d || []

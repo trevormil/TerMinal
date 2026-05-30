@@ -14,6 +14,7 @@ const plugin: Plugin<Burn> = {
   intervalMs: 2000,
   realtime: true,
   defaultEnabled: false,
+  engines: ['claude'],
   poll: async (gt, prev) => {
     const t = await gt.transcript()
     const total = t.totalInputTokens + t.totalOutputTokens

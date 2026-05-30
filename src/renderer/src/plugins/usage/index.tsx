@@ -40,6 +40,7 @@ const plugin: Plugin<Usage> = {
   order: 3,
   intervalMs: 30_000,
   defaultEnabled: true,
+  engines: ['claude'],
   poll: (gt) => gt.usage(),
   render: (d) => {
     if (!d) return null
