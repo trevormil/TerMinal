@@ -223,7 +223,7 @@ const DEFAULT_AGENTS: Agent[] = [
     icon: 'Target',
     opensPr: false,
     prompt:
-      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. End with a one-page strategic read: where the project is aligned, where it has drifted, and the top 3 strategic moves to consider.",
+      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. Write the substantive strategic read (alignment vs. drift assessment + top 3 strategic moves) to reports/YYYY-MM-DD-strategy-read.md (create reports/ if missing). End with the report path and the ticket ids filed.",
   },
   {
     id: 'cert-check',
@@ -232,7 +232,7 @@ const DEFAULT_AGENTS: Agent[] = [
     icon: 'Lock',
     opensPr: false,
     prompt:
-      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. End with a table of hostnames, expiry dates, and ticket ids for the issues.",
+      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. Write the full hostname / expiry / chain / TLS-version table to reports/YYYY-MM-DD-cert-check.md (create reports/ if missing) — durable snapshot of cert hygiene, not just the flagged issues. End with the report path and the ticket ids filed.",
   },
   {
     id: 'translations-check',
@@ -268,7 +268,7 @@ const DEFAULT_AGENTS: Agent[] = [
     icon: 'MessageCircleQuestion',
     opensPr: false,
     prompt:
-      "Act as a devil's-advocate agent for this repository. Pick the most consequential recent decision — last accepted ADR, last significant architecture commit, last major feature direction — and build the strongest counter-argument. Steelman the opposite choice: what would have made it correct, what costs the chosen path now carries, what's the smallest reversal that would unwind it. If the counter holds enough water that reconsideration would be cheaper than the eventual reversal, file a backlog ticket (type: docs, source: devils-advocate) proposing an ADR-revisit. Don't edit code. End with the counter-argument written out and the ticket id (if filed).",
+      "Act as a devil's-advocate agent for this repository. Pick the most consequential recent decision — last accepted ADR, last significant architecture commit, last major feature direction — and build the strongest counter-argument. Steelman the opposite choice: what would have made it correct, what costs the chosen path now carries, what's the smallest reversal that would unwind it. Always write the full counter-argument to reports/devils-advocate/YYYY-MM-DD-<slug>.md (create reports/devils-advocate/ if missing) so the steelman is durable, not chat-only. Only if the counter holds enough water that reconsideration would be cheaper than the eventual reversal, additionally file a backlog ticket (type: docs, source: devils-advocate) proposing an ADR-revisit and linking the report. Don't edit code. End with the report path and the ticket id (if filed).",
   },
   {
     id: 'bloat-check',
