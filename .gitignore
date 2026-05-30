@@ -5,3 +5,6 @@ dist
 .DS_Store
 # Per-repo TerMinal runtime state (notes, widgets) — local to each checkout.
 .TerMinal/
+backlog/.next-id.lock
+sessions/.next-id.lock
+.status.md

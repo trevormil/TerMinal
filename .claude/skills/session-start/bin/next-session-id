@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Atomically allocate the next session ID.
+#
+# Portable: uses a mkdir-based lock (works on macOS + Linux; no `flock`).
+# Bootstraps sessions/ and the counter on first use, so dropping the
+# session-start/session-end skills into a fresh repo "just works".
+#
+#   id=$("$(git rev-parse --show-toplevel)/.claude/skills/session-start/bin/next-session-id")
+#   mkdir -p "sessions/${id}-my-slug"
+#
+# The counter lives in sessions/.next-id (committed). The lock dir
+# sessions/.next-id.lock is transient (gitignore it).
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+SESSIONS="$ROOT/sessions"
+COUNTER="$SESSIONS/.next-id"
+LOCK="$SESSIONS/.next-id.lock"
+
+mkdir -p "$SESSIONS"
+[ -f "$COUNTER" ] || printf '1\n' > "$COUNTER"
+
+acquired=""
+for _ in $(seq 1 50); do
+  if mkdir "$LOCK" 2>/dev/null; then
+    acquired=1
+    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+    break
+  fi
+  sleep 0.1
+done
+[ -n "$acquired" ] || { echo "ERROR: could not acquire lock $LOCK" >&2; exit 1; }
+
+current="$(tr -d '[:space:]' < "$COUNTER")"
+printf '%04d\n' "$current"
+printf '%s\n' "$((current + 1))" > "$COUNTER"

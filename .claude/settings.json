@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/secrets/**)",
+      "Read(./**/credentials*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/id_rsa*)",
+      "Bash(cat .env*)",
+      "Bash(cat *.env)",
+      "Bash(cat **/.env*)",
+      "Bash(less .env*)",
+      "Bash(head .env*)",
+      "Bash(tail .env*)",
+      "Bash(cat */credentials*)",
+      "Bash(cat *.pem)",
+      "Bash(cat *.key)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Atomically allocate the next ticket ID.
+#
+# Portable: uses a mkdir-based lock (works on macOS + Linux; no `flock`
+# dependency). Bootstraps backlog/ and the counter on first use, so dropping
+# this skill into a fresh repo "just works".
+#
+#   id=$("$(git rev-parse --show-toplevel)/.claude/skills/ticket/bin/next-ticket-id")
+#   echo "backlog/${id}-my-slug.md"
+#
+# The counter lives in backlog/.next-id (committed). The lock dir
+# backlog/.next-id.lock is transient (gitignore it).
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+BACKLOG="$ROOT/backlog"
+COUNTER="$BACKLOG/.next-id"
+LOCK="$BACKLOG/.next-id.lock"
+
+mkdir -p "$BACKLOG"
+[ -f "$COUNTER" ] || printf '1\n' > "$COUNTER"
+
+acquired=""
+for _ in $(seq 1 50); do
+  if mkdir "$LOCK" 2>/dev/null; then
+    acquired=1
+    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+    break
+  fi
+  sleep 0.1
+done
+[ -n "$acquired" ] || { echo "ERROR: could not acquire lock $LOCK" >&2; exit 1; }
+
+current="$(tr -d '[:space:]' < "$COUNTER")"
+printf '%04d\n' "$current"
+printf '%s\n' "$((current + 1))" > "$COUNTER"
