@@ -206,90 +206,50 @@ export default function App() {
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
           {workspaces.map((ws) => {
             const workspaceActive = ws.repoRoot === activeWorkspaceRoot
+            // Workspace pill is intentionally minimal: label + count + close.
+            // Switching between sessions inside the workspace happens in the
+            // Terminal-tab session sub-bar inside SessionView — top bar shows
+            // PROJECTS, not pty instances.
+            const anyWorking = ws.sessions.some((s) => statusByKey[s.key] === 'working')
             return (
               <div
                 key={ws.repoRoot}
                 style={noDrag}
                 title={ws.repoRoot}
-                className={`group flex shrink-0 items-stretch gap-0.5 rounded-lg border px-1 py-0.5 ${
+                onClick={() =>
+                  activate(
+                    ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key,
+                  )
+                }
+                className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] ${
                   workspaceActive
-                    ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
-                    : 'border-[var(--gt-border)] bg-black/20'
+                    ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {/* workspace label — click anywhere here to activate the
-                    workspace's last-active session */}
-                <button
-                  onClick={() =>
-                    activate(
-                      ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key,
-                    )
-                  }
-                  className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${
-                    workspaceActive ? 'text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                <span
+                  title={anyWorking ? 'a session is working' : 'idle'}
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-[var(--gt-accent-2)]'
                   }`}
-                >
-                  <span className="max-w-[140px] truncate">{ws.label}</span>
-                  {ws.sessions.length > 1 && (
-                    <span className="rounded-full bg-black/30 px-1 text-[9px] tabular-nums text-zinc-500">
-                      {ws.sessions.length}
-                    </span>
-                  )}
-                </button>
-                {/* nested session pills — one per terminal instance */}
-                {ws.sessions.map((s, i) => {
-                  const on = s.key === activeKey
-                  return (
-                    <div
-                      key={s.key}
-                      onClick={() => activate(s.key)}
-                      className={`flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] ${
-                        on
-                          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
-                          : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span
-                        title={statusByKey[s.key] === 'working' ? 'working' : 'idle'}
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          statusByKey[s.key] === 'working'
-                            ? 'bg-[var(--gt-green)] gt-pulse'
-                            : s.choice.mode === 'new'
-                              ? 'bg-[var(--gt-accent)]'
-                              : 'bg-[var(--gt-accent-2)]'
-                        }`}
-                      />
-                      <span className="max-w-[140px] truncate">{labelForSession(s, i)}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          closeSession(s.key)
-                        }}
-                        title="Close session"
-                        className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
-                      >
-                        <X size={11} strokeWidth={2.5} />
-                      </button>
-                    </div>
-                  )
-                })}
-                {/* + session in this workspace */}
+                />
+                <span className="max-w-[180px] truncate font-semibold">{ws.label}</span>
+                {ws.sessions.length > 1 && (
+                  <span className="rounded-full bg-black/30 px-1 text-[9.5px] tabular-nums text-zinc-500">
+                    {ws.sessions.length}
+                  </span>
+                )}
                 <button
-                  onClick={() => setAdding({ repoRoot: ws.repoRoot })}
-                  title={`New session in ${ws.label}`}
-                  className="flex shrink-0 items-center rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-                >
-                  <Plus size={12} strokeWidth={2.5} />
-                </button>
-                {/* close workspace */}
-                <button
-                  onClick={() => closeWorkspace(ws.repoRoot)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeWorkspace(ws.repoRoot)
+                  }}
                   title={
                     ws.sessions.length > 1
                       ? `Close ${ws.label} (${ws.sessions.length} sessions)`
                       : `Close ${ws.label}`
                   }
-                  className="flex shrink-0 items-center rounded p-1 text-zinc-700 hover:bg-[var(--gt-red)]/20 hover:text-[var(--gt-red)]"
+                  className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
                 >
                   <X size={12} strokeWidth={2.5} />
                 </button>
@@ -335,20 +295,36 @@ export default function App() {
           The entry screen overlays (rather than replacing) so existing sessions
           stay mounted and their ptys aren't respawned. */}
       <div className="relative min-h-0 flex-1">
-        {sessions.map((s) => (
-          <div
-            key={s.key}
-            className="absolute inset-0"
-            style={{ visibility: !showEntry && s.key === activeKey ? 'visible' : 'hidden' }}
-          >
-            <SessionView
-              sessionKey={s.key}
-              choice={s.choice}
-              active={!showEntry && s.key === activeKey}
-              onStarted={(i) => setInfo(s.key, i)}
-            />
-          </div>
-        ))}
+        {sessions.map((s) => {
+          // Workspace sessions for the sub-bar — each SessionView gets the
+          // peer list for ITS workspace so the Terminal-tab session selector
+          // can render without round-tripping through App.
+          const ws = workspaces.find((w) => w.sessions.some((x) => x.key === s.key))
+          const peers = (ws?.sessions || [s]).map((x, i) => ({
+            key: x.key,
+            label: labelForSession(x, i),
+            status: statusByKey[x.key] || 'idle',
+            mode: x.choice.mode,
+          }))
+          return (
+            <div
+              key={s.key}
+              className="absolute inset-0"
+              style={{ visibility: !showEntry && s.key === activeKey ? 'visible' : 'hidden' }}
+            >
+              <SessionView
+                sessionKey={s.key}
+                choice={s.choice}
+                active={!showEntry && s.key === activeKey}
+                onStarted={(i) => setInfo(s.key, i)}
+                peerSessions={peers}
+                onSwitchSession={activate}
+                onAddSession={() => setAdding({ repoRoot: ws?.repoRoot || s.choice.cwd || '' })}
+                onCloseSession={closeSession}
+              />
+            </div>
+          )
+        })}
         {fleet && !showEntry && (
           <div className="absolute inset-0 z-40 bg-[var(--gt-bg)]">
             <FleetView

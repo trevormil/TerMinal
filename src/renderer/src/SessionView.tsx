@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { SquareTerminal, GitBranch, LayoutGrid, ScrollText, type LucideIcon } from 'lucide-react'
+import { SquareTerminal, GitBranch, LayoutGrid, ScrollText, X, Plus, type LucideIcon } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
@@ -36,11 +36,22 @@ export function SessionView({
   choice,
   active,
   onStarted,
+  peerSessions = [{ key: sessionKey, label: 'S1', status: 'idle', mode: choice.mode }],
+  onSwitchSession,
+  onAddSession,
+  onCloseSession,
 }: {
   sessionKey: string
   choice: Choice
   active: boolean
   onStarted: (info: Info) => void
+  /** Every session in THIS workspace, in stable order. Rendered as a thin
+   *  sub-bar above the terminal pane so the user can swap pty instances
+   *  without leaving the Terminal tab. */
+  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume' }[]
+  onSwitchSession?: (key: string) => void
+  onAddSession?: () => void
+  onCloseSession?: (key: string) => void
 }) {
   const [info, setInfo] = useState<Info>({ sessionId: '', cwd: '' })
   const [branch, setBranch] = useState('')
@@ -235,8 +246,67 @@ export function SessionView({
             visibility: onTerminal ? 'visible' : 'hidden',
           }}
         >
-          <main className="min-w-0 overflow-hidden bg-[var(--gt-bg)]">
-            <TerminalPane sessionKey={sessionKey} choice={choice} onStarted={handleStarted} />
+          <main className="flex min-w-0 flex-col overflow-hidden bg-[var(--gt-bg)]">
+            {/* Session sub-bar — peer terminal instances inside this workspace.
+                Top-level bar shows projects; this row shows pty instances.
+                Hidden when there's only one session (no choice to make). */}
+            {peerSessions.length > 1 || onAddSession ? (
+              <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px]">
+                <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                  terminal
+                </span>
+                {peerSessions.map((p) => {
+                  const on = p.key === sessionKey
+                  return (
+                    <button
+                      key={p.key}
+                      onClick={() => p.key !== sessionKey && onSwitchSession?.(p.key)}
+                      className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 ${
+                        on
+                          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                          : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span
+                        title={p.status === 'working' ? 'working' : 'idle'}
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          p.status === 'working'
+                            ? 'bg-[var(--gt-green)] gt-pulse'
+                            : p.mode === 'new'
+                              ? 'bg-[var(--gt-accent)]'
+                              : 'bg-[var(--gt-accent-2)]'
+                        }`}
+                      />
+                      <span className="max-w-[140px] truncate">{p.label}</span>
+                      {peerSessions.length > 1 && onCloseSession && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onCloseSession(p.key)
+                          }}
+                          title="Close this session"
+                          className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                        >
+                          <X size={10} strokeWidth={2.5} />
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+                {onAddSession && (
+                  <button
+                    onClick={onAddSession}
+                    title="New session in this workspace"
+                    className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                  >
+                    <Plus size={11} strokeWidth={2.5} />
+                  </button>
+                )}
+              </div>
+            ) : null}
+            <div className="min-h-0 flex-1">
+              <TerminalPane sessionKey={sessionKey} choice={choice} onStarted={handleStarted} />
+            </div>
           </main>
           <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
             <div className="mb-2 flex items-center justify-between px-0.5">
