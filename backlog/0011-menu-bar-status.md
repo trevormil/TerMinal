@@ -1,7 +1,7 @@
 ---
 id: 11
 title: "Menu-bar fleet status: NSStatusItem + dock badge for at-desk awareness"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false

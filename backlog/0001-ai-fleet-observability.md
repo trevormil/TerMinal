@@ -1,7 +1,7 @@
 ---
 id: 1
 title: "AI fleet observability: track every claude/codex run + costs + rate limits"
-status: open
+status: closed
 priority: high
 horizon: now
 hitl: false

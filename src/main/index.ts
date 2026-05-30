@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, clipboard } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Tray, Menu, nativeImage } from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -101,6 +101,7 @@ import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from '.
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import { knownModels } from './ai-pricing'
+import { startMenuBar } from './tray'
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
@@ -926,6 +927,8 @@ app.whenReady().then(() => {
   setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
   // AI fleet observability — periodic transcript scans for cost/token rollups.
   startAICollectionLoop()
+  // Menu-bar fleet status (NSStatusItem). 5s poll of HITL/runs/spend.
+  startMenuBar()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
