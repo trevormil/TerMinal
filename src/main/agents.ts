@@ -166,6 +166,137 @@ const DEFAULT_AGENTS: Agent[] = [
     prompt:
       'Act as a dead-code cleanup agent for this repository. Find unused exports, unreachable branches, orphaned files, and stale feature flags. Remove only what is provably unused (verify with a references/usage search and the type checker/build), keeping changes surgical and reversible. Run the test suite and build to confirm nothing breaks, then open a PR. For anything you suspect is dead but cannot prove safely, file a backlog ticket instead of deleting. End with a summary of what you removed and the PR URL.',
   },
+  // ━━ Generic daily-loop presets (modeled on Trevor's old BitBadges daily) ━━
+  // Each preset is repo-agnostic and ticket/PR-driven. Skipping presets that
+  // overlap existing defaults (auto-docs → docs, auto-test → test-coverage,
+  // security-audit → security-sweep, perf-infra → perf-pass, dependabot →
+  // dep-upgrade, auto-fix → deep-audit+ticket-pr-cleanup).
+  {
+    id: 'comments-inspector',
+    title: 'Comments inspector',
+    description: 'Audit READMEs, CLAUDE.md, JSDoc, inline comments for staleness or low-value noise.',
+    icon: 'MessageSquare',
+    opensPr: true,
+    prompt:
+      "Act as a comments-quality agent for this repository. Audit in-repo READMEs (root + nested), CLAUDE.md files, JSDoc / docstrings, and inline comments. Flag: WHAT-comments that just restate the code (delete-candidate per global §7 — code should self-document), stale comments that contradict current behavior, missing WHY-comments where a non-obvious constraint or invariant would surprise a reader, and incorrect/outdated docs at the top of files. Apply only safe, surgical changes (delete dead WHAT-comments, fix wrong-vs-code comments). File a backlog ticket (type: docs) for larger rewrites you can't do in one pass. Open a PR for any changes. End with a summary of fixes + tickets filed.",
+  },
+  {
+    id: 'product-audit',
+    title: 'Product audit',
+    description: 'Static product/UX read — features, flows, copy, IA. File tickets for gaps.',
+    icon: 'ClipboardList',
+    opensPr: false,
+    prompt:
+      "Act as a product-audit agent for this repository. Without running the app, do a static read of the product surface: routes, screens/components, copy, navigation/IA, primary user flows, and onboarding. Identify product gaps — missing affordances, confusing copy, broken/half-built flows, inconsistencies across surfaces, and accessibility issues visible from the source. For each finding, file a backlog ticket (type: ux or feature) with a precise title, the affected files, and a self-contained fix prompt. Don't edit code. End with a summary of every ticket filed.",
+  },
+  {
+    id: 'friction-hunter',
+    title: 'Friction hunter',
+    description: 'Walk onboarding/first-use as a new user; file tickets where things confuse or break.',
+    icon: 'Footprints',
+    opensPr: false,
+    prompt:
+      "Act as a friction-hunter agent for this repository. Pretend you are a brand-new user encountering this product for the first time. Walk the onboarding / first-use path end-to-end — read the README, attempt the setup, run the first flow (CLI command, route, UI). Note every point of friction: ambiguous instructions, missing steps, errors with poor messages, half-wired features, dead links, broken happy paths. For each friction point, file a backlog ticket (type: ux or bug) with the exact reproduction and a fix prompt. Don't edit code. End with a numbered list of friction points + ticket ids.",
+  },
+  {
+    id: 'red-team-audit',
+    title: 'Red-team audit',
+    description: 'Adversarial cross-layer sweep — chain weaknesses, abuse cases, real attacker mindset.',
+    icon: 'Swords',
+    opensPr: false,
+    prompt:
+      "Act as a red-team agent for this repository. Unlike a per-vector security sweep, do an ADVERSARIAL cross-layer audit: think like a motivated attacker trying to chain small weaknesses into a real compromise. Look at auth + session flow + state mutation + IPC + external calls as a SYSTEM, not in isolation. Identify abuse cases (rate-limit bypass, race conditions on the auth boundary, trust assumptions that don't hold under concurrency, side-channel leaks). File a backlog ticket per attack-chain (type: security) with the chain laid out step-by-step and the smallest fix that breaks the chain. Don't edit code. End with the list of attack chains and ticket ids.",
+  },
+  {
+    id: 'intelligence',
+    title: 'Intelligence sweep',
+    description: 'Scan for market / competitor / ecosystem signals relevant to this project.',
+    icon: 'Telescope',
+    opensPr: false,
+    prompt:
+      "Act as an intelligence-gathering agent for this repository. Identify what this product/codebase does (from README, package.json, code) and then sweep for relevant external signals: competitor moves, ecosystem/protocol updates, new libraries that obsolete current dependencies, market shifts that change the priority of in-flight work. Use whatever web/search tools you have. File a backlog ticket per actionable signal (type: feature or docs, horizon: future or next) with the source link and the implication. Don't edit code. End with a digest of signals + ticket ids.",
+  },
+  {
+    id: 'strategy',
+    title: 'Strategy review',
+    description: 'Step back: are we building the right things? Surface drift from stated goals.',
+    icon: 'Target',
+    opensPr: false,
+    prompt:
+      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. End with a one-page strategic read: where the project is aligned, where it has drifted, and the top 3 strategic moves to consider.",
+  },
+  {
+    id: 'cert-check',
+    title: 'TLS / cert check',
+    description: 'Check production TLS expiry + cert hygiene for any prod hostnames this repo serves.',
+    icon: 'Lock',
+    opensPr: false,
+    prompt:
+      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. End with a table of hostnames, expiry dates, and ticket ids for the issues.",
+  },
+  {
+    id: 'translations-check',
+    title: 'Translations check',
+    description: 'Find hardcoded English strings + drifted locale files; file tickets for gaps.',
+    icon: 'Languages',
+    opensPr: false,
+    prompt:
+      "Act as a translations-hygiene agent for this repository. Determine if this product uses i18n (look for next-intl, react-i18next, formatjs, locale files under src/locales or similar). If not, no-op and report. If yes, scan for: hardcoded user-facing English strings that bypass the i18n system, missing keys in non-default locale files, stale translations where the source key changed, and untranslated UI surfaces. File a backlog ticket per gap (type: ux or docs) with the affected files and a fix prompt. Don't edit code. End with the gap summary and ticket ids.",
+  },
+  {
+    id: 'changelog',
+    title: 'Changelog update',
+    description: 'Roll recent merged commits/PRs into a CHANGELOG entry; PR the result.',
+    icon: 'ScrollText',
+    opensPr: true,
+    prompt:
+      "Act as a changelog agent for this repository. If a CHANGELOG.md or similar exists, identify the last release entry date and roll all merged work since then into a new Unreleased (or next-version) section: features, fixes, breaking changes, internal/chore. Pull from git log + closed PRs + closed backlog tickets. Use Conventional Commits prefixes to bucket. Keep entries user-facing — drop pure refactors unless they change behavior. Commit and open a PR. If no CHANGELOG exists, file a docs ticket proposing one rather than creating it unilaterally. End with the entry diff summary and PR URL.",
+  },
+  {
+    id: 'simplification',
+    title: 'Simplification pass',
+    description: 'Find over-engineering / premature abstraction; PR safe simplifications.',
+    icon: 'Scissors',
+    opensPr: true,
+    prompt:
+      "Act as a simplification agent for this repository. Find over-engineering per global §2: speculative flexibility, single-use abstractions, configurability nobody uses, error handling for impossible scenarios, generic helpers that wrap one call site. Apply safe, well-scoped simplifications with tests still green (rewrite a 200-line module to 50 only when it stays readable and equivalent). File backlog tickets (type: refactor or dx) for larger simplifications you can't safely land. Open a PR for what you simplify. End with a list of what was simplified (lines before/after) + tickets filed + PR URL.",
+  },
+  {
+    id: 'devils-advocate',
+    title: "Devil's advocate",
+    description: 'Counter-argue a recent decision/ADR; file a ticket if the counter holds.',
+    icon: 'MessageCircleQuestion',
+    opensPr: false,
+    prompt:
+      "Act as a devil's-advocate agent for this repository. Pick the most consequential recent decision — last accepted ADR, last significant architecture commit, last major feature direction — and build the strongest counter-argument. Steelman the opposite choice: what would have made it correct, what costs the chosen path now carries, what's the smallest reversal that would unwind it. If the counter holds enough water that reconsideration would be cheaper than the eventual reversal, file a backlog ticket (type: docs, source: devils-advocate) proposing an ADR-revisit. Don't edit code. End with the counter-argument written out and the ticket id (if filed).",
+  },
+  {
+    id: 'bloat-check',
+    title: 'Bloat check',
+    description: 'Delete low-value tickets, suggestions, and dead artifacts. Keep the backlog honest.',
+    icon: 'Recycle',
+    opensPr: false,
+    prompt:
+      "Act as a bloat-check agent for this repository. Audit the backlog and artifact surfaces — open tickets, .reviews/ suggestions, .checks/ reports, sessions/ closed docs — for low-value or stale items: tickets nobody will ever do, suggestions copy-pasted into ticket form, reports older than the work they discuss, abandoned session docs. Close (with a one-line closing note) or icebox the cruft. Don't delete prose lightly; preserve genuinely useful learnings. End with a list of every item closed/iceboxed and the rationale.",
+  },
+  {
+    id: 'knowledge-base',
+    title: 'Knowledge base sweep',
+    description: 'Cross-link, deduplicate, surface gaps across ADRs / learnings / runbooks.',
+    icon: 'Library',
+    opensPr: true,
+    prompt:
+      "Act as a knowledge-base agent for this repository. Sweep docs/decisions/, docs/learnings/, and docs/runbooks/ for: duplicate entries (same gotcha captured twice), missing cross-links between related items, ADRs that should be superseded by newer ones but aren't marked, runbooks whose last-verified date is stale. Apply safe edits (add cross-link references, mark stale runbooks, set supersedes: on duplicate ADRs). File backlog tickets (type: docs) for any gap you find — a learning that should exist for a known recurring issue, a runbook that should exist for a manual procedure. Open a PR for the safe edits. End with a summary.",
+  },
+  {
+    id: 'summary',
+    title: 'Daily summary',
+    description: 'Roll up today\'s repo activity into a concise digest under reports/.',
+    icon: 'Newspaper',
+    opensPr: false,
+    prompt:
+      "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, backlog/, .reviews/, .checks/. Write it to reports/YYYY-MM-DD-daily-summary.md (create reports/ if missing). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
+  },
 ]
 
 function readRepoAgents(repoRoot: string): Agent[] {

@@ -18,6 +18,22 @@ import {
   Pencil,
   RotateCcw,
   Plus,
+  MessageSquare,
+  ClipboardList,
+  Footprints,
+  Swords,
+  Telescope,
+  Target,
+  Lock,
+  Languages,
+  ScrollText,
+  Scissors,
+  MessageCircleQuestion,
+  Recycle,
+  Library,
+  Newspaper,
+  Factory,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
@@ -53,6 +69,22 @@ const AGENT_ICON: Record<string, LucideIcon> = {
   Gauge,
   PackageCheck,
   Eraser,
+  Factory,
+  Wrench,
+  MessageSquare,
+  ClipboardList,
+  Footprints,
+  Swords,
+  Telescope,
+  Target,
+  Lock,
+  Languages,
+  ScrollText,
+  Scissors,
+  MessageCircleQuestion,
+  Recycle,
+  Library,
+  Newspaper,
   Bot,
 }
 const statusTone = (s: string): BadgeTone =>
@@ -654,62 +686,51 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   const Icon = AGENT_ICON[a.icon || ''] || Bot
                   const on = selAgentId === a.id
                   const busy = runningByAgent.has(a.id)
+                  const last = busy ? null : lastRunByAgent.get(a.id) || null
+                  const dot = busy
+                    ? 'bg-[var(--gt-green)] gt-pulse'
+                    : last?.status === 'done'
+                      ? 'bg-[var(--gt-green)]'
+                      : last?.status === 'failed'
+                        ? 'bg-[var(--gt-red)]'
+                        : last
+                          ? 'bg-zinc-500'
+                          : ''
+                  const dotTitle = busy
+                    ? 'run in progress'
+                    : last
+                      ? `last run: ${last.status} · ${fmtRelative(last.startedAt)}`
+                      : ''
                   return (
                     <button
                       key={a.id}
                       onClick={() => setSelAgentId(a.id)}
-                      className={`flex w-full items-start gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                      title={a.description || a.title}
+                      className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-2.5 py-1 text-left ${
                         on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                       }`}
                     >
                       <Icon
-                        size={14}
+                        size={13}
                         strokeWidth={2}
-                        className={`mt-0.5 shrink-0 ${
+                        className={`shrink-0 ${
                           on ? 'text-[var(--gt-accent-light)]' : 'text-zinc-500'
                         }`}
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
-                            {a.title}
-                          </span>
-                          {busy ? (
-                            <span
-                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-green)] gt-pulse"
-                              title="run in progress"
-                            />
-                          ) : (
-                            (() => {
-                              const last = lastRunByAgent.get(a.id)
-                              if (!last) return null
-                              const dot =
-                                last.status === 'done'
-                                  ? 'bg-[var(--gt-green)]'
-                                  : last.status === 'failed'
-                                    ? 'bg-[var(--gt-red)]'
-                                    : 'bg-zinc-500'
-                              return (
-                                <span
-                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`}
-                                  title={`last run: ${last.status} · ${fmtRelative(last.startedAt)}`}
-                                />
-                              )
-                            })()
-                          )}
-                        </div>
-                        {a.description && (
-                          <div className="truncate text-[10.5px] leading-snug text-zinc-500">
-                            {a.description}
-                          </div>
-                        )}
-                        <div className="mt-0.5 flex items-center gap-1">
-                          {a.source && (
-                            <Badge tone={SOURCE[a.source].tone}>{SOURCE[a.source].label}</Badge>
-                          )}
-                          {a.hasScript && <Badge tone="blue">sh</Badge>}
-                        </div>
-                      </div>
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-zinc-100">
+                        {a.title}
+                      </span>
+                      {a.hasScript && (
+                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-[var(--gt-accent-light)]/70">
+                          sh
+                        </span>
+                      )}
+                      {dot && (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`}
+                          title={dotTitle}
+                        />
+                      )}
                     </button>
                   )
                 })
