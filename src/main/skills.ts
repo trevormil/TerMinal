@@ -3,9 +3,9 @@ import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { parseFrontmatter } from './frontmatter'
 
-// Enumerate the Claude skills available to a session, across three scopes:
-//   project  — <repoRoot>/.claude/skills/<name>/SKILL.md   (this repo's own)
-//   personal — ~/.claude/skills/<name>/SKILL.md            (the user's own)
+// Enumerate platform-agnostic skills available to a session, across three scopes:
+//   project  — <repoRoot>/.claude/skills and <repoRoot>/.codex/skills
+//   personal — ~/.claude/skills and ~/.codex/skills
 //   plugin   — ~/.claude/plugins/cache/**/skills/<name>/SKILL.md (installed plugins)
 // "Ours" = project + personal; plugins are the larger external set shown on expand.
 
@@ -15,6 +15,7 @@ export type SkillInfo = {
   description: string
   scope: SkillScope
   namespace?: string // plugin name, for scope === 'plugin'
+  platforms: ('claude' | 'codex')[]
 }
 
 // Plugin skills live at .../cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md.
@@ -26,25 +27,30 @@ export function pluginNamespaceFromSkillPath(skillMdPath: string): string {
   return basename(dirname(versionDir)) // <plugin>
 }
 
-function readSkill(skillMdPath: string, scope: SkillScope, namespace?: string): SkillInfo | null {
+function readSkill(
+  skillMdPath: string,
+  scope: SkillScope,
+  platform: 'claude' | 'codex',
+  namespace?: string,
+): SkillInfo | null {
   try {
     const { fm } = parseFrontmatter(readFileSync(skillMdPath, 'utf8'))
     const name = typeof fm.name === 'string' && fm.name ? fm.name : basename(dirname(skillMdPath))
     const description = typeof fm.description === 'string' ? fm.description : ''
-    return { name, description, scope, namespace }
+    return { name, description, scope, namespace, platforms: [platform] }
   } catch {
     return null
   }
 }
 
 // One level of <dir>/<name>/SKILL.md folders.
-function scanSkillDir(dir: string, scope: SkillScope): SkillInfo[] {
+function scanSkillDir(dir: string, scope: SkillScope, platform: 'claude' | 'codex'): SkillInfo[] {
   if (!existsSync(dir)) return []
   const out: SkillInfo[] = []
   for (const entry of readdirSync(dir)) {
     const md = join(dir, entry, 'SKILL.md')
     if (existsSync(md)) {
-      const s = readSkill(md, scope)
+      const s = readSkill(md, scope, platform)
       if (s) out.push(s)
     }
   }
@@ -73,7 +79,7 @@ function scanPluginSkills(): SkillInfo[] {
       }
       const md = join(p, 'SKILL.md')
       if (basename(dir) === 'skills' && existsSync(md)) {
-        const s = readSkill(md, 'plugin', pluginNamespaceFromSkillPath(md))
+        const s = readSkill(md, 'plugin', 'claude', pluginNamespaceFromSkillPath(md))
         if (s) out.push(s)
         continue // don't descend into a skill folder
       }
@@ -89,14 +95,24 @@ let cache: { ts: number; key: string; skills: SkillInfo[] } | null = null
 export function listSkills(repoRoot: string): SkillInfo[] {
   const now = Date.now()
   if (cache && cache.key === repoRoot && now - cache.ts < 60_000) return cache.skills
-  const project = repoRoot ? scanSkillDir(join(repoRoot, '.claude/skills'), 'project') : []
-  const personal = scanSkillDir(join(homedir(), '.claude/skills'), 'personal')
+  const project = repoRoot
+    ? [
+        ...scanSkillDir(join(repoRoot, '.claude/skills'), 'project', 'claude'),
+        ...scanSkillDir(join(repoRoot, '.codex/skills'), 'project', 'codex'),
+      ]
+    : []
+  const personal = [
+    ...scanSkillDir(join(homedir(), '.claude/skills'), 'personal', 'claude'),
+    ...scanSkillDir(join(homedir(), '.codex/skills'), 'personal', 'codex'),
+  ]
   const plugin = scanPluginSkills()
-  // Dedup by scope+namespace+name; project shadows personal shadows plugin on name clash.
+  // Dedup by scope+namespace+name and merge platform mirrors into one row.
   const seen = new Map<string, SkillInfo>()
   for (const s of [...project, ...personal, ...plugin]) {
     const k = `${s.scope}:${s.namespace || ''}:${s.name}`
-    if (!seen.has(k)) seen.set(k, s)
+    const prev = seen.get(k)
+    if (!prev) seen.set(k, s)
+    else prev.platforms = Array.from(new Set([...prev.platforms, ...s.platforms])).sort() as SkillInfo['platforms']
   }
   const skills = [...seen.values()].sort(
     (a, b) => (a.namespace || '').localeCompare(b.namespace || '') || a.name.localeCompare(b.name),

@@ -98,7 +98,7 @@ See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
 repo-aware — each shows based on the attached session's repo.
 
-- **Terminal** — the `claude` CLI plus the cockpit sidebar.
+- **Terminal** — the `claude` or `codex` CLI. Claude sessions include the cockpit sidebar; Codex sessions use the full terminal pane.
 - **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
   **grouped by status** (closed/icebox collapsed by default). Inline
   status/priority edits write back to the markdown file.

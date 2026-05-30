@@ -9,6 +9,9 @@ function SkillRow({ s }: { s: SkillInfo }) {
       <div className="font-mono text-[11px] text-zinc-200">
         {s.scope === 'plugin' && s.namespace ? <span className="text-zinc-500">{s.namespace}:</span> : null}
         {s.name}
+        {s.platforms?.length ? (
+          <span className="ml-1 text-[9px] text-zinc-600">{s.platforms.join('+')}</span>
+        ) : null}
       </div>
       {s.description && (
         <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{s.description}</div>
@@ -63,7 +66,7 @@ const plugin: Plugin<SkillInfo[]> = {
   id: 'skills',
   title: 'Skills',
   icon: Sparkles,
-  blurb: 'Browse available Claude skills — your project + personal skills first, plugin skills on expand.',
+  blurb: 'Browse available Claude/Codex skills — your project + personal skills first, plugin skills on expand.',
   order: 9,
   intervalMs: 300_000, // skills are essentially static; poll rarely
   defaultEnabled: true,

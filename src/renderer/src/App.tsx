@@ -52,7 +52,7 @@ const labelForSession = (
 }
 
 // open sessions persist to localStorage so the window reopens to your workspace
-type Saved = { key: string; sessionId: string; cwd: string; name: string }
+type Saved = { key: string; sessionId: string; cwd: string; name: string; engine?: 'claude' | 'codex' }
 const restored: Saved[] = (() => {
   try {
     return JSON.parse(localStorage.getItem('gt.openSessions') || '[]')
@@ -63,11 +63,17 @@ const restored: Saved[] = (() => {
 
 export default function App() {
   const [sessions, setSessions] = useState<Sess[]>(() =>
-    restored.map((s) => ({
-      key: s.key,
-      choice: { mode: 'resume', sessionId: s.sessionId, cwd: s.cwd, name: s.name },
-      info: { sessionId: s.sessionId, cwd: s.cwd },
-    })),
+    restored.map((s) => {
+      const engine = s.engine || 'claude'
+      return {
+        key: s.key,
+        choice:
+          engine === 'codex'
+            ? { mode: 'new', engine, cwd: s.cwd, name: s.name }
+            : { mode: 'resume', engine, sessionId: s.sessionId, cwd: s.cwd, name: s.name },
+        info: { sessionId: s.sessionId, cwd: s.cwd },
+      }
+    }),
   )
   const [activeKey, setActiveKey] = useState<string | null>(restored[restored.length - 1]?.key ?? null)
   // adding === 'workspace' → EntryScreen pick a repo (free cwd)
@@ -85,6 +91,7 @@ export default function App() {
         sessionId: s.info.sessionId || (s.choice.mode === 'resume' ? s.choice.sessionId || '' : ''),
         cwd: s.info.cwd || s.choice.cwd || '',
         name: s.choice.name || '',
+        engine: s.choice.engine || 'claude',
       }))
       .filter((s) => s.sessionId)
     localStorage.setItem('gt.openSessions', JSON.stringify(data))

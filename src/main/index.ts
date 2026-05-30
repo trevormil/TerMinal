@@ -127,7 +127,6 @@ import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
 import { readPersonas } from './personas'
 
-const claudeBin = () => enginePath('claude')
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
 let win: BrowserWindow | null = null
@@ -143,13 +142,15 @@ function send(channel: string, ...args: unknown[]) {
 // One window now hosts MANY sessions, each its own PTY, keyed by a renderer-
 // generated tab key. Data IPC reads the *active* session; PTY IPC is routed by
 // key so every (even backgrounded) terminal keeps streaming.
-type Pinned = { sessionId: string; cwd: string; mode: '' | 'new' | 'resume'; name: string }
+type Pinned = { sessionId: string; cwd: string; mode: '' | 'new' | 'resume'; name: string; engine: Engine }
 const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
 let activeKey = ''
-const cur = (): Pinned => sessions.get(activeKey)?.pinned ?? { sessionId: '', cwd: '', mode: '', name: '' }
+const cur = (): Pinned =>
+  sessions.get(activeKey)?.pinned ?? { sessionId: '', cwd: '', mode: '', name: '', engine: 'claude' }
 
 type StartOpts = {
   mode: 'new' | 'resume'
+  engine?: Engine
   sessionId?: string
   cwd?: string
   name?: string
@@ -163,19 +164,22 @@ function startSession(key: string, opts: StartOpts) {
   sessions.get(key)?.pty.kill()
 
   const cwd = opts.cwd || homedir()
+  const engine = opts.engine || 'claude'
   const args: string[] = []
   let sessionId: string
 
-  if (opts.mode === 'resume' && opts.sessionId) {
+  if (engine === 'claude' && opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
   } else {
     sessionId = randomUUID()
-    args.push('--session-id', sessionId)
-    if (opts.name) args.push('--name', opts.name)
+    if (engine === 'claude') {
+      args.push('--session-id', sessionId)
+      if (opts.name) args.push('--name', opts.name)
+    }
   }
 
-  const cmd = [claudeBin(), ...args].map(shq).join(' ')
+  const cmd = [enginePath(engine), ...args].map(shq).join(' ')
   const proc = pty.spawn(LOGIN_SHELL, ['-l', '-c', cmd], {
     name: 'xterm-256color',
     cols: opts.cols || 80,
@@ -186,12 +190,15 @@ function startSession(key: string, opts: StartOpts) {
   proc.onData((d) => send('pty:data', key, d))
   proc.onExit(({ exitCode }) => send('pty:exit', key, exitCode))
 
-  sessions.set(key, { pty: proc, pinned: { sessionId, cwd, mode: opts.mode, name: opts.name || '' } })
+  sessions.set(key, {
+    pty: proc,
+    pinned: { sessionId, cwd, mode: engine === 'codex' ? 'new' : opts.mode, name: opts.name || '', engine },
+  })
   activeKey = key
   watchSession()
   emitActivity({
     kind: 'session-start',
-    title: `${opts.name || basename(cwd) || 'session'} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
+    title: `${opts.name || basename(cwd) || 'session'} · ${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
     detail: cwd.replace(homedir(), '~'),
     repo: repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || ''),
     repoRoot: repoRootOf(cwd),
@@ -689,7 +696,7 @@ ipcMain.handle('data:usage', () => readUsage())
 ipcMain.handle('data:git-status', () => gitStatus(cur().cwd))
 ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
 ipcMain.handle('data:mr-summary', () => mrSummary(repoRootOf(cur().cwd)))
-ipcMain.handle('data:meta', () => ({ ...cur(), claude: claudeBin() }))
+ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 
 // ---- command widgets (declarative, per-repo extensible) ----
 ipcMain.handle('widgets:list', () => listCommandWidgets(cur().cwd))

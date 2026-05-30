@@ -109,7 +109,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
 }
 
 /**
- * One Claude session: its terminal (always mounted so the PTY/scrollback
+ * One agent session: its terminal (always mounted so the PTY/scrollback
  * survives backgrounding), cockpit, and view-tabs. Only the `active` session
  * renders its cockpit/tab content (so backgrounded sessions don't poll).
  */
@@ -253,6 +253,7 @@ export function SessionView({
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
   const activeWidgets = allPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
+  const showCockpit = choice.engine === 'claude'
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -333,25 +334,27 @@ export function SessionView({
               <ScrollText size={12} strokeWidth={2} />
               Snippets
             </button>
-            <button
-              style={noDrag}
-              onClick={() => setDrawer(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
-            >
-              <LayoutGrid size={12} strokeWidth={2} />
-              Plugins · {enabled.length}
-            </button>
+            {showCockpit && (
+              <button
+                style={noDrag}
+                onClick={() => setDrawer(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+              >
+                <LayoutGrid size={12} strokeWidth={2} />
+                Plugins · {enabled.length}
+              </button>
+            )}
           </>
         )}
       </header>
 
       <div className="relative min-h-0 flex-1">
-        {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
+        {/* Terminal + Claude cockpit. Always laid out (visibility, not display) so xterm
             keeps its size while backgrounded — no refit-from-zero, no flicker. */}
         <div
           className="absolute inset-0 grid"
           style={{
-            gridTemplateColumns: 'minmax(0,1fr) 320px',
+            gridTemplateColumns: showCockpit ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)',
             // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
             // that would override the App-level wrapper's `visibility: hidden`
             // for inactive sessions, leaking the inactive session's terminal
@@ -453,6 +456,7 @@ export function SessionView({
               <TerminalPane sessionKey={sessionKey} choice={choice} onStarted={handleStarted} />
             </div>
           </main>
+          {showCockpit && (
           <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
             <div className="mb-2 flex items-center justify-between px-0.5">
               <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
@@ -490,6 +494,7 @@ export function SessionView({
               ))
             )}
           </aside>
+          )}
         </div>
 
         {/* full-screen view tab */}
@@ -501,7 +506,7 @@ export function SessionView({
           </div>
         )}
 
-        {active && drawer && (
+        {active && showCockpit && drawer && (
           <PluginDrawer
             plugins={allPlugins}
             enabled={enabled}

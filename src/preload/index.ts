@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 type StartOpts = {
   mode: 'new' | 'resume'
+  engine?: 'claude' | 'codex'
   sessionId?: string
   cwd?: string
   name?: string

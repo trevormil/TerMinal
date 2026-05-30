@@ -410,6 +410,7 @@ export type SkillInfo = {
   description: string
   scope: SkillScope
   namespace?: string
+  platforms: Engine[]
 }
 
 export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }
@@ -500,6 +501,7 @@ export type FleetSession = {
 
 export type StartOpts = {
   mode: 'new' | 'resume'
+  engine?: Engine
   sessionId?: string
   cwd?: string
   name?: string
@@ -512,6 +514,7 @@ export type SessionInfo = {
   cwd: string
   mode: '' | 'new' | 'resume'
   name: string
+  engine: Engine
   claude: string
 }
 

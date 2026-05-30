@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { X, FolderOpen, Plus, GitBranch, FolderGit2 } from 'lucide-react'
-import type { SessionMeta } from '../lib/types'
+import type { Engine, SessionMeta } from '../lib/types'
+import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
-export type Choice = { mode: 'new' | 'resume'; sessionId?: string; cwd?: string; name?: string }
+export type Choice = { mode: 'new' | 'resume'; engine: Engine; sessionId?: string; cwd?: string; name?: string }
 
 function rel(ms: number): string {
   const s = (Date.now() - ms) / 1000
@@ -33,6 +34,7 @@ export function EntryScreen({
   const [dirs, setDirs] = useState<{ name: string; path: string }[]>([])
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
+  const [engine, setEngine] = useState<Engine>('claude')
   const [name, setName] = useState('')
   // "new project from template" scaffold form
   const [projName, setProjName] = useState('')
@@ -52,7 +54,7 @@ export function EntryScreen({
     setScaffoldErr('')
     const r = await window.gt.scaffoldProject(projName.trim(), projParent || undefined)
     setScaffoldBusy(false)
-    if (r.ok && r.path) onChoose({ mode: 'new', cwd: r.path })
+    if (r.ok && r.path) onChoose({ mode: 'new', engine, cwd: r.path })
     else setScaffoldErr(r.error || 'scaffold failed')
   }
 
@@ -62,7 +64,10 @@ export function EntryScreen({
       if (s[0]?.cwd) setCwd(s[0].cwd)
     })
     window.gt.projectDirs().then(setDirs)
-    window.gt.settings.get().then((s) => setDefaultParent(s.projectsDir))
+    window.gt.settings.get().then((s) => {
+      setDefaultParent(s.projectsDir)
+      setEngine(s.defaultEngine)
+    })
   }, [])
 
   // selecting a folder targets the new session there AND filters resume to it
@@ -108,8 +113,8 @@ export function EntryScreen({
             </>
           ) : (
             <>
-              Attach to a Claude session. This window pins to it — context, usage, and telemetry
-              all track that one session.
+              Start a Claude or Codex terminal. This window pins to one session so workspace
+              tabs track the same repo.
             </>
           )}
         </p>
@@ -136,7 +141,7 @@ export function EntryScreen({
                   {recents.map((r) => (
                     <button
                       key={r}
-                      onClick={() => onChoose({ mode: 'new', cwd: r })}
+                      onClick={() => onChoose({ mode: 'new', engine, cwd: r })}
                       title={r}
                       className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
                     >
@@ -232,6 +237,22 @@ export function EntryScreen({
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
             Start a new session
           </div>
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            {(['claude', 'codex'] as Engine[]).map((e) => (
+              <button
+                key={e}
+                onClick={() => setEngine(e)}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium ${
+                  engine === e
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                }`}
+              >
+                <EngineLogo engine={e} size={14} />
+                {e}
+              </button>
+            ))}
+          </div>
           {!lockedCwd && (
             <div className="mb-2 flex items-center gap-2">
               <button
@@ -259,7 +280,7 @@ export function EntryScreen({
             />
             <button
               onClick={() =>
-                onChoose({ mode: 'new', cwd: cwd.trim() || undefined, name: name.trim() || undefined })
+                onChoose({ mode: 'new', engine, cwd: cwd.trim() || undefined, name: name.trim() || undefined })
               }
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
             >
@@ -272,7 +293,7 @@ export function EntryScreen({
         {/* resume */}
         <div className="mb-2 flex items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            Resume{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
+            Resume Claude{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
           </span>
           {filterDir && (
             <button
@@ -294,7 +315,7 @@ export function EntryScreen({
             {shown.slice(0, 300).map((s) => (
               <button
                 key={s.id}
-                onClick={() => onChoose({ mode: 'resume', sessionId: s.id, cwd: s.cwd })}
+                onClick={() => onChoose({ mode: 'resume', engine: 'claude', sessionId: s.id, cwd: s.cwd })}
                 className="flex w-full items-center gap-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 text-left hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <div className="min-w-0 flex-1">

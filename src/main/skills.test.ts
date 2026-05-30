@@ -1,5 +1,9 @@
 import { test, expect, describe } from 'bun:test'
-import { pluginNamespaceFromSkillPath } from './skills'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { listSkills, pluginNamespaceFromSkillPath } from './skills'
 
 describe('pluginNamespaceFromSkillPath', () => {
   const cache = '/Users/x/.claude/plugins/cache'
@@ -16,5 +20,24 @@ describe('pluginNamespaceFromSkillPath', () => {
     expect(pluginNamespaceFromSkillPath(`${cache}/claude-code-toolkit/nopeek/0.0.23/skills/nopeek/SKILL.md`)).toBe(
       'nopeek',
     )
+  })
+})
+
+describe('listSkills', () => {
+  test('merges mirrored project skills across Claude and Codex', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'terminal-skills-'))
+    for (const platform of ['.claude', '.codex']) {
+      const dir = join(repo, platform, 'skills', 'mirror-test')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 'SKILL.md'),
+        '---\nname: mirror-test\ndescription: mirrored skill\n---\n# mirror-test\n',
+      )
+    }
+
+    const skill = listSkills(repo).find((s) => s.scope === 'project' && s.name === 'mirror-test')
+
+    expect(skill?.description).toBe('mirrored skill')
+    expect(skill?.platforms).toEqual(['claude', 'codex'])
   })
 })

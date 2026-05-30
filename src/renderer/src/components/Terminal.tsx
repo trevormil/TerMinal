@@ -4,8 +4,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
 
-// Hosts the real Claude Code CLI: xterm.js renders, the PTY (main process) runs
-// `claude` attached to the chosen session. Same pattern VS Code's integrated
+// Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
+// process) runs the chosen engine. Same pattern VS Code's integrated
 // terminal uses.
 export function TerminalPane({
   sessionKey,
@@ -62,7 +62,7 @@ export function TerminalPane({
     )
     const onInput = term.onData((d) => gt.pty.input(sessionKey, d))
 
-    // spawn `claude` attached to the chosen session, sized to the live terminal
+    // spawn the chosen engine attached to the session, sized to the live terminal
     gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) =>
       onStarted?.(info),
     )
