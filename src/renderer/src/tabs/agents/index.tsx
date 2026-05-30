@@ -35,6 +35,7 @@ import {
   Factory,
   Wrench,
   Workflow,
+  RadioTower,
   type LucideIcon,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
@@ -87,6 +88,7 @@ const AGENT_ICON: Record<string, LucideIcon> = {
   Library,
   Newspaper,
   Workflow,
+  RadioTower,
   Bot,
 }
 const statusTone = (s: string): BadgeTone =>
