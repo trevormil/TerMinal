@@ -599,6 +599,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       PATH: `${TERMINAL_BIN_DIR}:${process.env.PATH || ''}`,
       TERMINAL_REPO: repoRoot,
       TERMINAL_RUN_ID: run.id,
+      TERMINAL_AGENT_ID: spec.id,
       TERMINAL_BRANCH: branch,
       TERMINAL_WORKTREE: worktree,
       TERMINAL_ENGINE: spec.engine,
@@ -710,6 +711,7 @@ The script body MUST follow this shape:
   - Read these env vars the runner provides:
       TERMINAL_REPO      — the repo root
       TERMINAL_RUN_ID    — uuid of this run
+      TERMINAL_AGENT_ID  — id of this agent (used as the state key)
       TERMINAL_BRANCH    — worktree branch (or "main" if inPlace)
       TERMINAL_WORKTREE  — worktree path (== TERMINAL_REPO if inPlace)
       TERMINAL_ENGINE    — hint from sidecar / schedule override (default fallback when calling claude/codex)
@@ -722,6 +724,16 @@ The script body MUST follow this shape:
       terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping
       terminal-cli activity <kind> "<title>" "<detail>"   # emit one activity-feed event
       terminal-cli notify "<message>"          # raw Telegram message
+      terminal-cli state get-sha               # last main/master sha this agent scanned ("" if first run)
+      terminal-cli state mark-main             # fetch + record origin/main tip as lastScannedSha
+      terminal-cli state get|set <key> [value] # arbitrary per-(repo, agent) key/value persistence
+  - INCREMENTAL-SCAN PATTERN (use when the agent re-runs on a cadence and only cares about new commits):
+      last=\\$(terminal-cli state get-sha)
+      range="\${last:-HEAD~50}..HEAD"
+      changes=\\$(git -C "\$TERMINAL_REPO" log --oneline "\$range" -- src/)
+      [ -z "\$changes" ] && { echo "no new commits"; exit 0; }
+      ... do the work ...
+      terminal-cli state mark-main     # record where we scanned through
 
 THE BODY MUST FOLLOW THE PROJECT'S WORKFLOW:
   - The ticket + MR workflow uniformly. The MERGE TO MAIN IS HUMAN-ONLY — never \`gh pr merge\` / \`--auto\` / \`--merge\`.
@@ -796,9 +808,9 @@ export function convertAgentToScript(
   const script = `#!/usr/bin/env bash
 # Auto-generated from agents.json by TerMinal's "Convert to script" action.
 # Edit freely. The runner picks up this .sh over the agents.json prompt entry.
-# Env vars provided: TERMINAL_REPO, TERMINAL_RUN_ID, TERMINAL_BRANCH,
-# TERMINAL_WORKTREE, TERMINAL_ENGINE, TERMINAL_MODEL.
-# Helpers on PATH: terminal-cli ticket / hitl / activity / notify.
+# Env vars provided: TERMINAL_REPO, TERMINAL_RUN_ID, TERMINAL_AGENT_ID,
+# TERMINAL_BRANCH, TERMINAL_WORKTREE, TERMINAL_ENGINE, TERMINAL_MODEL.
+# Helpers on PATH: terminal-cli ticket / hitl / activity / notify / state.
 
 set -uo pipefail
 

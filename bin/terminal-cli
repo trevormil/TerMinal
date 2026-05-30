@@ -1,32 +1,45 @@
 #!/usr/bin/env bun
 // terminal-cli — self-contained TerMinal helpers exposed inside scheduled-agent
 // scripts (.agents/<id>.sh) so the script body can file tickets, raise HITL,
-// emit activity events, and send Telegram pings without hand-coding the JSON.
+// emit activity events, send Telegram pings, and persist run-to-run state
+// (last-scanned SHA, arbitrary key/value) without hand-coding the JSON.
 //
-// The runner injects ~/.config/TerMinal/bin into PATH before exec-ing scripts,
-// so a script can just call `terminal-cli hitl ...` like any other binary.
+// The runner injects ~/.config/TerMinal/bin into PATH and sets TERMINAL_REPO /
+// TERMINAL_AGENT_ID / TERMINAL_RUN_ID before exec-ing scripts.
 //
-// Subcommands (each prints the resulting id or path on stdout for piping):
-//   terminal-cli ticket "<title>" "<body>"         file a backlog ticket on TERMINAL_REPO
-//   terminal-cli hitl "<title>" "<action>"         file a global HITL item + Telegram ping
+// Subcommands:
+//   terminal-cli ticket "<title>" "<body>"              file a backlog ticket on TERMINAL_REPO
+//   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
-//   terminal-cli notify "<message>"                send a Telegram message (raw, no HITL framing)
+//   terminal-cli notify "<message>"                     send a Telegram message (raw)
+//
+//   terminal-cli state                                  print this agent's full state JSON
+//   terminal-cli state get-sha                          print lastScannedSha (empty if first run)
+//   terminal-cli state set-sha <sha>                    set lastScannedSha + bump lastRunAt
+//   terminal-cli state get <key>                        print a single state field
+//   terminal-cli state set <key> <value>                set a single state field (JSON-decoded if possible)
+//
+// State file path is ~/.config/TerMinal/agent-state/<repo-basename>/<agent-id>.json
+// (state lives outside the repo so cron runs don't dirty the working tree).
 //
 // SELF-CONTAINED: no imports from the TerMinal app bundle, only ~/.config/TerMinal/*.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { execSync } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
+const AGENT_STATE_DIR = join(CFG, 'agent-state')
 
 const repo = process.env.TERMINAL_REPO || ''
 const repoLabel = repo ? basename(repo) : ''
 const runId = process.env.TERMINAL_RUN_ID || ''
+const agentId = process.env.TERMINAL_AGENT_ID || ''
 
 function readTelegram() {
   try {
@@ -85,6 +98,147 @@ function fileHitl(title, action) {
   console.log(item.id)
 }
 
+// ---------------------------------------------------------------------------
+// state — per-(repo, agent) JSON sidecar at
+//   ~/.config/TerMinal/agent-state/<repo-basename>/<agent-id>.json
+//
+// Canonical fields the harness owns:
+//   lastScannedSha   sha of main/master at the end of the previous successful
+//                    scan. Agents use this to compute `git log <sha>..HEAD` and
+//                    only act on new commits.
+//   lastRunAt        ms epoch of the run that set lastScannedSha.
+//   lastRunId        run id (matches TERMINAL_RUN_ID) of the same run.
+//
+// Beyond those, scripts can set/get arbitrary string keys via `state set` /
+// `state get`. Values are stored as-is on disk; the writer JSON-parses when
+// possible so booleans/numbers/arrays round-trip cleanly.
+// ---------------------------------------------------------------------------
+function stateFile() {
+  if (!repo) {
+    console.error(
+      'terminal-cli state: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
+    )
+    process.exit(2)
+  }
+  if (!agentId) {
+    console.error(
+      'terminal-cli state: TERMINAL_AGENT_ID not set — pass --agent <id> or invoke via the runner',
+    )
+    process.exit(2)
+  }
+  const slug = repoLabel || 'unknown'
+  return join(AGENT_STATE_DIR, slug, `${agentId}.json`)
+}
+function readState() {
+  try {
+    return JSON.parse(readFileSync(stateFile(), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+function writeState(obj) {
+  const f = stateFile()
+  mkdirSync(dirname(f), { recursive: true })
+  writeFileSync(f, JSON.stringify(obj, null, 2) + '\n')
+}
+function coerce(v) {
+  if (v === undefined) return undefined
+  try {
+    return JSON.parse(v)
+  } catch {
+    return v
+  }
+}
+function mainBranchSha() {
+  try {
+    // Prefer origin/main if the repo has one, else origin/master, else local
+    // main/master. Falls through to HEAD if none of those exist.
+    const candidates = ['origin/main', 'origin/master', 'main', 'master', 'HEAD']
+    for (const ref of candidates) {
+      try {
+        const sha = execSync(`git rev-parse --verify --quiet ${ref}`, {
+          cwd: repo,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        })
+          .toString()
+          .trim()
+        if (sha) return { ref, sha }
+      } catch {
+        /* try next */
+      }
+    }
+  } catch {}
+  return { ref: '', sha: '' }
+}
+function stateCommand(sub, rest) {
+  if (!sub || sub === 'get') {
+    const key = rest[0]
+    const s = readState()
+    if (key) {
+      const v = s[key]
+      console.log(v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v))
+    } else {
+      console.log(JSON.stringify(s, null, 2))
+    }
+    return
+  }
+  if (sub === 'get-sha') {
+    console.log(readState().lastScannedSha || '')
+    return
+  }
+  if (sub === 'set-sha') {
+    const sha = rest[0]
+    if (!sha) {
+      console.error('terminal-cli state set-sha: missing <sha> argument')
+      process.exit(2)
+    }
+    const s = readState()
+    s.lastScannedSha = sha
+    s.lastRunAt = Date.now()
+    if (runId) s.lastRunId = runId
+    writeState(s)
+    return
+  }
+  if (sub === 'mark-main') {
+    // Convenience: fetch + record origin/main (or fallback) tip as
+    // lastScannedSha. The canonical "I've scanned trunk through here" call.
+    try {
+      execSync('git fetch --quiet origin', { cwd: repo, stdio: 'ignore' })
+    } catch {
+      /* offline / no remote — fall back to local ref */
+    }
+    const { ref, sha } = mainBranchSha()
+    if (!sha) {
+      console.error('terminal-cli state mark-main: no main/master ref resolvable in this repo')
+      process.exit(2)
+    }
+    const s = readState()
+    s.lastScannedSha = sha
+    s.lastScannedRef = ref
+    s.lastRunAt = Date.now()
+    if (runId) s.lastRunId = runId
+    writeState(s)
+    console.log(sha)
+    return
+  }
+  if (sub === 'set') {
+    const key = rest[0]
+    const val = rest[1]
+    if (!key) {
+      console.error('terminal-cli state set: missing <key>')
+      process.exit(2)
+    }
+    const s = readState()
+    s[key] = coerce(val)
+    writeState(s)
+    return
+  }
+  console.error(
+    'usage: terminal-cli state [get [key] | get-sha | set <key> <value> | set-sha <sha> | mark-main]',
+  )
+  process.exit(2)
+}
+
 function fileTicket(title, body) {
   if (!repo) {
     console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
@@ -138,13 +292,18 @@ switch (cmd) {
   case 'notify':
     pingTelegram(args[0] || '')
     break
+  case 'state':
+    stateCommand(args[0], args.slice(1))
+    break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|notify> [args...]\n' +
-        '  ticket "<title>" "<body>"          file a backlog ticket on TERMINAL_REPO\n' +
-        '  hitl "<title>" "<action>"          file a global HITL item + Telegram ping\n' +
-        '  activity <kind> "<title>" "<detail>"   emit one activity-feed event\n' +
-        '  notify "<message>"                  send a Telegram message (raw)\n',
+      'usage: terminal-cli <ticket|hitl|activity|notify|state> [args...]\n' +
+        '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
+        '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
+        '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
+        '  notify "<message>"                       send a Telegram message (raw)\n' +
+        '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
+        '                                           persist per-(repo, agent) JSON sidecar\n',
     )
     process.exit(2)
 }

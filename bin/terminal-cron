@@ -518,6 +518,7 @@ async function runSchedule(id) {
     PATH: `${TERMINAL_BIN_DIR}:${process.env.PATH || ''}`,
     TERMINAL_REPO: repo,
     TERMINAL_RUN_ID: runId,
+    TERMINAL_AGENT_ID: sched.agentId,
     TERMINAL_BRANCH: branch,
     TERMINAL_WORKTREE: worktree,
     TERMINAL_ENGINE: sched.engine,
