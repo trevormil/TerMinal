@@ -170,11 +170,26 @@ function rememberEmitted(id: string): void {
   }
 }
 
+// Auto-infer kind from title when the caller passed 'info' (or anything
+// non-specific) and the title matches a clearer pattern. Saves agents from
+// having to specify the right enum every time.
+function maybeInferKind(passed: ActivityKind, title: string): ActivityKind {
+  // Only run inference when the caller didn't pick a specific kind.
+  if (passed !== 'info') return passed
+  try {
+    const { inferActivityKind } = require('./event-classifier') as typeof import('./event-classifier')
+    return inferActivityKind(title, 'info')
+  } catch {
+    return passed
+  }
+}
+
 export function emitActivity(
   e: Omit<ActivityEvent, 'id' | 'ts'>,
   opts?: { notify?: boolean },
 ): ActivityEvent {
-  const ev: ActivityEvent = { ...e, id: randomUUID(), ts: Date.now() }
+  const inferredKind = maybeInferKind(e.kind, e.title)
+  const ev: ActivityEvent = { ...e, kind: inferredKind, id: randomUUID(), ts: Date.now() }
   try {
     mkdirSync(dirname(LOG), { recursive: true })
     appendFileSync(LOG, JSON.stringify(ev) + '\n')

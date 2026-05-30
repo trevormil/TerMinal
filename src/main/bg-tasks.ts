@@ -270,7 +270,7 @@ function telegramPing(text: string): void {
   }
 }
 
-function sweep(): void {
+async function sweep(): Promise<void> {
   const tasks = readTasks()
   let changed = false
   for (const t of tasks) {
@@ -298,12 +298,33 @@ function sweep(): void {
         runSource: 'agent',
       })
     } else {
-      // No MR, no FAILED marker — treat as failed but provide tail in HITL
+      // No MR, no FAILED marker — treat as failed. Try to summarize the log
+      // via OpenRouter haiku (cheap one-shot); falls back to deterministic
+      // "last error cluster" extraction when no key is set.
       t.status = 'failed'
+      const fullLog = (() => {
+        try {
+          return require('node:fs').readFileSync(t.logFile, 'utf8')
+        } catch {
+          return tail
+        }
+      })()
+      let summary = `Process exited without an MR URL or FAILED marker`
+      try {
+        const { summarizeFailedRun } = await import('./run-summarizer')
+        summary = await summarizeFailedRun({
+          rawLog: fullLog,
+          context: `Background task: ${t.label} in ${t.repo} (${t.engine}${
+            t.model ? '/' + t.model : ''
+          })`,
+        })
+      } catch {
+        /* fall through to default summary */
+      }
       fileHitl({
-        title: `Background task ended without MR · ${t.repo}`,
-        action: 'Process exited without an MR URL or FAILED marker',
-        detail: `Task: ${t.label}\nLog tail:\n${tail.split('\n').slice(-20).join('\n')}`,
+        title: `Background task failed · ${t.repo}`,
+        action: summary,
+        detail: `Task: ${t.label}\nLog: ${t.logFile}`,
         repo: t.repo,
         repoRoot: t.repoRoot,
         source: 'agent',
@@ -320,8 +341,10 @@ export function startBgWatcher(): void {
   if (watchTimer) return
   // Immediate sweep on boot to reconcile state if the app restarted while a
   // task was running. Then poll every 5s.
-  sweep()
-  watchTimer = setInterval(sweep, 5000)
+  sweep().catch(() => {})
+  watchTimer = setInterval(() => {
+    sweep().catch(() => {})
+  }, 5000)
 }
 
 export function stopBgWatcher(): void {

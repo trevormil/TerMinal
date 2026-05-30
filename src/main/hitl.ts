@@ -98,7 +98,54 @@ function alwaysPingTelegram(item: HitlItem): void {
 }
 
 /** File a HITL item (newest first) and fire the blocked notification. */
+/** Cheap title fingerprint for dedup — collapse case + whitespace, drop the
+ *  short transient bits (run/sha ids). */
+function hitlFingerprint(title: string, repo?: string): string {
+  return (
+    (title || '')
+      .toLowerCase()
+      .replace(/\b[0-9a-f]{6,}\b/g, '') // sha-ish blobs
+      .replace(/\b\d{4,}\b/g, '') // long numbers (PRs, runs)
+      .replace(/\s+/g, ' ')
+      .trim() +
+    '|' +
+    (repo || '')
+  )
+}
+
+const DEDUP_WINDOW_MS = 60 * 60 * 1000 // 1 hour
+
 export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): HitlItem {
+  // Dedup window — if an open HITL with the same fingerprint already exists
+  // (filed within the last hour), return that one instead of double-filing.
+  // Avoids cron-retry storms that flood the inbox.
+  const existing = readHitl()
+  const fp = hitlFingerprint(input.title, input.repo)
+  const since = Date.now() - DEDUP_WINDOW_MS
+  const dup = existing.find(
+    (h) =>
+      h.status === 'open' &&
+      h.createdAt >= since &&
+      hitlFingerprint(h.title, h.repo) === fp,
+  )
+  if (dup) {
+    // Re-ping the activity feed so the operator sees the recurrence count,
+    // but don't double-file. Surface "still blocked, N occurrences".
+    emitActivity(
+      {
+        kind: 'blocked',
+        title: `HITL recur · ${input.title}`,
+        detail: 'duplicate filing collapsed (within 1h window)',
+        repo: input.repo,
+        repoRoot: input.repoRoot,
+        hitlId: dup.id,
+        runId: input.runId,
+        runSource: input.runSource,
+      },
+      { notify: false }, // don't re-fire the macOS notification
+    )
+    return dup
+  }
   const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now() }
   write([item, ...readHitl()])
   emitActivity(
