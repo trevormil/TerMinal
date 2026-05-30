@@ -25,6 +25,10 @@ export type AppsCfg = {
   editor: string // e.g. "Cursor" / "Visual Studio Code" — "Open in editor"
   browser: string // e.g. "Brave Browser" — "Open in browser"
 }
+export type OpenRouterCfg = {
+  apiKey: string
+  defaultModel: string // e.g. 'anthropic/claude-haiku-4.5'
+}
 export type Settings = {
   onboarded: boolean
   projectsDir: string // '' → resolved to your home dir
@@ -34,15 +38,20 @@ export type Settings = {
   forge: ForgePref // 'auto' picks gh/glab per-repo from the remote host
   telegram: TelegramCfg
   apps: AppsCfg
+  /** OpenRouter — NOT a full coding harness (use claude-code/codex for that).
+   *  Used for one-shot calls inside scripts: health-check classifiers, cheap
+   *  precheck escalations, MR-authorship sniffing, etc. Optional. */
+  openrouter: OpenRouterCfg
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps' | 'openrouter'>> & {
   telegram?: Partial<TelegramCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
+  openrouter?: Partial<OpenRouterCfg>
 }
 
 const DEFAULT_EDITOR = 'Cursor'
@@ -63,6 +72,7 @@ export function defaultSettings(): Settings {
     forge: 'auto',
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     apps: { editor: '', browser: '' },
+    openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     harnessDir: '',
     templateRepo: '',
   }
@@ -104,6 +114,10 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.apps.editor === 'string') s.apps.editor = r.apps.editor
     if (typeof r.apps.browser === 'string') s.apps.browser = r.apps.browser
   }
+  if (r.openrouter && typeof r.openrouter === 'object') {
+    if (typeof r.openrouter.apiKey === 'string') s.openrouter.apiKey = r.openrouter.apiKey
+    if (typeof r.openrouter.defaultModel === 'string') s.openrouter.defaultModel = r.openrouter.defaultModel
+  }
   return s
 }
 
@@ -132,6 +146,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
       codex: { ...cur.engines.codex, ...(patch.engines?.codex || {}) },
       claude: { ...cur.engines.claude, ...(patch.engines?.claude || {}) },
     },
+    openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
   }
   cache = next
   try {

@@ -288,6 +288,14 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
   }
+  const [orState, setOrState] = useState<
+    { busy?: boolean; ok?: boolean; text?: string; model?: string; error?: string } | null
+  >(null)
+  const testOpenRouter = async () => {
+    setOrState({ busy: true })
+    const r = await window.gt.openrouter.test()
+    setOrState(r)
+  }
   const installNotify = async () => {
     setNotify({ busy: true })
     setNotify(await window.gt.installGtNotify())
@@ -566,6 +574,57 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                     HITL pings include inline ✅ Resolve / 🪵 Tail run buttons — tap to act without typing.
                   </div>
                 </details>
+              )}
+            </div>
+          </Section>
+
+          {/* OpenRouter — one-shot calls for cheap classifiers, health checks, etc. */}
+          <Section
+            title="OpenRouter (cheap one-shot calls)"
+            desc="Not a full coding harness — use claude/codex for that. Used inside scripts for cheap classifiers, health-check escalations, MR-authorship sniffing. Get a key at openrouter.ai/keys."
+          >
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  defaultValue={s.openrouter.apiKey}
+                  onBlur={(e) =>
+                    e.target.value !== s.openrouter.apiKey &&
+                    save({ openrouter: { apiKey: e.target.value.trim() } })
+                  }
+                  placeholder="sk-or-v1-…"
+                  spellCheck={false}
+                  type="password"
+                  className={`${inp} min-w-0 flex-1 font-mono`}
+                />
+                <button
+                  onClick={testOpenRouter}
+                  disabled={orState?.busy || !s.openrouter.apiKey}
+                  className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60 disabled:opacity-50`}
+                >
+                  {orState?.busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
+                  Test
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10.5px] text-zinc-500">default model</span>
+                <input
+                  defaultValue={s.openrouter.defaultModel}
+                  onBlur={(e) =>
+                    e.target.value !== s.openrouter.defaultModel &&
+                    save({ openrouter: { defaultModel: e.target.value.trim() } })
+                  }
+                  placeholder="anthropic/claude-haiku-4.5"
+                  spellCheck={false}
+                  className={`${inp} flex-1 font-mono`}
+                />
+                <span className="text-[10px] text-zinc-600">e.g. openai/gpt-5-mini, google/gemini-2.5-flash</span>
+              </div>
+              {orState && !orState.busy && (
+                <div className={`text-[11px] ${orState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
+                  {orState.ok
+                    ? `✓ Connected via ${orState.model || 'OpenRouter'} — replied "${(orState.text || '').slice(0, 40)}"`
+                    : orState.error}
+                </div>
               )}
             </div>
           </Section>

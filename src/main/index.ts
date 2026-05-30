@@ -883,6 +883,36 @@ ipcMain.handle(
 )
 ipcMain.handle('bg:cancel', (_e, id: string) => cancelBgTask(id))
 
+// OpenRouter IPCs — test connectivity + chat passthrough.
+ipcMain.handle('openrouter:test', async () => {
+  const { testOpenRouter } = await import('./openrouter')
+  return testOpenRouter()
+})
+ipcMain.handle('openrouter:chat', async (_e, opts: Parameters<typeof import('./openrouter').openrouterChat>[0]) => {
+  const { openrouterChat } = await import('./openrouter')
+  return openrouterChat(opts)
+})
+
+// MR authorship sniffer — runs git log over the MR's range.
+ipcMain.handle('mrs:authorship', async (_e, iid: number) => {
+  const { getMr } = await import('./mrs')
+  const { authorshipForRange } = await import('./mr-authorship')
+  const repoRoot = repoRootOf(cur().cwd)
+  if (!repoRoot) return null
+  const mr = await getMr(repoRoot, iid)
+  if (!mr) return null
+  const base = mr.targetBranch || 'main'
+  const head = mr.sourceBranch
+  // Use origin/<base>..origin/<head> for accuracy against remote state
+  const range = `origin/${base}..origin/${head}`
+  try {
+    return authorshipForRange(repoRoot, range)
+  } catch {
+    // Fallback: try local-only range
+    return authorshipForRange(repoRoot, `${base}..${head}`)
+  }
+})
+
 // Budget IPCs (#0002).
 ipcMain.handle('budgets:get', () => readBudgets())
 ipcMain.handle('budgets:setDaily', (_e, usd: number) => setDailyCap(usd))

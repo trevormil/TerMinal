@@ -140,6 +140,7 @@ export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 export type AppsCfg = { editor: string; browser: string }
+export type OpenRouterCfg = { apiKey: string; defaultModel: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -149,13 +150,15 @@ export type Settings = {
   forge: ForgePref
   telegram: TelegramCfg
   apps: AppsCfg
+  openrouter: OpenRouterCfg
   harnessDir: string
   templateRepo: string
 }
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps' | 'openrouter'>> & {
   telegram?: Partial<TelegramCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
+  openrouter?: Partial<OpenRouterCfg>
 }
 
 /** Tool/engine readiness probed by the main process (env:detect). */
@@ -500,6 +503,30 @@ export type GtApi = {
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>
   }
+  openrouter: {
+    test: () => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
+    chat: (opts: {
+      messages: { role: string; content: string }[]
+      model?: string
+      maxTokens?: number
+      temperature?: number
+    }) => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
+  }
+  mrAuthorship: (iid: number) => Promise<{
+    total: number
+    byTool: Record<string, number>
+    dominant: string
+    commits: {
+      sha: string
+      shortSha: string
+      authorEmail: string
+      authorName: string
+      subject: string
+      tool: string
+      confidence: string
+      evidence: string[]
+    }[]
+  } | null>
   typeIntoActive: (text: string) => void
   agents: {
     allRuns: () => Promise<UnifiedRun[]>

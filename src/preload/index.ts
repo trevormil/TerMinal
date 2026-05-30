@@ -42,6 +42,12 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
+  openrouter: {
+    test: () => ipcRenderer.invoke('openrouter:test'),
+    chat: (opts: { messages: { role: string; content: string }[]; model?: string; maxTokens?: number; temperature?: number }) =>
+      ipcRenderer.invoke('openrouter:chat', opts),
+  },
+  mrAuthorship: (iid: number) => ipcRenderer.invoke('mrs:authorship', iid),
   typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
 
   // on-demand codex/claude agents
