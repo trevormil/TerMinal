@@ -730,6 +730,10 @@ ipcMain.handle('ci:jobs', async (_e, runId: string) => {
   const { listCiJobs } = await import('./ci')
   return listCiJobs(repoRootOf(cur().cwd), runId)
 })
+ipcMain.handle('ci:log', async (_e, jobId: string) => {
+  const { fetchCiLog } = await import('./ci')
+  return fetchCiLog(repoRootOf(cur().cwd), jobId)
+})
 ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.

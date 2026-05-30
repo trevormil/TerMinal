@@ -289,6 +289,15 @@ const DEFAULT_AGENTS: Agent[] = [
       "Act as a knowledge-base agent for this repository. Sweep docs/decisions/, docs/learnings/, and docs/runbooks/ for: duplicate entries (same gotcha captured twice), missing cross-links between related items, ADRs that should be superseded by newer ones but aren't marked, runbooks whose last-verified date is stale. Apply safe edits (add cross-link references, mark stale runbooks, set supersedes: on duplicate ADRs). File backlog tickets (type: docs) for any gap you find — a learning that should exist for a known recurring issue, a runbook that should exist for a manual procedure. Open a PR for the safe edits. End with a summary.",
   },
   {
+    id: 'ci-improver',
+    title: 'CI improver',
+    description: 'Observe CI runs since last run; file tickets + PR safe fixes for failures and flakes.',
+    icon: 'Workflow',
+    opensPr: true,
+    prompt:
+      "Act as a CI-improver agent for this repository. Observe recent CI runs (workflow / pipeline runs) since this agent last ran. Use the TerMinal MCP tools to track state: read the saved checkpoint via get_agent_state (key: 'last_run_id') and default to the newest 30 runs if no checkpoint exists. For each failed or flaky run (same step / job failing intermittently across runs in the window): pull the failing job's log, identify the root cause (test failure, build error, dep install error, timeout, infra issue, flake), and route the finding durably — never chat-only. File a backlog ticket per distinct failure pattern (type: testing for test failures, type: ci for build/infra, type: bug for runtime issues, type: dependency for dep/install issues) with the failing workflow/pipeline + job + step, the error excerpt, and a self-contained agent-runnable fix prompt. For SAFE, well-scoped fixes (pin a flapping dep, bump a known-too-tight timeout, add retry to a documented-flaky step, fix a hard-coded path) apply them with tests still green and open a PR. For flakes you can identify but not safely fix (timing-dependent tests, infra flake), file a ticket only and tag horizon: next. After processing, save the newest observed run id via set_agent_state (key: 'last_run_id') so the next run only inspects newer runs — this is the watermark that keeps each invocation cheap. End with a summary of failures classified, tickets filed (by id), and PR URL if one was opened.",
+  },
+  {
     id: 'summary',
     title: 'Daily summary',
     description: 'Roll up today\'s repo activity into a concise digest under reports/.',

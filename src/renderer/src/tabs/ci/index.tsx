@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   GitMerge,
   RefreshCw,
@@ -11,6 +11,7 @@ import {
   GitBranch,
   ChevronRight,
   ChevronDown,
+  FileText,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { Tab, TabContext, CiRun, CiTabJob, CiRunStatus } from '../../lib/types'
@@ -342,43 +343,9 @@ function CiTab({ ctx }: { ctx: TabContext }) {
                           {stage}
                         </div>
                       )}
-                      {list.map((j) => {
-                        const jm = STATUS_META[j.status]
-                        return (
-                          <div
-                            key={j.id}
-                            className="flex items-center gap-2 border-b border-[var(--gt-border)]/30 px-3 py-1.5"
-                          >
-                            <jm.Icon
-                              size={12}
-                              strokeWidth={2}
-                              className={
-                                jm.tone === 'green'
-                                  ? 'text-[var(--gt-green)]'
-                                  : jm.tone === 'red'
-                                    ? 'text-[var(--gt-red)]'
-                                    : jm.tone === 'blue'
-                                      ? 'text-[var(--gt-accent-light)] gt-spin'
-                                      : jm.tone === 'yellow'
-                                        ? 'text-[var(--gt-yellow)]'
-                                        : 'text-zinc-500'
-                              }
-                            />
-                            <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-100">{j.name}</span>
-                            <span className="text-[10.5px] text-zinc-500">{fmtDuration(j.durationMs)}</span>
-                            <Badge tone={jm.tone}>{jm.label}</Badge>
-                            {j.webUrl && (
-                              <button
-                                onClick={() => window.gt.openExternal(j.webUrl)}
-                                title="Open job on forge"
-                                className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
-                              >
-                                <ExternalLink size={10} strokeWidth={2} />
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
+                      {list.map((j) => (
+                        <JobRow key={j.id} job={j} />
+                      ))}
                     </div>
                   ))
                 )}
@@ -399,6 +366,120 @@ function groupByStage(jobs: CiTabJob[]): [string, CiTabJob[]][] {
     map.set(j.stage, arr)
   }
   return Array.from(map.entries())
+}
+
+function statusIconClass(tone: string): string {
+  if (tone === 'green') return 'text-[var(--gt-green)]'
+  if (tone === 'red') return 'text-[var(--gt-red)]'
+  if (tone === 'blue') return 'text-[var(--gt-accent-light)] gt-spin'
+  if (tone === 'yellow') return 'text-[var(--gt-yellow)]'
+  return 'text-zinc-500'
+}
+
+function JobRow({ job }: { job: CiTabJob }) {
+  const jm = STATUS_META[job.status]
+  const [expanded, setExpanded] = useState(false)
+  const [log, setLog] = useState<string | null>(null)
+  const [logErr, setLogErr] = useState<string | undefined>()
+  const [loadingLog, setLoadingLog] = useState(false)
+  const [truncated, setTruncated] = useState(false)
+  const logRef = useRef<HTMLPreElement | null>(null)
+  const hasSteps = !!(job.steps && job.steps.length)
+
+  async function loadLog() {
+    if (loadingLog) return
+    setLoadingLog(true)
+    setLogErr(undefined)
+    try {
+      const r = await window.gt.ci.log(job.id)
+      setLog(r.log)
+      setLogErr(r.error)
+      setTruncated(!!r.truncated)
+      // Auto-scroll to end (failure context usually at the bottom)
+      requestAnimationFrame(() => {
+        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+      })
+    } catch (e: any) {
+      setLogErr(e?.message || 'failed to load log')
+    } finally {
+      setLoadingLog(false)
+    }
+  }
+
+  // Auto-open expand for failed jobs (the operator almost always wants the log)
+  useEffect(() => {
+    if (job.status === 'failed' && !expanded) setExpanded(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id])
+
+  return (
+    <div className="border-b border-[var(--gt-border)]/30">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded-sm p-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+          title={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? <ChevronDown size={11} strokeWidth={2} /> : <ChevronRight size={11} strokeWidth={2} />}
+        </button>
+        <jm.Icon size={12} strokeWidth={2} className={statusIconClass(jm.tone)} />
+        <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-100">{job.name}</span>
+        <span className="text-[10.5px] text-zinc-500">{fmtDuration(job.durationMs)}</span>
+        <Badge tone={jm.tone}>{jm.label}</Badge>
+        {job.webUrl && (
+          <button
+            onClick={() => window.gt.openExternal(job.webUrl)}
+            title="Open job on forge"
+            className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+          >
+            <ExternalLink size={10} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div className="border-t border-[var(--gt-border)]/30 bg-black/10 px-4 py-2">
+          {hasSteps && (
+            <ol className="mb-2 space-y-0.5">
+              {job.steps!.map((s) => {
+                const sm = STATUS_META[s.status]
+                return (
+                  <li key={s.number} className="flex items-center gap-1.5 text-[11px]">
+                    <sm.Icon size={10} strokeWidth={2} className={statusIconClass(sm.tone)} />
+                    <span className="text-zinc-600">{s.number}.</span>
+                    <span className="min-w-0 flex-1 truncate text-zinc-200">{s.name}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadLog}
+              disabled={loadingLog}
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[10.5px] text-zinc-400 hover:bg-white/5 disabled:opacity-50"
+            >
+              <FileText size={10} strokeWidth={2} />
+              {log === null ? (loadingLog ? 'Loading log…' : 'Show log') : 'Reload log'}
+            </button>
+            {truncated && (
+              <span className="text-[10px] text-[var(--gt-yellow)]" title="Head trimmed; tail preserved (failure context).">
+                truncated · last 1MB
+              </span>
+            )}
+            {logErr && <span className="text-[10px] text-[var(--gt-yellow)]">{logErr}</span>}
+          </div>
+          {log !== null && !logErr && (
+            <pre
+              ref={logRef}
+              className="mt-2 max-h-[400px] overflow-auto whitespace-pre rounded-md border border-[var(--gt-border)] bg-black/40 p-2 font-mono text-[10.5px] leading-snug text-zinc-300"
+            >
+              {log || '(empty)'}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const tab: Tab = {

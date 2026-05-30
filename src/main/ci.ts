@@ -27,6 +27,12 @@ export type CiRun = {
   durationMs: number | null // null when still running
 }
 
+export type CiStep = {
+  name: string
+  status: CiRunStatus
+  number: number
+}
+
 export type CiJob = {
   id: string
   name: string
@@ -36,10 +42,12 @@ export type CiJob = {
   startedAt: number | null
   finishedAt: number | null
   durationMs: number | null
+  steps?: CiStep[] // GH only; GitLab jobs are themselves the smallest unit
 }
 
 export type CiListResult = { runs: CiRun[]; error?: string }
 export type CiJobsResult = { jobs: CiJob[]; error?: string }
+export type CiLogResult = { log: string; truncated?: boolean; error?: string }
 
 // --- normalize forge-specific status strings ---------------------------------
 
@@ -191,6 +199,13 @@ async function jobsGh(repoRoot: string, runId: string): Promise<CiJobsResult> {
   const jobs = raw.map((j: any): CiJob => {
     const started = Date.parse(j.startedAt || '') || null
     const finished = Date.parse(j.completedAt || '') || null
+    const steps: CiStep[] = Array.isArray(j.steps)
+      ? j.steps.map((s: any) => ({
+          name: s.name || '',
+          number: s.number ?? 0,
+          status: ghStatus(s.status || '', s.conclusion),
+        }))
+      : []
     return {
       id: String(j.databaseId ?? j.name ?? ''),
       name: j.name || '',
@@ -200,6 +215,7 @@ async function jobsGh(repoRoot: string, runId: string): Promise<CiJobsResult> {
       startedAt: started,
       finishedAt: finished,
       durationMs: started && finished ? Math.max(0, finished - started) : null,
+      steps: steps.length ? steps : undefined,
     }
   })
   return { jobs }
@@ -241,6 +257,55 @@ async function jobsGlab(repoRoot: string, pipelineId: string): Promise<CiJobsRes
 
 export async function listCiJobs(repoRoot: string, runId: string): Promise<CiJobsResult> {
   return forgeFor(repoRoot).kind === 'github' ? jobsGh(repoRoot, runId) : jobsGlab(repoRoot, runId)
+}
+
+// --- per-job log fetch -------------------------------------------------------
+// Big logs are common (multi-MB) — cap what we hand to the renderer so the
+// scrollback view doesn't lock up Electron.
+const LOG_CAP = 1_000_000 // 1MB
+
+function cap(s: string): { log: string; truncated?: boolean } {
+  if (s.length <= LOG_CAP) return { log: s }
+  // Keep the tail — failure context is usually at the end.
+  return { log: '... [truncated head] ...\n' + s.slice(-LOG_CAP), truncated: true }
+}
+
+async function logGh(repoRoot: string, jobId: string): Promise<CiLogResult> {
+  const repo = repoForCwd(repoRoot)
+  if (!repo) return { log: '', error: 'no repo' }
+  // /actions/jobs/<job_id>/logs returns plain text (the JSON Accept header
+  // would 415; gh's --header flag is supported).
+  const r = await run(
+    'gh',
+    [
+      'api',
+      '-H',
+      'Accept: application/vnd.github.v3.raw',
+      `/repos/${repo.path}/actions/jobs/${jobId}/logs`,
+    ],
+    repoRoot,
+    { maxBuffer: 32 * 1024 * 1024, timeout: 30_000 },
+  )
+  if (r.err && !r.stdout) return { log: '', error: ciErr('gh', r) }
+  return cap(r.stdout)
+}
+
+async function logGlab(repoRoot: string, jobId: string): Promise<CiLogResult> {
+  const repo = repoForCwd(repoRoot)
+  if (!repo) return { log: '', error: 'no repo' }
+  const proj = encodeURIComponent(repo.path)
+  const r = await run(
+    'glab',
+    ['api', `projects/${proj}/jobs/${jobId}/trace`],
+    repoRoot,
+    { maxBuffer: 32 * 1024 * 1024, timeout: 30_000 },
+  )
+  if (r.err && !r.stdout) return { log: '', error: ciErr('glab', r) }
+  return cap(r.stdout)
+}
+
+export async function fetchCiLog(repoRoot: string, jobId: string): Promise<CiLogResult> {
+  return forgeFor(repoRoot).kind === 'github' ? logGh(repoRoot, jobId) : logGlab(repoRoot, jobId)
 }
 
 // --- helpers -----------------------------------------------------------------

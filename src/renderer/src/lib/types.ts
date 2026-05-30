@@ -429,6 +429,11 @@ export type CiRun = {
   updatedAt: number
   durationMs: number | null
 }
+export type CiTabStep = {
+  name: string
+  status: CiRunStatus
+  number: number
+}
 export type CiTabJob = {
   id: string
   name: string
@@ -438,9 +443,11 @@ export type CiTabJob = {
   startedAt: number | null
   finishedAt: number | null
   durationMs: number | null
+  steps?: CiTabStep[]
 }
 export type CiListResult = { runs: CiRun[]; error?: string }
 export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
+export type CiLogResult = { log: string; truncated?: boolean; error?: string }
 
 export type TabContext = {
   cwd: string
@@ -710,6 +717,7 @@ export type GtApi = {
   ci: {
     list: (limit?: number) => Promise<CiListResult>
     jobs: (runId: string) => Promise<CiJobsResult>
+    log: (jobId: string) => Promise<CiLogResult>
   }
   openExternal: (url: string) => Promise<void>
   openInBrowser: (url: string) => Promise<void>

@@ -196,6 +196,7 @@ const gt = {
   ci: {
     list: (limit?: number) => ipcRenderer.invoke('ci:list', limit),
     jobs: (runId: string) => ipcRenderer.invoke('ci:jobs', runId),
+    log: (jobId: string) => ipcRenderer.invoke('ci:log', jobId),
   },
   openExternal: (url: string) => ipcRenderer.invoke('open:external', url),
   openInBrowser: (url: string) => ipcRenderer.invoke('open:in-browser', url),
