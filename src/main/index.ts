@@ -98,6 +98,9 @@ import {
   runScheduleNow,
 } from './launchd'
 import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from './cron-runs'
+import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
+import { startAICollectionLoop } from './ai-collectors'
+import { knownModels } from './ai-pricing'
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
@@ -812,6 +815,13 @@ ipcMain.handle('release:tail', () => {
 // Harness self-status. Meta-observability snapshot so the operator can see
 // how the harness itself is doing without ls-ing config dirs. Cheap: one
 // directory listing + the in-memory run map.
+// AI fleet observability IPCs. Pull from the per-run AI ledger.
+ipcMain.handle('observability:summary', (_e, range: Range = 'today') => summaryFor(range))
+ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => agentROI(range))
+ipcMain.handle('observability:daily', (_e, days: number = 7) => dailySpend(days))
+ipcMain.handle('observability:runs', (_e, limit: number = 100) => listAIRuns(limit))
+ipcMain.handle('observability:models', () => knownModels())
+
 ipcMain.handle('harness:status', () => {
   const cfgDir = join(homedir(), '.config', 'TerMinal')
   const cronRunsDir = join(cfgDir, 'cron-runs')
@@ -914,6 +924,8 @@ app.whenReady().then(() => {
   // sweep in bin/terminal-cron can't reach when no schedules are firing.
   sweepStaleCronRuns()
   setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
+  // AI fleet observability — periodic transcript scans for cost/token rollups.
+  startAICollectionLoop()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

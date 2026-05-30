@@ -612,6 +612,25 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     procs.delete(run.id)
     persistMeta(run)
     emit('agent:status', run)
+    // Try to extract claude -p / codex exec usage from the captured output
+    // and record an AIRun ledger entry. Best-effort — silent on miss.
+    try {
+      // Lazy-require to keep agents.ts decoupled from the observability layer.
+      const { recordRunnerInvocation } = require('./ai-collectors') as typeof import('./ai-collectors')
+      recordRunnerInvocation({
+        source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
+        output: run.output,
+        repoRoot,
+        runId: run.id,
+        agentId: spec.id,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt!,
+        exitCode: exitCode ?? -1,
+        modelHint: spec.model || engineDefaultModel(spec.engine) || undefined,
+      })
+    } catch {
+      /* observability is non-critical; never block run completion */
+    }
     emitActivity({
       // infra/run failures surface as 'error' (notify) so they don't hide in the
       // agent-run stream; normal completions stay 'agent-run'.

@@ -193,6 +193,13 @@ const gt = {
     status: () => ipcRenderer.invoke('release:status'),
   },
   harnessStatus: () => ipcRenderer.invoke('harness:status'),
+  observability: {
+    summary: (range: string = 'today') => ipcRenderer.invoke('observability:summary', range),
+    byAgent: (range: string = 'week') => ipcRenderer.invoke('observability:byAgent', range),
+    daily: (days: number = 7) => ipcRenderer.invoke('observability:daily', days),
+    runs: (limit: number = 100) => ipcRenderer.invoke('observability:runs', limit),
+    models: () => ipcRenderer.invoke('observability:models'),
+  },
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   clipboardRead: (): Promise<string> => ipcRenderer.invoke('clipboard:read'),
 

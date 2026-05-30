@@ -611,6 +611,41 @@ export type GtApi = {
     tail: () => Promise<string>
     status: () => Promise<{ running: boolean; pid?: number | null }>
   }
+  observability: {
+    summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
+      totalUsd: number
+      totalRuns: number
+      byModel: Record<string, { runs: number; usd: number; inputTokens: number; outputTokens: number }>
+      bySource: Record<string, { runs: number; usd: number }>
+      byAgent: Record<string, { runs: number; usd: number }>
+      byRepo: Record<string, { runs: number; usd: number }>
+    }>
+    byAgent: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
+      agentId: string
+      runs: number
+      usd: number
+      outcomes: { prOpened: number; ticketFiled: number; merged: number; none: number }
+    }[]>
+    daily: (days?: number) => Promise<{ date: string; usd: number; runs: number; byModel: Record<string, number> }[]>
+    runs: (limit?: number) => Promise<{
+      id: string
+      source: string
+      startedAt: number
+      endedAt?: number
+      model: string
+      inputTokens: number
+      outputTokens: number
+      cacheReadTokens?: number
+      costUsd: number
+      repoRoot: string
+      sessionId?: string
+      runId?: string
+      agentId?: string
+      durationMs?: number
+      exitCode?: number
+    }[]>
+    models: () => Promise<string[]>
+  }
   harnessStatus: () => Promise<{
     cronRunFiles: number
     cronWorktrees: number
