@@ -780,7 +780,115 @@ async function runWatchdog() {
     title: `Watchdog · swept ${swept} stale · ${overdue} overdue`,
     detail: 'fleet heartbeat',
   })
+  // Piggyback: once a week, mine review-finding patterns. Rate-limited via a
+  // marker file so this watchdog tick stays cheap on every other day.
+  try {
+    await maybeRunReviewPatterns()
+  } catch (e) {
+    log(`review-patterns piggyback failed: ${e}`)
+  }
   return 0
+}
+
+// ---- review findings patterns ----------------------------------------------
+
+const REVIEW_PATTERNS_MARKER = join(CFG, 'review-patterns.last.json')
+const REVIEW_PATTERNS_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000 // 7d
+// Promote to HITL when a pattern recurs at least this much across this many
+// distinct repos. 3×/2-repos is the floor that picked up real cross-repo
+// signal (third-party CDN, 72-hr quarantine, mutable Docker tags) without
+// dragging in noise.
+const REVIEW_PROMOTE_COUNT = 3
+const REVIEW_PROMOTE_REPOS = 2
+
+function harnessDir() {
+  // env override → settings → default
+  if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    if (s.harnessDir) return s.harnessDir
+  } catch {}
+  return join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness')
+}
+
+async function maybeRunReviewPatterns(force = false) {
+  if (!force) {
+    try {
+      const m = JSON.parse(readFileSync(REVIEW_PATTERNS_MARKER, 'utf8'))
+      if (m.lastRunAt && Date.now() - m.lastRunAt < REVIEW_PATTERNS_INTERVAL_MS) return
+    } catch {}
+  }
+  await runReviewPatterns()
+}
+
+async function runReviewPatterns() {
+  const dir = harnessDir()
+  const bin = join(dir, 'bin', 'review-findings-mine')
+  if (!existsSync(bin)) {
+    log(`review-patterns: ${bin} missing, skipping`)
+    return 0
+  }
+  log(`review-patterns: mining via ${bin}`)
+  const out = await new Promise((resolve, reject) => {
+    const proc = spawn(bin, ['--json', '--threshold-count', String(REVIEW_PROMOTE_COUNT), '--threshold-repos', String(REVIEW_PROMOTE_REPOS)], {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    proc.stdout.on('data', (d) => (stdout += d.toString()))
+    proc.stderr.on('data', (d) => (stderr += d.toString()))
+    proc.on('exit', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`exit ${code}: ${stderr}`))))
+  })
+  let parsed
+  try {
+    parsed = JSON.parse(out)
+  } catch (e) {
+    log(`review-patterns: parse failed: ${e}`)
+    return 0
+  }
+  const promote = parsed.promote || []
+  const existingKeys = openReviewPatternHitlKeys()
+  let filed = 0
+  for (const p of promote) {
+    if (existingKeys.has(p.key)) continue
+    fileHitl({
+      kind: 'review-pattern',
+      patternKey: p.key,
+      title: `Recurring ${p.category} finding: ${p.tokens.join(' / ')}`,
+      action: `${p.count}× across ${p.repos.length} repos — promote to CLAUDE.md?`,
+      detail:
+        `repos: ${p.repos.join(', ')}\n\nExamples:\n` +
+        (p.examples || [])
+          .map((e) => `- ${e.repo}#${e.pr} "${e.title}"${e.file ? ` — ${e.file}` : ''}`)
+          .join('\n'),
+    })
+    filed++
+  }
+  activity({
+    kind: 'check',
+    title: `Review patterns · ${parsed.totals?.total || 0} findings · ${promote.length} promote candidates · ${filed} HITL filed`,
+    detail: `report: ${join(dir, 'reports', 'review-patterns.md')}`,
+  })
+  try {
+    writeFileSync(REVIEW_PATTERNS_MARKER, JSON.stringify({ lastRunAt: Date.now(), filed, promote: promote.length }, null, 2))
+  } catch {}
+  log(`review-patterns: promote=${promote.length} filed=${filed}`)
+  return 0
+}
+
+function openReviewPatternHitlKeys() {
+  try {
+    const list = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
+    if (!Array.isArray(list)) return new Set()
+    const keys = new Set()
+    for (const h of list) {
+      if (h.kind === 'review-pattern' && h.status === 'open' && h.patternKey) keys.add(h.patternKey)
+    }
+    return keys
+  } catch {
+    return new Set()
+  }
 }
 
 // ---- entrypoint ------------------------------------------------------------
@@ -790,8 +898,11 @@ if (action === 'run' && arg) {
   runSchedule(arg).then((c) => process.exit(c))
 } else if (action === 'watchdog') {
   runWatchdog().then((c) => process.exit(c))
+} else if (action === 'review-patterns') {
+  maybeRunReviewPatterns(arg === '--force').then(() => process.exit(0))
 } else {
   console.error('usage: terminal-cron run <scheduleId>')
   console.error('       terminal-cron watchdog')
+  console.error('       terminal-cron review-patterns [--force]')
   process.exit(2)
 }

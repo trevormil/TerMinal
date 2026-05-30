@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { listAIRuns, writeAIRun, makeAIRun, type AIRunSource } from './ai-runs'
+import { runWedgedSessionScan } from './wedged-session-detector'
 
 const CLAUDE_PROJECTS = join(homedir(), '.claude', 'projects')
 const CODEX_SESSIONS = join(homedir(), '.codex', 'sessions')
@@ -340,7 +341,9 @@ export function recordRunnerInvocation(opts: {
 }
 
 /** App-boot scan: pull every Claude/Codex session into the ledger, then
- *  schedule periodic re-scans so growing transcripts update their totals. */
+ *  schedule periodic re-scans so growing transcripts update their totals.
+ *  Also piggybacks the wedged-session detector on each tick — same cadence,
+ *  same dataset (recent Claude transcripts), no extra polling. */
 export function startAICollectionLoop(): void {
   // Initial scan immediately so the Observability tab shows real data at
   // app start. Then poll every 5 min — cheap (only reads transcripts
@@ -348,6 +351,7 @@ export function startAICollectionLoop(): void {
   try {
     collectClaudeSessions()
     collectCodexSessions()
+    runWedgedSessionScan()
   } catch {
     /* best effort */
   }
@@ -355,6 +359,7 @@ export function startAICollectionLoop(): void {
     try {
       collectClaudeSessions()
       collectCodexSessions()
+      runWedgedSessionScan()
     } catch {
       /* best effort */
     }

@@ -14,7 +14,14 @@ import { sendUrl } from './telegram-api'
 // one surfaces a `blocked` activity event → macOS + Telegram notification.
 const FILE = join(homedir(), '.config', 'TerMinal', 'hitl.json')
 
-export type HitlSource = 'manual' | 'cron-fail' | 'agent' | 'factory' | 'skill'
+export type HitlSource =
+  | 'manual'
+  | 'cron-fail'
+  | 'agent'
+  | 'factory'
+  | 'skill'
+  | 'wedged-detector'
+  | 'review-pattern'
 export type HitlItem = {
   id: string
   title: string
@@ -36,6 +43,10 @@ export type HitlItem = {
   // the durable triage record). Lets the HITL tab link straight to the
   // ticket in the Tickets tab.
   ticketPath?: string
+  // Pointer back to the Claude session that produced this HITL (wedged-detector).
+  sessionId?: string
+  // Stable bucket id for review-pattern HITLs so re-mining doesn't dup.
+  patternKey?: string
 }
 
 export function readHitl(): HitlItem[] {
