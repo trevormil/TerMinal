@@ -68,7 +68,13 @@ function ScheduleForm({
 }: {
   agents: Agent[]
   onCancel: () => void
-  onSave: (agentId: string, engine: Engine, spec: ScheduleSpec, model?: string) => Promise<void>
+  onSave: (
+    agentId: string,
+    engine: Engine,
+    spec: ScheduleSpec,
+    model?: string,
+    env?: Record<string, string>,
+  ) => Promise<void>
   onCustomSpawned: () => void
 }) {
   // Plaintext describe-it-in-words is the primary path; the deterministic
@@ -94,6 +100,10 @@ function ScheduleForm({
   const [time, setTime] = useState('09:00')
   const [weekdays, setWeekdays] = useState<number[]>([])
   const [cron, setCron] = useState('30 9 * * 1-5')
+  // Per-schedule env vars — one KEY=value per line. Sanitized + uppercased by
+  // the main-side IPC; only POSIX-shaped names survive (`[A-Z_][A-Z0-9_]*`).
+  // Optional; the common case is empty.
+  const [envText, setEnvText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -107,12 +117,32 @@ function ScheduleForm({
     return { kind: 'calendar', minute: m || 0, hour: h || 0, weekdays: weekdays.length ? weekdays : undefined }
   }
 
+  // Parse the env textarea into a Record. Lines starting with `#` are comments;
+  // blank lines are ignored; everything else is split on the FIRST `=` so values
+  // can contain `=` themselves. Malformed lines are dropped silently — the
+  // main-side IPC re-sanitizes before persisting, so this is just for the
+  // common case.
+  const parseEnv = (raw: string): Record<string, string> | undefined => {
+    const out: Record<string, string> = {}
+    for (const rawLine of raw.split('\n')) {
+      const line = rawLine.trim()
+      if (!line || line.startsWith('#')) continue
+      const idx = line.indexOf('=')
+      if (idx <= 0) continue
+      const key = line.slice(0, idx).trim()
+      const value = line.slice(idx + 1).trim()
+      if (!key) continue
+      out[key] = value
+    }
+    return Object.keys(out).length ? out : undefined
+  }
+
   const submit = async () => {
     if (!agentId) return
     setBusy(true)
     setErr('')
     try {
-      await onSave(agentId, engine, buildSpec(), model.trim() || undefined)
+      await onSave(agentId, engine, buildSpec(), model.trim() || undefined, parseEnv(envText))
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -285,6 +315,28 @@ function ScheduleForm({
         </div>
       )}
 
+      {/* Optional per-schedule env vars. Power-user surface: most schedules
+          have zero. The cron runner spreads these into the spawned agent's
+          env after the standard TERMINAL_* keys, so e.g. a "(bolt)" Beacon
+          schedule can pin BEACON_PROJECT=bolt and the agent prompt's
+          `$BEACON_PROJECT` substitution resolves to bolt instead of the
+          global config default. */}
+      <details className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1">
+        <summary className="cursor-pointer text-[11px] text-zinc-500 hover:text-zinc-300">
+          Env vars <span className="text-zinc-700">(optional · KEY=value, one per line)</span>
+        </summary>
+        <textarea
+          value={envText}
+          onChange={(e) => setEnvText(e.target.value)}
+          rows={3}
+          placeholder={`BEACON_PROJECT=bolt\nBEACON_SECRET=sec_…`}
+          className={`${FIELD} mt-1.5 resize-y w-full font-mono text-[11px]`}
+        />
+        <div className="mt-1 text-[10px] text-zinc-600">
+          Keys must match <span className="font-mono">[A-Z_][A-Z0-9_]*</span>. Comments (<span className="font-mono">#…</span>) and blank lines ignored.
+        </div>
+      </details>
+
       {err && <div className="text-[11px] text-[var(--gt-red)]">{err}</div>}
       <div className="flex items-center gap-2">
         <button
@@ -392,8 +444,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     }
   }
 
-  const save = async (agentId: string, engine: Engine, spec: ScheduleSpec, model?: string) => {
-    const r = await window.gt.schedules.save({ agentId, engine, spec, model })
+  const save = async (
+    agentId: string,
+    engine: Engine,
+    spec: ScheduleSpec,
+    model?: string,
+    env?: Record<string, string>,
+  ) => {
+    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
     reload()

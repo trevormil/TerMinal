@@ -400,9 +400,29 @@ function maybeCircuitBreak(scheduleId, sched) {
 
 // ---- watchdog / stale sweep ------------------------------------------------
 
-// Find runs claiming status:running for longer than STALE_MS and finalize them
-// as failed. Run at the start of every cron invocation so we self-heal even
-// without a dedicated watchdog schedule. Returns the number of records swept.
+// Probe whether a PID belongs to a live process. Sending signal 0 is a
+// no-op delivery — succeeds if the process exists and we can signal it,
+// throws ESRCH if no such process. ANY other error (EPERM) means the
+// process exists; treat as alive to avoid false positives.
+function isPidAlive(pid) {
+  if (!pid || typeof pid !== 'number') return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code !== 'ESRCH'
+  }
+}
+
+// Find runs claiming status:running with no live process attached and
+// finalize them. Two reaping rules — liveness wins over time:
+//   (1) Liveness: the run record has a PID and that PID is dead → reap
+//       immediately. This catches the common failure mode (launchd or
+//       OOM SIGKILLed the wrapper) within one cron tick.
+//   (2) Time fallback: STALE_MS old with no useful PID. Covers legacy
+//       records and pre-PID-tracking runs that died.
+// Runs at the start of every cron invocation so the system self-heals
+// even without a dedicated watchdog schedule. Returns the count.
 function sweepStaleRuns() {
   if (!existsSync(RUNS_DIR)) return 0
   let swept = 0
@@ -417,19 +437,34 @@ function sweepStaleRuns() {
         continue
       }
       if (rec.status !== 'running') continue
-      if (!rec.startedAt || Date.now() - rec.startedAt < STALE_MS) continue
+      const ageMs = rec.startedAt ? Date.now() - rec.startedAt : 0
+      const pidDead = rec.pid && !isPidAlive(rec.pid)
+      // Liveness: only trust a fresh pidDead reading. Inside the first
+      // few seconds the OS may not yet have registered the spawn — give
+      // it a small grace period (10s) so we don't reap a still-warming
+      // run. After STALE_MS we time-fall-back regardless of pid presence.
+      const reapForLiveness = pidDead && ageMs > 10_000
+      const reapForAge = ageMs >= STALE_MS
+      if (!reapForLiveness && !reapForAge) continue
+      const reason = reapForLiveness
+        ? `dead process (pid ${rec.pid}); runner exited without finalizing the run`
+        : 'stale: runner exited without finalizing the run (swept by watchdog)'
       const finalized = {
         ...rec,
         status: 'failed',
         endedAt: Date.now(),
-        error: 'stale: runner exited without finalizing the run (swept by watchdog)',
+        error: reason,
       }
       writeFileSync(path, JSON.stringify(finalized, null, 2))
       if (rec.scheduleId) stamp(rec.scheduleId, { lastStatus: 'failed' })
+      const ageMin = Math.round(ageMs / 60_000)
+      const detectionPhrase = reapForLiveness
+        ? `the wrapper process (pid ${rec.pid}) is dead after ${ageMin} min`
+        : `it was running for >${Math.round(STALE_MS / 3_600_000)}h with no live process`
       const staleTicketPath = rec.repoRoot
         ? fileTicket(rec.repoRoot, {
             title: `Cron run stale: ${rec.agentTitle || rec.agentId}`,
-            body: `The scheduled run for **${rec.agentTitle || rec.agentId}** (branch \`${rec.branch}\`) was running for >2h with no live process and was swept by the watchdog.\n\n- run id: \`${rec.id}\`\n- log: \`~/.config/TerMinal/cron-runs/${rec.id}.log\`\n- worktree: \`${rec.worktree}\`\n\nInvestigate why the runner died mid-run (terminal closed, OOM, launchd killed, network hang). Fix the root cause; re-enable the schedule in the Schedules tab if the circuit-breaker tripped.`,
+            body: `The scheduled run for **${rec.agentTitle || rec.agentId}** (branch \`${rec.branch}\`) was swept by the watchdog because ${detectionPhrase}.\n\n- run id: \`${rec.id}\`\n- log: \`~/.config/TerMinal/cron-runs/${rec.id}.log\`\n- worktree: \`${rec.worktree}\`\n\nInvestigate why the runner died mid-run (terminal closed, OOM, launchd killed, network hang). Fix the root cause; re-enable the schedule in the Schedules tab if the circuit-breaker tripped.`,
             type: 'bug',
             priority: 'high',
           })
@@ -698,6 +733,13 @@ async function runSchedule(id) {
     ...((sched.model || engineDefaultModel(sched.engine))
       ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
       : {}),
+    // Per-schedule env vars (Schedule.env). Spread LAST so they can
+    // override TERMINAL_* if the operator really wants (rare), but the
+    // main use case is parameterizing the prompt — e.g. a schedule
+    // labeled "(bolt)" pinning BEACON_PROJECT=bolt so the agent drains
+    // that specific Beacon project queue instead of falling back to the
+    // global config's default project.
+    ...(sched.env && typeof sched.env === 'object' ? sched.env : {}),
   }
   const code = await new Promise((resolve) => {
     const p = spawn('script', ['-q', '/dev/null', shell, '-l', '-c', cmd], {
@@ -705,6 +747,13 @@ async function runSchedule(id) {
       env: childEnv,
       stdio: ['ignore', fd, fd],
     })
+    // Persist the wrapper PID so the watchdog can detect a dead-but-
+    // still-marked-running record via `kill(pid, 0)` rather than waiting
+    // STALE_MS (2h). Without this, a launchd SIGKILL or any silent runner
+    // death leaves the cron-runs/<id>.json zombied at status:running for
+    // hours — long enough that downstream cron ticks treat the schedule
+    // as in-progress and skip themselves.
+    if (p.pid) writeRec({ status: 'running', pid: p.pid })
     p.on('error', (err) => {
       appendFileSync(logFile, `\n[spawn error] ${err.message}\n`)
       resolve(1)

@@ -24,6 +24,15 @@ export type Schedule = {
   prompt: string // snapshot of the agent prompt at save time (runner uses this)
   spec: ScheduleSpec
   enabled: boolean
+  /**
+   * Per-schedule environment variables. Spread into the spawned wrapper's env
+   * after the standard TERMINAL_* keys, so the schedule can pin parameterized
+   * inputs the agent prompt depends on (e.g. BEACON_PROJECT=bolt to drain a
+   * specific project, RELEASE_CHANNEL=canary, etc). NOT a place for secrets
+   * the agent itself shouldn't see — TerMinal launches the wrapper in the
+   * user's shell, so these are visible to the spawned engine.
+   */
+  env?: Record<string, string>
   createdAt: number
   lastRun?: number
   lastStatus?: ScheduleStatus

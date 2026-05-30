@@ -224,6 +224,7 @@ export type ScheduleSpec =
   | { kind: 'calendar'; minute: number; hour: number; weekdays?: number[] }
   | { kind: 'cron'; expr: string }
 export type ScheduleStatus = 'never' | 'running' | 'done' | 'failed'
+export type ScheduleEnv = Record<string, string>
 export type Schedule = {
   id: string
   repoRoot: string
@@ -235,6 +236,7 @@ export type Schedule = {
   prompt: string
   spec: ScheduleSpec
   enabled: boolean
+  env?: ScheduleEnv
   createdAt: number
   lastRun?: number
   lastStatus?: ScheduleStatus
@@ -655,6 +657,7 @@ export type GtApi = {
       model?: string
       spec: ScheduleSpec
       enabled?: boolean
+      env?: ScheduleEnv
     }) => Promise<{ ok: true; id: string } | { error: string }>
     remove: (id: string) => Promise<boolean>
     toggle: (id: string, enabled: boolean) => Promise<boolean>

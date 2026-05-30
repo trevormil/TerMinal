@@ -550,7 +550,18 @@ ipcMain.handle('schedules:list', () => {
 })
 ipcMain.handle(
   'schedules:save',
-  (_e, input: { id?: string; agentId: string; engine: Engine; model?: string; spec: ScheduleSpec; enabled?: boolean }) => {
+  (
+    _e,
+    input: {
+      id?: string
+      agentId: string
+      engine: Engine
+      model?: string
+      spec: ScheduleSpec
+      enabled?: boolean
+      env?: Record<string, string>
+    },
+  ) => {
     const root = repoRootOf(cur().cwd)
     if (!root) return { error: 'not a git repo' }
     const agent = readAgents(root).find((a) => a.id === input.agentId)
@@ -565,6 +576,9 @@ ipcMain.handle(
       prompt: agent.prompt, // snapshot — runner uses this offline
       spec: input.spec,
       enabled: input.enabled ?? true,
+      // Drop empty/whitespace-only keys so a half-filled editor doesn't pollute
+      // the spawn env with bogus blanks; treat missing field as "no env vars".
+      env: sanitizeScheduleEnv(input.env),
     }
     const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
     if (!sched) return { error: 'schedule not found' }
@@ -573,6 +587,18 @@ ipcMain.handle(
     return { ok: true, id: sched.id }
   },
 )
+
+function sanitizeScheduleEnv(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim()
+    if (!key) continue
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) continue // POSIX-shaped var names only
+    out[key] = String(v ?? '')
+  }
+  return Object.keys(out).length ? out : undefined
+}
 ipcMain.handle('schedules:remove', (_e, id: string) => {
   unscheduleJob(id)
   return removeSchedule(id)
