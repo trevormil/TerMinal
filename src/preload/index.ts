@@ -47,7 +47,14 @@ const gt = {
     chat: (opts: { messages: { role: string; content: string }[]; model?: string; maxTokens?: number; temperature?: number }) =>
       ipcRenderer.invoke('openrouter:chat', opts),
   },
-  mrAuthorship: (iid: number) => ipcRenderer.invoke('mrs:authorship', iid),
+  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; route?: 'auto' | 'claude-p' | 'openrouter'; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
+    ipcRenderer.invoke('llm:cheap', opts),
+  classify: {
+    ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),
+    risk: (input: { files: string[]; diffLines?: number; title?: string }) =>
+      ipcRenderer.invoke('classify:risk', input),
+  },
+  mrAuthorship: (iid: number, opts?: { refine?: boolean }) => ipcRenderer.invoke('mrs:authorship', iid, opts),
   typeIntoActive: (text: string) => ipcRenderer.send('pty:type', text),
 
   // on-demand codex/claude agents

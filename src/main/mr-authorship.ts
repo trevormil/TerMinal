@@ -208,6 +208,64 @@ function pickDominant(byTool: Record<AuthorshipTool, number>): MrAuthorshipSumma
 // ---- Compact label for the UI ---------------------------------------------
 
 /** A short label suitable for an MR row badge ("Claude 4/5", "mixed 3/2/1"). */
+// ---- LLM fallback for unknown commits ------------------------------------
+//
+// When the deterministic patterns return 'unknown' or 'human' with low
+// confidence, ask OpenRouter haiku to judge the commit style. This catches
+// AI-authored commits that don't carry a known footer (e.g., human edited the
+// AI commit message). Cheap — ~$0.0001 per ambiguous commit.
+
+const STYLE_SYSTEM_PROMPT =
+  'You judge whether a git commit was likely written by Claude Code, Codex (OpenAI), Cursor, Aider, GitHub Copilot, or a human. Reply with EXACTLY ONE of these labels: claude-code, codex, cursor, aider, copilot, human, unknown. No preamble. Signals: "🤖 Generated with Claude Code" is claude-code; "Co-Authored-By: Codex" is codex; Cursor uses "composer:" prefix; Aider uses "aider:" prefix; Copilot uses Copilot footers; conversational style with no signature is usually human; very dense bullet-point body with conventional-commit prefix and 70-char wrap is usually AI but ambiguous.'
+
+/** Reclassify any commit whose initial tool is 'unknown' or 'human' using an
+ *  LLM judge. In-place mutation of the summary; returns the same object. */
+export async function refineAuthorshipWithLlm(
+  s: MrAuthorshipSummary,
+  rawMessages?: Map<string, string>,
+): Promise<MrAuthorshipSummary> {
+  if (!s.commits.length) return s
+  let cheapCall: typeof import('./cheap-llm').cheapCall
+  try {
+    cheapCall = (await import('./cheap-llm')).cheapCall
+  } catch {
+    return s
+  }
+  for (const c of s.commits) {
+    // Only refine the ambiguous ones; high-confidence patterns stay.
+    if (c.confidence === 'high') continue
+    if (c.tool !== 'unknown' && c.tool !== 'human') continue
+    const msg = rawMessages?.get(c.sha) || `${c.subject}\n${c.authorName} <${c.authorEmail}>`
+    try {
+      const res = await cheapCall({
+        messages: [
+          { role: 'system', content: STYLE_SYSTEM_PROMPT },
+          { role: 'user', content: msg.slice(0, 1500) },
+        ],
+        model: 'haiku',
+        maxTokens: 8,
+        temperature: 0,
+        timeoutMs: 5000,
+      })
+      if (!res.ok || !res.text) continue
+      const label = res.text.trim().toLowerCase() as AuthorshipTool
+      const valid: AuthorshipTool[] = ['claude-code', 'codex', 'cursor', 'aider', 'copilot', 'human', 'unknown']
+      if (valid.includes(label) && label !== c.tool) {
+        // Decrement the old bucket, increment the new
+        s.byTool[c.tool]--
+        c.tool = label
+        c.confidence = 'medium'
+        c.evidence.push('LLM judge (haiku) reclassified')
+        s.byTool[label]++
+      }
+    } catch {
+      /* skip this commit */
+    }
+  }
+  s.dominant = pickDominant(s.byTool)
+  return s
+}
+
 export function authorshipLabel(s: MrAuthorshipSummary): string {
   if (s.total === 0) return '—'
   const order: AuthorshipTool[] = ['claude-code', 'codex', 'cursor', 'aider', 'copilot', 'human', 'unknown']

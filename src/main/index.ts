@@ -893,10 +893,29 @@ ipcMain.handle('openrouter:chat', async (_e, opts: Parameters<typeof import('./o
   return openrouterChat(opts)
 })
 
+// Cheap one-shot LLM call — smart-routes Anthropic models to `claude -p`
+// (free via Max subscription) and non-Anthropic to OpenRouter.
+ipcMain.handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
+  const { cheapCall } = await import('./cheap-llm')
+  return cheapCall(opts)
+})
+
+// Classifier IPCs — exposed so scripts/dashboard can use them too.
+ipcMain.handle('classify:ci', async (_e, rawLog: string) => {
+  const { classifyCiFailure } = await import('./ci-failure-classifier')
+  return classifyCiFailure(rawLog)
+})
+ipcMain.handle('classify:risk', async (_e, input: Parameters<typeof import('./pr-risk-classifier').classifyRisk>[0]) => {
+  const { classifyRisk } = await import('./pr-risk-classifier')
+  return classifyRisk(input)
+})
+
 // MR authorship sniffer — runs git log over the MR's range.
-ipcMain.handle('mrs:authorship', async (_e, iid: number) => {
+// `refine: true` runs LLM (claude -p haiku via Max, or OpenRouter) on the
+// ambiguous commits to catch AI-authored ones missing known footers.
+ipcMain.handle('mrs:authorship', async (_e, iid: number, opts?: { refine?: boolean }) => {
   const { getMr } = await import('./mrs')
-  const { authorshipForRange } = await import('./mr-authorship')
+  const { authorshipForRange, refineAuthorshipWithLlm } = await import('./mr-authorship')
   const repoRoot = repoRootOf(cur().cwd)
   if (!repoRoot) return null
   const mr = await getMr(repoRoot, iid)
@@ -905,12 +924,21 @@ ipcMain.handle('mrs:authorship', async (_e, iid: number) => {
   const head = mr.sourceBranch
   // Use origin/<base>..origin/<head> for accuracy against remote state
   const range = `origin/${base}..origin/${head}`
+  let summary
   try {
-    return authorshipForRange(repoRoot, range)
+    summary = authorshipForRange(repoRoot, range)
   } catch {
     // Fallback: try local-only range
-    return authorshipForRange(repoRoot, `${base}..${head}`)
+    summary = authorshipForRange(repoRoot, `${base}..${head}`)
   }
+  if (opts?.refine) {
+    try {
+      summary = await refineAuthorshipWithLlm(summary)
+    } catch {
+      /* ignore */
+    }
+  }
+  return summary
 })
 
 // Budget IPCs (#0002).

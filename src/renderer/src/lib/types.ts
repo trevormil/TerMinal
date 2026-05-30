@@ -512,7 +512,30 @@ export type GtApi = {
       temperature?: number
     }) => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
   }
-  mrAuthorship: (iid: number) => Promise<{
+  cheapLlm: (opts: {
+    messages: { role: string; content: string }[]
+    model?: string
+    route?: 'auto' | 'claude-p' | 'openrouter'
+    maxTokens?: number
+    temperature?: number
+    timeoutMs?: number
+  }) => Promise<{ ok: boolean; text?: string; model?: string; route?: string; error?: string }>
+  classify: {
+    ci: (rawLog: string) => Promise<{
+      class: string
+      confidence: string
+      evidence: string[]
+      isCheapClass: boolean
+      source: string
+    }>
+    risk: (input: { files: string[]; diffLines?: number; title?: string }) => Promise<{
+      tier: 'low' | 'medium' | 'high'
+      confidence: string
+      evidence: string[]
+      source: string
+    }>
+  }
+  mrAuthorship: (iid: number, opts?: { refine?: boolean }) => Promise<{
     total: number
     byTool: Record<string, number>
     dominant: string

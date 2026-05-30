@@ -6,8 +6,6 @@
 // Falls back to a deterministic "last error cluster" extraction when no
 // OpenRouter key is configured — keeps the path usable even without the key.
 
-import { readSettings } from './settings'
-
 const STRIP_ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g
 
 /** Last-N-line tail with ANSI stripped. */
@@ -43,21 +41,20 @@ export function deterministicSummary(rawLog: string): string {
   return lines.slice(anchor, anchor + 6).join(' · ').slice(0, 280)
 }
 
-/** Cheap OpenRouter summarizer. Returns a short, one-line summary suitable
- *  for the HITL action field. Falls back to deterministic on any error. */
+/** Cheap LLM summarizer routed through cheap-llm (claude -p haiku if
+ *  available — uses the Max subscription budget — else OpenRouter haiku).
+ *  Falls back to deterministic on any error. */
 export async function summarizeFailedRun(opts: {
   rawLog: string
   context?: string // e.g. "Background task: fix flaky drift test"
   model?: string
   maxTokens?: number
 }): Promise<string> {
-  const cfg = readSettings().openrouter
   const det = deterministicSummary(opts.rawLog)
-  if (!cfg.apiKey) return det
   const tail = tailLines(opts.rawLog, 80)
   try {
-    const { openrouterChat } = await import('./openrouter')
-    const res = await openrouterChat({
+    const { cheapCall } = await import('./cheap-llm')
+    const res = await cheapCall({
       messages: [
         {
           role: 'system',
@@ -71,10 +68,10 @@ export async function summarizeFailedRun(opts: {
             `Log tail (last 80 lines):\n${tail}`,
         },
       ],
-      model: opts.model || cfg.defaultModel || 'anthropic/claude-haiku-4.5',
+      model: opts.model || 'haiku',
       maxTokens: opts.maxTokens || 80,
       temperature: 0.1,
-      timeoutMs: 8000,
+      timeoutMs: 10_000,
     })
     if (res.ok && res.text) return res.text.trim().slice(0, 280)
   } catch {
