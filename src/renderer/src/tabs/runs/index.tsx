@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ListChecks, RefreshCw, FolderOpen, X, Search, Play, StopCircle, Trash2 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { onNavigate } from '../../lib/nav'
@@ -316,6 +316,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                 >
                   <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                   <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
+                  {r.force && <ForceChip />}
                   <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">{r.agentTitle}</span>
                   <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.repoLabel}</span>
                   <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
@@ -348,6 +349,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
             <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2.5">
               <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
               <Badge tone={sourceTone(selectedRun.source)}>{selectedRun.source}</Badge>
+              {selectedRun.force && <ForceChip size="md" />}
               <span className="text-[13px] font-semibold text-zinc-100">{selectedRun.agentTitle}</span>
               <span className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-600">
                 <EngineLogo engine={selectedRun.engine} size={11} />

@@ -181,6 +181,8 @@ export type Agent = {
   engine?: Engine
   model?: string
   inPlace?: boolean
+  /** FORCE MODE — bypasses the main-branch push gate. UI shows a red FORCE chip. */
+  force?: boolean
   source?: 'default' | 'override' | 'repo' | 'global'
   hasScript?: boolean
 }
@@ -213,6 +215,8 @@ export type AgentRun = {
   worktree: string
   branch: string
   output: string
+  /** Snapshot at run-time of the agent's force flag. */
+  force?: boolean
 }
 
 export type ScheduleSpec =
@@ -325,6 +329,8 @@ export type UnifiedRun = {
   worktree: string
   scheduleId?: string
   error?: string
+  /** Snapshot at run-time of the agent's force flag. */
+  force?: boolean
 }
 
 export type CronRun = {

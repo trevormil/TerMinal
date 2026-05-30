@@ -36,9 +36,11 @@ import {
   Wrench,
   Workflow,
   RadioTower,
+  AlertOctagon,
+  Undo2,
   type LucideIcon,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge, ForceChip } from '../../components/ui'
 import { EnginePicker } from '../../components/EnginePicker'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
@@ -90,6 +92,8 @@ const AGENT_ICON: Record<string, LucideIcon> = {
   Newspaper,
   Workflow,
   RadioTower,
+  AlertOctagon,
+  Undo2,
   Bot,
 }
 const statusTone = (s: string): BadgeTone =>
@@ -724,6 +728,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-zinc-100">
                         {a.title}
                       </span>
+                      {a.force && <ForceChip />}
                       {a.hasScript && (
                         <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-[var(--gt-accent-light)]/70">
                           sh
@@ -764,6 +769,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-3">
                   <Icon size={18} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
                   <h2 className="text-[14px] font-bold text-zinc-100">{selectedAgent.title}</h2>
+                  {selectedAgent.force && <ForceChip size="md" />}
                   {selectedAgent.source && (
                     <Badge tone={SOURCE[selectedAgent.source].tone}>{SOURCE[selectedAgent.source].label}</Badge>
                   )}
@@ -1215,6 +1221,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[13px] font-semibold text-zinc-100">{a.title}</span>
+                          {a.force && <ForceChip />}
                           {a.source && <Badge tone={SOURCE[a.source].tone}>{SOURCE[a.source].label}</Badge>}
                           {a.hasScript && <Badge tone="blue">sh</Badge>}
                         </div>

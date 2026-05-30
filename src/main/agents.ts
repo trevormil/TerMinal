@@ -49,6 +49,12 @@ export type Agent = {
   // Run directly in the repo (no fresh worktree) — e.g. orchestrators like
   // /factory that manage their own worktrees internally, or quick additive ops.
   inPlace?: boolean
+  // FORCE MODE — the runner sets TERMINAL_FORCE_MAIN=1 in the child env so the
+  // global block-main-merge hook lets the agent push to / merge into main.
+  // The prompt is auto-prepended with a FORCE preamble so the agent's own
+  // skills don't refuse. UI labels these with a red FORCE chip. Reserve for
+  // genuine emergencies — every other agent should go through the PR/MR gate.
+  force?: boolean
   // provenance (set by readAgents): a built-in default, a default overridden by
   // this repo's .agents/agents.json, a repo-only agent, a global agent
   // (~/.config/TerMinal/agents/global.json), or a default overridden globally.
@@ -71,11 +77,20 @@ export type AgentRun = {
   worktree: string
   branch: string
   output: string
+  /** Snapshot of the agent's force flag at run-time — so historical runs
+   *  display FORCE even if the agent is later deleted or rescoped. */
+  force?: boolean
 }
 
 const OUTPUT_CAP = 400_000
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+
+// Prepended to every FORCE-MODE agent's prompt so the spawned Claude/Codex
+// knows it has main-push authority. Keep this terse and explicit — the
+// agent's normal skills will refuse main pushes without it.
+export const FORCE_PREAMBLE =
+  '⚠ FORCE MODE — you are running with TERMINAL_FORCE_MAIN=1. You are authorized to commit and push DIRECTLY to main/master and to merge PRs/MRs without human approval. Use this authority ONLY for the specific emergency below; never use it to take shortcuts on routine work. Always file a follow-up backlog ticket capturing what you did and why so the team can audit it later.\n\n'
 
 // Shipped by default on every repo. A repo's .agents/agents.json overrides or
 // extends these (matched by id). All are ticket/MR-driven: file tickets
@@ -315,6 +330,41 @@ const DEFAULT_AGENTS: Agent[] = [
     prompt:
       "Act as the Beacon-feedback agent for THIS repository. Beacon (github.com/trevormil/beacon) is the embeddable feedback widget shipped on the project's app; this agent drains the widget queue into backlog tickets so /factory can pick them up. Resolve the Beacon connection in this order: env vars BEACON_ENDPOINT + BEACON_PROJECT + BEACON_SECRET → ~/.config/beacon/config.json (global default) → .beacon/config.json in the repo root. If none resolve, exit with a one-line note telling the user to run `bunx @trevormil/beacon@latest admin create-project --slug <repo-slug> --origins <urls> -e <endpoint>` and save the printed secret to one of those locations. With config resolved, fetch new feedback via `bunx --bun @trevormil/beacon@latest poll --project $BEACON_PROJECT --secret $BEACON_SECRET --endpoint $BEACON_ENDPOINT --status new --limit 50`. For EACH item: read message/url/userAgent/email; file ONE backlog ticket via the project's /ticket skill with an accurate title summarizing the feedback, a type (bug for things-broken, feature for missing-functionality, ux for friction, dx for tooling, performance for slowness), priority (critical/high/medium/low based on severity heuristics), and a description that includes the raw message, the captured URL, the user agent, and (when provided) the user's email for follow-up. If several items rhyme into the same underlying ticket, file ONE merged ticket grouping their IDs in the description. Mark each processed feedback item via `bunx @trevormil/beacon@latest mark <id> --project ... --secret ... --endpoint ...` after the ticket lands. Do NOT edit production code — leave the build to /factory. End with a list of ticket IDs filed and any items left unprocessed (e.g. couldn't classify).",
   },
+  // ── FORCE agents ─────────────────────────────────────────────────────────
+  // These bypass the main-branch gate via TERMINAL_FORCE_MAIN=1. Reserved
+  // for production emergencies. Marked `force: true` so the runner injects
+  // the env var, prepends the FORCE preamble to the prompt, and the UI
+  // shows a red FORCE chip.
+  {
+    id: 'emergency-fix',
+    title: 'Emergency fix',
+    description: 'Production hotfix: smallest patch, commit + push direct to main, file follow-up ticket.',
+    icon: 'AlertOctagon',
+    opensPr: false,
+    force: true,
+    prompt:
+      "Act as an emergency-fix agent for THIS repository. A production-impacting bug is breaking real users RIGHT NOW. Identify the SMALLEST POSSIBLE PATCH that stops the bleeding — not the proper fix, not a refactor, not the cleanup. Sequence: (1) reproduce the failure briefly to confirm scope; (2) write the minimum surgical change; (3) run the existing test suite (or the most relevant subset) and confirm it stays green; (4) commit on main with a `fix:` Conventional Commits subject mentioning what was breaking; (5) push directly to main (`git push origin main`) — you are authorized; (6) file a backlog ticket (type: bug, priority: high, source: emergency-fix) describing the real root cause and a proper fix prompt for /factory to handle later. Never expand scope. Never touch unrelated code. If the smallest patch isn't obvious within ~5 minutes of investigation, abort and file a critical ticket instead — paged humans are cheaper than a broken hotfix. End with the SHA you pushed, the brief explanation, and the follow-up ticket id.",
+  },
+  {
+    id: 'unblock-ci',
+    title: 'Unblock CI',
+    description: 'Main CI is red. Diagnose; revert, pin, or skip the hosed bit; push direct to main.',
+    icon: 'ShieldAlert',
+    opensPr: false,
+    force: true,
+    prompt:
+      "Act as an unblock-CI agent for THIS repository. The default-branch CI run is RED and blocking the whole team. Your job: get main green so other PRs can merge. Sequence: (1) pull the latest main and the failing CI run's logs (use TerMinal MCP CI tools or `gh run view` / `glab ci view`); (2) classify the failure — is it (a) a regression from the last merge, (b) a flapping test, (c) a dep / install break, or (d) infra? (3) apply the narrowest fix that turns main green: prefer `git revert <bad-sha>` for a regression; for a true flake, mark the test with the project's skip/retry convention; for a dep break, pin the working version; for infra, file a ticket and exit. (4) Run the suite locally to confirm green; (5) commit on main and push directly (`git push origin main`); (6) file a follow-up ticket (type: testing or ci or dependency, priority: high) explaining what was broken and what the proper fix is. Never roll forward an unrelated change. If the failure is genuinely outside your fix budget, file a ticket and exit — do not paper over a real bug. End with the action taken (reverted SHA / pinned version / skipped test path), the new main SHA, and the follow-up ticket id.",
+  },
+  {
+    id: 'revert-main',
+    title: 'Revert last main commit',
+    description: 'Narrow force-op: git revert the most recent main commit and push.',
+    icon: 'Undo2',
+    opensPr: false,
+    force: true,
+    prompt:
+      "Act as a revert-main agent for THIS repository. The most recent commit on main is bad and must be undone. Sequence: (1) confirm you're on the latest main and identify HEAD's SHA + commit message; (2) run `git revert --no-edit HEAD` to produce a revert commit; (3) run the existing test suite to confirm the revert lands cleanly; (4) push directly to main (`git push origin main`) — you are authorized; (5) file a backlog ticket (type: bug, priority: high, source: revert-main) titled `Re-do reverted: <original subject>` with the reverted SHA + reason for the revert + a fix prompt so /factory can re-attempt the change properly. Refuse if HEAD is already a revert (would be a no-op or destructive). Refuse if HEAD is more than 24h old (the team has likely moved on and a straight revert may be wrong). End with the reverted SHA, the new main SHA, and the follow-up ticket id.",
+  },
 ]
 
 function readRepoAgents(repoRoot: string): Agent[] {
@@ -370,6 +420,7 @@ function readScriptAgents(dir: string): Agent[] {
       engine: meta.engine,
       model: meta.model,
       inPlace: meta.inPlace,
+      force: meta.force,
     })
   }
   return out
@@ -429,6 +480,7 @@ export function saveAgent(
     model: agent.model?.trim() || undefined,
     opensPr: agent.opensPr,
     inPlace: agent.inPlace,
+    force: agent.force,
   }
   const dir = join(repoRoot, '.agents')
   const f = join(dir, 'agents.json')
@@ -653,6 +705,8 @@ type RunSpec = {
   prRef?: { iid: number; sourceBranch: string }
   /** Run in the repo itself (no worktree) — for quick, additive ops like ticket filing. */
   inPlace?: boolean
+  /** FORCE-MODE: spawn the child with TERMINAL_FORCE_MAIN=1 and prepend FORCE_PREAMBLE. */
+  force?: boolean
   /** Optional per-engine model alias passed to the CLI as `--model <name>`. */
   model?: string
 }
@@ -718,9 +772,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   const baseLine = spec.prRef
     ? `▸ on ${forgeFor(repoRoot).label} ${forgeFor(repoRoot).sym}${spec.prRef.iid} · branch ${branch}`
     : `▸ branch ${branch} (off ${defaultBase(repoRoot)})`
+  const forceLine = spec.force ? '▸ ⚠ FORCE MODE — TERMINAL_FORCE_MAIN=1 (main-push allowed)\n' : ''
   const header =
     `▸ ${spec.title} · ${spec.engine}${spec.persona ? ` · as ${spec.persona}` : ''}` +
-    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n\n`
+    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n${forceLine}\n`
   const run: AgentRun = {
     id: randomUUID(),
     agentId: spec.id,
@@ -734,6 +789,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     worktree,
     branch,
     output: header,
+    force: spec.force,
   }
   runs.set(run.id, run)
   persistMeta(run)
@@ -817,10 +873,18 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       TERMINAL_WORKTREE: worktree,
       TERMINAL_ENGINE: spec.engine,
       ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
+      // FORCE-MODE: passes the block-main-merge hook's env-var carve-out.
+      // Only set when the agent has `force: true`; never inherited from the
+      // parent process (a normal launch of TerMinal never has this var set).
+      ...(spec.force ? { TERMINAL_FORCE_MAIN: '1' } : {}),
     }
+    // For prompt-style (non-script) FORCE agents, prepend the preamble so the
+    // spawned model knows it has main-push authority; script-first agents read
+    // the env var directly.
+    const promptForStep = spec.force && !scriptPath ? FORCE_PREAMBLE + step.prompt : step.prompt
     const cmd = scriptPath
       ? shq(scriptPath)
-      : buildCmd(spec.engine, worktree, step.prompt, effectiveModel || undefined)
+      : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined)
     // Wrap the spawn in `script -q /dev/null` so claude/codex think they're on
     // a TTY and stream output as it's generated. Without this, `claude -p`
     // buffers everything until exit and the run log shows nothing mid-run
@@ -874,6 +938,7 @@ export function runAgent(
     persona,
     pipeline,
     inPlace: agent.inPlace,
+    force: agent.force,
     model: model ?? agent.model,
   })
 }
