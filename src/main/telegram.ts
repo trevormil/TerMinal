@@ -858,7 +858,86 @@ function cmdCancel(args: string[]) {
   reply(cancelRun(id) ? `⏹ Canceled run #${n}.` : `Run #${n} is not running.`)
 }
 
-function handle(text: string) {
+// Natural-language fallback. If the message doesn't start with '/', ask
+// haiku (free via Max) to translate it into a structured command. The
+// translation is constrained to the existing command set — the LLM picks
+// the command; we re-dispatch it through the same handler. Saves users
+// from memorizing slash syntax on mobile.
+async function translateNaturalLanguage(text: string): Promise<string | null> {
+  if (text.startsWith('/')) return null
+  // Tight prompt — model picks ONE command + minimal args. Falls back to
+  // null if it can't translate confidently.
+  const SYSTEM = `You translate the user's natural-language request into a TerMinal slash command. Output EXACTLY one command line starting with /, or "NONE" if the request doesn't match.
+
+Available commands (with example syntax):
+  /bg [@repo] [claude|codex] [haiku|sonnet|opus] <prompt>
+  /run <agentId> [@repo] [engine] [persona] [pipeline]
+  /tickets [@repo]
+  /ticket <slug|n>
+  /ticket new <title>
+  /close <slug|n>
+  /schedules
+  /pause <id|all>
+  /resume <id|all>
+  /runnow <id>
+  /hitl
+  /resolve <n>
+  /mrs [@repo]
+  /mr <iid>
+  /runs
+  /cancel <n>
+  /tail <runId|n>
+  /sessions
+  /status
+  /harness
+  /activity [N]
+  /budget
+  /budget set <usd>
+  /repos
+  /cd <repo>
+
+Examples:
+  "fix the flaky test in vellum" → /bg @vellum-project fix the flaky test
+  "show me what's blocked" → /hitl
+  "kill run 3" → /cancel 3
+  "what's running" → /runs
+  "how much have I spent today" → /budget
+
+Reply with ONE LINE — either the command or NONE. No preamble, no explanation.`
+  try {
+    const { cheapCall } = (await import('./cheap-llm')) as typeof import('./cheap-llm')
+    const res = await cheapCall({
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: text },
+      ],
+      model: 'haiku',
+      maxTokens: 80,
+      temperature: 0,
+      timeoutMs: 8000,
+    })
+    if (!res.ok || !res.text) return null
+    const line = res.text.trim().split('\n')[0].trim()
+    if (line === 'NONE' || !line.startsWith('/')) return null
+    return line
+  } catch {
+    return null
+  }
+}
+
+async function handle(text: string) {
+  // Natural-language pre-dispatch — if user typed free-form, translate via
+  // haiku into a slash command, then fall through to the normal switch.
+  if (!text.startsWith('/')) {
+    const translated = await translateNaturalLanguage(text)
+    if (translated) {
+      reply(`🔀 → ${translated}`)
+      text = translated
+    } else {
+      reply(`I don't know how to do that. Try /help.`)
+      return
+    }
+  }
   const { cmd, args } = parseCommand(text)
   switch (cmd) {
     case '/help':
@@ -1006,7 +1085,7 @@ export async function pollTelegramOnce() {
       if (res.ok) {
         const { messages, callbacks, nextOffset } = parseUpdates(await res.json(), t.chatId)
         if (nextOffset) writeOffset(nextOffset)
-        for (const m of messages) handle(m.text)
+        for (const m of messages) await handle(m.text)
         for (const c of callbacks) await dispatchCallback(c.data, c.queryId)
       }
     } catch {
@@ -1024,7 +1103,7 @@ export async function pollTelegramOnce() {
     if (err || !stdout) return
     for (const line of stdout.split('\n')) {
       const cmd = parsePollLine(line, enabledAt)
-      if (cmd) handle(cmd)
+      if (cmd) handle(cmd).catch(() => {})
     }
   })
 }

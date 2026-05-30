@@ -62,6 +62,67 @@ function Readiness({ ok, name, hint }: { ok: boolean; name: string; hint: string
   )
 }
 
+// OpenRouter free + cheap-paid preset picker. One click to switch the
+// default model without having to remember the full slug. Anthropic models
+// don't appear here — those route through claude -p (free via Max) anyway.
+function OpenRouterPresets({
+  currentModel,
+  onPick,
+}: {
+  currentModel: string
+  onPick: (model: string) => void
+}) {
+  const [presets, setPresets] = useState<{
+    free: readonly { id: string; label: string }[]
+    cheapPaid: readonly { id: string; label: string; inUsdPerM: number }[]
+  } | null>(null)
+  useEffect(() => {
+    window.gt.openrouter.presets().then(setPresets)
+  }, [])
+  if (!presets) return null
+  const Pill = ({
+    id,
+    label,
+    note,
+  }: {
+    id: string
+    label: string
+    note?: string
+  }) => {
+    const on = currentModel === id
+    return (
+      <button
+        onClick={() => onPick(id)}
+        title={id}
+        className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
+          on
+            ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
+            : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/40'
+        }`}
+      >
+        {label}
+        {note && <span className="ml-0.5 text-[9.5px] text-zinc-600">{note}</span>}
+      </button>
+    )
+  }
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[9.5px] uppercase tracking-wider text-zinc-600">free:</span>
+        {presets.free.map((p) => (
+          <Pill key={p.id} id={p.id} label={p.label} />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[9.5px] uppercase tracking-wider text-zinc-600">cheap:</span>
+        {presets.cheapPaid.map((p) => (
+          <Pill key={p.id} id={p.id} label={p.label} note={`$${p.inUsdPerM}/M`} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Tab visibility — let the user hide tabs they never use. Persists to
 // localStorage and broadcasts a synthetic event so SessionView re-renders
 // without a window reload.
@@ -626,6 +687,13 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                     : orState.error}
                 </div>
               )}
+              {/* Free model presets — one click to switch default. Anthropic
+                  models route through claude -p (free via Max); these are
+                  for when you want a non-Anthropic cheap-tier model. */}
+              <OpenRouterPresets
+                currentModel={s.openrouter.defaultModel}
+                onPick={(m) => save({ openrouter: { defaultModel: m } })}
+              />
             </div>
           </Section>
 

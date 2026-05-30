@@ -350,6 +350,8 @@ export type Review = {
   testStatus: string
   stale: boolean
   commitsBehind: number
+  /** Cross-PR triage: high/medium/low (or unscored if absent). */
+  riskTier: 'high' | 'medium' | 'low' | 'unscored'
 }
 
 export type Finding = {
@@ -511,6 +513,10 @@ export type GtApi = {
       maxTokens?: number
       temperature?: number
     }) => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
+    presets: () => Promise<{
+      free: readonly { id: string; label: string }[]
+      cheapPaid: readonly { id: string; label: string; inUsdPerM: number }[]
+    }>
   }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]

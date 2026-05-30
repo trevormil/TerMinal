@@ -104,6 +104,19 @@ function MrRow({
             )}
             {m.review && <Badge tone={verdictTone(m.review.verdict)}>{m.review.verdict}</Badge>}
             {m.review && <Badge tone={testTone(m.review.testStatus)}>tests {m.review.testStatus}</Badge>}
+            {m.review?.riskTier && m.review.riskTier !== 'unscored' && (
+              <Badge
+                tone={
+                  m.review.riskTier === 'high'
+                    ? 'red'
+                    : m.review.riskTier === 'medium'
+                      ? 'yellow'
+                      : 'green'
+                }
+              >
+                {m.review.riskTier} risk
+              </Badge>
+            )}
             {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}
             {m.review?.stale && (
               <Badge tone="warn">
@@ -180,9 +193,18 @@ function GroupedMrList({
   if (mrs.length === 0)
     return <div className="p-6 text-[12px] text-zinc-600">No {label}s for this repo.</div>
 
-  const groups = GROUPS.map((g) => ({ ...g, items: mrs.filter((m) => g.match(m.state)) })).filter(
-    (g) => g.items.length > 0,
-  )
+  // Sort opened MRs by risk first so high-risk reviews surface up top.
+  // Other groups (closed/merged) keep their original order.
+  const riskWeight = (r?: string) => (r === 'high' ? 0 : r === 'medium' ? 1 : r === 'low' ? 2 : 3)
+  const groups = GROUPS.map((g) => ({
+    ...g,
+    items:
+      g.id === 'open'
+        ? [...mrs.filter((m) => g.match(m.state))].sort(
+            (a, b) => riskWeight(a.review?.riskTier) - riskWeight(b.review?.riskTier),
+          )
+        : mrs.filter((m) => g.match(m.state)),
+  })).filter((g) => g.items.length > 0)
 
   return (
     <div>

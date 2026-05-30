@@ -81,6 +81,25 @@ export async function openrouterChat(opts: {
   }
 }
 
+/** Curated free / cheap model recommendations on OpenRouter. Use these for
+ *  the cheap classification calls that don't need to be Anthropic-shaped
+ *  (which would otherwise route through claude -p haiku for free via Max).
+ *  The :free suffix uses OpenRouter's free tier; the others are notably
+ *  cheap per-million for high-volume cheap-tier work. */
+export const FREE_MODEL_PRESETS = [
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
+  { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (free)' },
+  { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)' },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 405B (free)' },
+  { id: 'mistralai/mistral-small-3.1-24b-instruct:free', label: 'Mistral Small (free)' },
+] as const
+
+export const CHEAP_PAID_PRESETS = [
+  { id: 'openai/gpt-5-mini', label: 'GPT-5 Mini', inUsdPerM: 0.25 },
+  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', inUsdPerM: 0.3 },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', inUsdPerM: 0.27 },
+] as const
+
 /** Test connectivity — sends a tiny prompt, returns the model + a quick reply. */
 export async function testOpenRouter(): Promise<OpenRouterResponse> {
   return openrouterChat({

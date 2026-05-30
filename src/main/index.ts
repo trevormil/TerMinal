@@ -892,6 +892,10 @@ ipcMain.handle('openrouter:chat', async (_e, opts: Parameters<typeof import('./o
   const { openrouterChat } = await import('./openrouter')
   return openrouterChat(opts)
 })
+ipcMain.handle('openrouter:presets', async () => {
+  const m = await import('./openrouter')
+  return { free: m.FREE_MODEL_PRESETS, cheapPaid: m.CHEAP_PAID_PRESETS }
+})
 
 // Cheap one-shot LLM call — smart-routes Anthropic models to `claude -p`
 // (free via Max subscription) and non-Anthropic to OpenRouter.

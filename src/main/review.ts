@@ -14,6 +14,10 @@ export type Review = {
   testStatus: string
   stale: boolean
   commitsBehind: number
+  /** Cross-PR triage classification — high/medium/low/unscored.
+   *  Read from the artifact frontmatter `risk_tier:` field that
+   *  bin/compute-verdict writes deterministically post-codex. */
+  riskTier: 'high' | 'medium' | 'low' | 'unscored'
 }
 
 export function fmField(md: string, key: string): string | null {
@@ -125,12 +129,23 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
     // dir tracked (has meta) but no artifact generated yet
     if (existsSync(join(dir, 'meta.json'))) {
       const meta = readJsonSafe<any>(join(dir, 'meta.json'), {})
-      return { number: Number(meta.number) || 0, overall: null, verdict: 'none', testStatus: 'none', stale: false, commitsBehind: 0 }
+      return {
+        number: Number(meta.number) || 0,
+        overall: null,
+        verdict: 'none',
+        testStatus: 'none',
+        stale: false,
+        commitsBehind: 0,
+        riskTier: 'unscored',
+      }
     }
     return null
   }
   const md = readFileSync(a.file, 'utf8')
   const ov = fmField(md, 'overall')
+  const rt = (fmField(md, 'risk_tier') || '').toLowerCase()
+  const riskTier: Review['riskTier'] =
+    rt === 'high' || rt === 'medium' || rt === 'low' ? rt : 'unscored'
   return {
     number: a.number,
     overall: ov ? Number(ov) : null,
@@ -138,6 +153,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
     testStatus: fmField(md, 'test_status') || 'none',
     stale: a.stale,
     commitsBehind: a.commitsBehind,
+    riskTier,
   }
 }
 
