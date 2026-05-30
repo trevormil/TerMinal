@@ -21,12 +21,12 @@ import {
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
 import { EngineModelPicker } from './EngineModelPicker'
 import openaiLogo from '../assets/openai.svg'
-import anthropicLogo from '../assets/anthropic.svg'
+import claudeLogo from '../assets/claude.svg'
 
 // Three-step launch picker: engine (codex/claude) → persona (none + built-ins)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + persona id ('' = none) + pipeline id ('single' = just the task).
-const LOGO: Record<Engine, string> = { codex: openaiLogo, claude: anthropicLogo }
+const LOGO: Record<Engine, string> = { codex: openaiLogo, claude: claudeLogo }
 const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude' }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
