@@ -49,6 +49,19 @@ const ACTIVITY = join(CFG, 'activity.jsonl')
 const CRON_LOG = join(CFG, 'cron.log')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
+
+// Resolve the per-engine default model from settings — same fallback the
+// in-process runner (src/main/agents.ts) applies, so cron runs respect the
+// user's "always use sonnet" preference when the schedule itself has no
+// explicit override.
+function engineDefaultModel(engine) {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return (s?.engines?.[engine]?.defaultModel || '').trim()
+  } catch {
+    return ''
+  }
+}
 const DISABLED_FILE = join(CFG, 'agents', 'disabled.json')
 
 // A run is "stale" if it claims status:running but no live process is attached
@@ -283,6 +296,8 @@ function sweepStaleRuns() {
         detail: `run ${rec.id} · ${rec.branch || ''}`,
         repo: rec.repoLabel,
         repoRoot: rec.repoRoot,
+        runId: rec.id,
+        runSource: 'cron',
       })
       if (rec.repoRoot) {
         fileTicket(rec.repoRoot, {
@@ -392,6 +407,8 @@ async function runSchedule(id) {
       detail: `active run ${active.id} · ${active.branch}`,
       repo: sched.repoLabel,
       repoRoot: sched.repoRoot,
+      runId: active.id,
+      runSource: 'cron',
     })
     activity({
       kind: 'blocked',
@@ -468,6 +485,8 @@ async function runSchedule(id) {
       detail: msg.slice(0, 200),
       repo: sched.repoLabel,
       repoRoot: repo,
+      runId,
+      runSource: 'cron',
     })
     fileTicket(repo, {
       title: `Cron run failed: ${sched.agentTitle} (worktree setup)`,
@@ -522,7 +541,9 @@ async function runSchedule(id) {
     TERMINAL_BRANCH: branch,
     TERMINAL_WORKTREE: worktree,
     TERMINAL_ENGINE: sched.engine,
-    ...(sched.model ? { TERMINAL_MODEL: sched.model } : {}),
+    ...((sched.model || engineDefaultModel(sched.engine))
+      ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
+      : {}),
   }
   const code = await new Promise((resolve) => {
     const p = spawn('script', ['-q', '/dev/null', shell, '-l', '-c', cmd], {
@@ -554,6 +575,8 @@ async function runSchedule(id) {
       detail: `run ${runId} · ${branch}`,
       repo: sched.repoLabel,
       repoRoot: repo,
+      runId,
+      runSource: 'cron',
     })
     fileTicket(repo, {
       title: `Cron run failed: ${sched.agentTitle} (exit ${code})`,

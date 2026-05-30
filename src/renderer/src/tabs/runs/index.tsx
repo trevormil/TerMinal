@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ListChecks, RefreshCw, FolderOpen, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ListChecks, RefreshCw, FolderOpen, X, Search, Play } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
+import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
 
 // One global view across every run TerMinal has fired — cron (launchd, via
@@ -49,6 +50,9 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   const [search, setSearch] = useState('')
   const [sel, setSel] = useState<string | null>(null)
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
+  const [logQuery, setLogQuery] = useState('')
+  const [rerunBusy, setRerunBusy] = useState(false)
+  const logRef = useRef<HTMLPreElement>(null)
 
   const reload = () => window.gt.agents.allRuns().then(setRuns)
   useEffect(() => {
@@ -60,6 +64,18 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
     }, 2000)
     return () => clearInterval(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cross-tab nav: when another tab calls navigateTo('runs', { runId }) we
+  // pre-select that run + scroll the list to it.
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'runs') return
+        const runId = (ev.payload?.runId as string) || ''
+        if (runId) setSel(runId)
+      }),
+    [],
+  )
 
   // Filter chip options derived from loaded data.
   const repoOptions = useMemo(() => {
@@ -118,6 +134,51 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
       clearInterval(t)
     }
   }, [selectedRun?.id, selectedRun?.status])
+
+  // Re-run: cron runs route to schedules.runNow (re-fires the launchd schedule
+  // so the run gets all the same env vars + log path); in-process runs re-fire
+  // via agents.run with the same engine/model snapshot.
+  const handleRerun = async (run: UnifiedRun) => {
+    setRerunBusy(true)
+    try {
+      if (run.source === 'cron' && run.scheduleId) {
+        await window.gt.schedules.runNow(run.scheduleId)
+      } else {
+        const eng = run.engine === 'codex' || run.engine === 'claude' ? run.engine : undefined
+        await window.gt.agents.run(run.agentId, eng, undefined, undefined, undefined)
+      }
+      await reload()
+    } finally {
+      setRerunBusy(false)
+    }
+  }
+
+  // Log search — filter the log to lines matching the query, with neighbour
+  // lines for context. Cheap to do client-side; logs are kilobytes.
+  const visibleLog = useMemo(() => {
+    const raw = stripAnsi(log?.text || '')
+    if (!raw) return ''
+    const q = logQuery.trim().toLowerCase()
+    if (!q) return raw
+    const lines = raw.split('\n')
+    const keep = new Set<number>()
+    lines.forEach((line, i) => {
+      if (line.toLowerCase().includes(q)) {
+        keep.add(i)
+        if (i > 0) keep.add(i - 1)
+        if (i + 1 < lines.length) keep.add(i + 1)
+      }
+    })
+    const indices = [...keep].sort((a, b) => a - b)
+    const out: string[] = []
+    let prev = -2
+    for (const i of indices) {
+      if (i > prev + 1) out.push('…')
+      out.push(lines[i])
+      prev = i
+    }
+    return out.join('\n') || `(no lines match "${logQuery}")`
+  }, [log?.text, logQuery])
 
   const counts = useMemo(() => {
     if (!runs) return { running: 0, done: 0, failed: 0 }
@@ -283,6 +344,21 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                 </button>
               )}
               <button
+                onClick={() => handleRerun(selectedRun)}
+                disabled={rerunBusy || selectedRun.status === 'running'}
+                title={
+                  selectedRun.status === 'running'
+                    ? 'Already running'
+                    : selectedRun.source === 'cron' && !selectedRun.scheduleId
+                      ? 'Cron run without scheduleId — cannot re-fire'
+                      : 'Re-run this agent'
+                }
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Play size={10} strokeWidth={2} />
+                {rerunBusy ? 'starting…' : 'Re-run'}
+              </button>
+              <button
                 onClick={() => setSel(null)}
                 title="Close detail"
                 className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
@@ -295,8 +371,29 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                 {selectedRun.error}
               </div>
             )}
-            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-[#0c0c11] p-4 font-mono text-[11px] leading-relaxed text-zinc-300">
-              {stripAnsi(log?.text || '') || '…'}
+            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)]/40 bg-[var(--gt-panel)]/30 px-3 py-1.5">
+              <Search size={11} strokeWidth={2} className="text-zinc-500" />
+              <input
+                value={logQuery}
+                onChange={(e) => setLogQuery(e.target.value)}
+                placeholder="Filter log lines (case-insensitive)…"
+                className="flex-1 rounded-md bg-transparent px-1 py-0.5 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+              />
+              {logQuery && (
+                <button
+                  onClick={() => setLogQuery('')}
+                  className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200"
+                  title="Clear filter"
+                >
+                  <X size={11} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+            <pre
+              ref={logRef}
+              className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-[#0c0c11] p-4 font-mono text-[11px] leading-relaxed text-zinc-300"
+            >
+              {visibleLog || '…'}
             </pre>
           </>
         )}

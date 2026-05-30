@@ -134,7 +134,7 @@ export type DocsTree = {
 }
 
 export type Engine = 'codex' | 'claude'
-export type EngineCfg = { path: string }
+export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 export type AppsCfg = { editor: string; browser: string }
@@ -271,6 +271,8 @@ export type HitlItem = {
   status: 'open' | 'resolved'
   createdAt: number
   resolvedAt?: number
+  runId?: string
+  runSource?: 'cron' | 'agent'
 }
 export type UnifiedRun = {
   id: string

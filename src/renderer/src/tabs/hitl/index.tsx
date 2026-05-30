@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Hand, Check, Trash2, RotateCcw } from 'lucide-react'
+import { Hand, Check, Trash2, RotateCcw, ListChecks } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
+import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
 
 // Human-in-the-loop: a GLOBAL, cross-repo inbox of TRUE human-needs — decisions,
@@ -95,6 +96,16 @@ function HitlTab(_props: { ctx: TabContext }) {
                     {h.detail && <div className="mt-0.5 text-[11.5px] leading-snug text-zinc-500">{h.detail}</div>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {h.runId && (
+                      <button
+                        onClick={() => navigateTo('runs', { runId: h.runId })}
+                        title="Jump to the run that filed this HITL"
+                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      >
+                        <ListChecks size={11} strokeWidth={2} />
+                        View run
+                      </button>
+                    )}
                     {h.status === 'open' ? (
                       <button
                         onClick={async () => {

@@ -16,7 +16,7 @@ import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona } from './personas'
-import { enginePath, resolvedWorktreesDir } from './settings'
+import { enginePath, engineDefaultModel, resolvedWorktreesDir } from './settings'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
@@ -593,6 +593,12 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // command from the prompt. Inside the script the operator can mix
     // deterministic shell with `claude -p` / `codex exec` however they want.
     const scriptPath = locateScript(repoRoot, spec.id)
+    // Resolve model in priority order: explicit spec override > per-engine
+    // Settings default > nothing (engine picks its own default). Same value
+    // flows into both TERMINAL_MODEL (visible to scripts) and the buildCmd
+    // fallback for prompt-style agents — so a script's `--model
+    // "${TERMINAL_MODEL:-sonnet}"` pattern sees the user's Settings default.
+    const effectiveModel = spec.model || engineDefaultModel(spec.engine) || ''
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Inject TerMinal's bin dir so scripts can call `terminal-cli ...`.
@@ -603,9 +609,11 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       TERMINAL_BRANCH: branch,
       TERMINAL_WORKTREE: worktree,
       TERMINAL_ENGINE: spec.engine,
-      ...(spec.model ? { TERMINAL_MODEL: spec.model } : {}),
+      ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
     }
-    const cmd = scriptPath ? shq(scriptPath) : buildCmd(spec.engine, worktree, step.prompt, spec.model)
+    const cmd = scriptPath
+      ? shq(scriptPath)
+      : buildCmd(spec.engine, worktree, step.prompt, effectiveModel || undefined)
     // Wrap the spawn in `script -q /dev/null` so claude/codex think they're on
     // a TTY and stream output as it's generated. Without this, `claude -p`
     // buffers everything until exit and the run log shows nothing mid-run

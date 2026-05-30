@@ -8,7 +8,10 @@ import { homedir } from 'node:os'
 // { telegram, telegramControl } shape are migrated on read.
 
 export type EngineId = 'codex' | 'claude'
-export type EngineCfg = { path: string } // '' = use the bare binary name on PATH
+export type EngineCfg = {
+  path: string // '' = use the bare binary name on PATH
+  defaultModel: string // '' = let claude/codex pick their own default
+}
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = {
   notify: boolean // mirror notifications to Telegram (opt-in)
@@ -52,7 +55,10 @@ export function defaultSettings(): Settings {
     onboarded: false,
     projectsDir: '',
     worktreesDir: '',
-    engines: { codex: { path: '' }, claude: { path: '' } },
+    engines: {
+      codex: { path: '', defaultModel: '' },
+      claude: { path: '', defaultModel: '' },
+    },
     defaultEngine: 'claude', // claude is the required engine; codex is optional
     forge: 'auto',
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
@@ -87,8 +93,11 @@ export function migrate(raw: unknown): Settings {
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
     for (const e of ['codex', 'claude'] as EngineId[]) {
-      const p = r.engines[e]?.path
-      if (typeof p === 'string') s.engines[e] = { path: p }
+      const cfg = r.engines[e]
+      if (cfg && typeof cfg === 'object') {
+        if (typeof cfg.path === 'string') s.engines[e].path = cfg.path
+        if (typeof cfg.defaultModel === 'string') s.engines[e].defaultModel = cfg.defaultModel
+      }
     }
   }
   if (r.apps && typeof r.apps === 'object') {
@@ -165,6 +174,12 @@ export function enginePath(engine: EngineId): string {
   if (p) return p
   if (engine === 'claude' && process.env.GT_CLAUDE_BIN) return process.env.GT_CLAUDE_BIN
   return engine
+}
+
+/** Per-engine model fallback. Returns '' when no fallback is set, in which
+ *  case callers should let claude/codex pick their own default. */
+export function engineDefaultModel(engine: EngineId): string {
+  return readSettings().engines[engine]?.defaultModel || ''
 }
 
 export const telegramNotifyEnabled = () => readSettings().telegram.notify

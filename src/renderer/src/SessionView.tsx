@@ -10,6 +10,7 @@ import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { Plugin, TabContext } from './lib/types'
+import { onNavigate } from './lib/nav'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
@@ -60,6 +61,11 @@ export function SessionView({
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
   useEffect(() => localStorage.setItem('gt.known', JSON.stringify(known)), [known])
+
+  // Cross-tab navigation: any tab can call navigateTo(tabId, payload) to
+  // jump the session view to a different tab. Receiving tabs read the payload
+  // out of the same event (e.g. Runs tab pre-selects a runId from payload).
+  useEffect(() => onNavigate((ev) => setActiveTab(ev.tabId)), [])
 
   useEffect(() => {
     const fresh = allPlugins.filter((p) => !known.includes(p.id))

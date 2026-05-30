@@ -361,9 +361,27 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [picking, setPicking] = useState<{ id: string; title: string } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [editing, setEditing] = useState<Agent | 'new' | null>(null)
-  const [agentFilter, setAgentFilter] = useState<'all' | 'generic' | 'per-repo'>('all')
-  const [agentSearch, setAgentSearch] = useState('')
-  const [selAgentId, setSelAgentId] = useState<string | null>(null)
+  // Persist UI position across reloads so coming back to the tab lands on the
+  // same agent/filter/search. Cheap localStorage; the values are tiny strings.
+  const [agentFilter, setAgentFilter] = useState<'all' | 'generic' | 'per-repo'>(
+    () => (localStorage.getItem('gt.agents.filter') as 'all' | 'generic' | 'per-repo') || 'all',
+  )
+  const [agentSearch, setAgentSearch] = useState<string>(
+    () => localStorage.getItem('gt.agents.search') || '',
+  )
+  const [selAgentId, setSelAgentId] = useState<string | null>(
+    () => localStorage.getItem('gt.agents.sel') || null,
+  )
+  useEffect(() => {
+    localStorage.setItem('gt.agents.filter', agentFilter)
+  }, [agentFilter])
+  useEffect(() => {
+    localStorage.setItem('gt.agents.search', agentSearch)
+  }, [agentSearch])
+  useEffect(() => {
+    if (selAgentId) localStorage.setItem('gt.agents.sel', selAgentId)
+    else localStorage.removeItem('gt.agents.sel')
+  }, [selAgentId])
   const [designerOpen, setDesignerOpen] = useState(false)
   const [scripts, setScripts] = useState<Record<string, { path: string; body: string } | null>>({})
   const logRef = useRef<HTMLPreElement>(null)

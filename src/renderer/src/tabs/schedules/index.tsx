@@ -9,10 +9,12 @@ import {
   ChevronDown,
   FileText,
   X,
+  ListChecks,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
+import { navigateTo } from '../../lib/nav'
 import { BashHighlight } from '../../components/BashHighlight'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
@@ -300,24 +302,18 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [runs, setRuns] = useState<CronRun[]>([])
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
   const [msg, setMsg] = useState('')
-  const [view, setView] = useState<'schedules' | 'runs'>('schedules')
   const [repo, setRepo] = useState('') // '' = all repos
-  const [allRuns, setAllRuns] = useState<CronRun[] | null>(null)
   const [disabled, setDisabledIds] = useState<Set<string>>(new Set())
   // Lazy-loaded bash bodies, keyed by agentId. Same cache pattern as the Agents tab.
   const [scriptByAgent, setScriptByAgent] = useState<Record<string, { path: string; body: string } | null>>({})
 
   const reload = () => window.gt.schedules.list().then(setSchedules)
-  const reloadRuns = () => window.gt.schedules.runs().then(setAllRuns)
   const reloadDisabled = () => window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
   useEffect(() => {
     reload()
     reloadDisabled()
     window.gt.agents.list().then(setAgents)
   }, [ctx.sessionId])
-  useEffect(() => {
-    if (view === 'runs') reloadRuns()
-  }, [view])
 
   // Listen for the design-schedule run completing — when the spawn finishes
   // writing to schedules.json, reconcile launchd so the new entry becomes a
@@ -337,7 +333,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   // streams claude/codex stdout, instead of having to re-click "log".
   useEffect(() => {
     if (!log) return
-    const targetRun = [...runs, ...(allRuns || [])].find((r) => r.id === log.runId)
+    const targetRun = runs.find((r) => r.id === log.runId)
     if (!targetRun || targetRun.status !== 'running') return
     let alive = true
     const tick = async () => {
@@ -349,18 +345,16 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       alive = false
       clearInterval(id)
     }
-  }, [log?.runId, log?.text, runs, allRuns])
+  }, [log?.runId, log?.text, runs])
 
-  // Global view: repo options span every repo that has a schedule or a run —
-  // no need to switch the active session to manage another repo's jobs.
+  // Global view: repo options span every repo that has a schedule. (Run-only
+  // repos previously also appeared here; that's now the Runs tab's job.)
   const repoOptions = useMemo(() => {
     const set = new Set<string>()
     for (const s of schedules || []) if (s.repoLabel) set.add(s.repoLabel)
-    for (const r of allRuns || []) if (r.repoLabel) set.add(r.repoLabel)
     return [...set].sort()
-  }, [schedules, allRuns])
+  }, [schedules])
   const shownSchedules = (schedules || []).filter((s) => !repo || s.repoLabel === repo)
-  const shownRuns = (allRuns || []).filter((r) => !repo || r.repoLabel === repo)
 
   const openRuns = async (id: string) => {
     if (expanded === id) {
@@ -396,23 +390,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <CalendarClock size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Schedules</span>
-        <div className="ml-1 flex items-center gap-0.5 rounded-lg border border-[var(--gt-border)] p-0.5">
-          {(['schedules', 'runs'] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => {
-                setView(v)
-                setExpanded(null)
-                setLog(null)
-              }}
-              className={`rounded-md px-2 py-0.5 text-[11px] capitalize ${
-                view === v ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {v === 'runs' ? 'All runs' : 'Schedules'}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={() => navigateTo('runs')}
+          title="See every run (cron + in-process) in the Runs tab"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
+        >
+          <ListChecks size={10} strokeWidth={2} />
+          All runs → Runs tab
+        </button>
         <select
           value={repo}
           onChange={(e) => setRepo(e.target.value)}
@@ -429,38 +414,31 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
         <div className="flex-1" />
         <button
           onClick={async () => {
-            if (view === 'runs') {
-              reloadRuns()
-              return
-            }
             const r = await window.gt.schedules.reconcile()
             flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans removed`)
             reload()
           }}
-          title={view === 'runs' ? 'Reload all runs' : 'Re-sync launchd with the schedule list (removes orphans)'}
+          title="Re-sync launchd with the schedule list (removes orphans)"
           className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60"
         >
           <RefreshCw size={11} strokeWidth={2} />
-          {view === 'runs' ? 'Refresh' : 'Reconcile'}
+          Reconcile
         </button>
-        {view === 'schedules' && (
-          <button
-            onClick={() => {
-              setCreating((v) => !v)
-              setExpanded(null)
-            }}
-            className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
-          >
-            <Plus size={13} strokeWidth={2.5} />
-            New schedule
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setCreating((v) => !v)
+            setExpanded(null)
+          }}
+          className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
+        >
+          <Plus size={13} strokeWidth={2.5} />
+          New schedule
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
-        {view === 'schedules' &&
-          creating &&
+        {creating &&
           (agents.length ? (
             <ScheduleForm
               agents={agents}
@@ -469,8 +447,6 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
               onCustomSpawned={() => {
                 setCreating(false)
                 flash('designer spawned · schedule will appear when the run completes')
-                // No setTimeout — the useEffect onStatus listener above reconciles
-                // launchd + reloads the moment the design-schedule run finishes.
               }}
             />
           ) : (
@@ -479,46 +455,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             </div>
           ))}
 
-        {view === 'runs' ? (
-          allRuns === null ? (
-            <div className="p-3 text-[12px] text-zinc-600">Loading runs…</div>
-          ) : shownRuns.length === 0 ? (
-            <div className="p-3 text-[12px] text-zinc-600">No runs{repo ? ` for ${repo}` : ' yet'}.</div>
-          ) : (
-            shownRuns.map((r) => (
-              <div key={r.id} className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5">
-                <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                  <span className="font-semibold text-zinc-200">{r.agentTitle}</span>
-                  <span className="font-mono text-[10px] text-zinc-500">{r.repoLabel}</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-600">
-                    <EngineLogo engine={r.engine} size={10} />
-                    {r.engine}
-                  </span>
-                  <span className="font-mono text-[10px] text-zinc-600">{r.branch}</span>
-                  <div className="flex-1" />
-                  <span className="text-zinc-500">{fmtWhen(r.startedAt)}</span>
-                  <button
-                    onClick={async () =>
-                      setLog(
-                        log?.runId === r.id ? null : { runId: r.id, text: await window.gt.schedules.runLog(r.id) },
-                      )
-                    }
-                    className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300"
-                  >
-                    <FileText size={11} strokeWidth={2} />
-                    log
-                  </button>
-                </div>
-                {log?.runId === r.id && (
-                  <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[#0c0c11] p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300">
-                    {log.text || '… (no output yet)'}
-                  </pre>
-                )}
-              </div>
-            ))
-          )
-        ) : schedules === null ? (
+        {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">

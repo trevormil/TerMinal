@@ -26,6 +26,11 @@ export type HitlItem = {
   status: 'open' | 'resolved'
   createdAt: number
   resolvedAt?: number
+  // Optional pointer back to the run that produced this HITL. Lets the HITL
+  // tab show a "View run" button that jumps to the Runs tab + selects the
+  // source run so the operator can read the log that prompted the block.
+  runId?: string
+  runSource?: 'cron' | 'agent'
 }
 
 export function readHitl(): HitlItem[] {

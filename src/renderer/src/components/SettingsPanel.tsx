@@ -119,9 +119,14 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       </div>
     )
 
+  const MODEL_OPTIONS: Record<Engine, string[]> = {
+    claude: ['', 'haiku', 'sonnet', 'opus'],
+    codex: ['', 'gpt-5', 'gpt-5-codex', 'o4-mini'],
+  }
   const engineRow = (e: Engine, vendor: string) => {
     const found = env ? (e === 'codex' ? env.codex.found : env.claude.found) : true
     const detPath = env ? (e === 'codex' ? env.codex.path : env.claude.path) : ''
+    const defModel = s.engines[e].defaultModel
     return (
       <div key={e} className="mb-2">
         <div className="mb-1 flex items-center gap-2">
@@ -134,6 +139,25 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           spellCheck={false}
           className={`${inp} font-mono`}
         />
+        <div className="mt-1 flex items-center gap-2">
+          <label className="text-[10.5px] text-zinc-500">default model</label>
+          <select
+            value={defModel}
+            onChange={(ev) =>
+              save({ engines: { [e]: { defaultModel: ev.target.value } } })
+            }
+            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
+          >
+            {MODEL_OPTIONS[e].map((m) => (
+              <option key={m} value={m}>
+                {m || '(engine default)'}
+              </option>
+            ))}
+          </select>
+          <span className="text-[10px] text-zinc-600">
+            applied to every {e} run unless the agent/schedule overrides
+          </span>
+        </div>
       </div>
     )
   }
