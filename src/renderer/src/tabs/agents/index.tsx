@@ -46,6 +46,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, Agent, AgentRun, Engine } from '../../lib/types'
+import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 
 function fmtRelative(ts: number): string {
   const s = (Date.now() - ts) / 1000
@@ -101,7 +102,6 @@ const statusTone = (s: string): BadgeTone =>
         : s === 'canceled'
           ? 'mute'
           : 'blue'
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
 
 function reltime(ts: number): string {

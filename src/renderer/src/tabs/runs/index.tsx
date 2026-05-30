@@ -5,6 +5,7 @@ import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
+import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 
 // One global view across every run TerMinal has fired — cron (launchd, via
 // bin/terminal-cron) AND in-process (Run button on Agents/Tickets/PRs). The
@@ -39,8 +40,6 @@ function fmtDuration(ms: number): string {
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
   return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`
 }
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
-
 function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   const [runs, setRuns] = useState<UnifiedRun[] | null>(null)
   const [source, setSource] = useState<'all' | 'cron' | 'agent'>('all')

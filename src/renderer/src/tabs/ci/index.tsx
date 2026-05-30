@@ -14,6 +14,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
+import { sanitizeLog } from '../../lib/sanitizeLog'
 import type { Tab, TabContext, CiRun, CiTabJob, CiRunStatus } from '../../lib/types'
 
 function fmtRelative(ts: number): string {
@@ -473,7 +474,7 @@ function JobRow({ job }: { job: CiTabJob }) {
               ref={logRef}
               className="mt-2 max-h-[400px] overflow-auto whitespace-pre rounded-md border border-[var(--gt-border)] bg-black/40 p-2 font-mono text-[10.5px] leading-snug text-zinc-300"
             >
-              {log || '(empty)'}
+              {sanitizeLog(log) || '(empty)'}
             </pre>
           )}
         </div>
