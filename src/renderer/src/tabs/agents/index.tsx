@@ -820,7 +820,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   <button
                     onClick={() => setPicking({ id: selectedAgent.id, title: selectedAgent.title })}
                     disabled={busy}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                    className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
                   >
                     {busy ? (
                       <>
@@ -838,7 +838,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     <button
                       onClick={() => window.gt.openInEditor(script.path)}
                       title="Edit the .sh in your configured editor"
-                      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
                     >
                       <Pencil size={11} strokeWidth={2} />
                       Edit script
@@ -846,7 +846,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   )}
                   <button
                     onClick={() => setEditing(selectedAgent)}
-                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60"
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-accent)]/60"
                     title="Edit the metadata sidecar (title/icon/engine/etc.)"
                   >
                     <Pencil size={11} strokeWidth={2} />
@@ -859,7 +859,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                         reloadAgents()
                       }}
                       title="Revert to the built-in default"
-                      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
                     >
                       <RotateCcw size={11} strokeWidth={2} />
                       Reset
