@@ -186,7 +186,7 @@ export type Agent = {
   inPlace?: boolean
   /** FORCE MODE — bypasses the main-branch push gate. UI shows a red FORCE chip. */
   force?: boolean
-  source?: 'default' | 'override' | 'repo' | 'global'
+  source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
   hasScript?: boolean
 }
 // Per-(repo, agent) state sidecar — the runtime owns lastScannedSha /
@@ -633,7 +633,6 @@ export type GtApi = {
     script: (id: string) => Promise<{ path: string; body: string } | null>
     state: (id: string) => Promise<{ path: string; exists: boolean; state: AgentStateRecord }>
     stateReset: (id: string) => Promise<{ ok: true } | { error: string }>
-    convert: (id: string) => Promise<{ ok: true; scriptPath: string; sidecarPath: string } | { error: string }>
     design: (text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
       Promise<AgentRun | { error: string }>
     personas: () => Promise<Persona[]>

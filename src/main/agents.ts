@@ -7,7 +7,6 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
-  chmodSync,
   unlinkSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -58,7 +57,7 @@ export type Agent = {
   // provenance (set by readAgents): a built-in default, a default overridden by
   // this repo's .agents/agents.json, a repo-only agent, a global agent
   // (~/.config/TerMinal/agents/global.json), or a default overridden globally.
-  source?: 'default' | 'override' | 'repo' | 'global'
+  source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
 }
 
 export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
@@ -451,8 +450,8 @@ export function readAgents(repoRoot: string): Agent[] {
   const out: Agent[] = []
   for (const { agent, layers } of byId.values()) {
     let source: Agent['source']
-    if (layers.has('repo')) source = layers.has('default') || layers.has('global') ? 'override' : 'repo'
-    else if (layers.has('global')) source = layers.has('default') ? 'override' : 'global'
+    if (layers.has('repo')) source = layers.has('default') || layers.has('global') ? 'repo-override' : 'repo'
+    else if (layers.has('global')) source = layers.has('default') ? 'global-override' : 'global'
     else source = 'default'
     out.push({ ...agent, source, hasScript: !!locateScript(repoRoot, agent.id) })
   }
@@ -1064,68 +1063,6 @@ DO NOT open a PR, do not modify any existing agents, do not invent extra files.`
 }
 
 export { saveGlobalAgent }
-
-// Convert an existing agent (prompt-style, in agents.json) into the new
-// script-first shape: writes <id>.sh (chmod 755) + <id>.json sidecar next to
-// the matching directory. Non-destructive — agents.json keeps the entry, the
-// runtime just branches to the .sh from now on. The user can clean
-// agents.json later, or never.
-export function convertAgentToScript(
-  repoRoot: string,
-  agentId: string,
-): { ok: true; scriptPath: string; sidecarPath: string } | { error: string } {
-  const agent = readAgents(repoRoot).find((a) => a.id === agentId)
-  if (!agent) return { error: 'unknown agent' }
-  // Default agents (shipped with the app) and globals get materialized in the
-  // global scripts dir; repo-source agents in this repo's .agents/.
-  const dir =
-    agent.source === 'repo' || agent.source === 'override'
-      ? join(repoRoot, '.agents')
-      : join(homedir(), '.config', 'TerMinal', 'scripts')
-  const scriptPath = join(dir, `${agentId}.sh`)
-  const sidecarPath = join(dir, `${agentId}.json`)
-  if (existsSync(scriptPath)) {
-    return { error: `script already exists at ${scriptPath}` }
-  }
-  const engine = agent.engine || 'claude'
-  const promptLit = JSON.stringify(agent.prompt).replace(/\\\\/g, '\\') // keep prompt readable
-  // The auto-generated body is a thin shim. Anyone can replace the body later
-  // to add prechecks, conditional escalation, helpers, etc.
-  const cmd =
-    engine === 'claude'
-      ? `claude -p ${promptLit} --dangerously-skip-permissions \${TERMINAL_MODEL:+--model "$TERMINAL_MODEL"}`
-      : `codex exec -s danger-full-access -C "$TERMINAL_WORKTREE" \${TERMINAL_MODEL:+--model "$TERMINAL_MODEL"} ${promptLit}`
-  const script = `#!/usr/bin/env bash
-# Auto-generated from agents.json by TerMinal's "Convert to script" action.
-# Edit freely. The runner picks up this .sh over the agents.json prompt entry.
-# Env vars provided: TERMINAL_REPO, TERMINAL_RUN_ID, TERMINAL_AGENT_ID,
-# TERMINAL_BRANCH, TERMINAL_WORKTREE, TERMINAL_ENGINE, TERMINAL_MODEL.
-# Helpers on PATH: terminal-cli ticket / hitl / activity / notify / state.
-
-set -uo pipefail
-
-exec ${cmd}
-`
-  const sidecar = {
-    id: agent.id,
-    title: agent.title,
-    description: agent.description,
-    icon: agent.icon,
-    opensPr: agent.opensPr,
-    engine: agent.engine,
-    model: agent.model,
-    inPlace: agent.inPlace,
-  }
-  try {
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(scriptPath, script)
-    chmodSync(scriptPath, 0o755)
-    writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2) + '\n')
-    return { ok: true, scriptPath, sidecarPath }
-  } catch (e) {
-    return { error: (e as Error).message }
-  }
-}
 
 /** Spawn an agent run that designs a new schedule entry from a natural-
  *  language description. Reads the active agent list + existing schedules,

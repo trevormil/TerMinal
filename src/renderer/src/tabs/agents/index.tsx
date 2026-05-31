@@ -120,7 +120,8 @@ function reltime(ts: number): string {
 
 const SOURCE: Record<string, { label: string; tone: BadgeTone }> = {
   default: { label: 'default', tone: 'mute' },
-  override: { label: 'customized', tone: 'yellow' },
+  'repo-override': { label: 'repo override', tone: 'yellow' },
+  'global-override': { label: 'global override', tone: 'blue' },
   repo: { label: 'custom', tone: 'accent' },
   global: { label: 'global', tone: 'blue' },
 }
@@ -718,7 +719,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 const list = agents
                   .filter((a) => {
                     if (agentFilter === 'generic') return a.source === 'default'
-                    if (agentFilter === 'per-repo') return a.source === 'override' || a.source === 'repo'
+                    if (agentFilter === 'per-repo') return a.source === 'repo-override' || a.source === 'repo'
                     return true
                   })
                   .filter(
@@ -851,7 +852,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     <Pencil size={11} strokeWidth={2} />
                     Metadata
                   </button>
-                  {selectedAgent.source === 'override' && (
+                  {selectedAgent.source === 'repo-override' && (
                     <button
                       onClick={async () => {
                         await window.gt.agents.reset(selectedAgent.id)
@@ -904,25 +905,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                             ? `no .agents/${selectedAgent.id}.sh — runs as a single agent prompt`
                             : `reading .agents/${selectedAgent.id}.sh…`}
                       </span>
-                      {script === null && (
-                        <button
-                          onClick={async () => {
-                            const r = await window.gt.agents.convert(selectedAgent.id)
-                            if ('error' in r) {
-                              alert(`convert failed: ${r.error}`)
-                              return
-                            }
-                            setScripts((m) => ({ ...m, [selectedAgent.id]: { path: r.scriptPath, body: '' } }))
-                            window.gt.agents
-                              .script(selectedAgent.id)
-                              .then((s) => setScripts((m) => ({ ...m, [selectedAgent.id]: s })))
-                            reloadAgents()
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-0.5 text-[10px] normal-case tracking-normal text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
-                        >
-                          convert to script
-                        </button>
-                      )}
                     </h3>
                     {script ? (
                       <BashHighlight code={script.body} className="max-h-96" />
@@ -1244,9 +1226,9 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
               agents
                 .filter((a) => {
                   if (agentFilter === 'all') return true
-                  // "generic" = unmodified defaults; "per-repo" = override + custom
+                  // "generic" = unmodified defaults; "per-repo" = repo overrides + custom repo agents.
                   if (agentFilter === 'generic') return a.source === 'default'
-                  return a.source === 'override' || a.source === 'repo'
+                  return a.source === 'repo-override' || a.source === 'repo'
                 })
                 .map((a) => {
                 const Icon = AGENT_ICON[a.icon || ''] || Bot
@@ -1306,7 +1288,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                         <Pencil size={11} strokeWidth={2} />
                         edit
                       </button>
-                      {a.source === 'override' && (
+                      {a.source === 'repo-override' && (
                         <button
                           onClick={async () => {
                             await window.gt.agents.reset(a.id)
@@ -1349,27 +1331,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                   ? `no .agents/${a.id}.sh — runs as a single agent prompt`
                                   : 'loading…'}
                               </span>
-                              {scripts[a.id] === null && (
-                                <button
-                                  onClick={async () => {
-                                    const r = await window.gt.agents.convert(a.id)
-                                    if ('error' in r) {
-                                      alert(`convert failed: ${r.error}`)
-                                      return
-                                    }
-                                    // Refresh the cached script for this agent so the bash shows immediately.
-                                    setScripts((m) => ({ ...m, [a.id]: { path: r.scriptPath, body: '' } }))
-                                    window.gt.agents.script(a.id).then((s) =>
-                                      setScripts((m) => ({ ...m, [a.id]: s })),
-                                    )
-                                    reloadAgents()
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
-                                  title="Materialize this prompt-style agent as .agents/<id>.sh + sidecar so you can edit it as bash and mix deterministic checks with LLM calls."
-                                >
-                                  convert to script
-                                </button>
-                              )}
                             </div>
                             <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--gt-border)] bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
                               {a.prompt}
