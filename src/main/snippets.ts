@@ -17,7 +17,8 @@ type SnippetFile = {
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const GLOBAL_FILE = join(CFG, 'snippets.json')
-const REPO_FILE = '.terminal/snippets.json'
+const REPO_FILE = '.TerMinal/snippets.json'
+const LEGACY_REPO_FILE = '.terminal/snippets.json'
 
 const BUILT_INS: PromptSnippet[] = [
   {
@@ -89,9 +90,11 @@ export function listPromptSnippets(repoRoot: string): {
 } {
   ensureGlobalFile()
   const repoPath = repoRoot ? join(repoRoot, REPO_FILE) : ''
+  const legacyRepoPath = repoRoot ? join(repoRoot, LEGACY_REPO_FILE) : ''
   const byId = new Map<string, PromptSnippet>()
   for (const s of BUILT_INS) byId.set(s.id, s)
   for (const s of readSnippetFile(GLOBAL_FILE)) byId.set(s.id, s)
+  for (const s of legacyRepoPath ? readSnippetFile(legacyRepoPath) : []) byId.set(s.id, s)
   for (const s of repoPath ? readSnippetFile(repoPath) : []) byId.set(s.id, s)
   return { snippets: [...byId.values()], globalPath: GLOBAL_FILE, repoPath }
 }
