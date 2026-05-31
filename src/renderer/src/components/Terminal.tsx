@@ -27,7 +27,13 @@ export function TerminalPane({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const termRef = useRef<Xterm | null>(null)
+  const writeInputRef = useRef<(data: string) => void>(() => {})
   const [menuOpen, setMenuOpen] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    hasSelection: boolean
+  } | null>(null)
   const [snippets, setSnippets] = useState<PromptSnippet[]>([])
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [query, setQuery] = useState('')
@@ -148,14 +154,15 @@ export function TerminalPane({
         gt.pty.input(sessionKey, ch)
       }
     }
+    writeInputRef.current = writeInput
 
     // Cmd+C / Cmd+V are handled natively by Electron's default Edit menu — don't
     // add a custom key handler too, or copy/paste fires twice (duplicates).
-    // right-click: copy the selection if any, else paste (classic terminal UX).
+    // Right-click opens an explicit terminal menu. The old copy-or-paste
+    // behavior worked, but it felt like a dead click because it had no UI.
     const onContext = (e: MouseEvent) => {
       e.preventDefault()
-      if (term.hasSelection()) gt.clipboardWrite(term.getSelection())
-      else gt.clipboardRead().then((t) => t && writeInput(t))
+      setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: term.hasSelection() })
     }
     el.addEventListener('contextmenu', onContext)
     // attach listeners BEFORE starting the pty so no early output is missed.
@@ -200,8 +207,23 @@ export function TerminalPane({
       ro.disconnect()
       term.dispose()
       if (termRef.current === term) termRef.current = null
+      writeInputRef.current = () => {}
     }
   }, [])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
 
   const commandForSkill = (s: SkillInfo) => {
     if (choice.engine === 'codex') return s.platforms.includes('codex') ? `$${s.name} ` : ''
@@ -302,7 +324,7 @@ export function TerminalPane({
   return (
     <div className="relative h-full w-full">
       <div ref={ref} className="h-full w-full px-2 py-1" />
-      <div className="absolute right-2 top-2 z-20">
+      <div className="absolute right-5 top-2 z-20">
         <button
           onClick={() => setMenuOpen((v) => !v)}
           title="Prompt snippets"
@@ -311,6 +333,58 @@ export function TerminalPane({
           <MessageSquareText size={14} strokeWidth={2} />
         </button>
       </div>
+      {contextMenu && (
+        <div
+          className="fixed z-[70] min-w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[12px] text-zinc-200 shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() => {
+              const text = termRef.current?.getSelection() || ''
+              if (text) window.gt.clipboardWrite(text)
+              setContextMenu(null)
+              requestAnimationFrame(() => termRef.current?.focus())
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            Copy
+          </button>
+          <button
+            onClick={() => {
+              window.gt.clipboardRead().then((text) => {
+                if (text) writeInputRef.current(text)
+              })
+              setContextMenu(null)
+              requestAnimationFrame(() => termRef.current?.focus())
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            Paste
+          </button>
+          <button
+            onClick={() => {
+              termRef.current?.selectAll()
+              setContextMenu(null)
+              requestAnimationFrame(() => termRef.current?.focus())
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            Select all
+          </button>
+          <button
+            onClick={() => {
+              termRef.current?.clear()
+              setContextMenu(null)
+              requestAnimationFrame(() => termRef.current?.focus())
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            Clear scrollback
+          </button>
+        </div>
+      )}
       {menuOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-6" onClick={() => setMenuOpen(false)}>
           <div
