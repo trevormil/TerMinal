@@ -181,8 +181,8 @@ function HelpTab(_props: { ctx: TabContext }) {
             <p>
               <span className="font-semibold text-zinc-200">Tabs (top bar):</span> Terminal is the live{' '}
               <code className="font-mono">claude</code> session. Tickets browses the backlog; MRs/PRs lists changes
-              with their review verdicts (filter Open/Merged/Closed/All); Agents shows spawned runs; HITL collects
-              anything waiting on you; Activity is the live event feed; Notes / Files / Sessions round it out.
+              with their review verdicts (filter Open/Merged/Closed/All); Agents shows spawned runs; Inbox collects
+              anything waiting on you from the top-right button; Activity is the live event feed; Notes / Files / Sessions round it out.
             </p>
             <p>
               <span className="font-semibold text-zinc-200">Cockpit (right, the Plugins button):</span> live widgets
@@ -274,7 +274,7 @@ function HelpTab(_props: { ctx: TabContext }) {
             <Rule icon={TicketIcon} title="Horizons & HITL">
               Tickets carry a horizon (<span className="text-zinc-300">now / next / future</span>); flag{' '}
               <code className="font-mono">hitl: true</code> when something genuinely needs a human — it surfaces in
-              the HITL tab.
+              the Inbox drawer.
             </Rule>
             <Rule icon={FileText} title="Docs are live">
               Capture decisions as ADRs, ops as runbooks, findings as learnings (<code className="font-mono">/document</code>);

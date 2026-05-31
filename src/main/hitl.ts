@@ -190,14 +190,47 @@ export function resolveHitl(id: string, resolved = true): boolean {
   const list = readHitl()
   const i = list.findIndex((h) => h.id === id)
   if (i < 0) return false
-  list[i] = { ...list[i], status: resolved ? 'resolved' : 'open', resolvedAt: resolved ? Date.now() : undefined }
+  const item = list[i]
+  list[i] = { ...item, status: resolved ? 'resolved' : 'open', resolvedAt: resolved ? Date.now() : undefined }
   write(list)
+  emitActivity(
+    {
+      kind: resolved ? 'task-complete' : 'blocked',
+      title: `Inbox ${resolved ? 'resolved' : 'reopened'} · ${item.title}`,
+      detail: item.action || item.detail,
+      repo: item.repo,
+      repoRoot: item.repoRoot,
+      hitlId: item.id,
+      runId: item.runId,
+      runSource: item.runSource,
+      sessionId: item.sessionId,
+    },
+    { notify: !resolved },
+  )
   return true
 }
 
 export function removeHitl(id: string): boolean {
   const before = readHitl()
+  const item = before.find((h) => h.id === id)
   const after = before.filter((h) => h.id !== id)
   write(after)
-  return after.length !== before.length
+  const removed = after.length !== before.length
+  if (removed && item) {
+    emitActivity(
+      {
+        kind: 'info',
+        title: `Inbox removed · ${item.title}`,
+        detail: item.action || item.detail,
+        repo: item.repo,
+        repoRoot: item.repoRoot,
+        hitlId: item.id,
+        runId: item.runId,
+        runSource: item.runSource,
+        sessionId: item.sessionId,
+      },
+      { notify: false },
+    )
+  }
+  return removed
 }

@@ -132,10 +132,10 @@ repo-aware — each shows based on the attached session's repo.
   that removes orphaned launchd jobs.
 - **Browser** — an in-app webview for quick lookups, plus **Open in Brave**
   (configurable) to hand the URL to a real browser with your wallet extensions.
-- **HITL** — a **global, cross-repo inbox** (`~/.config/TerMinal/hitl.json`) of
+- **Inbox** — a **global, cross-repo HITL inbox** (`~/.config/TerMinal/hitl.json`) of
   the things waiting on a human: approvals, credentials, decisions, hard
   blockers. Agents file items here (via `.claude/bin/hitl`), each fires a
-  Telegram ping, and the tab carries a live red count. Resolve / reopen / remove
+  Telegram ping, and the top-right Inbox button carries a live red count. Resolve / reopen / remove
   from one place — no need to open each repo.
 - **Activity** — a realtime feed + macOS notifications: a session finishing a
   turn, a ticket filed, a session start. Global store, filterable to this
@@ -235,7 +235,7 @@ agents do design → ticket → branch → PR → review/CI; the **merge to
   when TerMinal is closed (a headless runner ships in the app bundle and is
   installed to `~/.config/TerMinal/bin`). A failed (not cancelled) scheduled run
   auto-files a HITL item.
-- **HITL** is the single place agents reach you. Items live in a global
+- **Inbox** is the single place agents reach you. Items live in a global
   `~/.config/TerMinal/hitl.json`, get a Telegram ping when filed, and show a red
   badge until resolved — across every repo.
 - **Cycle time** is measured by linking a ticket's lifecycle events through join
@@ -322,7 +322,8 @@ bridge.
 Same model — a folder under `src/renderer/src/tabs/<id>/index.tsx`
 default-exporting `{ id, title, icon, order, appliesTo(ctx), Component }`.
 `appliesTo(ctx)` gates visibility on the attached repo; an optional
-`badge(gt)` paints a live count on the tab (that's how HITL shows its number).
+`badge(gt)` paints a live count on the tab. The global Inbox count lives in the
+top-right app chrome instead of a repo tab.
 
 ## Command widgets (no code)
 

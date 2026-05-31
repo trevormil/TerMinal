@@ -171,6 +171,7 @@ const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
 let activeKey = ''
 const cur = (): Pinned =>
   sessions.get(activeKey)?.pinned ?? { sessionId: '', cwd: '', mode: '', name: '', engine: 'claude' }
+const repoLabelFor = (cwdOrRoot: string) => repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
 
 type StartOpts = {
   mode: 'new' | 'resume'
@@ -241,7 +242,20 @@ function startSession(key: string, opts: StartOpts) {
           env,
         })
   proc.onData((d) => send('pty:data', key, d))
-  proc.onExit(({ exitCode }) => send('pty:exit', key, exitCode))
+  proc.onExit(({ exitCode }) => {
+    send('pty:exit', key, exitCode)
+    emitActivity(
+      {
+        kind: exitCode === 0 ? 'session-end' : 'error',
+        title: `${opts.name || basename(cwd) || 'session'} · ${engine} · exited`,
+        detail: `exit ${exitCode ?? 0} · ${cwd.replace(homedir(), '~')}`,
+        repo: repoLabelFor(cwd),
+        repoRoot: repoRootOf(cwd),
+        sessionId,
+      },
+      { notify: exitCode !== 0 },
+    )
+  })
 
   sessions.set(key, {
     pty: proc,
@@ -253,7 +267,7 @@ function startSession(key: string, opts: StartOpts) {
     kind: 'session-start',
     title: `${opts.name || basename(cwd) || 'session'} · ${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
     detail: cwd.replace(homedir(), '~'),
-    repo: repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || ''),
+    repo: repoLabelFor(cwd),
     repoRoot: repoRootOf(cwd),
     sessionId,
   })
@@ -531,9 +545,20 @@ ipcMain.handle('dialog:pickDir', async () => {
   })
   return r.canceled ? null : r.filePaths[0]
 })
-ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) =>
-  scaffoldProject(name, parentDir),
-)
+ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) => {
+  const r = scaffoldProject(name, parentDir)
+  emitActivity(
+    {
+      kind: r.ok ? 'task-complete' : 'error',
+      title: r.ok ? `Project scaffolded · ${basename(r.path || name)}` : `Project scaffold failed · ${name}`,
+      detail: r.ok ? r.path : r.error,
+      repo: r.ok && r.path ? basename(r.path) : undefined,
+      repoRoot: r.ok ? r.path : undefined,
+    },
+    { notify: !r.ok },
+  )
+  return r
+})
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 ipcMain.handle('activity:list', () => readActivity())
 ipcMain.handle('activity:clear', () => clearActivity())
@@ -547,18 +572,68 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   // react when the AFK-control toggle actually flips
   if (next.telegram.control !== before.telegram.control) {
     markTelegramControlEnabled(next.telegram.control)
+    emitActivity({
+      kind: 'info',
+      title: `Telegram control ${next.telegram.control ? 'enabled' : 'disabled'}`,
+      detail: 'Settings updated',
+    })
+  }
+  if (next.telegram.notify !== before.telegram.notify) {
+    emitActivity({
+      kind: 'info',
+      title: `Activity notifications ${next.telegram.notify ? 'enabled' : 'disabled'}`,
+      detail: 'Settings updated',
+    })
   }
   return next
 })
 ipcMain.handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
-ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) =>
-  savePromptSnippet({ ...input, repoRoot: input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd) }),
-)
+ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
+  const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
+  const r = savePromptSnippet({ ...input, repoRoot: root })
+  if ('ok' in r) {
+    emitActivity({
+      kind: 'info',
+      title: `Snippet saved · ${r.snippet.title}`,
+      detail: input.scope === 'global' ? 'Global' : repoLabelFor(root || cur().cwd),
+      repo: input.scope === 'repo' ? repoLabelFor(root || cur().cwd) : undefined,
+      repoRoot: input.scope === 'repo' ? root : undefined,
+      sessionId: cur().sessionId,
+    })
+  }
+  return r
+})
 ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) =>
-  saveAgent(repoRootOf(cur().cwd), agent),
-)
-ipcMain.handle('agents:reset', (_e, id: string) => resetAgent(repoRootOf(cur().cwd), id))
+ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
+  const root = repoRootOf(cur().cwd)
+  const r = saveAgent(root, agent)
+  if ('ok' in r) {
+    emitActivity({
+      kind: 'info',
+      title: `Agent saved · ${agent.title || agent.id}`,
+      detail: agent.id,
+      repo: repoLabelFor(root),
+      repoRoot: root,
+      sessionId: cur().sessionId,
+    })
+  }
+  return r
+})
+ipcMain.handle('agents:reset', (_e, id: string) => {
+  const root = repoRootOf(cur().cwd)
+  const r = resetAgent(root, id)
+  if ('ok' in r) {
+    emitActivity({
+      kind: 'info',
+      title: `Agent reset · ${id}`,
+      detail: 'Removed repo override',
+      repo: repoLabelFor(root),
+      repoRoot: root,
+      sessionId: cur().sessionId,
+    })
+  }
+  return r
+})
 // Read the script body for an agent if .agents/<id>.sh (or global) exists. Returns
 // { path, body } when found, null otherwise — used by the Agents tab to render
 // the bash inline alongside the prompt.
@@ -581,7 +656,18 @@ ipcMain.handle('agents:state', (_e, id: string) => {
 })
 ipcMain.handle('agents:state-reset', (_e, id: string) => {
   const root = repoRootOf(cur().cwd) || ''
-  return resetAgentState(root, id)
+  const r = resetAgentState(root, id)
+  if ('ok' in r) {
+    emitActivity({
+      kind: 'info',
+      title: `Agent state reset · ${id}`,
+      detail: repoLabelFor(root),
+      repo: repoLabelFor(root),
+      repoRoot: root,
+      sessionId: cur().sessionId,
+    })
+  }
+  return r
 })
 ipcMain.handle(
   'agents:design',
@@ -660,6 +746,14 @@ ipcMain.handle(
     if (!sched) return { error: 'schedule not found' }
     const r = syncSchedule(sched)
     if (!r.ok) return { error: `launchd: ${r.error}` }
+    emitActivity({
+      kind: 'check',
+      title: `Schedule ${input.id ? 'updated' : 'created'} · ${agent.title}`,
+      detail: `${sched.engine}${sched.model ? `/${sched.model}` : ''} · ${describeSpec(sched.spec)}`,
+      repo: sched.repoLabel,
+      repoRoot: root,
+      sessionId: cur().sessionId,
+    })
     return { ok: true, id: sched.id }
   },
 )
@@ -676,8 +770,20 @@ function sanitizeScheduleEnv(raw: unknown): Record<string, string> | undefined {
   return Object.keys(out).length ? out : undefined
 }
 ipcMain.handle('schedules:remove', (_e, id: string) => {
+  const s = getSchedule(id)
   unscheduleJob(id)
-  return removeSchedule(id)
+  const ok = removeSchedule(id)
+  if (ok) {
+    emitActivity({
+      kind: 'check',
+      title: `Schedule removed · ${s?.agentTitle || id}`,
+      detail: s ? describeSpec(s.spec) : id,
+      repo: s?.repoLabel,
+      repoRoot: s?.repoRoot,
+      sessionId: cur().sessionId,
+    })
+  }
+  return ok
 })
 ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
   const ok = toggleSchedule(id, enabled)
@@ -688,11 +794,30 @@ ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
     } catch {
       /* best effort */
     }
+    if (ok) {
+      emitActivity({
+        kind: 'check',
+        title: `Schedule ${enabled ? 'enabled' : 'paused'} · ${s.agentTitle}`,
+        detail: describeSpec(s.spec),
+        repo: s.repoLabel,
+        repoRoot: s.repoRoot,
+        sessionId: cur().sessionId,
+      })
+    }
   }
   return ok
 })
 ipcMain.handle('schedules:run-now', (_e, id: string) => {
+  const s = getSchedule(id)
   runScheduleNow(id)
+  emitActivity({
+    kind: 'agent-run',
+    title: `Schedule run requested · ${s?.agentTitle || id}`,
+    detail: s ? `${s.engine}${s.model ? `/${s.model}` : ''}` : id,
+    repo: s?.repoLabel,
+    repoRoot: s?.repoRoot,
+    sessionId: cur().sessionId,
+  })
   return { ok: true }
 })
 ipcMain.handle('schedules:runs', (_e, id?: string) => readCronRuns(id))
@@ -703,13 +828,27 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent', runId: string) => {
   return listRuns().find((r) => r.id === runId)?.output || ''
 })
 ipcMain.handle('schedules:disabled-list', () => listDisabled())
-ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => setAgentDisabled(id, disabled))
-ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) =>
-  setAllSchedulesDisabled(
-    readSchedules(Date.now()).map((s) => s.id),
-    disabled,
-  ),
-)
+ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
+  const ok = setAgentDisabled(id, disabled)
+  emitActivity({
+    kind: 'check',
+    title: `Scheduled agent ${disabled ? 'paused' : 'resumed'} · ${id}`,
+    detail: 'Manual override',
+    sessionId: cur().sessionId,
+  })
+  return ok
+})
+ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
+  const ids = readSchedules(Date.now()).map((s) => s.id)
+  const ok = setAllSchedulesDisabled(ids, disabled)
+  emitActivity({
+    kind: 'check',
+    title: `All schedules ${disabled ? 'paused' : 'resumed'}`,
+    detail: `${ids.length} schedule${ids.length === 1 ? '' : 's'}`,
+    sessionId: cur().sessionId,
+  })
+  return ok
+})
 ipcMain.handle('schedules:run-log', (_e, runId: string) => readCronRunLog(runId))
 ipcMain.handle('schedules:reconcile', () => reconcileSchedules())
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
@@ -723,6 +862,12 @@ ipcMain.handle('factory:start', (_e, engine: Engine) => runFactorySpawn(repoRoot
 ipcMain.handle('schedules:remove-all', () => {
   const n = removeAllJobs()
   for (const s of readSchedules()) removeSchedule(s.id)
+  emitActivity({
+    kind: 'check',
+    title: 'All launchd schedules removed',
+    detail: `${n} job${n === 1 ? '' : 's'} removed`,
+    sessionId: cur().sessionId,
+  })
   return { removed: n }
 })
 // ---- PTY IPC (routed by session key) ----
@@ -782,7 +927,7 @@ ipcMain.handle('tickets:create', (_e, input: NewTicket) => {
     kind: 'ticket-filed',
     title: `Ticket filed · #${t.id}`,
     detail: t.title,
-    repo: repoForCwd(cur().cwd)?.path || basename(root || ''),
+    repo: repoLabelFor(root),
     repoRoot: root,
     sessionId: cur().sessionId,
     ref: { ticket: t.id },
@@ -795,13 +940,24 @@ ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: strin
 ipcMain.handle('tickets:update', (_e, slug: string, patch: { status?: string; priority?: string }) => {
   const root = repoRootOf(cur().cwd)
   const ok = updateTicket(root, slug, patch)
-  if (ok && patch.status === 'closed') {
+  if (ok && patch.status) {
     const t = getTicket(root, slug)
     emitActivity({
-      kind: 'ticket-closed',
-      title: `Ticket closed · #${t?.id ?? slug}`,
+      kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
+      title: `Ticket ${patch.status} · #${t?.id ?? slug}`,
       detail: t?.title,
-      repo: repoForCwd(cur().cwd)?.path || basename(root || ''),
+      repo: repoLabelFor(root),
+      repoRoot: root,
+      sessionId: cur().sessionId,
+      ref: t?.id ? { ticket: t.id } : undefined,
+    })
+  } else if (ok && patch.priority) {
+    const t = getTicket(root, slug)
+    emitActivity({
+      kind: 'info',
+      title: `Ticket priority · #${t?.id ?? slug}`,
+      detail: `${t?.title || slug} · ${patch.priority}`,
+      repo: repoLabelFor(root),
       repoRoot: root,
       sessionId: cur().sessionId,
       ref: t?.id ? { ticket: t.id } : undefined,
@@ -959,6 +1115,16 @@ ipcMain.handle('release:start', () => {
   })
   child.unref()
   releasePid = child.pid || null
+  emitActivity(
+    {
+      kind: 'check',
+      title: 'Release started',
+      detail: repoRoot,
+      repo: repoLabelFor(repoRoot),
+      repoRoot,
+    },
+    { notify: false },
+  )
   return { ok: true, pid: releasePid, log: RELEASE_LOG, repoRoot }
 })
 ipcMain.handle('release:tail', () => {
@@ -1046,9 +1212,25 @@ ipcMain.handle('mrs:authorship', async (_e, iid: number, opts?: { refine?: boole
 
 // Budget IPCs (#0002).
 ipcMain.handle('budgets:get', () => readBudgets())
-ipcMain.handle('budgets:setDaily', (_e, usd: number) => setDailyCap(usd))
-ipcMain.handle('budgets:setAgent', (_e, agentId: string, usd: number) => setAgentCap(agentId, usd))
-ipcMain.handle('budgets:override', (_e, durationMs: number) => setOverride(durationMs))
+ipcMain.handle('budgets:setDaily', (_e, usd: number) => {
+  const r = setDailyCap(usd)
+  emitActivity({ kind: 'info', title: 'Daily budget updated', detail: `$${usd.toFixed(2)}` })
+  return r
+})
+ipcMain.handle('budgets:setAgent', (_e, agentId: string, usd: number) => {
+  const r = setAgentCap(agentId, usd)
+  emitActivity({ kind: 'info', title: `Agent budget updated · ${agentId}`, detail: `$${usd.toFixed(2)}` })
+  return r
+})
+ipcMain.handle('budgets:override', (_e, durationMs: number) => {
+  const r = setOverride(durationMs)
+  emitActivity({
+    kind: 'info',
+    title: 'Budget override set',
+    detail: `${Math.round(durationMs / 60000)} minutes`,
+  })
+  return r
+})
 ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.

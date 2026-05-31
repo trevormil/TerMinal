@@ -99,8 +99,8 @@ offline, survive a fresh clone):
   renderer and trigger notifications too (deduped by event id). Events carry an
   optional `ref:{ticket?,pr?}` join key.
 - `hitl.json` — the global HITL inbox (`hitl.ts`). `fileHitl` writes the item,
-  mirrors a `blocked` activity event, and fires a Telegram ping. Tab badge = open
-  count.
+  mirrors a `blocked` activity event, and fires a Telegram ping. The top-right
+  Inbox button badge shows the unresolved count.
 - `schedules.json` + `cron-runs/` — the schedule store and per-run records.
 - agent-run records — in `agents.ts`, surfaced globally on the Agents tab.
 

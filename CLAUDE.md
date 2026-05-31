@@ -63,8 +63,9 @@ actually uses; an out-of-date binary silently produces stale behavior. (See
   Activity feed via `emitActivity` if it's worth surfacing.
 - **Tab order matters.** Lower `order:` numbers come first. The current rough
   ordering is Terminal (0) → Tickets (1) → MRs (2) → Agents (3) → Runs (3.45)
-  → Schedules (3.5) → Browser (4) → HITL (4) → Notes/Files/Activity/Docs
-  → Sessions → Help → Reports.
+  → Schedules (3.5) → Browser (4) → Notes/Files/Activity/Docs → Sessions
+  → Help → Reports. Human-needed items live in the top-right Inbox drawer, not
+  a repo tab.
 
 ## Where to read before touching X
 

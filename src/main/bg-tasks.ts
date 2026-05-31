@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
+import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
@@ -189,6 +190,18 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   }
 
   writeTasks([task, ...readTasks()])
+  emitActivity(
+    {
+      kind: 'agent-run',
+      title: `Background task started · ${repo}`,
+      detail: `${engine}${input.model ? `/${input.model}` : ''} · ${task.label}`,
+      repo,
+      repoRoot: input.repoRoot,
+      runId: id,
+      runSource: 'agent',
+    },
+    { notify: false },
+  )
   return task
 }
 
@@ -208,6 +221,18 @@ export function cancelBgTask(id: string): { ok: boolean; error?: string } {
     x.id === id ? { ...x, status: 'canceled' as BgTaskStatus, endedAt: Date.now() } : x,
   )
   writeTasks(updated)
+  emitActivity(
+    {
+      kind: 'agent-run',
+      title: `Background task canceled · ${t.repo}`,
+      detail: t.label,
+      repo: t.repo,
+      repoRoot: t.repoRoot,
+      runId: t.id,
+      runSource: 'agent',
+    },
+    { notify: false },
+  )
   return { ok: true }
 }
 
@@ -284,6 +309,15 @@ async function sweep(): Promise<void> {
     if (mrUrl) {
       t.status = 'done'
       t.mrUrl = mrUrl
+      emitActivity({
+        kind: 'pr-opened',
+        title: `Background task ready · ${t.repo}`,
+        detail: mrUrl,
+        repo: t.repo,
+        repoRoot: t.repoRoot,
+        runId: t.id,
+        runSource: 'agent',
+      })
       telegramPing(`✅ ${t.repo}: ${t.label} → ${mrUrl}`)
     } else if (failure) {
       t.status = 'failed'
