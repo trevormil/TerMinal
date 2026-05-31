@@ -873,6 +873,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           onRerunSetup={() => {
             setShowSettings(false)
+            window.gt.settings.patch({ onboarded: false }).catch(() => {})
             setOnboarded(false)
           }}
         />

@@ -341,7 +341,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       </option>
     ))
   }
-  const browse = async (key: 'projectsDir') => {
+  const browse = async (key: 'projectsDir' | 'worktreesDir' | 'harnessDir') => {
     const d = await window.gt.pickDir()
     if (d) save({ [key]: d })
   }
@@ -503,6 +503,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 spellCheck={false}
                 className={`${inp} font-mono`}
               />
+              <button onClick={() => browse('worktreesDir')} className={`${inp} flex w-auto items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}>
+                <FolderOpen size={13} strokeWidth={2} />
+                Browse worktrees folder
+              </button>
               <input
                 defaultValue={s.templateRepo}
                 onBlur={(e) => e.target.value !== s.templateRepo && save({ templateRepo: e.target.value.trim() })}
@@ -510,6 +514,19 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 spellCheck={false}
                 className={`${inp} font-mono`}
               />
+              <div className="flex items-center gap-2">
+                <input
+                  defaultValue={s.harnessDir}
+                  onBlur={(e) => e.target.value !== s.harnessDir && save({ harnessDir: e.target.value.trim() })}
+                  placeholder="review artifact harness dir (optional)"
+                  spellCheck={false}
+                  className={`${inp} min-w-0 flex-1 font-mono`}
+                />
+                <button onClick={() => browse('harnessDir')} className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}>
+                  <FolderOpen size={13} strokeWidth={2} />
+                  Browse
+                </button>
+              </div>
               <div className="mt-2 flex items-center gap-2">
                 <button
                   onClick={() => window.gt.openConfigDir()}
