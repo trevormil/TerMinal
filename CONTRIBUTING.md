@@ -1,50 +1,80 @@
 # Contributing
 
-Thanks for taking a look. TerMinal is a small, hackable Electron app —
+Thanks for taking a look. TerMinal is a small, hackable Electron app;
 contributions of all sizes are welcome.
 
-## Dev setup
+## Dev Setup
 
-Requires [bun](https://bun.sh) and the `claude` CLI on your `PATH`.
+TerMinal is macOS-first. For local development, install:
+
+- [Bun](https://bun.sh)
+- Xcode Command Line Tools (`xcode-select --install`)
+- At least one engine CLI on your `PATH`: `claude` or `codex`
+
+Optional CLIs enable specific surfaces:
+
+- `gh` for GitHub PRs and CI status
+- `glab` for GitLab MRs and CI status
+- Telegram bot credentials for notifications and remote control
 
 ```bash
 git clone https://github.com/trevormil/TerMinal.git
 cd TerMinal
-git submodule update --init   # vendors project-template (for scaffolding)
+git submodule update --init   # vendors project-template for scaffolding
 bun install                   # rebuilds node-pty against Electron's ABI
 bun run dev                   # launch the dev build with HMR
 ```
 
-See [`docs/setup.md`](docs/setup.md) for the optional bits (GitHub/GitLab CLIs,
-Telegram, engines).
+See [docs/setup.md](docs/setup.md) for engine paths, forge auth, Telegram,
+global skills, and fresh-machine setup notes.
 
-## The shape of the code
+## Code Map
 
-- **`src/main/`** — Electron main process (ESM bundle — **no `__dirname` /
-  `require`**; use `import.meta`). Node-only logic lives here; keep pure,
-  testable logic in its own module (`forge.ts`, `settings.ts`,
-  `telegram-api.ts`, `lib/ci.ts`, …) with a sibling `*.test.ts`.
-- **`src/preload/index.ts`** — the single `window.gt` bridge. Add an IPC handler
-  in `main/index.ts` and expose it here.
-- **`src/renderer/`** — React + Tailwind. **Tabs** auto-discover from
-  `tabs/<id>/index.tsx`; **plugins** (cockpit widgets) from `plugins/<id>/`. Drop
-  a folder in — no registry edits. See the README "Writing a plugin / tab".
+- `src/main/` — Electron main process. The bundle is ESM, so do not use
+  `__dirname` or CommonJS `require` in runtime paths. Prefer `import.meta` and
+  small pure modules with sibling tests.
+- `src/preload/index.ts` — the `window.gt` bridge. New IPC needs matching
+  changes in main, preload, and renderer types.
+- `src/renderer/` — React + Tailwind UI. Tabs auto-discover from
+  `tabs/<id>/index.tsx`; cockpit plugins from `plugins/<id>/`.
+- `bin/` — packaged helper scripts used by launchd, MCP, and agent scripts.
+- `templates/project-template/` — git submodule for the bootstrapped workflow
+  scaffold.
 
-## Before you open a PR
+## Before Opening A PR
+
+Run:
 
 ```bash
-bunx tsc --noEmit    # type gate
-bun test             # unit tests (pure logic)
-bun run build        # bundles cleanly
+bunx tsc --noEmit
+bun test
+bun run build
 ```
 
-- Add/adjust tests for behavior changes (pure logic is the easy win to cover).
-- Match the existing style; the project uses Prettier defaults and
-  [Conventional Commits](https://www.conventionalcommits.org)
-  (`feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:`).
-- A green build is **not** a working app — for changes to `main/`, launch the
-  packaged build and confirm the window actually opens (`bun run dist`, or
-  `bun run release` on macOS).
+For `src/main/`, packaging, PTY, launchd, or IPC changes, also launch the
+packaged app and confirm the window opens:
 
-Keep changes surgical and the dashboard/app intentionally thin. Open an issue
-first if you're planning something large.
+```bash
+bun run dist
+# or, on macOS when you want to reinstall /Applications/TerMinal.app:
+bun run release
+```
+
+## Contribution Guidelines
+
+- Keep changes scoped. If you are planning a large redesign, open an issue first.
+- Add or update tests for behavior changes. Pure logic is the easiest and most
+  valuable place to test.
+- Match the existing style and use Conventional Commits:
+  `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+- Do not commit secrets, local config, generated app bundles, or runtime state
+  from `~/.config/TerMinal`.
+- Treat repo-provided widgets, schedules, and agent scripts as trusted-code
+  surfaces. See [SECURITY.md](SECURITY.md) before changing those paths.
+
+## Release Notes
+
+The current public build path is source-first and unsigned. Local contributors
+can build a DMG with `bun run dist`; `bun run release` ad-hoc signs and installs
+the app locally. Signed/notarized distribution can be added later without
+changing the dev workflow.
