@@ -49,6 +49,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
     'unknown',
   )
   const [error, setError] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const dismissedKey = `gt.bootstrapDismissed.${repoRoot}`
   const dismissed = (() => {
     try {
@@ -70,6 +71,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   }, [active, repoRoot, dismissed])
   if (dismissed || state === 'unknown' || state === 'ok') return null
   const run = async () => {
+    setConfirmOpen(false)
     setState('running')
     const r = await window.gt.workspace.bootstrap(repoRoot)
     if ('error' in r) {
@@ -80,45 +82,90 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
     }
   }
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-1.5 text-[11px] text-zinc-200">
-      <span className="text-[14px]">🛠</span>
-      {state === 'done' ? (
-        <span className="flex-1">Bootstrapped — reload tabs to pick up .agents/ + skills.</span>
-      ) : state === 'running' ? (
-        <span className="flex-1">Running bootstrap.sh…</span>
-      ) : state === 'error' ? (
-        <span className="flex-1 text-[var(--gt-red)]">Bootstrap failed: {error}</span>
-      ) : (
-        <span className="flex-1">
-          This repo isn't bootstrapped with project-template — agents/skills/backlog/docs are
-          missing.
-        </span>
-      )}
-      <div className="flex items-center gap-1">
-        {state === 'needed' && (
-          <button
-            onClick={run}
-            className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
-          >
-            Bootstrap
-          </button>
+    <>
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-1.5 text-[11px] text-zinc-200">
+        <span className="text-[14px]">🛠</span>
+        {state === 'done' ? (
+          <span className="flex-1">Bootstrapped — reload tabs to pick up .agents/ + skills.</span>
+        ) : state === 'running' ? (
+          <span className="flex-1">Running bootstrap.sh…</span>
+        ) : state === 'error' ? (
+          <span className="flex-1 text-[var(--gt-red)]">Bootstrap failed: {error}</span>
+        ) : (
+          <span className="flex-1">
+            This repo isn't bootstrapped with project-template — agents/skills/backlog/docs are
+            missing.
+          </span>
         )}
-        <button
-          onClick={() => {
-            try {
-              localStorage.setItem(dismissedKey, '1')
-            } catch {
-              /* ignore */
-            }
-            setState('ok') // hide
-          }}
-          title="Don't show this again for this repo"
-          className="rounded-md p-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
-        >
-          <X size={11} strokeWidth={2.5} />
-        </button>
+        <div className="flex items-center gap-1">
+          {state === 'needed' && (
+            <button
+              onClick={() => setConfirmOpen(true)}
+              className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+            >
+              Bootstrap
+            </button>
+          )}
+          <button
+            onClick={() => {
+              try {
+                localStorage.setItem(dismissedKey, '1')
+              } catch {
+                /* ignore */
+              }
+              setConfirmOpen(false)
+              setState('ok') // hide
+            }}
+            title="Don't show this again for this repo"
+            className="rounded-md p-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+          >
+            <X size={11} strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
-    </div>
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-5"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            className="w-[520px] max-w-full rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-[13px] font-semibold text-zinc-100">
+              Bootstrap this repo?
+            </div>
+            <p className="mb-3 text-[12px] leading-5 text-zinc-400">
+              This runs project-template/bootstrap.sh against this repo. It seeds TerMinal workflow
+              files for agents, skills, hooks, inbox notifications, tickets, sessions, reviews,
+              checks, docs, CI, snippets, widgets, PR/MR templates, and gitignore entries.
+            </p>
+            <div className="mb-3 rounded-md border border-[var(--gt-border)] bg-black/25 p-2 text-[11px] leading-5 text-zinc-500">
+              Existing project data and docs are left in place. Workflow-owned files may be updated;
+              conflicting existing files are written as <span className="font-mono">*.workflow</span>{' '}
+              sidecars for manual merge.
+            </div>
+            <div className="mb-4 truncate rounded-md bg-black/30 px-2 py-1.5 font-mono text-[11px] text-zinc-500">
+              {repoRoot}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-1.5 text-[12px] font-medium text-zinc-300 hover:bg-white/5 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={run}
+                className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+              >
+                Confirm Bootstrap
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
