@@ -748,7 +748,7 @@ export default function App() {
               style={noDrag}
               className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5"
             >
-              {layoutButton('single', 'Single terminal with cockpit', Square)}
+              {layoutButton('single', 'Single terminal', Square)}
               {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
               {layoutButton('grid4', 'Four-terminal grid', Grid2x2, activeWorkspaceSessions.length < 2)}
             </div>

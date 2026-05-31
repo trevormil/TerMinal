@@ -4,6 +4,8 @@ import {
   GitBranch,
   Grid2x2,
   LayoutGrid,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Square,
   SquareTerminal,
@@ -177,6 +179,13 @@ export function SessionView({
   const [enabled, setEnabled] = useState<string[]>(() => load('gt.enabled', []))
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
   const [drawer, setDrawer] = useState(false)
+  const [cockpitCollapsed, setCockpitCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('gt.cockpitCollapsed') === '1'
+    } catch {
+      return false
+    }
+  })
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
 
   const allPlugins = useMemo(
@@ -212,6 +221,13 @@ export function SessionView({
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
   useEffect(() => localStorage.setItem('gt.known', JSON.stringify(known)), [known])
+  useEffect(() => {
+    try {
+      localStorage.setItem('gt.cockpitCollapsed', cockpitCollapsed ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [cockpitCollapsed])
 
   // Cross-tab navigation: any tab can call navigateTo(tabId, payload) to
   // jump the session view to a different tab. Receiving tabs read the payload
@@ -287,6 +303,7 @@ export function SessionView({
   const activeWidgets = availablePlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
   const showCockpit = !terminalTile && choice.engine !== 'local'
+  const cockpitVisible = showCockpit && !cockpitCollapsed
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -394,14 +411,26 @@ export function SessionView({
           )
         })()}
         {onTerminal && showCockpit && (
-          <button
-            style={noDrag}
-            onClick={() => setDrawer(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
-          >
-            <LayoutGrid size={12} strokeWidth={2} />
-            Plugins · {activeWidgets.length}
-          </button>
+          <div className="flex items-center gap-1" style={noDrag}>
+            <button
+              onClick={() => setCockpitCollapsed((v) => !v)}
+              title={cockpitCollapsed ? 'Show cockpit' : 'Hide cockpit'}
+              className="inline-flex h-6 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-400 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+            >
+              {cockpitCollapsed ? (
+                <PanelRightOpen size={13} strokeWidth={2} />
+              ) : (
+                <PanelRightClose size={13} strokeWidth={2} />
+              )}
+            </button>
+            <button
+              onClick={() => setDrawer(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+            >
+              <LayoutGrid size={12} strokeWidth={2} />
+              Plugins · {activeWidgets.length}
+            </button>
+          </div>
         )}
       </header>
 
@@ -411,7 +440,7 @@ export function SessionView({
         <div
           className="absolute inset-0 grid"
           style={{
-            gridTemplateColumns: showCockpit ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)',
+            gridTemplateColumns: cockpitVisible ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)',
             // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
             // that would override the App-level wrapper's `visibility: hidden`
             // for inactive sessions, leaking the inactive session's terminal
@@ -543,7 +572,7 @@ export function SessionView({
                       style={noDrag}
                       className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5"
                     >
-                      {layoutButton('single', 'Single terminal with cockpit', Square)}
+                      {layoutButton('single', 'Single terminal', Square)}
                       {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
                       {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canSplitTerminal)}
                     </div>
@@ -560,13 +589,22 @@ export function SessionView({
               />
             </div>
           </main>
-          {showCockpit && (
+          {cockpitVisible && (
           <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
             <div className="mb-2 flex items-center justify-between px-0.5">
               <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
                 Cockpit
               </span>
-              <span className="text-[10px] text-zinc-600">{activeWidgets.length} live</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-600">{activeWidgets.length} live</span>
+                <button
+                  onClick={() => setCockpitCollapsed(true)}
+                  title="Hide cockpit"
+                  className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
+                >
+                  <PanelRightClose size={12} strokeWidth={2} />
+                </button>
+              </div>
             </div>
             {/* render widgets only when active so backgrounded sessions don't poll */}
             {!active ? null : activeWidgets.length === 0 ? (
