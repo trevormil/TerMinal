@@ -5,11 +5,7 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshot.png" width="900" alt="TerMinal — the terminal tab with the live cockpit sidebar" />
-</p>
-
-<p align="center">
-  <img src="docs/tabs.png" width="900" alt="TerMinal tab bar" />
+  <img src="docs/terminal.png" width="900" alt="TerMinal terminal tab with the live cockpit sidebar" />
 </p>
 
 **A standalone macOS app that runs your coding agents as a software factory.**
@@ -44,6 +40,19 @@ mounted when you switch tabs, so a session never drops.
 > [lucide](https://lucide.dev) icons, IBM Plex type.
 
 ---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/tickets.png" alt="Tickets tab" /></td>
+    <td><img src="docs/agents.png" alt="Agents tab" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/runs.png" alt="Runs tab" /></td>
+    <td><img src="docs/schedules.png" alt="Schedules tab" /></td>
+  </tr>
+</table>
 
 ## Quick start
 
