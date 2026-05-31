@@ -21,7 +21,6 @@ export type HitlSource =
   | 'factory'
   | 'skill'
   | 'completion-hook'
-  | 'wedged-detector'
   | 'review-pattern'
 export type HitlItem = {
   id: string
@@ -44,7 +43,7 @@ export type HitlItem = {
   // the durable triage record). Lets the HITL tab link straight to the
   // ticket in the Tickets tab.
   ticketPath?: string
-  // Pointer back to the Claude session that produced this HITL (wedged-detector).
+  // Pointer back to the AI session that produced this HITL.
   sessionId?: string
   // Pointer back to the live TerMinal pty instance that produced this HITL.
   terminalKey?: string

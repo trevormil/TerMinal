@@ -11,9 +11,11 @@ import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSy
 import { join, basename, dirname, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
+import { spawn } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const SETTINGS_FILE = join(CFG, 'settings.json')
+const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
 function readSettings() {
   try {
@@ -33,6 +35,26 @@ function configuredHarnessDir() {
   if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
   const s = readSettings()
   return typeof s.harnessDir === 'string' ? s.harnessDir : ''
+}
+
+function pingTelegram(text, inlineKeyboard) {
+  const telegram = readSettings()?.telegram
+  if (telegram?.botToken && telegram?.chatId) {
+    fetch(`https://api.telegram.org/bot${telegram.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: telegram.chatId,
+        text,
+        ...(inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => {})
+    return
+  }
+  if (existsSync(LEGACY_TG_SCRIPT)) {
+    spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' }).unref()
+  }
 }
 
 function prsRoot() {
@@ -476,24 +498,9 @@ function fileHitlTool(args) {
   }
   writeFileSync(file, JSON.stringify([item, ...list], null, 2))
   emitActivityRaw({ kind: 'blocked', title: `HITL · ${title}`, detail: action || detail || '', repo, hitlId: item.id, runId })
-  // Telegram ping (best-effort, with inline buttons)
-  try {
-    const settings = JSON.parse(readFileSync(join(cfg, 'settings.json'), 'utf8'))?.telegram
-    if (settings?.botToken && settings?.chatId) {
-      const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
-      if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
-      fetch(`https://api.telegram.org/bot${settings.botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: settings.chatId,
-          text: `⛔ HITL · ${title}${action ? ` — ${action}` : ''}`,
-          reply_markup: { inline_keyboard: [row] },
-        }),
-        signal: AbortSignal.timeout(8000),
-      }).catch(() => {})
-    }
-  } catch {}
+  const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
+  if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
+  pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
   return { id: item.id }
 }
 
@@ -1053,7 +1060,7 @@ const TOOLS = [
   {
     name: 'file_hitl',
     description:
-      'File a human-in-the-loop item into the TerMinal inbox. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons. Use when an agent hits a genuine blocker that needs the human.',
+      'Append a human-in-the-loop item into the TerMinal inbox. This is append-only from the agent side: agents file blockers and may later query list_hitl/status, but only the human should resolve them. Emits a blocked activity event and pings Telegram with [Resolve] / [Tail run] buttons. Use when an agent hits a genuine blocker that needs the human.',
     inputSchema: {
       type: 'object',
       required: ['title'],
@@ -1074,7 +1081,7 @@ const TOOLS = [
   {
     name: 'resolve_hitl',
     description:
-      'Mark a HITL item resolved (or re-open it). Use when context within an agent session resolves what was blocking.',
+      'Mark a HITL item resolved (or re-open it). Human/operator tool only; agents should generally not call this for their own blockers. Agents should query list_hitl status or periodically re-check the original blocker.',
     inputSchema: {
       type: 'object',
       required: ['id'],

@@ -241,13 +241,13 @@ function activity(ev) {
 // Auto-file a global HITL item on a failed cron run + best-effort Telegram ping
 // (works even with the app closed — reads the token straight from settings.json).
 function fileHitl(item) {
+  const rec = { id: randomUUID(), status: 'open', createdAt: Date.now(), source: 'cron-fail', ...item }
   try {
     let list = []
     try {
       const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
       if (Array.isArray(a)) list = a
     } catch {}
-    const rec = { id: randomUUID(), status: 'open', createdAt: Date.now(), source: 'cron-fail', ...item }
     writeFileSync(HITL_FILE, JSON.stringify([rec, ...list], null, 2))
   } catch (e) {
     log(`hitl write failed: ${e}`)
@@ -262,13 +262,13 @@ function fileHitl(item) {
     const t = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
     if (t?.botToken && t?.chatId) {
       const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${rec.id}` }]
-      if (item.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${item.runId}` })
+      if (rec.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${rec.runId}` })
       fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           chat_id: t.chatId,
-          text: `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+          text: `⛔ HITL · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`,
           reply_markup: { inline_keyboard: [row] },
         }),
         signal: AbortSignal.timeout(8000),

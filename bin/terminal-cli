@@ -28,13 +28,14 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rea
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
-import { execSync, execFile } from 'node:child_process'
+import { execSync, execFile, spawn } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
 const AGENT_STATE_DIR = join(CFG, 'agent-state')
+const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
 const repo = process.env.TERMINAL_REPO || ''
 const repoLabel = repo ? basename(repo) : ''
@@ -49,15 +50,30 @@ function readTelegram() {
   }
 }
 
-function pingTelegram(text) {
+function pingTelegram(text, inlineKeyboard) {
   const t = readTelegram()
-  if (!t?.botToken || !t?.chatId) return
-  fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: t.chatId, text }),
-    signal: AbortSignal.timeout(8000),
-  }).catch(() => {})
+  if (t?.botToken && t?.chatId) {
+    fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: t.chatId,
+        text,
+        ...(inlineKeyboard ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => {})
+    return
+  }
+  if (existsSync(LEGACY_TG_SCRIPT)) {
+    spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' }).unref()
+  }
+}
+
+function hitlButtons(item) {
+  const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
+  if (item.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${item.runId}` })
+  return [row]
 }
 
 // Deterministic kind inference — mirrors src/main/event-classifier.ts.
@@ -125,6 +141,7 @@ function fileHitl(title, action) {
     source: 'skill',
     status: 'open',
     createdAt: Date.now(),
+    ...(runId ? { runId, runSource: 'cron' } : {}),
     sessionId: process.env.GT_TERMINAL_SESSION_ID || '',
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
     terminalCwd: process.env.GT_TERMINAL_CWD || repo,
@@ -132,7 +149,7 @@ function fileHitl(title, action) {
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `HITL · ${item.title}`, item.action)
   // HITL ALWAYS pings Telegram when configured — matches the app's policy.
-  pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`)
+  pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
   console.log(item.id)
 }
 
@@ -218,6 +235,7 @@ function completionHitl(engine) {
   mkdirSync(CFG, { recursive: true })
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `Inbox · ${item.title}`, item.action)
+  pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
   console.log(id)
 }
 

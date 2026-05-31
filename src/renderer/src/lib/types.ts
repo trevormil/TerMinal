@@ -287,7 +287,6 @@ export type HitlSource =
   | 'factory'
   | 'skill'
   | 'completion-hook'
-  | 'wedged-detector'
   | 'review-pattern'
 export type HitlItem = {
   id: string
