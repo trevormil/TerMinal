@@ -1,7 +1,7 @@
 import type { Engine } from '../lib/types'
 import openaiLogo from '../assets/openai.svg'
 import claudeLogo from '../assets/claude.svg'
-import cursorLogo from '../assets/cursor.svg'
+import cursorLogo from '../assets/cursor.png'
 
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
