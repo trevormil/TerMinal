@@ -87,78 +87,11 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   )
 }
 
-function NewTicketForm({ onCreated }: { onCreated: (slug: string) => void }) {
-  const [title, setTitle] = useState('')
-  const [type, setType] = useState('feature')
-  const [priority, setPriority] = useState('medium')
-  const [status, setStatus] = useState('open')
-  const [body, setBody] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const submit = async () => {
-    if (!title.trim() || busy) return
-    setBusy(true)
-    try {
-      const t = await window.gt.tickets.create({ title: title.trim(), type, priority, status, body })
-      onCreated(t.slug)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const sel = 'rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
-  return (
-    <div className="space-y-3">
-      <input
-        autoFocus
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Title"
-        className={`${sel} w-full`}
-      />
-      <div className="grid grid-cols-3 gap-2">
-        <select value={type} onChange={(e) => setType(e.target.value)} className={sel}>
-          {TYPES.map((t) => (
-            <option key={t}>{t}</option>
-          ))}
-        </select>
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} className={sel}>
-          {PRIORITIES.map((p) => (
-            <option key={p}>{p}</option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className={sel}>
-          {STATUSES.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="## Description&#10;…&#10;&#10;## Acceptance criteria&#10;- …"
-        rows={10}
-        className={`${sel} w-full resize-none font-mono`}
-      />
-      <button
-        onClick={submit}
-        disabled={!title.trim() || busy}
-        className="rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-40"
-      >
-        {busy ? 'Creating…' : 'Create ticket'}
-      </button>
-    </div>
-  )
-}
-
 function NewTicketModal({
   onClose,
-  onCreated,
 }: {
   onClose: () => void
-  onCreated: (slug: string) => void
 }) {
-  const [mode, setMode] = useState<'manual' | 'agent'>('manual')
   const [spawnText, setSpawnText] = useState('')
   const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
   const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
@@ -197,59 +130,42 @@ function NewTicketModal({
             cancel
           </button>
         </div>
-        <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-          {(['manual', 'agent'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`flex-1 rounded-sm px-2 py-1 text-[11px] ${
-                mode === m ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {m === 'manual' ? 'Manual' : 'Ask agent'}
-            </button>
-          ))}
-        </div>
         <SkillHint>
           You can also file from the terminal with <code className="font-mono text-zinc-300">/ticket</code> in Claude or{' '}
           <code className="font-mono text-zinc-300">$ticket</code> in Codex.
         </SkillHint>
-        {mode === 'manual' ? (
-          <NewTicketForm onCreated={onCreated} />
-        ) : (
-          <div className="space-y-3">
-            <textarea
-              autoFocus
-              value={spawnText}
-              onChange={(e) => setSpawnText(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSpawn()
+        <div className="space-y-3">
+          <textarea
+            autoFocus
+            value={spawnText}
+            onChange={(e) => setSpawnText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSpawn()
+            }}
+            rows={5}
+            placeholder="Describe the work. An agent will create the structured backlog ticket."
+            className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+          />
+          <div className="flex items-center gap-2">
+            <EngineModelPicker
+              engine={spawnEngine}
+              model={spawnModel}
+              onChange={(e, m) => {
+                setSpawnEngine(e)
+                setSpawnModel(m)
               }}
-              rows={5}
-              placeholder="Describe the work. An agent will create the structured backlog ticket."
-              className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
             />
-            <div className="flex items-center gap-2">
-              <EngineModelPicker
-                engine={spawnEngine}
-                model={spawnModel}
-                onChange={(e, m) => {
-                  setSpawnEngine(e)
-                  setSpawnModel(m)
-                }}
-              />
-              {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
-              <button
-                onClick={doSpawn}
-                disabled={!spawnText.trim() || spawning}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-              >
-                {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
-                {spawning ? 'Filing...' : 'File ticket'}
-              </button>
-            </div>
+            {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
+            <button
+              onClick={doSpawn}
+              disabled={!spawnText.trim() || spawning}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+            >
+              {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
+              {spawning ? 'Filing...' : 'File ticket'}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -630,10 +546,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       {creating && (
         <NewTicketModal
           onClose={() => setCreating(false)}
-          onCreated={(slug) => {
-            setCreating(false)
-            loadTickets().then(() => setSel(slug))
-          }}
         />
       )}
     </div>
