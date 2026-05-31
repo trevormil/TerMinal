@@ -168,9 +168,10 @@ function ScheduleForm({
   return (
     <div className="space-y-3">
       <SkillHint>
-        You can also start from the terminal with <code className="font-mono text-zinc-300">/ticket</code> in
-        Claude or <code className="font-mono text-zinc-300">$ticket</code> in Codex, then schedule the agent work
-        from the created ticket.
+        You can also schedule from the terminal with{' '}
+        <code className="font-mono text-zinc-300">/new-schedule "Run docs every Monday at 9am"</code> in Claude
+        or <code className="font-mono text-zinc-300">$new-schedule "Run docs every Monday at 9am"</code> in
+        Codex.
       </SkillHint>
       {/* Form / Custom toggle — same UX as the agents tab's new-agent flow. */}
       <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">

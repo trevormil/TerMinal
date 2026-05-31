@@ -41,9 +41,14 @@ describe('listSkills', () => {
     expect(skill?.platforms).toEqual(['claude', 'codex'])
   })
 
-  test('sees this repo ticket skill as a Claude/Codex mirror', () => {
-    const skill = listSkills(process.cwd()).find((s) => s.scope === 'project' && s.name === 'ticket')
+  test('sees this repo workflow skills as Claude/Codex mirrors', () => {
+    const skills = listSkills(process.cwd()).filter((s) => s.scope === 'project')
+    const ticket = skills.find((s) => s.name === 'ticket')
+    const newAgent = skills.find((s) => s.name === 'new-agent')
+    const newSchedule = skills.find((s) => s.name === 'new-schedule')
 
-    expect(skill?.platforms).toEqual(['claude', 'codex'])
+    expect(ticket?.platforms).toEqual(['claude', 'codex'])
+    expect(newAgent?.platforms).toEqual(['claude', 'codex'])
+    expect(newSchedule?.platforms).toEqual(['claude', 'codex'])
   })
 })
