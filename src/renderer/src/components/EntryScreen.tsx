@@ -4,7 +4,14 @@ import type { SessionEngine, SessionMeta } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
-export type Choice = { mode: 'new' | 'resume'; engine: SessionEngine; sessionId?: string; cwd?: string; name?: string }
+export type Choice = {
+  mode: 'new' | 'resume'
+  engine: SessionEngine
+  sessionId?: string
+  cwd?: string
+  name?: string
+  initialInput?: string
+}
 
 function rel(ms: number): string {
   const s = (Date.now() - ms) / 1000

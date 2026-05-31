@@ -48,6 +48,8 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
+import { openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { agentPrompt } from '../../lib/agentPrompts'
 import type { Tab, TabContext, Agent, AgentRun, Engine } from '../../lib/types'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 
@@ -134,10 +136,12 @@ const FIELD =
 // Add / edit an agent. Saving writes <repo>/.agents/agents.json (overriding a
 // built-in default = same id). The id is immutable once set.
 function AgentDesigner({
+  repoRoot,
   onClose,
   onSpawned,
   onAdvanced,
 }: {
+  repoRoot: string
   onClose: () => void
   onSpawned: (run: AgentRun) => void
   onAdvanced: () => void
@@ -145,6 +149,7 @@ function AgentDesigner({
   const [text, setText] = useState('')
   const [engine, setEngine] = useState<Engine>('claude')
   const [model, setModel] = useState<string | undefined>(undefined)
+  const [launchMode, setLaunchMode] = useState<LaunchMode>('process')
   const [scope, setScope] = useState<'repo' | 'global'>('repo')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -156,6 +161,16 @@ function AgentDesigner({
   const submit = async () => {
     const t = text.trim()
     if (!t) return
+    if (launchMode === 'terminal') {
+      openPromptInTerminal({
+        engine,
+        cwd: repoRoot,
+        name: 'Design agent',
+        prompt: `Design a new TerMinal agent for this repository from this request:\n\n${t}\n\nWrite the agent files according to this repo's .agents conventions, commit the result, and summarize what you created.`,
+      })
+      onClose()
+      return
+    }
     setBusy(true)
     setErr('')
     const r = await window.gt.agents.design(t, engine, scope, model)
@@ -270,6 +285,17 @@ function AgentDesigner({
             <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Engine + model</span>
             <EngineModelPicker engine={engine} model={model} onChange={(e, m) => { setEngine(e); setModel(m) }} size="sm" />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Launch</span>
+            <select
+              value={launchMode}
+              onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+            >
+              <option value="process">Process</option>
+              <option value="terminal">{engine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+            </select>
+          </label>
 
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -291,7 +317,7 @@ function AgentDesigner({
               className="inline-flex items-center gap-1.5 rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
             >
               {busy ? <Bot size={12} strokeWidth={2.5} /> : <EngineLogo engine={engine} size={12} />}
-              {busy ? 'Spawning…' : `Design with ${engine}`}
+              {busy ? 'Spawning…' : launchMode === 'terminal' ? 'Open instance' : `Design with ${engine}`}
             </button>
           </div>
         </div>
@@ -1471,8 +1497,18 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
         <EnginePicker
           title={`Run · ${picking.title}`}
           onClose={() => setPicking(null)}
-          onPick={(e, persona, pipeline, model) => {
-            run(picking.id, e, persona, pipeline, model)
+          onPick={(e, persona, pipeline, model, launchMode) => {
+            const selectedAgent = (agents || []).find((a) => a.id === picking.id)
+            if (launchMode === 'terminal' && selectedAgent) {
+              openPromptInTerminal({
+                engine: e,
+                cwd: ctx.repoRoot,
+                name: selectedAgent.title,
+                prompt: agentPrompt(selectedAgent, { persona, pipeline, model }),
+              })
+            } else {
+              run(picking.id, e, persona, pipeline, model)
+            }
             setPicking(null)
           }}
         />
@@ -1480,6 +1516,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
 
       {designerOpen && (
         <AgentDesigner
+          repoRoot={ctx.repoRoot}
           onClose={() => setDesignerOpen(false)}
           onSpawned={(r) => {
             setDesignerOpen(false)

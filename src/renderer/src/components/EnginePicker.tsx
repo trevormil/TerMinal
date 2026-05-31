@@ -16,9 +16,12 @@ import {
   Eye,
   Repeat2,
   Layers,
+  Cpu,
+  SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
+import type { LaunchMode } from '../lib/launch'
 import { EngineModelPicker } from './EngineModelPicker'
 import { SkillHint } from './SkillHint'
 import openaiLogo from '../assets/openai.svg'
@@ -53,12 +56,13 @@ export function EnginePicker({
 }: {
   title: string
   hint?: ReactNode
-  onPick: (engine: Engine, persona: string, pipeline: string, model?: string) => void
+  onPick: (engine: Engine, persona: string, pipeline: string, model?: string, launchMode?: LaunchMode) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
   const [persona, setPersona] = useState<string | null>(null) // null = not chosen, '' = none
+  const [pipeline, setPipeline] = useState<string | null>(null)
   const [personas, setPersonas] = useState<Persona[]>([])
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
@@ -80,8 +84,8 @@ export function EnginePicker({
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const engineOrder: Engine[] = defaultEngine === 'claude' ? ['claude', 'codex'] : ['codex', 'claude']
 
-  const step = engine === null ? 1 : persona === null ? 2 : 3
-  const back = () => (step === 3 ? setPersona(null) : setEngine(null))
+  const step = engine === null ? 1 : persona === null ? 2 : pipeline === null ? 3 : 4
+  const back = () => (step === 4 ? setPipeline(null) : step === 3 ? setPersona(null) : setEngine(null))
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -210,7 +214,7 @@ export function EnginePicker({
                 return (
                   <button
                     key={pl.id}
-                    onClick={() => onPick(engine as Engine, persona ?? '', pl.id, model)}
+                    onClick={() => setPipeline(pl.id)}
                     className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
                   >
                     <Icon size={17} strokeWidth={1.75} className="shrink-0 text-[var(--gt-accent-light)]" />
@@ -221,6 +225,43 @@ export function EnginePicker({
                   </button>
                 )
               })}
+            </div>
+          </>
+        )}
+
+        {step === 4 && (
+          <>
+            <p className="mb-3 text-[11.5px] text-zinc-500">
+              4 · Launch as{' '}
+              <span className="text-zinc-600">
+                ({engine}
+                {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''}
+                {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''})
+              </span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process')}
+                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+              >
+                <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                <span className="text-[13px] font-semibold text-zinc-100">Process</span>
+                <span className="text-center text-[10px] leading-snug text-zinc-500">
+                  Fire-and-forget background run.
+                </span>
+              </button>
+              <button
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal')}
+                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+              >
+                <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                <span className="text-[13px] font-semibold text-zinc-100">
+                  {engine === 'claude' ? 'Claude Code' : 'Codex'} instance
+                </span>
+                <span className="text-center text-[10px] leading-snug text-zinc-500">
+                  Open Terminal with the prompt prefilled.
+                </span>
+              </button>
             </div>
           </>
         )}

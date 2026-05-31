@@ -122,9 +122,12 @@ export function TerminalPane({
     const onInput = term.onData(writeInput)
 
     // spawn the chosen engine attached to the session, sized to the live terminal
-    gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) =>
-      onStarted?.(info),
-    )
+    gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) => {
+      onStarted?.(info)
+      if (choice.initialInput) {
+        window.setTimeout(() => gt.pty.input(sessionKey, choice.initialInput || ''), 900)
+      }
+    })
 
     // Debounce fit to a frame and only resize when the cell grid actually
     // changes — calling fit() synchronously inside the observer makes xterm

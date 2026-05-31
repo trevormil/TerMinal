@@ -10,5 +10,5 @@ const modules = import.meta.glob('./*/index.tsx', { eager: true }) as Record<
 
 export const ALL_TABS: Tab[] = Object.values(modules)
   .map((m) => m.default)
-  .filter((t): t is Tab => !!t)
+  .filter((t): t is Tab => !!t && t.id !== 'hitl')
   .sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeCompare(b.title))

@@ -3,6 +3,7 @@ import {
   Columns2,
   Grid2x2,
   LayoutDashboard,
+  Mail,
   Plus,
   Settings as SettingsIcon,
   Square,
@@ -16,6 +17,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
+import { InboxDrawer } from './tabs/hitl'
 import { ALL_TABS } from './tabs/registry'
 import { navigateTo, onNavigate } from './lib/nav'
 import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
@@ -145,6 +147,8 @@ export default function App() {
   }, [sessions])
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
+  const [inbox, setInbox] = useState(false)
+  const [inboxOpenCount, setInboxOpenCount] = useState(0)
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
   const [terminalSessionOrder, setTerminalSessionOrder] =
     useState<Record<string, string[]>>(loadTerminalSessionOrder)
@@ -173,6 +177,22 @@ export default function App() {
     const id = setInterval(tick, 3000)
     return () => clearInterval(id)
   }, [sessions.length])
+  useEffect(() => {
+    const tick = () =>
+      window.gt.hitl
+        .list()
+        .then((items) => setInboxOpenCount(items.filter((h) => h.status === 'open').length))
+        .catch(() => {})
+    tick()
+    const off = window.gt.activity.onEvent((ev) => {
+      if (ev.kind === 'blocked' || ev.kind === 'task-complete') tick()
+    })
+    const id = setInterval(tick, 5000)
+    return () => {
+      off()
+      clearInterval(id)
+    }
+  }, [])
   useEffect(() => {
     localStorage.setItem('gt.terminalLayout', terminalLayout)
   }, [terminalLayout])
@@ -216,6 +236,28 @@ export default function App() {
   useEffect(
     () =>
       onNavigate((ev) => {
+        if (ev.tabId === 'hitl' || ev.tabId === 'inbox') {
+          setInbox(true)
+          setFleet(false)
+          return
+        }
+        if (ev.tabId === 'terminal:new') {
+          const payload = ev.payload || {}
+          const engine = payload.engine === 'codex' || payload.engine === 'claude' ? payload.engine : 'claude'
+          const cwd = typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || ''
+          const name = typeof payload.name === 'string' ? payload.name : ''
+          const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
+          const key = crypto.randomUUID()
+          setSessions((s) => [
+            ...s,
+            { key, choice: { mode: 'new', engine, cwd, name, initialInput }, info: { sessionId: '', cwd } },
+          ])
+          activate(key)
+          setTerminalLayout('single')
+          setFleet(false)
+          setInbox(false)
+          return
+        }
         if (ev.tabId !== 'terminal') return
         const payload = ev.payload || {}
         const targetKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : ''
@@ -238,6 +280,7 @@ export default function App() {
         if (!match) return
         activate(match.key)
         setFleet(false)
+        setInbox(false)
       }),
     [sessions],
   )
@@ -583,6 +626,27 @@ export default function App() {
         )}
         <button
           style={noDrag}
+          onClick={() => {
+            setInbox((v) => !v)
+            setFleet(false)
+          }}
+          title="Inbox — unresolved human-needed items"
+          className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+            inbox
+              ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+              : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+          }`}
+        >
+          <Mail size={13} strokeWidth={2} />
+          Inbox
+          {inboxOpenCount > 0 && (
+            <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
+              {inboxOpenCount}
+            </span>
+          )}
+        </button>
+        <button
+          style={noDrag}
           onClick={() => setShowSettings(true)}
           title="Settings"
           className="ml-1 flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
@@ -770,6 +834,16 @@ export default function App() {
               }}
               onClose={() => setFleet(false)}
             />
+          </div>
+        )}
+        {inbox && !showEntry && (
+          <div className="absolute inset-0 z-50 flex justify-end bg-black/35" onClick={() => setInbox(false)}>
+            <div
+              className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <InboxDrawer ctx={activeCtx} onClose={() => setInbox(false)} />
+            </div>
           </div>
         )}
         {showEntry && (

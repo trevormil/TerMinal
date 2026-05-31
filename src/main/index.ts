@@ -177,6 +177,7 @@ type StartOpts = {
   sessionId?: string
   cwd?: string
   name?: string
+  initialInput?: string
   cols: number
   rows: number
 }

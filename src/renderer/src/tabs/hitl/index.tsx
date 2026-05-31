@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
-  Hand,
   Check,
+  Mail,
+  X,
   Trash2,
   RotateCcw,
   ListChecks,
@@ -44,7 +45,7 @@ function reltime(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-function HitlTab(_props: { ctx: TabContext }) {
+export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: () => void }) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
   const [showResolved, setShowResolved] = useState(false)
 
@@ -69,8 +70,8 @@ function HitlTab(_props: { ctx: TabContext }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-        <Hand size={14} strokeWidth={2} className="text-[var(--gt-red)]" />
-        <span className="text-[12px] font-semibold text-zinc-200">Human-in-the-loop</span>
+        <Mail size={14} strokeWidth={2} className="text-[var(--gt-accent)]" />
+        <span className="text-[12px] font-semibold text-zinc-200">Inbox</span>
         <span className="text-[11px] text-zinc-600">one global inbox · everything that needs you</span>
         <div className="flex-1" />
         <button
@@ -83,6 +84,15 @@ function HitlTab(_props: { ctx: TabContext }) {
         >
           {showResolved ? `resolved (${resolved.length})` : `open (${open.length})`}
         </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            title="Close Inbox"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
+            <X size={15} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -130,7 +140,7 @@ function HitlTab(_props: { ctx: TabContext }) {
                             repoRoot: h.repoRoot,
                           })
                         }
-                        title="Jump to the terminal session that filed this HITL"
+                        title="Jump to the terminal session that filed this Inbox item"
                         className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                       >
                         <SquareTerminal size={11} strokeWidth={2} />
@@ -140,7 +150,7 @@ function HitlTab(_props: { ctx: TabContext }) {
                     {h.runId && (
                       <button
                         onClick={() => navigateTo('runs', { runId: h.runId })}
-                        title="Jump to the run that filed this HITL"
+                        title="Jump to the run that filed this Inbox item"
                         className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                       >
                         <ListChecks size={11} strokeWidth={2} />
@@ -152,7 +162,7 @@ function HitlTab(_props: { ctx: TabContext }) {
                         onClick={() =>
                           navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
                         }
-                        title="Jump to the backlog ticket auto-filed alongside this HITL"
+                        title="Jump to the backlog ticket auto-filed alongside this Inbox item"
                         className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                       >
                         <TicketIcon size={11} strokeWidth={2} />
@@ -205,11 +215,11 @@ function HitlTab(_props: { ctx: TabContext }) {
 
 const tab: Tab = {
   id: 'hitl',
-  title: 'HITL',
-  icon: Hand,
+  title: 'Inbox',
+  icon: Mail,
   order: 4,
   appliesTo: () => true, // global inbox — always available
   badge: async (gt) => (await gt.hitl.list()).filter((h) => h.status === 'open').length,
-  Component: HitlTab,
+  Component: InboxDrawer,
 }
 export default tab

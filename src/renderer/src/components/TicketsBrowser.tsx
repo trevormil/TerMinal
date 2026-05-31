@@ -9,6 +9,8 @@ import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import { onNavigate } from '../lib/nav'
+import { openPromptInTerminal, type LaunchMode } from '../lib/launch'
+import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
 import type { Ticket, TabContext, Mr, Engine } from '../lib/types'
 
@@ -88,13 +90,16 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function NewTicketModal({
+  ctx,
   onClose,
 }: {
+  ctx: TabContext
   onClose: () => void
 }) {
   const [spawnText, setSpawnText] = useState('')
   const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
   const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
+  const [launchMode, setLaunchMode] = useState<LaunchMode>('process')
   const [spawning, setSpawning] = useState(false)
   const [spawnMsg, setSpawnMsg] = useState('')
   useEffect(() => {
@@ -106,6 +111,17 @@ function NewTicketModal({
     if (!text || spawning) return
     setSpawning(true)
     try {
+      if (launchMode === 'terminal') {
+        openPromptInTerminal({
+          engine: spawnEngine,
+          cwd: ctx.repoRoot,
+          name: `File ticket`,
+          prompt: fileTicketPrompt(text, { model: spawnModel }),
+        })
+        setSpawnText('')
+        setTimeout(onClose, 250)
+        return
+      }
       const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel)
       if (r && 'error' in r) setSpawnMsg(`couldn't start: ${r.error}`)
       else {
@@ -155,6 +171,14 @@ function NewTicketModal({
                 setSpawnModel(m)
               }}
             />
+            <select
+              value={launchMode}
+              onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+            >
+              <option value="process">Process</option>
+              <option value="terminal">{spawnEngine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+            </select>
             {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
             <button
               onClick={doSpawn}
@@ -162,7 +186,7 @@ function NewTicketModal({
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
             >
               {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
-              {spawning ? 'Filing...' : 'File ticket'}
+              {spawning ? 'Filing...' : launchMode === 'terminal' ? 'Open instance' : 'File ticket'}
             </button>
           </div>
         </div>
@@ -525,8 +549,17 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     </>
                   }
                   onClose={() => setPickImpl(false)}
-                  onPick={async (e, persona, pipeline, model) => {
+                  onPick={async (e, persona, pipeline, model, launchMode) => {
                     setPickImpl(false)
+                    if (launchMode === 'terminal') {
+                      openPromptInTerminal({
+                        engine: e,
+                        cwd: ctx.repoRoot,
+                        name: `Implement #${selected.id}`,
+                        prompt: ticketImplementationPrompt(selected, { persona, pipeline, model }),
+                      })
+                      return
+                    }
                     const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model)
                     if (!('error' in r)) {
                       setStarted(true)
@@ -545,6 +578,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       </div>
       {creating && (
         <NewTicketModal
+          ctx={ctx}
           onClose={() => setCreating(false)}
         />
       )}

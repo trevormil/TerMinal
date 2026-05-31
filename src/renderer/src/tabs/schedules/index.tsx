@@ -16,6 +16,8 @@ import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { navigateTo } from '../../lib/nav'
+import { openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
@@ -62,11 +64,13 @@ const statusTone = (s?: string): BadgeTone =>
 
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
 function ScheduleForm({
+  repoRoot,
   agents,
   onCancel,
   onSave,
   onCustomSpawned,
 }: {
+  repoRoot: string
   agents: Agent[]
   onCancel: () => void
   onSave: (
@@ -87,6 +91,7 @@ function ScheduleForm({
   const [agentId, setAgentId] = useState(agents[0]?.id || '')
   const [engine, setEngine] = useState<Engine>('claude')
   const [model, setModel] = useState('')
+  const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('process')
   useEffect(() => {
     window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
   }, [])
@@ -154,6 +159,16 @@ function ScheduleForm({
   const submitCustom = async () => {
     const t = customText.trim()
     if (!t) return
+    if (customLaunchMode === 'terminal') {
+      openPromptInTerminal({
+        engine,
+        cwd: repoRoot,
+        name: 'Design schedule',
+        prompt: scheduleDesignerPrompt(t, { model: model || undefined }),
+      })
+      onCustomSpawned()
+      return
+    }
     setCustomBusy(true)
     setCustomErr('')
     const r = await window.gt.schedules.design(t, engine)
@@ -214,6 +229,14 @@ function ScheduleForm({
                 size="sm"
               />
             </label>
+            <select
+              value={customLaunchMode}
+              onChange={(e) => setCustomLaunchMode(e.target.value as LaunchMode)}
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+            >
+              <option value="process">Process</option>
+              <option value="terminal">{engine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+            </select>
             {customErr && <span className="text-[11px] text-[var(--gt-red)]">{customErr}</span>}
             <div className="ml-auto flex items-center gap-2">
               <button onClick={onCancel} className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5">
@@ -224,7 +247,7 @@ function ScheduleForm({
                 disabled={!customText.trim() || customBusy}
                 className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
               >
-                {customBusy ? 'Spawning…' : `Design with ${engine}`}
+                {customBusy ? 'Spawning…' : customLaunchMode === 'terminal' ? 'Open instance' : `Design with ${engine}`}
               </button>
             </div>
           </div>
@@ -785,6 +808,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             </div>
             {agents.length ? (
               <ScheduleForm
+                repoRoot={ctx.repoRoot}
                 agents={agents}
                 onCancel={() => setCreating(false)}
                 onSave={save}
