@@ -32,6 +32,7 @@ export function TerminalPane({
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [query, setQuery] = useState('')
   const [newOpen, setNewOpen] = useState(false)
+  const [newMode, setNewMode] = useState<'ai' | 'custom'>('ai')
   const [newScope, setNewScope] = useState<'repo' | 'global'>('repo')
   const [newText, setNewText] = useState('')
   const [draft, setDraft] = useState({ title: '', group: 'Custom', prompt: '' })
@@ -279,6 +280,7 @@ export function TerminalPane({
     }
     setDraft({ title: '', group: 'Custom', prompt: '' })
     setNewText('')
+    setNewMode('ai')
     setNewOpen(false)
     await reloadSnippets()
   }
@@ -315,7 +317,10 @@ export function TerminalPane({
                 />
               </div>
               <button
-                onClick={() => setNewOpen(true)}
+                onClick={() => {
+                  setNewMode('ai')
+                  setNewOpen(true)
+                }}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
               >
                 <Plus size={13} strokeWidth={2.5} />
@@ -399,55 +404,111 @@ export function TerminalPane({
                 <X size={14} strokeWidth={2} />
               </button>
             </div>
-            <textarea
-              value={newText}
-              onChange={(e) => setNewText(e.target.value)}
-              rows={3}
-              placeholder='Describe the snippet you want, e.g. "make a prompt that asks the agent to run the test suite and fix failures"'
-              className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-            />
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-                {(['repo', 'global'] as const).map((s) => (
+            <div className="flex w-fit items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+              {(['ai', 'custom'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setNewMode(mode)}
+                  className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold ${
+                    newMode === mode ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {mode === 'ai' ? 'AI' : 'Custom'}
+                </button>
+              ))}
+            </div>
+            {newMode === 'ai' ? (
+              <>
+                <textarea
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  rows={4}
+                  autoFocus
+                  placeholder='Describe the snippet you want, e.g. "run the test suite and fix failures"'
+                  className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+                    {(['repo', 'global'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setNewScope(s)}
+                        className={`rounded-sm px-2 py-1 text-[11px] ${
+                          newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {s === 'repo' ? 'This repo' : 'Global'}
+                      </button>
+                    ))}
+                  </div>
                   <button
-                    key={s}
-                    onClick={() => setNewScope(s)}
-                    className={`rounded-sm px-2 py-1 text-[11px] ${newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    onClick={draftWithAi}
+                    disabled={!newText.trim() || newBusy}
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] disabled:opacity-40"
                   >
-                    {s === 'repo' ? 'This repo' : 'Global'}
+                    <Bot size={12} strokeWidth={2} />
+                    {newBusy ? 'Drafting...' : 'Draft with AI'}
                   </button>
-                ))}
-              </div>
-              <button
-                onClick={draftWithAi}
-                disabled={!newText.trim() || newBusy}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] disabled:opacity-40"
-              >
-                <Bot size={12} strokeWidth={2} />
-                {newBusy ? 'Drafting...' : 'Draft with AI'}
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={draft.title}
-                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-                placeholder="Title"
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-              />
-              <input
-                value={draft.group}
-                onChange={(e) => setDraft((d) => ({ ...d, group: e.target.value }))}
-                placeholder="Group"
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-              />
-            </div>
-            <textarea
-              value={draft.prompt}
-              onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
-              rows={6}
-              placeholder="Prompt to insert"
-              className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-            />
+                </div>
+                {(draft.title || draft.prompt) && (
+                  <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
+                        {draft.title || 'Untitled snippet'}
+                      </span>
+                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{draft.group || 'Custom'}</span>
+                      <button
+                        onClick={() => setNewMode('custom')}
+                        className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-[11.5px] leading-5 text-zinc-400">{draft.prompt}</div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+                    {(['repo', 'global'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setNewScope(s)}
+                        className={`rounded-sm px-2 py-1 text-[11px] ${
+                          newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {s === 'repo' ? 'This repo' : 'Global'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={draft.title}
+                    onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                    autoFocus
+                    placeholder="Title"
+                    className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                  />
+                  <input
+                    value={draft.group}
+                    onChange={(e) => setDraft((d) => ({ ...d, group: e.target.value }))}
+                    placeholder="Group"
+                    className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                  />
+                </div>
+                <textarea
+                  value={draft.prompt}
+                  onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
+                  rows={7}
+                  placeholder="Prompt to insert"
+                  className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+              </>
+            )}
             <div className="flex items-center gap-2">
               {newErr && <span className="text-[11px] text-[var(--gt-red)]">{newErr}</span>}
               <div className="flex-1" />
