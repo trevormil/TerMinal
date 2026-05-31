@@ -576,6 +576,11 @@ export type GtApi = {
       globalPath: string
       repoPath: string
     }>
+    save: (input: {
+      scope: 'global' | 'repo'
+      repoRoot?: string
+      snippet: Partial<PromptSnippet>
+    }) => Promise<{ ok: true; path: string; snippet: PromptSnippet } | { error: string }>
   }
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>

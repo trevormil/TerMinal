@@ -38,6 +38,7 @@ const gt = {
   },
   snippets: {
     list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),
+    save: (input: unknown) => ipcRenderer.invoke('snippets:save', input),
   },
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),

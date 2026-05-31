@@ -50,7 +50,7 @@ import { listMrs, getMr, getMrDiff, getMrCi, mergeMr, mrSummary } from './mrs'
 import { listSkills } from './skills'
 import { forgeFor } from './forge'
 import { readNotes, writeNotes, type NotesScope } from './notes'
-import { listPromptSnippets } from './snippets'
+import { listPromptSnippets, savePromptSnippet } from './snippets'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { listDocs, readDoc } from './docs'
@@ -551,6 +551,9 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   return next
 })
 ipcMain.handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
+ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) =>
+  savePromptSnippet({ ...input, repoRoot: input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd) }),
+)
 ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) =>
   saveAgent(repoRootOf(cur().cwd), agent),

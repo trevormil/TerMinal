@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageSquareText, X } from 'lucide-react'
+import { Bot, Clipboard, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
-import type { PromptSnippet } from '../lib/types'
+import type { PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
+
+type LauncherItem =
+  | { kind: 'snippet'; id: string; title: string; subtitle: string; prompt: string; group: string }
+  | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
 
 // Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
 // process) runs the chosen engine. Same pattern VS Code's integrated
@@ -25,17 +29,32 @@ export function TerminalPane({
   const termRef = useRef<Xterm | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [snippets, setSnippets] = useState<PromptSnippet[]>([])
+  const [skills, setSkills] = useState<SkillInfo[]>([])
+  const [query, setQuery] = useState('')
+  const [newOpen, setNewOpen] = useState(false)
+  const [newScope, setNewScope] = useState<'repo' | 'global'>('repo')
+  const [newText, setNewText] = useState('')
+  const [draft, setDraft] = useState({ title: '', group: 'Custom', prompt: '' })
+  const [newBusy, setNewBusy] = useState(false)
+  const [newErr, setNewErr] = useState('')
 
   useEffect(() => {
     if (!active) return
     requestAnimationFrame(() => termRef.current?.focus())
   }, [active])
 
-  useEffect(() => {
+  const reloadSnippets = () =>
     window.gt.snippets
       .list(choice.cwd || '')
       .then((r) => setSnippets(r.snippets))
       .catch(() => setSnippets([]))
+
+  useEffect(() => {
+    reloadSnippets()
+    window.gt
+      .listSkills()
+      .then(setSkills)
+      .catch(() => setSkills([]))
   }, [choice.cwd])
 
   useEffect(() => {
@@ -169,16 +188,99 @@ export function TerminalPane({
     }
   }, [])
 
-  const groups = snippets.reduce<Record<string, PromptSnippet[]>>((acc, s) => {
-    const group = s.group || 'Snippets'
-    ;(acc[group] ||= []).push(s)
+  const commandForSkill = (s: SkillInfo) => {
+    if (choice.engine === 'codex') return s.platforms.includes('codex') ? `$${s.name} ` : ''
+    if (choice.engine === 'claude') return s.platforms.includes('claude') ? `/${s.name} ` : ''
+    return ''
+  }
+  const items: LauncherItem[] = [
+    ...snippets.map((s) => ({
+      kind: 'snippet' as const,
+      id: s.id,
+      title: s.title,
+      subtitle: s.prompt,
+      prompt: s.prompt,
+      group: s.group || 'Snippets',
+    })),
+    ...skills
+      .map((s) => ({ skill: s, prompt: commandForSkill(s) }))
+      .filter((s) => s.prompt)
+      .map(({ skill, prompt }) => ({
+        kind: 'skill' as const,
+        id: `${skill.scope}:${skill.namespace || ''}:${skill.name}`,
+        title: `${prompt.trim()}`,
+        subtitle: skill.description || `${skill.scope}${skill.namespace ? ` · ${skill.namespace}` : ''}`,
+        prompt,
+        group: `Skills · ${skill.scope}${skill.namespace ? ` · ${skill.namespace}` : ''}`,
+      })),
+  ]
+
+  const filtered = items.filter((s) => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return [s.title, s.prompt, s.subtitle, s.group].some((v) => v.toLowerCase().includes(q))
+  })
+
+  const groups = filtered.reduce<Record<string, LauncherItem[]>>((acc, s) => {
+    ;(acc[s.group] ||= []).push(s)
     return acc
   }, {})
 
-  const inject = (prompt: string) => {
-    window.gt.pty.input(sessionKey, prompt)
+  const inject = (prompt: string, run = false) => {
+    window.gt.pty.input(sessionKey, run ? `${prompt}\r` : prompt)
     setMenuOpen(false)
     requestAnimationFrame(() => termRef.current?.focus())
+  }
+
+  const draftWithAi = async () => {
+    const text = newText.trim()
+    if (!text) return
+    setNewBusy(true)
+    setNewErr('')
+    const r = await window.gt.cheapLlm({
+      route: 'auto',
+      model: 'haiku',
+      maxTokens: 700,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Create one TerMinal prompt snippet. Reply only JSON with keys title, group, prompt, description. The prompt should be concise and directly pasteable into Claude Code or Codex.',
+        },
+        { role: 'user', content: text },
+      ],
+    })
+    setNewBusy(false)
+    if (!r.ok || !r.text) {
+      setNewErr(r.error || 'AI draft failed')
+      return
+    }
+    try {
+      const raw = r.text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+      const json = JSON.parse(raw) as Partial<PromptSnippet>
+      setDraft({ title: json.title || '', group: json.group || 'Custom', prompt: json.prompt || '' })
+    } catch {
+      setDraft({ title: text.slice(0, 48), group: 'Custom', prompt: r.text.trim() })
+    }
+  }
+
+  const saveDraft = async () => {
+    setNewBusy(true)
+    setNewErr('')
+    const r = await window.gt.snippets.save({
+      scope: newScope,
+      repoRoot: choice.cwd || '',
+      snippet: draft,
+    })
+    setNewBusy(false)
+    if ('error' in r) {
+      setNewErr(r.error)
+      return
+    }
+    setDraft({ title: '', group: 'Custom', prompt: '' })
+    setNewText('')
+    setNewOpen(false)
+    await reloadSnippets()
   }
 
   return (
@@ -194,15 +296,31 @@ export function TerminalPane({
         </button>
       </div>
       {menuOpen && (
-        <div className="absolute inset-0 z-30" onClick={() => setMenuOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-8" onClick={() => setMenuOpen(false)}>
           <div
-            className="absolute right-2 top-10 w-[360px] max-w-[calc(100%-1rem)] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
+            className="mt-8 flex max-h-[82vh] w-[860px] max-w-full flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
-              <MessageSquareText size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-              <span className="text-[12px] font-semibold text-zinc-100">Snippets</span>
-              <div className="flex-1" />
+            <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-4 py-3">
+              <MessageSquareText size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <span className="text-[13px] font-semibold text-zinc-100">Quick Snippets</span>
+              <div className="relative ml-3 min-w-0 flex-1">
+                <Search size={13} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  autoFocus
+                  placeholder="Search snippets..."
+                  className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 py-1 pl-7 pr-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+              </div>
+              <button
+                onClick={() => setNewOpen(true)}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
+              >
+                <Plus size={13} strokeWidth={2.5} />
+                New
+              </button>
               <button
                 onClick={() => setMenuOpen(false)}
                 className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
@@ -211,30 +329,134 @@ export function TerminalPane({
                 <X size={13} strokeWidth={2} />
               </button>
             </div>
-            <div className="max-h-[360px] overflow-y-auto p-2">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {Object.entries(groups).map(([group, list]) => (
-                <div key={group} className="mb-2 last:mb-0">
+                <div key={group} className="mb-4 last:mb-0">
                   <div className="px-1.5 pb-1 text-[9.5px] font-bold uppercase tracking-wider text-zinc-600">
                     {group}
                   </div>
-                  <div className="space-y-1">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     {list.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => inject(s.prompt)}
-                        title={s.description || s.prompt}
-                        className="flex w-full flex-col rounded-md border border-transparent px-2 py-1.5 text-left hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
-                      >
-                        <span className="text-[12px] font-medium text-zinc-100">{s.title}</span>
-                        <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{s.prompt}</span>
-                      </button>
+                      <div key={s.id} title={s.subtitle || s.prompt} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${
+                              s.kind === 'skill'
+                                ? 'bg-[var(--gt-blue)]/15 text-[var(--gt-blue)]'
+                                : 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                            }`}
+                          >
+                            {s.kind}
+                          </span>
+                          <div className="min-w-0 truncate text-[12px] font-medium text-zinc-100">{s.title}</div>
+                        </div>
+                        <div className="mt-0.5 line-clamp-3 min-h-[3.6em] text-[10.5px] leading-snug text-zinc-500">
+                          {s.subtitle}
+                        </div>
+                        <div className="mt-2 flex justify-end gap-1.5">
+                          <button
+                            onClick={() => inject(s.prompt, false)}
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                          >
+                            <Clipboard size={11} strokeWidth={2} />
+                            Insert
+                          </button>
+                          <button
+                            onClick={() => inject(s.prompt, true)}
+                            className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[11px] font-semibold text-white hover:opacity-90"
+                          >
+                            <Play size={11} strokeWidth={2.5} />
+                            Run
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
               ))}
-              {snippets.length === 0 && (
-                <div className="p-3 text-[12px] text-zinc-600">No snippets configured.</div>
+              {filtered.length === 0 && (
+                <div className="p-8 text-center text-[12px] text-zinc-600">No snippets match.</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {newOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6" onClick={() => setNewOpen(false)}>
+          <div
+            className="flex max-h-[86vh] w-[680px] flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Bot size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <h2 className="text-sm font-bold text-zinc-100">New snippet</h2>
+              <div className="flex-1" />
+              <button onClick={() => setNewOpen(false)} className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
+                <X size={14} strokeWidth={2} />
+              </button>
+            </div>
+            <textarea
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              rows={3}
+              placeholder='Describe the snippet you want, e.g. "make a prompt that asks the agent to run the test suite and fix failures"'
+              className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+                {(['repo', 'global'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setNewScope(s)}
+                    className={`rounded-sm px-2 py-1 text-[11px] ${newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    {s === 'repo' ? 'This repo' : 'Global'}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={draftWithAi}
+                disabled={!newText.trim() || newBusy}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] disabled:opacity-40"
+              >
+                <Bot size={12} strokeWidth={2} />
+                {newBusy ? 'Drafting...' : 'Draft with AI'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={draft.title}
+                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                placeholder="Title"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+              />
+              <input
+                value={draft.group}
+                onChange={(e) => setDraft((d) => ({ ...d, group: e.target.value }))}
+                placeholder="Group"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+              />
+            </div>
+            <textarea
+              value={draft.prompt}
+              onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
+              rows={6}
+              placeholder="Prompt to insert"
+              className="resize-y rounded-md border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12.5px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            />
+            <div className="flex items-center gap-2">
+              {newErr && <span className="text-[11px] text-[var(--gt-red)]">{newErr}</span>}
+              <div className="flex-1" />
+              <button onClick={() => setNewOpen(false)} className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5">
+                Cancel
+              </button>
+              <button
+                onClick={saveDraft}
+                disabled={!draft.title.trim() || !draft.prompt.trim() || newBusy}
+                className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+              >
+                Save snippet
+              </button>
             </div>
           </div>
         </div>
