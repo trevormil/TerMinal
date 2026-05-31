@@ -11,6 +11,7 @@ import {
   ClipboardCopy,
 } from 'lucide-react'
 import type { Settings, SettingsPatch, EnvDetect, Engine, ForgePref } from '../lib/types'
+import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 
 const inp =
   'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -127,14 +128,7 @@ function OpenRouterPresets({
 // localStorage and broadcasts a synthetic event so SessionView re-renders
 // without a window reload.
 function TabsVisibilityPanel() {
-  const [hidden, setHidden] = useState<string[]>(() => {
-    try {
-      const v = JSON.parse(localStorage.getItem('gt.tabs.hidden') || '[]')
-      return Array.isArray(v) ? v : []
-    } catch {
-      return []
-    }
-  })
+  const [hidden, setHidden] = useState<string[]>(() => loadHiddenTabs())
   // ALL_TABS is the source of truth for the tab list — import lazily to avoid
   // a circular import (tabs/registry → tabs/* → components/SettingsPanel).
   const [allTabs, setAllTabs] = useState<{ id: string; title: string; order: number }[]>([])
@@ -159,6 +153,9 @@ function TabsVisibilityPanel() {
     return <div className="text-[11px] text-zinc-600">loading…</div>
   return (
     <div className="grid grid-cols-2 gap-1">
+      <div className="col-span-2 mb-1 text-[10.5px] text-zinc-600">
+        New installs hide {DEFAULT_HIDDEN_TABS.join(', ')} by default. Toggle them on here when needed.
+      </div>
       {allTabs.map((t) => {
         const off = hidden.includes(t.id)
         return (
@@ -701,7 +698,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           {/* OpenRouter — one-shot calls for cheap classifiers, health checks, etc. */}
           <Section
             title="OpenRouter (cheap one-shot calls)"
-            desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers, health-check escalations, MR-authorship sniffing. Get a key at openrouter.ai/keys."
+            desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers and health-check escalations. Get a key at openrouter.ai/keys."
           >
             <div className="space-y-2">
               <div className="flex items-center gap-2">

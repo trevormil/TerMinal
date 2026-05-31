@@ -56,7 +56,6 @@ const gt = {
     risk: (input: { files: string[]; diffLines?: number; title?: string }) =>
       ipcRenderer.invoke('classify:risk', input),
   },
-  mrAuthorship: (iid: number, opts?: { refine?: boolean }) => ipcRenderer.invoke('mrs:authorship', iid, opts),
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),

@@ -624,21 +624,6 @@ export type GtApi = {
       source: string
     }>
   }
-  mrAuthorship: (iid: number, opts?: { refine?: boolean }) => Promise<{
-    total: number
-    byTool: Record<string, number>
-    dominant: string
-    commits: {
-      sha: string
-      shortSha: string
-      authorEmail: string
-      authorName: string
-      subject: string
-      tool: string
-      confidence: string
-      evidence: string[]
-    }[]
-  } | null>
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
     runLog: (source: 'cron' | 'agent', runId: string) => Promise<string>

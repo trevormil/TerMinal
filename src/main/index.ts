@@ -1186,37 +1186,6 @@ ipcMain.handle('classify:risk', async (_e, input: Parameters<typeof import('./pr
   return classifyRisk(input)
 })
 
-// MR authorship sniffer — runs git log over the MR's range.
-// `refine: true` runs LLM (claude -p haiku via Max, or OpenRouter) on the
-// ambiguous commits to catch AI-authored ones missing known footers.
-ipcMain.handle('mrs:authorship', async (_e, iid: number, opts?: { refine?: boolean }) => {
-  const { getMr } = await import('./mrs')
-  const { authorshipForRange, refineAuthorshipWithLlm } = await import('./mr-authorship')
-  const repoRoot = repoRootOf(cur().cwd)
-  if (!repoRoot) return null
-  const mr = await getMr(repoRoot, iid)
-  if (!mr) return null
-  const base = mr.targetBranch || 'main'
-  const head = mr.sourceBranch
-  // Use origin/<base>..origin/<head> for accuracy against remote state
-  const range = `origin/${base}..origin/${head}`
-  let summary
-  try {
-    summary = authorshipForRange(repoRoot, range)
-  } catch {
-    // Fallback: try local-only range
-    summary = authorshipForRange(repoRoot, `${base}..${head}`)
-  }
-  if (opts?.refine) {
-    try {
-      summary = await refineAuthorshipWithLlm(summary)
-    } catch {
-      /* ignore */
-    }
-  }
-  return summary
-})
-
 // Budget IPCs (#0002).
 ipcMain.handle('budgets:get', () => readBudgets())
 ipcMain.handle('budgets:setDaily', (_e, usd: number) => {

@@ -28,28 +28,6 @@ const GROUPS: {
 ]
 const DEFAULT_COLLAPSED: GroupId[] = ['merged', 'closed']
 
-// Tool → display + colored pill
-const AUTHORSHIP_LABEL: Record<string, string> = {
-  'claude-code': 'Claude',
-  codex: 'Codex',
-  cursor: 'Cursor',
-  aider: 'Aider',
-  copilot: 'Copilot',
-  human: 'Human',
-  unknown: '?',
-  mixed: 'Mixed',
-}
-const AUTHORSHIP_TONE: Record<string, 'green' | 'blue' | 'accent' | 'yellow' | 'mute' | 'red'> = {
-  'claude-code': 'green',
-  codex: 'blue',
-  cursor: 'accent',
-  aider: 'yellow',
-  copilot: 'yellow',
-  human: 'mute',
-  unknown: 'mute',
-  mixed: 'yellow',
-}
-
 function MrRow({
   m,
   sym,
@@ -61,27 +39,6 @@ function MrRow({
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
-  // Lazy-fetch authorship per row. ~30ms per MR via git log; cache in state so
-  // it doesn't refetch every parent re-render.
-  const [authorship, setAuthorship] = useState<{ dominant: string; total: number; byTool: Record<string, number> } | null>(null)
-  useEffect(() => {
-    let alive = true
-    window.gt.mrAuthorship(m.iid).then((r) => {
-      if (alive && r) setAuthorship(r)
-    })
-    return () => {
-      alive = false
-    }
-  }, [m.iid])
-  const subline = authorship
-    ? Object.entries(authorship.byTool)
-        .filter(([, n]) => n > 0)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([t, n]) => `${AUTHORSHIP_LABEL[t] || t} ${n}`)
-        .join(' · ')
-    : ''
-
   return (
     <div
       onClick={() => onOpen(m.iid)}
@@ -129,17 +86,6 @@ function MrRow({
               {m.sourceBranch}
             </span>
             {m.author && <span className="text-zinc-600">· @{m.author}</span>}
-            {authorship && (
-              <span
-                className="ml-1 inline-flex items-center gap-1"
-                title={`Authorship: ${subline} (${authorship.total} commits)`}
-              >
-                <Badge tone={AUTHORSHIP_TONE[authorship.dominant] || 'mute'}>
-                  {AUTHORSHIP_LABEL[authorship.dominant] || authorship.dominant}
-                </Badge>
-                <span className="font-mono text-[10px] text-zinc-600">{subline}</span>
-              </span>
-            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>

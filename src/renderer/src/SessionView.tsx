@@ -21,6 +21,7 @@ import { ALL_TABS } from './tabs/registry'
 import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
+import { loadHiddenTabs } from './lib/tabVisibility'
 import type { TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -194,10 +195,10 @@ export function SessionView({
   // immediately without a settings read. ALL_TABS is the always-known set;
   // appliesTo + the hidden filter winnow it for THIS session.
   const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(
-    () => new Set(load<string[]>('gt.tabs.hidden', [])),
+    () => new Set(loadHiddenTabs()),
   )
   useEffect(() => {
-    const onChange = () => setHiddenTabs(new Set(load<string[]>('gt.tabs.hidden', [])))
+    const onChange = () => setHiddenTabs(new Set(loadHiddenTabs()))
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
   }, [])

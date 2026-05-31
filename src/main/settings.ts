@@ -44,7 +44,7 @@ export type Settings = {
   apps: AppsCfg
   /** OpenRouter — NOT a full coding harness (use claude-code/codex for that).
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
-   *  precheck escalations, MR-authorship sniffing, etc. Optional. */
+   *  precheck escalations, etc. Optional. */
   openrouter: OpenRouterCfg
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
