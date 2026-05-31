@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { BookText, FileText, Sparkles, ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
+import { SkillHint } from '../../components/SkillHint'
 import type { Tab, TabContext, DocsTree, DocEntry, DocCategory } from '../../lib/types'
 
 // A node in the per-category folder tree (GitHub-style).
@@ -150,6 +151,13 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
           <span className="text-[11px] text-zinc-600">{totalCount}</span>
         </div>
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
+          <div className="mb-2">
+            <SkillHint>
+              Docs are durable project memory: architecture, ADRs, runbooks, learnings, changelog, and generated
+              maintainer/developer/personal references. Use them to preserve decisions after sessions and reports have
+              identified what changed.
+            </SkillHint>
+          </div>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}

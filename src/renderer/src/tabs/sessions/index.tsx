@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Layers, Ticket, GitPullRequest, ArrowUpRight, GitBranch } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
+import { SkillHint } from '../../components/SkillHint'
 import { sessionStatusTone } from '../../lib/badges'
 import type { Tab, TabContext, ProjectSession } from '../../lib/types'
 
@@ -67,6 +68,14 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
 
       <div className="flex min-h-0 flex-1">
         <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
+          <div className="border-b border-[var(--gt-border)] p-2">
+            <SkillHint>
+              Sessions are the working notebook for a focused goal: context, checklist, touched tickets, branches, PRs,
+              decisions, and follow-ups. Start one in the terminal with{' '}
+              <code className="font-mono text-zinc-300">/session-start "goal"</code>, then close it with{' '}
+              <code className="font-mono text-zinc-300">/session-end</code> when the loop is reconciled.
+            </SkillHint>
+          </div>
           {list === null ? (
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : shown.length === 0 ? (

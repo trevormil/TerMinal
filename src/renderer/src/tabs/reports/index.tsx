@@ -3,6 +3,7 @@ import { ClipboardList, FileText, ChevronDown, ChevronRight, ExternalLink } from
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
+import { SkillHint } from '../../components/SkillHint'
 import type { Tab, TabContext, DocsTree, DocEntry } from '../../lib/types'
 
 // Reports viewer — focused, status-aware sibling to the Docs tab. Groups
@@ -181,6 +182,13 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
           <span className="ml-auto text-[10px] text-zinc-700">
             {ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}
           </span>
+        </div>
+        <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
+          <SkillHint>
+            Reports are run artifacts from scheduled agents and checks. They show what automation found over time:
+            health, drift, coverage, changelog, dependencies, performance, and any tickets or HITL items filed from
+            those runs.
+          </SkillHint>
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto p-2">
           {runs === null ? (
