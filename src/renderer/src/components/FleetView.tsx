@@ -46,7 +46,7 @@ export function FleetView({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {sessions.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
             No sessions.
@@ -63,10 +63,10 @@ export function FleetView({
             }
             const groups = [...byRepo.entries()].sort((a, b) => a[0].localeCompare(b[0]))
             return (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {groups.map(([repo, list]) => (
                   <div key={repo}>
-                    <div className="mb-2 flex items-baseline gap-2">
+                    <div className="mb-1.5 flex items-baseline gap-2">
                       <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-400">
                         {repo.replace(/\/$/, '').split('/').pop() || repo}
                       </span>
@@ -75,7 +75,7 @@ export function FleetView({
                       </span>
                       <span className="font-mono text-[10px] text-zinc-700">{repo}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 2xl:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-2.5 2xl:grid-cols-3">
                       {list.map((s) => {
               const on = s.key === activeKey
               const wk = s.status === 'working'
@@ -83,7 +83,7 @@ export function FleetView({
                 <button
                   key={s.key}
                   onClick={() => onPick(s.key)}
-                  className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors ${
+                  className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-colors ${
                     on
                       ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/10'
                       : 'border-[var(--gt-border)] bg-[var(--gt-panel)] hover:border-[var(--gt-accent)]/40 hover:bg-white/5'
@@ -103,14 +103,14 @@ export function FleetView({
                     </span>
                   </div>
 
-                  <div className="line-clamp-2 min-h-[2.2em] text-[11.5px] leading-snug text-zinc-400">
+                  <div className="truncate text-[11.5px] leading-snug text-zinc-400">
                     {s.aiTitle || <span className="italic text-zinc-600">untitled session</span>}
                   </div>
 
                   {wk && s.lastAction && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-zinc-500">
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)] gt-pulse" />
-                      <span className="font-medium text-zinc-300">{s.lastAction.tool}</span>
+                      <span className="shrink-0 font-medium text-zinc-300">{s.lastAction.tool}</span>
                       {s.lastAction.detail && (
                         <span className="min-w-0 truncate">{s.lastAction.detail}</span>
                       )}
@@ -118,16 +118,20 @@ export function FleetView({
                   )}
 
                   {s.contextLimit > 0 && (
-                    <div>
-                      <div className="mb-1 flex items-baseline justify-between text-[10px] text-zinc-600">
-                        <span className="tabular-nums text-zinc-400">{s.contextPct.toFixed(0)}% ctx</span>
-                        <span className="tabular-nums">{fmtTokens(s.contextTokens)}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-28 shrink-0">
+                        <Gauge pct={s.contextPct} />
                       </div>
-                      <Gauge pct={s.contextPct} />
+                      <span className="shrink-0 tabular-nums text-[10px] text-zinc-500">
+                        {s.contextPct.toFixed(0)}% ctx
+                      </span>
+                      <span className="min-w-0 truncate tabular-nums text-[10px] text-zinc-600">
+                        {fmtTokens(s.contextTokens)}
+                      </span>
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-600">
+                  <div className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-600">
                     <span className="text-zinc-500">{shortModel(s.model)}</span>
                     {s.branch && (
                       <span className="inline-flex items-center gap-0.5">
@@ -136,9 +140,6 @@ export function FleetView({
                       </span>
                     )}
                     <span className="tabular-nums">{s.turns} turns</span>
-                    <span className="min-w-0 flex-1 truncate text-right font-mono text-zinc-700">
-                      {s.repo}
-                    </span>
                   </div>
                 </button>
               )
