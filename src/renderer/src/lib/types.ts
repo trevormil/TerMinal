@@ -138,6 +138,7 @@ export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
+export type InboxCfg = { completionHook: boolean }
 export type AppsCfg = { editor: string; browser: string }
 export type OpenRouterCfg = { apiKey: string; defaultModel: string }
 export type Settings = {
@@ -148,13 +149,15 @@ export type Settings = {
   defaultEngine: Engine
   forge: ForgePref
   telegram: TelegramCfg
+  inbox: InboxCfg
   apps: AppsCfg
   openrouter: OpenRouterCfg
   harnessDir: string
   templateRepo: string
 }
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps' | 'openrouter'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'engines' | 'apps' | 'openrouter'>> & {
   telegram?: Partial<TelegramCfg>
+  inbox?: Partial<InboxCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>

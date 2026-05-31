@@ -19,6 +19,9 @@ export type TelegramCfg = {
   botToken: string // BotFather token → native Bot API (else falls back to scripts)
   chatId: string // the single authorized chat (auth boundary)
 }
+export type InboxCfg = {
+  completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
+}
 // External-app handoffs: macOS app names used with `open -a <name>` — robust
 // (no PATH/CLI dependency). '' → the built-in default.
 export type AppsCfg = {
@@ -37,6 +40,7 @@ export type Settings = {
   defaultEngine: EngineId
   forge: ForgePref // 'auto' picks gh/glab per-repo from the remote host
   telegram: TelegramCfg
+  inbox: InboxCfg
   apps: AppsCfg
   /** OpenRouter — NOT a full coding harness (use claude-code/codex for that).
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
@@ -47,8 +51,9 @@ export type Settings = {
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'engines' | 'apps' | 'openrouter'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'engines' | 'apps' | 'openrouter'>> & {
   telegram?: Partial<TelegramCfg>
+  inbox?: Partial<InboxCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
@@ -72,6 +77,7 @@ export function defaultSettings(): Settings {
     defaultEngine: 'claude', // claude is the required engine; codex is optional
     forge: 'auto',
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
+    inbox: { completionHook: true },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     harnessDir: '',
@@ -94,6 +100,9 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.telegram.control === 'boolean') s.telegram.control = r.telegram.control
     if (typeof r.telegram.botToken === 'string') s.telegram.botToken = r.telegram.botToken
     if (typeof r.telegram.chatId === 'string') s.telegram.chatId = r.telegram.chatId
+  }
+  if (r.inbox && typeof r.inbox === 'object') {
+    if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
   }
 
   if (typeof r.onboarded === 'boolean') s.onboarded = r.onboarded
@@ -142,6 +151,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
     ...cur,
     ...patch,
     telegram: { ...cur.telegram, ...(patch.telegram || {}) },
+    inbox: { ...cur.inbox, ...(patch.inbox || {}) },
     apps: { ...cur.apps, ...(patch.apps || {}) },
     engines: {
       codex: { ...cur.engines.codex, ...(patch.engines?.codex || {}) },

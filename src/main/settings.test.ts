@@ -32,6 +32,11 @@ describe('migrate', () => {
     expect(s.telegram).toEqual({ notify: true, control: false, botToken: 'abc:123', chatId: '999' })
   })
 
+  test('inbox completion hook defaults on and can be disabled', () => {
+    expect(migrate({}).inbox.completionHook).toBe(true)
+    expect(migrate({ inbox: { completionHook: false } }).inbox.completionHook).toBe(false)
+  })
+
   test('engines + scalars', () => {
     const s = migrate({
       projectsDir: '/p',

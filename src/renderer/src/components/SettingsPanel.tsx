@@ -592,6 +592,31 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             </div>
           </Section>
 
+          {/* Inbox */}
+          <Section
+            title="Inbox"
+            desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
+          >
+            <div className="space-y-2">
+              <Toggle
+                on={s.inbox.completionHook}
+                onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
+                label="File completion hooks to Inbox"
+                hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
+              />
+              <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
+                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  <span className="block text-zinc-300">Always on</span>
+                  <span>human blockers, cron failures, spend alerts</span>
+                </div>
+                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  <span className="block text-zinc-300">This toggle</span>
+                  <span>post-completion review prompts only</span>
+                </div>
+              </div>
+            </div>
+          </Section>
+
           {/* Telegram */}
           <Section title="Telegram (notifications + AFK control)" desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present.">
             <div className="space-y-2">
