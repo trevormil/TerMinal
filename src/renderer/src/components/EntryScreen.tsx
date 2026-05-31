@@ -33,7 +33,7 @@ export function EntryScreen({
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null)
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
-  const [engine, setEngine] = useState<SessionEngine>('claude')
+  const [engine, setEngine] = useState<SessionEngine>('local')
   const [name, setName] = useState('')
   // "new project from template" scaffold form
   const [projName, setProjName] = useState('')
@@ -64,7 +64,6 @@ export function EntryScreen({
     })
     window.gt.settings.get().then((s) => {
       setDefaultParent(s.projectsDir)
-      setEngine(s.defaultEngine)
     })
   }, [])
 
@@ -205,7 +204,7 @@ export function EntryScreen({
             Start a new session
           </div>
           <div className="mb-2 grid grid-cols-3 gap-2">
-            {(['claude', 'codex', 'local'] as SessionEngine[]).map((e) => (
+            {(['local', 'claude', 'codex'] as SessionEngine[]).map((e) => (
               <button
                 key={e}
                 onClick={() => setEngine(e)}
