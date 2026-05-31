@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Plus, Hand, ArrowUpRight, ChevronRight, ChevronDown, Bot, GitPullRequest } from 'lucide-react'
+import { Plus, Hand, ArrowUpRight, ChevronRight, ChevronDown, Bot, GitPullRequest, CircleDot } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
 import { EnginePicker } from './EnginePicker'
@@ -228,7 +228,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   // agent finishing) so a spawned ticket appears without a manual reload.
   useEffect(() => {
     const off = window.gt.activity.onEvent((ev) => {
-      if (ev.kind === 'ticket-filed' || ev.kind === 'ticket-closed') loadTickets()
+      if (ev.kind === 'ticket-filed' || ev.kind === 'ticket-closed' || ev.title.startsWith('Ticket ')) loadTickets()
     })
     return off
   }, [])
@@ -451,6 +451,19 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     <Hand size={10} strokeWidth={2.25} />
                     HITL
                   </Badge>
+                )}
+                {selected.status === 'stuck' && (
+                  <button
+                    onClick={async () => {
+                      await window.gt.tickets.update(selected.slug, { status: 'open' })
+                      loadTickets()
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/15"
+                    title="Move this ticket back to open once the blocker is cleared."
+                  >
+                    <CircleDot size={10} strokeWidth={2.25} />
+                    Unblock
+                  </button>
                 )}
               </div>
               <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>

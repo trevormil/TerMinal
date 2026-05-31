@@ -953,13 +953,15 @@ ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: strin
 )
 ipcMain.handle('tickets:update', (_e, slug: string, patch: { status?: string; priority?: string }) => {
   const root = repoRootOf(cur().cwd)
+  const before = getTicket(root, slug)
   const ok = updateTicket(root, slug, patch)
   if (ok && patch.status) {
     const t = getTicket(root, slug)
+    const unblocked = before?.status === 'stuck' && patch.status !== 'stuck'
     emitActivity({
       kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
-      title: `Ticket ${patch.status} · #${t?.id ?? slug}`,
-      detail: t?.title,
+      title: unblocked ? `Ticket unblocked · #${t?.id ?? slug}` : `Ticket ${patch.status} · #${t?.id ?? slug}`,
+      detail: unblocked ? `${t?.title || slug} · ${patch.status}` : t?.title,
       repo: repoLabelFor(root),
       repoRoot: root,
       sessionId: cur().sessionId,

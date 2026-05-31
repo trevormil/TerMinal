@@ -440,6 +440,9 @@ function updateTicket(args) {
   const m = raw.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/)
   if (!m) throw new Error(`malformed frontmatter in ${path}`)
   let fm = m[1]
+  const currentStatus = (fm.match(/^status:\s*(.*)$/m)?.[1] || '').trim()
+  const currentTitle = (fm.match(/^title:\s*(.*)$/m)?.[1] || slug).trim().replace(/^["']|["']$/g, '')
+  const ticketLabel = (fm.match(/^id:\s*(\d+)/m)?.[1] || slug).trim()
   const setField = (key, val) => {
     const re = new RegExp(`^(${key}:[ \\t]*).*$`, 'm')
     if (re.test(fm)) fm = fm.replace(re, `$1${val}`)
@@ -469,6 +472,16 @@ function updateTicket(args) {
     else fm = fm.replace(/\n---$/, `\nprs: ${formatted}\n---`)
   }
   writeFileSync(path, fm + m[2])
+  if (status) {
+    const unblocked = currentStatus === 'stuck' && status !== 'stuck'
+    emitActivityRaw({
+      kind: status === 'closed' ? 'ticket-closed' : 'info',
+      title: unblocked ? `Ticket unblocked · #${ticketLabel}` : `Ticket ${status} · #${ticketLabel}`,
+      detail: unblocked ? `${currentTitle} · ${status}` : currentTitle,
+      repo: basename(repoRoot),
+      repoRoot,
+    })
+  }
   return { ok: true, path }
 }
 
