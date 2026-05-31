@@ -19,6 +19,7 @@ const CFG = join(homedir(), '.config', 'TerMinal')
 const GLOBAL_FILE = join(CFG, 'snippets.json')
 const REPO_FILE = '.TerMinal/snippets.json'
 const LEGACY_REPO_FILE = '.terminal/snippets.json'
+const SNIPPET_SCHEMA_VERSION = 2
 
 const BUILT_INS: PromptSnippet[] = [
   { id: 'continue', title: 'Looks good. Continue', prompt: 'Looks good to me. Continue.', group: 'Common' },
@@ -68,49 +69,78 @@ const BUILT_INS: PromptSnippet[] = [
   { id: 'decision-check', title: 'Decision Check', prompt: 'Before proceeding, state the key implementation decision, alternatives considered, and why this path fits the existing codebase.', group: 'Context' },
 ]
 
+function parseSnippetList(raw: unknown): PromptSnippet[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x) => ({
+      id: String(x.id || '').trim(),
+      title: String(x.title || '').trim(),
+      prompt: String(x.prompt || '').trim(),
+      description: typeof x.description === 'string' ? x.description : undefined,
+      group: typeof x.group === 'string' ? x.group : undefined,
+    }))
+    .filter((x) => x.id && x.title && x.prompt)
+}
+
+const sameSnippet = (a: PromptSnippet, b: PromptSnippet) =>
+  a.id === b.id &&
+  a.title === b.title &&
+  a.prompt === b.prompt &&
+  (a.description || '') === (b.description || '') &&
+  (a.group || '') === (b.group || '')
+
+export function migrateSnippetFile(raw: SnippetFile): { version: number; snippets: PromptSnippet[] } {
+  const builtInsById = new Map(BUILT_INS.map((s) => [s.id, s]))
+  const snippets = parseSnippetList(raw.snippets).filter((s) => {
+    const builtIn = builtInsById.get(s.id)
+    return !builtIn || !sameSnippet(s, builtIn)
+  })
+  return { version: SNIPPET_SCHEMA_VERSION, snippets }
+}
+
 function readSnippetFile(path: string): PromptSnippet[] {
   try {
     if (!existsSync(path)) return []
     const json = JSON.parse(readFileSync(path, 'utf8')) as SnippetFile
-    if (!Array.isArray(json.snippets)) return []
-    return json.snippets
-      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-      .map((x) => ({
-        id: String(x.id || '').trim(),
-        title: String(x.title || '').trim(),
-        prompt: String(x.prompt || '').trim(),
-        description: typeof x.description === 'string' ? x.description : undefined,
-        group: typeof x.group === 'string' ? x.group : undefined,
-      }))
-      .filter((x) => x.id && x.title && x.prompt)
+    return parseSnippetList(json.snippets)
   } catch {
     return []
   }
 }
 
 function ensureGlobalFile(): void {
-  if (existsSync(GLOBAL_FILE)) return
   mkdirSync(CFG, { recursive: true })
-  writeFileSync(
-    GLOBAL_FILE,
-    JSON.stringify(
-      {
-        version: 1,
-        snippets: BUILT_INS,
-      },
-      null,
-      2,
-    ),
-  )
+  if (!existsSync(GLOBAL_FILE)) {
+    writeFileSync(
+      GLOBAL_FILE,
+      JSON.stringify({ version: SNIPPET_SCHEMA_VERSION, snippets: [] }, null, 2),
+    )
+    return
+  }
+  try {
+    const raw = JSON.parse(readFileSync(GLOBAL_FILE, 'utf8')) as SnippetFile
+    if (raw.version === SNIPPET_SCHEMA_VERSION) return
+    writeFileSync(
+      GLOBAL_FILE,
+      JSON.stringify({ ...raw, ...migrateSnippetFile(raw) }, null, 2),
+    )
+  } catch {
+    /* unreadable user file: leave it untouched and fall back to built-ins at runtime */
+  }
 }
 
 function snippetFile(path: string): SnippetFile {
   try {
-    if (!existsSync(path)) return { version: 1, snippets: [] }
+    if (!existsSync(path)) return { version: SNIPPET_SCHEMA_VERSION, snippets: [] }
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as SnippetFile
-    return { version: 1, snippets: Array.isArray(parsed.snippets) ? parsed.snippets : [] }
+    return {
+      ...parsed,
+      version: SNIPPET_SCHEMA_VERSION,
+      snippets: Array.isArray(parsed.snippets) ? parsed.snippets : [],
+    }
   } catch {
-    return { version: 1, snippets: [] }
+    return { version: SNIPPET_SCHEMA_VERSION, snippets: [] }
   }
 }
 
@@ -145,7 +175,14 @@ export function savePromptSnippet(input: {
     description: input.snippet.description?.trim() || undefined,
     group: input.snippet.group?.trim() || 'Custom',
   }
-  writeFileSync(path, JSON.stringify({ ...file, version: 1, snippets: [...snippets, snippet] }, null, 2))
+  writeFileSync(
+    path,
+    JSON.stringify(
+      { ...file, version: SNIPPET_SCHEMA_VERSION, snippets: [...snippets, snippet] },
+      null,
+      2,
+    ),
+  )
   return { ok: true, path, snippet }
 }
 

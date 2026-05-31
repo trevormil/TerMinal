@@ -313,6 +313,11 @@ function RebuildPanel() {
           {log || '(starting…)'}
         </pre>
       )}
+      <div className="text-[10.5px] leading-4 text-zinc-600">
+        Reinstall replaces only the app bundle and TerMinal-owned helper binaries.
+        Settings, custom agents, scripts, snippets, widgets, schedules, inbox, and run state in
+        <span className="font-mono"> ~/.config/TerMinal</span> are preserved.
+      </div>
     </div>
   )
 }
