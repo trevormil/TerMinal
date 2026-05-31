@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Clipboard, EyeOff, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
+import { Bot, Clipboard, ClipboardPaste, Copy, EyeOff, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -362,6 +362,7 @@ export function TerminalPane({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
           >
+            <Copy size={13} strokeWidth={2} />
             Copy
           </button>
           <button
@@ -374,6 +375,7 @@ export function TerminalPane({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
           >
+            <ClipboardPaste size={13} strokeWidth={2} />
             Paste
           </button>
           <button
