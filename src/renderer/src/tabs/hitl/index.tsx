@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   Check,
+  ChevronDown,
+  ChevronRight,
   Mail,
   X,
   Trash2,
@@ -45,9 +47,14 @@ function reltime(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+function compactDetail(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
 export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: () => void }) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
   const [showResolved, setShowResolved] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const reload = () => window.gt.hitl.list().then(setItems)
   useEffect(() => {
@@ -106,29 +113,67 @@ export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: ()
           </div>
         ) : (
           <div className="space-y-2">
-            {shown.map((h) => (
-              <div
-                key={h.id}
-                className={`rounded-xl border bg-[var(--gt-panel)] p-3 ${
-                  h.status === 'open' ? 'border-[var(--gt-red)]/30' : 'border-[var(--gt-border)] opacity-70'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[13px] font-semibold text-zinc-100">{h.title}</span>
-                      <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
-                      {h.repo && <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>}
-                      <span className="text-[10px] text-zinc-600">· {reltime(h.createdAt)}</span>
-                    </div>
-                    {h.action && <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">{h.action}</div>}
-                    {h.detail && <div className="mt-0.5 text-[11.5px] leading-snug text-zinc-500">{h.detail}</div>}
-                    {(h.terminalCwd || h.terminalKey || h.sessionId) && (
-                      <div className="mt-1 font-mono text-[10px] text-zinc-600">
-                        {h.terminalCwd || h.repoRoot || 'terminal session'}
+            {shown.map((h) => {
+              const detail = compactDetail(h.detail || '')
+              const canExpand = !!detail && (h.source === 'completion-hook' || detail.length > 180)
+              const isExpanded = expanded.has(h.id)
+              return (
+                <div
+                  key={h.id}
+                  className={`rounded-lg border bg-[var(--gt-panel)] p-2.5 ${
+                    h.status === 'open' ? 'border-[var(--gt-red)]/30' : 'border-[var(--gt-border)] opacity-70'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[12.5px] font-semibold text-zinc-100">{h.title}</span>
+                        <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                        {h.repo && <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>}
+                        <span className="text-[10px] text-zinc-600">· {reltime(h.createdAt)}</span>
                       </div>
-                    )}
-                  </div>
+                      {h.action && <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">{h.action}</div>}
+                      {detail && (
+                        <div className="mt-1">
+                          {canExpand ? (
+                            <>
+                              <button
+                                onClick={() =>
+                                  setExpanded((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(h.id)) next.delete(h.id)
+                                    else next.add(h.id)
+                                    return next
+                                  })
+                                }
+                                className="flex max-w-full items-center gap-1 text-left text-[11px] text-zinc-500 hover:text-zinc-300"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
+                                ) : (
+                                  <ChevronRight size={12} strokeWidth={2} className="shrink-0" />
+                                )}
+                                <span className="min-w-0 truncate">
+                                  {isExpanded ? 'Hide details' : detail}
+                                </span>
+                              </button>
+                              {isExpanded && (
+                                <div className="mt-1 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--gt-border)] bg-black/20 p-2 text-[11px] leading-snug text-zinc-400">
+                                  {h.detail}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-[11.5px] leading-snug text-zinc-500">{detail}</div>
+                          )}
+                        </div>
+                      )}
+                      {(h.terminalCwd || h.terminalKey || h.sessionId) && (
+                        <div className="mt-1 truncate font-mono text-[10px] text-zinc-600">
+                          {h.terminalCwd || h.repoRoot || 'terminal session'}
+                        </div>
+                      )}
+                    </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {(h.terminalKey || h.sessionId || h.terminalCwd || h.repoRoot) && (
                       <button
@@ -205,7 +250,8 @@ export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: ()
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
