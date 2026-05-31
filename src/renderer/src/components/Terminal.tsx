@@ -296,27 +296,27 @@ export function TerminalPane({
         </button>
       </div>
       {menuOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-8" onClick={() => setMenuOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-6" onClick={() => setMenuOpen(false)}>
           <div
-            className="mt-8 flex max-h-[82vh] w-[860px] max-w-full flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
+            className="mt-8 flex max-h-[82vh] w-[760px] max-w-full flex-col overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-4 py-3">
+            <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
               <MessageSquareText size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-              <span className="text-[13px] font-semibold text-zinc-100">Quick Snippets</span>
-              <div className="relative ml-3 min-w-0 flex-1">
+              <span className="text-[12px] font-semibold text-zinc-100">Launcher</span>
+              <div className="relative ml-2 min-w-0 flex-1">
                 <Search size={13} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   autoFocus
-                  placeholder="Search snippets..."
-                  className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 py-1 pl-7 pr-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                  placeholder="Search snippets and skills..."
+                  className="h-7 w-full rounded-md border border-[var(--gt-border)] bg-black/30 py-1 pl-7 pr-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
                 />
               </div>
               <button
                 onClick={() => setNewOpen(true)}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
               >
                 <Plus size={13} strokeWidth={2.5} />
                 New
@@ -329,18 +329,22 @@ export function TerminalPane({
                 <X size={13} strokeWidth={2} />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
               {Object.entries(groups).map(([group, list]) => (
-                <div key={group} className="mb-4 last:mb-0">
-                  <div className="px-1.5 pb-1 text-[9.5px] font-bold uppercase tracking-wider text-zinc-600">
+                <div key={group} className="mb-2 last:mb-0">
+                  <div className="sticky top-0 z-10 border-b border-[var(--gt-border)]/50 bg-[var(--gt-panel)] px-1.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-zinc-600">
                     {group}
                   </div>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div className="divide-y divide-[var(--gt-border)]/45">
                     {list.map((s) => (
-                      <div key={s.id} title={s.subtitle || s.prompt} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
-                        <div className="flex items-center gap-1.5">
+                      <div
+                        key={s.id}
+                        title={s.subtitle || s.prompt}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-1.5 py-1.5 hover:bg-white/5"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${
+                            className={`shrink-0 rounded px-1 py-px text-[8.5px] font-bold uppercase tracking-wide ${
                               s.kind === 'skill'
                                 ? 'bg-[var(--gt-blue)]/15 text-[var(--gt-blue)]'
                                 : 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
@@ -348,25 +352,25 @@ export function TerminalPane({
                           >
                             {s.kind}
                           </span>
-                          <div className="min-w-0 truncate text-[12px] font-medium text-zinc-100">{s.title}</div>
+                          <div className="min-w-0">
+                            <div className="truncate text-[12px] font-medium text-zinc-100">{s.title}</div>
+                            <div className="truncate text-[10.5px] text-zinc-500">{s.subtitle}</div>
+                          </div>
                         </div>
-                        <div className="mt-0.5 line-clamp-3 min-h-[3.6em] text-[10.5px] leading-snug text-zinc-500">
-                          {s.subtitle}
-                        </div>
-                        <div className="mt-2 flex justify-end gap-1.5">
+                        <div className="flex shrink-0 justify-end gap-1">
                           <button
                             onClick={() => inject(s.prompt, false)}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                            title="Insert"
+                            className="inline-flex h-6 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                           >
                             <Clipboard size={11} strokeWidth={2} />
-                            Insert
                           </button>
                           <button
                             onClick={() => inject(s.prompt, true)}
-                            className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[11px] font-semibold text-white hover:opacity-90"
+                            title="Insert and run"
+                            className="inline-flex h-6 w-7 items-center justify-center rounded-md bg-[var(--gt-accent)] text-white hover:opacity-90"
                           >
                             <Play size={11} strokeWidth={2.5} />
-                            Run
                           </button>
                         </div>
                       </div>
