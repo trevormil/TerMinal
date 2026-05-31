@@ -79,6 +79,7 @@ function authProbe(cli: string): Promise<AuthInfo> {
 export type EnvDetect = {
   codex: { found: boolean; path: string }
   claude: { found: boolean; path: string }
+  cursor: { found: boolean; path: string }
   gh: { found: boolean; path: string; authed: boolean; authHost: string }
   glab: { found: boolean; path: string; authed: boolean; authHost: string }
   tgScripts: boolean
@@ -104,6 +105,7 @@ export function detectApps(): { editors: string[]; browsers: string[] } {
 export async function detectEnv(): Promise<EnvDetect> {
   const codex = resolveBin(enginePath('codex'))
   const claude = resolveBin(enginePath('claude'))
+  const cursor = resolveBin(enginePath('cursor'))
   const gh = which('gh')
   const glab = which('glab')
   const none: AuthInfo = { authed: false, host: '' }
@@ -114,6 +116,7 @@ export async function detectEnv(): Promise<EnvDetect> {
   return {
     codex: { found: !!codex, path: codex },
     claude: { found: !!claude, path: claude },
+    cursor: { found: !!cursor, path: cursor },
     gh: { found: !!gh, path: gh, authed: ghAuth.authed, authHost: ghAuth.host },
     glab: { found: !!glab, path: glab, authed: glabAuth.authed, authHost: glabAuth.host },
     tgScripts: existsSync(join(homedir(), '.claude', 'bin', 'telegram-notify.sh')),

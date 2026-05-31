@@ -17,7 +17,7 @@
 //   - honors the kill-switch (~/.config/TerMinal/agents/disabled.json) and
 //     bails fast if this scheduleId is disabled
 //   - creates an isolated git worktree off the default base
-//   - runs codex / claude through `script -q /dev/null` so the wrapped CLI
+//   - runs codex / claude / cursor-agent through `script -q /dev/null` so the wrapped CLI
 //     thinks it's in a TTY and streams stdout/stderr in real time to the
 //     run log (otherwise claude -p buffers everything until exit, and the
 //     log is empty until the run is over)
@@ -685,13 +685,12 @@ async function runSchedule(id) {
     return 1
   }
 
-  // Optional per-schedule model alias (claude: haiku/sonnet/opus; codex: model
-  // name). Lets a lightweight schedule (health, deps-quality) avoid burning the
+  // Optional per-schedule model alias. Lets a lightweight schedule avoid burning the
   // biggest model on every run.
   const modelFlag = sched.model ? ` --model ${shq(sched.model)}` : ''
 
   // Script-first: if .agents/<id>.sh (or a global script) exists, exec it
-  // directly with env vars instead of building a claude/codex command from
+  // directly with env vars instead of building a prompt-based command from
   // the schedule's prompt snapshot. The script body decides whether to call
   // claude -p / codex exec / pure shell — perfect for cheap-then-escalate
   // pipelines that only pay for an LLM when a precheck fails.
@@ -706,6 +705,8 @@ async function runSchedule(id) {
     ? shq(scriptPath)
     : sched.engine === 'claude'
       ? `claude -p ${shq(sched.prompt)} --dangerously-skip-permissions${modelFlag}`
+      : sched.engine === 'cursor'
+        ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
       : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
   const shell = process.env.SHELL || '/bin/zsh'
   writeFileSync(
@@ -715,7 +716,7 @@ async function runSchedule(id) {
   const fd = openSync(logFile, 'a')
 
   // Wrap in `script -q /dev/null` so the wrapped CLI sees a pseudo-TTY and
-  // streams stdout/stderr in real time. Without this, `claude -p` (and codex)
+  // streams stdout/stderr in real time. Without this, `claude -p` (and other engines)
   // buffer everything until exit and the log is unreadable mid-run.
   // `script` is in /usr/bin on macOS by default.
   // Env vars exposed to the script body — scripts can `terminal-cli ticket ...`
@@ -766,15 +767,15 @@ async function runSchedule(id) {
   writeRec({ status, endedAt, exitCode: code })
   stamp(id, { lastStatus: status })
   // Observability: parse the captured log for usage stats and persist as an
-  // AIRun ledger entry. Silent on miss (non-claude/codex scripts often emit
+  // AIRun ledger entry. Silent on miss (scripts may emit
   // no usage line — that's expected).
   try {
     const logText = readFileSync(logFile, 'utf8')
-    const usage = parseUsageFromOutput(logText)
+    const usage = sched.engine === 'cursor' ? null : parseUsageFromOutput(logText)
     if (usage) {
       writeAIRun({
         engine: sched.engine,
-        model: usage.model || childEnv.TERMINAL_MODEL || (sched.engine === 'codex' ? 'gpt-5' : 'sonnet'),
+        model: usage.model || childEnv.TERMINAL_MODEL || (sched.engine === 'codex' ? 'gpt-5' : sched.engine === 'cursor' ? 'cursor' : 'sonnet'),
         inputTokens: usage.input,
         outputTokens: usage.output,
         cacheReadTokens: usage.cacheRead,

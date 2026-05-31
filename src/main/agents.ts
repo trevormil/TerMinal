@@ -24,7 +24,7 @@ import { composeSteps, pipelineLabel, type Step } from './pipelines'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
-export type Engine = 'codex' | 'claude'
+export type Engine = 'codex' | 'claude' | 'cursor'
 
 // On-demand Codex agents. Each runs in its own git worktree off the default
 // branch; codex does the work, files tickets, and opens the PR itself. We just
@@ -86,7 +86,7 @@ const OUTPUT_CAP = 400_000
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
-// Prepended to every FORCE-MODE agent's prompt so the spawned Claude/Codex
+// Prepended to every FORCE-MODE agent's prompt so the spawned agent
 // knows it has main-push authority. Keep this terse and explicit — the
 // agent's normal skills will refuse main pushes without it.
 export const FORCE_PREAMBLE =
@@ -623,7 +623,7 @@ export function getRun(id: string): AgentRun | null {
 // they block reading "additional input from stdin" on an empty pipe).
 // Locate an executable script for this agent. Per-repo wins over global so a
 // repo can override a global agent's body. The runner branches: if a script
-// exists, exec it with env vars; else fall back to the legacy claude/codex
+// exists, exec it with env vars; else fall back to the prompt-based agent
 // prompt-wrap built by buildCmd().
 const TERMINAL_BIN_DIR = join(homedir(), '.config', 'TerMinal', 'bin')
 const GLOBAL_SCRIPTS_DIR = join(homedir(), '.config', 'TerMinal', 'scripts')
@@ -673,11 +673,18 @@ export function resetAgentState(repoRoot: string, agentId: string): { ok: true }
   }
 }
 
+export function engineLabel(engine: Engine): string {
+  return engine === 'claude' ? 'Claude Code' : engine === 'codex' ? 'Codex' : 'Cursor Agent'
+}
+
 function buildCmd(engine: Engine, worktree: string, prompt: string, model?: string): string {
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${shq(model)}` : ''
   if (engine === 'claude') {
     return `${shq(bin)} -p ${shq(prompt)} --dangerously-skip-permissions${modelFlag}`
+  }
+  if (engine === 'cursor') {
+    return `${shq(bin)} -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
   }
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
@@ -822,17 +829,19 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     try {
       // Lazy-require to keep agents.ts decoupled from the observability layer.
       const { recordRunnerInvocation } = require('./ai-collectors') as typeof import('./ai-collectors')
-      recordRunnerInvocation({
-        source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
-        output: run.output,
-        repoRoot,
-        runId: run.id,
-        agentId: spec.id,
-        startedAt: run.startedAt,
-        endedAt: run.endedAt!,
-        exitCode: exitCode ?? -1,
-        modelHint: spec.model || engineDefaultModel(spec.engine) || undefined,
-      })
+      if (spec.engine !== 'cursor') {
+        recordRunnerInvocation({
+          source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
+          output: run.output,
+          repoRoot,
+          runId: run.id,
+          agentId: spec.id,
+          startedAt: run.startedAt,
+          endedAt: run.endedAt!,
+          exitCode: exitCode ?? -1,
+          modelHint: spec.model || engineDefaultModel(spec.engine) || undefined,
+        })
+      }
     } catch {
       /* observability is non-critical; never block run completion */
     }
@@ -852,7 +861,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     const step = spec.steps[stepIdx]
     if (spec.steps.length > 1) append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} · ${step.label} ━━\n\n`)
     // Script-first: if .agents/<id>.sh (or global ~/.config/TerMinal/scripts/<id>.sh)
-    // exists, exec it directly with env vars instead of building a claude/codex
+    // exists, exec it directly with env vars instead of building a prompt-based
     // command from the prompt. Inside the script the operator can mix
     // deterministic shell with `claude -p` / `codex exec` however they want.
     const scriptPath = locateScript(repoRoot, spec.id)
@@ -885,7 +894,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     const cmd = scriptPath
       ? shq(scriptPath)
       : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined)
-    // Wrap the spawn in `script -q /dev/null` so claude/codex think they're on
+    // Wrap the spawn in `script -q /dev/null` so engines think they're on
     // a TTY and stream output as it's generated. Without this, `claude -p`
     // buffers everything until exit and the run log shows nothing mid-run
     // (the same fix shipped to bin/terminal-cron). Pipes still carry the
@@ -943,7 +952,7 @@ export function runAgent(
   })
 }
 
-/** Spawn a claude/codex run that designs a new agent from a natural-language
+/** Spawn an agent run that designs a new agent from a natural-language
  *  description and saves it into the active scope (the active repo's
  *  .agents/agents.json, or the global registry). Runs inPlace — no fresh
  *  worktree, no PR — because designing an agent is a quick read+write op. */
@@ -980,8 +989,8 @@ The sidecar JSON shape (every field optional except id + title):
     "description": "one-line summary",
     "icon":        "lucide-react icon name — Bot, BookText, ScanSearch, ListChecks, TestTube2, ShieldAlert, Gauge, PackageCheck, Eraser, Wrench, Activity, Zap, etc.",
     "opensPr":     true | false,
-    "engine":      "claude" | "codex"  (hint; runtime can override),
-    "model":       "haiku" | "sonnet" | "opus" | "gpt-5" | "gpt-5-codex" | "o4-mini"  (hint; optional),
+    "engine":      "claude" | "codex" | "cursor"  (hint; runtime can override),
+    "model":       "haiku" | "sonnet" | "opus" | "gpt-5" | "gpt-5-codex" | "o4-mini" | "sonnet-4"  (hint; optional),
     "inPlace":     true | false  (true ONLY if the agent manages worktrees itself — rare)
   }
 
@@ -994,11 +1003,12 @@ The script body MUST follow this shape:
       TERMINAL_AGENT_ID  — id of this agent (used as the state key)
       TERMINAL_BRANCH    — worktree branch (or "main" if inPlace)
       TERMINAL_WORKTREE  — worktree path (== TERMINAL_REPO if inPlace)
-      TERMINAL_ENGINE    — hint from sidecar / schedule override (default fallback when calling claude/codex)
+      TERMINAL_ENGINE    — hint from sidecar / schedule override (default fallback when calling an agent engine)
       TERMINAL_MODEL     — hint from sidecar / schedule override
   - For LLM calls inside the script:
       claude -p "<prompt>" --dangerously-skip-permissions --model "\${TERMINAL_MODEL:-sonnet}"
       codex exec -s danger-full-access -C "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-gpt-5}" "<prompt>"
+      cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-sonnet-4}" "<prompt>"
   - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):
       terminal-cli ticket "<title>" "<body>"   # file a backlog ticket on TERMINAL_REPO
       terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping
@@ -1117,7 +1127,7 @@ exec ${cmd}
   }
 }
 
-/** Spawn a claude/codex run that designs a new schedule entry from a natural-
+/** Spawn an agent run that designs a new schedule entry from a natural-
  *  language description. Reads the active agent list + existing schedules,
  *  appends a new entry to ~/.config/TerMinal/schedules.json. After the run
  *  completes the renderer reconciles + relaunches the LaunchAgent. */

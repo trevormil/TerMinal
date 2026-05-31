@@ -39,6 +39,11 @@ describe('classifyRunArgs', () => {
     expect(r.pipeline).toBe('review')
   })
 
+  test('classifies cursor as an engine', () => {
+    const r = classifyRunArgs(['docs', 'cursor'])
+    expect(r.engine).toBe('cursor')
+  })
+
   test('unrecognized tokens become persona candidates', () => {
     expect(classifyRunArgs(['docs', 'wizard', 'ninja']).personaCandidates).toEqual(['wizard', 'ninja'])
   })

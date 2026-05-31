@@ -204,6 +204,13 @@ function startSession(key: string, opts: StartOpts) {
     } else {
       sessionId = randomUUID()
     }
+  } else if (engine === 'cursor') {
+    if (opts.mode === 'resume' && opts.sessionId) {
+      sessionId = opts.sessionId
+      args.push('--resume', sessionId)
+    } else {
+      sessionId = opts.sessionId || randomUUID()
+    }
   } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
@@ -1143,7 +1150,7 @@ ipcMain.handle('bg:get', (_e, id: string) => getBgTask(id))
 ipcMain.handle('bg:log', (_e, id: string) => readBgTaskLog(id))
 ipcMain.handle(
   'bg:spawn',
-  (_e, input: { repoRoot: string; prompt: string; engine?: 'claude' | 'codex'; model?: string }) =>
+  (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) =>
     spawnBgTask(input),
 )
 ipcMain.handle('bg:cancel', (_e, id: string) => cancelBgTask(id))

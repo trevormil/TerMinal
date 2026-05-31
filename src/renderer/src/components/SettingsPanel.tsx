@@ -395,10 +395,11 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const MODEL_OPTIONS: Record<Engine, string[]> = {
     claude: ['', 'haiku', 'sonnet', 'opus'],
     codex: ['', 'gpt-5', 'gpt-5-codex', 'o4-mini'],
+    cursor: ['', 'gpt-5', 'sonnet-4', 'sonnet-4-thinking'],
   }
   const engineRow = (e: Engine, vendor: string) => {
-    const found = env ? (e === 'codex' ? env.codex.found : env.claude.found) : true
-    const detPath = env ? (e === 'codex' ? env.codex.path : env.claude.path) : ''
+    const found = env ? (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
+    const detPath = env ? (e === 'codex' ? env.codex.path : e === 'cursor' ? env.cursor.path : env.claude.path) : ''
     const defModel = s.engines[e].defaultModel
     return (
       <div key={e} className="mb-2">
@@ -513,9 +514,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           <Section title="Engines" desc="The agent backends. Detected on your PATH; override the binary path if needed.">
             {engineRow('codex', 'OpenAI Codex')}
             {engineRow('claude', 'Anthropic Claude')}
+            {engineRow('cursor', 'Cursor Agent')}
             <div className="mt-2 flex items-center gap-2">
               <span className="text-[11px] text-zinc-500">Default:</span>
-              {(['codex', 'claude'] as Engine[]).map((e) => (
+              {(['codex', 'claude', 'cursor'] as Engine[]).map((e) => (
                 <button
                   key={e}
                   onClick={() => save({ defaultEngine: e })}
@@ -642,7 +644,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           {/* OpenRouter — one-shot calls for cheap classifiers, health checks, etc. */}
           <Section
             title="OpenRouter (cheap one-shot calls)"
-            desc="Not a full coding harness — use claude/codex for that. Used inside scripts for cheap classifiers, health-check escalations, MR-authorship sniffing. Get a key at openrouter.ai/keys."
+            desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers, health-check escalations, MR-authorship sniffing. Get a key at openrouter.ai/keys."
           >
             <div className="space-y-2">
               <div className="flex items-center gap-2">

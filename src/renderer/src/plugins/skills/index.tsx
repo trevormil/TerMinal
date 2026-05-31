@@ -66,7 +66,7 @@ const plugin: Plugin<SkillInfo[]> = {
   id: 'skills',
   title: 'Skills',
   icon: Sparkles,
-  blurb: 'Browse available Claude/Codex skills — your project + personal skills first, plugin skills on expand.',
+  blurb: 'Browse available Claude/Codex/Cursor skills — your project + personal skills first, plugin skills on expand.',
   order: 9,
   intervalMs: 300_000, // skills are essentially static; poll rarely
   defaultEnabled: true,

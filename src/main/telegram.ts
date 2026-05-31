@@ -200,7 +200,7 @@ function cmdHelp() {
       '/repos · /cd <repo>',
       '',
       'RUNS · AGENTS',
-      '/runs · /run <agent> [codex|claude] [persona] [pipeline] [@repo] · /cancel <n>',
+      '/runs · /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo] · /cancel <n>',
       '/agents [@repo] · /state <agent> [@repo] · /reset-state <agent> [@repo]',
       '',
       'TICKETS',
@@ -217,7 +217,7 @@ function cmdHelp() {
       '/mrs [@repo] · /mr <iid> · /activity [N] · /harness · /status',
       '',
       'BACKGROUND',
-      '/bg [@repo] [claude|codex] [model] <prompt>',
+      '/bg [@repo] [claude|codex|cursor] [model] <prompt>',
       '/bg list · /bg cancel <n|id>',
       '',
       'BUDGETS',
@@ -290,7 +290,7 @@ function cmdStatus() {
 }
 
 function cmdRun(args: string[]) {
-  if (!args.length) return reply('Usage: /run <agent> [codex|claude] [persona] [pipeline] [@repo]')
+  if (!args.length) return reply('Usage: /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo]')
   const { agentId, engine, pipeline, repoToken, personaCandidates } = classifyRunArgs(args)
   let persona = ''
   const repo = resolveRepo(repoToken)
@@ -734,7 +734,7 @@ function cmdBudget(args: string[]) {
 function cmdBg(args: string[]) {
   if (!args.length) {
     return reply(
-      'Usage: /bg [<repo>] [claude|codex] [haiku|sonnet|opus|gpt-5] <prompt>\n' +
+      'Usage: /bg [<repo>] [claude|codex|cursor] [haiku|sonnet|opus|gpt-5] <prompt>\n' +
         '       /bg list · /bg cancel <n|id>',
     )
   }
@@ -742,18 +742,18 @@ function cmdBg(args: string[]) {
   if (args[0] === 'cancel') return cmdBgCancel(args.slice(1))
 
   // Parse repo / engine / model leading args
-  let engine: 'claude' | 'codex' = 'claude'
+  let engine: 'claude' | 'codex' | 'cursor' = 'claude'
   let model: string | undefined
   let repo: RepoCtx | null = null
   let promptStart = 0
   for (let i = 0; i < args.length; i++) {
     const tok = args[i].toLowerCase()
-    if (tok === 'claude' || tok === 'codex') {
+    if (tok === 'claude' || tok === 'codex' || tok === 'cursor') {
       engine = tok
       promptStart = i + 1
       continue
     }
-    if (['haiku', 'sonnet', 'opus', 'gpt-5', 'gpt-5-codex', 'gpt-5-mini', 'o4-mini'].includes(tok)) {
+    if (['haiku', 'sonnet', 'opus', 'gpt-5', 'gpt-5-codex', 'gpt-5-mini', 'o4-mini', 'sonnet-4', 'sonnet-4-thinking'].includes(tok)) {
       model = tok
       promptStart = i + 1
       continue
@@ -886,7 +886,7 @@ async function translateNaturalLanguage(text: string): Promise<string | null> {
   const SYSTEM = `You translate the user's natural-language request into a TerMinal slash command. Output EXACTLY one command line starting with /, or "NONE" if the request doesn't match.
 
 Available commands (with example syntax):
-  /bg [@repo] [claude|codex] [haiku|sonnet|opus] <prompt>
+  /bg [@repo] [claude|codex|cursor] [haiku|sonnet|opus] <prompt>
   /run <agentId> [@repo] [engine] [persona] [pipeline]
   /tickets [@repo]
   /ticket <slug|n>

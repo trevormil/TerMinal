@@ -3,6 +3,9 @@ import type { Engine } from './types'
 
 export type LaunchMode = 'process' | 'terminal'
 
+export const engineInstanceLabel = (engine: Engine): string =>
+  engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'
+
 export function openPromptInTerminal(input: {
   engine: Engine
   cwd: string

@@ -24,14 +24,12 @@ import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
 import type { LaunchMode } from '../lib/launch'
 import { EngineModelPicker } from './EngineModelPicker'
 import { SkillHint } from './SkillHint'
-import openaiLogo from '../assets/openai.svg'
-import claudeLogo from '../assets/claude.svg'
+import { EngineLogo } from './EngineLogo'
 
-// Three-step launch picker: engine (codex/claude) → persona (none + built-ins)
+// Three-step launch picker: engine → persona (none + built-ins)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + persona id ('' = none) + pipeline id ('single' = just the task).
-const LOGO: Record<Engine, string> = { codex: openaiLogo, claude: claudeLogo }
-const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude' }
+const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent' }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
   Gauge,
@@ -76,13 +74,13 @@ export function EnginePicker({
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
-  const avail = (e: Engine) => !env || (e === 'codex' ? env.codex.found : env.claude.found)
+  const avail = (e: Engine) => !env || (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found)
   useEffect(() => {
     if (!env || engine !== null) return
-    const ok = (['codex', 'claude'] as Engine[]).filter(avail)
+    const ok = (['codex', 'claude', 'cursor'] as Engine[]).filter(avail)
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
-  const engineOrder: Engine[] = defaultEngine === 'claude' ? ['claude', 'codex'] : ['codex', 'claude']
+  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor'] as Engine[]).filter((e) => e !== defaultEngine)]
 
   const step = engine === null ? 1 : persona === null ? 2 : pipeline === null ? 3 : 4
   const back = () => (step === 4 ? setPipeline(null) : step === 3 ? setPersona(null) : setEngine(null))
@@ -119,7 +117,7 @@ export function EnginePicker({
         {step === 1 && (
           <>
             <p className="mb-3 text-[11.5px] text-zinc-500">1 · Launch with which engine?</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {engineOrder.map((e) => {
                 const ok = avail(e)
                 return (
@@ -134,16 +132,16 @@ export function EnginePicker({
                         : 'cursor-not-allowed border-[var(--gt-border)]/50 opacity-40'
                     }`}
                   >
-                    <img src={LOGO[e]} alt="" className="h-7 w-7" draggable={false} />
+                    <EngineLogo engine={e} size={28} />
                     <span className="text-[13px] font-semibold text-zinc-100">{e}</span>
                     <span className="text-[10px] text-zinc-500">{ok ? VENDOR[e] : 'not installed'}</span>
                   </button>
                 )
               })}
             </div>
-            {env && !env.codex.found && !env.claude.found && (
+            {env && !env.codex.found && !env.claude.found && !env.cursor.found && (
               <p className="mt-3 text-[11px] text-[var(--gt-red)]">
-                Neither codex nor claude found on PATH. Install one, or set its path in Settings.
+                No agent engine was found on PATH. Install Claude, Codex, or Cursor Agent, or set its path in Settings.
               </p>
             )}
           </>
@@ -256,7 +254,7 @@ export function EnginePicker({
               >
                 <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
                 <span className="text-[13px] font-semibold text-zinc-100">
-                  {engine === 'claude' ? 'Claude Code' : 'Codex'} instance
+                  {engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'} instance
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
                   Open Terminal with the prompt prefilled.

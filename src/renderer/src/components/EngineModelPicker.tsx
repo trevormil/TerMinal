@@ -20,11 +20,17 @@ const MODELS: Record<Engine, { id: string; label: string }[]> = {
     { id: 'gpt-5', label: 'gpt-5' },
     { id: 'o4-mini', label: 'o4-mini' },
   ],
+  cursor: [
+    { id: 'gpt-5', label: 'gpt-5' },
+    { id: 'sonnet-4', label: 'sonnet-4' },
+    { id: 'sonnet-4-thinking', label: 'sonnet-4-thinking' },
+  ],
 }
 
 const VENDOR: Record<Engine, string> = {
   claude: 'Anthropic Claude',
   codex: 'OpenAI Codex',
+  cursor: 'Cursor Agent',
 }
 
 export function EngineModelPicker({
@@ -134,7 +140,7 @@ export function EngineModelPicker({
             )
           })}
           <div className="mt-1 border-t border-[var(--gt-border)]/60 px-1 pt-1.5 text-[9.5px] text-zinc-600">
-            Cheap models (haiku, gpt-5) for lightweight schedules; opus / gpt-5-codex for real work.
+            Pick a model only when you want to override the engine default.
           </div>
         </div>
       )}

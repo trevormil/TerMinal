@@ -19,6 +19,7 @@ import { reviewForPrDir, newestReviewDirForRepo } from './review'
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const TASKS_DIR = join(homedir(), '.claude', 'tasks')
 const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
+const CURSOR_PROJECTS_DIR = join(homedir(), '.cursor', 'projects')
 
 /** The agent's live todo list for a session (~/.claude/tasks/<id>/<n>.json). */
 export function readSessionTasks(sessionId: string): TaskItem[] {
@@ -76,7 +77,7 @@ export type TaskItem = { id: string; subject: string; status: string; activeForm
 
 export type SessionMeta = {
   id: string
-  engine: 'claude' | 'codex'
+  engine: 'claude' | 'codex' | 'cursor'
   cwd: string
   gitBranch: string
   model: string
@@ -445,9 +446,83 @@ function listCodexSessions(): SessionMeta[] {
     .filter((s): s is SessionMeta => !!s)
 }
 
+function slugToPath(slug: string): string {
+  if (!slug || /^\d+$/.test(slug) || slug === 'empty-window' || slug.startsWith('var-folders-')) return ''
+  return '/' + slug.replace(/-/g, '/')
+}
+
+export function parseCursorSessionFile(file: string): SessionMeta | null {
+  let mtime = 0
+  try {
+    mtime = statSync(file).mtimeMs
+  } catch {
+    return null
+  }
+  let id = file.split('/').pop()?.replace(/\.jsonl$/, '') || ''
+  const parts = file.split('/')
+  const projectsIdx = parts.lastIndexOf('projects')
+  const slug = projectsIdx >= 0 ? parts[projectsIdx + 1] || '' : ''
+  const cwd = slugToPath(slug)
+  let firstUserText = ''
+  let model = 'cursor'
+  let turns = 0
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (typeof obj.session_id === 'string') id = obj.session_id
+    if (typeof obj.model === 'string') model = obj.model
+    if (obj.role === 'user' || obj.message?.role === 'user') {
+      turns++
+      if (!firstUserText) {
+        firstUserText = textOf(obj.message?.content ?? obj.content)
+          .replace(/<timestamp>[\s\S]*?<\/timestamp>/g, '')
+          .replace(/<\/?user_query>/g, '')
+          .trim()
+          .slice(0, 140)
+      }
+    }
+  }
+  if (!id || (!cwd && !firstUserText)) return null
+  return {
+    id,
+    engine: 'cursor',
+    cwd,
+    gitBranch: '',
+    model,
+    turns,
+    firstUserText,
+    mtime,
+  }
+}
+
+function listCursorSessions(): SessionMeta[] {
+  if (!existsSync(CURSOR_PROJECTS_DIR)) return []
+  const files: string[] = []
+  for (const project of readdirSync(CURSOR_PROJECTS_DIR)) {
+    const dir = join(CURSOR_PROJECTS_DIR, project, 'agent-transcripts')
+    if (!existsSync(dir)) continue
+    for (const sessionDir of readdirSync(dir)) {
+      const f = join(dir, sessionDir, `${sessionDir}.jsonl`)
+      if (existsSync(f)) files.push(f)
+    }
+  }
+  return files.map(parseCursorSessionFile).filter((s): s is SessionMeta => !!s)
+}
+
 /** All sessions across all engines, newest first — for the entry picker. */
 export function listSessions(): SessionMeta[] {
-  const out = [...listClaudeSessions(), ...listCodexSessions()]
+  const out = [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)
 }
 

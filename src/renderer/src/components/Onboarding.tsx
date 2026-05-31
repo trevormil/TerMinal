@@ -41,7 +41,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     onDone()
   }
 
-  const eng = env && (env.codex.found || env.claude.found)
+  const eng = env && (env.codex.found || env.claude.found || env.cursor.found)
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[var(--gt-bg)]">
@@ -68,13 +68,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div className="space-y-1.5">
               <Row ok={env.claude.found} name="claude" hint={env.claude.found ? env.claude.path : 'install the Claude CLI to run sessions'} />
               <Row ok={env.codex.found} name="codex" hint={env.codex.found ? env.codex.path : 'optional — install for the Codex engine'} />
+              <Row ok={env.cursor.found} name="cursor-agent" hint={env.cursor.found ? env.cursor.path : 'optional — install Cursor Agent for the Cursor engine'} />
               <Row ok={env.gh.found && env.gh.authed} name="gh" hint={env.gh.found ? (env.gh.authed ? `GitHub PRs ready${env.gh.authHost ? ` (${env.gh.authHost})` : ''}` : 'run `gh auth login`') : 'optional — for GitHub PRs'} />
               <Row ok={env.glab.found && env.glab.authed} name="glab" hint={env.glab.found ? (env.glab.authed ? `GitLab MRs ready${env.glab.authHost ? ` (${env.glab.authHost})` : ''}` : 'run `glab auth login`') : 'optional — for GitLab MRs'} />
             </div>
           )}
           {env && !eng && (
             <div className="mt-3 text-[11px] text-amber-400">
-              Neither claude nor codex was found — install at least one to run agents. You can set an
+              No agent engine was found — install Claude, Codex, or Cursor Agent. You can set an
               explicit path in Settings.
             </div>
           )}

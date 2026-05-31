@@ -24,9 +24,9 @@ describe('pluginNamespaceFromSkillPath', () => {
 })
 
 describe('listSkills', () => {
-  test('merges mirrored project skills across Claude and Codex', () => {
+  test('merges mirrored project skills across Claude, Codex, and Cursor', () => {
     const repo = mkdtempSync(join(tmpdir(), 'terminal-skills-'))
-    for (const platform of ['.claude', '.codex']) {
+    for (const platform of ['.claude', '.codex', '.cursor']) {
       const dir = join(repo, platform, 'skills', 'mirror-test')
       mkdirSync(dir, { recursive: true })
       writeFileSync(
@@ -38,7 +38,7 @@ describe('listSkills', () => {
     const skill = listSkills(repo).find((s) => s.scope === 'project' && s.name === 'mirror-test')
 
     expect(skill?.description).toBe('mirrored skill')
-    expect(skill?.platforms).toEqual(['claude', 'codex'])
+    expect(skill?.platforms).toEqual(['claude', 'codex', 'cursor'])
   })
 
   test('sees this repo workflow skills as Claude/Codex mirrors', () => {

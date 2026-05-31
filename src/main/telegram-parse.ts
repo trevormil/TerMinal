@@ -20,7 +20,7 @@ export type RunArgs = {
   personaCandidates: string[]
 }
 
-/** Classify `/run` args positionally-by-keyword: engine (codex|claude),
+/** Classify `/run` args positionally-by-keyword: engine (codex|claude|cursor),
  *  @repo, a pipeline id, else a persona candidate. agentId is the first arg. */
 export function classifyRunArgs(args: string[]): RunArgs {
   let engine: Engine = 'codex'
@@ -29,7 +29,7 @@ export function classifyRunArgs(args: string[]): RunArgs {
   const personaCandidates: string[] = []
   for (const tok of args.slice(1)) {
     const t = tok.toLowerCase()
-    if (t === 'codex' || t === 'claude') engine = t
+    if (t === 'codex' || t === 'claude' || t === 'cursor') engine = t
     else if (t.startsWith('@')) repoToken = tok
     else if (PIPELINE_IDS.has(t)) pipeline = t
     else personaCandidates.push(tok)

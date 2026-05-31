@@ -4,18 +4,19 @@ import { homedir } from 'node:os'
 import { parseFrontmatter } from './frontmatter'
 
 // Enumerate platform-agnostic skills available to a session, across three scopes:
-//   project  — <repoRoot>/.claude/skills and <repoRoot>/.codex/skills
-//   personal — ~/.claude/skills and ~/.codex/skills
+//   project  — <repoRoot>/.claude/skills, .codex/skills, and .cursor/skills
+//   personal — ~/.claude/skills, ~/.codex/skills, and ~/.cursor/skills
 //   plugin   — ~/.claude/plugins/cache/**/skills/<name>/SKILL.md (installed plugins)
 // "Ours" = project + personal; plugins are the larger external set shown on expand.
 
 export type SkillScope = 'project' | 'personal' | 'plugin'
+export type SkillPlatform = 'claude' | 'codex' | 'cursor'
 export type SkillInfo = {
   name: string
   description: string
   scope: SkillScope
   namespace?: string // plugin name, for scope === 'plugin'
-  platforms: ('claude' | 'codex')[]
+  platforms: SkillPlatform[]
 }
 
 // Plugin skills live at .../cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md.
@@ -30,7 +31,7 @@ export function pluginNamespaceFromSkillPath(skillMdPath: string): string {
 function readSkill(
   skillMdPath: string,
   scope: SkillScope,
-  platform: 'claude' | 'codex',
+  platform: SkillPlatform,
   namespace?: string,
 ): SkillInfo | null {
   try {
@@ -44,7 +45,7 @@ function readSkill(
 }
 
 // One level of <dir>/<name>/SKILL.md folders.
-function scanSkillDir(dir: string, scope: SkillScope, platform: 'claude' | 'codex'): SkillInfo[] {
+function scanSkillDir(dir: string, scope: SkillScope, platform: SkillPlatform): SkillInfo[] {
   if (!existsSync(dir)) return []
   const out: SkillInfo[] = []
   for (const entry of readdirSync(dir)) {
@@ -99,11 +100,13 @@ export function listSkills(repoRoot: string): SkillInfo[] {
     ? [
         ...scanSkillDir(join(repoRoot, '.claude/skills'), 'project', 'claude'),
         ...scanSkillDir(join(repoRoot, '.codex/skills'), 'project', 'codex'),
+        ...scanSkillDir(join(repoRoot, '.cursor/skills'), 'project', 'cursor'),
       ]
     : []
   const personal = [
     ...scanSkillDir(join(homedir(), '.claude/skills'), 'personal', 'claude'),
     ...scanSkillDir(join(homedir(), '.codex/skills'), 'personal', 'codex'),
+    ...scanSkillDir(join(homedir(), '.cursor/skills'), 'personal', 'cursor'),
   ]
   const plugin = scanPluginSkills()
   // Dedup by scope+namespace+name and merge platform mirrors into one row.

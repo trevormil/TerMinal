@@ -16,7 +16,7 @@ import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { navigateTo } from '../../lib/nav'
-import { openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
@@ -235,7 +235,7 @@ function ScheduleForm({
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
               <option value="process">Process</option>
-              <option value="terminal">{engine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+              <option value="terminal">{engineInstanceLabel(engine)} instance</option>
             </select>
             {customErr && <span className="text-[11px] text-[var(--gt-red)]">{customErr}</span>}
             <div className="ml-auto flex items-center gap-2">
@@ -430,7 +430,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
   // Live log tail while a running cron job's log is open. Polls every 1.5s and
   // updates the inline log pane so the operator sees output as `script -q`
-  // streams claude/codex stdout, instead of having to re-click "log".
+  // streams agent stdout, instead of having to re-click "log".
   useEffect(() => {
     if (!log) return
     const targetRun = runs.find((r) => r.id === log.runId)
@@ -710,7 +710,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                           <>
                             <Badge tone="mute">prompt</Badge>
                             <span className="text-zinc-700">
-                              legacy prompt — runs as a single claude/codex call
+                              legacy prompt — runs as a single agent call
                             </span>
                           </>
                         )}

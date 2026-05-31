@@ -48,7 +48,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
-import { openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
 import { agentPrompt } from '../../lib/agentPrompts'
 import type { Tab, TabContext, Agent, AgentRun, Engine } from '../../lib/types'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
@@ -128,7 +128,9 @@ const SOURCE: Record<string, { label: string; tone: BadgeTone }> = {
 const runsAs = (engine: Engine): string =>
   engine === 'claude'
     ? "claude -p '<prompt>' --dangerously-skip-permissions"
-    : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
+    : engine === 'cursor'
+      ? "cursor-agent -p --force --trust --workspace <worktree> '<prompt>'"
+      : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
 
 const FIELD =
   'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -218,7 +220,7 @@ function AgentDesigner({
                   },
                   {
                     label: 'single LLM call',
-                    text: 'A simple agent that runs a single claude prompt to … (fill in the task). Opens a PR with the result. Default model: sonnet.',
+                    text: 'A simple agent that runs a single selected-engine prompt to … (fill in the task). Opens a PR with the result. Default model: sonnet.',
                   },
                   {
                     label: 'pure deterministic',
@@ -293,7 +295,7 @@ function AgentDesigner({
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
               <option value="process">Process</option>
-              <option value="terminal">{engine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+              <option value="terminal">{engineInstanceLabel(engine)} instance</option>
             </select>
           </label>
 
@@ -684,7 +686,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
               />
               <button
                 onClick={() => setDesignerOpen(true)}
-                title="Design a new agent — describe what it does, claude/codex writes the bash"
+                title="Design a new agent — describe what it does, the selected engine writes the bash"
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20"
               >
                 <Plus size={12} strokeWidth={2.5} />
@@ -899,7 +901,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                         {script
                           ? script.path
                           : script === null
-                            ? `no .agents/${selectedAgent.id}.sh — runs as a single claude/codex prompt`
+                            ? `no .agents/${selectedAgent.id}.sh — runs as a single agent prompt`
                             : `reading .agents/${selectedAgent.id}.sh…`}
                       </span>
                       {script === null && (
@@ -1230,7 +1232,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
               <button
                 onClick={() => setDesignerOpen(true)}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                title="Design a new agent — describe what it does, claude/codex writes the prompt"
+                title="Design a new agent — describe what it does, the selected engine writes the prompt"
               >
                 <Plus size={12} strokeWidth={2.5} />
                 New agent
@@ -1344,7 +1346,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                               <Badge tone="mute">prompt</Badge>
                               <span className="min-w-0 flex-1 truncate text-zinc-700">
                                 {scripts[a.id] === null
-                                  ? `no .agents/${a.id}.sh — runs as a single claude/codex prompt`
+                                  ? `no .agents/${a.id}.sh — runs as a single agent prompt`
                                   : 'loading…'}
                               </span>
                               {scripts[a.id] === null && (

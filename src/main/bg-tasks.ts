@@ -25,7 +25,7 @@ export type BgTask = {
   repo: string // basename for display
   repoRoot: string // absolute path
   prompt: string
-  engine: 'claude' | 'codex'
+  engine: 'claude' | 'codex' | 'cursor'
   model?: string
   worktree: string
   branch: string
@@ -90,7 +90,7 @@ export function readBgTaskLog(id: string): string {
 export type SpawnBgInput = {
   repoRoot: string
   prompt: string
-  engine?: 'claude' | 'codex'
+  engine?: 'claude' | 'codex' | 'cursor'
   model?: string
 }
 
@@ -150,7 +150,9 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   const cmd =
     engine === 'claude'
       ? [enginePath('claude'), '-p', enrichedPrompt, '--dangerously-skip-permissions']
-      : [enginePath('codex'), 'exec', '-s', 'danger-full-access', '-C', worktree, enrichedPrompt]
+      : engine === 'cursor'
+        ? [enginePath('cursor'), '-p', '--force', '--trust', '--output-format', 'text', '--workspace', worktree, enrichedPrompt]
+        : [enginePath('codex'), 'exec', '-s', 'danger-full-access', '-C', worktree, enrichedPrompt]
   if (input.model) cmd.push('--model', input.model)
 
   // Pipe stdout/stderr to the log file. Detached so it survives parent exit.

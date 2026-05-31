@@ -243,7 +243,10 @@ export default function App() {
         }
         if (ev.tabId === 'terminal:new') {
           const payload = ev.payload || {}
-          const engine = payload.engine === 'codex' || payload.engine === 'claude' ? payload.engine : 'claude'
+          const engine =
+            payload.engine === 'codex' || payload.engine === 'claude' || payload.engine === 'cursor'
+              ? payload.engine
+              : 'claude'
           const cwd = typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || ''
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''

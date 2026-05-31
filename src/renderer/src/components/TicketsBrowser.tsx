@@ -9,7 +9,7 @@ import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import { onNavigate } from '../lib/nav'
-import { openPromptInTerminal, type LaunchMode } from '../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
 import type { Ticket, TabContext, Mr, Engine } from '../lib/types'
@@ -177,7 +177,7 @@ function NewTicketModal({
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
               <option value="process">Process</option>
-              <option value="terminal">{spawnEngine === 'claude' ? 'Claude Code' : 'Codex'} instance</option>
+              <option value="terminal">{engineInstanceLabel(spawnEngine)} instance</option>
             </select>
             {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
             <button

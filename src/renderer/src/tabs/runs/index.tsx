@@ -134,7 +134,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
 
   // Lazy-load + live-tail the log when a run is selected. Polls every 1.5s
   // while the underlying run is still running so the operator sees streaming
-  // claude/codex output without manual reloads.
+  // agent output without manual reloads.
   useEffect(() => {
     if (!selectedRun) {
       setLog(null)
@@ -165,7 +165,8 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
       if (run.source === 'cron' && run.scheduleId) {
         await window.gt.schedules.runNow(run.scheduleId)
       } else {
-        const eng = run.engine === 'codex' || run.engine === 'claude' ? run.engine : undefined
+        const eng =
+          run.engine === 'codex' || run.engine === 'claude' || run.engine === 'cursor' ? run.engine : undefined
         await window.gt.agents.run(run.agentId, eng, undefined, undefined, undefined)
       }
       await reload()

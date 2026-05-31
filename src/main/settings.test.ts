@@ -40,7 +40,7 @@ describe('migrate', () => {
       forge: 'github',
       harnessDir: '/h',
       templateRepo: 'https://x/y',
-      engines: { codex: { path: '/bin/codex' }, claude: { path: '' } },
+      engines: { codex: { path: '/bin/codex' }, claude: { path: '' }, cursor: { path: '/bin/cursor-agent' } },
     })
     expect(s.projectsDir).toBe('/p')
     expect(s.worktreesDir).toBe('/w')
@@ -49,6 +49,7 @@ describe('migrate', () => {
     expect(s.harnessDir).toBe('/h')
     expect(s.templateRepo).toBe('https://x/y')
     expect(s.engines.codex.path).toBe('/bin/codex')
+    expect(s.engines.cursor.path).toBe('/bin/cursor-agent')
   })
 
   test('invalid enum values fall back to defaults', () => {

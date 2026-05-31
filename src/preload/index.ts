@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 type StartOpts = {
   mode: 'new' | 'resume'
-  engine?: 'claude' | 'codex' | 'local'
+  engine?: 'claude' | 'codex' | 'cursor' | 'local'
   sessionId?: string
   cwd?: string
   name?: string
@@ -57,7 +57,7 @@ const gt = {
       ipcRenderer.invoke('classify:risk', input),
   },
   mrAuthorship: (iid: number, opts?: { refine?: boolean }) => ipcRenderer.invoke('mrs:authorship', iid, opts),
-  // on-demand codex/claude agents
+  // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
     runLog: (source: 'cron' | 'agent', runId: string) => ipcRenderer.invoke('runs:log', source, runId),
@@ -223,7 +223,7 @@ const gt = {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),
     log: (id: string) => ipcRenderer.invoke('bg:log', id),
-    spawn: (input: { repoRoot: string; prompt: string; engine?: 'claude' | 'codex'; model?: string }) =>
+    spawn: (input: { repoRoot: string; prompt: string; engine?: 'claude' | 'codex' | 'cursor'; model?: string }) =>
       ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },

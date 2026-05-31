@@ -118,7 +118,7 @@ export function EntryScreen({
             </>
           ) : (
             <>
-              Start Claude, Codex, or a local shell. This window pins to one session so workspace
+              Start Claude, Codex, Cursor, or a local shell. This window pins to one session so workspace
               tabs track the same repo.
             </>
           )}
@@ -211,8 +211,8 @@ export function EntryScreen({
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
             Start a new session
           </div>
-          <div className="mb-2 grid grid-cols-3 gap-2">
-            {(['local', 'claude', 'codex'] as SessionEngine[]).map((e) => (
+          <div className="mb-2 grid grid-cols-4 gap-2">
+            {(['local', 'claude', 'codex', 'cursor'] as SessionEngine[]).map((e) => (
               <button
                 key={e}
                 onClick={() => setEngine(e)}

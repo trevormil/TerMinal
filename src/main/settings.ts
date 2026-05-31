@@ -7,10 +7,10 @@ import { homedir } from 'node:os'
 // read time" (e.g. projectsDir → your home dir). Legacy files in the old
 // { telegram, telegramControl } shape are migrated on read.
 
-export type EngineId = 'codex' | 'claude'
+export type EngineId = 'codex' | 'claude' | 'cursor'
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
-  defaultModel: string // '' = let claude/codex pick their own default
+  defaultModel: string // '' = let the engine pick its own default
 }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = {
@@ -67,6 +67,7 @@ export function defaultSettings(): Settings {
     engines: {
       codex: { path: '', defaultModel: '' },
       claude: { path: '', defaultModel: '' },
+      cursor: { path: '', defaultModel: '' },
     },
     defaultEngine: 'claude', // claude is the required engine; codex is optional
     forge: 'auto',
@@ -99,10 +100,10 @@ export function migrate(raw: unknown): Settings {
   for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
     if (typeof r[k] === 'string') s[k] = r[k]
   }
-  if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude') s.defaultEngine = r.defaultEngine
+  if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') s.defaultEngine = r.defaultEngine
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
-    for (const e of ['codex', 'claude'] as EngineId[]) {
+    for (const e of ['codex', 'claude', 'cursor'] as EngineId[]) {
       const cfg = r.engines[e]
       if (cfg && typeof cfg === 'object') {
         if (typeof cfg.path === 'string') s.engines[e].path = cfg.path
@@ -145,6 +146,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
     engines: {
       codex: { ...cur.engines.codex, ...(patch.engines?.codex || {}) },
       claude: { ...cur.engines.claude, ...(patch.engines?.claude || {}) },
+      cursor: { ...cur.engines.cursor, ...(patch.engines?.cursor || {}) },
     },
     openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
   }
@@ -183,16 +185,18 @@ export function resolvedTemplateRepo(): string {
   return readSettings().templateRepo || DEFAULT_TEMPLATE_REPO
 }
 
-/** The binary to invoke for an engine: explicit path > env (claude) > bare name. */
+/** The binary to invoke for an engine: explicit path > env override > bare name. */
 export function enginePath(engine: EngineId): string {
   const p = readSettings().engines[engine]?.path
   if (p) return p
   if (engine === 'claude' && process.env.GT_CLAUDE_BIN) return process.env.GT_CLAUDE_BIN
+  if (engine === 'cursor' && process.env.GT_CURSOR_BIN) return process.env.GT_CURSOR_BIN
+  if (engine === 'cursor') return 'cursor-agent'
   return engine
 }
 
 /** Per-engine model fallback. Returns '' when no fallback is set, in which
- *  case callers should let claude/codex pick their own default. */
+ *  case callers should let the engine pick its own default. */
 export function engineDefaultModel(engine: EngineId): string {
   return readSettings().engines[engine]?.defaultModel || ''
 }
