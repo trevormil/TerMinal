@@ -990,7 +990,7 @@ The sidecar JSON shape (every field optional except id + title):
     "icon":        "lucide-react icon name — Bot, BookText, ScanSearch, ListChecks, TestTube2, ShieldAlert, Gauge, PackageCheck, Eraser, Wrench, Activity, Zap, etc.",
     "opensPr":     true | false,
     "engine":      "claude" | "codex" | "cursor"  (hint; runtime can override),
-    "model":       "haiku" | "sonnet" | "opus" | "gpt-5" | "gpt-5-codex" | "o4-mini" | "sonnet-4"  (hint; optional),
+    "model":       "haiku" | "sonnet" | "opus" | "gpt-5" | "gpt-5-codex" | "o4-mini" | "composer-2.5-fast" | "composer-2.5"  (hint; optional),
     "inPlace":     true | false  (true ONLY if the agent manages worktrees itself — rare)
   }
 
@@ -1008,7 +1008,7 @@ The script body MUST follow this shape:
   - For LLM calls inside the script:
       claude -p "<prompt>" --dangerously-skip-permissions --model "\${TERMINAL_MODEL:-sonnet}"
       codex exec -s danger-full-access -C "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-gpt-5}" "<prompt>"
-      cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-sonnet-4}" "<prompt>"
+      cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-composer-2.5-fast}" "<prompt>"
   - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):
       terminal-cli ticket "<title>" "<body>"   # file a backlog ticket on TERMINAL_REPO
       terminal-cli hitl "<title>" "<action>"   # file a global HITL item + Telegram ping

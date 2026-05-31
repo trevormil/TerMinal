@@ -734,7 +734,7 @@ function cmdBudget(args: string[]) {
 function cmdBg(args: string[]) {
   if (!args.length) {
     return reply(
-      'Usage: /bg [<repo>] [claude|codex|cursor] [haiku|sonnet|opus|gpt-5] <prompt>\n' +
+      'Usage: /bg [<repo>] [claude|codex|cursor] [model] <prompt>\n' +
         '       /bg list · /bg cancel <n|id>',
     )
   }
@@ -753,7 +753,30 @@ function cmdBg(args: string[]) {
       promptStart = i + 1
       continue
     }
-    if (['haiku', 'sonnet', 'opus', 'gpt-5', 'gpt-5-codex', 'gpt-5-mini', 'o4-mini', 'sonnet-4', 'sonnet-4-thinking'].includes(tok)) {
+    if (
+      [
+        'haiku',
+        'sonnet',
+        'opus',
+        'gpt-5',
+        'gpt-5-codex',
+        'gpt-5-mini',
+        'o4-mini',
+        'auto',
+        'composer-2.5-fast',
+        'composer-2.5',
+        'gpt-5.3-codex',
+        'gpt-5.3-codex-high',
+        'gpt-5.2',
+        'gpt-5.5-medium',
+        'claude-opus-4-8-high',
+        'claude-opus-4-8-thinking-high',
+        'claude-4.6-sonnet-medium',
+        'gemini-3.1-pro',
+        'grok-4.3',
+        'kimi-k2.5',
+      ].includes(tok)
+    ) {
       model = tok
       promptStart = i + 1
       continue

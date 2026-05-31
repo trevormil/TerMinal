@@ -395,7 +395,22 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const MODEL_OPTIONS: Record<Engine, string[]> = {
     claude: ['', 'haiku', 'sonnet', 'opus'],
     codex: ['', 'gpt-5', 'gpt-5-codex', 'o4-mini'],
-    cursor: ['', 'gpt-5', 'sonnet-4', 'sonnet-4-thinking'],
+    cursor: [
+      '',
+      'auto',
+      'composer-2.5-fast',
+      'composer-2.5',
+      'gpt-5.3-codex',
+      'gpt-5.3-codex-high',
+      'gpt-5.2',
+      'gpt-5.5-medium',
+      'claude-opus-4-8-high',
+      'claude-opus-4-8-thinking-high',
+      'claude-4.6-sonnet-medium',
+      'gemini-3.1-pro',
+      'grok-4.3',
+      'kimi-k2.5',
+    ],
   }
   const engineRow = (e: Engine, vendor: string) => {
     const found = env ? (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true

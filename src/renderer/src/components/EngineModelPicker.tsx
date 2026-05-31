@@ -21,9 +21,19 @@ const MODELS: Record<Engine, { id: string; label: string }[]> = {
     { id: 'o4-mini', label: 'o4-mini' },
   ],
   cursor: [
-    { id: 'gpt-5', label: 'gpt-5' },
-    { id: 'sonnet-4', label: 'sonnet-4' },
-    { id: 'sonnet-4-thinking', label: 'sonnet-4-thinking' },
+    { id: 'auto', label: 'auto' },
+    { id: 'composer-2.5-fast', label: 'composer-2.5-fast' },
+    { id: 'composer-2.5', label: 'composer-2.5' },
+    { id: 'gpt-5.3-codex', label: 'gpt-5.3-codex' },
+    { id: 'gpt-5.3-codex-high', label: 'gpt-5.3-codex-high' },
+    { id: 'gpt-5.2', label: 'gpt-5.2' },
+    { id: 'gpt-5.5-medium', label: 'gpt-5.5-medium' },
+    { id: 'claude-opus-4-8-high', label: 'opus-4.8' },
+    { id: 'claude-opus-4-8-thinking-high', label: 'opus-4.8-thinking' },
+    { id: 'claude-4.6-sonnet-medium', label: 'sonnet-4.6' },
+    { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro' },
+    { id: 'grok-4.3', label: 'grok-4.3' },
+    { id: 'kimi-k2.5', label: 'kimi-k2.5' },
   ],
 }
 
