@@ -13,7 +13,32 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
-const PRS_ROOT = join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness', 'prs')
+const SETTINGS_FILE = join(CFG, 'settings.json')
+
+function readSettings() {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return s && typeof s === 'object' ? s : {}
+  } catch {
+    return {}
+  }
+}
+
+function configuredProjectsDir() {
+  const s = readSettings()
+  return typeof s.projectsDir === 'string' && s.projectsDir ? s.projectsDir : homedir()
+}
+
+function configuredHarnessDir() {
+  if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
+  const s = readSettings()
+  return typeof s.harnessDir === 'string' ? s.harnessDir : ''
+}
+
+function prsRoot() {
+  const dir = configuredHarnessDir()
+  return dir ? join(dir, 'prs') : ''
+}
 
 // ---------------------------------------------------------------------------
 // Frontmatter parser (mirrors the renderer-side parser; minimal, regex-only)
@@ -69,7 +94,7 @@ function knownRepoRoots() {
     }
   } catch {}
   // Walk common parent dir to find any repo not yet known
-  const parent = join(homedir(), 'CompSci', 'gauntlet')
+  const parent = configuredProjectsDir()
   if (existsSync(parent)) {
     try {
       for (const name of readdirSync(parent)) {
@@ -164,10 +189,11 @@ function getTicketTool(args) {
   return null
 }
 
-// --- PRs / MRs (from autopilot-harness's prs/ artifact store) -------------
+// --- PRs / MRs (from optional harness prs/ artifact store) -----------------
 
 function listPrs(args) {
-  if (!existsSync(PRS_ROOT)) return []
+  const root = prsRoot()
+  if (!root || !existsSync(root)) return []
   const out = []
   // prs/<host>/<owner>/<name>/<num>/meta.json
   const walk = (dir, depth = 0) => {
@@ -207,14 +233,16 @@ function listPrs(args) {
       }
     }
   }
-  walk(PRS_ROOT)
+  walk(root)
   return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 50)
 }
 
 function getPrArtifact(args) {
   const { host, repo, number, sha } = args
   if (!host || !repo || !number) return null
-  const dir = join(PRS_ROOT, host, ...repo.split('/'), String(number))
+  const root = prsRoot()
+  if (!root) return null
+  const dir = join(root, host, ...repo.split('/'), String(number))
   if (!existsSync(dir)) return null
   // Default sha = first commit in meta.json (newest)
   let targetSha = sha
@@ -735,9 +763,11 @@ function listAgentsTool(args) {
   return { repo: basename(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) }
 }
 
-// --- list_review_patterns: read autopilot-harness/reports/review-patterns.md
+// --- list_review_patterns: read <harnessDir>/reports/review-patterns.md
 function listReviewPatternsTool(args) {
-  const path = join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness', 'reports', 'review-patterns.md')
+  const harness = configuredHarnessDir()
+  if (!harness) return { error: 'no harnessDir configured in ~/.config/TerMinal/settings.json' }
+  const path = join(harness, 'reports', 'review-patterns.md')
   if (!existsSync(path)) return { error: 'no review patterns report yet; runs nightly via bin/review-findings-mine' }
   const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(50, args.limit)) : 10
   const raw = readFileSync(path, 'utf8')
@@ -783,7 +813,9 @@ function factoryHealthTool() {
   }
   // Open PR count (from prs/cache.json)
   try {
-    const cf = join(PRS_ROOT, 'cache.json')
+    const root = prsRoot()
+    if (!root) return { repos: out.sort((a, b) => b.ticketCounts.open - a.ticketCounts.open) }
+    const cf = join(root, 'cache.json')
     if (existsSync(cf)) {
       const cache = JSON.parse(readFileSync(cf, 'utf8'))
       const prs = Array.isArray(cache?.prs) ? cache.prs : []
@@ -1151,7 +1183,7 @@ const TOOLS = [
   {
     name: 'list_review_patterns',
     description:
-      'Top clusters from the nightly review-findings miner (autopilot-harness/reports/review-patterns.md). Use to see what recurring issues code reviews are flagging across the fleet before opening a fresh review.',
+      'Top clusters from the nightly review-findings miner (<harnessDir>/reports/review-patterns.md). Use to see what recurring issues code reviews are flagging across the fleet before opening a fresh review.',
     inputSchema: { type: 'object', properties: { limit: { type: 'number' } } },
   },
   {

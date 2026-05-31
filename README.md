@@ -47,7 +47,8 @@ mounted when you switch tabs, so a session never drops.
 
 ## Quick start
 
-Requires [bun](https://bun.sh) and the `claude` CLI on your `PATH`.
+Requires [bun](https://bun.sh) and at least one engine CLI on your `PATH`:
+`claude` or `codex`.
 
 > **Platform: macOS (Apple Silicon).** Packaging, scheduling (launchd), and the
 > "open in editor/browser" handoffs (`open -a`) assume macOS. The editor and
@@ -65,13 +66,14 @@ bun run dev                   # launch the dev build
 On **first launch** a short onboarding probes your machine (which of
 `claude`/`codex`/`gh`/`glab` are installed + authenticated) and confirms your
 projects folder — everything has a working default, so you can skip it. After
-that, `bun run dev` opens the **session picker**: resume an existing Claude
-session, start a new one in any folder, or **spin up a brand-new project from a
-template** (see below). New sessions launch `claude --session-id <uuid>`;
-resumed ones launch `claude --resume <id>` in the session's original directory.
+that, `bun run dev` opens the **session picker**: resume an existing
+Claude/Codex session, start a new one in any folder, or **spin up a brand-new
+project from a template** (see below). Sessions launch the real engine CLI in
+the selected directory and resume through that engine's native resume path.
 
-The app is **self-configuring** — only `claude` is required; `codex`, `gh`, and
-`glab` are optional and enable the features that use them. See
+The app is **self-configuring** — install either `claude` or `codex` to run
+sessions; `gh` and `glab` are optional and enable the forge features that use
+them. See
 [**Setup & settings**](#setup) for the full picture.
 
 ### Install it as a real app
@@ -98,7 +100,7 @@ See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
 repo-aware — each shows based on the attached session's repo.
 
-- **Terminal** — the `claude` or `codex` CLI. Claude sessions include the cockpit sidebar; Codex sessions use the full terminal pane.
+- **Terminal** — the `claude` or `codex` CLI with a session-aware cockpit sidebar.
 - **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
   **grouped by status** (closed/icebox collapsed by default). Inline
   status/priority edits write back to the markdown file.

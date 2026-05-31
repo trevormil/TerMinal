@@ -721,7 +721,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
               >
                 {mcpState?.busy ? <Loader2 size={14} className="animate-spin" /> : <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
-                Install MCP server (Claude Code)
+                Install MCP server (Claude Code + Codex)
                 <span className="ml-auto text-[10.5px] text-zinc-600">cross-session views</span>
               </button>
               {mcpState && !mcpState.busy && (
@@ -759,7 +759,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               in /Applications + relaunches. */}
           <Section
             title="Rebuild + reinstall"
-            desc="Run bin/release from inside the app — builds, signs, replaces /Applications/TerMinal.app, relaunches. Source checkout must be on this machine."
+            desc="Run bin/release from inside the app — builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
           >
             <RebuildPanel />
           </Section>

@@ -11,17 +11,30 @@ a clear hint in Settings. Everything below is also reachable from the in-app
 > into Claude to have it walk you through the rest (CLI auth, global skills,
 > Telegram). The fastest path is to let Claude do it.
 
+## 0. System prerequisites
+
+TerMinal is macOS-first. Before first launch, install:
+
+- **Bun** for local development/builds: `curl -fsSL https://bun.sh/install | bash`
+- **Xcode Command Line Tools** for `git`, `codesign`, and native rebuilds:
+  `xcode-select --install`
+- **Homebrew** if you want the easiest path for optional CLIs (`gh`, `glab`,
+  engine CLIs, etc.)
+
+Finder/Dock-launched apps get a smaller `PATH` than your shell. TerMinal
+re-resolves your login shell's `PATH` at startup, but Settings → Engines also
+lets you pin explicit binary paths when a CLI lives somewhere unusual.
+
 ## 1. Engines (required: one of)
 
 Agents and sessions run through an engine CLI:
 
-- **`claude`** — required for terminal sessions; one of the two agent engines.
-- **`codex`** — optional second agent engine.
+- **`claude`** — Claude Code sessions and one of the two agent engines.
+- **`codex`** — Codex sessions and one of the two agent engines.
 
 Install at least one. The app finds them on your `PATH`; if yours lives
 somewhere unusual, set an explicit path in **Settings → Engines**. Pick your
-default engine there too. (A Finder/Dock-launched app gets a minimal `PATH`, so
-the app re-resolves your login shell's `PATH` at startup to find Homebrew CLIs.)
+default engine there too.
 
 ## 2. Code forge (optional: GitHub and/or GitLab)
 
@@ -64,6 +77,11 @@ Two ways to set them up:
 The app works without these — they enhance the agent/PR workflow, they don't
 gate sessions.
 
+Codex note: Codex skills are available to the model, but current Codex CLI builds
+do not list custom skills in the native `/` command menu. Use `$ticket` /
+`$code-review` directly in Codex. TerMinal's embedded Codex input also accepts
+the mirrored `/ticket` spelling and rewrites it before submit.
+
 ## 4. Telegram (optional — notifications + AFK control)
 
 Native Bot API, no scripts required:
@@ -103,3 +121,15 @@ steps, and git hooks can call it to push events into the cockpit.
 `~/.config/TerMinal/settings.json` — created/migrated automatically.
 Re-run the first-time walkthrough anytime via **Settings → Re-run first-time
 setup**.
+
+Important paths to check on a fresh machine:
+
+- `projectsDir` — where the entry screen scans for repos. Blank means your home
+  directory.
+- `worktreesDir` — where background agents create git worktrees. Blank means
+  `<projectsDir>/.worktrees`.
+- `templateRepo` — project-template source. A URL is fine for new-project
+  scaffolding; use a local path if you want the in-app "bootstrap this existing
+  repo" helper or Telegram `/install <agent>` to copy from your checkout.
+- `harnessDir` — optional legacy cross-repo artifact store. Leave blank unless
+  you have one; in-repo `.reviews/` from project-template is the primary path.

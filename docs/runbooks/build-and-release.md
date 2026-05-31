@@ -6,7 +6,8 @@ last-verified: 2026-05-28
 # Build & package (macOS)
 
 Produce a branded, double-clickable `TerMinal.app` you can drop in
-`/Applications` and pin to the Dock.
+`/Applications` and pin to the Dock. Set `TERMINAL_APP_DEST` if you want to
+install somewhere else, such as a per-user `~/Applications/TerMinal.app`.
 
 ## One shot
 
@@ -40,6 +41,14 @@ open "/Applications/TerMinal.app"   # right-click → Open the first time (Gatek
 ```
 
 Then right-click the Dock icon → **Options → Keep in Dock**.
+
+`bun run release` automates the same sequence and installs to
+`/Applications/TerMinal.app` by default:
+
+```bash
+bun run release
+TERMINAL_APP_DEST="$HOME/Applications/TerMinal.app" bun run release
+```
 
 ## Notes
 

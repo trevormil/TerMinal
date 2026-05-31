@@ -10,6 +10,28 @@ import * as pty from 'node-pty'
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
 // exist — derive the module dir the ESM-canonical way or the window never opens.
 const moduleDir = dirname(fileURLToPath(import.meta.url))
+
+function sourceCheckoutRoot(marker: string): string {
+  const candidates = [
+    process.env.GT_TERMINAL_REPO || '',
+    process.cwd(),
+    app.getAppPath(),
+    join(moduleDir, '..', '..'),
+  ].filter(Boolean)
+  for (const c of candidates) {
+    if (existsSync(join(c, marker))) return c
+  }
+  return ''
+}
+
+function localProjectTemplateRoot(): string {
+  const configured = resolvedTemplateRepo()
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(configured) && existsSync(join(configured, 'bootstrap.sh'))) {
+    return configured
+  }
+  const checkout = sourceCheckoutRoot(join('templates', 'project-template', 'bootstrap.sh'))
+  return checkout ? join(checkout, 'templates', 'project-template') : ''
+}
 import {
   readTranscriptStats,
   readHarnessTdd,
@@ -44,6 +66,7 @@ import {
   resolvedProjectsDir,
   resolvedEditorApp,
   resolvedBrowserApp,
+  resolvedTemplateRepo,
   enginePath,
   type SettingsPatch,
 } from './settings'
@@ -846,7 +869,12 @@ ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
 // for conflicts). Streams nothing — we just wait and return ok/error.
 ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   if (!repoRoot) return { error: 'no repoRoot' }
-  const templateRoot = join(homedir(), 'CompSci', 'gauntlet', 'project-template')
+  const templateRoot = localProjectTemplateRoot()
+  if (!templateRoot)
+    return {
+      error:
+        'project-template checkout not found — initialize templates/project-template or set Settings → template repo to a local project-template path',
+    }
   const script = join(templateRoot, 'bootstrap.sh')
   if (!existsSync(script))
     return { error: `bootstrap.sh not found at ${script} — check project-template checkout` }
@@ -889,18 +917,7 @@ ipcMain.handle('release:start', () => {
   // We probe a few candidates: GT_REPO env var (dev override) → process.cwd()
   // → __dirname climb-up. This is enough for the dev / source-installed
   // workflow TerMinal actually runs in.
-  const candidates = [
-    process.env.GT_TERMINAL_REPO || '',
-    process.cwd(),
-    join(homedir(), 'CompSci', 'gauntlet', 'TerMinal'),
-  ].filter(Boolean)
-  let repoRoot = ''
-  for (const c of candidates) {
-    if (existsSync(join(c, 'bin', 'release'))) {
-      repoRoot = c
-      break
-    }
-  }
+  const repoRoot = sourceCheckoutRoot(join('bin', 'release'))
   if (!repoRoot) {
     return {
       error:

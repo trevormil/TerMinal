@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
+import { enginePath, resolvedWorktreesDir } from './settings'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
@@ -115,8 +116,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   const repo = basename(input.repoRoot)
   const short = id.slice(0, 6)
   const branch = `bg/${repo}-${short}`
-  // Worktree directory — reuses the gauntlet convention.
-  const wtParent = join(homedir(), 'CompSci', 'gauntlet', '.worktrees', repo)
+  const wtParent = join(resolvedWorktreesDir(), repo)
   const worktree = join(wtParent, `bg-${short}`)
   mkdirSync(wtParent, { recursive: true })
 
@@ -148,8 +148,8 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
 
   const cmd =
     engine === 'claude'
-      ? ['claude', '-p', enrichedPrompt, '--dangerously-skip-permissions']
-      : ['codex', 'exec', '-s', 'danger-full-access', '-C', worktree, enrichedPrompt]
+      ? [enginePath('claude'), '-p', enrichedPrompt, '--dangerously-skip-permissions']
+      : [enginePath('codex'), 'exec', '-s', 'danger-full-access', '-C', worktree, enrichedPrompt]
   if (input.model) cmd.push('--model', input.model)
 
   // Pipe stdout/stderr to the log file. Detached so it survives parent exit.

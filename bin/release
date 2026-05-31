@@ -11,7 +11,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 APP="dist/mac-arm64/TerMinal.app"
-DEST="/Applications/TerMinal.app"
+DEST="${TERMINAL_APP_DEST:-/Applications/TerMinal.app}"
 
 echo "▸ building…"
 bun run dist
@@ -20,8 +20,8 @@ echo "▸ ad-hoc signing…"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 
-echo "▸ installing → /Applications…"
-pkill -f "/Applications/TerMinal.app/Contents/MacOS" 2>/dev/null || true
+echo "▸ installing → ${DEST}…"
+pkill -f "$DEST/Contents/MacOS" 2>/dev/null || true
 sleep 1
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"

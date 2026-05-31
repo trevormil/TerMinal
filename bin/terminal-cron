@@ -851,13 +851,14 @@ const REVIEW_PROMOTE_COUNT = 3
 const REVIEW_PROMOTE_REPOS = 2
 
 function harnessDir() {
-  // env override → settings → default
+  // env override → settings → disabled. Open-source installs do not have a
+  // canonical cross-repo harness checkout, so leave this off until configured.
   if (process.env.GT_HARNESS_DIR) return process.env.GT_HARNESS_DIR
   try {
     const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
     if (s.harnessDir) return s.harnessDir
   } catch {}
-  return join(homedir(), 'CompSci', 'gauntlet', 'autopilot-harness')
+  return ''
 }
 
 async function maybeRunReviewPatterns(force = false) {
@@ -872,6 +873,10 @@ async function maybeRunReviewPatterns(force = false) {
 
 async function runReviewPatterns() {
   const dir = harnessDir()
+  if (!dir) {
+    log('review-patterns: no harnessDir configured, skipping')
+    return 0
+  }
   const bin = join(dir, 'bin', 'review-findings-mine')
   if (!existsSync(bin)) {
     log(`review-patterns: ${bin} missing, skipping`)
