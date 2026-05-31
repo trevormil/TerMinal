@@ -539,6 +539,13 @@ export type PromptSnippet = {
   prompt: string
   description?: string
   group?: string
+  source?: 'preset' | 'global' | 'repo'
+}
+
+export type PresetKind = 'agents' | 'snippets'
+export type PresetPrefs = {
+  version: number
+  hidden: Record<PresetKind, string[]>
 }
 
 export type TddInfo = {
@@ -584,6 +591,14 @@ export type GtApi = {
       repoRoot?: string
       snippet: Partial<PromptSnippet>
     }) => Promise<{ ok: true; path: string; snippet: PromptSnippet } | { error: string }>
+  }
+  presets: {
+    get: () => Promise<{
+      prefs: PresetPrefs
+      catalog: Record<PresetKind, { id: string; title: string; group?: string }[]>
+    }>
+    hide: (kind: PresetKind, id: string) => Promise<PresetPrefs>
+    restore: (kind: PresetKind, id?: string) => Promise<PresetPrefs>
   }
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>

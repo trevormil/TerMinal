@@ -20,6 +20,7 @@ import { enginePath, engineDefaultModel, resolvedWorktreesDir } from './settings
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
+import { hiddenPresetIds } from './presets'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
@@ -96,7 +97,7 @@ export const FORCE_PREAMBLE =
 // for findings, open a PR when there are code changes. The factory entry is
 // inPlace (no worktree) because /factory itself manages worktrees per stacked
 // MR — wrapping it in one would create confusing worktree-inside-worktree.
-const DEFAULT_AGENTS: Agent[] = [
+export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'factory',
     title: 'Run /factory',
@@ -428,6 +429,7 @@ function readScriptAgents(dir: string): Agent[] {
 export function readAgents(repoRoot: string): Agent[] {
   type Layered = { agent: Agent; layers: Set<'default' | 'global' | 'repo'> }
   const byId = new Map<string, Layered>()
+  const hiddenDefaults = hiddenPresetIds('agents')
   const merge = (a: Agent, layer: 'default' | 'global' | 'repo') => {
     const existing = byId.get(a.id)
     if (existing) {
@@ -441,7 +443,7 @@ export function readAgents(repoRoot: string): Agent[] {
   // Layer order: defaults → global (json then scripts) → repo (json then scripts).
   // Script bodies are independent from the JSON metadata; the runtime branches
   // on file existence, but the agent list cares only about the merged metadata.
-  for (const a of DEFAULT_AGENTS) merge(a, 'default')
+  for (const a of DEFAULT_AGENTS) if (!hiddenDefaults.has(a.id)) merge(a, 'default')
   for (const a of readGlobalAgents()) merge(a, 'global')
   for (const a of readScriptAgents(join(homedir(), '.config', 'TerMinal', 'scripts'))) merge(a, 'global')
   if (repoRoot) for (const a of readRepoAgents(repoRoot)) merge(a, 'repo')

@@ -40,6 +40,12 @@ const gt = {
     list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),
     save: (input: unknown) => ipcRenderer.invoke('snippets:save', input),
   },
+  presets: {
+    get: () => ipcRenderer.invoke('presets:get'),
+    hide: (kind: 'agents' | 'snippets', id: string) => ipcRenderer.invoke('presets:hide', kind, id),
+    restore: (kind: 'agents' | 'snippets', id?: string) =>
+      ipcRenderer.invoke('presets:restore', kind, id),
+  },
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },

@@ -50,7 +50,8 @@ import { listMrs, getMr, getMrDiff, getMrCi, mergeMr, mrSummary } from './mrs'
 import { listSkills } from './skills'
 import { forgeFor } from './forge'
 import { readNotes, writeNotes, type NotesScope } from './notes'
-import { listPromptSnippets, savePromptSnippet } from './snippets'
+import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
+import { hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { listDocs, readDoc } from './docs'
@@ -79,6 +80,7 @@ import {
 } from './telegram'
 import {
   readAgents,
+  DEFAULT_AGENTS,
   saveAgent,
   resetAgent,
   hasAgents as repoHasAgents,
@@ -609,6 +611,15 @@ ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>
   }
   return r
 })
+ipcMain.handle('presets:get', () => ({
+  prefs: readPresetPrefs(),
+  catalog: {
+    snippets: BUILT_IN_SNIPPETS.map((s) => ({ id: s.id, title: s.title, group: s.group })),
+    agents: DEFAULT_AGENTS.map((a) => ({ id: a.id, title: a.title, group: 'Agents' })),
+  },
+}))
+ipcMain.handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
+ipcMain.handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
 ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
   const root = repoRootOf(cur().cwd)

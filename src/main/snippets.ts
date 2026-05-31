@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { hiddenPresetIds } from './presets'
 
 export type PromptSnippet = {
   id: string
@@ -8,6 +9,7 @@ export type PromptSnippet = {
   prompt: string
   description?: string
   group?: string
+  source?: 'preset' | 'global' | 'repo'
 }
 
 type SnippetFile = {
@@ -21,7 +23,7 @@ const REPO_FILE = '.TerMinal/snippets.json'
 const LEGACY_REPO_FILE = '.terminal/snippets.json'
 const SNIPPET_SCHEMA_VERSION = 2
 
-const BUILT_INS: PromptSnippet[] = [
+export const BUILT_IN_SNIPPETS: PromptSnippet[] = [
   { id: 'continue', title: 'Looks good. Continue', prompt: 'Looks good to me. Continue.', group: 'Common' },
   { id: 'status', title: 'Status', prompt: 'Give me a concise status update: what changed, what is left, and whether anything is blocked.', group: 'Common' },
   { id: 'wrap-up', title: 'Wrap up', prompt: 'Finish the current task, run the relevant checks, commit if appropriate, and summarize the result.', group: 'Common' },
@@ -91,7 +93,7 @@ const sameSnippet = (a: PromptSnippet, b: PromptSnippet) =>
   (a.group || '') === (b.group || '')
 
 export function migrateSnippetFile(raw: SnippetFile): { version: number; snippets: PromptSnippet[] } {
-  const builtInsById = new Map(BUILT_INS.map((s) => [s.id, s]))
+  const builtInsById = new Map(BUILT_IN_SNIPPETS.map((s) => [s.id, s]))
   const snippets = parseSnippetList(raw.snippets).filter((s) => {
     const builtIn = builtInsById.get(s.id)
     return !builtIn || !sameSnippet(s, builtIn)
@@ -195,9 +197,11 @@ export function listPromptSnippets(repoRoot: string): {
   const repoPath = repoRoot ? join(repoRoot, REPO_FILE) : ''
   const legacyRepoPath = repoRoot ? join(repoRoot, LEGACY_REPO_FILE) : ''
   const byId = new Map<string, PromptSnippet>()
-  for (const s of BUILT_INS) byId.set(s.id, s)
-  for (const s of readSnippetFile(GLOBAL_FILE)) byId.set(s.id, s)
-  for (const s of legacyRepoPath ? readSnippetFile(legacyRepoPath) : []) byId.set(s.id, s)
-  for (const s of repoPath ? readSnippetFile(repoPath) : []) byId.set(s.id, s)
+  const hidden = hiddenPresetIds('snippets')
+  for (const s of BUILT_IN_SNIPPETS) if (!hidden.has(s.id)) byId.set(s.id, { ...s, source: 'preset' })
+  for (const s of readSnippetFile(GLOBAL_FILE)) byId.set(s.id, { ...s, source: 'global' })
+  for (const s of legacyRepoPath ? readSnippetFile(legacyRepoPath) : [])
+    byId.set(s.id, { ...s, source: 'repo' })
+  for (const s of repoPath ? readSnippetFile(repoPath) : []) byId.set(s.id, { ...s, source: 'repo' })
   return { snippets: [...byId.values()], globalPath: GLOBAL_FILE, repoPath }
 }

@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Pencil,
   RotateCcw,
+  EyeOff,
   Plus,
   MessageSquare,
   ClipboardList,
@@ -863,6 +864,19 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     >
                       <RotateCcw size={11} strokeWidth={2} />
                       Reset
+                    </button>
+                  )}
+                  {selectedAgent.source === 'default' && (
+                    <button
+                      onClick={async () => {
+                        await window.gt.presets.hide('agents', selectedAgent.id)
+                        reloadAgents()
+                      }}
+                      title="Hide this built-in preset"
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
+                    >
+                      <EyeOff size={11} strokeWidth={2} />
+                      Hide
                     </button>
                   )}
                 </header>

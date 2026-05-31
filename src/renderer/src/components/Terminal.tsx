@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Clipboard, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
+import { Bot, Clipboard, EyeOff, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -8,7 +8,15 @@ import type { PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 
 type LauncherItem =
-  | { kind: 'snippet'; id: string; title: string; subtitle: string; prompt: string; group: string }
+  | {
+      kind: 'snippet'
+      id: string
+      title: string
+      subtitle: string
+      prompt: string
+      group: string
+      source?: PromptSnippet['source']
+    }
   | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
 
 // Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
@@ -238,6 +246,7 @@ export function TerminalPane({
       subtitle: s.prompt,
       prompt: s.prompt,
       group: s.group || 'Snippets',
+      source: s.source,
     })),
     ...skills
       .map((s) => ({ skill: s, prompt: commandForSkill(s) }))
@@ -267,6 +276,10 @@ export function TerminalPane({
     window.gt.pty.input(sessionKey, run ? `${prompt}\r` : prompt)
     setMenuOpen(false)
     requestAnimationFrame(() => termRef.current?.focus())
+  }
+  const hidePresetSnippet = async (id: string) => {
+    await window.gt.presets.hide('snippets', id)
+    await reloadSnippets()
   }
 
   const draftWithAi = async () => {
@@ -451,6 +464,15 @@ export function TerminalPane({
                           </div>
                         </div>
                         <div className="flex shrink-0 justify-end gap-1">
+                          {s.kind === 'snippet' && s.source === 'preset' && (
+                            <button
+                              onClick={() => hidePresetSnippet(s.id)}
+                              title="Hide preset"
+                              className="inline-flex h-6 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-500 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
+                            >
+                              <EyeOff size={11} strokeWidth={2} />
+                            </button>
+                          )}
                           <button
                             onClick={() => inject(s.prompt, false)}
                             title="Insert"
