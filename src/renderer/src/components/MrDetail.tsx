@@ -6,8 +6,12 @@ import {
   Lightbulb,
   GitCompare,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   ArrowUpRight,
   GitBranch,
+  Folder,
+  File,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
@@ -98,6 +102,103 @@ const sideBg = (s: Side) =>
       ? 'bg-[var(--gt-red)]/[0.08]'
       : ''
 
+type DiffFile = ReturnType<typeof parseDiff>[number]
+type DiffTreeFile = {
+  type: 'file'
+  name: string
+  path: string
+  file: DiffFile
+  additions: number
+  deletions: number
+}
+type DiffTreeDir = {
+  type: 'dir'
+  name: string
+  path: string
+  children: DiffTreeNode[]
+  fileCount: number
+  additions: number
+  deletions: number
+}
+type DiffTreeNode = DiffTreeDir | DiffTreeFile
+
+const filePathOf = (f: DiffFile) => f.to || f.from || ''
+
+function buildDiffTree(files: DiffFile[]): DiffTreeDir {
+  const root: DiffTreeDir = {
+    type: 'dir',
+    name: '',
+    path: '',
+    children: [],
+    fileCount: 0,
+    additions: 0,
+    deletions: 0,
+  }
+  const dirs = new Map<string, DiffTreeDir>([['', root]])
+  const ensureDir = (path: string, name: string): DiffTreeDir => {
+    const existing = dirs.get(path)
+    if (existing) return existing
+    const parentPath = path.split('/').slice(0, -1).join('/')
+    const parentName = parentPath.split('/').pop() || ''
+    const parent = ensureDir(parentPath, parentName)
+    const dir: DiffTreeDir = {
+      type: 'dir',
+      name,
+      path,
+      children: [],
+      fileCount: 0,
+      additions: 0,
+      deletions: 0,
+    }
+    dirs.set(path, dir)
+    parent.children.push(dir)
+    return dir
+  }
+
+  for (const file of files) {
+    const path = filePathOf(file)
+    if (!path) continue
+    const parts = path.split('/')
+    const name = parts.pop() || path
+    const dirPath = parts.join('/')
+    const dirName = parts[parts.length - 1] || ''
+    const dir = ensureDir(dirPath, dirName)
+    const node: DiffTreeFile = {
+      type: 'file',
+      name,
+      path,
+      file,
+      additions: file.additions,
+      deletions: file.deletions,
+    }
+    dir.children.push(node)
+    for (let i = 0; i <= parts.length; i++) {
+      const p = parts.slice(0, i).join('/')
+      const d = dirs.get(p)
+      if (!d) continue
+      d.fileCount += 1
+      d.additions += file.additions
+      d.deletions += file.deletions
+    }
+  }
+
+  const sort = (dir: DiffTreeDir) => {
+    dir.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    for (const child of dir.children) if (child.type === 'dir') sort(child)
+  }
+  sort(root)
+  return root
+}
+
+function collectDirPaths(dir: DiffTreeDir): string[] {
+  return dir.children.flatMap((child) =>
+    child.type === 'dir' ? [child.path, ...collectDirPaths(child)] : [],
+  )
+}
+
 function FileDiff({ file, mode }: { file: any; mode: 'unified' | 'split' }) {
   const langId = langOf(file.to || file.from || '')
   return (
@@ -167,12 +268,17 @@ function FileDiff({ file, mode }: { file: any; mode: 'unified' | 'split' }) {
 
 function DiffView({ diff, scope }: { diff: string; scope: string }) {
   const files = useMemo(() => parseDiff(diff), [diff])
+  const tree = useMemo(() => buildDiffTree(files), [files])
   const [selected, setSelected] = useState<string>('')
   const [mode, setMode] = useState<'unified' | 'split'>('unified')
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [viewed, setViewed, setAll] = useViewed(scope)
   useEffect(() => {
     if (!selected && files[0]) setSelected(files[0].to || files[0].from || '')
   }, [files, selected])
+  useEffect(() => {
+    setExpanded(new Set(collectDirPaths(tree)))
+  }, [tree])
 
   if (!diff) return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
   if (files.length === 0)
@@ -185,6 +291,72 @@ function DiffView({ diff, scope }: { diff: string; scope: string }) {
   const paths = files.map((f) => f.to || f.from || '')
   const viewedCount = paths.filter((p) => viewed[p]).length
   const allViewed = viewedCount === paths.length && paths.length > 0
+  const toggleDir = (path: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  const renderTree = (nodes: DiffTreeNode[], depth = 0): ReactNode =>
+    nodes.map((node) => {
+      const pad = 10 + depth * 12
+      if (node.type === 'dir') {
+        const open = expanded.has(node.path)
+        return (
+          <div key={node.path}>
+            <button
+              onClick={() => toggleDir(node.path)}
+              className="flex w-full items-center gap-1.5 border-b border-[var(--gt-border)]/40 py-1.5 pr-2 text-left text-[11px] hover:bg-white/5"
+              style={{ paddingLeft: pad }}
+              title={node.path}
+            >
+              {open ? (
+                <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+              ) : (
+                <ChevronRight size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+              )}
+              <Folder size={12} strokeWidth={2} className="shrink-0 text-zinc-500" />
+              <span className="min-w-0 flex-1 truncate font-mono text-zinc-400">{node.name}</span>
+              <span className="shrink-0 tabular-nums text-zinc-700">{node.fileCount}</span>
+              <span className="shrink-0 tabular-nums text-[var(--gt-green)]/80">+{node.additions}</span>
+              <span className="shrink-0 tabular-nums text-[var(--gt-red)]/80">-{node.deletions}</span>
+            </button>
+            {open ? renderTree(node.children, depth + 1) : null}
+          </div>
+        )
+      }
+      const path = node.path
+      const isV = !!viewed[path]
+      const isSel = (file.to || file.from) === path
+      return (
+        <div
+          key={path}
+          onClick={() => setSelected(path)}
+          className={`flex cursor-pointer items-center gap-1.5 border-b border-[var(--gt-border)]/40 py-1.5 pr-2 text-[11.5px] hover:bg-white/5 ${
+            isSel ? 'bg-white/5' : ''
+          }`}
+          style={{ paddingLeft: pad + 18 }}
+        >
+          <input
+            type="checkbox"
+            checked={isV}
+            onChange={(e) => setViewed(path, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 accent-[var(--gt-accent)]"
+          />
+          <File size={11} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          <span
+            className={`min-w-0 flex-1 truncate font-mono ${isV ? 'text-zinc-600 line-through' : 'text-zinc-300'}`}
+            title={path}
+          >
+            {node.name}
+          </span>
+          <span className="shrink-0 tabular-nums text-[var(--gt-green)]">+{node.additions}</span>
+          <span className="shrink-0 tabular-nums text-[var(--gt-red)]">-{node.deletions}</span>
+        </div>
+      )
+    })
 
   return (
     <div className="flex h-full min-h-0">
@@ -200,36 +372,7 @@ function DiffView({ diff, scope }: { diff: string; scope: string }) {
             {allViewed ? 'clear' : 'mark all'}
           </button>
         </div>
-        {files.map((f) => {
-          const path = f.to || f.from || ''
-          const isV = !!viewed[path]
-          const isSel = (file.to || file.from) === path
-          return (
-            <div
-              key={path}
-              onClick={() => setSelected(path)}
-              className={`flex cursor-pointer items-center gap-2 border-b border-[var(--gt-border)]/60 px-3 py-1.5 text-[11.5px] hover:bg-white/5 ${
-                isSel ? 'bg-white/5' : ''
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={isV}
-                onChange={(e) => setViewed(path, e.target.checked)}
-                onClick={(e) => e.stopPropagation()}
-                className="accent-[var(--gt-accent)]"
-              />
-              <span
-                className={`min-w-0 flex-1 truncate font-mono ${isV ? 'text-zinc-600 line-through' : 'text-zinc-300'}`}
-                title={path}
-              >
-                {path}
-              </span>
-              <span className="text-[var(--gt-green)]">+{f.additions}</span>
-              <span className="text-[var(--gt-red)]">-{f.deletions}</span>
-            </div>
-          )
-        })}
+        {renderTree(tree.children)}
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1">
