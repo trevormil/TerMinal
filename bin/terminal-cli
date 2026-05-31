@@ -66,7 +66,13 @@ function pingTelegram(text, inlineKeyboard) {
     return
   }
   if (existsSync(LEGACY_TG_SCRIPT)) {
-    spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' }).unref()
+    try {
+      const child = spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' })
+      child.on('error', () => {})
+      child.unref()
+    } catch {
+      /* best effort — missing/broken Telegram must not block HITL */
+    }
   }
 }
 

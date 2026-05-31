@@ -75,10 +75,10 @@ export function openCount(): number {
   return readHitl().filter((h) => h.status === 'open').length
 }
 
-// HITL is by definition "I need attention" — always ping Telegram on file,
-// regardless of the activity-feed `telegram.notify` toggle (which gates the
-// general feed). Only requires bot token + chat to be configured. Falls back
-// to the legacy ~/.claude/bin/telegram-notify.sh script if no native config.
+// HITL is by definition "I need attention" — ping Telegram on file when
+// configured, regardless of the activity-feed `telegram.notify` toggle (which
+// gates the general feed). If no bot/chat or legacy script exists, this is a
+// no-op: Inbox filing must never be blocked by notification setup.
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 function alwaysPingTelegram(item: HitlItem): void {
   try {
@@ -105,7 +105,9 @@ function alwaysPingTelegram(item: HitlItem): void {
       return
     }
     if (!existsSync(LEGACY_TG_SCRIPT)) return
-    spawn(LEGACY_TG_SCRIPT, [`--kind=blocked`, msg], { stdio: 'ignore' }).unref()
+    const child = spawn(LEGACY_TG_SCRIPT, [`--kind=blocked`, msg], { stdio: 'ignore' })
+    child.on('error', () => {})
+    child.unref()
   } catch {
     /* best effort — never fail a HITL filing because of a notify glitch */
   }
