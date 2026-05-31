@@ -17,7 +17,7 @@ import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { ALL_TABS } from './tabs/registry'
-import { navigateTo } from './lib/nav'
+import { navigateTo, onNavigate } from './lib/nav'
 import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
@@ -212,6 +212,35 @@ export default function App() {
       /* main rejected (e.g. session removed) — UI already flipped, accept */
     })
   }
+
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'terminal') return
+        const payload = ev.payload || {}
+        const targetKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : ''
+        const targetSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : ''
+        const targetCwd =
+          typeof payload.cwd === 'string'
+            ? payload.cwd
+            : typeof payload.repoRoot === 'string'
+              ? payload.repoRoot
+              : ''
+        const match = sessions.find((s) => {
+          if (targetKey && s.key === targetKey) return true
+          const sid = s.info.sessionId || s.choice.sessionId || ''
+          if (targetSessionId && sid === targetSessionId) return true
+          const cwd = s.info.cwd || s.choice.cwd || ''
+          if (targetCwd && cwd === targetCwd) return true
+          if (targetCwd && cwd.startsWith(`${targetCwd.replace(/\/$/, '')}/`)) return true
+          return false
+        })
+        if (!match) return
+        activate(match.key)
+        setFleet(false)
+      }),
+    [sessions],
+  )
 
   const addSession = (choice: Choice) => {
     const key = crypto.randomUUID()
@@ -694,7 +723,7 @@ export default function App() {
                           : 'border-[var(--gt-yellow)]/60'
                       } ${
                         s.key === activeKey
-                          ? 'outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/70'
+                          ? 'outline outline-2 -outline-offset-2 outline-[var(--gt-accent)]/90'
                           : ''
                       }`
                     : 'absolute inset-0'

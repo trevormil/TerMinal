@@ -27,7 +27,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { execSync, execFile } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
@@ -125,12 +125,100 @@ function fileHitl(title, action) {
     source: 'skill',
     status: 'open',
     createdAt: Date.now(),
+    sessionId: process.env.GT_TERMINAL_SESSION_ID || '',
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
+    terminalCwd: process.env.GT_TERMINAL_CWD || repo,
   }
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `HITL · ${item.title}`, item.action)
   // HITL ALWAYS pings Telegram when configured — matches the app's policy.
   pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`)
   console.log(item.id)
+}
+
+function readSettings() {
+  try {
+    return JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function completionHookEnabled() {
+  const settings = readSettings()
+  return settings?.inbox?.completionHook !== false
+}
+
+function safeBasename(path) {
+  try {
+    return basename(path || '')
+  } catch {
+    return ''
+  }
+}
+
+function completionHitl(engine) {
+  const input = readFileSync(0, 'utf8')
+  if (!completionHookEnabled()) return
+
+  let payload = {}
+  try {
+    payload = input.trim() ? JSON.parse(input) : {}
+  } catch {
+    payload = {}
+  }
+
+  const cwd = payload.cwd || process.env.PWD || ''
+  if (String(cwd).includes('/.claude-mem')) return
+
+  const project = safeBasename(cwd) || repoLabel || 'workspace'
+  const transcript = payload.transcript_path || payload.transcriptPath || ''
+  const lastMessage = String(payload.last_assistant_message || payload.last_message || '').replace(/\s+/g, ' ').slice(0, 300)
+  const hashInput = JSON.stringify({
+    engine: engine || 'agent',
+    cwd,
+    transcript,
+    lastMessage,
+    session:
+      payload.session_id ||
+      payload.sessionId ||
+      process.env.GT_TERMINAL_SESSION_ID ||
+      payload.conversation_id ||
+      payload.conversationId ||
+      '',
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
+  })
+  const id = `completion-${createHash('sha256').update(hashInput).digest('hex').slice(0, 16)}`
+
+  let list = []
+  try {
+    const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
+    if (Array.isArray(a)) list = a
+  } catch {}
+  if (list.some((item) => item.id === id)) {
+    console.log(id)
+    return
+  }
+
+  const item = {
+    id,
+    title: `${engine || 'Agent'} completion · ${project}`,
+    action: 'Review the completed agent turn.',
+    detail: lastMessage || (transcript ? `transcript: ${transcript}` : ''),
+    repo: project,
+    repoRoot: cwd,
+    source: 'completion-hook',
+    status: 'open',
+    createdAt: Date.now(),
+    sessionId: payload.session_id || payload.sessionId || process.env.GT_TERMINAL_SESSION_ID || '',
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
+    terminalCwd: process.env.GT_TERMINAL_CWD || cwd,
+    ...(transcript ? { transcriptPath: transcript } : {}),
+  }
+  mkdirSync(CFG, { recursive: true })
+  writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
+  emitActivity('blocked', `Inbox · ${item.title}`, item.action)
+  console.log(id)
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +582,9 @@ switch (cmd) {
   case 'hitl':
     fileHitl(args[0], args[1])
     break
+  case 'completion-hitl':
+    completionHitl(args[0] || 'Agent')
+    break
   case 'activity':
     emitActivity(args[0], args[1], args[2])
     break
@@ -514,6 +605,7 @@ switch (cmd) {
       'usage: terminal-cli <ticket|hitl|activity|notify|state|mcp|classify> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
+        '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
         '  notify "<message>"                       send a Telegram message (raw)\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +

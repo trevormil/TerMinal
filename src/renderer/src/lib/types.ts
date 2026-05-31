@@ -279,7 +279,15 @@ export type FactoryHealth = {
   daily: { day: string; count: number }[]
   byRepo: { repo: string; events: number }[]
 }
-export type HitlSource = 'manual' | 'cron-fail' | 'agent' | 'factory' | 'skill'
+export type HitlSource =
+  | 'manual'
+  | 'cron-fail'
+  | 'agent'
+  | 'factory'
+  | 'skill'
+  | 'completion-hook'
+  | 'wedged-detector'
+  | 'review-pattern'
 export type HitlItem = {
   id: string
   title: string
@@ -294,6 +302,9 @@ export type HitlItem = {
   runId?: string
   runSource?: 'cron' | 'agent'
   ticketPath?: string
+  sessionId?: string
+  terminalKey?: string
+  terminalCwd?: string
 }
 export type BgTask = {
   id: string

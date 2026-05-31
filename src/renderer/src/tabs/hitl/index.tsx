@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Hand, Check, Trash2, RotateCcw, ListChecks, Ticket as TicketIcon } from 'lucide-react'
+import {
+  Hand,
+  Check,
+  Trash2,
+  RotateCcw,
+  ListChecks,
+  SquareTerminal,
+  Ticket as TicketIcon,
+} from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
@@ -22,6 +30,9 @@ const SOURCE_TONE: Record<string, BadgeTone> = {
   agent: 'blue',
   factory: 'accent',
   skill: 'blue',
+  'completion-hook': 'accent',
+  'wedged-detector': 'red',
+  'review-pattern': 'yellow',
   manual: 'mute',
 }
 
@@ -102,8 +113,30 @@ function HitlTab(_props: { ctx: TabContext }) {
                     </div>
                     {h.action && <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">{h.action}</div>}
                     {h.detail && <div className="mt-0.5 text-[11.5px] leading-snug text-zinc-500">{h.detail}</div>}
+                    {(h.terminalCwd || h.terminalKey || h.sessionId) && (
+                      <div className="mt-1 font-mono text-[10px] text-zinc-600">
+                        {h.terminalCwd || h.repoRoot || 'terminal session'}
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {(h.terminalKey || h.sessionId || h.terminalCwd || h.repoRoot) && (
+                      <button
+                        onClick={() =>
+                          navigateTo('terminal', {
+                            sessionKey: h.terminalKey,
+                            sessionId: h.sessionId,
+                            cwd: h.terminalCwd || h.repoRoot,
+                            repoRoot: h.repoRoot,
+                          })
+                        }
+                        title="Jump to the terminal session that filed this HITL"
+                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      >
+                        <SquareTerminal size={11} strokeWidth={2} />
+                        View terminal
+                      </button>
+                    )}
                     {h.runId && (
                       <button
                         onClick={() => navigateTo('runs', { runId: h.runId })}

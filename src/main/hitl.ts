@@ -20,6 +20,7 @@ export type HitlSource =
   | 'agent'
   | 'factory'
   | 'skill'
+  | 'completion-hook'
   | 'wedged-detector'
   | 'review-pattern'
 export type HitlItem = {
@@ -45,6 +46,9 @@ export type HitlItem = {
   ticketPath?: string
   // Pointer back to the Claude session that produced this HITL (wedged-detector).
   sessionId?: string
+  // Pointer back to the live TerMinal pty instance that produced this HITL.
+  terminalKey?: string
+  terminalCwd?: string
   // Stable bucket id for review-pattern HITLs so re-mining doesn't dup.
   patternKey?: string
 }
@@ -150,11 +154,12 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
         repo: input.repo,
         repoRoot: input.repoRoot,
         hitlId: dup.id,
-        runId: input.runId,
-        runSource: input.runSource,
-      },
-      { notify: false }, // don't re-fire the macOS notification
-    )
+      runId: input.runId,
+      runSource: input.runSource,
+      sessionId: input.sessionId,
+    },
+    { notify: false }, // don't re-fire the macOS notification
+  )
     return dup
   }
   const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now() }
@@ -171,6 +176,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
       hitlId: item.id,
       runId: item.runId,
       runSource: item.runSource,
+      sessionId: item.sessionId,
     },
     { notify: true },
   )

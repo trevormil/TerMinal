@@ -470,6 +470,9 @@ function fileHitlTool(args) {
     createdAt: Date.now(),
     runId,
     ticketPath,
+    sessionId: process.env.GT_TERMINAL_SESSION_ID || undefined,
+    terminalKey: process.env.GT_TERMINAL_SESSION_KEY || undefined,
+    terminalCwd: process.env.GT_TERMINAL_CWD || undefined,
   }
   writeFileSync(file, JSON.stringify([item, ...list], null, 2))
   emitActivityRaw({ kind: 'blocked', title: `HITL · ${title}`, detail: action || detail || '', repo, hitlId: item.id, runId })
@@ -508,12 +511,24 @@ function resolveHitlTool(args) {
   }
   const idx = list.findIndex((h) => h.id === id)
   if (idx < 0) return { ok: false }
+  const wasOpen = list[idx].status === 'open'
   list[idx] = {
     ...list[idx],
     status: resolved ? 'resolved' : 'open',
     resolvedAt: resolved ? Date.now() : undefined,
   }
   writeFileSync(file, JSON.stringify(list, null, 2))
+  if (resolved && wasOpen) {
+    emitActivityRaw({
+      kind: 'task-complete',
+      title: `Inbox resolved · ${list[idx].title || 'Untitled'}`,
+      detail: list[idx].action || list[idx].detail || '',
+      repo: list[idx].repo,
+      repoRoot: list[idx].repoRoot,
+      hitlId: list[idx].id,
+      runId: list[idx].runId,
+    })
+  }
   return { ok: true }
 }
 

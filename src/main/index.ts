@@ -216,6 +216,9 @@ function startSession(key: string, opts: StartOpts) {
     COLORTERM: 'truecolor',
     TERM_PROGRAM: process.env.TERM_PROGRAM || 'TerMinal',
     CLICOLOR: '1',
+    GT_TERMINAL_SESSION_KEY: key,
+    GT_TERMINAL_SESSION_ID: sessionId,
+    GT_TERMINAL_CWD: cwd,
   } as Record<string, string>
   delete env.NO_COLOR
 
