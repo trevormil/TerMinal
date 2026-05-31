@@ -6,6 +6,7 @@ type StartOpts = {
   sessionId?: string
   cwd?: string
   name?: string
+  initialInput?: string
   cols: number
   rows: number
 }
@@ -34,6 +35,9 @@ const gt = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     patch: (patch: unknown) => ipcRenderer.invoke('settings:patch', patch),
+  },
+  snippets: {
+    list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),
   },
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),

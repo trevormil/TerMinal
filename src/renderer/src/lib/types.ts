@@ -530,6 +530,14 @@ export type SessionInfo = {
   claude: string
 }
 
+export type PromptSnippet = {
+  id: string
+  title: string
+  prompt: string
+  description?: string
+  group?: string
+}
+
 export type TddInfo = {
   ok: boolean
   repo: string
@@ -561,6 +569,13 @@ export type GtApi = {
   settings: {
     get: () => Promise<Settings>
     patch: (patch: SettingsPatch) => Promise<Settings>
+  }
+  snippets: {
+    list: (repoRoot?: string) => Promise<{
+      snippets: PromptSnippet[]
+      globalPath: string
+      repoPath: string
+    }>
   }
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>

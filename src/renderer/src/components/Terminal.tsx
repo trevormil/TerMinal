@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { MessageSquareText, X } from 'lucide-react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
+import type { PromptSnippet } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 
 // Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
@@ -21,11 +23,20 @@ export function TerminalPane({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const termRef = useRef<Xterm | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [snippets, setSnippets] = useState<PromptSnippet[]>([])
 
   useEffect(() => {
     if (!active) return
     requestAnimationFrame(() => termRef.current?.focus())
   }, [active])
+
+  useEffect(() => {
+    window.gt.snippets
+      .list(choice.cwd || '')
+      .then((r) => setSnippets(r.snippets))
+      .catch(() => setSnippets([]))
+  }, [choice.cwd])
 
   useEffect(() => {
     const el = ref.current
@@ -158,5 +169,76 @@ export function TerminalPane({
     }
   }, [])
 
-  return <div ref={ref} className="h-full w-full px-2 py-1" />
+  const groups = snippets.reduce<Record<string, PromptSnippet[]>>((acc, s) => {
+    const group = s.group || 'Snippets'
+    ;(acc[group] ||= []).push(s)
+    return acc
+  }, {})
+
+  const inject = (prompt: string) => {
+    window.gt.pty.input(sessionKey, prompt)
+    setMenuOpen(false)
+    requestAnimationFrame(() => termRef.current?.focus())
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={ref} className="h-full w-full px-2 py-1" />
+      <div className="absolute right-2 top-2 z-20">
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          title="Prompt snippets"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/85 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+        >
+          <MessageSquareText size={14} strokeWidth={2} />
+        </button>
+      </div>
+      {menuOpen && (
+        <div className="absolute inset-0 z-30" onClick={() => setMenuOpen(false)}>
+          <div
+            className="absolute right-2 top-10 w-[360px] max-w-[calc(100%-1rem)] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+              <MessageSquareText size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <span className="text-[12px] font-semibold text-zinc-100">Snippets</span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                title="Close"
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            </div>
+            <div className="max-h-[360px] overflow-y-auto p-2">
+              {Object.entries(groups).map(([group, list]) => (
+                <div key={group} className="mb-2 last:mb-0">
+                  <div className="px-1.5 pb-1 text-[9.5px] font-bold uppercase tracking-wider text-zinc-600">
+                    {group}
+                  </div>
+                  <div className="space-y-1">
+                    {list.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => inject(s.prompt)}
+                        title={s.description || s.prompt}
+                        className="flex w-full flex-col rounded-md border border-transparent px-2 py-1.5 text-left hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+                      >
+                        <span className="text-[12px] font-medium text-zinc-100">{s.title}</span>
+                        <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{s.prompt}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {snippets.length === 0 && (
+                <div className="p-3 text-[12px] text-zinc-600">No snippets configured.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

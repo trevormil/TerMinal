@@ -87,6 +87,7 @@ export function EntryScreen({
   const all = sessions || []
   const byEngine = all.filter((s) => s.engine === engine)
   const shown = filterDir ? byEngine.filter((s) => underDir(s.cwd, filterDir)) : byEngine
+  const showResume = engine === 'claude' || engine === 'codex'
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -263,57 +264,60 @@ export function EntryScreen({
           </div>
         </div>
 
-        {/* resume */}
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
-          </span>
-          {filterDir && (
-            <button
-              onClick={() => setFilterDir('')}
-              className="text-[11px] text-[var(--gt-accent-2)] hover:underline"
-            >
-              show all
-            </button>
-          )}
-        </div>
-        {sessions === null ? (
-          <div className="py-6 text-center text-[12px] text-zinc-600">Scanning sessions…</div>
-        ) : shown.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
-            {filterDir ? 'No sessions for this folder — start a new one above.' : `No prior ${engine} sessions found.`}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {shown.slice(0, 300).map((s) => (
-              <button
-                key={s.id}
-                onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
-                className="flex w-full items-center gap-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 text-left hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] text-zinc-100">
-                    {s.firstUserText || <span className="italic text-zinc-500">untitled session</span>}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
-                    <EngineLogo engine={s.engine} size={10} />
-                    <span className="font-mono">{tilde(s.cwd) || '~'}</span>
-                    {s.gitBranch && (
-                      <span className="inline-flex items-center gap-0.5 text-zinc-600">
-                        <GitBranch size={11} strokeWidth={2} />
-                        {s.gitBranch}
-                      </span>
-                    )}
-                    <span className="text-zinc-600">· {s.turns} turns</span>
-                  </div>
-                </div>
-                <div className="shrink-0 text-right text-[10.5px] text-zinc-500">
-                  <div>{rel(s.mtime)}</div>
-                  <div className="font-mono text-zinc-600">{s.id.slice(0, 8)}</div>
-                </div>
-              </button>
-            ))}
-          </div>
+        {showResume && (
+          <>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
+                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
+              </span>
+              {filterDir && (
+                <button
+                  onClick={() => setFilterDir('')}
+                  className="text-[11px] text-[var(--gt-accent-2)] hover:underline"
+                >
+                  show all
+                </button>
+              )}
+            </div>
+            {sessions === null ? (
+              <div className="py-6 text-center text-[12px] text-zinc-600">Scanning sessions…</div>
+            ) : shown.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
+                {filterDir ? 'No sessions for this folder — start a new one above.' : `No prior ${engine} sessions found.`}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {shown.slice(0, 300).map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
+                    className="flex w-full items-center gap-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 text-left hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] text-zinc-100">
+                        {s.firstUserText || <span className="italic text-zinc-500">untitled session</span>}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
+                        <EngineLogo engine={s.engine} size={10} />
+                        <span className="font-mono">{tilde(s.cwd) || '~'}</span>
+                        {s.gitBranch && (
+                          <span className="inline-flex items-center gap-0.5 text-zinc-600">
+                            <GitBranch size={11} strokeWidth={2} />
+                            {s.gitBranch}
+                          </span>
+                        )}
+                        <span className="text-zinc-600">· {s.turns} turns</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-[10.5px] text-zinc-500">
+                      <div>{rel(s.mtime)}</div>
+                      <div className="font-mono text-zinc-600">{s.id.slice(0, 8)}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
