@@ -17,6 +17,7 @@ import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { navigateTo } from '../../lib/nav'
 import { BashHighlight } from '../../components/BashHighlight'
+import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
 
@@ -165,7 +166,12 @@ function ScheduleForm({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+    <div className="space-y-3">
+      <SkillHint>
+        You can also start from the terminal with <code className="font-mono text-zinc-300">/ticket</code> in
+        Claude or <code className="font-mono text-zinc-300">$ticket</code> in Codex, then schedule the agent work
+        from the created ticket.
+      </SkillHint>
       {/* Form / Custom toggle — same UX as the agents tab's new-agent flow. */}
       <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
         {(['form', 'custom'] as const).map((m) => (
@@ -541,7 +547,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
         </button>
         <button
           onClick={() => {
-            setCreating((v) => !v)
+            setCreating(true)
             setExpanded(null)
           }}
           className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
@@ -553,23 +559,6 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
-        {creating &&
-          (agents.length ? (
-            <ScheduleForm
-              agents={agents}
-              onCancel={() => setCreating(false)}
-              onSave={save}
-              onCustomSpawned={() => {
-                setCreating(false)
-                flash('designer spawned · schedule will appear when the run completes')
-              }}
-            />
-          ) : (
-            <div className="rounded-lg border border-[var(--gt-border)] p-3 text-[12px] text-zinc-600">
-              No agents in this repo to schedule.
-            </div>
-          ))}
-
         {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
@@ -775,6 +764,42 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           ))
         )}
       </div>
+      {creating && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          onClick={() => setCreating(false)}
+        >
+          <div
+            className="max-h-[86vh] w-[720px] overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-zinc-100">New schedule</h2>
+              <button
+                onClick={() => setCreating(false)}
+                className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
+              >
+                cancel
+              </button>
+            </div>
+            {agents.length ? (
+              <ScheduleForm
+                agents={agents}
+                onCancel={() => setCreating(false)}
+                onSave={save}
+                onCustomSpawned={() => {
+                  setCreating(false)
+                  flash('designer spawned · schedule will appear when the run completes')
+                }}
+              />
+            ) : (
+              <div className="rounded-lg border border-[var(--gt-border)] p-3 text-[12px] text-zinc-600">
+                No agents in this repo to schedule.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

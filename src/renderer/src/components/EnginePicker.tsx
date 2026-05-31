@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   X,
   ChevronLeft,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
 import { EngineModelPicker } from './EngineModelPicker'
+import { SkillHint } from './SkillHint'
 import openaiLogo from '../assets/openai.svg'
 import claudeLogo from '../assets/claude.svg'
 
@@ -46,10 +47,12 @@ const PIPELINE_ICON: Record<string, LucideIcon> = {
 
 export function EnginePicker({
   title,
+  hint,
   onPick,
   onClose,
 }: {
   title: string
+  hint?: ReactNode
   onPick: (engine: Engine, persona: string, pipeline: string, model?: string) => void
   onClose: () => void
 }) {
@@ -103,6 +106,11 @@ export function EnginePicker({
             <X size={14} strokeWidth={2} />
           </button>
         </div>
+        {hint && (
+          <div className="mb-3">
+            <SkillHint>{hint}</SkillHint>
+          </div>
+        )}
 
         {step === 1 && (
           <>

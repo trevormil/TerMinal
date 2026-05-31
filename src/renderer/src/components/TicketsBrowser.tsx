@@ -6,6 +6,7 @@ import { EnginePicker } from './EnginePicker'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
+import { SkillHint } from './SkillHint'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import { onNavigate } from '../lib/nav'
 import type { BadgeTone } from './ui'
@@ -86,7 +87,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   )
 }
 
-function NewTicketForm({ onClose, onCreated }: { onClose: () => void; onCreated: (slug: string) => void }) {
+function NewTicketForm({ onCreated }: { onCreated: (slug: string) => void }) {
   const [title, setTitle] = useState('')
   const [type, setType] = useState('feature')
   const [priority, setPriority] = useState('medium')
@@ -107,13 +108,7 @@ function NewTicketForm({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   const sel = 'rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
   return (
-    <div className="space-y-3 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-zinc-100">New ticket</h2>
-        <button onClick={onClose} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5">
-          cancel
-        </button>
-      </div>
+    <div className="space-y-3">
       <input
         autoFocus
         value={title}
@@ -156,6 +151,110 @@ function NewTicketForm({ onClose, onCreated }: { onClose: () => void; onCreated:
   )
 }
 
+function NewTicketModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: (slug: string) => void
+}) {
+  const [mode, setMode] = useState<'manual' | 'agent'>('manual')
+  const [spawnText, setSpawnText] = useState('')
+  const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
+  const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
+  const [spawning, setSpawning] = useState(false)
+  const [spawnMsg, setSpawnMsg] = useState('')
+  useEffect(() => {
+    window.gt.settings.get().then((s) => setSpawnEngine(s.defaultEngine))
+  }, [])
+
+  const doSpawn = async () => {
+    const text = spawnText.trim()
+    if (!text || spawning) return
+    setSpawning(true)
+    try {
+      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel)
+      if (r && 'error' in r) setSpawnMsg(`couldn't start: ${r.error}`)
+      else {
+        setSpawnText('')
+        setSpawnMsg(`${spawnEngine} is filing the ticket · watch the Agents tab`)
+        setTimeout(onClose, 900)
+      }
+    } finally {
+      setSpawning(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
+      <div
+        className="flex max-h-[86vh] w-[620px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-zinc-100">New ticket</h2>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5">
+            cancel
+          </button>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
+          {(['manual', 'agent'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`flex-1 rounded-sm px-2 py-1 text-[11px] ${
+                mode === m ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {m === 'manual' ? 'Manual' : 'Ask agent'}
+            </button>
+          ))}
+        </div>
+        <SkillHint>
+          You can also file from the terminal with <code className="font-mono text-zinc-300">/ticket</code> in Claude or{' '}
+          <code className="font-mono text-zinc-300">$ticket</code> in Codex.
+        </SkillHint>
+        {mode === 'manual' ? (
+          <NewTicketForm onCreated={onCreated} />
+        ) : (
+          <div className="space-y-3">
+            <textarea
+              autoFocus
+              value={spawnText}
+              onChange={(e) => setSpawnText(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSpawn()
+              }}
+              rows={5}
+              placeholder="Describe the work. An agent will create the structured backlog ticket."
+              className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            />
+            <div className="flex items-center gap-2">
+              <EngineModelPicker
+                engine={spawnEngine}
+                model={spawnModel}
+                onChange={(e, m) => {
+                  setSpawnEngine(e)
+                  setSpawnModel(m)
+                }}
+              />
+              {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
+              <button
+                onClick={doSpawn}
+                disabled={!spawnText.trim() || spawning}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+              >
+                {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
+                {spawning ? 'Filing...' : 'File ticket'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /**
  * The ticket master-detail (list + detail + new-ticket form + filters), shared
  * by the Tickets tab and the HITL tab. `hitlOnly` locks the view to tickets
@@ -174,15 +273,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [started, setStarted] = useState(false)
   const [mrByIid, setMrByIid] = useState<Map<number, Mr>>(() => new Map())
   const [viewMrIid, setViewMrIid] = useState<number | null>(null)
-  const [spawnText, setSpawnText] = useState('')
-  const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
-  const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
-  useEffect(() => {
-    window.gt.settings.get().then((s) => setSpawnEngine(s.defaultEngine))
-  }, [])
-  const [spawning, setSpawning] = useState(false)
-  const [spawnMsg, setSpawnMsg] = useState('')
-
   const loadTickets = () => window.gt.tickets.list().then(setTickets)
   useEffect(() => {
     loadTickets()
@@ -213,24 +303,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       if (slug) setSel(slug)
     })
   }, [])
-
-  const doSpawn = async () => {
-    const text = spawnText.trim()
-    if (!text || spawning) return
-    setSpawning(true)
-    try {
-      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel)
-      if (r && 'error' in r) {
-        setSpawnMsg(`couldn't start: ${r.error}`)
-      } else {
-        setSpawnText('')
-        setSpawnMsg(`${spawnEngine} is filing the ticket · watch the Agents tab — it'll appear here when done`)
-        setTimeout(() => setSpawnMsg(''), 7000)
-      }
-    } finally {
-      setSpawning(false)
-    }
-  }
 
   const filtered = (tickets || []).filter((t) => {
     if (hitlOnly && !t.hitl) return false
@@ -318,45 +390,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           </button>
         )}
       </div>
-
-      {/* spawn-a-ticket bar: type a request, an agent files it to the backlog */}
-      {!hitlOnly && (
-        <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/30 px-4 py-2">
-          <div className="flex items-start gap-2">
-            <Bot size={15} strokeWidth={2} className="mt-1.5 shrink-0 text-[var(--gt-accent-2)]" />
-            <textarea
-              value={spawnText}
-              onChange={(e) => setSpawnText(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doSpawn()
-              }}
-              rows={1}
-              placeholder="Describe a ticket — an agent files it to the backlog (⌘↵)"
-              className="min-h-[32px] flex-1 resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-            />
-            <div className="mt-0.5">
-              <EngineModelPicker
-                engine={spawnEngine}
-                model={spawnModel}
-                onChange={(e, m) => {
-                  setSpawnEngine(e)
-                  setSpawnModel(m)
-                }}
-                align="right"
-              />
-            </div>
-            <button
-              onClick={doSpawn}
-              disabled={!spawnText.trim() || spawning}
-              className="mt-0.5 inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-            >
-              {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
-              {spawning ? 'Filing…' : 'File ticket'}
-            </button>
-          </div>
-          {spawnMsg && <div className="mt-1 pl-7 text-[11px] text-[var(--gt-green)]">{spawnMsg}</div>}
-        </div>
-      )}
 
       {/* master-detail */}
       <div className="flex min-h-0 flex-1">
@@ -449,15 +482,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           )}
         </div>
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {creating ? (
-            <NewTicketForm
-              onClose={() => setCreating(false)}
-              onCreated={(slug) => {
-                setCreating(false)
-                loadTickets().then(() => setSel(slug))
-              }}
-            />
-          ) : selected ? (
+          {selected ? (
             <div className="p-5">
               <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
                 <span className="font-mono">#{selected.id}</span>
@@ -576,6 +601,13 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               {pickImpl && (
                 <EnginePicker
                   title={`Implement #${selected.id} → PR`}
+                  hint={
+                    <>
+                      You can also start implementation from the terminal with{' '}
+                      <code className="font-mono text-zinc-300">/pr-creation</code> or{' '}
+                      <code className="font-mono text-zinc-300">$pr-creation</code>.
+                    </>
+                  }
                   onClose={() => setPickImpl(false)}
                   onPick={async (e, persona, pipeline, model) => {
                     setPickImpl(false)
@@ -595,6 +627,15 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           )}
         </div>
       </div>
+      {creating && (
+        <NewTicketModal
+          onClose={() => setCreating(false)}
+          onCreated={(slug) => {
+            setCreating(false)
+            loadTickets().then(() => setSel(slug))
+          }}
+        />
+      )}
     </div>
   )
 }

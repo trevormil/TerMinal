@@ -45,6 +45,7 @@ import { EnginePicker } from '../../components/EnginePicker'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { BashHighlight } from '../../components/BashHighlight'
+import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, Agent, AgentRun, Engine } from '../../lib/types'
@@ -181,6 +182,11 @@ function AgentDesigner({
             {engine} writes the prompt + saves it
           </span>
         </div>
+        <SkillHint>
+          You can also capture the work first from the terminal with{' '}
+          <code className="font-mono text-zinc-300">/ticket</code> in Claude or{' '}
+          <code className="font-mono text-zinc-300">$ticket</code> in Codex.
+        </SkillHint>
 
         <label className="flex flex-col gap-1">
           <div className="flex items-end justify-between">
@@ -352,6 +358,13 @@ function AgentEditor({
             cancel
           </button>
         </div>
+        {isNew && (
+          <SkillHint>
+            You can also start by filing the work from the terminal with{' '}
+            <code className="font-mono text-zinc-300">/ticket</code> or{' '}
+            <code className="font-mono text-zinc-300">$ticket</code>.
+          </SkillHint>
+        )}
         {!isNew && a?.source !== 'repo' && (
           <p className="text-[11px] text-[var(--gt-yellow)]">
             Editing a built-in default — saving writes an override to{' '}

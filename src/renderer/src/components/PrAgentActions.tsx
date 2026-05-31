@@ -53,6 +53,13 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
       {kind && (
         <EnginePicker
           title={`${kind === 'review' ? 'Review' : 'Iterate'} · ${sym}${pr.iid}`}
+          hint={
+            <>
+              You can also start review work from the terminal with{' '}
+              <code className="font-mono text-zinc-300">/code-review</code> or{' '}
+              <code className="font-mono text-zinc-300">$code-review</code>.
+            </>
+          }
           onClose={() => setKind(null)}
           onPick={launch}
         />
