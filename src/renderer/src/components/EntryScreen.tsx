@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Plus, GitBranch, FolderGit2 } from 'lucide-react'
-import type { Engine, SessionMeta } from '../lib/types'
+import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal } from 'lucide-react'
+import type { SessionEngine, SessionMeta } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
-export type Choice = { mode: 'new' | 'resume'; engine: Engine; sessionId?: string; cwd?: string; name?: string }
+export type Choice = { mode: 'new' | 'resume'; engine: SessionEngine; sessionId?: string; cwd?: string; name?: string }
 
 function rel(ms: number): string {
   const s = (Date.now() - ms) / 1000
@@ -34,7 +34,7 @@ export function EntryScreen({
   const [dirs, setDirs] = useState<{ name: string; path: string }[]>([])
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
-  const [engine, setEngine] = useState<Engine>('claude')
+  const [engine, setEngine] = useState<SessionEngine>('claude')
   const [name, setName] = useState('')
   // "new project from template" scaffold form
   const [projName, setProjName] = useState('')
@@ -114,7 +114,7 @@ export function EntryScreen({
             </>
           ) : (
             <>
-              Start a Claude or Codex terminal. This window pins to one session so workspace
+              Start Claude, Codex, or a local shell. This window pins to one session so workspace
               tabs track the same repo.
             </>
           )}
@@ -238,8 +238,8 @@ export function EntryScreen({
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
             Start a new session
           </div>
-          <div className="mb-2 grid grid-cols-2 gap-2">
-            {(['claude', 'codex'] as Engine[]).map((e) => (
+          <div className="mb-2 grid grid-cols-3 gap-2">
+            {(['claude', 'codex', 'local'] as SessionEngine[]).map((e) => (
               <button
                 key={e}
                 onClick={() => setEngine(e)}
@@ -249,7 +249,7 @@ export function EntryScreen({
                     : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                 }`}
               >
-                <EngineLogo engine={e} size={14} />
+                {e === 'local' ? <SquareTerminal size={14} strokeWidth={2} /> : <EngineLogo engine={e} size={14} />}
                 {e}
               </button>
             ))}

@@ -12,12 +12,20 @@ export function TerminalPane({
   sessionKey,
   choice,
   onStarted,
+  active = false,
 }: {
   sessionKey: string
   choice: Choice
   onStarted?: (info: { sessionId: string; cwd: string }) => void
+  active?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Xterm | null>(null)
+
+  useEffect(() => {
+    if (!active) return
+    requestAnimationFrame(() => termRef.current?.focus())
+  }, [active])
 
   useEffect(() => {
     const el = ref.current
@@ -38,6 +46,7 @@ export function TerminalPane({
         brightBlack: '#5b5b6e',
       },
     })
+    termRef.current = term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.loadAddon(new WebLinksAddon((_e, uri) => window.gt.openExternal(uri)))
@@ -142,6 +151,7 @@ export function TerminalPane({
       onInput.dispose()
       ro.disconnect()
       term.dispose()
+      if (termRef.current === term) termRef.current = null
     }
   }, [])
 

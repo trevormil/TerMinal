@@ -164,7 +164,8 @@ function send(channel: string, ...args: unknown[]) {
 // One window now hosts MANY sessions, each its own PTY, keyed by a renderer-
 // generated tab key. Data IPC reads the *active* session; PTY IPC is routed by
 // key so every (even backgrounded) terminal keeps streaming.
-type Pinned = { sessionId: string; cwd: string; mode: '' | 'new' | 'resume'; name: string; engine: Engine }
+type SessionEngine = Engine | 'local'
+type Pinned = { sessionId: string; cwd: string; mode: '' | 'new' | 'resume'; name: string; engine: SessionEngine }
 const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
 let activeKey = ''
 const cur = (): Pinned =>
@@ -172,7 +173,7 @@ const cur = (): Pinned =>
 
 type StartOpts = {
   mode: 'new' | 'resume'
-  engine?: Engine
+  engine?: SessionEngine
   sessionId?: string
   cwd?: string
   name?: string
@@ -190,7 +191,9 @@ function startSession(key: string, opts: StartOpts) {
   const args: string[] = []
   let sessionId: string
 
-  if (engine === 'codex') {
+  if (engine === 'local') {
+    sessionId = opts.sessionId || randomUUID()
+  } else if (engine === 'codex') {
     args.push('-s', 'danger-full-access', '-a', 'never')
     if (opts.mode === 'resume' && opts.sessionId) {
       sessionId = opts.sessionId
@@ -207,7 +210,6 @@ function startSession(key: string, opts: StartOpts) {
     if (opts.name) args.push('--name', opts.name)
   }
 
-  const cmd = [enginePath(engine), ...args].map(shq).join(' ')
   const env = {
     ...process.env,
     TERM: 'xterm-256color',
@@ -217,13 +219,22 @@ function startSession(key: string, opts: StartOpts) {
   } as Record<string, string>
   delete env.NO_COLOR
 
-  const proc = pty.spawn(LOGIN_SHELL, ['-l', '-c', cmd], {
-    name: 'xterm-256color',
-    cols: opts.cols || 80,
-    rows: opts.rows || 30,
-    cwd,
-    env,
-  })
+  const proc =
+    engine === 'local'
+      ? pty.spawn(LOGIN_SHELL, ['-l'], {
+          name: 'xterm-256color',
+          cols: opts.cols || 80,
+          rows: opts.rows || 30,
+          cwd,
+          env,
+        })
+      : pty.spawn(LOGIN_SHELL, ['-l', '-c', [enginePath(engine), ...args].map(shq).join(' ')], {
+          name: 'xterm-256color',
+          cols: opts.cols || 80,
+          rows: opts.rows || 30,
+          cwd,
+          env,
+        })
   proc.onData((d) => send('pty:data', key, d))
   proc.onExit(({ exitCode }) => send('pty:exit', key, exitCode))
 

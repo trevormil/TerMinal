@@ -134,6 +134,7 @@ export type DocsTree = {
 }
 
 export type Engine = 'codex' | 'claude'
+export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
@@ -500,7 +501,7 @@ export type FleetSession = {
 
 export type StartOpts = {
   mode: 'new' | 'resume'
-  engine?: Engine
+  engine?: SessionEngine
   sessionId?: string
   cwd?: string
   name?: string
@@ -513,7 +514,7 @@ export type SessionInfo = {
   cwd: string
   mode: '' | 'new' | 'resume'
   name: string
-  engine: Engine
+  engine: SessionEngine
   claude: string
 }
 

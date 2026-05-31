@@ -1,20 +1,56 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Plus, X, LayoutDashboard, Settings as SettingsIcon } from 'lucide-react'
+import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
+import {
+  Columns2,
+  Grid2x2,
+  LayoutDashboard,
+  Plus,
+  Settings as SettingsIcon,
+  Square,
+  SquareTerminal,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
-import type { Engine, FleetSession } from './lib/types'
+import { ALL_TABS } from './tabs/registry'
+import { navigateTo } from './lib/nav'
+import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
 type Sess = { key: string; choice: Choice; info: Info }
+export type TerminalLayout = 'single' | 'split' | 'grid4'
 
 const cwdOf = (s: Sess) => s.info.cwd || s.choice.cwd || ''
 const repoLabelOf = (cwd: string) => cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
+const loadTerminalLayout = (): TerminalLayout => {
+  try {
+    const raw = localStorage.getItem('gt.terminalLayout')
+    if (raw === 'single' || raw === 'split' || raw === 'grid4') return raw
+  } catch {
+    /* ignore */
+  }
+  return 'single'
+}
+const loadTerminalSessionOrder = (): Record<string, string[]> => {
+  try {
+    const raw = localStorage.getItem('gt.terminalSessionOrder')
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, value]) => Array.isArray(value))
+        .map(([root, value]) => [root, (value as unknown[]).filter((x): x is string => typeof x === 'string')]),
+    )
+  } catch {
+    return {}
+  }
+}
 
 // A workspace groups every session that lives under the same repo root. The
 // top tab bar shows ONE pill per workspace with the sessions rendered inline
@@ -57,7 +93,7 @@ type Saved = {
   sessionId: string
   cwd: string
   name: string
-  engine?: 'claude' | 'codex'
+  engine?: SessionEngine
   mode?: 'new' | 'resume'
 }
 const restored: Saved[] = (() => {
@@ -109,7 +145,12 @@ export default function App() {
   }, [sessions])
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
+  const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
+  const [terminalSessionOrder, setTerminalSessionOrder] =
+    useState<Record<string, string[]>>(loadTerminalSessionOrder)
+  const [draggingSessionKey, setDraggingSessionKey] = useState<string | null>(null)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
+  const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
 
@@ -132,7 +173,32 @@ export default function App() {
     const id = setInterval(tick, 3000)
     return () => clearInterval(id)
   }, [sessions.length])
+  useEffect(() => {
+    localStorage.setItem('gt.terminalLayout', terminalLayout)
+  }, [terminalLayout])
+  useEffect(() => {
+    localStorage.setItem('gt.terminalSessionOrder', JSON.stringify(terminalSessionOrder))
+  }, [terminalSessionOrder])
   const statusByKey = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
+
+  useEffect(() => {
+    if (!activeKey || adding !== false || sessions.length === 0) return
+    let cancelled = false
+    const raf = requestAnimationFrame(() => {
+      window.gt
+        .tabContext()
+        .then((ctx) => {
+          if (!cancelled) setActiveCtx(ctx)
+        })
+        .catch(() => {
+          if (!cancelled) setActiveCtx(null)
+        })
+    })
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
+  }, [activeKey, adding, sessions.length])
 
   // Fire the IPC immediately AND flip activeKey in the same tick. Main
   // processes IPCs FIFO — so any tabContext / tick / data IPC the newly-active
@@ -236,12 +302,50 @@ export default function App() {
       if (!map.has(root)) map.set(root, { repoRoot: root, label: repoLabelOf(root), sessions: [] })
       map.get(root)!.sessions.push(s)
     }
-    return [...map.values()]
-  }, [sessions])
+    return [...map.values()].map((ws) => {
+      const order = terminalSessionOrder[ws.repoRoot] ?? []
+      const rank = new Map(order.map((key, i) => [key, i]))
+      return {
+        ...ws,
+        sessions: ws.sessions
+          .map((session, originalIndex) => ({ session, originalIndex }))
+          .sort((a, b) => {
+            const aRank = rank.get(a.session.key)
+            const bRank = rank.get(b.session.key)
+            if (aRank !== undefined || bRank !== undefined) {
+              return (aRank ?? Number.MAX_SAFE_INTEGER) - (bRank ?? Number.MAX_SAFE_INTEGER)
+            }
+            return a.originalIndex - b.originalIndex
+          })
+          .map(({ session }) => session),
+      }
+    })
+  }, [sessions, terminalSessionOrder])
   const activeWorkspaceRoot = useMemo(() => {
     const s = sessions.find((x) => x.key === activeKey)
     return s ? cwdOf(s) : ''
   }, [sessions, activeKey])
+  const activeWorkspaceSessions = useMemo(
+    () => workspaces.find((w) => w.repoRoot === activeWorkspaceRoot)?.sessions ?? [],
+    [workspaces, activeWorkspaceRoot],
+  )
+  const visibleSessionOrder = useMemo(() => {
+    if (!activeKey) return []
+    if (terminalLayout === 'single') return [activeKey]
+    const limit = terminalLayout === 'split' ? 2 : 4
+    const keys = activeWorkspaceSessions.map((s) => s.key)
+    const visible = keys.slice(0, limit)
+    if (activeKey && !visible.includes(activeKey) && visible.length > 0) {
+      visible[visible.length - 1] = activeKey
+    }
+    return visible
+  }, [activeKey, activeWorkspaceSessions, terminalLayout])
+  const visibleSessionKeys = useMemo(() => new Set(visibleSessionOrder), [visibleSessionOrder])
+  const visibleSessionRank = useMemo(
+    () => new Map(visibleSessionOrder.map((key, i) => [key, i])),
+    [visibleSessionOrder],
+  )
+  const multiTerminal = terminalLayout !== 'single' && visibleSessionKeys.size > 1
 
   // Pre-compute peer-session lists ONCE per workspace, then look up by session
   // key in the map. Without this, every App re-render (every fleet tick, every
@@ -251,7 +355,7 @@ export default function App() {
   const peersByKey = useMemo(() => {
     const m = new Map<
       string,
-      { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: Engine }[]
+      { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine }[]
     >()
     for (const ws of workspaces) {
       const peers = ws.sessions.map((x, i) => ({
@@ -292,8 +396,50 @@ export default function App() {
     }
   }
 
-  const showEntry = adding !== false || sessions.length === 0
+  const reorderSession = (fromKey: string, toKey: string) => {
+    if (fromKey === toKey) return
+    const ws = workspaces.find((w) => w.sessions.some((s) => s.key === fromKey))
+    if (!ws || !ws.sessions.some((s) => s.key === toKey)) return
+    const keys = ws.sessions.map((s) => s.key)
+    const fromIndex = keys.indexOf(fromKey)
+    const toIndex = keys.indexOf(toKey)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [moved] = keys.splice(fromIndex, 1)
+    keys.splice(keys.indexOf(toKey), 0, moved)
+    setTerminalSessionOrder((prev) => ({ ...prev, [ws.repoRoot]: keys }))
+  }
 
+  const handleSessionChipDrop = (e: DragEvent, toKey: string) => {
+    e.preventDefault()
+    const fromKey = e.dataTransfer.getData('application/x-terminal-session') || draggingSessionKey
+    if (fromKey) reorderSession(fromKey, toKey)
+    setDraggingSessionKey(null)
+  }
+
+  const showEntry = adding !== false || sessions.length === 0
+  const layoutButton = (
+    mode: TerminalLayout,
+    title: string,
+    Icon: LucideIcon,
+    disabled = false,
+  ) => (
+    <button
+      key={mode}
+      style={noDrag}
+      onClick={() => !disabled && setTerminalLayout(mode)}
+      disabled={disabled}
+      title={title}
+      className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
+        terminalLayout === mode
+          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          : disabled
+            ? 'cursor-not-allowed text-zinc-700'
+            : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+      }`}
+    >
+      <Icon size={13} strokeWidth={2} />
+    </button>
+  )
   // hold the UI until we know onboarding state (avoids the entry screen flashing
   // before first-run setup)
   if (onboarded === null)
@@ -416,17 +562,148 @@ export default function App() {
         </button>
       </header>
 
-      {/* one SessionView per session; all mounted (PTYs persist), only active visible.
+      {/* one SessionView per session; all mounted (PTYs persist), selected sessions visible.
           The entry screen overlays (rather than replacing) so existing sessions
           stay mounted and their ptys aren't respawned. */}
       <div className="relative min-h-0 flex-1">
+        {multiTerminal && !showEntry && (
+          <div className="absolute inset-x-0 top-0 z-10 flex h-8 items-center gap-0.5 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300">
+            <button
+              style={noDrag}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--gt-accent)]/20 px-2.5 py-1 text-[11px] font-medium text-zinc-100"
+            >
+              <SquareTerminal size={13} strokeWidth={2} />
+              Terminal
+            </button>
+            {activeCtx &&
+              ALL_TABS.filter((t) => t.appliesTo(activeCtx)).map((t) => (
+                <button
+                  key={t.id}
+                  style={noDrag}
+                  onClick={() => {
+                    setTerminalLayout('single')
+                    requestAnimationFrame(() => navigateTo(t.id))
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                >
+                  <t.icon size={13} strokeWidth={2} />
+                  {t.id === 'mrs' ? `${activeCtx.forgeLabel}s` : t.title}
+                </button>
+              ))}
+          </div>
+        )}
+        {multiTerminal && !showEntry && (
+          <div className="absolute inset-x-0 top-8 z-10 flex h-7 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-2 text-[11px]">
+            <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+              terminal
+            </span>
+            {(peersByKey.get(activeKey || '') || []).map((p) => {
+              const visible = visibleSessionKeys.has(p.key)
+              return (
+                <button
+                  key={p.key}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingSessionKey(p.key)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('application/x-terminal-session', p.key)
+                  }}
+                  onDragOver={(e) => {
+                    if (draggingSessionKey && draggingSessionKey !== p.key) {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                    }
+                  }}
+                  onDrop={(e) => handleSessionChipDrop(e, p.key)}
+                  onDragEnd={() => setDraggingSessionKey(null)}
+                  onClick={() => {
+                    navigateTo('terminal')
+                    activate(p.key)
+                  }}
+                  className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
+                    p.key === activeKey
+                      ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                      : draggingSessionKey === p.key
+                        ? 'text-zinc-500 opacity-60'
+                      : visible
+                        ? 'text-zinc-300 hover:bg-white/5 hover:text-zinc-100'
+                        : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+                  }`}
+                >
+                  <span
+                    title={p.status === 'working' ? 'working' : 'idle'}
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      p.status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-[var(--gt-accent-2)]'
+                    }`}
+                  />
+                  <span className="max-w-[120px] truncate">{p.label}</span>
+                </button>
+              )
+            })}
+            <button
+              onClick={() => setAdding({ repoRoot: activeWorkspaceRoot || '' })}
+              title="New session in this workspace"
+              className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            >
+              <Plus size={11} strokeWidth={2.5} />
+            </button>
+            <div className="flex-1" />
+            <div
+              style={noDrag}
+              className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5"
+            >
+              {layoutButton('single', 'Single terminal with cockpit', Square)}
+              {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
+              {layoutButton('grid4', 'Four-terminal grid', Grid2x2, activeWorkspaceSessions.length < 2)}
+            </div>
+          </div>
+        )}
+        <div
+          className={`absolute inset-0 ${
+            multiTerminal ? 'grid gap-px bg-[var(--gt-border)] pt-[60px]' : ''
+          }`}
+          style={
+            multiTerminal
+              ? {
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gridTemplateRows:
+                    terminalLayout === 'grid4' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+                }
+              : undefined
+          }
+        >
         {sessions.map((s) => {
           const peers = peersByKey.get(s.key)
+          const visible = !showEntry && visibleSessionKeys.has(s.key)
+          const status = statusByKey[s.key] || 'idle'
           return (
             <div
               key={s.key}
-              className="absolute inset-0"
-              style={{ visibility: !showEntry && s.key === activeKey ? 'visible' : 'hidden' }}
+              onPointerDownCapture={() => {
+                if (multiTerminal && s.key !== activeKey) activate(s.key)
+              }}
+              onFocusCapture={() => {
+                if (multiTerminal && s.key !== activeKey) activate(s.key)
+              }}
+              className={
+                visible
+                  ? multiTerminal
+                    ? `relative min-h-0 min-w-0 overflow-hidden border bg-[var(--gt-bg)] ${
+                        status === 'working'
+                          ? 'border-[var(--gt-green)]/25'
+                          : 'border-[var(--gt-yellow)]/60'
+                      } ${
+                        s.key === activeKey
+                          ? 'outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/70'
+                          : ''
+                      }`
+                    : 'absolute inset-0'
+                  : 'absolute inset-0'
+              }
+              style={{
+                visibility: visible ? 'visible' : 'hidden',
+                order: multiTerminal ? visibleSessionRank.get(s.key) : undefined,
+              }}
             >
               <SessionView
                 sessionKey={s.key}
@@ -438,10 +715,17 @@ export default function App() {
                 onAddSession={() => setAdding({ repoRoot: cwdOf(s) || '' })}
                 onCloseSession={closeSession}
                 onRenameSession={renameSession}
+                onReorderSession={reorderSession}
+                terminalTile={multiTerminal}
+                terminalLayout={terminalLayout}
+                onTerminalLayoutChange={setTerminalLayout}
+                canSplitTerminal={activeWorkspaceSessions.length >= 2}
+                focusTerminal={s.key === activeKey}
               />
             </div>
           )
         })}
+        </div>
         {fleet && !showEntry && (
           <div className="absolute inset-0 z-40 bg-[var(--gt-bg)]">
             <FleetView

@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { SquareTerminal, GitBranch, LayoutGrid, X, Plus, type LucideIcon } from 'lucide-react'
+import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
+import {
+  Columns2,
+  GitBranch,
+  Grid2x2,
+  LayoutGrid,
+  Plus,
+  Square,
+  SquareTerminal,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
@@ -9,8 +19,9 @@ import { EngineLogo } from './components/EngineLogo'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { commandWidgetToPlugin } from './lib/commandWidget'
-import type { Engine, Plugin, TabContext } from './lib/types'
-import { onNavigate } from './lib/nav'
+import type { Engine, Plugin, SessionEngine, TabContext } from './lib/types'
+import { navigateTo, onNavigate } from './lib/nav'
+import type { TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
@@ -125,25 +136,39 @@ export function SessionView({
   onAddSession,
   onCloseSession,
   onRenameSession,
+  onReorderSession,
+  terminalTile = false,
+  terminalLayout = 'single',
+  onTerminalLayoutChange,
+  canSplitTerminal = false,
+  focusTerminal = false,
 }: {
   sessionKey: string
   choice: Choice
   active: boolean
   onStarted: (info: Info) => void
+  /** Split/grid layouts are terminal-focused; hide workspace chrome and cockpit. */
+  terminalTile?: boolean
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
-  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: Engine }[]
+  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine }[]
   onSwitchSession?: (key: string) => void
   onAddSession?: () => void
   onCloseSession?: (key: string) => void
   onRenameSession?: (key: string, name: string) => void
+  onReorderSession?: (fromKey: string, toKey: string) => void
+  terminalLayout?: TerminalLayout
+  onTerminalLayoutChange?: (layout: TerminalLayout) => void
+  canSplitTerminal?: boolean
+  focusTerminal?: boolean
 }) {
   const [info, setInfo] = useState<Info>({ sessionId: '', cwd: '' })
   // Inline rename in the session sub-bar — null when not editing, otherwise
   // the peer key being edited.
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
+  const [draggingKey, setDraggingKey] = useState<string | null>(null)
   const [branch, setBranch] = useState('')
   const [ctx, setCtx] = useState<TabContext | null>(null)
   const [activeTab, setActiveTab] = useState('terminal')
@@ -158,7 +183,10 @@ export function SessionView({
     [cmdPlugins],
   )
   const availablePlugins = useMemo(
-    () => allPlugins.filter((p) => !p.engines || p.engines.includes(choice.engine)),
+    () =>
+      allPlugins.filter(
+        (p) => choice.engine !== 'local' && (!p.engines || p.engines.includes(choice.engine as Engine)),
+      ),
     [allPlugins, choice.engine],
   )
   // Tab visibility: user can hide tabs they don't use via Settings → Tabs.
@@ -257,7 +285,7 @@ export function SessionView({
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
   const activeWidgets = availablePlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
-  const showCockpit = true
+  const showCockpit = !terminalTile && choice.engine !== 'local'
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -293,10 +321,46 @@ export function SessionView({
     )
   }
 
+  const layoutButton = (
+    mode: TerminalLayout,
+    title: string,
+    Icon: LucideIcon,
+    disabled = false,
+  ) => (
+    <button
+      key={mode}
+      style={noDrag}
+      onClick={() => !disabled && onTerminalLayoutChange?.(mode)}
+      disabled={disabled}
+      title={title}
+      className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
+        terminalLayout === mode
+          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          : disabled
+            ? 'cursor-not-allowed text-zinc-700'
+            : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+      }`}
+    >
+      <Icon size={13} strokeWidth={2} />
+    </button>
+  )
+  const handleSessionDrop = (e: DragEvent, toKey: string) => {
+    e.preventDefault()
+    const fromKey = e.dataTransfer.getData('application/x-terminal-session') || draggingKey
+    if (fromKey && fromKey !== toKey) onReorderSession?.(fromKey, toKey)
+    setDraggingKey(null)
+  }
+
   return (
     <div className="flex h-full flex-col">
-      <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active} />
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300">
+      <div className={terminalTile ? 'hidden' : undefined}>
+        <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active} />
+      </div>
+      <header
+        className={`h-8 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300 ${
+          terminalTile ? 'hidden' : 'flex'
+        }`}
+      >
         <div className="flex items-center gap-0.5">
           {tabPill('terminal', SquareTerminal, 'Terminal')}
           {tabs.map((t) =>
@@ -359,94 +423,140 @@ export function SessionView({
             {/* Session sub-bar — peer terminal instances inside this workspace.
                 Top-level bar shows projects; this row shows pty instances.
                 Hidden when there's only one session (no choice to make). */}
-            {peerSessions.length > 1 || onAddSession ? (
-              <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px]">
-                <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
-                  terminal
-                </span>
-                {peerSessions.map((p) => {
-                  const on = p.key === sessionKey
-                  const isEditing = editingKey === p.key
-                  return (
-                    <div
-                      key={p.key}
-                      onClick={() => !isEditing && p.key !== sessionKey && onSwitchSession?.(p.key)}
-                      onDoubleClick={() => {
-                        if (!onRenameSession) return
-                        setEditingKey(p.key)
-                        setEditingValue(p.label)
-                      }}
-                      title="Double-click to rename"
-                      className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
-                        on
-                          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
-                          : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span
-                        title={p.status === 'working' ? 'working' : 'idle'}
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          p.status === 'working'
-                            ? 'bg-[var(--gt-green)] gt-pulse'
-                            : p.mode === 'new'
-                              ? 'bg-[var(--gt-accent)]'
-                              : 'bg-[var(--gt-accent-2)]'
+            <div
+              className={`h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px] ${
+                terminalTile || (peerSessions.length <= 1 && !onAddSession && !onTerminalLayoutChange)
+                  ? 'hidden'
+                  : 'flex'
+              }`}
+            >
+              {!terminalTile && (peerSessions.length > 1 || onAddSession || onTerminalLayoutChange) ? (
+                <>
+                  <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                    terminal
+                  </span>
+                  {peerSessions.map((p) => {
+                    const on = p.key === sessionKey
+                    const isEditing = editingKey === p.key
+                    return (
+                      <div
+                        key={p.key}
+                        draggable={!isEditing && !!onReorderSession}
+                        onDragStart={(e) => {
+                          if (isEditing) return
+                          setDraggingKey(p.key)
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('application/x-terminal-session', p.key)
+                        }}
+                        onDragOver={(e) => {
+                          if (draggingKey && draggingKey !== p.key) {
+                            e.preventDefault()
+                            e.dataTransfer.dropEffect = 'move'
+                          }
+                        }}
+                        onDrop={(e) => handleSessionDrop(e, p.key)}
+                        onDragEnd={() => setDraggingKey(null)}
+                        onClick={() => {
+                          if (isEditing) return
+                          navigateTo('terminal')
+                          setActiveTab('terminal')
+                          if (p.key !== sessionKey) onSwitchSession?.(p.key)
+                        }}
+                        onDoubleClick={() => {
+                          if (!onRenameSession) return
+                          setEditingKey(p.key)
+                          setEditingValue(p.label)
+                        }}
+                        title="Double-click to rename"
+                        className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
+                          on
+                            ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                            : draggingKey === p.key
+                              ? 'text-zinc-500 opacity-60'
+                            : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                         }`}
-                      />
-                      <EngineLogo engine={p.engine} size={10} className="opacity-80" />
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          value={editingValue}
-                          onChange={(e) => setEditingValue(e.target.value)}
-                          onBlur={() => {
-                            onRenameSession?.(p.key, editingValue.trim())
-                            setEditingKey(null)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                      >
+                        <span
+                          title={p.status === 'working' ? 'working' : 'idle'}
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            p.status === 'working'
+                              ? 'bg-[var(--gt-green)] gt-pulse'
+                              : p.mode === 'new'
+                                ? 'bg-[var(--gt-accent)]'
+                                : 'bg-[var(--gt-accent-2)]'
+                          }`}
+                        />
+                        <EngineLogo engine={p.engine} size={10} className="opacity-80" />
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            value={editingValue}
+                            onChange={(e) => setEditingValue(e.target.value)}
+                            onBlur={() => {
                               onRenameSession?.(p.key, editingValue.trim())
                               setEditingKey(null)
-                            } else if (e.key === 'Escape') {
-                              setEditingKey(null)
-                            }
-                            e.stopPropagation()
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          spellCheck={false}
-                          className="w-24 rounded-sm border border-[var(--gt-accent)]/60 bg-black/40 px-1 py-px text-[11px] text-zinc-100 outline-none"
-                        />
-                      ) : (
-                        <span className="max-w-[140px] truncate">{p.label}</span>
-                      )}
-                      {peerSessions.length > 1 && onCloseSession && !isEditing && (
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onCloseSession(p.key)
-                          }}
-                          title="Close this session"
-                          className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
-                        >
-                          <X size={10} strokeWidth={2.5} />
-                        </span>
-                      )}
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                onRenameSession?.(p.key, editingValue.trim())
+                                setEditingKey(null)
+                              } else if (e.key === 'Escape') {
+                                setEditingKey(null)
+                              }
+                              e.stopPropagation()
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            spellCheck={false}
+                            className="w-24 rounded-sm border border-[var(--gt-accent)]/60 bg-black/40 px-1 py-px text-[11px] text-zinc-100 outline-none"
+                          />
+                        ) : (
+                          <span className="max-w-[140px] truncate">{p.label}</span>
+                        )}
+                        {peerSessions.length > 1 && onCloseSession && !isEditing && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onCloseSession(p.key)
+                            }}
+                            title="Close this session"
+                            className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                          >
+                            <X size={10} strokeWidth={2.5} />
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {onAddSession && (
+                    <button
+                      onClick={onAddSession}
+                      title="New session in this workspace"
+                      className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                    >
+                      <Plus size={11} strokeWidth={2.5} />
+                    </button>
+                  )}
+                  <div className="flex-1" />
+                  {onTerminal && onTerminalLayoutChange && (
+                    <div
+                      style={noDrag}
+                      className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5"
+                    >
+                      {layoutButton('single', 'Single terminal with cockpit', Square)}
+                      {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
+                      {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canSplitTerminal)}
                     </div>
-                  )
-                })}
-                {onAddSession && (
-                  <button
-                    onClick={onAddSession}
-                    title="New session in this workspace"
-                    className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-                  >
-                    <Plus size={11} strokeWidth={2.5} />
-                  </button>
-                )}
-              </div>
-            ) : null}
+                  )}
+                </>
+              ) : null}
+            </div>
             <div className="min-h-0 flex-1">
-              <TerminalPane sessionKey={sessionKey} choice={choice} onStarted={handleStarted} />
+              <TerminalPane
+                sessionKey={sessionKey}
+                choice={choice}
+                onStarted={handleStarted}
+                active={focusTerminal}
+              />
             </div>
           </main>
           {showCockpit && (
@@ -492,7 +602,7 @@ export function SessionView({
 
         {/* full-screen view tab */}
         {active && !onTerminal && ActiveTab && ctx && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <ErrorBoundary label={ActiveTab.title}>
               <ActiveTab.Component ctx={ctx} />
             </ErrorBoundary>
