@@ -492,7 +492,7 @@ function createWindow() {
 }
 
 // ---- session IPC ----
-ipcMain.handle('sessions:list', () => listSessions())
+ipcMain.handle('sessions:list', (_e, engine?: Engine) => listSessions(engine))
 ipcMain.handle('session:start', (_e, key: string, opts: StartOpts) => startSession(key, opts))
 ipcMain.handle('session:setActive', (_e, key: string) => setActiveSession(key))
 ipcMain.handle('session:stop', (_e, key: string) => stopSession(key))

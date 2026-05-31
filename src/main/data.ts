@@ -520,9 +520,16 @@ function listCursorSessions(): SessionMeta[] {
   return files.map(parseCursorSessionFile).filter((s): s is SessionMeta => !!s)
 }
 
-/** All sessions across all engines, newest first — for the entry picker. */
-export function listSessions(): SessionMeta[] {
-  const out = [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
+/** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
+export function listSessions(engine?: 'claude' | 'codex' | 'cursor'): SessionMeta[] {
+  const out =
+    engine === 'claude'
+      ? listClaudeSessions()
+      : engine === 'codex'
+        ? listCodexSessions()
+        : engine === 'cursor'
+          ? listCursorSessions()
+          : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)
 }
 

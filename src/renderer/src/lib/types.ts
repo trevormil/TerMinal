@@ -561,7 +561,7 @@ export type TddInfo = {
 }
 
 export type GtApi = {
-  listSessions: () => Promise<SessionMeta[]>
+  listSessions: (engine?: Engine) => Promise<SessionMeta[]>
   startSession: (key: string, opts: StartOpts) => Promise<{ sessionId: string; cwd: string }>
   setActiveSession: (key: string) => Promise<void>
   stopSession: (key: string) => Promise<void>

@@ -14,7 +14,7 @@ type StartOpts = {
 // The single bridge the renderer (and every plugin) talks to.
 const gt = {
   // session lifecycle (each session keyed by a renderer-generated id)
-  listSessions: () => ipcRenderer.invoke('sessions:list'),
+  listSessions: (engine?: 'claude' | 'codex' | 'cursor') => ipcRenderer.invoke('sessions:list', engine),
   startSession: (key: string, opts: StartOpts) => ipcRenderer.invoke('session:start', key, opts),
   setActiveSession: (key: string) => ipcRenderer.invoke('session:setActive', key),
   stopSession: (key: string) => ipcRenderer.invoke('session:stop', key),

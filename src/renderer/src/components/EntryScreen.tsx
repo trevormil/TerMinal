@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal } from 'lucide-react'
-import type { SessionEngine, SessionMeta } from '../lib/types'
+import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw } from 'lucide-react'
+import type { Engine, SessionEngine, SessionMeta } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
@@ -23,6 +23,7 @@ function rel(ms: number): string {
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const underDir = (sessionCwd: string, dir: string) =>
   sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
+const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
 
 export function EntryScreen({
   onChoose,
@@ -37,7 +38,8 @@ export function EntryScreen({
    *  this repo. */
   lockedCwd?: string
 }) {
-  const [sessions, setSessions] = useState<SessionMeta[] | null>(null)
+  const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>({})
+  const [loadingSessions, setLoadingSessions] = useState<Engine | null>(null)
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
@@ -65,14 +67,23 @@ export function EntryScreen({
   }
 
   useEffect(() => {
-    window.gt.listSessions().then((s) => {
-      setSessions(s)
-      if (s[0]?.cwd) setCwd(s[0].cwd)
-    })
     window.gt.settings.get().then((s) => {
       setDefaultParent(s.projectsDir)
     })
   }, [])
+
+  const loadEngineSessions = async (target?: Engine) => {
+    const next = target ?? (isAiEngine(engine) ? engine : null)
+    if (!next || loadingSessions) return
+    setLoadingSessions(next)
+    try {
+      const loaded = await window.gt.listSessions(next)
+      setSessionsByEngine((cur) => ({ ...cur, [next]: loaded }))
+      if (!cwd && loaded[0]?.cwd) setCwd(loaded[0].cwd)
+    } finally {
+      setLoadingSessions(null)
+    }
+  }
 
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
@@ -84,10 +95,10 @@ export function EntryScreen({
     if (dir) selectDir(dir)
   }
 
-  const all = sessions || []
-  const byEngine = all.filter((s) => s.engine === engine)
-  const shown = filterDir ? byEngine.filter((s) => underDir(s.cwd, filterDir)) : byEngine
-  const showResume = engine === 'claude' || engine === 'codex'
+  const canResume = isAiEngine(engine)
+  const sessions = canResume ? sessionsByEngine[engine] : undefined
+  const shown = sessions ? (filterDir ? sessions.filter((s) => underDir(s.cwd, filterDir)) : sessions) : []
+  const isLoadingThisEngine = loadingSessions === engine
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -264,12 +275,20 @@ export function EntryScreen({
           </div>
         </div>
 
-        {showResume && (
+        {canResume && (
           <>
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''} ({shown.length})
+                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''}{sessions ? ` (${shown.length})` : ''}
               </span>
+              <button
+                onClick={() => loadEngineSessions()}
+                disabled={!!loadingSessions}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-[var(--gt-accent-2)] hover:border-[var(--gt-accent)]/50 disabled:opacity-50"
+              >
+                <RefreshCw size={11} strokeWidth={2} className={isLoadingThisEngine ? 'animate-spin' : ''} />
+                {sessions ? 'refresh' : 'load sessions'}
+              </button>
               {filterDir && (
                 <button
                   onClick={() => setFilterDir('')}
@@ -279,8 +298,19 @@ export function EntryScreen({
                 </button>
               )}
             </div>
-            {sessions === null ? (
-              <div className="py-6 text-center text-[12px] text-zinc-600">Scanning sessions…</div>
+            {!sessions && !isLoadingThisEngine ? (
+              <button
+                onClick={() => loadEngineSessions()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300"
+              >
+                <EngineLogo engine={engine} size={13} />
+                Load prior {engine} sessions
+              </button>
+            ) : isLoadingThisEngine ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-[12px] text-zinc-500">
+                <RefreshCw size={13} strokeWidth={2} className="animate-spin" />
+                Scanning {engine} sessions…
+              </div>
             ) : shown.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
                 {filterDir ? 'No sessions for this folder — start a new one above.' : `No prior ${engine} sessions found.`}
