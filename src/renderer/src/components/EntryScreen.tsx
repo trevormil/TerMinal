@@ -31,7 +31,6 @@ export function EntryScreen({
   lockedCwd?: string
 }) {
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null)
-  const [dirs, setDirs] = useState<{ name: string; path: string }[]>([])
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('claude')
@@ -63,7 +62,6 @@ export function EntryScreen({
       setSessions(s)
       if (s[0]?.cwd) setCwd(s[0].cwd)
     })
-    window.gt.projectDirs().then(setDirs)
     window.gt.settings.get().then((s) => {
       setDefaultParent(s.projectsDir)
       setEngine(s.defaultEngine)
@@ -83,7 +81,6 @@ export function EntryScreen({
   const all = sessions || []
   const byEngine = all.filter((s) => s.engine === engine)
   const shown = filterDir ? byEngine.filter((s) => underDir(s.cwd, filterDir)) : byEngine
-  const countFor = (path: string) => byEngine.filter((s) => underDir(s.cwd, path)).length
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -153,37 +150,6 @@ export function EntryScreen({
               </div>
             )
           })()}
-
-        {/* quick-pick directories — hidden when the cwd is locked (we're adding
-            a session inside an existing workspace, the repo is already fixed) */}
-        {!lockedCwd && dirs.length > 0 && (
-          <div className="mb-4">
-            <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-              Projects
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {dirs.map((d) => {
-                const n = countFor(d.path)
-                const active = filterDir === d.path
-                return (
-                  <button
-                    key={d.path}
-                    onClick={() => selectDir(d.path)}
-                    title={d.path}
-                    className={`rounded-lg border px-2.5 py-1 text-[12px] transition-colors ${
-                      active
-                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                        : 'border-[var(--gt-border)] text-zinc-300 hover:border-[var(--gt-accent)]/60'
-                    }`}
-                  >
-                    {d.name}
-                    {n > 0 && <span className="ml-1 text-[10px] text-zinc-500">{n}</span>}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {/* new project from template — hidden when adding inside an existing
             workspace (the repo is fixed) */}
