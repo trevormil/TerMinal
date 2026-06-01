@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TerMinal — your coding agent, with a cockpit</title>
+    <title>TerMinal - local software factory for coding agents</title>
     <link rel="icon" type="image/png" href="logo.png" />
     <style>
       :root {
@@ -12,6 +12,8 @@
         --border: #232334;
         --accent: #7c5cff;
         --accent2: #00e0c6;
+        --ok: #6ee7b7;
+        --warn: #ffb35c;
         --text: #e7e7ee;
         --mute: #8a8a9a;
       }
@@ -26,12 +28,12 @@
         font-family: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
-        background-image: radial-gradient(
-            circle at 80% -10%,
-            rgba(124, 92, 255, 0.18),
-            transparent 45%
-          ),
-          radial-gradient(circle at 0% 100%, rgba(0, 224, 198, 0.1), transparent 40%);
+        background-image:
+          linear-gradient(rgba(124, 92, 255, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 224, 198, 0.05) 1px, transparent 1px);
+        background-size:
+          42px 42px,
+          42px 42px;
       }
       .wrap {
         max-width: 980px;
@@ -53,7 +55,7 @@
       }
       .brand {
         font-weight: 700;
-        letter-spacing: -0.02em;
+        letter-spacing: 0;
       }
       header nav {
         margin-left: auto;
@@ -67,6 +69,31 @@
       }
       header nav a:hover {
         color: var(--text);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        background: #101018;
+        padding: 9px 12px;
+        font-size: 13px;
+        text-decoration: none;
+      }
+      .btn.primary {
+        border-color: rgba(124, 92, 255, 0.8);
+        background: rgba(124, 92, 255, 0.18);
+      }
+      .btn:hover {
+        border-color: var(--accent);
       }
 
       .hero {
@@ -82,9 +109,9 @@
         margin-bottom: 22px;
       }
       h1 {
-        font-size: 52px;
+        font-size: clamp(42px, 8vw, 72px);
         line-height: 1.05;
-        letter-spacing: -0.03em;
+        letter-spacing: 0;
         font-weight: 800;
         max-width: 14ch;
       }
@@ -97,7 +124,7 @@
       .sub {
         color: var(--mute);
         font-size: 17px;
-        max-width: 56ch;
+        max-width: 62ch;
         margin: 20px 0 28px;
       }
       .cmd {
@@ -106,7 +133,7 @@
         gap: 12px;
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 14px 16px;
         font-size: 14px;
         overflow-x: auto;
@@ -138,7 +165,7 @@
       .mock {
         margin: 46px 0;
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: 8px;
         overflow: hidden;
         box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
       }
@@ -184,20 +211,20 @@
       }
       .side .h {
         font-size: 9px;
-        letter-spacing: 0.18em;
+        letter-spacing: 0;
         color: #5b5b6e;
         margin-bottom: 10px;
       }
       .card {
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 11px;
+        border-radius: 8px;
         padding: 10px;
         margin-bottom: 9px;
       }
       .card .t {
         font-size: 9.5px;
-        letter-spacing: 0.12em;
+        letter-spacing: 0;
         color: var(--mute);
         text-transform: uppercase;
         margin-bottom: 6px;
@@ -238,7 +265,7 @@
       }
       .feat {
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 18px;
         background: var(--panel);
       }
@@ -253,12 +280,74 @@
         font-size: 13px;
         color: var(--mute);
       }
+      .market {
+        margin: 42px 0 48px;
+        border: 1px solid var(--border);
+        background: rgba(18, 18, 26, 0.78);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .market-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .market-head p {
+        color: var(--mute);
+        font-size: 13px;
+        max-width: 58ch;
+      }
+      .market-actions {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .market-list {
+        display: grid;
+      }
+      .market-row {
+        display: grid;
+        grid-template-columns: 120px 1fr auto;
+        gap: 14px;
+        align-items: center;
+        padding: 13px 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .market-row:last-child {
+        border-bottom: 0;
+      }
+      .type {
+        color: var(--accent2);
+        font-size: 11px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+      .market-row strong {
+        display: block;
+        font-size: 14px;
+      }
+      .market-row p {
+        color: var(--mute);
+        font-size: 12.5px;
+      }
+      .pill {
+        border: 1px solid rgba(124, 92, 255, 0.45);
+        border-radius: 999px;
+        color: #c9c0ff;
+        font-size: 11px;
+        padding: 3px 8px;
+        white-space: nowrap;
+      }
 
       .snip {
         margin: 18px 0 50px;
         background: #0c0c12;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 18px;
         font-size: 12.5px;
         white-space: pre;
@@ -276,7 +365,7 @@
       }
       h2 {
         font-size: 13px;
-        letter-spacing: 0.12em;
+        letter-spacing: 0;
         text-transform: uppercase;
         color: var(--mute);
         margin: 16px 0;
@@ -293,6 +382,33 @@
         color: var(--mute);
         text-decoration: none;
       }
+      @media (max-width: 760px) {
+        header {
+          flex-wrap: wrap;
+        }
+        header nav {
+          width: 100%;
+          margin-left: 0;
+        }
+        .mock .body,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .side {
+          border-left: 0;
+          border-top: 1px solid var(--border);
+        }
+        .market-head,
+        .market-row {
+          grid-template-columns: 1fr;
+        }
+        .market-head {
+          display: grid;
+        }
+        .market-actions {
+          justify-content: flex-start;
+        }
+      }
     </style>
   </head>
   <body>
@@ -302,27 +418,34 @@
         <span class="brand">TerMinal</span>
         <nav>
           <a href="#install">Install</a>
-          <a href="#plugins">Plugins</a>
-          <a href="https://github.com/trevormil/TerMinal">Repo</a>
+          <a href="#marketplace">Marketplace</a>
+          <a href="https://github.com/trevormil/TerMinal">GitHub</a>
         </nav>
       </header>
 
       <section class="hero">
-        <span class="tag">⚡ an alt-terminal for Claude Code</span>
-        <h1>Your coding agent, with a <span class="grad">cockpit</span>.</h1>
+        <span class="tag">local-first · Claude Code · Codex · Cursor Agent</span>
+        <h1>TerMinal</h1>
         <p class="sub">
-          Run the real <code>claude</code> CLI with a live sidebar bolted on: context window %,
-          token burn, session cost, what the agent is doing right now, and your latest TDD scores —
-          with a stale flag. Every panel is a plugin. Plugins are just folders of code.
+          A desktop cockpit for coding agents: real terminal sessions, a fleet view,
+          inbox-driven human gates, scheduled runs, snippets, plugins, and a git-backed
+          marketplace of plain files.
         </p>
         <div class="cmd" id="install">
           <span class="dollar">$</span>
-          <code id="cmd-text"
-            >curl -fsSL
-            https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh |
-            bash</code
-          >
+          <code id="cmd-text">curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh | bash</code>
           <button class="copy" onclick="copyCmd()">copy</button>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/trevormil/TerMinal">GitHub repo</a>
+          <a class="btn" href="https://github.com/trevormil/TerMinal/tree/main/.marketplace"
+            >Browse marketplace</a
+          >
+          <a
+            class="btn"
+            href="https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/manifest.json"
+            >Raw manifest</a
+          >
         </div>
       </section>
 
@@ -332,33 +455,33 @@
           <span class="dot" style="background: #ff5f57"></span>
           <span class="dot" style="background: #febc2e"></span>
           <span class="dot" style="background: #28c840"></span>
-          <span style="margin-left: 8px">◆ TerMinal — claude · my-project</span>
-          <span style="margin-left: auto">⧉ Plugins · 4</span>
+          <span style="margin-left: 8px">◆ TerMinal - codex · my-project</span>
+          <span style="margin-left: auto">Inbox · 2 · Plugins · 4</span>
         </div>
         <div class="body">
           <div class="term">
-            <div class="line"><span class="p">&gt;</span> add a stale-flag to the TDD widget</div>
+            <div class="line"><span class="p">&gt;</span> implement ticket 0042 and keep going</div>
             <div class="line tool">● Read&nbsp;&nbsp;src/main/data.ts</div>
             <div class="line tool">● Edit&nbsp;&nbsp;plugins/tdd/index.tsx</div>
             <div class="line tool">● Bash&nbsp;&nbsp;bun test &nbsp;<span style="color:#6ee7b7">74/74 pass</span></div>
-            <div class="line"><span class="p">&gt;</span> <span style="opacity:.6">done — the widget now flips to ⚠ stale when HEAD moves ahead of the review.</span></div>
+            <div class="line"><span class="p">&gt;</span> <span style="opacity:.6">done - committed, pushed, and filed one inbox item for review.</span></div>
           </div>
           <div class="side">
             <div class="h">COCKPIT · 4 LIVE</div>
             <div class="card">
-              <div class="t">🧠 Context Window</div>
+              <div class="t">Context Window</div>
               <div class="v">74.9%</div>
               <div class="gauge">
                 <i style="width: 75%; background: var(--accent2)"></i>
               </div>
             </div>
             <div class="card">
-              <div class="t">⚡ Now Doing</div>
+              <div class="t">Now Doing</div>
               <div style="font-size: 13px; font-weight: 600">Bash</div>
               <div style="font-size: 11px; color: var(--mute)">bun test</div>
             </div>
             <div class="card">
-              <div class="t">📊 Plan Usage</div>
+              <div class="t">Plan Usage</div>
               <div style="font-size: 11px; color: var(--mute); margin-bottom: 3px">5-hour · 41%</div>
               <div class="gauge"><i style="width: 41%; background: var(--accent2)"></i></div>
               <div style="font-size: 11px; color: var(--mute); margin: 6px 0 3px">weekly · 63%</div>
@@ -366,7 +489,7 @@
             </div>
             <div class="card">
               <div class="t" style="display: flex; justify-content: space-between">
-                🧪 TDD / Review <span class="badge b-ok">current</span>
+                TDD / Review <span class="badge b-ok">current</span>
               </div>
               <div class="v">86</div>
               <div style="font-size: 11px; color: var(--mute)">verdict approve · tests pass</div>
@@ -377,23 +500,88 @@
 
       <div class="grid">
         <div class="feat">
-          <div class="ic">🧠</div>
-          <h3>Live agent telemetry</h3>
-          <p>Context %, token burn, plan usage (5h + weekly), and the agent's current tool call — pinned to one session.</p>
+          <div class="ic">01</div>
+          <h3>Agent terminals</h3>
+          <p>Run Claude, Codex, Cursor Agent, or local processes in real terminal tabs with snippets and resumable sessions.</p>
         </div>
         <div class="feat">
-          <div class="ic">🧪</div>
-          <h3>TDD at a glance</h3>
-          <p>Latest code-review score and test status, with a ⚠ stale flag the moment HEAD moves ahead of the review.</p>
+          <div class="ic">02</div>
+          <h3>Workflow cockpit</h3>
+          <p>Tickets, PRs, agents, schedules, CI, reports, activity, docs, and inbox items stay visible while work runs.</p>
         </div>
         <div class="feat">
-          <div class="ic">🧩</div>
-          <h3>Plugins, your way</h3>
-          <p>No marketplace. Write a React folder, or declare a command widget in JSON — including per-repo widgets loaded from the repo you attach to.</p>
+          <div class="ic">03</div>
+          <h3>Git-backed marketplace</h3>
+          <p>Plugins, widgets, skills, agents, and snippets are plain files shipped from <code>.marketplace/</code> on main.</p>
         </div>
       </div>
 
-      <h2 id="plugins">A plugin, in full</h2>
+      <section class="market" id="marketplace">
+        <div class="market-head">
+          <div>
+            <h2 style="margin-top: 0">Marketplace</h2>
+            <p>
+              The catalog is just files in git. TerMinal can read the manifest, show
+              installable presets, and copy entries into app, global, or per-repo locations
+              without a hosted backend.
+            </p>
+          </div>
+          <div class="market-actions">
+            <a class="btn" href="https://github.com/trevormil/TerMinal/tree/main/.marketplace"
+              >Open folder</a
+            >
+            <a
+              class="btn"
+              href="https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/schema.json"
+              >Schema</a
+            >
+          </div>
+        </div>
+        <div class="market-list">
+          <div class="market-row">
+            <span class="type">plugin</span>
+            <div>
+              <strong>Context Window</strong>
+              <p>React cockpit widget for live context usage.</p>
+            </div>
+            <span class="pill">app</span>
+          </div>
+          <div class="market-row">
+            <span class="type">widget</span>
+            <div>
+              <strong>Repo Pulse</strong>
+              <p>Declarative command widgets for tickets, HITL, sessions, and git state.</p>
+            </div>
+            <span class="pill">repo</span>
+          </div>
+          <div class="market-row">
+            <span class="type">skill</span>
+            <div>
+              <strong>Quick Review</strong>
+              <p>Compact review workflow for tests, diffs, and blocker-first reporting.</p>
+            </div>
+            <span class="pill">repo</span>
+          </div>
+          <div class="market-row">
+            <span class="type">agent</span>
+            <div>
+              <strong>Repo Health</strong>
+              <p>Maintenance pass for stale tickets, failing tests, and docs drift.</p>
+            </div>
+            <span class="pill">repo</span>
+          </div>
+          <div class="market-row">
+            <span class="type">snippet</span>
+            <div>
+              <strong>Review Loop Snippets</strong>
+              <p>One-click prompts for continue, tests, review, unblock, and ship loops.</p>
+            </div>
+            <span class="pill">repo</span>
+          </div>
+        </div>
+      </section>
+
+      <h2 id="plugins">A plugin file</h2>
       <div class="snip"><span class="c">// src/renderer/src/plugins/context/index.tsx</span>
 <span class="k">const</span> plugin: Plugin&lt;TranscriptStats&gt; = {
   id: <span class="s">'context'</span>,
@@ -414,8 +602,9 @@
       <footer>
         <span>◆ TerMinal</span>
         <a href="https://github.com/trevormil/TerMinal">source</a>
+        <a href="https://github.com/trevormil/TerMinal/tree/main/.marketplace">marketplace</a>
         <span>·</span>
-        <span>built in one night · macOS · MIT</span>
+        <span>macOS · MIT · local-first</span>
       </footer>
     </div>
 

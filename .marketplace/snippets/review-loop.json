@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "snippets": [
+    {
+      "id": "continue",
+      "title": "Looks good, continue",
+      "body": "Looks good to me. Continue with the next concrete step.",
+      "tags": ["continue", "review"]
+    },
+    {
+      "id": "run-tests",
+      "title": "Run tests",
+      "body": "Run the relevant test suite, summarize failures first, then fix any deterministic failure you introduced.",
+      "tags": ["tests", "verify"]
+    },
+    {
+      "id": "review-own-diff",
+      "title": "Review own diff",
+      "body": "Review your current diff for correctness, regressions, missing tests, and accidental unrelated changes before finishing.",
+      "tags": ["review", "quality"]
+    },
+    {
+      "id": "resolve-blocked",
+      "title": "Check blocker",
+      "body": "Re-check the blocking condition. If it is resolved, update ticket/HITL status and continue without waiting.",
+      "tags": ["hitl", "blocked"]
+    },
+    {
+      "id": "commit-push",
+      "title": "Commit and push",
+      "body": "Commit the completed change with a concise message, push it, and report the exact verification that passed.",
+      "tags": ["git", "ship"]
+    }
+  ]
+}

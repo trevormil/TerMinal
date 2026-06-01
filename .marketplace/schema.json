@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/schema.json",
+  "title": "TerMinal Marketplace Manifest",
+  "type": "object",
+  "required": ["version", "updated", "baseRawUrl", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "updated": { "type": "string", "format": "date" },
+    "baseRawUrl": { "type": "string", "format": "uri" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "title",
+        "description",
+        "version",
+        "paths",
+        "install",
+        "tags"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(plugins|widgets|skills|agents|snippets)/[a-z0-9][a-z0-9-]*$"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["plugin", "widget", "skill", "agent", "snippet"]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "engine": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["claude", "codex", "cursor", "local"] },
+          "uniqueItems": true
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "install": {
+          "type": "object",
+          "required": ["copyTo"],
+          "additionalProperties": false,
+          "properties": {
+            "copyTo": { "type": "string", "minLength": 1 },
+            "merge": { "type": "string" },
+            "scope": { "type": "string", "enum": ["app", "global", "repo"] }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "homepage": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}

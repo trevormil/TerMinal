@@ -163,11 +163,15 @@ them in the **Plugins** drawer (top-right on the Terminal tab). Defaults:
 Off by default but available: **Model**, **Tool Use**, **Token Burn Rate**,
 **Open PRs**.
 
-Two kinds of widget — both auto-discovered, no marketplace:
+Cockpit extensions are auto-discovered locally and now seedable through the
+file-backed marketplace:
 
 - **Code plugins** — a folder under `src/renderer/src/plugins/<id>/index.tsx`.
 - **Command widgets** — declarative "run this command every N seconds", in JSON,
   including **per-repo** widgets loaded from the attached repo.
+- **Marketplace presets** — plain files under `.marketplace/` on `main` for
+  plugins, widgets, skills, agents, and snippets. Installing one is a copy or
+  merge into the destination path listed by `.marketplace/manifest.json`.
 
 ## <a name="agents"></a>Agents
 
@@ -268,6 +272,37 @@ saved to `~/.config/TerMinal/settings.json`:
 
 Full walkthrough (GitHub vs GitLab, global skills, Telegram, the activity-feed
 contract): [**`docs/setup.md`**](docs/setup.md).
+
+## Landing page and marketplace
+
+The public landing page is static HTML in `landing/` and deploys to GitHub Pages
+from `main` via `.github/workflows/pages.yml`. It has no app build step: update
+`landing/index.html`, push `main`, and Pages publishes the new install and
+marketplace copy.
+
+The marketplace is also git-backed:
+
+- Catalog: [`.marketplace/manifest.json`](.marketplace/manifest.json)
+- Schema: [`.marketplace/schema.json`](.marketplace/schema.json)
+- Raw catalog URL:
+  `https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/manifest.json`
+
+Marketplace items are ordinary files grouped by type:
+
+```
+.marketplace/
+  plugins/<id>/index.tsx
+  widgets/<id>/widgets.json
+  skills/<id>/SKILL.md
+  agents/<id>.md
+  snippets/<id>.json
+```
+
+Each manifest entry declares where it installs (`install.copyTo`), whether the
+target should be merged (`install.merge`), and whether the scope is app, global,
+or repo. User-installed copies are user-owned; app updates should refresh
+built-in presets separately and must not overwrite customized global or repo
+content without an explicit reinstall/reset action.
 
 ### Environment overrides
 
