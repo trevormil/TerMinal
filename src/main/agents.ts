@@ -12,6 +12,7 @@ import {
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
@@ -21,6 +22,7 @@ import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
 import { hiddenPresetIds } from './presets'
+import { getTicket } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
@@ -67,8 +69,10 @@ export type AgentRun = {
   agentId: string
   agentTitle: string
   engine: Engine
+  model?: string
   persona?: string
   pipeline?: string // display label when this run chained multiple stages
+  rerun?: RerunSpec
   status: AgentRunStatus
   startedAt: number
   endedAt?: number
@@ -81,6 +85,23 @@ export type AgentRun = {
    *  display FORCE even if the agent is later deleted or rescoped. */
   force?: boolean
 }
+
+export type RerunSpec =
+  | { kind: 'agent'; agentId: string; engine: Engine; personaId?: string; pipelineId?: string; model?: string }
+  | { kind: 'ticket'; slug: string; engine: Engine; personaId?: string; pipelineId?: string; model?: string }
+  | {
+      kind: 'pr'
+      pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string }
+      prKind: PrAgentKind
+      engine: Engine
+      personaId?: string
+      pipelineId?: string
+      model?: string
+    }
+  | { kind: 'ticket-spawn'; text: string; engine: Engine; model?: string }
+  | { kind: 'factory'; engine: Engine }
+  | { kind: 'agent-designer'; text: string; engine: Engine; scope: 'repo' | 'global'; model?: string }
+  | { kind: 'schedule-designer'; text: string; engine: Engine }
 
 const OUTPUT_CAP = 400_000
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -717,6 +738,7 @@ type RunSpec = {
   force?: boolean
   /** Optional per-engine model alias passed to the CLI as `--model <name>`. */
   model?: string
+  rerun?: RerunSpec
 }
 
 function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } {
@@ -789,8 +811,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     agentId: spec.id,
     agentTitle: spec.title,
     engine: spec.engine,
+    model: spec.model,
     persona: spec.persona,
     pipeline: spec.pipeline,
+    rerun: spec.rerun,
     status: 'running',
     startedAt: ts,
     repoRoot,
@@ -906,13 +930,19 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     procs.set(run.id, p)
-    p.stdout?.on('data', (d: Buffer) => append(d.toString()))
-    p.stderr?.on('data', (d: Buffer) => append(d.toString()))
+    const stdoutDecoder = new StringDecoder('utf8')
+    const stderrDecoder = new StringDecoder('utf8')
+    p.stdout?.on('data', (d: Buffer) => append(stdoutDecoder.write(d)))
+    p.stderr?.on('data', (d: Buffer) => append(stderrDecoder.write(d)))
     p.on('error', (err) => {
       append(`\n[spawn error] ${err.message}\n`)
       finalize('failed')
     })
     p.on('exit', (code) => {
+      const stdoutTail = stdoutDecoder.end()
+      const stderrTail = stderrDecoder.end()
+      if (stdoutTail) append(stdoutTail)
+      if (stderrTail) append(stderrTail)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
       if (code !== 0) return finalize('failed', code ?? undefined)
       stepIdx++
@@ -934,6 +964,8 @@ export function runAgent(
 ): AgentRun | { error: string } {
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
+  const resolvedEngine = engine || agent.engine || 'codex'
+  const resolvedModel = model ?? agent.model
   const { steps, persona, pipeline } = buildSteps(
     repoRoot,
     { label: agent.title, prompt: agent.prompt },
@@ -944,12 +976,13 @@ export function runAgent(
     id: agent.id,
     title: agent.title,
     steps,
-    engine: engine || agent.engine || 'codex',
+    engine: resolvedEngine,
     persona,
     pipeline,
     inPlace: agent.inPlace,
     force: agent.force,
-    model: model ?? agent.model,
+    model: resolvedModel,
+    rerun: { kind: 'agent', agentId: agent.id, engine: resolvedEngine, personaId, pipelineId, model: resolvedModel },
   })
 }
 
@@ -1061,6 +1094,7 @@ DO NOT open a PR, do not modify any existing agents, do not invent extra files.`
     engine,
     inPlace: true,
     model,
+    rerun: { kind: 'agent-designer', text: t, engine, scope, model },
   })
 }
 
@@ -1138,13 +1172,14 @@ After this completes the app reconciles schedules automatically — your new ent
     steps: [{ label: 'design schedule', prompt }],
     engine,
     inPlace: true,
+    rerun: { kind: 'schedule-designer', text: t, engine },
   })
 }
 
 /** Turn a backlog ticket into an implementation run that opens a PR. */
 export function runTicketAgent(
   repoRoot: string,
-  ticket: { id: number; title: string; body: string },
+  ticket: { slug?: string; id: number; title: string; body: string },
   engine: Engine,
   personaId?: string,
   pipelineId?: string,
@@ -1152,7 +1187,16 @@ export function runTicketAgent(
 ): AgentRun | { error: string } {
   const base = `Implement backlog ticket #${ticket.id}: ${ticket.title}\n\n${ticket.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${ticket.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
   const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement #${ticket.id}`, prompt: base }, personaId, pipelineId)
-  return runSpec(repoRoot, { id: `ticket-${ticket.id}`, title: `Implement #${ticket.id}`, steps, engine, persona, pipeline, model })
+  return runSpec(repoRoot, {
+    id: `ticket-${ticket.id}`,
+    title: `Implement #${ticket.id}`,
+    steps,
+    engine,
+    persona,
+    pipeline,
+    model,
+    rerun: ticket.slug ? { kind: 'ticket', slug: ticket.slug, engine, personaId, pipelineId, model } : undefined,
+  })
 }
 
 /** Spawn an agent that files ONE backlog ticket from a freeform request. Runs
@@ -1173,6 +1217,7 @@ export function runTicketSpawn(
     engine,
     inPlace: true,
     model,
+    rerun: { kind: 'ticket-spawn', text: t, engine, model },
   })
 }
 
@@ -1187,6 +1232,7 @@ export function runFactorySpawn(repoRoot: string, engine: Engine): AgentRun | { 
     steps: [{ label: 'factory loop', prompt }],
     engine,
     inPlace: true,
+    rerun: { kind: 'factory', engine },
   })
 }
 
@@ -1230,7 +1276,33 @@ export function runPrAgent(
     pipeline,
     prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
     model,
+    rerun: { kind: 'pr', pr, prKind: kind, engine, personaId, pipelineId, model },
   })
+}
+
+export function rerunAgentRun(runId: string): AgentRun | { error: string } {
+  loadPersistedRuns()
+  const run = runs.get(runId)
+  if (!run) return { error: 'run not found' }
+  if (run.status === 'running') return { error: 'run is already running' }
+  const spec = run.rerun
+  if (!spec) {
+    const engine = run.engine === 'claude' || run.engine === 'codex' || run.engine === 'cursor' ? run.engine : undefined
+    return runAgent(run.repoRoot, run.agentId, engine, undefined, undefined, run.model)
+  }
+  if (spec.kind === 'agent') return runAgent(run.repoRoot, spec.agentId, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+  if (spec.kind === 'ticket') {
+    const t = getTicket(run.repoRoot, spec.slug)
+    return t
+      ? runTicketAgent(run.repoRoot, { slug: t.slug, id: t.id, title: t.title, body: t.body }, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+      : { error: 'ticket not found' }
+  }
+  if (spec.kind === 'pr') return runPrAgent(run.repoRoot, spec.pr, spec.prKind, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+  if (spec.kind === 'ticket-spawn') return runTicketSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
+  if (spec.kind === 'factory') return runFactorySpawn(run.repoRoot, spec.engine)
+  if (spec.kind === 'agent-designer') return runDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.scope, spec.model)
+  if (spec.kind === 'schedule-designer') return runScheduleDesignerSpawn(run.repoRoot, spec.text, spec.engine)
+  return { error: 'unsupported run type' }
 }
 
 export function cancelRun(runId: string): boolean {

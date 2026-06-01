@@ -4,7 +4,7 @@
 // Storage: ~/.config/TerMinal/bg-tasks.json (single file, last 50 tasks)
 // Logs:    ~/.config/TerMinal/bg-tasks/<id>.log
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, openSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -67,6 +67,8 @@ function labelFor(prompt: string): string {
   const cleaned = prompt.replace(/\s+/g, ' ').trim()
   return cleaned.length > 60 ? cleaned.slice(0, 57) + '…' : cleaned
 }
+
+const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
 export function listBgTasks(): BgTask[] {
   return readTasks()
@@ -147,18 +149,20 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     `When you're done, if you opened a PR/MR include its URL on a line by itself in the format:\nMR: <url>\n` +
     `If you couldn't complete the task, say so on a line starting with:\nFAILED: <one-line reason>`
 
+  const modelFlag = input.model ? ` --model ${shq(input.model)}` : ''
   const cmd =
     engine === 'claude'
-      ? [enginePath('claude'), '-p', enrichedPrompt, '--dangerously-skip-permissions']
+      ? `${shq(enginePath('claude'))} -p ${shq(enrichedPrompt)} --dangerously-skip-permissions${modelFlag}`
       : engine === 'cursor'
-        ? [enginePath('cursor'), '-p', '--force', '--trust', '--output-format', 'text', '--workspace', worktree, enrichedPrompt]
-        : [enginePath('codex'), 'exec', '-s', 'danger-full-access', '-C', worktree, enrichedPrompt]
-  if (input.model) cmd.push('--model', input.model)
+        ? `${shq(enginePath('cursor'))} -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(enrichedPrompt)}`
+        : `${shq(enginePath('codex'))} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(enrichedPrompt)}`
 
-  // Pipe stdout/stderr to the log file. Detached so it survives parent exit.
-  const out = require('node:fs').openSync(logFile, 'w')
+  // Run through `script` like cron/in-process agents so CLIs see a TTY and
+  // stream output progressively instead of buffering until process exit.
+  writeFileSync(logFile, `▸ Background task · ${engine}${input.model ? `/${input.model}` : ''}\n▸ branch ${branch}\n▸ worktree ${worktree}\n\n`)
+  const out = openSync(logFile, 'a')
   const startedAt = Date.now()
-  const child = cpSpawn(cmd[0], cmd.slice(1), {
+  const child = cpSpawn('script', ['-q', '/dev/null', process.env.SHELL || '/bin/zsh', '-l', '-c', cmd], {
     cwd: worktree,
     detached: true,
     stdio: ['ignore', out, out],

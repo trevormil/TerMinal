@@ -51,6 +51,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
   const [logQuery, setLogQuery] = useState('')
   const [rerunBusy, setRerunBusy] = useState(false)
+  const [rerunError, setRerunError] = useState('')
   const logRef = useRef<HTMLPreElement>(null)
 
   const reload = () => window.gt.agents.allRuns().then(setRuns)
@@ -157,17 +158,20 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   }, [selectedRun?.id, selectedRun?.status])
 
   // Re-run: cron runs route to schedules.runNow (re-fires the launchd schedule
-  // so the run gets all the same env vars + log path); in-process runs re-fire
-  // via agents.run with the same engine/model snapshot.
+  // so the run gets all the same env vars + log path); in-process runs route
+  // through main so they re-use the original repo + saved run provenance.
   const handleRerun = async (run: UnifiedRun) => {
     setRerunBusy(true)
+    setRerunError('')
     try {
       if (run.source === 'cron' && run.scheduleId) {
         await window.gt.schedules.runNow(run.scheduleId)
       } else {
-        const eng =
-          run.engine === 'codex' || run.engine === 'claude' || run.engine === 'cursor' ? run.engine : undefined
-        await window.gt.agents.run(run.agentId, eng, undefined, undefined, undefined)
+        const r = await window.gt.agents.rerun(run.id)
+        if ('error' in r) {
+          setRerunError(r.error)
+          return
+        }
       }
       await reload()
     } finally {
@@ -425,6 +429,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                 <Play size={10} strokeWidth={2} />
                 {rerunBusy ? 'starting…' : 'Re-run'}
               </button>
+              {rerunError && <span className="max-w-[220px] truncate text-[10.5px] text-[var(--gt-red)]">{rerunError}</span>}
               <button
                 onClick={() => setSel(null)}
                 title="Close detail"

@@ -89,6 +89,7 @@ const gt = {
       model?: string,
     ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model),
     runs: () => ipcRenderer.invoke('agents:runs'),
+    rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
     removeWorktree: (runId: string) => ipcRenderer.invoke('agents:remove-worktree', runId),
     onStatus: (cb: (run: unknown) => void) => {

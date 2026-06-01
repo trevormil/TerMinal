@@ -96,6 +96,7 @@ import {
   runPrAgent,
   listPipelines,
   listRuns,
+  rerunAgentRun,
   cancelRun,
   removeWorktree,
   onAgentEvent,
@@ -700,7 +701,7 @@ ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?:
   const root = repoRootOf(cur().cwd)
   const t = getTicket(root, slug)
   return t
-    ? runTicketAgent(root, { id: t.id, title: t.title, body: t.body }, engine, persona, pipeline, model)
+    ? runTicketAgent(root, { slug: t.slug, id: t.id, title: t.title, body: t.body }, engine, persona, pipeline, model)
     : { error: 'ticket not found' }
 })
 ipcMain.handle(
@@ -716,6 +717,7 @@ ipcMain.handle(
   ) => runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model),
 )
 ipcMain.handle('agents:runs', () => listRuns())
+ipcMain.handle('agents:rerun', (_e, runId: string) => rerunAgentRun(runId))
 ipcMain.handle('agents:cancel', (_e, runId: string) => cancelRun(runId))
 ipcMain.handle('agents:remove-worktree', (_e, runId: string) => removeWorktree(runId))
 // Schedules are backed by real launchd jobs; every mutation syncs launchd in

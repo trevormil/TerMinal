@@ -208,6 +208,7 @@ export type AgentRun = {
   agentId: string
   agentTitle: string
   engine: Engine
+  model?: string
   persona?: string
   pipeline?: string
   status: AgentRunStatus
@@ -675,6 +676,7 @@ export type GtApi = {
       model?: string,
     ) => Promise<AgentRun | { error: string }>
     runs: () => Promise<AgentRun[]>
+    rerun: (runId: string) => Promise<AgentRun | { error: string }>
     cancel: (runId: string) => Promise<boolean>
     removeWorktree: (runId: string) => Promise<boolean>
     onStatus: (cb: (run: AgentRun) => void) => () => void
