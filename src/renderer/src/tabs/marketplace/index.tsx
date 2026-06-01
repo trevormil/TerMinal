@@ -114,7 +114,7 @@ function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (
           className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2.5 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-[var(--gt-accent)]/80"
         >
           <SquareTerminal size={12} strokeWidth={2} />
-          Launch
+          Install
         </button>
       </div>
     </article>
@@ -289,6 +289,8 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
       {picking && (
         <EnginePicker
           title={`Install · ${picking.title}`}
+          showPersona={false}
+          showPipeline={false}
           hint={
             <>
               Opens the selected Marketplace item with its install prompt prefilled. Terminal mode lets you iterate;

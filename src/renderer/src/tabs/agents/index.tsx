@@ -1473,6 +1473,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
       {picking && (
         <EnginePicker
           title={`Run · ${picking.title}`}
+          showPersona={false}
+          showPipeline={false}
           onClose={() => setPicking(null)}
           onPick={(e, persona, pipeline, model, launchMode) => {
             const selectedAgent = (agents || []).find((a) => a.id === picking.id)

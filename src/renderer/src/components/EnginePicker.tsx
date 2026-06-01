@@ -49,28 +49,32 @@ const PIPELINE_ICON: Record<string, LucideIcon> = {
 export function EnginePicker({
   title,
   hint,
+  showPersona = true,
+  showPipeline = true,
   onPick,
   onClose,
 }: {
   title: string
   hint?: ReactNode
+  showPersona?: boolean
+  showPipeline?: boolean
   onPick: (engine: Engine, persona: string, pipeline: string, model?: string, launchMode?: LaunchMode) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
-  const [persona, setPersona] = useState<string | null>(null) // null = not chosen, '' = none
-  const [pipeline, setPipeline] = useState<string | null>(null)
+  const [persona, setPersona] = useState<string | null>(showPersona ? null : '') // null = not chosen, '' = none
+  const [pipeline, setPipeline] = useState<string | null>(showPipeline ? null : 'single')
   const [personas, setPersonas] = useState<Persona[]>([])
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [defaultEngine, setDefaultEngine] = useState<Engine>('claude')
   useEffect(() => {
-    window.gt.agents.personas().then(setPersonas)
-    window.gt.agents.pipelines().then(setPipelines)
+    if (showPersona) window.gt.agents.personas().then(setPersonas)
+    if (showPipeline) window.gt.agents.pipelines().then(setPipelines)
     window.gt.detectEnv().then(setEnv)
     window.gt.settings.get().then((s) => setDefaultEngine(s.defaultEngine))
-  }, [])
+  }, [showPersona, showPipeline])
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
@@ -82,8 +86,23 @@ export function EnginePicker({
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor'] as Engine[]).filter((e) => e !== defaultEngine)]
 
-  const step = engine === null ? 1 : persona === null ? 2 : pipeline === null ? 3 : 4
-  const back = () => (step === 4 ? setPipeline(null) : step === 3 ? setPersona(null) : setEngine(null))
+  const step = engine === null ? 'engine' : showPersona && persona === null ? 'persona' : showPipeline && pipeline === null ? 'pipeline' : 'launch'
+  const totalSteps = 2 + (showPersona ? 1 : 0) + (showPipeline ? 1 : 0)
+  const stepNum = step === 'engine' ? 1 : step === 'persona' ? 2 : step === 'pipeline' ? 2 + (showPersona ? 1 : 0) : totalSteps
+  const back = () => {
+    if (step === 'launch') {
+      if (showPipeline) setPipeline(null)
+      else if (showPersona) setPersona(null)
+      else setEngine(null)
+      return
+    }
+    if (step === 'pipeline') {
+      if (showPersona) setPersona(null)
+      else setEngine(null)
+      return
+    }
+    if (step === 'persona') setEngine(null)
+  }
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -92,7 +111,7 @@ export function EnginePicker({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center gap-2">
-          {step > 1 && (
+          {step !== 'engine' && (
             <button
               onClick={back}
               className="flex items-center rounded p-1 text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
@@ -114,9 +133,9 @@ export function EnginePicker({
           </div>
         )}
 
-        {step === 1 && (
+        {step === 'engine' && (
           <>
-            <p className="mb-3 text-[11.5px] text-zinc-500">1 · Launch with which engine?</p>
+            <p className="mb-3 text-[11.5px] text-zinc-500">{stepNum} · Launch with which engine?</p>
             <div className="grid grid-cols-3 gap-2">
               {engineOrder.map((e) => {
                 const ok = avail(e)
@@ -147,11 +166,11 @@ export function EnginePicker({
           </>
         )}
 
-        {step === 2 && (
+        {step === 'persona' && (
           <>
             <div className="mb-3 flex items-center gap-2">
               <p className="text-[11.5px] text-zinc-500">
-                2 · Run as a persona? <span className="text-zinc-600">(via {engine})</span>
+                {stepNum} · Run as a persona? <span className="text-zinc-600">(via {engine})</span>
               </p>
               <div className="ml-auto">
                 <EngineModelPicker
@@ -197,10 +216,10 @@ export function EnginePicker({
           </>
         )}
 
-        {step === 3 && (
+        {step === 'pipeline' && (
           <>
             <p className="mb-3 text-[11.5px] text-zinc-500">
-              3 · Pipeline?{' '}
+              {stepNum} · Pipeline?{' '}
               <span className="text-zinc-600">
                 ({engine}
                 {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''})
@@ -227,16 +246,32 @@ export function EnginePicker({
           </>
         )}
 
-        {step === 4 && (
+        {step === 'launch' && (
           <>
-            <p className="mb-3 text-[11.5px] text-zinc-500">
-              4 · Launch as{' '}
-              <span className="text-zinc-600">
-                ({engine}
-                {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''}
-                {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''})
-              </span>
-            </p>
+            <div className="mb-3 flex items-center gap-2">
+              <p className="text-[11.5px] text-zinc-500">
+                {stepNum} · Launch as{' '}
+                <span className="text-zinc-600">
+                  ({engine}
+                  {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''}
+                  {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''})
+                </span>
+              </p>
+              {!showPersona && (
+                <div className="ml-auto">
+                  <EngineModelPicker
+                    engine={engine as Engine}
+                    model={model}
+                    onChange={(e, m) => {
+                      setEngine(e)
+                      setModel(m)
+                    }}
+                    size="sm"
+                    align="right"
+                  />
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal')}

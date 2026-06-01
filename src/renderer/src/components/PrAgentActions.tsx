@@ -67,6 +67,8 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
       {kind && (
         <EnginePicker
           title={`${kind === 'review' ? 'Review' : 'Iterate'} · ${sym}${pr.iid}`}
+          showPersona={false}
+          showPipeline={false}
           hint={
             <>
               You can also start review work from the terminal with{' '}
