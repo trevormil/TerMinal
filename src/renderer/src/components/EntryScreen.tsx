@@ -25,6 +25,7 @@ const underDir = (sessionCwd: string, dir: string) =>
   sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+const SESSION_PAGE_SIZE = 50
 
 export function EntryScreen({
   onChoose,
@@ -40,7 +41,8 @@ export function EntryScreen({
   lockedCwd?: string
 }) {
   const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>({})
-  const [loadingSessions, setLoadingSessions] = useState<Engine | null>(null)
+  const [loadingSessions, setLoadingSessions] = useState<Partial<Record<Engine, boolean>>>({})
+  const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
   const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
@@ -73,10 +75,10 @@ export function EntryScreen({
     })
   }, [])
 
-  const loadEngineSessions = async (target?: Engine) => {
+  const loadEngineSessions = async (target?: Engine, force = false) => {
     const next = target ?? (isAiEngine(engine) ? engine : null)
-    if (!next || loadingSessions) return
-    setLoadingSessions(next)
+    if (!next || loadingSessions[next] || (!force && sessionsByEngine[next])) return
+    setLoadingSessions((cur) => ({ ...cur, [next]: true }))
     try {
       // Let the loading affordance paint before the main process starts walking
       // transcript files. Even with the picker scan optimized, large local
@@ -86,9 +88,19 @@ export function EntryScreen({
       setSessionsByEngine((cur) => ({ ...cur, [next]: loaded }))
       if (!cwd && loaded[0]?.cwd) setCwd(loaded[0].cwd)
     } finally {
-      setLoadingSessions(null)
+      setLoadingSessions((cur) => ({ ...cur, [next]: false }))
     }
   }
+
+  const selectEngine = (next: SessionEngine) => {
+    setEngine(next)
+    setVisibleSessionCount(SESSION_PAGE_SIZE)
+    if (isAiEngine(next)) loadEngineSessions(next)
+  }
+
+  useEffect(() => {
+    setVisibleSessionCount(SESSION_PAGE_SIZE)
+  }, [engine, filterDir])
 
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
@@ -103,7 +115,14 @@ export function EntryScreen({
   const canResume = isAiEngine(engine)
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const shown = sessions ? (filterDir ? sessions.filter((s) => underDir(s.cwd, filterDir)) : sessions) : []
-  const isLoadingThisEngine = loadingSessions === engine
+  const visibleShown = shown.slice(0, visibleSessionCount)
+  const hiddenShown = Math.max(0, shown.length - visibleShown.length)
+  const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
+  const resumeCountLabel = sessions
+    ? shown.length > visibleShown.length
+      ? ` (${visibleShown.length}/${shown.length})`
+      : ` (${shown.length})`
+    : ''
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -231,7 +250,7 @@ export function EntryScreen({
             {(['local', 'claude', 'codex', 'cursor'] as SessionEngine[]).map((e) => (
               <button
                 key={e}
-                onClick={() => setEngine(e)}
+                onClick={() => selectEngine(e)}
                 className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium ${
                   engine === e
                     ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
@@ -284,11 +303,11 @@ export function EntryScreen({
           <>
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''}{sessions ? ` (${shown.length})` : ''}
+                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''}{resumeCountLabel}
               </span>
               <button
-                onClick={() => loadEngineSessions()}
-                disabled={!!loadingSessions}
+                onClick={() => loadEngineSessions(undefined, true)}
+                disabled={isLoadingThisEngine}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-[var(--gt-accent-2)] hover:border-[var(--gt-accent)]/50 disabled:opacity-50"
               >
                 <RefreshCw size={11} strokeWidth={2} className={isLoadingThisEngine ? 'animate-spin' : ''} />
@@ -322,7 +341,7 @@ export function EntryScreen({
               </div>
             ) : (
               <div className="space-y-2">
-                {shown.slice(0, 300).map((s) => (
+                {visibleShown.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
@@ -350,6 +369,15 @@ export function EntryScreen({
                     </div>
                   </button>
                 ))}
+                {hiddenShown > 0 && (
+                  <button
+                    onClick={() => setVisibleSessionCount((n) => n + SESSION_PAGE_SIZE)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--gt-border)] bg-black/10 p-3 text-[12px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300"
+                  >
+                    Load {Math.min(SESSION_PAGE_SIZE, hiddenShown)} more
+                    <span className="text-zinc-700">· {hiddenShown} remaining</span>
+                  </button>
+                )}
               </div>
             )}
           </>
