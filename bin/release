@@ -13,6 +13,73 @@ cd "$ROOT"
 APP="dist/mac-arm64/TerMinal.app"
 DEST="${TERMINAL_APP_DEST:-/Applications/TerMinal.app}"
 
+sync_latest() {
+  if [[ "${TERMINAL_RELEASE_SKIP_PULL:-}" == "1" ]]; then
+    echo "▸ latest check: skipped (TERMINAL_RELEASE_SKIP_PULL=1)"
+    return
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "▸ latest check: skipped (not a git checkout)"
+    return
+  fi
+
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "▸ latest check: skipped (no origin remote)"
+    return
+  fi
+
+  echo "▸ latest check: fetching origin…"
+  git fetch --quiet --prune origin
+
+  local default_branch
+  default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+  if [[ -z "$default_branch" ]]; then
+    if git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+      default_branch="main"
+    elif git rev-parse --verify --quiet refs/remotes/origin/master >/dev/null; then
+      default_branch="master"
+    fi
+  fi
+  if [[ -z "$default_branch" ]]; then
+    echo "▸ latest check: skipped (could not detect origin default branch)"
+    return
+  fi
+
+  local current_branch
+  current_branch="$(git branch --show-current)"
+  if [[ "$current_branch" != "$default_branch" ]]; then
+    echo "▸ latest check: on $current_branch, not $default_branch; building current checkout"
+    return
+  fi
+
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "▸ latest check: local changes present; building current checkout"
+    return
+  fi
+
+  local local_sha remote_ref remote_sha base_sha
+  remote_ref="refs/remotes/origin/$default_branch"
+  local_sha="$(git rev-parse HEAD)"
+  remote_sha="$(git rev-parse "$remote_ref")"
+  base_sha="$(git merge-base HEAD "$remote_ref")"
+
+  if [[ "$local_sha" == "$remote_sha" ]]; then
+    echo "▸ latest check: already at origin/$default_branch"
+  elif [[ "$local_sha" == "$base_sha" ]]; then
+    echo "▸ latest check: fast-forwarding to origin/$default_branch…"
+    git merge --ff-only "$remote_ref"
+  else
+    echo "▸ latest check: local $default_branch is ahead or diverged; building current checkout"
+  fi
+
+  if [[ -f .gitmodules ]]; then
+    git submodule update --init --recursive
+  fi
+}
+
+sync_latest
+
 echo "▸ building…"
 bun run dist
 

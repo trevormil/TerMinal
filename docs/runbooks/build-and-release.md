@@ -1,6 +1,6 @@
 ---
 title: Build & package the macOS app
-last-verified: 2026-05-28
+last-verified: 2026-06-01
 ---
 
 # Build & package (macOS)
@@ -49,6 +49,12 @@ Then right-click the Dock icon → **Options → Keep in Dock**.
 bun run release
 TERMINAL_APP_DEST="$HOME/Applications/TerMinal.app" bun run release
 ```
+
+Before building, `bun run release` fetches `origin` and fast-forwards clean
+`main` / `master` checkouts to the remote default branch. It skips that pull and
+builds the current checkout when the repo has local changes, is on a feature
+branch, has no `origin`, or is not a git checkout. Set
+`TERMINAL_RELEASE_SKIP_PULL=1` to bypass the latest check explicitly.
 
 ## Notes
 

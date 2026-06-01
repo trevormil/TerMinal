@@ -367,6 +367,7 @@ function RebuildPanel() {
         </pre>
       )}
       <div className="text-[10.5px] leading-4 text-zinc-600">
+        Checks origin first and fast-forwards clean main/master checkouts before building.
         Reinstall replaces only the app bundle and TerMinal-owned helper binaries.
         Settings, custom agents, scripts, snippets, widgets, schedules, inbox, and run state in
         <span className="font-mono"> ~/.config/TerMinal</span> are preserved.
@@ -1177,7 +1178,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             id="rebuild"
             icon={PackageOpen}
             title="Rebuild + reinstall"
-            desc="Run bin/release from inside the app — builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
+            desc="Run bin/release from inside the app — fetches latest when safe, builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
           >
             <RebuildPanel />
           </Section>
