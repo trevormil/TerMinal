@@ -29,17 +29,19 @@ function reltime(ts?: number): string {
 function AutomationInfoBox() {
   return (
     <div className="mx-3 mt-3 border-b border-[var(--gt-border)] pb-3 text-[11.5px] text-zinc-500">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Inbox size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
         <span className="font-semibold text-zinc-300">Automation Inbox</span>
         <span className="text-zinc-700">/</span>
-        <span>always-on intake for requests from scripts and integrations</span>
+        <span>always-on intake for scripts and integrations</span>
+        <span className="text-zinc-700">/</span>
+        <span className="font-mono text-zinc-300">/enqueue-request</span>
+        <span className="text-zinc-700">or</span>
+        <span className="font-mono text-zinc-300">terminal-cli inbox enqueue</span>
       </div>
-      <div className="mt-1 leading-relaxed">
-        It watches for queued work by default: use Agents for manual runs, Schedules for time-based runs, and this
-        inbox for external events. Use <span className="font-mono text-zinc-300">/enqueue-request</span> for one-off requests and{' '}
-        <span className="font-mono text-zinc-300">/new-inbox-source</span> for durable adapters. CLI:{' '}
-        <span className="font-mono text-zinc-400">terminal-cli inbox enqueue ...</span>
+      <div className="mt-1 leading-snug">
+        TerMinal watches by default and shows every request, outcome, and run log here. Use{' '}
+        <span className="font-mono text-zinc-300">/new-inbox-source</span> only for durable adapters.
       </div>
     </div>
   )

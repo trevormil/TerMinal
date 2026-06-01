@@ -76,6 +76,29 @@ function SkillCard({ cmd, when, children }: { cmd: string; when: string; childre
   )
 }
 
+function WorkflowItem({
+  icon: Icon,
+  title,
+  command,
+  children,
+}: {
+  icon: LucideIcon
+  title: string
+  command: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="grid gap-2 border-b border-[var(--gt-border)]/70 py-2.5 last:border-b-0 sm:grid-cols-[136px_1fr_auto] sm:items-start">
+      <div className="flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
+        <Icon size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
+        {title}
+      </div>
+      <p className="text-[11.5px] leading-snug text-zinc-400">{children}</p>
+      <code className="font-mono text-[10.5px] text-zinc-600">{command}</code>
+    </div>
+  )
+}
+
 function Rule({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-2.5">
@@ -179,44 +202,19 @@ function HelpTab(_props: { ctx: TabContext }) {
         </Section>
 
         <Section icon={Bot} title="Agents, schedules, inbox">
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
-                <Bot size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                Agents
-              </div>
-              <p className="text-[11.5px] leading-snug text-zinc-400">
-                Named workflows you run on demand from Agents, Tickets, PRs, snippets, or a terminal prompt.
-                They are best for human-triggered work with a clear goal.
-              </p>
-              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Agents tab · /new-agent</p>
-            </div>
-            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
-                <CalendarClock size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                Schedules
-              </div>
-              <p className="text-[11.5px] leading-snug text-zinc-400">
-                Time-based automation for an existing agent: every N minutes, weekdays at 9, cron expressions,
-                or a plain-English schedule designed by an agent.
-              </p>
-              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Schedules tab · /new-schedule</p>
-            </div>
-            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
-              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
-                <Inbox size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                Automation Inbox
-              </div>
-              <p className="text-[11.5px] leading-snug text-zinc-400">
-                Always-on automation intake. Scripts or integrations enqueue durable requests; TerMinal watches by
-                default, runs allowlisted actions, and shows the request-to-run trail.
-              </p>
-              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Runs → Automation Inbox · /enqueue-request</p>
-            </div>
+          <div className="border-y border-[var(--gt-border)]">
+            <WorkflowItem icon={Bot} title="Agents" command="Agents · /new-agent">
+              Named workflows for human-triggered work from Agents, Tickets, PRs, snippets, or a terminal prompt.
+            </WorkflowItem>
+            <WorkflowItem icon={CalendarClock} title="Schedules" command="Schedules · /new-schedule">
+              Time-based automation for existing agents: intervals, weekdays, cron expressions, or plain-English setup.
+            </WorkflowItem>
+            <WorkflowItem icon={Inbox} title="Automation Inbox" command="Runs · /enqueue-request">
+              Always-on intake for file drops, webhook adapters, Slack pollers, MR watchers, and other integrations.
+            </WorkflowItem>
           </div>
-          <p className="mt-2.5 text-[11px] leading-snug text-zinc-600">
-            Rule of thumb: use an agent for a manual button click, a schedule for time, and the automation inbox
-            for an always-listening external event like a file drop, webhook adapter, Slack poller, or MR watcher.
+          <p className="mt-2 text-[11px] leading-snug text-zinc-600">
+            Rule: agent for manual intent, schedule for time, inbox for external events.
           </p>
         </Section>
 

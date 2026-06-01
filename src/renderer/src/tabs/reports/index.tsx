@@ -185,9 +185,7 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
         </div>
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
           <SkillHint>
-            Reports are run artifacts from scheduled agents and checks. They show what automation found over time:
-            health, drift, coverage, changelog, dependencies, performance, and any tickets or HITL items filed from
-            those runs.
+            Run artifacts from scheduled agents and checks: health, drift, coverage, deps, performance, tickets, and HITL.
           </SkillHint>
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto p-2">
