@@ -550,6 +550,32 @@ export type PresetPrefs = {
   hidden: Record<PresetKind, string[]>
 }
 
+export type MarketplaceType = 'plugin' | 'widget' | 'skill' | 'agent' | 'snippet'
+export type MarketplaceItem = {
+  id: string
+  type: MarketplaceType
+  title: string
+  description: string
+  version: number
+  addedBy: string
+  engine?: (Engine | 'local')[]
+  paths: string[]
+  install: {
+    copyTo: string
+    merge?: string
+    scope?: 'app' | 'global' | 'repo'
+  }
+  tags: string[]
+  homepage?: string
+}
+export type MarketplaceManifest = {
+  version: number
+  updated: string
+  baseRawUrl: string
+  sourcePath: string
+  items: MarketplaceItem[]
+}
+
 export type TddInfo = {
   ok: boolean
   repo: string
@@ -749,6 +775,9 @@ export type GtApi = {
   docs: {
     list: () => Promise<DocsTree>
     get: (relPath: string) => Promise<string>
+  }
+  marketplace: {
+    list: () => Promise<MarketplaceManifest>
   }
   projectSessions: () => Promise<ProjectSession[]>
   getProjectSession: (slug: string) => Promise<ProjectSession | null>

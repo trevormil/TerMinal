@@ -128,6 +128,7 @@ import { registerMcpEverywhere } from './mcp-register'
 import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from './cron-runs'
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
+import { readMarketplace } from './marketplace'
 import { knownModels } from './ai-pricing'
 import { startMenuBar } from './tray'
 import {
@@ -933,6 +934,14 @@ ipcMain.handle('docs:get', (_e, relPath: string) => readDoc(repoRootOf(cur().cwd
 ipcMain.handle('sessions:project-list', () => listProjectSessions(repoRootOf(cur().cwd)))
 ipcMain.handle('sessions:project-get', (_e, slug: string) =>
   getProjectSession(repoRootOf(cur().cwd), slug),
+)
+ipcMain.handle('marketplace:list', () =>
+  readMarketplace([
+    sourceCheckoutRoot(join('.marketplace', 'manifest.json'))
+      ? join(sourceCheckoutRoot(join('.marketplace', 'manifest.json')), '.marketplace')
+      : '',
+    join(process.resourcesPath || '', 'marketplace'),
+  ]),
 )
 ipcMain.handle('tickets:list', () => listTickets(repoRootOf(cur().cwd)))
 ipcMain.handle('tickets:get', (_e, slug: string) => getTicket(repoRootOf(cur().cwd), slug))

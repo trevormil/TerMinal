@@ -1,0 +1,26 @@
+[
+  {
+    "id": "last-commit",
+    "title": "Last commit",
+    "icon": "git-commit",
+    "command": "git log -1 --pretty='%h %s'",
+    "intervalMs": 10000,
+    "mode": "text"
+  },
+  {
+    "id": "branch-drift",
+    "title": "Branch drift",
+    "icon": "git-compare",
+    "command": "git status -sb | head -1",
+    "intervalMs": 5000,
+    "mode": "text"
+  },
+  {
+    "id": "test-files",
+    "title": "Test files",
+    "icon": "test-tube",
+    "command": "find . -path './node_modules' -prune -o -type f \\( -name '*test*' -o -name '*spec*' \\) -print | wc -l | tr -d ' '",
+    "intervalMs": 15000,
+    "mode": "big"
+  }
+]

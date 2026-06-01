@@ -10,6 +10,8 @@ files:
 # (Contents/Resources/{terminal-cron,terminal-cli}); the app copies them to
 # ~/.config/TerMinal/bin on launch so launchd + scripts have stable paths.
 extraResources:
+  - from: .marketplace
+    to: marketplace
   - from: bin/terminal-cron
     to: terminal-cron
   - from: bin/terminal-cli

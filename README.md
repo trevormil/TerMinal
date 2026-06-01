@@ -299,10 +299,10 @@ Marketplace items are ordinary files grouped by type:
 ```
 
 Each manifest entry declares where it installs (`install.copyTo`), whether the
-target should be merged (`install.merge`), and whether the scope is app, global,
-or repo. User-installed copies are user-owned; app updates should refresh
-built-in presets separately and must not overwrite customized global or repo
-content without an explicit reinstall/reset action.
+target should be merged (`install.merge`), who added it (`addedBy`), and whether
+the scope is app, global, or repo. User-installed copies are user-owned; app
+updates should refresh built-in presets separately and must not overwrite
+customized global or repo content without an explicit reinstall/reset action.
 
 ### Environment overrides
 
