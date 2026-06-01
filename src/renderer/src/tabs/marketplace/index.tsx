@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Activity,
   Blocks,
   Bot,
+  Brain,
   Clipboard,
+  CircleCheck,
   ExternalLink,
+  FileText,
+  Gauge,
+  GitBranch,
   LayoutGrid,
   PackageOpen,
+  RefreshCw,
+  ScanSearch,
   Search,
   Sparkles,
   SquareTerminal,
@@ -16,15 +24,46 @@ import { EnginePicker } from '../../components/EnginePicker'
 import { openPromptInTerminal, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import type { Engine, MarketplaceItem, MarketplaceManifest, MarketplaceType, Tab, TabContext } from '../../lib/types'
 
-const TYPE_META: Record<MarketplaceType, { label: string; icon: LucideIcon; tone: string }> = {
-  plugin: { label: 'Plugin', icon: Blocks, tone: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10' },
-  widget: { label: 'Widget', icon: LayoutGrid, tone: 'text-emerald-300 border-emerald-400/25 bg-emerald-400/10' },
-  skill: { label: 'Skill', icon: Sparkles, tone: 'text-violet-300 border-violet-400/25 bg-violet-400/10' },
-  agent: { label: 'Agent', icon: Bot, tone: 'text-amber-300 border-amber-400/25 bg-amber-400/10' },
-  snippet: { label: 'Snippet', icon: Clipboard, tone: 'text-sky-300 border-sky-400/25 bg-sky-400/10' },
+const TYPE_META: Record<MarketplaceType, { label: string; icon: LucideIcon; tone: string; accent: string }> = {
+  plugin: { label: 'Plugin', icon: Blocks, tone: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10', accent: '#22d3ee' },
+  widget: {
+    label: 'Widget',
+    icon: LayoutGrid,
+    tone: 'text-emerald-300 border-emerald-400/25 bg-emerald-400/10',
+    accent: '#34d399',
+  },
+  skill: {
+    label: 'Skill',
+    icon: Sparkles,
+    tone: 'text-violet-300 border-violet-400/25 bg-violet-400/10',
+    accent: '#a78bfa',
+  },
+  agent: { label: 'Agent', icon: Bot, tone: 'text-amber-300 border-amber-400/25 bg-amber-400/10', accent: '#f59e0b' },
+  snippet: {
+    label: 'Snippet',
+    icon: Clipboard,
+    tone: 'text-sky-300 border-sky-400/25 bg-sky-400/10',
+    accent: '#38bdf8',
+  },
 }
 
 const FILTERS: ('all' | MarketplaceType)[] = ['all', 'plugin', 'widget', 'skill', 'agent', 'snippet']
+const ICONS: Record<string, LucideIcon> = {
+  Activity,
+  Blocks,
+  Bot,
+  Brain,
+  Clipboard,
+  CircleCheck,
+  FileText,
+  Gauge,
+  GitBranch,
+  LayoutGrid,
+  PackageOpen,
+  RefreshCw,
+  ScanSearch,
+  Sparkles,
+}
 
 function rawUrl(manifest: MarketplaceManifest | null, item: MarketplaceItem, path = item.paths[0]): string {
   return manifest?.baseRawUrl ? `${manifest.baseRawUrl}/${path}` : ''
@@ -60,6 +99,29 @@ function launcherPrompt(manifest: MarketplaceManifest, item: MarketplaceItem): s
   return `Install this TerMinal app plugin from the marketplace.\n\n${request}`
 }
 
+function itemAccent(item: MarketplaceItem): string {
+  return item.accent || TYPE_META[item.type].accent
+}
+
+function itemIcon(item: MarketplaceItem): LucideIcon {
+  return (item.icon && ICONS[item.icon]) || TYPE_META[item.type].icon
+}
+
+function MarketplaceIcon({ item, size = 'md' }: { item: MarketplaceItem; size?: 'sm' | 'md' }) {
+  const Icon = itemIcon(item)
+  const accent = itemAccent(item)
+  const box = size === 'sm' ? 'h-9 w-9 rounded-lg' : 'h-12 w-12 rounded-xl'
+  const iconSize = size === 'sm' ? 17 : 22
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center border ${box}`}
+      style={{ borderColor: `${accent}66`, background: `${accent}18`, color: accent }}
+    >
+      <Icon size={iconSize} strokeWidth={2} />
+    </div>
+  )
+}
+
 function TypePill({ type }: { type: MarketplaceType }) {
   const meta = TYPE_META[type]
   const Icon = meta.icon
@@ -71,35 +133,78 @@ function TypePill({ type }: { type: MarketplaceType }) {
   )
 }
 
-function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (item: MarketplaceItem) => void }) {
+function EngineChips({ item }: { item: MarketplaceItem }) {
+  if (!item.engine?.length) return null
   return (
-    <article className="grid grid-cols-[104px_minmax(0,1fr)_120px] items-center gap-3 border-b border-[var(--gt-border)] px-4 py-2.5 last:border-b-0 hover:bg-white/[0.025]">
-      <div className="space-y-1">
-        <TypePill type={item.type} />
-        <div className="font-mono text-[10px] text-zinc-600">v{item.version}</div>
+    <>
+      {item.engine.map((e) => (
+        <span key={e} className="rounded bg-black/25 px-1.5 py-px font-mono text-[10px] text-zinc-500">
+          {e}
+        </span>
+      ))}
+    </>
+  )
+}
+
+function FeaturedItem({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (item: MarketplaceItem) => void }) {
+  return (
+    <button
+      onClick={() => onLaunch(item)}
+      className="group grid min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-white/[0.025] p-2 text-left hover:border-[var(--gt-accent)]/45 hover:bg-white/[0.04]"
+    >
+      <MarketplaceIcon item={item} size="sm" />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[12px] font-semibold text-zinc-100">{item.title}</span>
+          <span className="shrink-0 rounded-full bg-[var(--gt-accent)]/15 px-1.5 py-px text-[9.5px] text-[var(--gt-accent-light)]">
+            Featured
+          </span>
+        </div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-zinc-600">
+          <span className="truncate">{item.addedBy}</span>
+          <span>·</span>
+          <span>{TYPE_META[item.type].label}</span>
+          <span className="text-zinc-500 group-hover:text-zinc-300">Install</span>
+        </div>
       </div>
+    </button>
+  )
+}
+
+function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (item: MarketplaceItem) => void }) {
+  const scope = item.install.scope || 'repo'
+  return (
+    <article className="grid grid-cols-[52px_minmax(0,1fr)_112px] items-start gap-3 border-b border-[var(--gt-border)] px-4 py-3 last:border-b-0 hover:bg-white/[0.025]">
+      <MarketplaceIcon item={item} />
 
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <h3 className="truncate text-[13px] font-semibold text-zinc-100">{item.title}</h3>
-          <span className="rounded-full border border-[var(--gt-border)] px-1.5 py-px text-[10px] text-zinc-500">
-            {item.install.scope || 'repo'}
-          </span>
-          {item.engine?.map((e) => (
-            <span key={e} className="rounded-full bg-black/25 px-1.5 py-px font-mono text-[10px] text-zinc-500">
-              {e}
+          {item.featured && (
+            <span className="rounded-full border border-[var(--gt-accent)]/25 bg-[var(--gt-accent)]/10 px-1.5 py-px text-[9.5px] text-[var(--gt-accent-light)]">
+              Featured
             </span>
-          ))}
+          )}
+          <TypePill type={item.type} />
         </div>
-        <p className="mt-0.5 truncate text-[12px] text-zinc-400">{item.description}</p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[10.5px] text-zinc-600">
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px] text-zinc-600">
           <span>
-            Added by <span className="text-zinc-400">{item.addedBy}</span>
+            Added by <span className="text-zinc-300">{item.addedBy}</span>
           </span>
-          <code className="max-w-[360px] truncate rounded bg-black/20 px-1.5 py-0.5 text-zinc-500">{item.install.copyTo}</code>
+          <span>·</span>
+          <span>v{item.version}</span>
+          <span>·</span>
+          <span className="rounded bg-black/25 px-1.5 py-px text-zinc-500">{scope}</span>
+          <EngineChips item={item} />
+        </div>
+        <p className="mt-1 truncate text-[12px] text-zinc-400">{item.description}</p>
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[10.5px] text-zinc-600">
+          <code className="max-w-[420px] truncate rounded bg-black/20 px-1.5 py-0.5 text-zinc-500">
+            {item.install.copyTo}
+          </code>
           {item.install.merge && <span className="text-zinc-500">{item.install.merge}</span>}
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-1">
+        <div className="mt-2 flex flex-wrap gap-1">
           {item.tags.map((t) => (
             <span key={t} className="rounded border border-[var(--gt-border)] px-1.5 py-px text-[10px] text-zinc-500">
               {t}
@@ -108,7 +213,7 @@ function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (
         </div>
       </div>
 
-      <div className="flex shrink-0 justify-end">
+      <div className="flex shrink-0 flex-col items-end gap-2">
         <button
           onClick={() => onLaunch(item)}
           className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2.5 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-[var(--gt-accent)]/80"
@@ -116,6 +221,7 @@ function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (
           <SquareTerminal size={12} strokeWidth={2} />
           Install
         </button>
+        <span className="max-w-[108px] truncate text-right font-mono text-[9.5px] text-zinc-700">{item.id}</span>
       </div>
     </article>
   )
@@ -163,12 +269,13 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
     return (manifest?.items || []).filter((item) => {
       if (filter !== 'all' && item.type !== filter) return false
       if (!q) return true
-      return [item.title, item.description, item.id, item.addedBy, item.install.copyTo, ...item.tags]
+      return [item.title, item.description, item.id, item.addedBy, item.install.copyTo, item.icon || '', ...item.tags]
         .join(' ')
         .toLowerCase()
         .includes(q)
     })
   }, [manifest, filter, query])
+  const featured = useMemo(() => (manifest?.items || []).filter((item) => item.featured).slice(0, 3), [manifest])
 
   const launchItem = async (
     item: MarketplaceItem,
@@ -218,8 +325,8 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
               )}
             </div>
             <p className="mt-1 max-w-2xl text-[12px] leading-snug text-zinc-500">
-              Git-backed presets split by artifact type. Choose Claude, Codex, or Cursor, then run as a terminal
-              instance or background process.
+              Git-backed extensions, agents, skills, snippets, and widgets. Pick an item, choose Claude, Codex, or
+              Cursor, then install through a terminal instance or background process.
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -237,6 +344,13 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
             </button>
           </div>
         </div>
+        {!query.trim() && filter === 'all' && featured.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+            {featured.map((item) => (
+              <FeaturedItem key={item.id} item={item} onLaunch={setPicking} />
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2">
@@ -279,7 +393,14 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
         ) : items.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">No matches.</div>
         ) : (
-          <div className="mx-auto max-w-6xl border-x border-[var(--gt-border)]">
+          <div className="mx-auto max-w-6xl border-x border-[var(--gt-border)] bg-black/[0.06]">
+            <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-4 py-2 text-[10.5px] text-zinc-600">
+              <span>
+                Showing <span className="text-zinc-400">{items.length}</span> of{' '}
+                <span className="text-zinc-400">{manifest.items.length}</span>
+              </span>
+              <span>Source: Git main branch</span>
+            </div>
             {items.map((item) => (
               <MarketplaceRow key={item.id} item={item} onLaunch={setPicking} />
             ))}

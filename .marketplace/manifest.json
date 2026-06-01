@@ -11,6 +11,9 @@
       "description": "Live cockpit widget for current context usage on Claude sessions.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "Brain",
+      "accent": "#22d3ee",
+      "featured": true,
       "engine": ["claude"],
       "paths": ["plugins/context-window/index.tsx"],
       "install": {
@@ -26,6 +29,8 @@
       "description": "Compact cockpit widget for branch, dirty count, and upstream drift.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "GitBranch",
+      "accent": "#34d399",
       "paths": ["plugins/repo-branch/index.tsx"],
       "install": {
         "copyTo": "src/renderer/src/plugins/repo-branch/index.tsx",
@@ -40,6 +45,9 @@
       "description": "Command widgets for open tickets, HITL count, active session, and git status.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "Activity",
+      "accent": "#a78bfa",
+      "featured": true,
       "paths": ["widgets/repo-pulse/widgets.json"],
       "install": {
         "copyTo": ".TerMinal/widgets.json",
@@ -55,6 +63,8 @@
       "description": "Command widgets for the latest branch, last commit, and local verification hints.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "CircleCheck",
+      "accent": "#60a5fa",
       "paths": ["widgets/ci-pulse/widgets.json"],
       "install": {
         "copyTo": ".TerMinal/widgets.json",
@@ -70,6 +80,8 @@
       "description": "A compact review skill for running tests, checking the diff, and reporting blockers first.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "ScanSearch",
+      "accent": "#f59e0b",
       "engine": ["claude", "codex", "cursor"],
       "paths": ["skills/quick-review/SKILL.md"],
       "install": {
@@ -85,6 +97,8 @@
       "description": "Pre-ship checklist skill for status, verification, docs drift, and final summary.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "PackageOpen",
+      "accent": "#fb7185",
       "engine": ["claude", "codex", "cursor"],
       "paths": ["skills/ship-check/SKILL.md"],
       "install": {
@@ -100,6 +114,9 @@
       "description": "One-click maintenance agent for stale tickets, failing tests, and obvious docs drift.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "Gauge",
+      "accent": "#34d399",
+      "featured": true,
       "engine": ["claude", "codex", "cursor"],
       "paths": ["agents/repo-health.md"],
       "install": {
@@ -115,6 +132,8 @@
       "description": "Focused agent for finding docs that no longer match recent code changes.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "FileText",
+      "accent": "#fbbf24",
       "engine": ["claude", "codex", "cursor"],
       "paths": ["agents/docs-drift.md"],
       "install": {
@@ -130,6 +149,8 @@
       "description": "Quick prompts for test, review, continue, and resolve loops.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "Clipboard",
+      "accent": "#38bdf8",
       "engine": ["claude", "codex", "cursor"],
       "paths": ["snippets/review-loop.json"],
       "install": {
@@ -146,6 +167,8 @@
       "description": "Quick prompts for factory mode, backlog selection, stack review, and handoff cleanup.",
       "version": 1,
       "addedBy": "TerMinal Core",
+      "icon": "RefreshCw",
+      "accent": "#a78bfa",
       "engine": ["claude", "codex", "cursor"],
       "paths": ["snippets/factory-loop.json"],
       "install": {

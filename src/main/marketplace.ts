@@ -11,6 +11,9 @@ export type MarketplaceItem = {
   description: string
   version: number
   addedBy: string
+  icon?: string
+  accent?: string
+  featured?: boolean
   engine?: ('claude' | 'codex' | 'cursor' | 'local')[]
   paths: string[]
   install: {

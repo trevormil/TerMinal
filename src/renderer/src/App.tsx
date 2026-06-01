@@ -420,6 +420,15 @@ export default function App() {
     () => new Map(visibleSessionOrder.map((key, i) => [key, i])),
     [visibleSessionOrder],
   )
+  const openInboxTerminals = useMemo(
+    () =>
+      sessions.map((s) => ({
+        key: s.key,
+        sessionId: s.info.sessionId || (s.choice.mode === 'resume' ? s.choice.sessionId || '' : ''),
+        cwd: cwdOf(s),
+      })),
+    [sessions],
+  )
   const multiTerminal = terminalLayout !== 'single' && visibleSessionKeys.size > 1
 
   // Pre-compute peer-session lists ONCE per workspace, then look up by session
@@ -845,7 +854,7 @@ export default function App() {
               className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <InboxDrawer ctx={activeCtx} onClose={() => setInbox(false)} />
+              <InboxDrawer ctx={activeCtx} openTerminals={openInboxTerminals} onClose={() => setInbox(false)} />
             </div>
           </div>
         )}

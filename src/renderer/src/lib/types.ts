@@ -558,6 +558,9 @@ export type MarketplaceItem = {
   description: string
   version: number
   addedBy: string
+  icon?: string
+  accent?: string
+  featured?: boolean
   engine?: (Engine | 'local')[]
   paths: string[]
   install: {

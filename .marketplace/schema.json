@@ -43,6 +43,16 @@
         "description": { "type": "string", "minLength": 1 },
         "version": { "type": "integer", "minimum": 1 },
         "addedBy": { "type": "string", "minLength": 1 },
+        "icon": {
+          "type": "string",
+          "description": "Lucide icon name used by the in-app Marketplace browser."
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "Hex accent color used for the Marketplace listing icon tile."
+        },
+        "featured": { "type": "boolean" },
         "engine": {
           "type": "array",
           "items": { "type": "string", "enum": ["claude", "codex", "cursor", "local"] },

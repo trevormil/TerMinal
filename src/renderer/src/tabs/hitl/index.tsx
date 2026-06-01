@@ -16,6 +16,12 @@ import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
 
+export type InboxTerminalRef = {
+  key: string
+  sessionId?: string
+  cwd?: string
+}
+
 // Derive the Tickets-tab slug (file basename without extension) from a ticket
 // path. Cron-failure HITLs pair with a ticket whose path looks like
 // `…/backlog/0123-cron-fail-foo.md` — the slug is `0123-cron-fail-foo`.
@@ -50,7 +56,36 @@ function compactDetail(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: () => void }) {
+function cleanPath(path?: string): string {
+  return (path || '').replace(/\/$/, '')
+}
+
+function hasOpenTerminal(h: HitlItem, terminals: InboxTerminalRef[]): boolean {
+  if (terminals.length === 0) return false
+  if (h.terminalKey) return terminals.some((t) => t.key === h.terminalKey)
+  if (h.sessionId) return terminals.some((t) => t.sessionId === h.sessionId)
+
+  const targetCwd = cleanPath(h.terminalCwd)
+  const targetRepo = cleanPath(h.repoRoot)
+  if (!targetCwd && !targetRepo) return false
+
+  return terminals.some((t) => {
+    const cwd = cleanPath(t.cwd)
+    if (!cwd) return false
+    if (targetCwd && cwd === targetCwd) return true
+    if (targetRepo && (cwd === targetRepo || cwd.startsWith(`${targetRepo}/`))) return true
+    return false
+  })
+}
+
+export function InboxDrawer({
+  onClose,
+  openTerminals = [],
+}: {
+  ctx?: TabContext | null
+  onClose?: () => void
+  openTerminals?: InboxTerminalRef[]
+}) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
   const [showResolved, setShowResolved] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -116,6 +151,7 @@ export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: ()
               const detail = compactDetail(h.detail || '')
               const canExpand = !!detail && (h.source === 'completion-hook' || detail.length > 180)
               const isExpanded = expanded.has(h.id)
+              const canViewTerminal = hasOpenTerminal(h, openTerminals)
               return (
                 <div
                   key={h.id}
@@ -174,7 +210,7 @@ export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: ()
                       )}
                     </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {(h.terminalKey || h.sessionId || h.terminalCwd || h.repoRoot) && (
+                    {canViewTerminal && (
                       <button
                         onClick={() =>
                           navigateTo('terminal', {
