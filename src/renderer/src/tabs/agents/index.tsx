@@ -153,7 +153,7 @@ function AgentDesigner({
   const [text, setText] = useState('')
   const [engine, setEngine] = useState<Engine>('claude')
   const [model, setModel] = useState<string | undefined>(undefined)
-  const [launchMode, setLaunchMode] = useState<LaunchMode>('process')
+  const [launchMode, setLaunchMode] = useState<LaunchMode>('terminal')
   const [scope, setScope] = useState<'repo' | 'global'>('repo')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -296,8 +296,8 @@ function AgentDesigner({
               onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
-              <option value="process">Process</option>
               <option value="terminal">{engineInstanceLabel(engine)} instance</option>
+              <option value="process">Process</option>
             </select>
           </label>
 

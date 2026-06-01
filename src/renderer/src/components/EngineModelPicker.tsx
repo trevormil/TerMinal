@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import type { Engine } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
@@ -43,6 +44,8 @@ const VENDOR: Record<Engine, string> = {
   cursor: 'Cursor Agent',
 }
 
+type MenuPos = { top: number; left: number; maxHeight: number }
+
 export function EngineModelPicker({
   engine,
   model,
@@ -57,12 +60,37 @@ export function EngineModelPicker({
   align?: 'left' | 'right'
 }) {
   const [open, setOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<MenuPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const updateMenuPosition = () => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const width = 300
+    const gutter = 8
+    const preferredHeight = 430
+    const spaceBelow = window.innerHeight - rect.bottom - gutter
+    const spaceAbove = rect.top - gutter
+    const left =
+      align === 'right'
+        ? Math.max(gutter, Math.min(window.innerWidth - width - gutter, rect.right - width))
+        : Math.max(gutter, Math.min(window.innerWidth - width - gutter, rect.left))
+    if (spaceBelow < 260 && spaceAbove > spaceBelow) {
+      const maxHeight = Math.max(180, Math.min(preferredHeight, spaceAbove - 6))
+      setMenuPos({ top: Math.max(gutter, rect.top - maxHeight - 6), left, maxHeight })
+    } else {
+      setMenuPos({ top: rect.bottom + 6, left, maxHeight: Math.max(180, Math.min(preferredHeight, spaceBelow - 6)) })
+    }
+  }
 
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
@@ -74,6 +102,18 @@ export function EngineModelPicker({
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    updateMenuPosition()
+    const onMove = () => updateMenuPosition()
+    window.addEventListener('resize', onMove)
+    window.addEventListener('scroll', onMove, true)
+    return () => {
+      window.removeEventListener('resize', onMove)
+      window.removeEventListener('scroll', onMove, true)
+    }
+  }, [open, align])
 
   const trigger =
     size === 'sm'
@@ -97,11 +137,11 @@ export function EngineModelPicker({
         <ChevronDown size={size === 'sm' ? 10 : 12} strokeWidth={2} className="text-zinc-500" />
       </button>
 
-      {open && (
+      {open && menuPos && createPortal(
         <div
-          className={`absolute top-full z-50 mt-1 w-[280px] rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-xl ${
-            align === 'right' ? 'right-0' : 'left-0'
-          }`}
+          ref={menuRef}
+          className="fixed z-[10000] w-[300px] overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-2xl"
+          style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
         >
           {(Object.keys(MODELS) as Engine[]).map((e) => {
             const isActive = e === engine
@@ -152,7 +192,8 @@ export function EngineModelPicker({
           <div className="mt-1 border-t border-[var(--gt-border)]/60 px-1 pt-1.5 text-[9.5px] text-zinc-600">
             Pick a model only when you want to override the engine default.
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

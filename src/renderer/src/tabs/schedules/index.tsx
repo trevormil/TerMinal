@@ -91,7 +91,7 @@ function ScheduleForm({
   const [agentId, setAgentId] = useState(agents[0]?.id || '')
   const [engine, setEngine] = useState<Engine>('claude')
   const [model, setModel] = useState('')
-  const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('process')
+  const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('terminal')
   useEffect(() => {
     window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
   }, [])
@@ -234,8 +234,8 @@ function ScheduleForm({
               onChange={(e) => setCustomLaunchMode(e.target.value as LaunchMode)}
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
-              <option value="process">Process</option>
               <option value="terminal">{engineInstanceLabel(engine)} instance</option>
+              <option value="process">Process</option>
             </select>
             {customErr && <span className="text-[11px] text-[var(--gt-red)]">{customErr}</span>}
             <div className="ml-auto flex items-center gap-2">

@@ -24,6 +24,7 @@ const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const underDir = (sessionCwd: string, dir: string) =>
   sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
 export function EntryScreen({
   onChoose,
@@ -77,6 +78,10 @@ export function EntryScreen({
     if (!next || loadingSessions) return
     setLoadingSessions(next)
     try {
+      // Let the loading affordance paint before the main process starts walking
+      // transcript files. Even with the picker scan optimized, large local
+      // session archives can take a beat.
+      await nextFrame()
       const loaded = await window.gt.listSessions(next)
       setSessionsByEngine((cur) => ({ ...cur, [next]: loaded }))
       if (!cwd && loaded[0]?.cwd) setCwd(loaded[0].cwd)

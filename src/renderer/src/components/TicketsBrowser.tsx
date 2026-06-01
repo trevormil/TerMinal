@@ -99,7 +99,7 @@ function NewTicketModal({
   const [spawnText, setSpawnText] = useState('')
   const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
   const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
-  const [launchMode, setLaunchMode] = useState<LaunchMode>('process')
+  const [launchMode, setLaunchMode] = useState<LaunchMode>('terminal')
   const [spawning, setSpawning] = useState(false)
   const [spawnMsg, setSpawnMsg] = useState('')
   useEffect(() => {
@@ -176,8 +176,8 @@ function NewTicketModal({
               onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
             >
-              <option value="process">Process</option>
               <option value="terminal">{engineInstanceLabel(spawnEngine)} instance</option>
+              <option value="process">Process</option>
             </select>
             {spawnMsg && <span className="text-[11px] text-[var(--gt-green)]">{spawnMsg}</span>}
             <button

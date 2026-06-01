@@ -20,6 +20,9 @@ const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 const TASKS_DIR = join(homedir(), '.claude', 'tasks')
 const CODEX_SESSIONS_DIR = join(homedir(), '.codex', 'sessions')
 const CURSOR_PROJECTS_DIR = join(homedir(), '.cursor', 'projects')
+const SESSION_PICKER_LIMIT = 600
+const PICKER_HEAD_BYTES = 256 * 1024
+const PICKER_TAIL_BYTES = 128 * 1024
 
 /** The agent's live todo list for a session (~/.claude/tasks/<id>/<n>.json). */
 export function readSessionTasks(sessionId: string): TaskItem[] {
@@ -134,6 +137,47 @@ function textOf(content: unknown): string {
       .join(' ')
   }
   return ''
+}
+
+function statMtimeMs(file: string): number {
+  try {
+    return statSync(file).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
+function newestFiles(files: string[], limit = SESSION_PICKER_LIMIT): string[] {
+  return files
+    .map((file) => ({ file, mtime: statMtimeMs(file) }))
+    .filter((f) => f.mtime > 0)
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map((f) => f.file)
+}
+
+function readPickerWindow(file: string): { raw: string; mtime: number } | null {
+  try {
+    const st = statSync(file)
+    const mtime = st.mtimeMs
+    if (st.size <= PICKER_HEAD_BYTES + PICKER_TAIL_BYTES) {
+      return { raw: readFileSync(file, 'utf8'), mtime }
+    }
+
+    const fd = openSync(file, 'r')
+    try {
+      const head = Buffer.alloc(PICKER_HEAD_BYTES)
+      const tailLen = Math.min(PICKER_TAIL_BYTES, st.size)
+      const tail = Buffer.alloc(tailLen)
+      readSync(fd, head, 0, PICKER_HEAD_BYTES, 0)
+      readSync(fd, tail, 0, tailLen, st.size - tailLen)
+      return { raw: `${head.toString('utf8')}\n${tail.toString('utf8')}`, mtime }
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    return null
+  }
 }
 
 /** Locate a session's transcript file by id, across all project dirs. */
@@ -328,35 +372,74 @@ export function readTranscriptStats(sessionId: string): TranscriptStats {
 }
 
 /** All sessions across all projects, newest first — for the entry picker. */
-function listClaudeSessions(): SessionMeta[] {
-  const out: SessionMeta[] = []
-  if (!existsSync(PROJECTS_DIR)) return out
-  for (const project of readdirSync(PROJECTS_DIR)) {
-    const dir = join(PROJECTS_DIR, project)
-    let files: string[]
+function parseClaudeSessionMeta(file: string, id: string): SessionMeta | null {
+  const win = readPickerWindow(file)
+  if (!win) return null
+
+  let model = 'unknown'
+  let cwd = ''
+  let gitBranch = ''
+  let firstUserText = ''
+  let turns = 0
+
+  for (const line of win.raw.split('\n')) {
+    if (!line.trim()) continue
+    let obj: any
     try {
-      files = readdirSync(dir)
+      obj = JSON.parse(line)
     } catch {
       continue
     }
-    for (const f of files) {
-      if (!f.endsWith('.jsonl')) continue
-      const id = f.replace(/\.jsonl$/, '')
-      const s = parseTranscriptFile(join(dir, f), id)
-      if (!s.ok) continue // skip empty / never-used sessions
-      out.push({
-        id,
-        engine: 'claude',
-        cwd: s.cwd,
-        gitBranch: s.gitBranch,
-        model: s.model,
-        turns: s.turns,
-        firstUserText: s.firstUserText,
-        mtime: s.mtime,
-      })
+    if (!cwd && typeof obj.cwd === 'string') cwd = obj.cwd
+    if (!gitBranch && typeof obj.gitBranch === 'string') gitBranch = obj.gitBranch
+
+    const msg = obj.message
+    if (!msg) continue
+    if (msg.role === 'user' && !firstUserText) {
+      const t = textOf(msg.content).trim()
+      if (t && !t.startsWith('<')) firstUserText = t.slice(0, 140)
+    }
+    if (msg.role === 'assistant' && msg.usage) {
+      turns++
+      if (msg.model) model = msg.model
     }
   }
-  return out
+
+  if (!id || (!cwd && !firstUserText)) return null
+  return {
+    id,
+    engine: 'claude',
+    cwd,
+    gitBranch,
+    model,
+    turns,
+    firstUserText,
+    mtime: win.mtime,
+  }
+}
+
+function listClaudeSessions(): SessionMeta[] {
+  const files: { file: string; id: string }[] = []
+  if (!existsSync(PROJECTS_DIR)) return []
+  for (const project of readdirSync(PROJECTS_DIR)) {
+    const dir = join(PROJECTS_DIR, project)
+    let entries: string[]
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const f of entries) {
+      if (!f.endsWith('.jsonl')) continue
+      files.push({ file: join(dir, f), id: f.replace(/\.jsonl$/, '') })
+    }
+  }
+  const idsByFile = new Map(files.map((f) => [f.file, f.id]))
+  return newestFiles(
+    files.map((f) => f.file),
+  )
+    .map((file) => parseClaudeSessionMeta(file, idsByFile.get(file) || ''))
+    .filter((s): s is SessionMeta => !!s)
 }
 
 function walkJsonlFiles(dir: string, out: string[] = [], depth = 0): string[] {
@@ -381,12 +464,8 @@ function walkJsonlFiles(dir: string, out: string[] = [], depth = 0): string[] {
 }
 
 export function parseCodexSessionFile(file: string): SessionMeta | null {
-  let mtime = 0
-  try {
-    mtime = statSync(file).mtimeMs
-  } catch {
-    return null
-  }
+  const win = readPickerWindow(file)
+  if (!win) return null
 
   let id = file.replace(/\.jsonl$/, '').split('/').pop() || ''
   id = id.replace(/^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-/, '')
@@ -395,14 +474,7 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
   let firstUserText = ''
   let turns = 0
 
-  let raw = ''
-  try {
-    raw = readFileSync(file, 'utf8')
-  } catch {
-    return null
-  }
-
-  for (const line of raw.split('\n')) {
+  for (const line of win.raw.split('\n')) {
     if (!line.trim()) continue
     let obj: any
     try {
@@ -435,13 +507,13 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
     model: model || 'codex',
     turns,
     firstUserText,
-    mtime,
+    mtime: win.mtime,
   }
 }
 
 function listCodexSessions(): SessionMeta[] {
   if (!existsSync(CODEX_SESSIONS_DIR)) return []
-  return walkJsonlFiles(CODEX_SESSIONS_DIR)
+  return newestFiles(walkJsonlFiles(CODEX_SESSIONS_DIR))
     .map(parseCodexSessionFile)
     .filter((s): s is SessionMeta => !!s)
 }
@@ -452,12 +524,8 @@ function slugToPath(slug: string): string {
 }
 
 export function parseCursorSessionFile(file: string): SessionMeta | null {
-  let mtime = 0
-  try {
-    mtime = statSync(file).mtimeMs
-  } catch {
-    return null
-  }
+  const win = readPickerWindow(file)
+  if (!win) return null
   let id = file.split('/').pop()?.replace(/\.jsonl$/, '') || ''
   const parts = file.split('/')
   const projectsIdx = parts.lastIndexOf('projects')
@@ -466,13 +534,7 @@ export function parseCursorSessionFile(file: string): SessionMeta | null {
   let firstUserText = ''
   let model = 'cursor'
   let turns = 0
-  let raw = ''
-  try {
-    raw = readFileSync(file, 'utf8')
-  } catch {
-    return null
-  }
-  for (const line of raw.split('\n')) {
+  for (const line of win.raw.split('\n')) {
     if (!line.trim()) continue
     let obj: any
     try {
@@ -502,7 +564,7 @@ export function parseCursorSessionFile(file: string): SessionMeta | null {
     model,
     turns,
     firstUserText,
-    mtime,
+    mtime: win.mtime,
   }
 }
 
@@ -517,7 +579,7 @@ function listCursorSessions(): SessionMeta[] {
       if (existsSync(f)) files.push(f)
     }
   }
-  return files.map(parseCursorSessionFile).filter((s): s is SessionMeta => !!s)
+  return newestFiles(files).map(parseCursorSessionFile).filter((s): s is SessionMeta => !!s)
 }
 
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */

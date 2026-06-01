@@ -4,8 +4,11 @@ import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
-import type { PromptSnippet, SkillInfo } from '../lib/types'
+import type { Engine, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
+import { EngineLogo } from './EngineLogo'
+import { EngineModelPicker } from './EngineModelPicker'
+import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
 
 type LauncherItem =
   | {
@@ -48,6 +51,9 @@ export function TerminalPane({
   const [newOpen, setNewOpen] = useState(false)
   const [newMode, setNewMode] = useState<'ai' | 'custom'>('ai')
   const [newScope, setNewScope] = useState<'repo' | 'global'>('repo')
+  const [newEngine, setNewEngine] = useState<Engine>('claude')
+  const [newModel, setNewModel] = useState<string | undefined>(undefined)
+  const [newLaunchMode, setNewLaunchMode] = useState<LaunchMode>('terminal')
   const [newText, setNewText] = useState('')
   const [draft, setDraft] = useState({ title: '', group: 'Custom', prompt: '' })
   const [newBusy, setNewBusy] = useState(false)
@@ -70,6 +76,7 @@ export function TerminalPane({
       .listSkills()
       .then(setSkills)
       .catch(() => setSkills([]))
+    window.gt.settings.get().then((s) => setNewEngine(s.defaultEngine)).catch(() => {})
   }, [choice.cwd])
 
   useEffect(() => {
@@ -314,6 +321,27 @@ export function TerminalPane({
     }
   }
 
+  const draftSnippetInTerminal = () => {
+    const text = newText.trim()
+    if (!text) return
+    const target =
+      newScope === 'global'
+        ? '~/.config/TerMinal/snippets.json'
+        : `${choice.cwd || '<repo root>'}/.TerMinal/snippets.json`
+    openPromptInTerminal({
+      engine: newEngine,
+      cwd: choice.cwd || '',
+      name: 'New snippet',
+      prompt:
+        `Create a new TerMinal prompt snippet from this request:\n\n${text}\n\n` +
+        `Save it to ${target}. Preserve existing snippets and upsert one entry using this schema:\n` +
+        `{\n  "version": 2,\n  "snippets": [\n    { "id": "kebab-id", "title": "Short title", "group": "Group", "description": "Optional short description", "prompt": "Pasteable prompt text" }\n  ]\n}\n\n` +
+        `Scope: ${newScope}. Preferred model: ${newModel || 'engine default'}. Commit the change if this repo normally commits TerMinal metadata, then summarize what you saved.`,
+    })
+    setNewOpen(false)
+    setMenuOpen(false)
+  }
+
   const saveDraft = async () => {
     setNewBusy(true)
     setNewErr('')
@@ -553,13 +581,30 @@ export function TerminalPane({
                       </button>
                     ))}
                   </div>
+                  <EngineModelPicker
+                    engine={newEngine}
+                    model={newModel}
+                    onChange={(e, m) => {
+                      setNewEngine(e)
+                      setNewModel(m)
+                    }}
+                    size="sm"
+                  />
+                  <select
+                    value={newLaunchMode}
+                    onChange={(e) => setNewLaunchMode(e.target.value as LaunchMode)}
+                    className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                  >
+                    <option value="terminal">{engineInstanceLabel(newEngine)} instance</option>
+                    <option value="process">Process</option>
+                  </select>
                   <button
-                    onClick={draftWithAi}
+                    onClick={newLaunchMode === 'terminal' ? draftSnippetInTerminal : draftWithAi}
                     disabled={!newText.trim() || newBusy}
                     className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] disabled:opacity-40"
                   >
-                    <Bot size={12} strokeWidth={2} />
-                    {newBusy ? 'Drafting...' : 'Draft with AI'}
+                    {newBusy ? <Bot size={12} strokeWidth={2} /> : <EngineLogo engine={newEngine} size={12} />}
+                    {newBusy ? 'Drafting...' : newLaunchMode === 'terminal' ? 'Open instance' : 'Draft with AI'}
                   </button>
                 </div>
                 {(draft.title || draft.prompt) && (

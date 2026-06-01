@@ -239,16 +239,6 @@ export function EnginePicker({
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process')}
-                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
-              >
-                <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
-                <span className="text-[13px] font-semibold text-zinc-100">Process</span>
-                <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  Fire-and-forget background run.
-                </span>
-              </button>
-              <button
                 onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal')}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
@@ -258,6 +248,16 @@ export function EnginePicker({
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
                   Open Terminal with the prompt prefilled.
+                </span>
+              </button>
+              <button
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process')}
+                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+              >
+                <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                <span className="text-[13px] font-semibold text-zinc-100">Process</span>
+                <span className="text-center text-[10px] leading-snug text-zinc-500">
+                  Fire-and-forget background run.
                 </span>
               </button>
             </div>
