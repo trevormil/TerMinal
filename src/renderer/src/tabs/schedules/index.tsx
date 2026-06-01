@@ -25,6 +25,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine, ListenerStatus } from '../../lib/types'
+import { RunLogPane } from '../runs/RunLogPane'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
@@ -659,15 +660,6 @@ function ListenerPanel({
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selected.source || 'unknown'}</span>
               {selected.action && <span className="text-[10.5px] text-zinc-500">{selected.action}</span>}
-              {selected.runId && (
-                <button
-                  onClick={() => navigateTo('runs', { runId: selected.runId, source: selected.runSource })}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                >
-                  <ListChecks size={10} strokeWidth={2} />
-                  View run
-                </button>
-              )}
               <button
                 onClick={() => setSel(null)}
                 title="Close detail"
@@ -709,6 +701,16 @@ function ListenerPanel({
                   <span className="font-mono text-zinc-300">{selected.file}</span>
                 </div>
               </div>
+              {selected.runId && selected.runSource && (
+                <div className="mt-3 h-[min(46vh,420px)] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-black/20">
+                  <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/50 px-3 py-2">
+                    <ListChecks size={12} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+                    <span className="text-[11.5px] font-semibold text-zinc-200">Run log</span>
+                    <span className="font-mono text-[10px] text-zinc-600">{selected.runId}</span>
+                  </div>
+                  <RunLogPane source={selected.runSource} runId={selected.runId} className="h-[calc(100%-34px)]" />
+                </div>
+              )}
             </div>
           </>
         )}
