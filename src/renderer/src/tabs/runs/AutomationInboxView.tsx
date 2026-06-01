@@ -37,7 +37,7 @@ function AutomationInfoBox() {
       </div>
       <div className="mt-1 leading-relaxed">
         It watches for queued work by default: use Agents for manual runs, Schedules for time-based runs, and this
-        inbox for external events. Use <span className="font-mono text-zinc-300">/automation-inbox</span> for one-off requests and{' '}
+        inbox for external events. Use <span className="font-mono text-zinc-300">/enqueue-request</span> for one-off requests and{' '}
         <span className="font-mono text-zinc-300">/new-inbox-source</span> for durable adapters. CLI:{' '}
         <span className="font-mono text-zinc-400">terminal-cli inbox enqueue ...</span>
       </div>
@@ -254,7 +254,7 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
               <div className="p-4 text-[12px] text-zinc-600">Loading automation inbox...</div>
             ) : status.recent.length === 0 ? (
               <div className="p-4 text-[12px] text-zinc-600">
-                No automation requests yet. Use /automation-inbox for one-off requests or /new-inbox-source for setup.
+                No automation requests yet. Use /enqueue-request for one-off requests or /new-inbox-source for setup.
               </div>
             ) : shownRecent.length === 0 ? (
               <div className="p-4 text-[12px] text-zinc-600">No automation requests match these filters.</div>

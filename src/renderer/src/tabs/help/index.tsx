@@ -211,7 +211,7 @@ function HelpTab(_props: { ctx: TabContext }) {
                 Always-on automation intake. Scripts or integrations enqueue durable requests; TerMinal watches by
                 default, runs allowlisted actions, and shows the request-to-run trail.
               </p>
-              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Runs → Automation Inbox · /automation-inbox</p>
+              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Runs → Automation Inbox · /enqueue-request</p>
             </div>
           </div>
           <p className="mt-2.5 text-[11px] leading-snug text-zinc-600">
