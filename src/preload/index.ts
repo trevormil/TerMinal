@@ -126,8 +126,6 @@ const gt = {
     process: () => ipcRenderer.invoke('listeners:process'),
     toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
     openDir: () => ipcRenderer.invoke('listeners:open-dir'),
-    example: () => ipcRenderer.invoke('listeners:example'),
-    enqueue: (input: unknown) => ipcRenderer.invoke('listeners:enqueue', input),
   },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),

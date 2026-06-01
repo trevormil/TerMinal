@@ -368,25 +368,6 @@ export type CronRun = {
 }
 
 export type ListenerDir = 'new' | 'processing' | 'done' | 'failed' | 'dead-letter'
-export type ListenerAction =
-  | { kind: 'activity'; activityKind?: ActivityKind; title?: string; detail?: string }
-  | { kind: 'file-ticket'; title?: string; body?: string; type?: string; priority?: string }
-  | { kind: 'file-hitl'; title?: string; action?: string; detail?: string }
-  | { kind: 'run-agent'; agentId: string; engine?: Engine; model?: string; mode?: 'agent' | 'background'; prompt?: string }
-  | { kind: 'background-task'; prompt: string; engine?: Engine; model?: string }
-export type ListenerEnvelope = {
-  id?: string
-  source: string
-  type: string
-  title?: string
-  body?: string
-  repo?: string
-  repoRoot?: string
-  dedupeKey?: string
-  createdAt?: string | number
-  requestedAction?: ListenerAction
-  payload?: unknown
-}
 export type ListenerStatus = {
   enabled: boolean
   inboxDir: string
@@ -784,8 +765,6 @@ export type GtApi = {
     process: () => Promise<{ processed: number; failed: number; skipped: number; status: ListenerStatus }>
     toggle: (enabled: boolean) => Promise<ListenerStatus>
     openDir: () => Promise<string>
-    example: () => Promise<ListenerEnvelope>
-    enqueue: (input: ListenerEnvelope) => Promise<{ ok: true; path: string } | { error: string }>
   }
   hitl: {
     list: () => Promise<HitlItem[]>

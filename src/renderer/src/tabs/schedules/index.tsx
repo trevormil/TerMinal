@@ -13,11 +13,11 @@ import {
   FolderOpen,
   X,
   ListChecks,
-  MailCheck,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
+import { EnginePicker } from '../../components/EnginePicker'
 import { navigateTo } from '../../lib/nav'
 import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
@@ -66,6 +66,17 @@ const statusTone = (s?: string): BadgeTone =>
   s === 'done' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'mute'
 const listenerTone = (s: string): BadgeTone =>
   s === 'done' ? 'green' : s === 'failed' || s === 'dead-letter' ? 'red' : s === 'new' ? 'blue' : 'mute'
+
+type ScheduleView = 'schedules' | 'listeners'
+
+function listenerDesignerPrompt(repoRoot: string): string {
+  return [
+    '/listener-inbox Create or update a local TerMinal listener integration for this workspace.',
+    'Use the listener-inbox skill. Prefer a small script, adapter, or documented command that can enqueue listener requests through the TerMinal CLI.',
+    'Keep the app UX skill-based; do not expose a raw JSON contract in the UI.',
+    `Target repo: ${repoRoot || '(no attached repo)'}`,
+  ].join('\n')
+}
 
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
 function ScheduleForm({
@@ -395,18 +406,14 @@ function ListenerPanel({
   status,
   onRefresh,
   flash,
+  onDesign,
 }: {
   status: ListenerStatus | null
   onRefresh: () => Promise<void>
   flash: (m: string) => void
+  onDesign: () => void
 }) {
-  const [example, setExample] = useState('')
-  const [enqueueBusy, setEnqueueBusy] = useState(false)
   const counts = status?.counts
-  const loadExample = async () => {
-    const e = await window.gt.listeners.example()
-    setExample(JSON.stringify(e, null, 2))
-  }
 
   return (
     <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
@@ -425,15 +432,22 @@ function ListenerPanel({
             )}
           </div>
           <p className="mt-0.5 max-w-3xl text-[11.5px] leading-snug text-zinc-500">
-            Local integrations drop JSON request files into <span className="font-mono text-zinc-400">new/</span>.
-            TerMinal validates, dedupes, moves each request through processing/done/failed, and can trigger tickets,
-            HITL, agent runs, background tasks, or Activity events.
+            Local integrations can request work through the listener-inbox skill. TerMinal validates, dedupes, moves
+            each request through processing/done/failed, and can trigger tickets, HITL, agent runs, background tasks,
+            or Activity events.
           </p>
           {status && (
             <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{status.inboxDir}</div>
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            onClick={onDesign}
+            className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white"
+          >
+            <Plus size={11} strokeWidth={2.5} />
+            New listener
+          </button>
           <button
             onClick={async () => {
               if (!status) return
@@ -467,97 +481,51 @@ function ListenerPanel({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 rounded-lg border border-[var(--gt-border)] bg-black/20">
-          <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-2.5 py-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests → actions</span>
-            <span className="text-[10px] text-zinc-700">recent processed</span>
+      <div className="mt-3 rounded-lg border border-[var(--gt-border)] bg-black/20">
+        <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-2.5 py-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests to actions</span>
+          <span className="text-[10px] text-zinc-700">recent inbox activity</span>
+        </div>
+        {!status ? (
+          <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox...</div>
+        ) : status.recent.length === 0 ? (
+          <div className="p-3 text-[11px] text-zinc-600">
+            No listener requests yet. Use “New listener” to open the listener-inbox skill in an agent instance.
           </div>
-          {!status ? (
-            <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox…</div>
-          ) : status.recent.length === 0 ? (
-            <div className="p-3 text-[11px] text-zinc-600">
-              No listener requests processed yet. Drop a JSON file into <span className="font-mono">new/</span> or
-              enqueue the example.
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--gt-border)]/70">
-              {status.recent.map((r) => (
-                <div key={`${r.dir}:${r.file}`} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 px-2.5 py-2">
-                  <div className="space-y-1">
-                    <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
-                    <div className="font-mono text-[9.5px] text-zinc-700">{reltime(r.processedAt)}</div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                      <span className="truncate text-[12px] font-semibold text-zinc-200">
-                        {r.title || r.type || r.file}
-                      </span>
-                      {r.source && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.source}</span>}
-                      {r.action && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.action}</span>}
-                    </div>
-                    <div className="mt-0.5 min-w-0 truncate text-[10.5px] text-zinc-600">
-                      {r.result || r.error || r.id || r.file}
-                    </div>
-                    {r.runId && (
-                      <button
-                        onClick={() => navigateTo('runs', { runId: r.runId, source: r.runSource })}
-                        className="mt-1 inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-                      >
-                        <ListChecks size={10} strokeWidth={2} />
-                        View run
-                      </button>
-                    )}
-                    {r.repoRoot && <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-700">{r.repoRoot}</div>}
-                  </div>
+        ) : (
+          <div className="divide-y divide-[var(--gt-border)]/70">
+            {status.recent.map((r) => (
+              <div key={`${r.dir}:${r.file}`} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 px-2.5 py-2">
+                <div className="space-y-1">
+                  <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
+                  <div className="font-mono text-[9.5px] text-zinc-700">{reltime(r.processedAt)}</div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-600">local JSON contract</span>
-            <button
-              onClick={loadExample}
-              className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-            >
-              Example
-            </button>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span className="truncate text-[12px] font-semibold text-zinc-200">
+                      {r.title || r.type || r.file}
+                    </span>
+                    {r.source && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.source}</span>}
+                    {r.action && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.action}</span>}
+                  </div>
+                  <div className="mt-0.5 min-w-0 truncate text-[10.5px] text-zinc-600">
+                    {r.result || r.error || r.id || r.file}
+                  </div>
+                  {r.runId && (
+                    <button
+                      onClick={() => navigateTo('runs', { runId: r.runId, source: r.runSource })}
+                      className="mt-1 inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                    >
+                      <ListChecks size={10} strokeWidth={2} />
+                      View run
+                    </button>
+                  )}
+                  {r.repoRoot && <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-700">{r.repoRoot}</div>}
+                </div>
+              </div>
+            ))}
           </div>
-          <textarea
-            value={example}
-            onChange={(e) => setExample(e.target.value)}
-            placeholder='{"source":"local-script","type":"automation.requested","requestedAction":{"kind":"activity"}}'
-            rows={8}
-            spellCheck={false}
-            className="h-44 w-full resize-none rounded-md border border-[var(--gt-border)] bg-black/35 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              onClick={async () => {
-                setEnqueueBusy(true)
-                try {
-                  const r = await window.gt.listeners.enqueue(JSON.parse(example || '{}'))
-                  if ('error' in r) flash(r.error)
-                  else flash(`queued ${r.path}`)
-                  await onRefresh()
-                } catch (e) {
-                  flash((e as Error).message)
-                } finally {
-                  setEnqueueBusy(false)
-                }
-              }}
-              disabled={!example.trim() || enqueueBusy}
-              className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
-            >
-              <MailCheck size={12} strokeWidth={2.5} />
-              Enqueue
-            </button>
-            <span className="text-[10px] text-zinc-600">Writes into new/; watcher processes while TerMinal is open.</span>
-          </div>
-        </div>
+        )}
       </div>
     </section>
   )
@@ -568,6 +536,8 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus | null>(null)
   const [agents, setAgents] = useState<Agent[]>([])
   const [creating, setCreating] = useState(false)
+  const [pickingListener, setPickingListener] = useState(false)
+  const [view, setView] = useState<ScheduleView>('schedules')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
@@ -672,9 +642,35 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     setMsg(m)
     setTimeout(() => setMsg(''), 5000)
   }
+  const launchListenerDesigner = async (
+    engine: Engine,
+    _persona: string,
+    _pipeline: string,
+    model?: string,
+    launchMode?: LaunchMode,
+  ) => {
+    const cwd = ctx.repoRoot || ctx.cwd
+    const prompt = listenerDesignerPrompt(ctx.repoRoot || cwd)
+    setPickingListener(false)
+    if (launchMode !== 'process') {
+      openPromptInTerminal({ engine, cwd, name: 'New listener', prompt })
+      flash(`opened ${engineInstanceLabel(engine)} instance`)
+      return
+    }
+    if (!ctx.repoRoot) {
+      flash('listener design needs an attached repo')
+      return
+    }
+    const r = await window.gt.bg.spawn({ repoRoot: ctx.repoRoot, prompt, engine, model })
+    if ('error' in r) {
+      flash(r.error)
+      return
+    }
+    flash(`${engine} process started - see Runs`)
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+    <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <CalendarClock size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Schedules</span>
@@ -686,20 +682,48 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           <ListChecks size={10} strokeWidth={2} />
           All runs → Runs tab
         </button>
-        <select
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
-          title="Filter by repo"
-          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none"
-        >
-          <option value="">All repos</option>
-          {repoOptions.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
+        <div className="ml-1 inline-flex rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
+          <button
+            onClick={() => setView('schedules')}
+            className={`rounded-md px-2 py-0.5 text-[11px] ${
+              view === 'schedules' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            Schedules {(schedules || []).length}
+          </button>
+          <button
+            onClick={() => setView('listeners')}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
+              view === 'listeners' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            Listeners
+            {listenerStatus?.counts.new ? (
+              <span className="rounded-full bg-[var(--gt-accent)]/25 px-1 font-mono text-[10px] text-[var(--gt-accent-light)]">
+                {listenerStatus.counts.new}
+              </span>
+            ) : null}
+            {listenerStatus && !listenerStatus.enabled && <span className="text-[10px] text-zinc-700">off</span>}
+          </button>
+        </div>
+        {view === 'schedules' && (
+          <select
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            title="Filter by repo"
+            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none"
+          >
+            <option value="">All repos</option>
+            {repoOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex-1" />
+        {view === 'schedules' && (
+          <>
         {/* Pause-all / Resume-all. The runner re-reads the disabled list on
             every fire, so the kill-switch takes effect on the next launchd
             tick — no reconcile/restart needed. Useful for travel, slow
@@ -761,12 +785,20 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           <Plus size={13} strokeWidth={2.5} />
           New schedule
         </button>
+          </>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
-        <ListenerPanel status={listenerStatus} onRefresh={reloadListeners} flash={flash} />
-        {schedules === null ? (
+        {view === 'listeners' ? (
+          <ListenerPanel
+            status={listenerStatus}
+            onRefresh={reloadListeners}
+            flash={flash}
+            onDesign={() => setPickingListener(true)}
+          />
+        ) : schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">
@@ -1007,6 +1039,21 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             )}
           </div>
         </div>
+      )}
+      {pickingListener && (
+        <EnginePicker
+          title="New listener"
+          showPersona={false}
+          showPipeline={false}
+          hint={
+            <>
+              Opens the <code className="font-mono text-zinc-300">/listener-inbox</code> skill in an agent
+              instance so listener integrations stay scriptable and reviewable.
+            </>
+          }
+          onClose={() => setPickingListener(false)}
+          onPick={launchListenerDesigner}
+        />
       )}
     </div>
   )

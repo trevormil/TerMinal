@@ -116,7 +116,7 @@ function writeJson(path: string, value: unknown): void {
 export function readListenerSettings(): ListenerSettings {
   ensure()
   const raw = readJson<Partial<ListenerSettings>>(SETTINGS, {})
-  return { enabled: raw.enabled !== false }
+  return { enabled: raw.enabled === true }
 }
 
 export function setListenerEnabled(enabled: boolean): ListenerSettings {

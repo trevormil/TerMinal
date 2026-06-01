@@ -130,8 +130,6 @@ import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-r
 import { startAICollectionLoop } from './ai-collectors'
 import { readMarketplace } from './marketplace'
 import {
-  enqueueListenerEvent,
-  listenerExample,
   processListenerInbox,
   readListenerStatus,
   setListenerEnabled,
@@ -886,8 +884,6 @@ ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
   return readListenerStatus()
 })
 ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
-ipcMain.handle('listeners:example', () => listenerExample(repoRootOf(cur().cwd) || ''))
-ipcMain.handle('listeners:enqueue', (_e, input: unknown) => enqueueListenerEvent(input))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
 ipcMain.handle('hitl:list', () => readHitl())
 ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))

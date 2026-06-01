@@ -11,7 +11,9 @@ durable JSON file instead of running immediately. The app watches:
 `~/.config/TerMinal/automation-inbox/new/`
 
 Files move through `processing/`, then `done/`, `failed/`, or `dead-letter/`.
-The Schedules tab shows queue counts and recent request -> action results.
+The Schedules tab's Listeners subtab shows queue counts and recent request -> action results.
+Listeners are paused by default; enable them in TerMinal before relying on
+automatic processing.
 
 ## Preferred enqueue command
 
