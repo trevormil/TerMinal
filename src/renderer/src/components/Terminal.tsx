@@ -380,12 +380,12 @@ export function TerminalPane({
 
   return (
     <div className="relative h-full w-full">
-      <div ref={ref} className="h-full w-full px-2 py-1" />
-      <div className="absolute right-5 top-2 z-20">
+      <div ref={ref} className="h-full w-full px-3 py-2" />
+      <div className="absolute right-3 top-3 z-20">
         <button
           onClick={() => setMenuOpen((v) => !v)}
           title="Prompt snippets"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/85 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
         >
           <MessageSquareText size={14} strokeWidth={2} />
         </button>
