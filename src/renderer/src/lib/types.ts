@@ -291,6 +291,7 @@ export type HitlSource =
   | 'agent'
   | 'factory'
   | 'skill'
+  | 'listener'
   | 'completion-hook'
   | 'review-pattern'
 export type HitlItem = {
@@ -364,6 +365,49 @@ export type CronRun = {
   repoLabel: string
   worktree: string
   error?: string
+}
+
+export type ListenerDir = 'new' | 'processing' | 'done' | 'failed' | 'dead-letter'
+export type ListenerAction =
+  | { kind: 'activity'; activityKind?: ActivityKind; title?: string; detail?: string }
+  | { kind: 'file-ticket'; title?: string; body?: string; type?: string; priority?: string }
+  | { kind: 'file-hitl'; title?: string; action?: string; detail?: string }
+  | { kind: 'run-agent'; agentId: string; engine?: Engine; model?: string; mode?: 'agent' | 'background'; prompt?: string }
+  | { kind: 'background-task'; prompt: string; engine?: Engine; model?: string }
+export type ListenerEnvelope = {
+  id?: string
+  source: string
+  type: string
+  title?: string
+  body?: string
+  repo?: string
+  repoRoot?: string
+  dedupeKey?: string
+  createdAt?: string | number
+  requestedAction?: ListenerAction
+  payload?: unknown
+}
+export type ListenerStatus = {
+  enabled: boolean
+  inboxDir: string
+  dirs: Record<ListenerDir, string>
+  counts: Record<ListenerDir, number>
+  recent: {
+    file: string
+    dir: ListenerDir
+    id?: string
+    source?: string
+    type?: string
+    title?: string
+    repo?: string
+    repoRoot?: string
+    processedAt?: number
+    error?: string
+    action?: string
+    result?: string
+    runId?: string
+    runSource?: 'agent'
+  }[]
 }
 
 export type Review = {
@@ -734,6 +778,14 @@ export type GtApi = {
     disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
+  }
+  listeners: {
+    status: () => Promise<ListenerStatus>
+    process: () => Promise<{ processed: number; failed: number; skipped: number; status: ListenerStatus }>
+    toggle: (enabled: boolean) => Promise<ListenerStatus>
+    openDir: () => Promise<string>
+    example: () => Promise<ListenerEnvelope>
+    enqueue: (input: ListenerEnvelope) => Promise<{ ok: true; path: string } | { error: string }>
   }
   hitl: {
     list: () => Promise<HitlItem[]>

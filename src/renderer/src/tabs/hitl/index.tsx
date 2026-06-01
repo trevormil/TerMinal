@@ -39,6 +39,7 @@ const SOURCE_TONE: Record<string, BadgeTone> = {
   agent: 'blue',
   factory: 'accent',
   skill: 'blue',
+  listener: 'blue',
   'completion-hook': 'accent',
   'review-pattern': 'yellow',
   manual: 'mute',

@@ -20,6 +20,7 @@ export type HitlSource =
   | 'agent'
   | 'factory'
   | 'skill'
+  | 'listener'
   | 'completion-hook'
   | 'review-pattern'
 export type HitlItem = {

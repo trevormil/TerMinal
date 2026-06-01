@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarClock,
+  Inbox,
   Plus,
   Play,
   Pause,
@@ -9,8 +10,10 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
+  FolderOpen,
   X,
   ListChecks,
+  MailCheck,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
@@ -21,7 +24,7 @@ import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
+import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine, ListenerStatus } from '../../lib/types'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
@@ -61,6 +64,8 @@ function untilFire(ts?: number | null): string {
 }
 const statusTone = (s?: string): BadgeTone =>
   s === 'done' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'mute'
+const listenerTone = (s: string): BadgeTone =>
+  s === 'done' ? 'green' : s === 'failed' || s === 'dead-letter' ? 'red' : s === 'new' ? 'blue' : 'mute'
 
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
 function ScheduleForm({
@@ -386,8 +391,181 @@ function ScheduleForm({
   )
 }
 
+function ListenerPanel({
+  status,
+  onRefresh,
+  flash,
+}: {
+  status: ListenerStatus | null
+  onRefresh: () => Promise<void>
+  flash: (m: string) => void
+}) {
+  const [example, setExample] = useState('')
+  const [enqueueBusy, setEnqueueBusy] = useState(false)
+  const counts = status?.counts
+  const loadExample = async () => {
+    const e = await window.gt.listeners.example()
+    setExample(JSON.stringify(e, null, 2))
+  }
+
+  return (
+    <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-light)]">
+          <Inbox size={15} strokeWidth={2} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[13px] font-semibold text-zinc-100">Listener inbox</span>
+            <Badge tone={status?.enabled ? 'green' : 'mute'}>{status?.enabled ? 'watching' : 'paused'}</Badge>
+            {counts && (
+              <span className="font-mono text-[10.5px] text-zinc-600">
+                new {counts.new} · done {counts.done} · failed {counts.failed + counts['dead-letter']}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 max-w-3xl text-[11.5px] leading-snug text-zinc-500">
+            Local integrations drop JSON request files into <span className="font-mono text-zinc-400">new/</span>.
+            TerMinal validates, dedupes, moves each request through processing/done/failed, and can trigger tickets,
+            HITL, agent runs, background tasks, or Activity events.
+          </p>
+          {status && (
+            <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{status.inboxDir}</div>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            onClick={async () => {
+              if (!status) return
+              await window.gt.listeners.toggle(!status.enabled)
+              await onRefresh()
+              flash(`listener inbox ${status.enabled ? 'paused' : 'enabled'}`)
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          >
+            {status?.enabled ? <Pause size={11} strokeWidth={2.5} /> : <Play size={11} strokeWidth={2.5} />}
+            {status?.enabled ? 'Pause' : 'Enable'}
+          </button>
+          <button
+            onClick={async () => {
+              const r = await window.gt.listeners.process()
+              flash(`processed ${r.processed} · skipped ${r.skipped} · failed ${r.failed}`)
+              await onRefresh()
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          >
+            <RefreshCw size={11} strokeWidth={2} />
+            Process now
+          </button>
+          <button
+            onClick={() => window.gt.listeners.openDir()}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          >
+            <FolderOpen size={11} strokeWidth={2} />
+            Folder
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 rounded-lg border border-[var(--gt-border)] bg-black/20">
+          <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-2.5 py-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests → actions</span>
+            <span className="text-[10px] text-zinc-700">recent processed</span>
+          </div>
+          {!status ? (
+            <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox…</div>
+          ) : status.recent.length === 0 ? (
+            <div className="p-3 text-[11px] text-zinc-600">
+              No listener requests processed yet. Drop a JSON file into <span className="font-mono">new/</span> or
+              enqueue the example.
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--gt-border)]/70">
+              {status.recent.map((r) => (
+                <div key={`${r.dir}:${r.file}`} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 px-2.5 py-2">
+                  <div className="space-y-1">
+                    <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
+                    <div className="font-mono text-[9.5px] text-zinc-700">{reltime(r.processedAt)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate text-[12px] font-semibold text-zinc-200">
+                        {r.title || r.type || r.file}
+                      </span>
+                      {r.source && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.source}</span>}
+                      {r.action && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.action}</span>}
+                    </div>
+                    <div className="mt-0.5 min-w-0 truncate text-[10.5px] text-zinc-600">
+                      {r.result || r.error || r.id || r.file}
+                    </div>
+                    {r.runId && (
+                      <button
+                        onClick={() => navigateTo('runs', { runId: r.runId, source: r.runSource })}
+                        className="mt-1 inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                      >
+                        <ListChecks size={10} strokeWidth={2} />
+                        View run
+                      </button>
+                    )}
+                    {r.repoRoot && <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-700">{r.repoRoot}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-600">local JSON contract</span>
+            <button
+              onClick={loadExample}
+              className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+            >
+              Example
+            </button>
+          </div>
+          <textarea
+            value={example}
+            onChange={(e) => setExample(e.target.value)}
+            placeholder='{"source":"local-script","type":"automation.requested","requestedAction":{"kind":"activity"}}'
+            rows={8}
+            spellCheck={false}
+            className="h-44 w-full resize-none rounded-md border border-[var(--gt-border)] bg-black/35 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setEnqueueBusy(true)
+                try {
+                  const r = await window.gt.listeners.enqueue(JSON.parse(example || '{}'))
+                  if ('error' in r) flash(r.error)
+                  else flash(`queued ${r.path}`)
+                  await onRefresh()
+                } catch (e) {
+                  flash((e as Error).message)
+                } finally {
+                  setEnqueueBusy(false)
+                }
+              }}
+              disabled={!example.trim() || enqueueBusy}
+              className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
+            >
+              <MailCheck size={12} strokeWidth={2.5} />
+              Enqueue
+            </button>
+            <span className="text-[10px] text-zinc-600">Writes into new/; watcher processes while TerMinal is open.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [schedules, setSchedules] = useState<Schedule[] | null>(null)
+  const [listenerStatus, setListenerStatus] = useState<ListenerStatus | null>(null)
   const [agents, setAgents] = useState<Agent[]>([])
   const [creating, setCreating] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -409,10 +587,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
   const reload = () => window.gt.schedules.list().then(setSchedules)
   const reloadDisabled = () => window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
+  const reloadListeners = async () => setListenerStatus(await window.gt.listeners.status())
   useEffect(() => {
     reload()
     reloadDisabled()
+    reloadListeners()
     window.gt.agents.list().then(setAgents)
+    const id = setInterval(reloadListeners, 5000)
+    return () => clearInterval(id)
   }, [ctx.sessionId])
 
   // Listen for the design-schedule run completing — when the spawn finishes
@@ -583,6 +765,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
+        <ListenerPanel status={listenerStatus} onRefresh={reloadListeners} flash={flash} />
         {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (

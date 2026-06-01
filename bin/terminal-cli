@@ -12,6 +12,7 @@
 //   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
+//   terminal-cli listener enqueue '<json>'              queue local automation inbox event
 //
 //   terminal-cli state                                  print this agent's full state JSON
 //   terminal-cli state get-sha                          print lastScannedSha (empty if first run)
@@ -35,6 +36,7 @@ const ACTIVITY = join(CFG, 'activity.jsonl')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
 const AGENT_STATE_DIR = join(CFG, 'agent-state')
+const LISTENER_ROOT = join(CFG, 'automation-inbox')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
 const repo = process.env.TERMINAL_REPO || ''
@@ -599,6 +601,40 @@ ${body || ''}
   console.log(path)
 }
 
+function safeFileName(name) {
+  return String(name || '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/^-+|-+$/g, '') || randomUUID()
+}
+
+function listenerCommand(sub, args) {
+  if (sub !== 'enqueue') {
+    console.error('usage: terminal-cli listener enqueue \'<json>\'')
+    process.exit(2)
+  }
+  let event = {}
+  const raw = args.join(' ').trim()
+  try {
+    event = raw ? JSON.parse(raw) : JSON.parse(readFileSync(0, 'utf8'))
+  } catch (e) {
+    console.error(`terminal-cli listener enqueue: invalid JSON: ${e.message}`)
+    process.exit(2)
+  }
+  if (!event || typeof event !== 'object') {
+    console.error('terminal-cli listener enqueue: event must be a JSON object')
+    process.exit(2)
+  }
+  if (!event.source || !event.type) {
+    console.error('terminal-cli listener enqueue: source and type are required')
+    process.exit(2)
+  }
+  mkdirSync(join(LISTENER_ROOT, 'new'), { recursive: true })
+  const id = event.id || randomUUID()
+  const path = join(LISTENER_ROOT, 'new', `${safeFileName(id)}.json`)
+  writeFileSync(path, JSON.stringify({ ...event, id, createdAt: event.createdAt || new Date().toISOString() }, null, 2))
+  console.log(path)
+}
+
 const [, , cmd, ...args] = process.argv
 switch (cmd) {
   case 'ticket':
@@ -616,6 +652,9 @@ switch (cmd) {
   case 'notify':
     pingTelegram(args[0] || '')
     break
+  case 'listener':
+    listenerCommand(args[0], args.slice(1))
+    break
   case 'state':
     stateCommand(args[0], args.slice(1))
     break
@@ -627,12 +666,13 @@ switch (cmd) {
     break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|notify|state|mcp|classify> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|notify|listener|state|mcp|classify> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
         '  notify "<message>"                       send a Telegram message (raw)\n' +
+        '  listener enqueue \'<json>\'               queue a local automation inbox event\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
         '                                           persist per-(repo, agent) JSON sidecar\n',
     )

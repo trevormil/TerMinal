@@ -129,6 +129,14 @@ import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from '.
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import { readMarketplace } from './marketplace'
+import {
+  enqueueListenerEvent,
+  listenerExample,
+  processListenerInbox,
+  readListenerStatus,
+  setListenerEnabled,
+  startListenerInboxWatcher,
+} from './listeners'
 import { knownModels } from './ai-pricing'
 import { startMenuBar } from './tray'
 import {
@@ -868,6 +876,18 @@ ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
 })
 ipcMain.handle('schedules:run-log', (_e, runId: string) => readCronRunLog(runId))
 ipcMain.handle('schedules:reconcile', () => reconcileSchedules())
+ipcMain.handle('listeners:status', () => readListenerStatus())
+ipcMain.handle('listeners:process', () => {
+  const r = processListenerInbox()
+  return { ...r, status: readListenerStatus() }
+})
+ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
+  setListenerEnabled(enabled)
+  return readListenerStatus()
+})
+ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
+ipcMain.handle('listeners:example', () => listenerExample(repoRootOf(cur().cwd) || ''))
+ipcMain.handle('listeners:enqueue', (_e, input: unknown) => enqueueListenerEvent(input))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
 ipcMain.handle('hitl:list', () => readHitl())
 ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))
@@ -1347,6 +1367,9 @@ app.whenReady().then(() => {
   startBgWatcher()
   // Budget watcher — fires HITL pings at warnAt thresholds.
   startBudgetWatcher()
+  // Local automation listener inbox — processes JSON files dropped into
+  // ~/.config/TerMinal/automation-inbox/new while the app is running.
+  startListenerInboxWatcher()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

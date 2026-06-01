@@ -121,6 +121,14 @@ const gt = {
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
     design: (text: string, engine: string) => ipcRenderer.invoke('schedules:design', text, engine),
   },
+  listeners: {
+    status: () => ipcRenderer.invoke('listeners:status'),
+    process: () => ipcRenderer.invoke('listeners:process'),
+    toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
+    openDir: () => ipcRenderer.invoke('listeners:open-dir'),
+    example: () => ipcRenderer.invoke('listeners:example'),
+    enqueue: (input: unknown) => ipcRenderer.invoke('listeners:enqueue', input),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
