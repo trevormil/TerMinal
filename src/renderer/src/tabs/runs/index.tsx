@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2 } from 'lucide-react'
+import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2 } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
+import { AutomationInboxView } from './AutomationInboxView'
 
 // One global view across every run TerMinal has fired — cron (launchd, via
 // bin/terminal-cron) AND in-process (Run button on Agents/Tickets/PRs). The
@@ -42,6 +43,7 @@ function fmtDuration(ms: number): string {
   return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`
 }
 function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
+  const [view, setView] = useState<'runs' | 'inbox'>('runs')
   const [runs, setRuns] = useState<UnifiedRun[] | null>(null)
   const [source, setSource] = useState<'all' | 'cron' | 'agent' | 'bg'>('all')
   const [status, setStatus] = useState<string>('all')
@@ -188,9 +190,38 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
   )
 
   return (
-    <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">
-      {/* List */}
-      <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
+    <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
+        <ListChecks size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+        <span className="text-[12px] font-semibold text-zinc-200">Runs</span>
+        <div className="ml-1 inline-flex rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
+          <button
+            onClick={() => setView('runs')}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
+              view === 'runs' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <ListChecks size={10} strokeWidth={2} />
+            Runs
+          </button>
+          <button
+            onClick={() => setView('inbox')}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
+              view === 'inbox' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <Inbox size={10} strokeWidth={2} />
+            Automation Inbox
+          </button>
+        </div>
+      </div>
+
+      {view === 'inbox' ? (
+        <AutomationInboxView ctx={_ctx} />
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          {/* List */}
+          <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
         {/* Header */}
         <div className="shrink-0 space-y-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-2.5">
           <div className="flex items-center gap-2">
@@ -369,7 +400,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                   selectedRun.status === 'running'
                     ? 'Already running'
                     : selectedRun.source === 'bg'
-                      ? 'Background listener tasks cannot be re-run from here yet'
+                      ? 'Background inbox tasks cannot be re-run from here yet'
                     : selectedRun.source === 'cron' && !selectedRun.scheduleId
                       ? 'Cron run without scheduleId — cannot re-fire'
                       : 'Re-run this agent'
@@ -397,6 +428,8 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
           </>
         )}
       </section>
+          </div>
+      )}
     </div>
   )
 }

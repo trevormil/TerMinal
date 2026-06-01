@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarClock,
-  Inbox,
   Plus,
   Play,
   Pause,
@@ -10,22 +9,19 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
-  FolderOpen,
   X,
   ListChecks,
-  Search,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
-import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { navigateTo } from '../../lib/nav'
 import { engineInstanceLabel, openPromptInTerminal, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine, ListenerStatus } from '../../lib/types'
-import { RunLogPane } from '../runs/RunLogPane'
+import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
+import { EngineModelPicker } from '../../components/EngineModelPicker'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
@@ -65,24 +61,6 @@ function untilFire(ts?: number | null): string {
 }
 const statusTone = (s?: string): BadgeTone =>
   s === 'done' ? 'green' : s === 'failed' ? 'red' : s === 'running' ? 'blue' : 'mute'
-const listenerTone = (s: string): BadgeTone =>
-  s === 'done' ? 'green' : s === 'failed' || s === 'dead-letter' ? 'red' : s === 'new' ? 'blue' : 'mute'
-
-type ScheduleView = 'schedules' | 'listeners'
-
-function listenerDesignerPrompt(repoRoot: string, text: string): string {
-  return withLaunchContext(
-    [
-      '/listener-inbox Create or update a standalone listener integration for this workspace.',
-      '',
-      'Listener request:',
-      text.trim(),
-      '',
-      'Build this as a standalone listener, script, adapter, or documented command that can run independently and enqueue requests through the TerMinal CLI. Do not make app UX changes unless the request explicitly asks for app UX.',
-      `Target repo: ${repoRoot || '(no attached repo)'}`,
-    ].join('\n'),
-  )
-}
 
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
 function ScheduleForm({
@@ -408,395 +386,10 @@ function ScheduleForm({
   )
 }
 
-function ListenerPanel({
-  status,
-  onRefresh,
-  flash,
-  onDesign,
-}: {
-  status: ListenerStatus | null
-  onRefresh: () => Promise<void>
-  flash: (m: string) => void
-  onDesign: () => void
-}) {
-  const counts = status?.counts
-  const [sourceFilter, setSourceFilter] = useState('')
-  const [listenerFilter, setListenerFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [runsOnly, setRunsOnly] = useState(false)
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'source' | 'category'>('newest')
-  const [search, setSearch] = useState('')
-  const [sel, setSel] = useState<string | null>(null)
-  const recent = status?.recent || []
-  const listeners = status?.listeners || []
-  const sourceOptions = useMemo(
-    () => [...new Set(recent.map((r) => r.source || 'unknown'))].sort((a, b) => a.localeCompare(b)),
-    [recent],
-  )
-  const categoryOptions = useMemo(
-    () => [...new Set(recent.map((r) => r.action || r.type || 'event'))].sort((a, b) => a.localeCompare(b)),
-    [recent],
-  )
-  const statusOptions = useMemo(
-    () => [...new Set(recent.map((r) => r.dir))].sort((a, b) => a.localeCompare(b)),
-    [recent],
-  )
-  const shownRecent = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return recent
-      .filter((r) => !listenerFilter || (r.listenerId || `${r.source || 'unknown'}:${r.type || 'event'}`) === listenerFilter)
-      .filter((r) => !sourceFilter || (r.source || 'unknown') === sourceFilter)
-      .filter((r) => !categoryFilter || (r.action || r.type || 'event') === categoryFilter)
-      .filter((r) => !statusFilter || r.dir === statusFilter)
-      .filter((r) => !runsOnly || Boolean(r.runId))
-      .filter((r) => {
-        if (!q) return true
-        return [r.title, r.listenerName, r.listenerId, r.source, r.type, r.action, r.result, r.error, r.repoRoot, r.file]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(q))
-      })
-      .sort((a, b) => {
-        if (sortBy === 'oldest') return (a.processedAt || 0) - (b.processedAt || 0)
-        if (sortBy === 'source') {
-          const bySource = (a.source || 'unknown').localeCompare(b.source || 'unknown')
-          return bySource || (b.processedAt || 0) - (a.processedAt || 0)
-        }
-        if (sortBy === 'category') {
-          const byCategory = (a.action || a.type || 'event').localeCompare(b.action || b.type || 'event')
-          return byCategory || (b.processedAt || 0) - (a.processedAt || 0)
-        }
-        return (b.processedAt || 0) - (a.processedAt || 0)
-      })
-  }, [categoryFilter, listenerFilter, recent, runsOnly, search, sortBy, sourceFilter, statusFilter])
-
-  const rowKey = (r: (typeof recent)[number]) => `${r.dir}:${r.file}`
-  const selected = shownRecent.find((r) => rowKey(r) === sel) || null
-
-  return (
-    <section className="flex h-full min-h-0 bg-[var(--gt-bg)]">
-      <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
-        <div className="shrink-0 space-y-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-2.5">
-          <div className="flex items-center gap-2">
-            <Inbox size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-            <span className="text-[12px] font-semibold text-zinc-200">Listener inbox</span>
-            <span className="text-[10.5px] text-zinc-600">{status ? `${shownRecent.length} / ${recent.length}` : '…'}</span>
-            <Badge tone={status?.enabled ? 'green' : 'mute'}>{status?.enabled ? 'watching' : 'paused'}</Badge>
-            {counts && (
-              <span className="inline-flex items-center gap-1.5 text-[10.5px]">
-                {counts.new > 0 && <Badge tone="blue">{counts.new} new</Badge>}
-                <Badge tone="green">{counts.done} done</Badge>
-                {counts.failed + counts['dead-letter'] > 0 && (
-                  <Badge tone="red">{counts.failed + counts['dead-letter']} failed</Badge>
-                )}
-              </span>
-            )}
-            <div className="flex-1" />
-            <button
-              onClick={onDesign}
-              className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[10.5px] font-semibold text-white"
-            >
-              <Plus size={10} strokeWidth={2.5} />
-              New
-            </button>
-            <button
-              onClick={async () => {
-                if (!status) return
-                await window.gt.listeners.toggle(!status.enabled)
-                await onRefresh()
-                flash(`listener inbox ${status.enabled ? 'paused' : 'enabled'}`)
-              }}
-              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-              title={status?.enabled ? 'Pause listener inbox' : 'Enable listener inbox'}
-            >
-              {status?.enabled ? <Pause size={11} strokeWidth={2.5} /> : <Play size={11} strokeWidth={2.5} />}
-            </button>
-            <button
-              onClick={async () => {
-                const r = await window.gt.listeners.process()
-                flash(`processed ${r.processed} · skipped ${r.skipped} · failed ${r.failed}`)
-                await onRefresh()
-              }}
-              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-              title="Process now"
-            >
-              <RefreshCw size={11} strokeWidth={2} />
-            </button>
-            <button
-              onClick={() => window.gt.listeners.openDir()}
-              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-              title="Open listener inbox folder"
-            >
-              <FolderOpen size={11} strokeWidth={2} />
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="relative min-w-[150px] flex-1">
-              <Search size={11} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search listener / source / result…"
-                className="h-7 w-full rounded-md border border-[var(--gt-border)] bg-black/30 py-1 pl-7 pr-2 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
-              />
-            </div>
-              <select
-                value={listenerFilter}
-                onChange={(e) => setListenerFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-              >
-                <option value="">All listeners</option>
-                {listeners.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name || l.id}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-              >
-                <option value="">All sources</option>
-                {sourceOptions.map((source) => (
-                  <option key={source} value={source}>
-                    {source}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-              >
-                <option value="">All categories</option>
-                {categoryOptions.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-              >
-                <option value="">All statuses</option>
-                {statusOptions.map((dir) => (
-                  <option key={dir} value={dir}>
-                    {dir}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="source">Source</option>
-                <option value="category">Category</option>
-              </select>
-              <button
-                onClick={() => setRunsOnly((v) => !v)}
-                className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
-                  runsOnly
-                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : 'border-[var(--gt-border)] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300'
-                }`}
-              >
-                Runs only
-              </button>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        {!status ? (
-          <div className="p-4 text-[12px] text-zinc-600">Loading listener inbox...</div>
-        ) : status.recent.length === 0 ? (
-          <div className="p-4 text-[12px] text-zinc-600">
-            No listener requests yet. Use New to create a listener adapter.
-          </div>
-        ) : shownRecent.length === 0 ? (
-          <div className="p-4 text-[12px] text-zinc-600">No listener requests match these filters.</div>
-        ) : (
-          shownRecent.map((r) => {
-            const selectedHere = rowKey(r) === sel
-            return (
-              <button
-                key={rowKey(r)}
-                onClick={() => setSel(rowKey(r))}
-                className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
-                  selectedHere ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
-                }`}
-              >
-                <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
-                  {r.title || r.listenerName || r.type || r.file}
-                </span>
-                <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.listenerId || r.source || 'unknown'}</span>
-                {r.action && <span className="shrink-0 text-[10px] text-zinc-600">{r.action}</span>}
-                {r.runId && <Badge tone="blue">run</Badge>}
-                <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{reltime(r.processedAt)}</span>
-              </button>
-            )
-          })
-        )}
-      </div>
-      </div>
-
-      <section className="flex min-w-0 flex-1 flex-col">
-        {!selected ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-zinc-600">
-            Pick a listener request on the left.
-          </div>
-        ) : (
-          <>
-            <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2.5">
-              <Badge tone={listenerTone(selected.dir)}>{selected.dir}</Badge>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-zinc-100">
-                {selected.title || selected.listenerName || selected.type || selected.file}
-              </span>
-              <span className="font-mono text-[10.5px] text-zinc-600">{selected.source || 'unknown'}</span>
-              {selected.action && <span className="text-[10.5px] text-zinc-500">{selected.action}</span>}
-              <button
-                onClick={() => setSel(null)}
-                title="Close detail"
-                className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-              >
-                <X size={11} strokeWidth={2} />
-              </button>
-            </header>
-            <div className="min-h-0 flex-1 overflow-auto p-5">
-              <div className="grid gap-2 text-[11.5px] md:grid-cols-2">
-                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                  <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Listener</div>
-                  <div className="truncate text-zinc-200">{selected.listenerName || selected.listenerId || selected.source || 'unknown'}</div>
-                  <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{selected.type || selected.file}</div>
-                </div>
-                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                  <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Outcome</div>
-                  <div className={selected.error ? 'text-[var(--gt-red)]' : 'text-zinc-200'}>
-                    {selected.result || selected.error || 'pending'}
-                  </div>
-                  <div className="mt-1 text-[10.5px] text-zinc-600">{fmtWhen(selected.processedAt)}</div>
-                </div>
-              </div>
-              <div className="mt-3 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11.5px]">
-                {selected.repoRoot && (
-                  <div>
-                    <span className="text-zinc-600">repo </span>
-                    <span className="font-mono text-zinc-300">{selected.repoRoot}</span>
-                  </div>
-                )}
-                {selected.id && (
-                  <div>
-                    <span className="text-zinc-600">event </span>
-                    <span className="font-mono text-zinc-300">{selected.id}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-zinc-600">file </span>
-                  <span className="font-mono text-zinc-300">{selected.file}</span>
-                </div>
-              </div>
-              {selected.runId && selected.runSource && (
-                <div className="mt-3 h-[min(46vh,420px)] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-black/20">
-                  <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/50 px-3 py-2">
-                    <ListChecks size={12} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-                    <span className="text-[11.5px] font-semibold text-zinc-200">Run log</span>
-                    <span className="font-mono text-[10px] text-zinc-600">{selected.runId}</span>
-                  </div>
-                  <RunLogPane source={selected.runSource} runId={selected.runId} className="h-[calc(100%-34px)]" />
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </section>
-    </section>
-  )
-}
-
-function NewListenerModal({
-  ctx,
-  onClose,
-  flash,
-}: {
-  ctx: TabContext
-  onClose: () => void
-  flash: (m: string) => void
-}) {
-  const [text, setText] = useState('')
-  const [spawning, setSpawning] = useState(false)
-  const cwd = ctx.repoRoot || ctx.cwd
-  const submit = () => {
-    const request = text.trim()
-    if (!request || spawning) return
-    setSpawning(true)
-    openPromptInTerminal({
-      engine: 'claude',
-      cwd,
-      name: 'New listener',
-      prompt: listenerDesignerPrompt(ctx.repoRoot || cwd, request),
-    })
-    flash('opened Claude Code instance')
-    setTimeout(onClose, 250)
-  }
-
-  return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 p-6" onClick={onClose}>
-      <div
-        className="flex max-h-[86vh] w-[620px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 gt-pop-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-zinc-100">New listener</h2>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5">
-            cancel
-          </button>
-        </div>
-        <SkillHint>
-          Describe the event source and automation. Claude opens with the{' '}
-          <code className="font-mono text-zinc-300">/listener-inbox</code> skill prefilled.
-        </SkillHint>
-        <textarea
-          autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit()
-          }}
-          rows={6}
-          placeholder='e.g. "Watch ~/Downloads/incoming-support for JSON files from Slack. For high-priority messages, file a ticket and run triage."'
-          className={`${FIELD} resize-y w-full`}
-        />
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[10.5px] text-zinc-600">
-            ⌘↵ to open · target {cwd || 'current workspace'}
-          </span>
-          <button
-            onClick={submit}
-            disabled={!text.trim() || spawning}
-            className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-          >
-            <EngineLogo engine="claude" size={13} />
-            {spawning ? 'Opening...' : 'Open Claude'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [schedules, setSchedules] = useState<Schedule[] | null>(null)
-  const [listenerStatus, setListenerStatus] = useState<ListenerStatus | null>(null)
   const [agents, setAgents] = useState<Agent[]>([])
   const [creating, setCreating] = useState(false)
-  const [creatingListener, setCreatingListener] = useState(false)
-  const [view, setView] = useState<ScheduleView>('schedules')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
@@ -816,14 +409,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
   const reload = () => window.gt.schedules.list().then(setSchedules)
   const reloadDisabled = () => window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
-  const reloadListeners = async () => setListenerStatus(await window.gt.listeners.status())
   useEffect(() => {
     reload()
     reloadDisabled()
-    reloadListeners()
     window.gt.agents.list().then(setAgents)
-    const id = setInterval(reloadListeners, 5000)
-    return () => clearInterval(id)
   }, [ctx.sessionId])
 
   // Listen for the design-schedule run completing — when the spawn finishes
@@ -914,48 +503,23 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           <ListChecks size={10} strokeWidth={2} />
           All runs → Runs tab
         </button>
-        <div className="ml-1 inline-flex rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
-          <button
-            onClick={() => setView('schedules')}
-            className={`rounded-md px-2 py-0.5 text-[11px] ${
-              view === 'schedules' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            Schedules {(schedules || []).length}
-          </button>
-          <button
-            onClick={() => setView('listeners')}
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
-              view === 'listeners' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            Listeners
-            {listenerStatus?.counts.new ? (
-              <span className="rounded-full bg-[var(--gt-accent)]/25 px-1 font-mono text-[10px] text-[var(--gt-accent-light)]">
-                {listenerStatus.counts.new}
-              </span>
-            ) : null}
-            {listenerStatus && !listenerStatus.enabled && <span className="text-[10px] text-zinc-700">off</span>}
-          </button>
-        </div>
-        {view === 'schedules' && (
-          <select
-            value={repo}
-            onChange={(e) => setRepo(e.target.value)}
-            title="Filter by repo"
-            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none"
-          >
-            <option value="">All repos</option>
-            {repoOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        )}
+        <span className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-0.5 text-[11px] text-zinc-500">
+          {(schedules || []).length} schedules
+        </span>
+        <select
+          value={repo}
+          onChange={(e) => setRepo(e.target.value)}
+          title="Filter by repo"
+          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none"
+        >
+          <option value="">All repos</option>
+          {repoOptions.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
         <div className="flex-1" />
-        {view === 'schedules' && (
-          <>
         {/* Pause-all / Resume-all. The runner re-reads the disabled list on
             every fire, so the kill-switch takes effect on the next launchd
             tick — no reconcile/restart needed. Useful for travel, slow
@@ -1017,20 +581,11 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           <Plus size={13} strokeWidth={2.5} />
           New schedule
         </button>
-          </>
-        )}
       </div>
 
-      <div className={`min-h-0 flex-1 overflow-y-auto ${view === 'listeners' ? '' : 'space-y-2 p-3'}`}>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
-        {view === 'listeners' ? (
-          <ListenerPanel
-            status={listenerStatus}
-            onRefresh={reloadListeners}
-            flash={flash}
-            onDesign={() => setCreatingListener(true)}
-          />
-        ) : schedules === null ? (
+        {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">
@@ -1271,9 +826,6 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             )}
           </div>
         </div>
-      )}
-      {creatingListener && (
-        <NewListenerModal ctx={ctx} onClose={() => setCreatingListener(false)} flash={flash} />
       )}
     </div>
   )

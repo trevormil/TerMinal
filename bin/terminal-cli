@@ -12,9 +12,9 @@
 //   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
-//   terminal-cli listener enqueue '<json>'              queue local automation inbox event
-//   terminal-cli listener enqueue --source x --type y   queue via flags (less shell quoting)
-//   terminal-cli listener status|dir|example            inspect listener inbox helpers
+//   terminal-cli inbox enqueue '<json>'                 queue local automation inbox request
+//   terminal-cli inbox enqueue --source x --type y      queue via flags (less shell quoting)
+//   terminal-cli inbox status|dir|example               inspect automation inbox helpers
 //
 //   terminal-cli state                                  print this agent's full state JSON
 //   terminal-cli state get-sha                          print lastScannedSha (empty if first run)
@@ -636,8 +636,8 @@ function readListenerEvent(args) {
     const action = flags.action
     const event = {
       id: flags.id,
-      listenerId: flags.listener || flags.listenerId,
-      listenerName: flags.name || flags.listenerName,
+      listenerId: flags.sourceId || flags.listener || flags.listenerId,
+      listenerName: flags.sourceName || flags.name || flags.listenerName,
       source: flags.source,
       type: flags.type,
       title: flags.title,
@@ -707,22 +707,22 @@ function listenerCommand(sub, args) {
     return
   }
   if (sub !== 'enqueue') {
-    console.error('usage: terminal-cli listener <enqueue|status|dir|example> [json|flags]')
+    console.error('usage: terminal-cli inbox <enqueue|status|dir|example> [json|flags]')
     process.exit(2)
   }
   let event = {}
   try {
     event = readListenerEvent(args)
   } catch (e) {
-    console.error(`terminal-cli listener enqueue: invalid JSON: ${e.message}`)
+    console.error(`terminal-cli inbox enqueue: invalid JSON: ${e.message}`)
     process.exit(2)
   }
   if (!event || typeof event !== 'object') {
-    console.error('terminal-cli listener enqueue: event must be a JSON object')
+    console.error('terminal-cli inbox enqueue: event must be a JSON object')
     process.exit(2)
   }
   if (!event.source || !event.type) {
-    console.error('terminal-cli listener enqueue: source and type are required')
+    console.error('terminal-cli inbox enqueue: source and type are required')
     process.exit(2)
   }
   mkdirSync(join(LISTENER_ROOT, 'new'), { recursive: true })
@@ -750,6 +750,7 @@ switch (cmd) {
     pingTelegram(args[0] || '')
     break
   case 'listener':
+  case 'inbox':
     listenerCommand(args[0], args.slice(1))
     break
   case 'state':
@@ -763,14 +764,14 @@ switch (cmd) {
     break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|notify|listener|state|mcp|classify> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|notify|inbox|state|mcp|classify> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
         '  notify "<message>"                       send a Telegram message (raw)\n' +
-        '  listener enqueue <json|--flags>           queue a local automation inbox event\n' +
-        '  listener status|dir|example               inspect listener inbox helpers\n' +
+        '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
+        '  inbox status|dir|example                  inspect automation inbox helpers\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
         '                                           persist per-(repo, agent) JSON sidecar\n',
     )

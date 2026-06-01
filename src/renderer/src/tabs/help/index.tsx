@@ -178,7 +178,7 @@ function HelpTab(_props: { ctx: TabContext }) {
           </p>
         </Section>
 
-        <Section icon={Bot} title="Agents, schedules, listeners">
+        <Section icon={Bot} title="Agents, schedules, inbox">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
               <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
@@ -205,18 +205,18 @@ function HelpTab(_props: { ctx: TabContext }) {
             <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
               <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
                 <Inbox size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                Listeners
+                Automation Inbox
               </div>
               <p className="text-[11.5px] leading-snug text-zinc-400">
-                Event-based automation. Scripts or integrations enqueue a durable request; TerMinal dedupes it,
-                runs an allowlisted action, and shows the request-to-run trail.
+                Email-style automation intake. Scripts or integrations enqueue durable requests; TerMinal dedupes
+                them, runs allowlisted actions, and shows the request-to-run trail.
               </p>
-              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Schedules → Listeners · /listener-inbox</p>
+              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Runs → Automation Inbox · /automation-inbox</p>
             </div>
           </div>
           <p className="mt-2.5 text-[11px] leading-snug text-zinc-600">
-            Rule of thumb: use an agent for a button click, a schedule for time, and a listener for an outside
-            event like a file drop, webhook adapter, Slack poller, or MR watcher.
+            Rule of thumb: use an agent for a button click, a schedule for time, and the automation inbox for an
+            outside event like a file drop, webhook adapter, Slack poller, or MR watcher.
           </p>
         </Section>
 
