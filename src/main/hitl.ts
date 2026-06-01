@@ -155,12 +155,12 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
         repo: input.repo,
         repoRoot: input.repoRoot,
         hitlId: dup.id,
-      runId: input.runId,
-      runSource: input.runSource,
-      sessionId: input.sessionId,
-    },
-    { notify: false }, // don't re-fire the macOS notification
-  )
+        runId: input.runId,
+        runSource: input.runSource,
+        sessionId: input.sessionId,
+      },
+      { notify: false }, // don't re-fire the macOS notification
+    )
     return dup
   }
   const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now() }
@@ -178,6 +178,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
       runId: item.runId,
       runSource: item.runSource,
       sessionId: item.sessionId,
+      suppressTelegram: true,
     },
     { notify: true },
   )

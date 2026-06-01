@@ -59,6 +59,7 @@ export type ActivityEvent = {
   ref?: { ticket?: number; pr?: number }
   runId?: string
   runSource?: 'cron' | 'agent'
+  suppressTelegram?: boolean
 }
 
 export type UsageWindow = { pct: number; resetsAt: number | null } | null

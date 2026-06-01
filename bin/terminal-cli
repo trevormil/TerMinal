@@ -111,7 +111,7 @@ function inferKind(title) {
   return 'info'
 }
 
-function emitActivity(kind, title, detail) {
+function emitActivity(kind, title, detail, opts = {}) {
   mkdirSync(CFG, { recursive: true })
   // If caller passed 'info' (the default fallback) AND the title matches a
   // pattern, upgrade to the specific kind. Explicit kinds stay as-is.
@@ -128,6 +128,7 @@ function emitActivity(kind, title, detail) {
     // that emitted the event. runSource is 'cron' because terminal-cli is the
     // helper scripts use, which only run inside cron-fired bash bodies.
     ...(runId ? { runId, runSource: 'cron' } : {}),
+    ...(opts.suppressTelegram ? { suppressTelegram: true } : {}),
   }
   appendFileSync(ACTIVITY, JSON.stringify(ev) + '\n')
 }
@@ -153,7 +154,7 @@ function fileHitl(title, action) {
     terminalCwd: process.env.GT_TERMINAL_CWD || repo,
   }
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
-  emitActivity('blocked', `HITL · ${item.title}`, item.action)
+  emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
   // HITL ALWAYS pings Telegram when configured — matches the app's policy.
   pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
   console.log(item.id)
@@ -240,7 +241,7 @@ function completionHitl(engine) {
   }
   mkdirSync(CFG, { recursive: true })
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
-  emitActivity('blocked', `Inbox · ${item.title}`, item.action)
+  emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
   pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
   console.log(id)
 }

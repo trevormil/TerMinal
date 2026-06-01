@@ -43,6 +43,7 @@ function buttonsFor(ev: ActivityEvent): unknown[][] | null {
 }
 
 function sendTelegram(ev: ActivityEvent) {
+  if (ev.suppressTelegram) return
   if (!telegramNotifyEnabled()) return // opt-in, off by default
   const { telegram } = readSettings()
   const msg = ev.detail ? `${ev.title} — ${ev.detail}` : ev.title
@@ -117,6 +118,10 @@ export type ActivityEvent = {
   // ([Resolve] / [View run]) so the user can act from the chat without
   // having to text /hitl + /resolve.
   hitlId?: string
+  // Set by HITL producers that already send a direct Telegram message. The
+  // activity event should still hit the in-app feed and desktop notifications,
+  // but must not be mirrored to Telegram a second time by the app tail.
+  suppressTelegram?: boolean
 }
 
 // which kinds raise a macOS/Telegram notification (vs. log-only feed context).

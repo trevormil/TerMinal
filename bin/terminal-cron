@@ -393,6 +393,7 @@ function maybeCircuitBreak(scheduleId, sched) {
     detail: `auto-disabled after ${CIRCUIT_BREAK_AFTER} fails`,
     repo: sched.repoLabel,
     repoRoot: sched.repoRoot,
+    suppressTelegram: true,
   })
   log(`circuit-break: schedule ${scheduleId} (${sched.agentTitle}) disabled after ${CIRCUIT_BREAK_AFTER} fails`)
   return true
@@ -520,6 +521,7 @@ function watchdogCadenceCheck() {
       detail: `${Math.round(since / 60_000)} min since last run`,
       repo: s.repoLabel,
       repoRoot: s.repoRoot,
+      suppressTelegram: true,
     })
     log(`watchdog: schedule ${s.id} (${s.agentTitle}) overdue by ${Math.round(since / 60_000)} min`)
   }
@@ -604,6 +606,7 @@ async function runSchedule(id) {
       detail: `previous run ${active.id.slice(0, 8)} still running`,
       repo: sched.repoLabel,
       repoRoot: sched.repoRoot,
+      suppressTelegram: true,
     })
     return 0
   }

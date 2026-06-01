@@ -516,7 +516,15 @@ function fileHitlTool(args) {
     terminalCwd: process.env.GT_TERMINAL_CWD || undefined,
   }
   writeFileSync(file, JSON.stringify([item, ...list], null, 2))
-  emitActivityRaw({ kind: 'blocked', title: `HITL · ${title}`, detail: action || detail || '', repo, hitlId: item.id, runId })
+  emitActivityRaw({
+    kind: 'blocked',
+    title: `HITL · ${title}`,
+    detail: action || detail || '',
+    repo,
+    hitlId: item.id,
+    runId,
+    suppressTelegram: true,
+  })
   const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
   if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
   pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
@@ -560,7 +568,7 @@ function resolveHitlTool(args) {
 
 // --- emit_activity --------------------------------------------------------
 
-function emitActivityRaw({ kind, title, detail, repo, repoRoot, hitlId, runId }) {
+function emitActivityRaw({ kind, title, detail, repo, repoRoot, hitlId, runId, suppressTelegram }) {
   const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
   mkdirSync(cfg, { recursive: true })
   const file = join(cfg, 'activity.jsonl')
@@ -574,6 +582,7 @@ function emitActivityRaw({ kind, title, detail, repo, repoRoot, hitlId, runId })
     repoRoot: repoRoot || '',
     ...(hitlId ? { hitlId } : {}),
     ...(runId ? { runId, runSource: 'agent' } : {}),
+    ...(suppressTelegram ? { suppressTelegram: true } : {}),
   }
   try {
     appendFileSync(file, JSON.stringify(ev) + '\n')
