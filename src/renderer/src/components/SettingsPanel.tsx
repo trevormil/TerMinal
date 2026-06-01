@@ -523,6 +523,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
   const buttonSoft =
     'inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
+  const actionButton =
+    'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50'
   const valueText = (value: string, fallback: string) => (
     <span className={`min-w-0 truncate font-mono text-[11.5px] ${value ? 'text-zinc-300' : 'text-zinc-500'}`}>
       {value ? tilde(value) : fallback}
@@ -982,22 +984,28 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             <div className="space-y-2">
               <Toggle on={s.telegram.notify} onToggle={() => save({ telegram: { notify: !s.telegram.notify } })} label="Mirror notifications to Telegram" />
               <Toggle on={s.telegram.control} onToggle={() => save({ telegram: { control: !s.telegram.control } })} label="Remote control (AFK)" hint="Launch/cancel agents by texting the bot" />
-              <input
-                defaultValue={s.telegram.botToken}
-                onBlur={(e) => e.target.value !== s.telegram.botToken && save({ telegram: { botToken: e.target.value.trim() } })}
-                placeholder="bot token (123456:ABC-DEF…)"
-                spellCheck={false}
-                className={`${inp} font-mono`}
-              />
-              <div className="flex items-center gap-2">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Bot token</span>
                 <input
-                  defaultValue={s.telegram.chatId}
-                  onBlur={(e) => e.target.value !== s.telegram.chatId && save({ telegram: { chatId: e.target.value.trim() } })}
-                  placeholder="chat id (your numeric id)"
+                  defaultValue={s.telegram.botToken}
+                  onBlur={(e) => e.target.value !== s.telegram.botToken && save({ telegram: { botToken: e.target.value.trim() } })}
+                  placeholder="123456:ABC-DEF..."
                   spellCheck={false}
                   className={`${inp} font-mono`}
                 />
-                <button onClick={testTelegram} disabled={tg?.busy} className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60 disabled:opacity-50`}>
+              </label>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="block min-w-0 space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Chat id</span>
+                  <input
+                    defaultValue={s.telegram.chatId}
+                    onBlur={(e) => e.target.value !== s.telegram.chatId && save({ telegram: { chatId: e.target.value.trim() } })}
+                    placeholder="your numeric chat id"
+                    spellCheck={false}
+                    className={`${inp} font-mono`}
+                  />
+                </label>
+                <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
                   {tg?.busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
                   Test
                 </button>
@@ -1049,29 +1057,32 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers and health-check escalations. Get a key at openrouter.ai/keys."
           >
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  defaultValue={s.openrouter.apiKey}
-                  onBlur={(e) =>
-                    e.target.value !== s.openrouter.apiKey &&
-                    save({ openrouter: { apiKey: e.target.value.trim() } })
-                  }
-                  placeholder="sk-or-v1-…"
-                  spellCheck={false}
-                  type="password"
-                  className={`${inp} min-w-0 flex-1 font-mono`}
-                />
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="block min-w-0 space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">API key</span>
+                  <input
+                    defaultValue={s.openrouter.apiKey}
+                    onBlur={(e) =>
+                      e.target.value !== s.openrouter.apiKey &&
+                      save({ openrouter: { apiKey: e.target.value.trim() } })
+                    }
+                    placeholder="sk-or-v1-..."
+                    spellCheck={false}
+                    type="password"
+                    className={`${inp} font-mono`}
+                  />
+                </label>
                 <button
                   onClick={testOpenRouter}
                   disabled={orState?.busy || !s.openrouter.apiKey}
-                  className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60 disabled:opacity-50`}
+                  className={actionButton}
                 >
                   {orState?.busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
                   Test
                 </button>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10.5px] text-zinc-500">default model</span>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Default model</span>
                 <input
                   defaultValue={s.openrouter.defaultModel}
                   onBlur={(e) =>
@@ -1080,10 +1091,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   }
                   placeholder="anthropic/claude-haiku-4.5"
                   spellCheck={false}
-                  className={`${inp} flex-1 font-mono`}
+                  className={`${inp} font-mono`}
                 />
-                <span className="text-[10px] text-zinc-600">e.g. openai/gpt-5-mini, google/gemini-2.5-flash</span>
-              </div>
+                <span className="text-[10px] text-zinc-600">Examples: openai/gpt-5-mini, google/gemini-2.5-flash</span>
+              </label>
               {orState && !orState.busy && (
                 <div className={`text-[11px] ${orState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
                   {orState.ok
