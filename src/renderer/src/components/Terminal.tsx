@@ -117,7 +117,7 @@ export function TerminalPane({
 
     const term = new Xterm({
       fontFamily: "'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
-      fontSize: 13,
+      fontSize: 12,
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
