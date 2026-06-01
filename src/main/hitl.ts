@@ -75,15 +75,21 @@ export function openCount(): number {
   return readHitl().filter((h) => h.status === 'open').length
 }
 
-// HITL is by definition "I need attention" — ping Telegram on file when
+// HITL usually means "I need attention", but deterministic completion-hook
+// items are review reminders, not blockers. Ping Telegram on file when
 // configured, regardless of the activity-feed `telegram.notify` toggle (which
 // gates the general feed). If no bot/chat or legacy script exists, this is a
 // no-op: Inbox filing must never be blocked by notification setup.
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+const hitlActivityKind = (source: HitlSource): 'blocked' | 'task-complete' =>
+  source === 'completion-hook' ? 'task-complete' : 'blocked'
+const hitlNotifyKind = (source: HitlSource): 'done' | 'blocked' =>
+  source === 'completion-hook' ? 'done' : 'blocked'
 function alwaysPingTelegram(item: HitlItem): void {
   try {
     const { telegram } = readSettings()
-    const msg = `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`
+    const done = item.source === 'completion-hook'
+    const msg = `${done ? '✅ Done' : '⛔ HITL'} · ${item.title}${item.action ? ` — ${item.action}` : ''}`
     if (telegram.botToken && telegram.chatId) {
       // Inline [Resolve] (always) + [Tail run] (when we know the run id) so
       // the chat ping is one-tap actionable instead of "now go open the app
@@ -105,7 +111,7 @@ function alwaysPingTelegram(item: HitlItem): void {
       return
     }
     if (!existsSync(LEGACY_TG_SCRIPT)) return
-    const child = spawn(LEGACY_TG_SCRIPT, [`--kind=blocked`, msg], { stdio: 'ignore' })
+    const child = spawn(LEGACY_TG_SCRIPT, [`--kind=${hitlNotifyKind(item.source)}`, msg], { stdio: 'ignore' })
     child.on('error', () => {})
     child.unref()
   } catch {
@@ -149,8 +155,8 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     // but don't double-file. Surface "still blocked, N occurrences".
     emitActivity(
       {
-        kind: 'blocked',
-        title: `HITL recur · ${input.title}`,
+        kind: hitlActivityKind(input.source),
+        title: `${input.source === 'completion-hook' ? 'Done recur' : 'HITL recur'} · ${input.title}`,
         detail: 'duplicate filing collapsed (within 1h window)',
         repo: input.repo,
         repoRoot: input.repoRoot,
@@ -167,8 +173,8 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   write([item, ...readHitl()])
   emitActivity(
     {
-      kind: 'blocked',
-      title: `HITL · ${item.title}`,
+      kind: hitlActivityKind(item.source),
+      title: `${item.source === 'completion-hook' ? 'Done' : 'HITL'} · ${item.title}`,
       detail: item.action || item.detail,
       repo: item.repo,
       repoRoot: item.repoRoot,

@@ -60,7 +60,7 @@ export function InboxDrawer({ onClose }: { ctx?: TabContext | null; onClose?: ()
     reload()
     // pick up newly auto-filed items (e.g. a failed cron) live
     const off = window.gt.activity.onEvent((ev) => {
-      if (ev.kind === 'blocked') reload()
+      if (ev.kind === 'blocked' || ev.kind === 'task-complete') reload()
     })
     const t = setInterval(reload, 15_000)
     return () => {
