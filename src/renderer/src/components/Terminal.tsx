@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Clipboard, ClipboardPaste, Copy, EyeOff, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
-import { Terminal as Xterm } from '@xterm/xterm'
+import { Terminal as Xterm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { Choice } from './EntryScreen'
@@ -21,6 +21,38 @@ type LauncherItem =
       source?: PromptSnippet['source']
     }
   | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
+
+const cssVar = (name: string, fallback: string) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+
+const withAlpha = (color: string, alpha: string, fallback: string) =>
+  /^#[0-9a-f]{6}$/i.test(color.trim()) ? `${color.trim()}${alpha}` : fallback
+
+function xtermThemeFromCss(): ITheme {
+  const accent = cssVar('--gt-accent', '#7c6ef6')
+  return {
+    background: cssVar('--gt-terminal-bg', '#0a0a0f'),
+    foreground: cssVar('--gt-terminal-fg', '#d4d4dd'),
+    cursor: accent,
+    selectionBackground: withAlpha(accent, '44', 'rgba(124, 110, 246, 0.28)'),
+    black: cssVar('--gt-terminal-bg', '#0a0a0f'),
+    red: cssVar('--gt-red', '#ef4444'),
+    green: cssVar('--gt-green', '#8fca83'),
+    yellow: cssVar('--gt-yellow', '#d7ba7d'),
+    blue: cssVar('--gt-blue', '#7c9cff'),
+    magenta: cssVar('--gt-accent-light', '#b58cff'),
+    cyan: cssVar('--gt-accent-2', '#4fb3b8'),
+    white: cssVar('--gt-text-muted', '#9ca3af'),
+    brightBlack: cssVar('--gt-text-faint', '#4b5563'),
+    brightRed: cssVar('--gt-red', '#f87171'),
+    brightGreen: cssVar('--gt-green', '#a7d78d'),
+    brightYellow: cssVar('--gt-yellow', '#e5cc8b'),
+    brightBlue: cssVar('--gt-blue', '#9ab1ff'),
+    brightMagenta: cssVar('--gt-accent-light', '#c7a6ff'),
+    brightCyan: cssVar('--gt-accent-2', '#6fcbd0'),
+    brightWhite: cssVar('--gt-text-soft', '#d4d4dd'),
+  }
+}
 
 // Hosts the real Claude Code or Codex CLI: xterm.js renders, the PTY (main
 // process) runs the chosen engine. Same pattern VS Code's integrated
@@ -89,28 +121,7 @@ export function TerminalPane({
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
-      theme: {
-        background: '#0a0a0f',
-        foreground: '#d4d4dd',
-        cursor: '#7c5cff',
-        selectionBackground: '#7c5cff44',
-        black: '#0a0a0f',
-        red: '#ef4444',
-        green: '#8fca83',
-        yellow: '#d7ba7d',
-        blue: '#7c9cff',
-        magenta: '#b58cff',
-        cyan: '#4fb3b8',
-        white: '#9ca3af',
-        brightBlack: '#4b5563',
-        brightRed: '#f87171',
-        brightGreen: '#a7d78d',
-        brightYellow: '#e5cc8b',
-        brightBlue: '#9ab1ff',
-        brightMagenta: '#c7a6ff',
-        brightCyan: '#6fcbd0',
-        brightWhite: '#d4d4dd',
-      },
+      theme: xtermThemeFromCss(),
     })
     termRef.current = term
     const fit = new FitAddon()
@@ -187,6 +198,10 @@ export function TerminalPane({
       (key) => key === sessionKey && term.write('\r\n\x1b[2m── process exited ──\x1b[0m\r\n'),
     )
     const onInput = term.onData(writeInput)
+    const onTheme = () => {
+      term.options.theme = xtermThemeFromCss()
+    }
+    window.addEventListener('gt.theme.changed', onTheme)
 
     // spawn the chosen engine attached to the session, sized to the live terminal
     gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) => {
@@ -216,6 +231,7 @@ export function TerminalPane({
     return () => {
       cancelAnimationFrame(raf)
       el.removeEventListener('contextmenu', onContext)
+      window.removeEventListener('gt.theme.changed', onTheme)
       offData()
       offExit()
       onInput.dispose()

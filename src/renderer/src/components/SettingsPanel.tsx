@@ -22,10 +22,15 @@ import {
   Eye,
   Activity,
   PackageOpen,
+  Palette,
+  Moon,
+  Sun,
+  Monitor,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Settings, SettingsPatch, EnvDetect, Engine, ForgePref, PresetKind, PresetPrefs } from '../lib/types'
+import type { Settings, SettingsPatch, EnvDetect, Engine, ForgePref, PresetKind, PresetPrefs, AppearanceMode } from '../lib/types'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
+import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
@@ -83,6 +88,7 @@ function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => vo
 
 const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'paths', title: 'Paths', icon: FolderTree },
+  { id: 'appearance', title: 'Appearance', icon: Palette },
   { id: 'engines', title: 'Engines', icon: Cpu },
   { id: 'forge', title: 'Forge', icon: GitPullRequest },
   { id: 'apps', title: 'Apps', icon: AppWindow },
@@ -450,7 +456,11 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     window.gt.detectEnv().then(setEnv)
   }, [])
 
-  const save = async (patch: SettingsPatch) => setS(await window.gt.settings.patch(patch))
+  const save = async (patch: SettingsPatch) => {
+    const next = await window.gt.settings.patch(patch)
+    setS(next)
+    window.dispatchEvent(new CustomEvent('gt.settings.changed', { detail: next }))
+  }
   const appOptions = (detected: string[] | undefined, fallback: string[], current: string) => {
     const list = [...new Set([...(detected?.length ? detected : fallback), ...(current ? [current] : [])])]
     return list.map((a) => (
@@ -648,6 +658,20 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       <div className="text-[10.5px] text-zinc-500">{hint}</div>
     </button>
   )
+  const modeOpt = (mode: AppearanceMode, label: string, Icon: LucideIcon) => (
+    <button
+      key={mode}
+      onClick={() => save({ appearance: { mode } })}
+      className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+        s.appearance.mode === mode
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+      }`}
+    >
+      <Icon size={14} strokeWidth={2} className="shrink-0" />
+      <span className="text-[12px] font-semibold">{label}</span>
+    </button>
+  )
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -777,6 +801,79 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 <span className="text-[10.5px] text-zinc-600">
                   schedules · settings · cron logs · agent state
                 </span>
+              </div>
+            </div>
+          </Section>
+
+          <Section
+            id="appearance"
+            icon={Palette}
+            title="Appearance"
+            desc="Color mode and theme tokens. New installs default to dark; system follows the OS setting."
+          >
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {modeOpt('dark', 'Dark', Moon)}
+                {modeOpt('light', 'Light', Sun)}
+                {modeOpt('system', 'System', Monitor)}
+              </div>
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
+                  Theme
+                  <select
+                    value={s.appearance.theme}
+                    onChange={(e) => save({ appearance: { theme: e.target.value } })}
+                    className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                  >
+                    {THEMES.map((theme) => (
+                      <option key={theme.id} value={theme.id} className="bg-[var(--gt-panel)]">
+                        {theme.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  {ACCENT_SWATCHES.map((swatch) => {
+                    const on = s.appearance.accent === swatch.id
+                    return (
+                      <button
+                        key={swatch.title}
+                        onClick={() => save({ appearance: { accent: swatch.id } })}
+                        title={swatch.title}
+                        className={`h-6 w-6 rounded-md border transition-colors ${
+                          on ? 'border-[var(--gt-accent-light)]' : 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60'
+                        }`}
+                        style={{ background: swatch.color || 'var(--gt-grad)' }}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
+                <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
+                    <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] text-zinc-500">
+                      {s.appearance.mode}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
+                    <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
+                    <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
+                  </div>
+                </div>
+                <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
+                  <div className="text-[var(--gt-green)]">$ terminal theme check</div>
+                  <div className="text-[var(--gt-text-muted)]">tokens apply to chrome, panes, scrollbars, and terminals</div>
+                  <div>
+                    <span className="text-[var(--gt-accent-light)]">accent</span>
+                    <span className="text-[var(--gt-text-muted)]"> / </span>
+                    <span className="text-[var(--gt-blue)]">info</span>
+                    <span className="text-[var(--gt-text-muted)]"> / </span>
+                    <span className="text-[var(--gt-yellow)]">warn</span>
+                  </div>
+                </div>
               </div>
             </div>
           </Section>

@@ -37,6 +37,16 @@ describe('migrate', () => {
     expect(migrate({ inbox: { completionHook: false } }).inbox.completionHook).toBe(false)
   })
 
+  test('appearance defaults to dark and accepts light/system modes', () => {
+    expect(migrate({}).appearance).toEqual({ mode: 'dark', theme: 'terminal', accent: '' })
+    expect(migrate({ appearance: { mode: 'light', theme: 'terminal', accent: '#0ea5e9' } }).appearance).toEqual({
+      mode: 'light',
+      theme: 'terminal',
+      accent: '#0ea5e9',
+    })
+    expect(migrate({ appearance: { mode: 'system' } }).appearance.mode).toBe('system')
+  })
+
   test('engines + scalars', () => {
     const s = migrate({
       projectsDir: '/p',
@@ -58,9 +68,10 @@ describe('migrate', () => {
   })
 
   test('invalid enum values fall back to defaults', () => {
-    const s = migrate({ defaultEngine: 'gpt', forge: 'bitbucket' })
+    const s = migrate({ defaultEngine: 'gpt', forge: 'bitbucket', appearance: { mode: 'sepia' } })
     expect(s.defaultEngine).toBe('claude') // claude is the required engine; codex is optional
     expect(s.forge).toBe('auto')
+    expect(s.appearance.mode).toBe('dark')
   })
 
   test('wrong-typed fields are ignored, not coerced', () => {

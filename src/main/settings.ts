@@ -22,6 +22,12 @@ export type TelegramCfg = {
 export type InboxCfg = {
   completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
 }
+export type AppearanceMode = 'dark' | 'light' | 'system'
+export type AppearanceCfg = {
+  mode: AppearanceMode
+  theme: string
+  accent: string
+}
 // External-app handoffs: macOS app names used with `open -a <name>` — robust
 // (no PATH/CLI dependency). '' → the built-in default.
 export type AppsCfg = {
@@ -41,6 +47,7 @@ export type Settings = {
   forge: ForgePref // 'auto' picks gh/glab per-repo from the remote host
   telegram: TelegramCfg
   inbox: InboxCfg
+  appearance: AppearanceCfg
   apps: AppsCfg
   /** OpenRouter — NOT a full coding harness (use claude-code/codex for that).
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
@@ -51,9 +58,10 @@ export type Settings = {
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'engines' | 'apps' | 'openrouter'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter'>> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
+  appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
@@ -78,6 +86,7 @@ export function defaultSettings(): Settings {
     forge: 'auto',
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     inbox: { completionHook: true },
+    appearance: { mode: 'dark', theme: 'terminal', accent: '' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     harnessDir: '',
@@ -103,6 +112,13 @@ export function migrate(raw: unknown): Settings {
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
+  }
+  if (r.appearance && typeof r.appearance === 'object') {
+    if (r.appearance.mode === 'dark' || r.appearance.mode === 'light' || r.appearance.mode === 'system') {
+      s.appearance.mode = r.appearance.mode
+    }
+    if (typeof r.appearance.theme === 'string' && r.appearance.theme.trim()) s.appearance.theme = r.appearance.theme
+    if (typeof r.appearance.accent === 'string') s.appearance.accent = r.appearance.accent
   }
 
   if (typeof r.onboarded === 'boolean') s.onboarded = r.onboarded
@@ -152,6 +168,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
     ...patch,
     telegram: { ...cur.telegram, ...(patch.telegram || {}) },
     inbox: { ...cur.inbox, ...(patch.inbox || {}) },
+    appearance: { ...cur.appearance, ...(patch.appearance || {}) },
     apps: { ...cur.apps, ...(patch.apps || {}) },
     engines: {
       codex: { ...cur.engines.codex, ...(patch.engines?.codex || {}) },

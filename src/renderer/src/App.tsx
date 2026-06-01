@@ -21,6 +21,7 @@ import { InboxDrawer } from './tabs/hitl'
 import { ALL_TABS } from './tabs/registry'
 import { navigateTo, onNavigate } from './lib/nav'
 import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
+import { applyTheme } from './lib/themes'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -161,6 +162,27 @@ export default function App() {
   // first-run gate: show onboarding until the user completes (or skips) it
   useEffect(() => {
     window.gt.settings.get().then((s) => setOnboarded(s.onboarded))
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      window.gt.settings
+        .get()
+        .then((s) => {
+          if (alive) applyTheme(s.appearance)
+        })
+        .catch(() => {})
+    load()
+    const onSettings = () => load()
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)')
+    window.addEventListener('gt.settings.changed', onSettings)
+    media?.addEventListener?.('change', onSettings)
+    return () => {
+      alive = false
+      window.removeEventListener('gt.settings.changed', onSettings)
+      media?.removeEventListener?.('change', onSettings)
+    }
   }, [])
 
   // macOS hides the traffic lights in fullscreen — drop the 78px reserve for them

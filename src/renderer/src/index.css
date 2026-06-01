@@ -10,11 +10,21 @@
 }
 
 :root {
-  /* palette inherited from the autopilot dashboard for a cohesive look */
+  color-scheme: dark;
+  /* dark is the durable default; renderer settings can replace these tokens */
   --gt-bg: #0b0b10;
   --gt-panel: #131318;
+  --gt-panel-2: #171720;
+  --gt-elevated: #181820;
+  --gt-input: rgb(0 0 0 / 0.35);
   --gt-surface-hover: #1a1a22;
   --gt-border: #26262e;
+  --gt-border-strong: #3a3a46;
+  --gt-text: #e7e7ee;
+  --gt-text-soft: #d4d4dd;
+  --gt-text-muted: #8a8a99;
+  --gt-text-faint: #6b6b7b;
+  --gt-inverse: #ffffff;
   --gt-accent: #7c6ef6;
   --gt-accent-light: #a89eff;
   --gt-accent-2: #00e0c6;
@@ -22,9 +32,17 @@
   --gt-yellow: #fbbf24;
   --gt-green: #4ade80;
   --gt-blue: #60a5fa;
-  --gt-text-muted: #6b6b7b;
+  --gt-terminal-bg: #0a0a0f;
+  --gt-terminal-fg: #d4d4dd;
+  --gt-code-bg: #0c0c11;
+  --gt-scrollbar: #2a2a3a;
+  --gt-scrollbar-strong: #3a3a4d;
   /* signature gradient lifted from the logo (teal → violet) */
   --gt-grad: linear-gradient(135deg, #00e0c6 0%, #7c6ef6 100%);
+}
+
+:root[data-gt-mode='light'] {
+  color-scheme: light;
 }
 
 html,
@@ -33,7 +51,7 @@ body,
   height: 100%;
   margin: 0;
   background: var(--gt-bg);
-  color: #e7e7ee;
+  color: var(--gt-text);
   font-family: var(--font-sans);
   font-feature-settings: 'ss03', 'cv05';
   -webkit-font-smoothing: antialiased;
@@ -82,7 +100,7 @@ body,
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a3a;
+  background: var(--gt-scrollbar);
   border-radius: 4px;
 }
 
@@ -95,7 +113,56 @@ body,
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #3a3a4d;
-  border: 2px solid #0a0a0f;
+  background: var(--gt-scrollbar-strong);
+  border: 2px solid var(--gt-terminal-bg);
   border-radius: 999px;
+}
+
+:root[data-gt-mode='light'] .text-white,
+:root[data-gt-mode='light'] .text-zinc-50,
+:root[data-gt-mode='light'] .text-zinc-100,
+:root[data-gt-mode='light'] .text-zinc-200 {
+  color: var(--gt-text) !important;
+}
+
+:root[data-gt-mode='light'] .text-zinc-300,
+:root[data-gt-mode='light'] .text-zinc-400 {
+  color: var(--gt-text-soft) !important;
+}
+
+:root[data-gt-mode='light'] .text-zinc-500,
+:root[data-gt-mode='light'] .text-zinc-600 {
+  color: var(--gt-text-muted) !important;
+}
+
+:root[data-gt-mode='light'] .text-zinc-700 {
+  color: var(--gt-text-faint) !important;
+}
+
+:root[data-gt-mode='light'] .bg-black\/20,
+:root[data-gt-mode='light'] .bg-black\/25,
+:root[data-gt-mode='light'] .bg-black\/30,
+:root[data-gt-mode='light'] .bg-black\/35,
+:root[data-gt-mode='light'] .bg-black\/40,
+:root[data-gt-mode='light'] .bg-black\/45,
+:root[data-gt-mode='light'] .bg-black\/50 {
+  background-color: color-mix(in srgb, var(--gt-panel) 78%, var(--gt-border) 22%) !important;
+}
+
+:root[data-gt-mode='light'] .bg-black\/60,
+:root[data-gt-mode='light'] .bg-black\/70 {
+  background-color: rgb(15 23 42 / 0.18) !important;
+}
+
+:root[data-gt-mode='light'] .hover\:bg-white\/5:hover,
+:root[data-gt-mode='light'] .hover\:bg-white\/10:hover {
+  background-color: rgb(15 23 42 / 0.06) !important;
+}
+
+:root[data-gt-mode='light'] .border-white\/10 {
+  border-color: rgb(15 23 42 / 0.1) !important;
+}
+
+:root[data-gt-mode='light'] .shadow-2xl {
+  box-shadow: 0 24px 60px rgb(15 23 42 / 0.18) !important;
 }
