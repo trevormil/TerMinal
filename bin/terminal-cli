@@ -13,6 +13,8 @@
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
 //   terminal-cli listener enqueue '<json>'              queue local automation inbox event
+//   terminal-cli listener enqueue --source x --type y   queue via flags (less shell quoting)
+//   terminal-cli listener status|dir|example            inspect listener inbox helpers
 //
 //   terminal-cli state                                  print this agent's full state JSON
 //   terminal-cli state get-sha                          print lastScannedSha (empty if first run)
@@ -607,15 +609,110 @@ function safeFileName(name) {
     .replace(/^-+|-+$/g, '') || randomUUID()
 }
 
+function parseFlags(args) {
+  const out = { _: [] }
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (!arg.startsWith('--')) {
+      out._.push(arg)
+      continue
+    }
+    const eq = arg.indexOf('=')
+    const key = arg
+      .slice(2, eq > 0 ? eq : undefined)
+      .replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())
+    if (!key) continue
+    if (eq > 0) out[key] = arg.slice(eq + 1)
+    else if (args[i + 1] && !args[i + 1].startsWith('--')) out[key] = args[++i]
+    else out[key] = true
+  }
+  return out
+}
+
+function readListenerEvent(args) {
+  const flags = parseFlags(args)
+  const raw = flags._.join(' ').trim()
+  if (!raw && (flags.source || flags.type)) {
+    const action = flags.action
+    const event = {
+      id: flags.id,
+      listenerId: flags.listener || flags.listenerId,
+      listenerName: flags.name || flags.listenerName,
+      source: flags.source,
+      type: flags.type,
+      title: flags.title,
+      body: flags.body,
+      repoRoot: flags.repoRoot || flags.repo,
+      dedupeKey: flags.dedupeKey || flags.dedupe,
+    }
+    if (action) {
+      if (action === 'activity') event.requestedAction = { kind: 'activity', title: flags.title, detail: flags.body }
+      else if (action === 'file-ticket') event.requestedAction = { kind: 'file-ticket', title: flags.title, body: flags.body, type: flags.ticketType, priority: flags.priority }
+      else if (action === 'file-hitl') event.requestedAction = { kind: 'file-hitl', title: flags.title, action: flags.body || flags.prompt, detail: flags.detail }
+      else if (action === 'run-agent') event.requestedAction = { kind: 'run-agent', agentId: flags.agent || flags.agentId, engine: flags.engine, model: flags.model, mode: flags.mode || 'agent', prompt: flags.prompt }
+      else if (action === 'background-task') event.requestedAction = { kind: 'background-task', engine: flags.engine, model: flags.model, prompt: flags.prompt || flags.body || '' }
+    }
+    return event
+  }
+  return raw ? JSON.parse(raw) : JSON.parse(readFileSync(0, 'utf8'))
+}
+
+function listenerDirs() {
+  return ['new', 'processing', 'done', 'failed', 'dead-letter']
+}
+
+function listenerStatus() {
+  const counts = Object.fromEntries(
+    listenerDirs().map((dir) => {
+      try {
+        return [dir, readdirSync(join(LISTENER_ROOT, dir)).filter((f) => f.endsWith('.json')).length]
+      } catch {
+        return [dir, 0]
+      }
+    }),
+  )
+  console.log(JSON.stringify({ inboxDir: LISTENER_ROOT, counts }, null, 2))
+}
+
+function listenerExample() {
+  console.log(
+    JSON.stringify(
+      {
+        listenerId: 'local-script:repo-health',
+        listenerName: 'Local repo health',
+        source: 'local-script',
+        type: 'automation.requested',
+        title: 'Run repo health',
+        repoRoot: process.cwd(),
+        dedupeKey: `local-script:repo-health:${process.cwd()}`,
+        requestedAction: { kind: 'run-agent', agentId: 'health', engine: 'codex', mode: 'agent' },
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 function listenerCommand(sub, args) {
+  if (sub === 'dir') {
+    console.log(LISTENER_ROOT)
+    return
+  }
+  if (sub === 'status') {
+    listenerStatus()
+    return
+  }
+  if (sub === 'example') {
+    listenerExample()
+    return
+  }
   if (sub !== 'enqueue') {
-    console.error('usage: terminal-cli listener enqueue \'<json>\'')
+    console.error('usage: terminal-cli listener <enqueue|status|dir|example> [json|flags]')
     process.exit(2)
   }
   let event = {}
-  const raw = args.join(' ').trim()
   try {
-    event = raw ? JSON.parse(raw) : JSON.parse(readFileSync(0, 'utf8'))
+    event = readListenerEvent(args)
   } catch (e) {
     console.error(`terminal-cli listener enqueue: invalid JSON: ${e.message}`)
     process.exit(2)
@@ -672,7 +769,8 @@ switch (cmd) {
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
         '  notify "<message>"                       send a Telegram message (raw)\n' +
-        '  listener enqueue \'<json>\'               queue a local automation inbox event\n' +
+        '  listener enqueue <json|--flags>           queue a local automation inbox event\n' +
+        '  listener status|dir|example               inspect listener inbox helpers\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
         '                                           persist per-(repo, agent) JSON sidecar\n',
     )

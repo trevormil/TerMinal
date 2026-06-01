@@ -41,6 +41,8 @@ export type ListenerAction =
 
 export type ListenerEnvelope = {
   id?: string
+  listenerId?: string
+  listenerName?: string
   source: string
   type: string
   title?: string
@@ -75,10 +77,31 @@ export type ListenerStatus = {
   inboxDir: string
   dirs: Record<ListenerDir, string>
   counts: Record<ListenerDir, number>
+  listeners: {
+    id: string
+    source: string
+    type: string
+    name?: string
+    total: number
+    new: number
+    processing: number
+    done: number
+    failed: number
+    deadLetter: number
+    lastAt: number
+    lastStatus: ListenerDir
+    lastTitle?: string
+    lastResult?: string
+    lastRunId?: string
+    lastRunSource?: 'agent' | 'bg'
+    repoRoot?: string
+  }[]
   recent: {
     file: string
     dir: ListenerDir
     id?: string
+    listenerId?: string
+    listenerName?: string
     source?: string
     type?: string
     title?: string
@@ -157,6 +180,10 @@ function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^-+|-+$/g, '') || randomUUID()
 }
 
+function listenerKey(env: Pick<ListenerEnvelope, 'listenerId' | 'source' | 'type'>): string {
+  return env.listenerId?.trim() || `${env.source || 'unknown'}:${env.type || 'event'}`
+}
+
 export function enqueueListenerEvent(input: unknown): { ok: true; path: string } | { error: string } {
   ensure()
   if (!input || typeof input !== 'object') return { error: 'event must be an object' }
@@ -175,6 +202,8 @@ function validateEnvelope(raw: unknown): ListenerEnvelope {
   const env = raw as ListenerEnvelope
   if (typeof env.source !== 'string' || !env.source.trim()) throw new Error('source is required')
   if (typeof env.type !== 'string' || !env.type.trim()) throw new Error('type is required')
+  if (env.listenerId && typeof env.listenerId !== 'string') throw new Error('listenerId must be a string')
+  if (env.listenerName && typeof env.listenerName !== 'string') throw new Error('listenerName must be a string')
   if (env.repoRoot && typeof env.repoRoot !== 'string') throw new Error('repoRoot must be a string')
   if (env.requestedAction && typeof env.requestedAction !== 'object') {
     throw new Error('requestedAction must be an object')
@@ -365,6 +394,8 @@ function recentFrom(dir: ListenerDir) {
           file: f,
           dir,
           id: env.id,
+          listenerId: env.listenerId,
+          listenerName: env.listenerName,
           source: env.source,
           type: env.type,
           title: env.title,
@@ -387,20 +418,80 @@ export function readListenerStatus(): ListenerStatus {
   ensure()
   const counts = Object.fromEntries(DIRS.map((d) => [d, fileCount(d)])) as Record<ListenerDir, number>
   const dirs = Object.fromEntries(DIRS.map((d) => [d, join(ROOT, d)])) as Record<ListenerDir, string>
+  const all = [
+    ...recentFrom('new'),
+    ...recentFrom('processing'),
+    ...recentFrom('done'),
+    ...recentFrom('failed'),
+    ...recentFrom('dead-letter'),
+  ]
+  const byListener = new Map<
+    string,
+    {
+      id: string
+      source: string
+      type: string
+      name?: string
+      total: number
+      new: number
+      processing: number
+      done: number
+      failed: number
+      deadLetter: number
+      lastAt: number
+      lastStatus: ListenerDir
+      lastTitle?: string
+      lastResult?: string
+      lastRunId?: string
+      lastRunSource?: 'agent' | 'bg'
+      repoRoot?: string
+    }
+  >()
+  for (const item of all) {
+    const key = listenerKey({
+      listenerId: item.listenerId,
+      source: item.source || 'unknown',
+      type: item.type || 'event',
+    })
+    const cur =
+      byListener.get(key) ||
+      {
+        id: key,
+        source: item.source || 'unknown',
+        type: item.type || 'event',
+        name: item.listenerName,
+        total: 0,
+        new: 0,
+        processing: 0,
+        done: 0,
+        failed: 0,
+        deadLetter: 0,
+        lastAt: 0,
+        lastStatus: item.dir,
+        repoRoot: item.repoRoot,
+      }
+    cur.total++
+    if (item.dir === 'dead-letter') cur.deadLetter++
+    else cur[item.dir]++
+    if ((item.processedAt || 0) >= cur.lastAt) {
+      cur.lastAt = item.processedAt || 0
+      cur.lastStatus = item.dir
+      cur.lastTitle = item.title
+      cur.lastResult = item.result || item.error
+      cur.lastRunId = item.runId
+      cur.lastRunSource = item.runSource
+      cur.repoRoot = item.repoRoot || cur.repoRoot
+      cur.name = item.listenerName || cur.name
+    }
+    byListener.set(key, cur)
+  }
   return {
     enabled: readListenerSettings().enabled,
     inboxDir: ROOT,
     dirs,
     counts,
-    recent: [
-      ...recentFrom('new'),
-      ...recentFrom('processing'),
-      ...recentFrom('done'),
-      ...recentFrom('failed'),
-      ...recentFrom('dead-letter'),
-    ]
-      .sort((a, b) => (b.processedAt || 0) - (a.processedAt || 0))
-      .slice(0, 50),
+    listeners: [...byListener.values()].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 40),
+    recent: all.sort((a, b) => (b.processedAt || 0) - (a.processedAt || 0)).slice(0, 50),
   }
 }
 
@@ -422,6 +513,8 @@ export function startListenerInboxWatcher(): void {
 export function listenerExample(repoRoot = ''): ListenerEnvelope {
   return {
     id: `example-${Date.now()}`,
+    listenerId: 'local-script:repo-health',
+    listenerName: 'Local repo health',
     source: 'local-script',
     type: 'automation.requested',
     title: 'Run repo health',

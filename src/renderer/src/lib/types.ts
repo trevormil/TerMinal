@@ -377,10 +377,31 @@ export type ListenerStatus = {
   inboxDir: string
   dirs: Record<ListenerDir, string>
   counts: Record<ListenerDir, number>
+  listeners: {
+    id: string
+    source: string
+    type: string
+    name?: string
+    total: number
+    new: number
+    processing: number
+    done: number
+    failed: number
+    deadLetter: number
+    lastAt: number
+    lastStatus: ListenerDir
+    lastTitle?: string
+    lastResult?: string
+    lastRunId?: string
+    lastRunSource?: 'agent' | 'bg'
+    repoRoot?: string
+  }[]
   recent: {
     file: string
     dir: ListenerDir
     id?: string
+    listenerId?: string
+    listenerName?: string
     source?: string
     type?: string
     title?: string
@@ -391,7 +412,7 @@ export type ListenerStatus = {
     action?: string
     result?: string
     runId?: string
-    runSource?: 'agent'
+    runSource?: 'agent' | 'bg'
   }[]
 }
 

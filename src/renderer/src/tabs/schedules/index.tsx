@@ -13,6 +13,7 @@ import {
   FolderOpen,
   X,
   ListChecks,
+  Search,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
@@ -419,11 +420,15 @@ function ListenerPanel({
 }) {
   const counts = status?.counts
   const [sourceFilter, setSourceFilter] = useState('')
+  const [listenerFilter, setListenerFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [runsOnly, setRunsOnly] = useState(false)
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'source' | 'category'>('newest')
+  const [search, setSearch] = useState('')
+  const [sel, setSel] = useState<string | null>(null)
   const recent = status?.recent || []
+  const listeners = status?.listeners || []
   const sourceOptions = useMemo(
     () => [...new Set(recent.map((r) => r.source || 'unknown'))].sort((a, b) => a.localeCompare(b)),
     [recent],
@@ -437,11 +442,19 @@ function ListenerPanel({
     [recent],
   )
   const shownRecent = useMemo(() => {
+    const q = search.trim().toLowerCase()
     return recent
+      .filter((r) => !listenerFilter || (r.listenerId || `${r.source || 'unknown'}:${r.type || 'event'}`) === listenerFilter)
       .filter((r) => !sourceFilter || (r.source || 'unknown') === sourceFilter)
       .filter((r) => !categoryFilter || (r.action || r.type || 'event') === categoryFilter)
       .filter((r) => !statusFilter || r.dir === statusFilter)
       .filter((r) => !runsOnly || Boolean(r.runId))
+      .filter((r) => {
+        if (!q) return true
+        return [r.title, r.listenerName, r.listenerId, r.source, r.type, r.action, r.result, r.error, r.repoRoot, r.file]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+      })
       .sort((a, b) => {
         if (sortBy === 'oldest') return (a.processedAt || 0) - (b.processedAt || 0)
         if (sortBy === 'source') {
@@ -454,90 +467,94 @@ function ListenerPanel({
         }
         return (b.processedAt || 0) - (a.processedAt || 0)
       })
-  }, [categoryFilter, recent, runsOnly, sortBy, sourceFilter, statusFilter])
+  }, [categoryFilter, listenerFilter, recent, runsOnly, search, sortBy, sourceFilter, statusFilter])
+
+  const rowKey = (r: (typeof recent)[number]) => `${r.dir}:${r.file}`
+  const selected = shownRecent.find((r) => rowKey(r) === sel) || null
 
   return (
-    <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-light)]">
-          <Inbox size={15} strokeWidth={2} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] font-semibold text-zinc-100">Listener inbox</span>
+    <section className="flex h-full min-h-0 bg-[var(--gt-bg)]">
+      <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
+        <div className="shrink-0 space-y-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-2.5">
+          <div className="flex items-center gap-2">
+            <Inbox size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            <span className="text-[12px] font-semibold text-zinc-200">Listener inbox</span>
+            <span className="text-[10.5px] text-zinc-600">{status ? `${shownRecent.length} / ${recent.length}` : '…'}</span>
             <Badge tone={status?.enabled ? 'green' : 'mute'}>{status?.enabled ? 'watching' : 'paused'}</Badge>
             {counts && (
-              <span className="font-mono text-[10.5px] text-zinc-600">
-                new {counts.new} · done {counts.done} · failed {counts.failed + counts['dead-letter']}
+              <span className="inline-flex items-center gap-1.5 text-[10.5px]">
+                {counts.new > 0 && <Badge tone="blue">{counts.new} new</Badge>}
+                <Badge tone="green">{counts.done} done</Badge>
+                {counts.failed + counts['dead-letter'] > 0 && (
+                  <Badge tone="red">{counts.failed + counts['dead-letter']} failed</Badge>
+                )}
               </span>
             )}
+            <div className="flex-1" />
+            <button
+              onClick={onDesign}
+              className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[10.5px] font-semibold text-white"
+            >
+              <Plus size={10} strokeWidth={2.5} />
+              New
+            </button>
+            <button
+              onClick={async () => {
+                if (!status) return
+                await window.gt.listeners.toggle(!status.enabled)
+                await onRefresh()
+                flash(`listener inbox ${status.enabled ? 'paused' : 'enabled'}`)
+              }}
+              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              title={status?.enabled ? 'Pause listener inbox' : 'Enable listener inbox'}
+            >
+              {status?.enabled ? <Pause size={11} strokeWidth={2.5} /> : <Play size={11} strokeWidth={2.5} />}
+            </button>
+            <button
+              onClick={async () => {
+                const r = await window.gt.listeners.process()
+                flash(`processed ${r.processed} · skipped ${r.skipped} · failed ${r.failed}`)
+                await onRefresh()
+              }}
+              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              title="Process now"
+            >
+              <RefreshCw size={11} strokeWidth={2} />
+            </button>
+            <button
+              onClick={() => window.gt.listeners.openDir()}
+              className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              title="Open listener inbox folder"
+            >
+              <FolderOpen size={11} strokeWidth={2} />
+            </button>
           </div>
-          <details className="mt-1 text-[10.5px] text-zinc-600">
-            <summary className="cursor-pointer select-none hover:text-zinc-400">Details</summary>
-            <div className="mt-1 space-y-1">
-              <div>Skill-created listeners enqueue requests, then TerMinal validates, dedupes, and runs the action.</div>
-              {status && <div className="truncate font-mono">{status.inboxDir}</div>}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="relative min-w-[150px] flex-1">
+              <Search size={11} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search listener / source / result…"
+                className="h-7 w-full rounded-md border border-[var(--gt-border)] bg-black/30 py-1 pl-7 pr-2 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
+              />
             </div>
-          </details>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-          <button
-            onClick={onDesign}
-            className="inline-flex items-center gap-1 rounded-md bg-[var(--gt-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white"
-          >
-            <Plus size={11} strokeWidth={2.5} />
-            New listener
-          </button>
-          <button
-            onClick={async () => {
-              if (!status) return
-              await window.gt.listeners.toggle(!status.enabled)
-              await onRefresh()
-              flash(`listener inbox ${status.enabled ? 'paused' : 'enabled'}`)
-            }}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-          >
-            {status?.enabled ? <Pause size={11} strokeWidth={2.5} /> : <Play size={11} strokeWidth={2.5} />}
-            {status?.enabled ? 'Pause' : 'Enable'}
-          </button>
-          <button
-            onClick={async () => {
-              const r = await window.gt.listeners.process()
-              flash(`processed ${r.processed} · skipped ${r.skipped} · failed ${r.failed}`)
-              await onRefresh()
-            }}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-          >
-            <RefreshCw size={11} strokeWidth={2} />
-            Process now
-          </button>
-          <button
-            onClick={() => window.gt.listeners.openDir()}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-          >
-            <FolderOpen size={11} strokeWidth={2} />
-            Folder
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-3 rounded-lg border border-[var(--gt-border)] bg-black/20">
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-2.5 py-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests to actions</span>
-          <span className="ml-auto text-[10px] text-zinc-700">
-            {status ? `${shownRecent.length}/${recent.length} shown` : 'recent inbox activity'}
-          </span>
-        </div>
-        {status && recent.length > 0 && (
-          <details className="border-b border-[var(--gt-border)]/70 px-2.5 py-1.5">
-            <summary className="cursor-pointer select-none text-[10.5px] text-zinc-500 hover:text-zinc-300">
-              Filter / sort
-            </summary>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <select
+                value={listenerFilter}
+                onChange={(e) => setListenerFilter(e.target.value)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
+              >
+                <option value="">All listeners</option>
+                {listeners.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name || l.id}
+                  </option>
+                ))}
+              </select>
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
               >
                 <option value="">All sources</option>
                 {sourceOptions.map((source) => (
@@ -549,7 +566,7 @@ function ListenerPanel({
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
               >
                 <option value="">All categories</option>
                 {categoryOptions.map((category) => (
@@ -561,7 +578,7 @@ function ListenerPanel({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
               >
                 <option value="">All statuses</option>
                 {statusOptions.map((dir) => (
@@ -573,7 +590,7 @@ function ListenerPanel({
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
@@ -590,52 +607,112 @@ function ListenerPanel({
               >
                 Runs only
               </button>
-            </div>
-          </details>
-        )}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
         {!status ? (
-          <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox...</div>
+          <div className="p-4 text-[12px] text-zinc-600">Loading listener inbox...</div>
         ) : status.recent.length === 0 ? (
-          <div className="p-3 text-[11px] text-zinc-600">
-            No listener requests yet. Use “New listener” to open the listener-inbox skill in an agent instance.
+          <div className="p-4 text-[12px] text-zinc-600">
+            No listener requests yet. Use New to create a listener adapter.
           </div>
         ) : shownRecent.length === 0 ? (
-          <div className="p-3 text-[11px] text-zinc-600">No listener requests match the current filters.</div>
+          <div className="p-4 text-[12px] text-zinc-600">No listener requests match these filters.</div>
         ) : (
-          <div className="divide-y divide-[var(--gt-border)]/70">
-            {shownRecent.map((r) => (
-              <div key={`${r.dir}:${r.file}`} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 px-2.5 py-2">
-                <div className="space-y-1">
-                  <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
-                  <div className="font-mono text-[9.5px] text-zinc-700">{reltime(r.processedAt)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <span className="truncate text-[12px] font-semibold text-zinc-200">
-                      {r.title || r.type || r.file}
-                    </span>
-                    {r.source && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.source}</span>}
-                    {r.action && <span className="rounded bg-black/25 px-1.5 py-px text-[10px] text-zinc-500">{r.action}</span>}
-                  </div>
-                  <div className="mt-0.5 min-w-0 truncate text-[10.5px] text-zinc-600">
-                    {r.result || r.error || r.id || r.file}
-                  </div>
-                  {r.runId && (
-                    <button
-                      onClick={() => navigateTo('runs', { runId: r.runId, source: r.runSource })}
-                      className="mt-1 inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-                    >
-                      <ListChecks size={10} strokeWidth={2} />
-                      View run
-                    </button>
-                  )}
-                  {r.repoRoot && <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-700">{r.repoRoot}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
+          shownRecent.map((r) => {
+            const selectedHere = rowKey(r) === sel
+            return (
+              <button
+                key={rowKey(r)}
+                onClick={() => setSel(rowKey(r))}
+                className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                  selectedHere ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                }`}
+              >
+                <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
+                  {r.title || r.listenerName || r.type || r.file}
+                </span>
+                <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.listenerId || r.source || 'unknown'}</span>
+                {r.action && <span className="shrink-0 text-[10px] text-zinc-600">{r.action}</span>}
+                {r.runId && <Badge tone="blue">run</Badge>}
+                <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{reltime(r.processedAt)}</span>
+              </button>
+            )
+          })
         )}
       </div>
+      </div>
+
+      <section className="flex min-w-0 flex-1 flex-col">
+        {!selected ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-zinc-600">
+            Pick a listener request on the left.
+          </div>
+        ) : (
+          <>
+            <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2.5">
+              <Badge tone={listenerTone(selected.dir)}>{selected.dir}</Badge>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-zinc-100">
+                {selected.title || selected.listenerName || selected.type || selected.file}
+              </span>
+              <span className="font-mono text-[10.5px] text-zinc-600">{selected.source || 'unknown'}</span>
+              {selected.action && <span className="text-[10.5px] text-zinc-500">{selected.action}</span>}
+              {selected.runId && (
+                <button
+                  onClick={() => navigateTo('runs', { runId: selected.runId, source: selected.runSource })}
+                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                >
+                  <ListChecks size={10} strokeWidth={2} />
+                  View run
+                </button>
+              )}
+              <button
+                onClick={() => setSel(null)}
+                title="Close detail"
+                className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              >
+                <X size={11} strokeWidth={2} />
+              </button>
+            </header>
+            <div className="min-h-0 flex-1 overflow-auto p-5">
+              <div className="grid gap-2 text-[11.5px] md:grid-cols-2">
+                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Listener</div>
+                  <div className="truncate text-zinc-200">{selected.listenerName || selected.listenerId || selected.source || 'unknown'}</div>
+                  <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{selected.type || selected.file}</div>
+                </div>
+                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Outcome</div>
+                  <div className={selected.error ? 'text-[var(--gt-red)]' : 'text-zinc-200'}>
+                    {selected.result || selected.error || 'pending'}
+                  </div>
+                  <div className="mt-1 text-[10.5px] text-zinc-600">{fmtWhen(selected.processedAt)}</div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11.5px]">
+                {selected.repoRoot && (
+                  <div>
+                    <span className="text-zinc-600">repo </span>
+                    <span className="font-mono text-zinc-300">{selected.repoRoot}</span>
+                  </div>
+                )}
+                {selected.id && (
+                  <div>
+                    <span className="text-zinc-600">event </span>
+                    <span className="font-mono text-zinc-300">{selected.id}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-zinc-600">file </span>
+                  <span className="font-mono text-zinc-300">{selected.file}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
     </section>
   )
 }
@@ -942,7 +1019,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div className={`min-h-0 flex-1 overflow-y-auto ${view === 'listeners' ? '' : 'space-y-2 p-3'}`}>
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
         {view === 'listeners' ? (
           <ListenerPanel

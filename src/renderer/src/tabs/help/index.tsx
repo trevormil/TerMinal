@@ -16,6 +16,8 @@ import {
   LayoutGrid,
   Blocks,
   Bot,
+  CalendarClock,
+  Inbox,
   Wand2,
   type LucideIcon,
 } from 'lucide-react'
@@ -173,6 +175,48 @@ function HelpTab(_props: { ctx: TabContext }) {
           <p className="mt-2.5 text-[11px] text-zinc-600">
             The <span className="text-zinc-400">Skills</span> cockpit widget lists every skill available here —
             your project + personal skills first, installed-plugin skills on expand.
+          </p>
+        </Section>
+
+        <Section icon={Bot} title="Agents, schedules, listeners">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
+                <Bot size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
+                Agents
+              </div>
+              <p className="text-[11.5px] leading-snug text-zinc-400">
+                Named workflows you run on demand from Agents, Tickets, PRs, snippets, or a terminal prompt.
+                They are best for human-triggered work with a clear goal.
+              </p>
+              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Agents tab · /new-agent</p>
+            </div>
+            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
+                <CalendarClock size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
+                Schedules
+              </div>
+              <p className="text-[11.5px] leading-snug text-zinc-400">
+                Time-based automation for an existing agent: every N minutes, weekdays at 9, cron expressions,
+                or a plain-English schedule designed by an agent.
+              </p>
+              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Schedules tab · /new-schedule</p>
+            </div>
+            <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
+                <Inbox size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
+                Listeners
+              </div>
+              <p className="text-[11.5px] leading-snug text-zinc-400">
+                Event-based automation. Scripts or integrations enqueue a durable request; TerMinal dedupes it,
+                runs an allowlisted action, and shows the request-to-run trail.
+              </p>
+              <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Schedules → Listeners · /listener-inbox</p>
+            </div>
+          </div>
+          <p className="mt-2.5 text-[11px] leading-snug text-zinc-600">
+            Rule of thumb: use an agent for a button click, a schedule for time, and a listener for an outside
+            event like a file drop, webhook adapter, Slack poller, or MR watcher.
           </p>
         </Section>
 
