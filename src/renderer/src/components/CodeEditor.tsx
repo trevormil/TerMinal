@@ -4,23 +4,30 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
 import { Prec, type Extension } from '@codemirror/state'
 
-// oneDark supplies the syntax highlighting (its token colors work well). We only
-// override the *chrome* — oneDark's #282c34 background reads too light over the
-// near-black UI. Prec.highest makes these same-selector rules beat the theme.
-const EDITOR_BG = '#0f0f15'
+// oneDark supplies syntax highlighting; theme tokens own the editor chrome so
+// dark/light appearance changes do not leave hard-coded background seams.
+const EDITOR_BG = 'var(--gt-code-bg)'
 const chrome = Prec.highest(
   EditorView.theme({
-    '&': { height: '100%', backgroundColor: EDITOR_BG },
-    '.cm-gutters': { backgroundColor: EDITOR_BG, border: 'none', color: '#3d3d4a' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(255,255,255,0.03)', color: '#8a8a9a' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.022)' },
+    '&': { height: '100%', backgroundColor: EDITOR_BG, color: 'var(--gt-text-soft)' },
+    '.cm-gutters': { backgroundColor: EDITOR_BG, border: 'none', color: 'var(--gt-text-faint)' },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'color-mix(in srgb, var(--gt-accent) 10%, transparent)',
+      color: 'var(--gt-text-muted)',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'color-mix(in srgb, var(--gt-accent) 7%, transparent)',
+    },
     '.cm-scroller': {
       fontFamily: "'IBM Plex Mono', 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
       fontSize: '13px',
       lineHeight: '1.55',
     },
-    '.cm-content': { caretColor: 'var(--gt-accent)' },
+    '.cm-content': { caretColor: 'var(--gt-accent)', color: 'var(--gt-text-soft)' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--gt-accent)' },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: 'color-mix(in srgb, var(--gt-accent) 26%, transparent)',
+    },
     '&.cm-focused': { outline: 'none' },
   }),
 )

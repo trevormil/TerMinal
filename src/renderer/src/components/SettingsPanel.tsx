@@ -362,7 +362,7 @@ function RebuildPanel() {
       </button>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}
       {(running || log) && (
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--gt-border)] bg-[#0c0c11] p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300">
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-2 font-mono text-[10.5px] leading-relaxed text-[var(--gt-text-soft)]">
           {log || '(starting…)'}
         </pre>
       )}

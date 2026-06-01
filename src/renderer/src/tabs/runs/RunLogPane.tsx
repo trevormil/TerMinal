@@ -91,7 +91,7 @@ export function RunLogPane({
       </div>
       <pre
         ref={logRef}
-        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-[#0c0c11] p-4 font-mono text-[11px] leading-relaxed text-zinc-300"
+        className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-[var(--gt-code-bg)] p-4 font-mono text-[11px] leading-relaxed text-[var(--gt-text-soft)]"
       >
         {visibleLog || 'Loading log...'}
       </pre>

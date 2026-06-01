@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm'
 // Hand-styled with Tailwind utilities so we don't pull in the typography plugin.
 export function Markdown({ children }: { children: string }) {
   return (
-    <div className="text-[13px] text-zinc-300">
+    <div className="text-[13px] text-[var(--gt-text-soft)]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -41,13 +41,13 @@ export function Markdown({ children }: { children: string }) {
               )
             }
             return (
-              <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[12px] text-[var(--gt-accent-2)]">
+              <code className="rounded border border-[var(--gt-border)] bg-[var(--gt-code-bg)] px-1 py-0.5 font-mono text-[12px] text-[var(--gt-accent-2)]">
                 {children}
               </code>
             )
           },
           pre: ({ children }) => (
-            <pre className="mb-3 overflow-x-auto rounded-lg border border-[var(--gt-border)] bg-black/40 p-3 text-[12px] text-zinc-200">
+            <pre className="mb-3 overflow-x-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-3 text-[12px] text-[var(--gt-text-soft)]">
               {children}
             </pre>
           ),

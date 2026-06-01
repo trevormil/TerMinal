@@ -764,7 +764,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                             />
                           </button>
                           {open && log && (
-                            <div className="mt-1 rounded-lg border border-[var(--gt-border)] bg-[#0c0c11]">
+                            <div className="mt-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)]">
                               <div className="flex items-center justify-between border-b border-[var(--gt-border)]/60 px-2 py-1">
                                 <span className="text-[10px] uppercase tracking-wider text-zinc-600">log</span>
                                 <button
@@ -775,7 +775,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                                   <X size={11} strokeWidth={2} />
                                 </button>
                               </div>
-                              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-[10.5px] leading-relaxed text-zinc-300">
+                              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-[10.5px] leading-relaxed text-[var(--gt-text-soft)]">
                                 {log.text || '… (no output yet)'}
                               </pre>
                             </div>

@@ -166,3 +166,48 @@ body,
 :root[data-gt-mode='light'] .shadow-2xl {
   box-shadow: 0 24px 60px rgb(15 23 42 / 0.18) !important;
 }
+
+:root[data-gt-mode='light'] .hljs {
+  background: var(--gt-code-bg) !important;
+  color: var(--gt-text-soft) !important;
+}
+
+:root[data-gt-mode='light'] .hljs-comment,
+:root[data-gt-mode='light'] .hljs-quote {
+  color: var(--gt-text-faint) !important;
+}
+
+:root[data-gt-mode='light'] .hljs-keyword,
+:root[data-gt-mode='light'] .hljs-selector-tag,
+:root[data-gt-mode='light'] .hljs-literal,
+:root[data-gt-mode='light'] .hljs-section,
+:root[data-gt-mode='light'] .hljs-link {
+  color: #6d28d9 !important;
+}
+
+:root[data-gt-mode='light'] .hljs-string,
+:root[data-gt-mode='light'] .hljs-title,
+:root[data-gt-mode='light'] .hljs-name {
+  color: #166534 !important;
+}
+
+:root[data-gt-mode='light'] .hljs-number,
+:root[data-gt-mode='light'] .hljs-symbol,
+:root[data-gt-mode='light'] .hljs-bullet {
+  color: #92400e !important;
+}
+
+:root[data-gt-mode='light'] .cm-editor,
+:root[data-gt-mode='light'] .cm-scroller,
+:root[data-gt-mode='light'] .cm-gutters {
+  background-color: var(--gt-code-bg) !important;
+}
+
+:root[data-gt-mode='light'] .cm-line,
+:root[data-gt-mode='light'] .cm-content {
+  color: var(--gt-text-soft) !important;
+}
+
+:root[data-gt-mode='light'] .cm-gutterElement {
+  color: var(--gt-text-faint) !important;
+}
