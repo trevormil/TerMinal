@@ -71,9 +71,9 @@ type ScheduleView = 'schedules' | 'listeners'
 
 function listenerDesignerPrompt(repoRoot: string): string {
   return [
-    '/listener-inbox Create or update a local TerMinal listener integration for this workspace.',
-    'Use the listener-inbox skill. Prefer a small script, adapter, or documented command that can enqueue listener requests through the TerMinal CLI.',
-    'Keep the app UX skill-based; do not expose a raw JSON contract in the UI.',
+    '/listener-inbox Create or update a standalone listener integration for this workspace.',
+    'First ask what event/source to listen for and what automation it should trigger, unless that is already clear from my next message.',
+    'Once the listener behavior is clear, prefer a small script, adapter, or documented command that can run independently and enqueue requests through the TerMinal CLI.',
     `Target repo: ${repoRoot || '(no attached repo)'}`,
   ].join('\n')
 }
