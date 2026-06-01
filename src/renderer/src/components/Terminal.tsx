@@ -406,9 +406,11 @@ export function TerminalPane({
   }
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={ref} className="h-full w-full px-3 py-2" />
-      <div className="absolute right-3 top-3 z-20">
+    <div className="relative h-full w-full overflow-hidden bg-[var(--gt-terminal-bg)]">
+      <div className="absolute inset-0 overflow-hidden p-3">
+        <div ref={ref} className="h-full w-full overflow-hidden" />
+      </div>
+      <div className="absolute right-4 top-4 z-20">
         <button
           onClick={() => setMenuOpen((v) => !v)}
           title="Prompt snippets"
