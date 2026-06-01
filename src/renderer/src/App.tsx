@@ -562,7 +562,7 @@ export default function App() {
     )
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)] p-2.5">
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)]">
       {/* session tab bar (top-level, also the window drag region) */}
       <header
         style={drag}
