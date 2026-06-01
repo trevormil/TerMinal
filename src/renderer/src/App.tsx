@@ -105,7 +105,7 @@ const restored: Saved[] = (() => {
   } catch {
     return []
   }
-})().filter((s: Saved) => s?.sessionId)
+})().filter((s: Saved) => s?.sessionId && s.engine !== 'local')
 
 export default function App() {
   const [sessions, setSessions] = useState<Sess[]>(() =>
@@ -143,7 +143,7 @@ export default function App() {
         engine: s.choice.engine || 'claude',
         mode: s.choice.mode,
       }))
-      .filter((s) => s.sessionId)
+      .filter((s) => s.sessionId && s.engine !== 'local')
     localStorage.setItem('gt.openSessions', JSON.stringify(data))
   }, [sessions])
   const [fullscreen, setFullscreen] = useState(false)
