@@ -17,9 +17,8 @@ import {
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
-import { EnginePicker } from '../../components/EnginePicker'
 import { navigateTo } from '../../lib/nav'
-import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
@@ -69,13 +68,18 @@ const listenerTone = (s: string): BadgeTone =>
 
 type ScheduleView = 'schedules' | 'listeners'
 
-function listenerDesignerPrompt(repoRoot: string): string {
-  return [
-    '/listener-inbox Create or update a standalone listener integration for this workspace.',
-    'First ask what event/source to listen for and what automation it should trigger, unless that is already clear from my next message.',
-    'Once the listener behavior is clear, prefer a small script, adapter, or documented command that can run independently and enqueue requests through the TerMinal CLI.',
-    `Target repo: ${repoRoot || '(no attached repo)'}`,
-  ].join('\n')
+function listenerDesignerPrompt(repoRoot: string, text: string): string {
+  return withLaunchContext(
+    [
+      '/listener-inbox Create or update a standalone listener integration for this workspace.',
+      '',
+      'Listener request:',
+      text.trim(),
+      '',
+      'Build this as a standalone listener, script, adapter, or documented command that can run independently and enqueue requests through the TerMinal CLI. Do not make app UX changes unless the request explicitly asks for app UX.',
+      `Target repo: ${repoRoot || '(no attached repo)'}`,
+    ].join('\n'),
+  )
 }
 
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
@@ -636,12 +640,83 @@ function ListenerPanel({
   )
 }
 
+function NewListenerModal({
+  ctx,
+  onClose,
+  flash,
+}: {
+  ctx: TabContext
+  onClose: () => void
+  flash: (m: string) => void
+}) {
+  const [text, setText] = useState('')
+  const [spawning, setSpawning] = useState(false)
+  const cwd = ctx.repoRoot || ctx.cwd
+  const submit = () => {
+    const request = text.trim()
+    if (!request || spawning) return
+    setSpawning(true)
+    openPromptInTerminal({
+      engine: 'claude',
+      cwd,
+      name: 'New listener',
+      prompt: listenerDesignerPrompt(ctx.repoRoot || cwd, request),
+    })
+    flash('opened Claude Code instance')
+    setTimeout(onClose, 250)
+  }
+
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 p-6" onClick={onClose}>
+      <div
+        className="flex max-h-[86vh] w-[620px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 gt-pop-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-zinc-100">New listener</h2>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5">
+            cancel
+          </button>
+        </div>
+        <SkillHint>
+          Describe the event source and automation. Claude opens with the{' '}
+          <code className="font-mono text-zinc-300">/listener-inbox</code> skill prefilled.
+        </SkillHint>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit()
+          }}
+          rows={6}
+          placeholder='e.g. "Watch ~/Downloads/incoming-support for JSON files from Slack. For high-priority messages, file a ticket and run triage."'
+          className={`${FIELD} resize-y w-full`}
+        />
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[10.5px] text-zinc-600">
+            ⌘↵ to open · target {cwd || 'current workspace'}
+          </span>
+          <button
+            onClick={submit}
+            disabled={!text.trim() || spawning}
+            className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+          >
+            <EngineLogo engine="claude" size={13} />
+            {spawning ? 'Opening...' : 'Open Claude'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [schedules, setSchedules] = useState<Schedule[] | null>(null)
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus | null>(null)
   const [agents, setAgents] = useState<Agent[]>([])
   const [creating, setCreating] = useState(false)
-  const [pickingListener, setPickingListener] = useState(false)
+  const [creatingListener, setCreatingListener] = useState(false)
   const [view, setView] = useState<ScheduleView>('schedules')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [runs, setRuns] = useState<CronRun[]>([])
@@ -747,33 +822,6 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     setMsg(m)
     setTimeout(() => setMsg(''), 5000)
   }
-  const launchListenerDesigner = async (
-    engine: Engine,
-    _persona: string,
-    _pipeline: string,
-    model?: string,
-    launchMode?: LaunchMode,
-  ) => {
-    const cwd = ctx.repoRoot || ctx.cwd
-    const prompt = listenerDesignerPrompt(ctx.repoRoot || cwd)
-    setPickingListener(false)
-    if (launchMode !== 'process') {
-      openPromptInTerminal({ engine, cwd, name: 'New listener', prompt })
-      flash(`opened ${engineInstanceLabel(engine)} instance`)
-      return
-    }
-    if (!ctx.repoRoot) {
-      flash('listener design needs an attached repo')
-      return
-    }
-    const r = await window.gt.bg.spawn({ repoRoot: ctx.repoRoot, prompt, engine, model })
-    if ('error' in r) {
-      flash(r.error)
-      return
-    }
-    flash(`${engine} process started - see Runs`)
-  }
-
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
@@ -901,7 +949,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             status={listenerStatus}
             onRefresh={reloadListeners}
             flash={flash}
-            onDesign={() => setPickingListener(true)}
+            onDesign={() => setCreatingListener(true)}
           />
         ) : schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
@@ -1145,20 +1193,8 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           </div>
         </div>
       )}
-      {pickingListener && (
-        <EnginePicker
-          title="New listener"
-          showPersona={false}
-          showPipeline={false}
-          hint={
-            <>
-              Opens the <code className="font-mono text-zinc-300">/listener-inbox</code> skill in an agent
-              instance so listener integrations stay scriptable and reviewable.
-            </>
-          }
-          onClose={() => setPickingListener(false)}
-          onPick={launchListenerDesigner}
-        />
+      {creatingListener && (
+        <NewListenerModal ctx={ctx} onClose={() => setCreatingListener(false)} flash={flash} />
       )}
     </div>
   )
