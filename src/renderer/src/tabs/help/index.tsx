@@ -208,15 +208,15 @@ function HelpTab(_props: { ctx: TabContext }) {
                 Automation Inbox
               </div>
               <p className="text-[11.5px] leading-snug text-zinc-400">
-                Email-style automation intake. Scripts or integrations enqueue durable requests; TerMinal dedupes
-                them, runs allowlisted actions, and shows the request-to-run trail.
+                Always-on automation intake. Scripts or integrations enqueue durable requests; TerMinal watches by
+                default, runs allowlisted actions, and shows the request-to-run trail.
               </p>
               <p className="mt-1.5 font-mono text-[10.5px] text-zinc-600">Runs → Automation Inbox · /automation-inbox</p>
             </div>
           </div>
           <p className="mt-2.5 text-[11px] leading-snug text-zinc-600">
-            Rule of thumb: use an agent for a button click, a schedule for time, and the automation inbox for an
-            outside event like a file drop, webhook adapter, Slack poller, or MR watcher.
+            Rule of thumb: use an agent for a manual button click, a schedule for time, and the automation inbox
+            for an always-listening external event like a file drop, webhook adapter, Slack poller, or MR watcher.
           </p>
         </Section>
 

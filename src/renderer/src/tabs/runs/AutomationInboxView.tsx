@@ -33,10 +33,11 @@ function AutomationInfoBox() {
         <Inbox size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
         <span className="font-semibold text-zinc-300">Automation Inbox</span>
         <span className="text-zinc-700">/</span>
-        <span>email-style intake for requests from scripts and integrations</span>
+        <span>always-on intake for requests from scripts and integrations</span>
       </div>
       <div className="mt-1 leading-relaxed">
-        Use <span className="font-mono text-zinc-300">/automation-inbox</span> for one-off requests and{' '}
+        It watches for queued work by default: use Agents for manual runs, Schedules for time-based runs, and this
+        inbox for external events. Use <span className="font-mono text-zinc-300">/automation-inbox</span> for one-off requests and{' '}
         <span className="font-mono text-zinc-300">/new-inbox-source</span> for durable adapters. CLI:{' '}
         <span className="font-mono text-zinc-400">terminal-cli inbox enqueue ...</span>
       </div>
