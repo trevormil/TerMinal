@@ -28,34 +28,17 @@ function reltime(ts?: number): string {
 
 function AutomationInfoBox() {
   return (
-    <div className="mx-3 mt-3 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/50 px-3 py-2 text-[11.5px] text-zinc-500">
-      <div className="flex items-start gap-2">
-        <Inbox size={13} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-zinc-300">Automation Inbox is email for TerMinal.</div>
-          <div className="mt-0.5 leading-relaxed">
-            Outside systems drop structured requests into the inbox. TerMinal processes each request into a run,
-            ticket, activity item, or HITL item, then keeps the request-to-run trail here. Runs are execution history;
-            schedules are time-based triggers.
-          </div>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-2">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">One-off request</div>
-              <div className="text-[11px] leading-snug text-zinc-500">
-                Ask an agent to enqueue a single request with <span className="font-mono text-zinc-300">/automation-inbox</span>.
-              </div>
-            </div>
-            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-2">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Source setup</div>
-              <div className="text-[11px] leading-snug text-zinc-500">
-                Build a durable adapter or service with <span className="font-mono text-zinc-300">/new-inbox-source</span>.
-              </div>
-            </div>
-          </div>
-          <div className="mt-2 rounded-md border border-[var(--gt-border)] bg-black/20 p-2 font-mono text-[10.5px] text-zinc-500">
-            terminal-cli inbox enqueue --source github --type merge_request.opened --title "Review MR" --repo-root "$PWD" --action run-agent --agent code-review
-          </div>
-        </div>
+    <div className="mx-3 mt-3 border-b border-[var(--gt-border)] pb-3 text-[11.5px] text-zinc-500">
+      <div className="flex items-center gap-2">
+        <Inbox size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+        <span className="font-semibold text-zinc-300">Automation Inbox</span>
+        <span className="text-zinc-700">/</span>
+        <span>email-style intake for requests from scripts and integrations</span>
+      </div>
+      <div className="mt-1 leading-relaxed">
+        Use <span className="font-mono text-zinc-300">/automation-inbox</span> for one-off requests and{' '}
+        <span className="font-mono text-zinc-300">/new-inbox-source</span> for durable adapters. CLI:{' '}
+        <span className="font-mono text-zinc-400">terminal-cli inbox enqueue ...</span>
       </div>
     </div>
   )
