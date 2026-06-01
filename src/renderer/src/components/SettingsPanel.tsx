@@ -9,22 +9,54 @@ import {
   RotateCcw,
   TerminalSquare,
   ClipboardCopy,
+  Settings as SettingsIcon,
+  FolderTree,
+  Cpu,
+  GitPullRequest,
+  AppWindow,
+  Inbox,
+  MessageCircle,
+  Sparkles,
+  PlugZap,
+  Rows3,
+  Eye,
+  Activity,
+  PackageOpen,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { Settings, SettingsPatch, EnvDetect, Engine, ForgePref, PresetKind, PresetPrefs } from '../lib/types'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 
 const inp =
-  'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
+  'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 
-function Section({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
+function Section({
+  id,
+  icon: Icon,
+  title,
+  desc,
+  children,
+}: {
+  id: string
+  icon: LucideIcon
+  title: string
+  desc?: string
+  children: ReactNode
+}) {
   return (
-    <div className="border-b border-[var(--gt-border)]/60 px-5 py-4">
-      <div className="mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">{title}</div>
-      {desc && <div className="mb-3 text-[11px] leading-relaxed text-zinc-600">{desc}</div>}
-      {!desc && <div className="mb-3" />}
+    <section id={id} className="scroll-mt-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/55 p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]">
+      <div className="mb-3 flex items-start gap-2.5">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
+          <Icon size={15} strokeWidth={2} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] font-semibold text-zinc-100">{title}</div>
+          {desc && <div className="mt-0.5 max-w-[68ch] text-[11px] leading-relaxed text-zinc-500">{desc}</div>}
+        </div>
+      </div>
       {children}
-    </div>
+    </section>
   )
 }
 
@@ -32,7 +64,7 @@ function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => vo
   return (
     <button
       onClick={onToggle}
-      className="flex w-full items-center justify-between rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left hover:border-[var(--gt-accent)]/40"
+      className="flex w-full items-center justify-between rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-2 text-left transition-colors hover:border-[var(--gt-accent)]/40"
     >
       <span className="min-w-0">
         <span className="text-[12px] text-zinc-200">{label}</span>
@@ -48,6 +80,21 @@ function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => vo
     </button>
   )
 }
+
+const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
+  { id: 'paths', title: 'Paths', icon: FolderTree },
+  { id: 'engines', title: 'Engines', icon: Cpu },
+  { id: 'forge', title: 'Forge', icon: GitPullRequest },
+  { id: 'apps', title: 'Apps', icon: AppWindow },
+  { id: 'inbox', title: 'Inbox', icon: Inbox },
+  { id: 'telegram', title: 'Telegram', icon: MessageCircle },
+  { id: 'openrouter', title: 'OpenRouter', icon: Sparkles },
+  { id: 'integrations', title: 'Setup', icon: PlugZap },
+  { id: 'tabs', title: 'Tabs', icon: Rows3 },
+  { id: 'presets', title: 'Presets', icon: Eye },
+  { id: 'status', title: 'Status', icon: Activity },
+  { id: 'rebuild', title: 'Rebuild', icon: PackageOpen },
+]
 
 function Readiness({ ok, name, hint }: { ok: boolean; name: string; hint: string }) {
   return (
@@ -538,21 +585,50 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   )
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex max-h-[86vh] w-[580px] flex-col overflow-hidden rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]"
+        className="flex h-[min(860px,calc(100vh-32px))] w-[min(1080px,calc(100vw-32px))] flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-5 py-3">
-          <h2 className="flex-1 text-[13px] font-bold text-zinc-100">Settings</h2>
-          <button onClick={onClose} className="rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/80 px-4 py-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
+            <SettingsIcon size={16} strokeWidth={2} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[13px] font-semibold text-zinc-100">Settings</h2>
+            <div className="mt-0.5 truncate text-[10.5px] text-zinc-500">
+              Configure engines, workflow surfaces, notifications, and local infrastructure.
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
             <X size={15} strokeWidth={2} />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1">
+          <aside className="hidden w-52 shrink-0 border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/35 p-3 md:block">
+            <div className="mb-2 px-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-600">Categories</div>
+            <nav className="space-y-0.5">
+              {SETTING_NAV.map(({ id, title, icon: Icon }) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[11.5px] text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
+                >
+                  <Icon size={13} strokeWidth={2} className="text-zinc-600" />
+                  <span>{title}</span>
+                </a>
+              ))}
+            </nav>
+            <div className="mt-4 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2 text-[10.5px] leading-relaxed text-zinc-600">
+              User-owned config lives in <span className="font-mono text-zinc-500">~/.config/TerMinal</span> and survives app updates.
+            </div>
+          </aside>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="mx-auto max-w-[760px] space-y-3">
           {/* Projects & worktrees */}
-          <Section title="Projects & worktrees" desc="Where the entry screen looks for repos, and where agent worktrees are created.">
+          <Section id="paths" icon={FolderTree} title="Projects & worktrees" desc="Where the entry screen looks for repos, and where agent worktrees are created.">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <input
@@ -614,7 +690,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           {/* Engines */}
-          <Section title="Engines" desc="The agent backends. Detected on your PATH; override the binary path if needed.">
+          <Section id="engines" icon={Cpu} title="Engines" desc="The agent backends. Detected on your PATH; override the binary path if needed.">
             {engineRow('codex', 'OpenAI Codex')}
             {engineRow('claude', 'Anthropic Claude')}
             {engineRow('cursor', 'Cursor Agent')}
@@ -637,7 +713,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           {/* Forge */}
-          <Section title="Code forge" desc="Auto picks gh for GitHub remotes and glab otherwise — per repo.">
+          <Section id="forge" icon={GitPullRequest} title="Code forge" desc="Auto picks gh for GitHub remotes and glab otherwise — per repo.">
             <div className="flex gap-2">
               {forgeOpt('auto', 'Auto', 'detect per repo')}
               {forgeOpt('github', 'GitHub', 'force gh / PRs')}
@@ -653,6 +729,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* External apps */}
           <Section
+            id="apps"
+            icon={AppWindow}
             title="External apps"
             desc="Which app the Files tab's 'Open in editor' and the Browser tab's 'Open in browser' hand off to. Runs `open -a <app>` (works for any installed macOS app)."
           >
@@ -682,6 +760,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* Inbox */}
           <Section
+            id="inbox"
+            icon={Inbox}
             title="Inbox"
             desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
           >
@@ -706,7 +786,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           {/* Telegram */}
-          <Section title="Telegram (notifications + AFK control)" desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present.">
+          <Section id="telegram" icon={MessageCircle} title="Telegram" desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present.">
             <div className="space-y-2">
               <Toggle on={s.telegram.notify} onToggle={() => save({ telegram: { notify: !s.telegram.notify } })} label="Mirror notifications to Telegram" />
               <Toggle on={s.telegram.control} onToggle={() => save({ telegram: { control: !s.telegram.control } })} label="Remote control (AFK)" hint="Launch/cancel agents by texting the bot" />
@@ -771,6 +851,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* OpenRouter — one-shot calls for cheap classifiers, health checks, etc. */}
           <Section
+            id="openrouter"
+            icon={Sparkles}
             title="OpenRouter (cheap one-shot calls)"
             desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers and health-check escalations. Get a key at openrouter.ai/keys."
           >
@@ -828,7 +910,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           {/* Setup / integrations */}
-          <Section title="Setup & integrations" desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills.">
+          <Section id="integrations" icon={PlugZap} title="Setup & integrations" desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills.">
             <div className="space-y-2">
               <button onClick={copySetupPrompt} className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40">
                 {copied ? <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" /> : <ClipboardCopy size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
@@ -870,6 +952,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* Tab visibility — hide tabs you never use. */}
           <Section
+            id="tabs"
+            icon={Rows3}
             title="Tabs"
             desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
           >
@@ -877,6 +961,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           <Section
+            id="presets"
+            icon={Eye}
             title="Presets"
             desc="App-provided snippets and agents update with TerMinal. Hide the ones you do not want; custom global/repo items remain user-owned."
           >
@@ -885,6 +971,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* Harness self-status — meta-observability snapshot. */}
           <Section
+            id="status"
+            icon={Activity}
             title="Harness status"
             desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
           >
@@ -895,6 +983,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               detached so it survives the pkill mid-flow + lands a fresh app
               in /Applications + relaunches. */}
           <Section
+            id="rebuild"
+            icon={PackageOpen}
             title="Rebuild + reinstall"
             desc="Run bin/release from inside the app — builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
           >
@@ -903,6 +993,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           <div className="px-5 py-3 text-center text-[10.5px] text-zinc-600">
             TerMinal · settings stored in ~/.config/TerMinal/settings.json
+          </div>
+            </div>
           </div>
         </div>
       </div>
