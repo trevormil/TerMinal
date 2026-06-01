@@ -510,6 +510,67 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       </div>
     )
 
+  const buttonSoft =
+    'inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
+  const valueText = (value: string, fallback: string) => (
+    <span className={`min-w-0 truncate font-mono text-[11.5px] ${value ? 'text-zinc-300' : 'text-zinc-500'}`}>
+      {value ? tilde(value) : fallback}
+    </span>
+  )
+  const EditDetails = ({ children, label = 'Edit manually' }: { children: ReactNode; label?: string }) => (
+    <details className="group">
+      <summary className="cursor-pointer list-none text-[10.5px] text-zinc-600 transition-colors hover:text-zinc-400">
+        <span className="group-open:hidden">{label}</span>
+        <span className="hidden group-open:inline">Hide editor</span>
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  )
+  const PathSetting = ({
+    label,
+    value,
+    fallback,
+    detail,
+    onBrowse,
+    onClear,
+    children,
+  }: {
+    label: string
+    value: string
+    fallback: string
+    detail?: string
+    onBrowse?: () => void
+    onClear?: () => void
+    children?: ReactNode
+  }) => (
+    <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">{label}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            {valueText(value, fallback)}
+            {!value && <span className="rounded border border-[var(--gt-border)] px-1 py-px text-[9.5px] text-zinc-600">default</span>}
+          </div>
+          {detail && <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">{detail}</div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {onBrowse && (
+            <button onClick={onBrowse} className={buttonSoft}>
+              <FolderOpen size={12} strokeWidth={2} />
+              Browse
+            </button>
+          )}
+          {value && onClear && (
+            <button onClick={onClear} className="rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300">
+              Use default
+            </button>
+          )}
+        </div>
+      </div>
+      {children && <div className="mt-2">{children}</div>}
+    </div>
+  )
+
   const MODEL_OPTIONS: Record<Engine, string[]> = {
     claude: ['', 'haiku', 'sonnet', 'opus'],
     codex: ['', 'gpt-5', 'gpt-5-codex', 'o4-mini'],
@@ -535,36 +596,40 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     const detPath = env ? (e === 'codex' ? env.codex.path : e === 'cursor' ? env.cursor.path : env.claude.path) : ''
     const defModel = s.engines[e].defaultModel
     return (
-      <div key={e} className="mb-2">
-        <div className="mb-1 flex items-center gap-2">
-          <Readiness ok={found} name={e} hint={found ? detPath || vendor : `not on PATH — set a path below`} />
+      <div key={e} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1">
+            <Readiness ok={found} name={e} hint={found ? detPath || vendor : 'not on PATH'} />
+            <div className="mt-0.5 text-[10.5px] text-zinc-600">
+              {s.engines[e].path ? <>override: <span className="font-mono text-zinc-500">{tilde(s.engines[e].path)}</span></> : 'using detected binary'}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
+            default model
+            <select
+              value={defModel}
+              onChange={(ev) =>
+                save({ engines: { [e]: { defaultModel: ev.target.value } } })
+              }
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
+            >
+              {MODEL_OPTIONS[e].map((m) => (
+                <option key={m} value={m}>
+                  {m || '(engine default)'}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <input
-          defaultValue={s.engines[e].path}
-          onBlur={(ev) => ev.target.value !== s.engines[e].path && save({ engines: { [e]: { path: ev.target.value.trim() } } })}
-          placeholder={`${e} (bare name on PATH, or absolute path)`}
-          spellCheck={false}
-          className={`${inp} font-mono`}
-        />
-        <div className="mt-1 flex items-center gap-2">
-          <label className="text-[10.5px] text-zinc-500">default model</label>
-          <select
-            value={defModel}
-            onChange={(ev) =>
-              save({ engines: { [e]: { defaultModel: ev.target.value } } })
-            }
-            className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
-          >
-            {MODEL_OPTIONS[e].map((m) => (
-              <option key={m} value={m}>
-                {m || '(engine default)'}
-              </option>
-            ))}
-          </select>
-          <span className="text-[10px] text-zinc-600">
-            applied to every {e} run unless the agent/schedule overrides
-          </span>
-        </div>
+        <EditDetails label="Override binary path">
+          <input
+            defaultValue={s.engines[e].path}
+            onBlur={(ev) => ev.target.value !== s.engines[e].path && save({ engines: { [e]: { path: ev.target.value.trim() } } })}
+            placeholder={`${e} or /absolute/path/to/${e}`}
+            spellCheck={false}
+            className={`${inp} font-mono`}
+          />
+        </EditDetails>
       </div>
     )
   }
@@ -630,55 +695,82 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           {/* Projects & worktrees */}
           <Section id="paths" icon={FolderTree} title="Projects & worktrees" desc="Where the entry screen looks for repos, and where agent worktrees are created.">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  defaultValue={s.projectsDir}
-                  onBlur={(e) => e.target.value !== s.projectsDir && save({ projectsDir: e.target.value.trim() })}
-                  placeholder="~ (home) — leave blank to auto-detect"
-                  spellCheck={false}
-                  className={`${inp} font-mono`}
-                />
-                <button onClick={() => browse('projectsDir')} className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}>
-                  <FolderOpen size={13} strokeWidth={2} />
-                  Browse
-                </button>
-              </div>
-              <input
-                defaultValue={s.worktreesDir}
-                onBlur={(e) => e.target.value !== s.worktreesDir && save({ worktreesDir: e.target.value.trim() })}
-                placeholder={`${tilde(s.projectsDir) || '<projects>'}/.worktrees (default)`}
-                spellCheck={false}
-                className={`${inp} font-mono`}
-              />
-              <button onClick={() => browse('worktreesDir')} className={`${inp} flex w-auto items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}>
-                <FolderOpen size={13} strokeWidth={2} />
-                Browse worktrees folder
-              </button>
-              <input
-                defaultValue={s.templateRepo}
-                onBlur={(e) => e.target.value !== s.templateRepo && save({ templateRepo: e.target.value.trim() })}
-                placeholder="scaffold template repo (default: trevormil/project-template)"
-                spellCheck={false}
-                className={`${inp} font-mono`}
-              />
-              <div className="flex items-center gap-2">
-                <input
-                  defaultValue={s.harnessDir}
-                  onBlur={(e) => e.target.value !== s.harnessDir && save({ harnessDir: e.target.value.trim() })}
-                  placeholder="review artifact harness dir (optional)"
-                  spellCheck={false}
-                  className={`${inp} min-w-0 flex-1 font-mono`}
-                />
-                <button onClick={() => browse('harnessDir')} className={`${inp} flex w-auto shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}>
-                  <FolderOpen size={13} strokeWidth={2} />
-                  Browse
-                </button>
-              </div>
+              <PathSetting
+                label="Projects directory"
+                value={s.projectsDir}
+                fallback="Home folder"
+                detail="Used by the entry screen for new workspaces and scaffold destinations."
+                onBrowse={() => browse('projectsDir')}
+                onClear={() => save({ projectsDir: '' })}
+              >
+                <EditDetails>
+                  <input
+                    defaultValue={s.projectsDir}
+                    onBlur={(e) => e.target.value !== s.projectsDir && save({ projectsDir: e.target.value.trim() })}
+                    placeholder="/path/to/projects"
+                    spellCheck={false}
+                    className={`${inp} font-mono`}
+                  />
+                </EditDetails>
+              </PathSetting>
+              <PathSetting
+                label="Worktrees directory"
+                value={s.worktreesDir}
+                fallback={`${tilde(s.projectsDir) || '<projects>'}/.worktrees`}
+                detail="Agent process worktrees are created here."
+                onBrowse={() => browse('worktreesDir')}
+                onClear={() => save({ worktreesDir: '' })}
+              >
+                <EditDetails>
+                  <input
+                    defaultValue={s.worktreesDir}
+                    onBlur={(e) => e.target.value !== s.worktreesDir && save({ worktreesDir: e.target.value.trim() })}
+                    placeholder="/path/to/worktrees"
+                    spellCheck={false}
+                    className={`${inp} font-mono`}
+                  />
+                </EditDetails>
+              </PathSetting>
+              <PathSetting
+                label="Template repository"
+                value={s.templateRepo}
+                fallback="trevormil/project-template"
+                detail="Used when creating a new project from template."
+                onClear={() => save({ templateRepo: '' })}
+              >
+                <EditDetails>
+                  <input
+                    defaultValue={s.templateRepo}
+                    onBlur={(e) => e.target.value !== s.templateRepo && save({ templateRepo: e.target.value.trim() })}
+                    placeholder="owner/repo or https://github.com/owner/repo"
+                    spellCheck={false}
+                    className={`${inp} font-mono`}
+                  />
+                </EditDetails>
+              </PathSetting>
+              <PathSetting
+                label="Harness directory"
+                value={s.harnessDir}
+                fallback="Not set"
+                detail="Optional review artifact harness path."
+                onBrowse={() => browse('harnessDir')}
+                onClear={() => save({ harnessDir: '' })}
+              >
+                <EditDetails>
+                  <input
+                    defaultValue={s.harnessDir}
+                    onBlur={(e) => e.target.value !== s.harnessDir && save({ harnessDir: e.target.value.trim() })}
+                    placeholder="/path/to/autopilot-harness"
+                    spellCheck={false}
+                    className={`${inp} font-mono`}
+                  />
+                </EditDetails>
+              </PathSetting>
               <div className="mt-2 flex items-center gap-2">
                 <button
                   onClick={() => window.gt.openConfigDir()}
                   title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                  className={buttonSoft}
                 >
                   Open TerMinal config dir
                 </button>
@@ -691,9 +783,11 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           {/* Engines */}
           <Section id="engines" icon={Cpu} title="Engines" desc="The agent backends. Detected on your PATH; override the binary path if needed.">
-            {engineRow('codex', 'OpenAI Codex')}
-            {engineRow('claude', 'Anthropic Claude')}
-            {engineRow('cursor', 'Cursor Agent')}
+            <div className="space-y-2">
+              {engineRow('codex', 'OpenAI Codex')}
+              {engineRow('claude', 'Anthropic Claude')}
+              {engineRow('cursor', 'Cursor Agent')}
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-[11px] text-zinc-500">Default:</span>
               {(['codex', 'claude', 'cursor'] as Engine[]).map((e) => (
