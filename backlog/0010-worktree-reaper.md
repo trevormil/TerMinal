@@ -1,14 +1,14 @@
 ---
 id: 10
 title: "Worktree reaper: agent script + HITL surface (no dashboard panel)"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: research
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-06-01
 prs: []
 refs: []
 depends_on: []

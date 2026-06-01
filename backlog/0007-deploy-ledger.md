@@ -1,14 +1,14 @@
 ---
 id: 7
 title: "Deploy ledger: terminal-cli helper + activity events + small dashboard view"
-status: open
+status: closed
 priority: low
 horizon: future
 hitl: false
 type: feature
 source: research
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-06-01
 prs: []
 refs: []
 depends_on: []

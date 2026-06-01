@@ -1,14 +1,14 @@
 ---
 id: 9
 title: "Stuck-session detection: crash-loop watcher (agent) + wedged-session detector (app)"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: research
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-06-01
 prs: []
 refs: []
 depends_on: [0001]
