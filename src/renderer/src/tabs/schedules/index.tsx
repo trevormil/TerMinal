@@ -414,6 +414,43 @@ function ListenerPanel({
   onDesign: () => void
 }) {
   const counts = status?.counts
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [runsOnly, setRunsOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'source' | 'category'>('newest')
+  const recent = status?.recent || []
+  const sourceOptions = useMemo(
+    () => [...new Set(recent.map((r) => r.source || 'unknown'))].sort((a, b) => a.localeCompare(b)),
+    [recent],
+  )
+  const categoryOptions = useMemo(
+    () => [...new Set(recent.map((r) => r.action || r.type || 'event'))].sort((a, b) => a.localeCompare(b)),
+    [recent],
+  )
+  const statusOptions = useMemo(
+    () => [...new Set(recent.map((r) => r.dir))].sort((a, b) => a.localeCompare(b)),
+    [recent],
+  )
+  const shownRecent = useMemo(() => {
+    return recent
+      .filter((r) => !sourceFilter || (r.source || 'unknown') === sourceFilter)
+      .filter((r) => !categoryFilter || (r.action || r.type || 'event') === categoryFilter)
+      .filter((r) => !statusFilter || r.dir === statusFilter)
+      .filter((r) => !runsOnly || Boolean(r.runId))
+      .sort((a, b) => {
+        if (sortBy === 'oldest') return (a.processedAt || 0) - (b.processedAt || 0)
+        if (sortBy === 'source') {
+          const bySource = (a.source || 'unknown').localeCompare(b.source || 'unknown')
+          return bySource || (b.processedAt || 0) - (a.processedAt || 0)
+        }
+        if (sortBy === 'category') {
+          const byCategory = (a.action || a.type || 'event').localeCompare(b.action || b.type || 'event')
+          return byCategory || (b.processedAt || 0) - (a.processedAt || 0)
+        }
+        return (b.processedAt || 0) - (a.processedAt || 0)
+      })
+  }, [categoryFilter, recent, runsOnly, sortBy, sourceFilter, statusFilter])
 
   return (
     <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
@@ -482,9 +519,71 @@ function ListenerPanel({
       </div>
 
       <div className="mt-3 rounded-lg border border-[var(--gt-border)] bg-black/20">
-        <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-2.5 py-1.5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-2.5 py-1.5">
           <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests to actions</span>
-          <span className="text-[10px] text-zinc-700">recent inbox activity</span>
+          {status && recent.length > 0 && (
+            <>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                <option value="">All sources</option>
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                <option value="">All categories</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                <option value="">All statuses</option>
+                {statusOptions.map((dir) => (
+                  <option key={dir} value={dir}>
+                    {dir}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 py-0.5 text-[10.5px] text-zinc-400 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="source">Source</option>
+                <option value="category">Category</option>
+              </select>
+              <button
+                onClick={() => setRunsOnly((v) => !v)}
+                className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
+                  runsOnly
+                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300'
+                }`}
+              >
+                Runs only
+              </button>
+            </>
+          )}
+          <span className="ml-auto text-[10px] text-zinc-700">
+            {status ? `${shownRecent.length}/${recent.length} shown` : 'recent inbox activity'}
+          </span>
         </div>
         {!status ? (
           <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox...</div>
@@ -492,9 +591,11 @@ function ListenerPanel({
           <div className="p-3 text-[11px] text-zinc-600">
             No listener requests yet. Use “New listener” to open the listener-inbox skill in an agent instance.
           </div>
+        ) : shownRecent.length === 0 ? (
+          <div className="p-3 text-[11px] text-zinc-600">No listener requests match the current filters.</div>
         ) : (
           <div className="divide-y divide-[var(--gt-border)]/70">
-            {status.recent.map((r) => (
+            {shownRecent.map((r) => (
               <div key={`${r.dir}:${r.file}`} className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 px-2.5 py-2">
                 <div className="space-y-1">
                   <Badge tone={listenerTone(r.dir)}>{r.dir}</Badge>
