@@ -1,6 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, Globe, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, Globe, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import type { Tab, TabContext } from '../../lib/types'
+import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
+import claudeLogo from '../../assets/ai-tools/claude.png'
+import geminiLogo from '../../assets/ai-tools/gemini.png'
+import perplexityLogo from '../../assets/ai-tools/perplexity.png'
+import copilotLogo from '../../assets/ai-tools/copilot.png'
+import grokLogo from '../../assets/ai-tools/grok.png'
+import mistralLogo from '../../assets/ai-tools/mistral.png'
+import poeLogo from '../../assets/ai-tools/poe.png'
+import huggingfaceLogo from '../../assets/ai-tools/huggingface.png'
+import notebooklmLogo from '../../assets/ai-tools/notebooklm.png'
+import deepseekLogo from '../../assets/ai-tools/deepseek.png'
+import metaaiLogo from '../../assets/ai-tools/metaai.png'
+import youLogo from '../../assets/ai-tools/you.png'
+import t3chatLogo from '../../assets/ai-tools/t3chat.png'
 
 // The Electron <webview> surface we drive. Created imperatively (below) so we
 // don't fight React/TS over the custom element.
@@ -17,6 +31,23 @@ type Webview = HTMLElement & {
 }
 
 const HOME = 'https://www.google.com'
+const SIDEBAR_KEY = 'gt.browser.aiToolsExpanded'
+const AI_TOOLS = [
+  { id: 'chatgpt', title: 'ChatGPT', url: 'https://chatgpt.com/', logo: chatgptLogo },
+  { id: 'claude', title: 'Claude', url: 'https://claude.ai/new', logo: claudeLogo },
+  { id: 'gemini', title: 'Gemini', url: 'https://gemini.google.com/app', logo: geminiLogo },
+  { id: 'perplexity', title: 'Perplexity', url: 'https://www.perplexity.ai/', logo: perplexityLogo },
+  { id: 'copilot', title: 'Copilot', url: 'https://copilot.microsoft.com/', logo: copilotLogo },
+  { id: 'grok', title: 'Grok', url: 'https://grok.com/', logo: grokLogo },
+  { id: 'mistral', title: 'Le Chat', url: 'https://chat.mistral.ai/chat', logo: mistralLogo },
+  { id: 'poe', title: 'Poe', url: 'https://poe.com/', logo: poeLogo },
+  { id: 'huggingface', title: 'Hugging Face', url: 'https://huggingface.co/chat/', logo: huggingfaceLogo },
+  { id: 'notebooklm', title: 'NotebookLM', url: 'https://notebooklm.google.com/', logo: notebooklmLogo },
+  { id: 'deepseek', title: 'DeepSeek', url: 'https://chat.deepseek.com/', logo: deepseekLogo },
+  { id: 'metaai', title: 'Meta AI', url: 'https://www.meta.ai/', logo: metaaiLogo },
+  { id: 'you', title: 'You.com', url: 'https://you.com/', logo: youLogo },
+  { id: 't3chat', title: 'T3 Chat', url: 'https://t3.chat/', logo: t3chatLogo },
+] as const
 
 function normalizeUrl(input: string): string {
   const s = input.trim()
@@ -35,10 +66,25 @@ function BrowserTab(_props: { ctx: TabContext }) {
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
   const [browserName, setBrowserName] = useState('Brave Browser')
+  const [toolsExpanded, setToolsExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
 
   useEffect(() => {
     window.gt.settings.get().then((s) => setBrowserName(s.apps?.browser || 'Brave Browser'))
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, toolsExpanded ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [toolsExpanded])
 
   useEffect(() => {
     const host = hostRef.current
@@ -94,6 +140,17 @@ function BrowserTab(_props: { ctx: TabContext }) {
     setAddr(u)
     wvRef.current?.loadURL(u).catch(() => {})
   }
+  const loadTool = (url: string) => {
+    setAddr(url)
+    wvRef.current?.loadURL(url).catch(() => {})
+  }
+  const currentHost = (() => {
+    try {
+      return new URL(addr).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
+    }
+  })()
 
   const iconBtn =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent'
@@ -140,7 +197,65 @@ function BrowserTab(_props: { ctx: TabContext }) {
           Open in {browserName.replace(/ Browser$/, '')}
         </button>
       </div>
-      <div ref={hostRef} className="min-h-0 flex-1" />
+      <div className="flex min-h-0 flex-1">
+        <aside
+          className={`flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 transition-[width] duration-150 ${
+            toolsExpanded ? 'w-52' : 'w-12'
+          }`}
+        >
+          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-2">
+            <button
+              onClick={() => setToolsExpanded((v) => !v)}
+              title={toolsExpanded ? 'Collapse AI tools' : 'Expand AI tools'}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            >
+              {toolsExpanded ? (
+                <PanelLeftClose size={14} strokeWidth={2} />
+              ) : (
+                <PanelLeftOpen size={14} strokeWidth={2} />
+              )}
+            </button>
+            {toolsExpanded && (
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-zinc-200">AI tools</div>
+                <div className="text-[9.5px] text-zinc-600">{AI_TOOLS.length} saved</div>
+              </div>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            {AI_TOOLS.map((tool) => {
+              const toolHost = new URL(tool.url).hostname.replace(/^www\./, '')
+              const active = currentHost === toolHost || currentHost.endsWith(`.${toolHost}`)
+              return (
+                <button
+                  key={tool.id}
+                  onClick={() => loadTool(tool.url)}
+                  title={tool.title}
+                  className={`mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
+                    active
+                      ? 'bg-[var(--gt-accent)]/18 text-zinc-100'
+                      : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                  }`}
+                >
+                  <img
+                    src={tool.logo}
+                    alt=""
+                    draggable={false}
+                    className="h-5 w-5 shrink-0 rounded-[5px] object-contain"
+                  />
+                  {toolsExpanded && (
+                    <>
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{tool.title}</span>
+                      {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />}
+                    </>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </aside>
+        <div ref={hostRef} className="min-h-0 min-w-0 flex-1" />
+      </div>
     </div>
   )
 }
