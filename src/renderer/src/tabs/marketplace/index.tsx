@@ -388,7 +388,11 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
         ) : !manifest?.items.length ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-[12px] text-zinc-600">
             <Wrench size={28} strokeWidth={1.5} className="text-zinc-700" />
-            <p>No marketplace manifest found in the app bundle or source checkout.</p>
+            <p>No marketplace items are shipped yet.</p>
+            <p className="max-w-sm text-[11px] leading-snug text-zinc-700">
+              The schema and in-app browser are ready; the catalog will stay empty until third-party integrations are
+              worth publishing.
+            </p>
           </div>
         ) : items.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">No matches.</div>

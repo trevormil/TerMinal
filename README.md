@@ -163,15 +163,16 @@ them in the **Plugins** drawer (top-right on the Terminal tab). Defaults:
 Off by default but available: **Model**, **Tool Use**, **Token Burn Rate**,
 **Open PRs**.
 
-Cockpit extensions are auto-discovered locally and now seedable through the
-file-backed marketplace:
+Cockpit extensions are auto-discovered locally. Marketplace plumbing exists for
+future third-party integrations, but no placeholder catalog items ship by
+default:
 
 - **Code plugins** — a folder under `src/renderer/src/plugins/<id>/index.tsx`.
 - **Command widgets** — declarative "run this command every N seconds", in JSON,
   including **per-repo** widgets loaded from the attached repo.
-- **Marketplace presets** — plain files under `.marketplace/` on `main` for
-  plugins, widgets, skills, agents, and snippets. Installing one is a copy or
-  merge into the destination path listed by `.marketplace/manifest.json`.
+- **Marketplace catalog** — currently empty by default. Future entries will be
+  plain files under `.marketplace/` on `main`, installed by copy or merge into
+  the destination path listed by `.marketplace/manifest.json`.
 
 ## <a name="agents"></a>Agents
 
@@ -277,17 +278,16 @@ contract): [**`docs/setup.md`**](docs/setup.md).
 
 The public landing page is static HTML in `landing/` and deploys to GitHub Pages
 from `main` via `.github/workflows/pages.yml`. It has no app build step: update
-`landing/index.html`, push `main`, and Pages publishes the new install and
-marketplace copy.
+`landing/index.html`, push `main`, and Pages publishes the new install copy.
 
-The marketplace is also git-backed:
+The marketplace plumbing is git-backed but intentionally empty by default:
 
 - Catalog: [`.marketplace/manifest.json`](.marketplace/manifest.json)
 - Schema: [`.marketplace/schema.json`](.marketplace/schema.json)
 - Raw catalog URL:
   `https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/manifest.json`
 
-Marketplace items are ordinary files grouped by type:
+Future marketplace items are ordinary files grouped by type:
 
 ```
 .marketplace/

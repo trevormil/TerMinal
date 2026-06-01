@@ -418,7 +418,6 @@
         <span class="brand">TerMinal</span>
         <nav>
           <a href="#install">Install</a>
-          <a href="#marketplace">Marketplace</a>
           <a href="https://github.com/trevormil/TerMinal">GitHub</a>
         </nav>
       </header>
@@ -428,8 +427,8 @@
         <h1>TerMinal</h1>
         <p class="sub">
           A desktop cockpit for coding agents: real terminal sessions, a fleet view,
-          inbox-driven human gates, scheduled runs, snippets, plugins, and a git-backed
-          marketplace of plain files.
+          inbox-driven human gates, scheduled runs, snippets, plugins, and local-first
+          workflow automation.
         </p>
         <div class="cmd" id="install">
           <span class="dollar">$</span>
@@ -438,14 +437,6 @@
         </div>
         <div class="actions">
           <a class="btn primary" href="https://github.com/trevormil/TerMinal">GitHub repo</a>
-          <a class="btn" href="https://github.com/trevormil/TerMinal/tree/main/.marketplace"
-            >Browse marketplace</a
-          >
-          <a
-            class="btn"
-            href="https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/manifest.json"
-            >Raw manifest</a
-          >
         </div>
       </section>
 
@@ -511,8 +502,8 @@
         </div>
         <div class="feat">
           <div class="ic">03</div>
-          <h3>Git-backed marketplace</h3>
-          <p>Plugins, widgets, skills, agents, and snippets are plain files shipped from <code>.marketplace/</code> on main.</p>
+          <h3>Extensible by files</h3>
+          <p>Plugins, widgets, skills, agents, and snippets stay as plain files that can be versioned with your repo.</p>
         </div>
       </div>
 
@@ -521,9 +512,9 @@
           <div>
             <h2 style="margin-top: 0">Marketplace</h2>
             <p>
-              The catalog is just files in git. TerMinal can read the manifest, show
-              installable presets, and copy entries into app, global, or per-repo locations
-              without a hosted backend.
+              The marketplace catalog is intentionally empty for now. TerMinal keeps the
+              schema and in-app browser ready, but no placeholder items ship until there are
+              real third-party integrations worth installing.
             </p>
           </div>
           <div class="market-actions">
@@ -539,44 +530,12 @@
         </div>
         <div class="market-list">
           <div class="market-row">
-            <span class="type">plugin</span>
+            <span class="type">empty</span>
             <div>
-              <strong>Context Window</strong>
-              <p>React cockpit widget for live context usage.</p>
+              <strong>No public catalog items yet</strong>
+              <p>Built-in app behavior ships in the app. Marketplace listings will return when external integrations are real.</p>
             </div>
-            <span class="pill">app</span>
-          </div>
-          <div class="market-row">
-            <span class="type">widget</span>
-            <div>
-              <strong>Repo Pulse</strong>
-              <p>Declarative command widgets for tickets, HITL, sessions, and git state.</p>
-            </div>
-            <span class="pill">repo</span>
-          </div>
-          <div class="market-row">
-            <span class="type">skill</span>
-            <div>
-              <strong>Quick Review</strong>
-              <p>Compact review workflow for tests, diffs, and blocker-first reporting.</p>
-            </div>
-            <span class="pill">repo</span>
-          </div>
-          <div class="market-row">
-            <span class="type">agent</span>
-            <div>
-              <strong>Repo Health</strong>
-              <p>Maintenance pass for stale tickets, failing tests, and docs drift.</p>
-            </div>
-            <span class="pill">repo</span>
-          </div>
-          <div class="market-row">
-            <span class="type">snippet</span>
-            <div>
-              <strong>Review Loop Snippets</strong>
-              <p>One-click prompts for continue, tests, review, unblock, and ship loops.</p>
-            </div>
-            <span class="pill">repo</span>
+            <span class="pill">future</span>
           </div>
         </div>
       </section>
@@ -602,7 +561,6 @@
       <footer>
         <span>◆ TerMinal</span>
         <a href="https://github.com/trevormil/TerMinal">source</a>
-        <a href="https://github.com/trevormil/TerMinal/tree/main/.marketplace">marketplace</a>
         <span>·</span>
         <span>macOS · MIT · local-first</span>
       </footer>
