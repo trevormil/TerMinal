@@ -59,7 +59,7 @@ const terminalLight: ThemeTokens = {
   '--gt-yellow': '#b7791f',
   '--gt-green': '#16803d',
   '--gt-blue': '#2563eb',
-  '--gt-terminal-bg': '#fbfcff',
+  '--gt-terminal-bg': '#f6f7fb',
   '--gt-terminal-fg': '#1f2937',
   '--gt-code-bg': '#f7f8fc',
   '--gt-scrollbar': '#c6ccd8',

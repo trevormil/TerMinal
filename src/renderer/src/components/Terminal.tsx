@@ -30,6 +30,31 @@ const withAlpha = (color: string, alpha: string, fallback: string) =>
 
 function xtermThemeFromCss(): ITheme {
   const accent = cssVar('--gt-accent', '#7c6ef6')
+  const lightMode = document.documentElement.dataset.gtMode === 'light'
+  if (lightMode) {
+    return {
+      background: cssVar('--gt-terminal-bg', '#f6f7fb'),
+      foreground: '#1f2937',
+      cursor: accent,
+      selectionBackground: withAlpha(accent, '33', 'rgba(101, 88, 232, 0.2)'),
+      black: '#111827',
+      red: '#b91c1c',
+      green: '#166534',
+      yellow: '#92400e',
+      blue: '#1d4ed8',
+      magenta: '#6d28d9',
+      cyan: '#0f766e',
+      white: '#475569',
+      brightBlack: '#64748b',
+      brightRed: '#dc2626',
+      brightGreen: '#15803d',
+      brightYellow: '#a16207',
+      brightBlue: '#2563eb',
+      brightMagenta: '#7c3aed',
+      brightCyan: '#0d9488',
+      brightWhite: '#0f172a',
+    }
+  }
   return {
     background: cssVar('--gt-terminal-bg', '#0a0a0f'),
     foreground: cssVar('--gt-terminal-fg', '#d4d4dd'),
@@ -121,6 +146,7 @@ export function TerminalPane({
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
+      minimumContrastRatio: 4.5,
       theme: xtermThemeFromCss(),
     })
     termRef.current = term
@@ -200,6 +226,7 @@ export function TerminalPane({
     const onInput = term.onData(writeInput)
     const onTheme = () => {
       term.options.theme = xtermThemeFromCss()
+      term.options.minimumContrastRatio = 4.5
     }
     window.addEventListener('gt.theme.changed', onTheme)
 
