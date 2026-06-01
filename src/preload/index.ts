@@ -195,9 +195,6 @@ const gt = {
     list: () => ipcRenderer.invoke('docs:list'),
     get: (relPath: string) => ipcRenderer.invoke('docs:get', relPath),
   },
-  marketplace: {
-    list: () => ipcRenderer.invoke('marketplace:list'),
-  },
   projectSessions: () => ipcRenderer.invoke('sessions:project-list'),
   getProjectSession: (slug: string) => ipcRenderer.invoke('sessions:project-get', slug),
   listSkills: () => ipcRenderer.invoke('skills:list'),

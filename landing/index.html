@@ -280,60 +280,6 @@
         font-size: 13px;
         color: var(--mute);
       }
-      .market {
-        margin: 42px 0 48px;
-        border: 1px solid var(--border);
-        background: rgba(18, 18, 26, 0.78);
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      .market-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 18px;
-        border-bottom: 1px solid var(--border);
-      }
-      .market-head p {
-        color: var(--mute);
-        font-size: 13px;
-        max-width: 58ch;
-      }
-      .market-actions {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-      }
-      .market-list {
-        display: grid;
-      }
-      .market-row {
-        display: grid;
-        grid-template-columns: 120px 1fr auto;
-        gap: 14px;
-        align-items: center;
-        padding: 13px 18px;
-        border-bottom: 1px solid var(--border);
-      }
-      .market-row:last-child {
-        border-bottom: 0;
-      }
-      .type {
-        color: var(--accent2);
-        font-size: 11px;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-      .market-row strong {
-        display: block;
-        font-size: 14px;
-      }
-      .market-row p {
-        color: var(--mute);
-        font-size: 12.5px;
-      }
       .pill {
         border: 1px solid rgba(124, 92, 255, 0.45);
         border-radius: 999px;
@@ -397,16 +343,6 @@
         .side {
           border-left: 0;
           border-top: 1px solid var(--border);
-        }
-        .market-head,
-        .market-row {
-          grid-template-columns: 1fr;
-        }
-        .market-head {
-          display: grid;
-        }
-        .market-actions {
-          justify-content: flex-start;
         }
       }
     </style>
@@ -506,39 +442,6 @@
           <p>Plugins, widgets, skills, agents, and snippets stay as plain files that can be versioned with your repo.</p>
         </div>
       </div>
-
-      <section class="market" id="marketplace">
-        <div class="market-head">
-          <div>
-            <h2 style="margin-top: 0">Marketplace</h2>
-            <p>
-              The marketplace catalog is intentionally empty for now. TerMinal keeps the
-              schema and in-app browser ready, but no placeholder items ship until there are
-              real third-party integrations worth installing.
-            </p>
-          </div>
-          <div class="market-actions">
-            <a class="btn" href="https://github.com/trevormil/TerMinal/tree/main/.marketplace"
-              >Open folder</a
-            >
-            <a
-              class="btn"
-              href="https://raw.githubusercontent.com/trevormil/TerMinal/main/.marketplace/schema.json"
-              >Schema</a
-            >
-          </div>
-        </div>
-        <div class="market-list">
-          <div class="market-row">
-            <span class="type">empty</span>
-            <div>
-              <strong>No public catalog items yet</strong>
-              <p>Built-in app behavior ships in the app. Marketplace listings will return when external integrations are real.</p>
-            </div>
-            <span class="pill">future</span>
-          </div>
-        </div>
-      </section>
 
       <h2 id="plugins">A plugin file</h2>
       <div class="snip"><span class="c">// src/renderer/src/plugins/context/index.tsx</span>

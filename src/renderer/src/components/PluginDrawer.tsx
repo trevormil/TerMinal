@@ -1,6 +1,6 @@
 import type { Plugin } from '../lib/types'
 
-// The "plugins" panel. No marketplace, no remote registry — entries are code
+// The "plugins" panel. No remote registry — entries are code
 // folders in the repo plus command widgets (global / per-repo). Toggling just
 // mounts/unmounts.
 export function PluginDrawer({

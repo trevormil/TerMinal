@@ -19,7 +19,7 @@ export type SkillInfo = {
   platforms: SkillPlatform[]
 }
 
-// Plugin skills live at .../cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md.
+// Plugin skills live at .../cache/<source>/<plugin>/<version>/skills/<name>/SKILL.md.
 // The namespace is the <plugin> segment (the dir two levels above the skills/ dir).
 export function pluginNamespaceFromSkillPath(skillMdPath: string): string {
   const skillDir = dirname(skillMdPath) // .../skills/<name>

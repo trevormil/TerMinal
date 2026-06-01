@@ -2,7 +2,7 @@ import type { Plugin } from '../lib/types'
 
 // Auto-discover every plugin folder: src/renderer/src/plugins/<id>/index.tsx
 // that default-exports a Plugin. Drop a folder in, it shows up here. No registry
-// to edit, no marketplace to publish to — plugins are just code.
+// to edit, no registry to publish to — plugins are just code.
 const modules = import.meta.glob('./*/index.tsx', { eager: true }) as Record<
   string,
   { default?: Plugin }
