@@ -58,7 +58,7 @@ export type ActivityEvent = {
   sessionId?: string
   ref?: { ticket?: number; pr?: number }
   runId?: string
-  runSource?: 'cron' | 'agent'
+  runSource?: 'cron' | 'agent' | 'bg'
   suppressTelegram?: boolean
 }
 
@@ -306,7 +306,7 @@ export type HitlItem = {
   createdAt: number
   resolvedAt?: number
   runId?: string
-  runSource?: 'cron' | 'agent'
+  runSource?: 'cron' | 'agent' | 'bg'
   ticketPath?: string
   sessionId?: string
   terminalKey?: string
@@ -333,7 +333,7 @@ export type BgTask = {
 
 export type UnifiedRun = {
   id: string
-  source: 'cron' | 'agent'
+  source: 'cron' | 'agent' | 'bg'
   agentId: string
   agentTitle: string
   engine: string
@@ -697,7 +697,7 @@ export type GtApi = {
   }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
-    runLog: (source: 'cron' | 'agent', runId: string) => Promise<string>
+    runLog: (source: 'cron' | 'agent' | 'bg', runId: string) => Promise<string>
     list: () => Promise<Agent[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>
     reset: (id: string) => Promise<{ ok: true } | { error: string }>

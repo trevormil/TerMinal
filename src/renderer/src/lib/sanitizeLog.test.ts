@@ -16,6 +16,10 @@ describe('sanitizeLog', () => {
     expect(sanitizeLog(input)).toBe('**Tickets filed:** none\n\twith\ttabs')
   })
 
+  it('removes caret-notation control markers from TTY wrappers', () => {
+    expect(sanitizeLog('before\n^D\b\bafter')).toBe('before\nafter')
+  })
+
   it('strips DEL, BEL, NUL', () => {
     expect(sanitizeLog('a\x00b\x07c\x7fd')).toBe('abcd')
   })

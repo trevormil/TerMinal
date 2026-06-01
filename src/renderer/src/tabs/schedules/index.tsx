@@ -468,14 +468,13 @@ function ListenerPanel({
               </span>
             )}
           </div>
-          <p className="mt-0.5 max-w-3xl text-[11.5px] leading-snug text-zinc-500">
-            Local integrations can request work through the listener-inbox skill. TerMinal validates, dedupes, moves
-            each request through processing/done/failed, and can trigger tickets, HITL, agent runs, background tasks,
-            or Activity events.
-          </p>
-          {status && (
-            <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{status.inboxDir}</div>
-          )}
+          <details className="mt-1 text-[10.5px] text-zinc-600">
+            <summary className="cursor-pointer select-none hover:text-zinc-400">Details</summary>
+            <div className="mt-1 space-y-1">
+              <div>Skill-created listeners enqueue requests, then TerMinal validates, dedupes, and runs the action.</div>
+              {status && <div className="truncate font-mono">{status.inboxDir}</div>}
+            </div>
+          </details>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <button
@@ -521,8 +520,16 @@ function ListenerPanel({
       <div className="mt-3 rounded-lg border border-[var(--gt-border)] bg-black/20">
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-2.5 py-1.5">
           <span className="text-[10px] uppercase tracking-wider text-zinc-600">requests to actions</span>
-          {status && recent.length > 0 && (
-            <>
+          <span className="ml-auto text-[10px] text-zinc-700">
+            {status ? `${shownRecent.length}/${recent.length} shown` : 'recent inbox activity'}
+          </span>
+        </div>
+        {status && recent.length > 0 && (
+          <details className="border-b border-[var(--gt-border)]/70 px-2.5 py-1.5">
+            <summary className="cursor-pointer select-none text-[10.5px] text-zinc-500 hover:text-zinc-300">
+              Filter / sort
+            </summary>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
@@ -579,12 +586,9 @@ function ListenerPanel({
               >
                 Runs only
               </button>
-            </>
-          )}
-          <span className="ml-auto text-[10px] text-zinc-700">
-            {status ? `${shownRecent.length}/${recent.length} shown` : 'recent inbox activity'}
-          </span>
-        </div>
+            </div>
+          </details>
+        )}
         {!status ? (
           <div className="p-3 text-[11px] text-zinc-600">Loading listener inbox...</div>
         ) : status.recent.length === 0 ? (

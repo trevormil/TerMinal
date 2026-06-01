@@ -68,8 +68,6 @@ function labelFor(prompt: string): string {
   return cleaned.length > 60 ? cleaned.slice(0, 57) + '…' : cleaned
 }
 
-const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
-
 export function listBgTasks(): BgTask[] {
   return readTasks()
 }
@@ -147,35 +145,73 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     input.prompt.trim() +
     `\n\n---\n` +
     `When you're done, if you opened a PR/MR include its URL on a line by itself in the format:\nMR: <url>\n` +
+    `If you completed the task without opening a PR/MR, say so on a line starting with:\nDONE: <one-line summary>\n` +
     `If you couldn't complete the task, say so on a line starting with:\nFAILED: <one-line reason>`
 
-  const modelFlag = input.model ? ` --model ${shq(input.model)}` : ''
-  const cmd =
+  const command =
     engine === 'claude'
-      ? `${shq(enginePath('claude'))} -p ${shq(enrichedPrompt)} --dangerously-skip-permissions${modelFlag}`
+      ? {
+          bin: enginePath('claude'),
+          args: [
+            '-p',
+            enrichedPrompt,
+            '--add-dir',
+            worktree,
+            '--permission-mode',
+            'acceptEdits',
+            ...(input.model ? ['--model', input.model] : []),
+          ],
+        }
       : engine === 'cursor'
-        ? `${shq(enginePath('cursor'))} -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(enrichedPrompt)}`
-        : `${shq(enginePath('codex'))} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(enrichedPrompt)}`
+        ? {
+            bin: enginePath('cursor'),
+            args: [
+              '-p',
+              '--force',
+              '--trust',
+              '--output-format',
+              'text',
+              '--workspace',
+              worktree,
+              ...(input.model ? ['--model', input.model] : []),
+              enrichedPrompt,
+            ],
+          }
+        : {
+            bin: enginePath('codex'),
+            args: [
+              'exec',
+              '-s',
+              'danger-full-access',
+              '-C',
+              worktree,
+              ...(input.model ? ['--model', input.model] : []),
+              enrichedPrompt,
+            ],
+          }
 
-  // Run through `script` like cron/in-process agents so CLIs see a TTY and
-  // stream output progressively instead of buffering until process exit.
+  // Spawn the engine directly. Avoid login shells and `script(1)` here: both
+  // can make macOS attribute broad home-folder probes to TerMinal and can leak
+  // control markers like ^D into logs. Engine cwd + explicit workspace flags
+  // keep the task scoped to the generated worktree.
   writeFileSync(logFile, `▸ Background task · ${engine}${input.model ? `/${input.model}` : ''}\n▸ branch ${branch}\n▸ worktree ${worktree}\n\n`)
   const out = openSync(logFile, 'a')
   const startedAt = Date.now()
-  const child = cpSpawn('script', ['-q', '/dev/null', process.env.SHELL || '/bin/zsh', '-l', '-c', cmd], {
+  const childEnv = {
+    ...process.env,
+    TERMINAL_REPO: input.repoRoot,
+    TERMINAL_AGENT_ID: 'bg-task',
+    TERMINAL_RUN_ID: id,
+    TERMINAL_BRANCH: branch,
+    TERMINAL_WORKTREE: worktree,
+    TERMINAL_ENGINE: engine,
+    ...(input.model ? { TERMINAL_MODEL: input.model } : {}),
+  }
+  const child = cpSpawn(command.bin, command.args, {
     cwd: worktree,
     detached: true,
-    stdio: ['ignore', out, out],
-    env: {
-      ...process.env,
-      TERMINAL_REPO: input.repoRoot,
-      TERMINAL_AGENT_ID: 'bg-task',
-      TERMINAL_RUN_ID: id,
-      TERMINAL_BRANCH: branch,
-      TERMINAL_WORKTREE: worktree,
-      TERMINAL_ENGINE: engine,
-      ...(input.model ? { TERMINAL_MODEL: input.model } : {}),
-    },
+    stdio: ['ignore', out, out] as const,
+    env: childEnv,
   })
   child.unref()
 
@@ -204,7 +240,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
       repo,
       repoRoot: input.repoRoot,
       runId: id,
-      runSource: 'agent',
+      runSource: 'bg',
     },
     { notify: false },
   )
@@ -235,7 +271,7 @@ export function cancelBgTask(id: string): { ok: boolean; error?: string } {
       repo: t.repo,
       repoRoot: t.repoRoot,
       runId: t.id,
-      runSource: 'agent',
+      runSource: 'bg',
     },
     { notify: false },
   )
@@ -282,6 +318,11 @@ function extractFailure(log: string): string | undefined {
   return m?.[1].trim()
 }
 
+function extractDone(log: string): string | undefined {
+  const m = log.match(/^DONE:\s*(.+)$/m)
+  return m?.[1].trim()
+}
+
 // Send a one-off Telegram message via the existing settings/auth boundary.
 function telegramPing(text: string): void {
   try {
@@ -311,6 +352,7 @@ async function sweep(): Promise<void> {
     const tail = tailLog(t.logFile, 200)
     const mrUrl = extractMrUrl(tail)
     const failure = extractFailure(tail)
+    const done = extractDone(tail)
     t.endedAt = Date.now()
     if (mrUrl) {
       t.status = 'done'
@@ -322,9 +364,20 @@ async function sweep(): Promise<void> {
         repo: t.repo,
         repoRoot: t.repoRoot,
         runId: t.id,
-        runSource: 'agent',
+        runSource: 'bg',
       })
       telegramPing(`✅ ${t.repo}: ${t.label} → ${mrUrl}`)
+    } else if (done) {
+      t.status = 'done'
+      emitActivity({
+        kind: 'task-complete',
+        title: `Background task done · ${t.repo}`,
+        detail: done,
+        repo: t.repo,
+        repoRoot: t.repoRoot,
+        runId: t.id,
+        runSource: 'bg',
+      })
     } else if (failure) {
       t.status = 'failed'
       fileHitl({
@@ -335,7 +388,7 @@ async function sweep(): Promise<void> {
         repoRoot: t.repoRoot,
         source: 'agent',
         runId: t.id,
-        runSource: 'agent',
+        runSource: 'bg',
       })
     } else {
       // No MR, no FAILED marker — treat as failed. Try to summarize the log
@@ -369,7 +422,7 @@ async function sweep(): Promise<void> {
         repoRoot: t.repoRoot,
         source: 'agent',
         runId: t.id,
-        runSource: 'agent',
+        runSource: 'bg',
       })
     }
     changed = true

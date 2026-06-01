@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
+import { listBgTasks, type BgTask } from './bg-tasks'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
@@ -95,7 +96,7 @@ export function readCronRunLog(runId: string): string {
 // global picture instead of jumping between Schedules and Agents.
 export type UnifiedRun = {
   id: string
-  source: 'cron' | 'agent'
+  source: 'cron' | 'agent' | 'bg'
   agentId: string
   agentTitle: string
   engine: string
@@ -151,8 +152,27 @@ function cronRunToUnified(r: CronRun & { repoRoot?: string }): UnifiedRun {
   }
 }
 
+function bgTaskToUnified(r: BgTask): UnifiedRun {
+  return {
+    id: r.id,
+    source: 'bg',
+    agentId: 'background-task',
+    agentTitle: r.label || 'Background task',
+    engine: r.engine,
+    status: r.status,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    exitCode: r.exitCode,
+    repoRoot: r.repoRoot,
+    repoLabel: r.repo || basename(r.repoRoot) || '',
+    branch: r.branch,
+    worktree: r.worktree,
+  }
+}
+
 export function listAllRuns(limit = 400): UnifiedRun[] {
   const cron = readCronRuns(undefined, limit).map(cronRunToUnified)
   const agent = listAgentRuns().map(agentRunToUnified)
-  return [...cron, ...agent].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  const bg = listBgTasks().map(bgTaskToUnified)
+  return [...cron, ...agent, ...bg].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
 }

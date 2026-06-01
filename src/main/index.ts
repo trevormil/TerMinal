@@ -845,8 +845,9 @@ ipcMain.handle('schedules:run-now', (_e, id: string) => {
 })
 ipcMain.handle('schedules:runs', (_e, id?: string) => readCronRuns(id))
 ipcMain.handle('runs:all', () => listAllRuns())
-ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent', runId: string) => {
+ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg', runId: string) => {
   if (source === 'cron') return readCronRunLog(runId)
+  if (source === 'bg') return readBgTaskLog(runId)
   // In-process agent run output lives in memory via listRuns(); look it up by id.
   return listRuns().find((r) => r.id === runId)?.output || ''
 })

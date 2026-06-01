@@ -66,7 +66,7 @@ export type ListenerProcessedFile = ListenerEnvelope & {
     error?: string
     skipped?: boolean
     runId?: string
-    runSource?: 'agent'
+    runSource?: 'agent' | 'bg'
   }
 }
 
@@ -89,7 +89,7 @@ export type ListenerStatus = {
     action?: string
     result?: string
     runId?: string
-    runSource?: 'agent'
+    runSource?: 'agent' | 'bg'
   }[]
 }
 
@@ -194,7 +194,7 @@ function moveWithMeta(
   return target
 }
 
-type ListenerActionResult = { result: string; runId?: string; runSource?: 'agent' }
+type ListenerActionResult = { result: string; runId?: string; runSource?: 'agent' | 'bg' }
 
 function processAction(env: ListenerEnvelope): ListenerActionResult {
   const a = env.requestedAction
@@ -261,7 +261,7 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
         `Run the ${a.agentId} workflow for this listener event.\n\n${JSON.stringify(env, null, 2)}`
       const r = spawnBgTask({ repoRoot: env.repoRoot, prompt, engine: a.engine, model: a.model })
       if ('error' in r) throw new Error(r.error)
-      return { result: `started background task ${r.id}`, runId: r.id, runSource: 'agent' }
+      return { result: `started background task ${r.id}`, runId: r.id, runSource: 'bg' }
     }
     const r = runAgent(env.repoRoot, a.agentId, a.engine, undefined, undefined, a.model)
     if ('error' in r) throw new Error(r.error)
@@ -272,7 +272,7 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
     if (!env.repoRoot) throw new Error('background-task requires repoRoot')
     const r = spawnBgTask({ repoRoot: env.repoRoot, prompt: a.prompt, engine: a.engine, model: a.model })
     if ('error' in r) throw new Error(r.error)
-    return { result: `started background task ${r.id}`, runId: r.id, runSource: 'agent' }
+    return { result: `started background task ${r.id}`, runId: r.id, runSource: 'bg' }
   }
 
   throw new Error(`unknown requestedAction kind: ${(a as { kind?: string }).kind || 'missing'}`)

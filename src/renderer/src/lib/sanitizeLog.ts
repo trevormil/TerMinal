@@ -33,11 +33,13 @@ function collapseCarriageReturns(s: string): string {
 
 // Strip remaining C0 control chars except TAB and LF (CR is already handled).
 const C0_REMAINDER = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g
+// Some TTY wrappers print control characters in caret notation, for example
+// "^D" for EOT. Strip those display artifacts too.
+const CARET_CONTROL = /\^[A-Z\\[\]^_?]/g
 
 export function sanitizeLog(s: string): string {
   if (!s) return ''
-  return collapseCarriageReturns(s.replace(CSI, '').replace(OSC, '').replace(MISC_ESC, '')).replace(
-    C0_REMAINDER,
-    '',
-  )
+  return collapseCarriageReturns(s.replace(CSI, '').replace(OSC, '').replace(MISC_ESC, ''))
+    .replace(CARET_CONTROL, '')
+    .replace(C0_REMAINDER, '')
 }
