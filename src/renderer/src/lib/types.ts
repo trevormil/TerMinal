@@ -194,6 +194,27 @@ export type Agent = {
   source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
   hasScript?: boolean
 }
+export type PersistentAgentFiles = {
+  instructions: string
+  memory: string
+  state: string
+  journal: string
+}
+export type PersistentAgent = {
+  id: string
+  title: string
+  description?: string
+  engine: Engine
+  model?: string
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+  lastRunAt?: number
+  dir: string
+}
+export type PersistentAgentDetail = PersistentAgent & {
+  files: PersistentAgentFiles
+}
 // Per-(repo, agent) state sidecar — the runtime owns lastScannedSha /
 // lastScannedRef / lastRunAt / lastRunId; scripts can pin arbitrary
 // string keys beyond that via `terminal-cli state set <key> <value>`.
@@ -732,6 +753,38 @@ export type GtApi = {
     removeWorktree: (runId: string) => Promise<boolean>
     onStatus: (cb: (run: AgentRun) => void) => () => void
     onOutput: (cb: (p: { runId: string; chunk: string }) => void) => () => void
+  }
+  persistentAgents: {
+    list: () => Promise<PersistentAgent[]>
+    get: (id: string) => Promise<PersistentAgentDetail | null>
+    save: (input: {
+      id?: string
+      title: string
+      description?: string
+      engine?: Engine
+      model?: string
+      tags?: string[]
+      instructions?: string
+      memory?: string
+      state?: string
+    }) => Promise<PersistentAgentDetail | { error: string }>
+    remove: (id: string) => Promise<boolean>
+    updateFile: (
+      id: string,
+      file: keyof PersistentAgentFiles,
+      body: string,
+    ) => Promise<PersistentAgentDetail | { error: string }>
+    launchPrompt: (
+      id: string,
+      task: string,
+    ) => Promise<{ agent: PersistentAgent; prompt: string } | { error: string }>
+    files: {
+      list: (id: string, rel: string) => Promise<FileEntry[]>
+      read: (id: string, rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+      write: (id: string, rel: string, content: string) => Promise<boolean>
+      create: (id: string, rel: string, dir: boolean) => Promise<boolean>
+      del: (id: string, rel: string) => Promise<boolean>
+    }
   }
   schedules: {
     list: () => Promise<Schedule[]>

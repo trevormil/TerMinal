@@ -104,6 +104,27 @@ const gt = {
     },
   },
 
+  // global, directory-backed memory agents
+  persistentAgents: {
+    list: () => ipcRenderer.invoke('persistent-agents:list'),
+    get: (id: string) => ipcRenderer.invoke('persistent-agents:get', id),
+    save: (input: unknown) => ipcRenderer.invoke('persistent-agents:save', input),
+    remove: (id: string) => ipcRenderer.invoke('persistent-agents:remove', id),
+    updateFile: (id: string, file: string, body: string) =>
+      ipcRenderer.invoke('persistent-agents:update-file', id, file, body),
+    launchPrompt: (id: string, task: string) =>
+      ipcRenderer.invoke('persistent-agents:launch-prompt', id, task),
+    files: {
+      list: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-list', id, rel),
+      read: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-read', id, rel),
+      write: (id: string, rel: string, content: string) =>
+        ipcRenderer.invoke('persistent-agents:files-write', id, rel, content),
+      create: (id: string, rel: string, dir: boolean) =>
+        ipcRenderer.invoke('persistent-agents:files-create', id, rel, dir),
+      del: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-delete', id, rel),
+    },
+  },
+
   // scheduled (cron) agent runs
   schedules: {
     list: () => ipcRenderer.invoke('schedules:list'),

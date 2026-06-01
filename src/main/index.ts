@@ -105,6 +105,19 @@ import {
   type PrAgentKind,
 } from './agents'
 import {
+  getPersistentAgent,
+  createPersistentAgentFile,
+  listPersistentAgents,
+  listPersistentAgentFiles,
+  persistentAgentLaunchPrompt,
+  readPersistentAgentFile,
+  removePersistentAgent,
+  removePersistentAgentFile,
+  savePersistentAgent,
+  updatePersistentAgentFile,
+  writePersistentAgentFile,
+} from './persistent-agents'
+import {
   readSchedules,
   addSchedule,
   updateSchedule,
@@ -726,6 +739,31 @@ ipcMain.handle('agents:runs', () => listRuns())
 ipcMain.handle('agents:rerun', (_e, runId: string) => rerunAgentRun(runId))
 ipcMain.handle('agents:cancel', (_e, runId: string) => cancelRun(runId))
 ipcMain.handle('agents:remove-worktree', (_e, runId: string) => removeWorktree(runId))
+ipcMain.handle('persistent-agents:list', () => listPersistentAgents())
+ipcMain.handle('persistent-agents:get', (_e, id: string) => getPersistentAgent(id))
+ipcMain.handle('persistent-agents:save', (_e, input: unknown) => savePersistentAgent(input as any))
+ipcMain.handle('persistent-agents:remove', (_e, id: string) => removePersistentAgent(id))
+ipcMain.handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) =>
+  updatePersistentAgentFile(id, file as any, body),
+)
+ipcMain.handle('persistent-agents:launch-prompt', (_e, id: string, task: string) =>
+  persistentAgentLaunchPrompt(id, task),
+)
+ipcMain.handle('persistent-agents:files-list', (_e, id: string, rel: string) =>
+  listPersistentAgentFiles(id, rel || ''),
+)
+ipcMain.handle('persistent-agents:files-read', (_e, id: string, rel: string) =>
+  readPersistentAgentFile(id, rel),
+)
+ipcMain.handle('persistent-agents:files-write', (_e, id: string, rel: string, content: string) =>
+  writePersistentAgentFile(id, rel, content),
+)
+ipcMain.handle('persistent-agents:files-create', (_e, id: string, rel: string, dir: boolean) =>
+  createPersistentAgentFile(id, rel, dir),
+)
+ipcMain.handle('persistent-agents:files-delete', (_e, id: string, rel: string) =>
+  removePersistentAgentFile(id, rel),
+)
 // Schedules are backed by real launchd jobs; every mutation syncs launchd in
 // lockstep, and `enriched` annotates each with its human cadence + next fire.
 ipcMain.handle('schedules:list', () => {
