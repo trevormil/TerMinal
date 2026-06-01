@@ -12,8 +12,9 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
-import { openPromptInTerminal } from '../../lib/launch'
-import type { MarketplaceItem, MarketplaceManifest, MarketplaceType, Tab, TabContext } from '../../lib/types'
+import { EnginePicker } from '../../components/EnginePicker'
+import { openPromptInTerminal, withLaunchContext, type LaunchMode } from '../../lib/launch'
+import type { Engine, MarketplaceItem, MarketplaceManifest, MarketplaceType, Tab, TabContext } from '../../lib/types'
 
 const TYPE_META: Record<MarketplaceType, { label: string; icon: LucideIcon; tone: string }> = {
   plugin: { label: 'Plugin', icon: Blocks, tone: 'text-cyan-300 border-cyan-400/25 bg-cyan-400/10' },
@@ -70,14 +71,7 @@ function TypePill({ type }: { type: MarketplaceType }) {
   )
 }
 
-function MarketplaceRow({ ctx, manifest, item }: { ctx: TabContext; manifest: MarketplaceManifest; item: MarketplaceItem }) {
-  const launch = () =>
-    openPromptInTerminal({
-      engine: 'claude',
-      cwd: installCwd(manifest, item, ctx),
-      name: `Marketplace · ${item.title}`,
-      prompt: launcherPrompt(manifest, item),
-    })
+function MarketplaceRow({ item, onLaunch }: { item: MarketplaceItem; onLaunch: (item: MarketplaceItem) => void }) {
   return (
     <article className="grid grid-cols-[104px_minmax(0,1fr)_120px] items-center gap-3 border-b border-[var(--gt-border)] px-4 py-2.5 last:border-b-0 hover:bg-white/[0.025]">
       <div className="space-y-1">
@@ -116,11 +110,11 @@ function MarketplaceRow({ ctx, manifest, item }: { ctx: TabContext; manifest: Ma
 
       <div className="flex shrink-0 justify-end">
         <button
-          onClick={launch}
+          onClick={() => onLaunch(item)}
           className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2.5 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-[var(--gt-accent)]/80"
         >
           <SquareTerminal size={12} strokeWidth={2} />
-          Open Claude
+          Launch
         </button>
       </div>
     </article>
@@ -132,6 +126,8 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | MarketplaceType>('all')
+  const [picking, setPicking] = useState<MarketplaceItem | null>(null)
+  const [flash, setFlash] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -174,8 +170,41 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
     })
   }, [manifest, filter, query])
 
+  const launchItem = async (
+    item: MarketplaceItem,
+    engine: Engine,
+    persona: string,
+    pipeline: string,
+    model?: string,
+    launchMode?: LaunchMode,
+  ) => {
+    if (!manifest) return
+    const cwd = installCwd(manifest, item, ctx)
+    const prompt = withLaunchContext(launcherPrompt(manifest, item), { persona, pipeline, model })
+    setPicking(null)
+    if (launchMode !== 'process') {
+      openPromptInTerminal({
+        engine,
+        cwd,
+        name: `Marketplace · ${item.title}`,
+        prompt,
+      })
+      setFlash(`opened ${engine} instance`)
+      window.setTimeout(() => setFlash(''), 3500)
+      return
+    }
+    const r = await window.gt.bg.spawn({ repoRoot: cwd, prompt, engine, model })
+    if ('error' in r) {
+      setFlash(r.error)
+      window.setTimeout(() => setFlash(''), 6000)
+      return
+    }
+    setFlash(`${engine} process started · see Runs`)
+    window.setTimeout(() => setFlash(''), 4000)
+  }
+
   return (
-    <div className="flex h-full flex-col bg-[var(--gt-bg)]">
+    <div className="relative flex h-full flex-col bg-[var(--gt-bg)]">
       <header className="shrink-0 border-b border-[var(--gt-border)] px-5 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -189,11 +218,16 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
               )}
             </div>
             <p className="mt-1 max-w-2xl text-[12px] leading-snug text-zinc-500">
-              Git-backed presets split by artifact type. Open an item into a Claude terminal with the right
-              installer prompt prefilled; installed copies remain user-owned.
+              Git-backed presets split by artifact type. Choose Claude, Codex, or Cursor, then run as a terminal
+              instance or background process.
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
+            {flash && (
+              <span className="inline-flex items-center rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-[11px] text-zinc-400">
+                {flash}
+              </span>
+            )}
             <button
               onClick={() => window.gt.openExternal('https://github.com/trevormil/TerMinal/tree/main/.marketplace')}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50"
@@ -247,11 +281,26 @@ function MarketplaceTab({ ctx }: { ctx: TabContext }) {
         ) : (
           <div className="mx-auto max-w-6xl border-x border-[var(--gt-border)]">
             {items.map((item) => (
-              <MarketplaceRow key={item.id} ctx={ctx} manifest={manifest} item={item} />
+              <MarketplaceRow key={item.id} item={item} onLaunch={setPicking} />
             ))}
           </div>
         )}
       </main>
+      {picking && (
+        <EnginePicker
+          title={`Install · ${picking.title}`}
+          hint={
+            <>
+              Opens the selected Marketplace item with its install prompt prefilled. Terminal mode lets you iterate;
+              Process runs it in a background worktree.
+            </>
+          }
+          onClose={() => setPicking(null)}
+          onPick={(engine, persona, pipeline, model, launchMode) =>
+            launchItem(picking, engine, persona, pipeline, model, launchMode)
+          }
+        />
+      )}
     </div>
   )
 }
