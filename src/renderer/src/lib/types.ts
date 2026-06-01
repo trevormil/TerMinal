@@ -215,6 +215,27 @@ export type PersistentAgent = {
 export type PersistentAgentDetail = PersistentAgent & {
   files: PersistentAgentFiles
 }
+export type PersistentArtifactFile = {
+  name: string
+  path: string
+  size: number
+  mtime: number
+  kind: 'markdown' | 'json' | 'image' | 'html' | 'text' | 'other'
+}
+export type PersistentArtifact = {
+  id: string
+  title: string
+  kind: string
+  path: string
+  createdAt: number
+  summary?: string
+  runId?: string
+  primaryPath?: string
+  files: PersistentArtifactFile[]
+}
+export type PersistentArtifactRead =
+  | { ok: true; kind: PersistentArtifactFile['kind']; content: string; dataUrl?: string; path: string }
+  | { ok: false; reason: string; path?: string }
 // Per-(repo, agent) state sidecar — the runtime owns lastScannedSha /
 // lastScannedRef / lastRunAt / lastRunId; scripts can pin arbitrary
 // string keys beyond that via `terminal-cli state set <key> <value>`.
@@ -794,6 +815,10 @@ export type GtApi = {
       write: (id: string, rel: string, content: string) => Promise<boolean>
       create: (id: string, rel: string, dir: boolean) => Promise<boolean>
       del: (id: string, rel: string) => Promise<boolean>
+    }
+    artifacts: {
+      list: (id: string) => Promise<PersistentArtifact[]>
+      read: (id: string, rel: string) => Promise<PersistentArtifactRead>
     }
   }
   schedules: {

@@ -49,7 +49,23 @@ Create exactly one new directory with:
 - `MEMORY.md`: durable facts, preferences, decisions, and recurring lessons.
 - `STATE.md`: current status, open threads, and next actions.
 - `JOURNAL.md`: append-only run history. Add an initial creation entry.
-- `artifacts/`: empty directory for future outputs.
+- `artifacts/`: empty directory for future outputs. In `INSTRUCTIONS.md`, tell
+  the agent to write human-readable run output to
+  `artifacts/<date-or-run-id>/report.md` and optional metadata to
+  `artifacts/<date-or-run-id>/artifact.json`.
+
+Optional `artifact.json` shape:
+
+```json
+{
+  "title": "Run analysis",
+  "kind": "report",
+  "createdAt": "2026-06-01T12:00:00.000Z",
+  "runId": "optional",
+  "summary": "Short display summary",
+  "primaryPath": "artifacts/<date-or-run-id>/report.md"
+}
+```
 
 ## Rules
 

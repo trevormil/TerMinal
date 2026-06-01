@@ -49,13 +49,14 @@ import { EnginePicker } from '../../components/EnginePicker'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { CodeEditor } from '../../components/CodeEditor'
+import { Markdown } from '../../components/Markdown'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
 import { agentPrompt } from '../../lib/agentPrompts'
-import type { Tab, TabContext, Agent, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles } from '../../lib/types'
+import type { Tab, TabContext, Agent, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactRead } from '../../lib/types'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 
 function fmtRelative(ts: number): string {
@@ -480,7 +481,14 @@ function AgentEditor({
 }
 
 type PersistentFileKey = keyof PersistentAgentFiles
-type PersistentViewKey = PersistentFileKey | 'files'
+type PersistentViewKey = PersistentFileKey | 'artifacts' | 'files'
+
+function fmtBytes(n: number): string {
+  if (!Number.isFinite(n)) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
 
 function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
   const [agents, setAgents] = useState<PersistentAgent[]>([])
@@ -508,6 +516,10 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
   const [agentFileContent, setAgentFileContent] = useState('')
   const [agentFileDirty, setAgentFileDirty] = useState(false)
   const [agentFileErr, setAgentFileErr] = useState('')
+  const [artifacts, setArtifacts] = useState<PersistentArtifact[]>([])
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
+  const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null)
+  const [artifactBody, setArtifactBody] = useState<PersistentArtifactRead | null>(null)
 
   const loadList = () =>
     window.gt.persistentAgents.list().then((list) => {
@@ -528,7 +540,7 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
     window.gt.persistentAgents.get(selectedId).then(setDetail)
   }, [selectedId])
   useEffect(() => {
-    if (fileKey !== 'files') setFileDraft(detail?.files[fileKey] || '')
+    if (fileKey !== 'files' && fileKey !== 'artifacts') setFileDraft(detail?.files[fileKey] || '')
   }, [detail, fileKey])
   const refreshFiles = async (dir = fileDir) => {
     if (!detail) return
@@ -542,14 +554,93 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
     if (detail) window.gt.persistentAgents.files.list(detail.id, '').then(setFileEntries)
   }, [detail?.id])
   useEffect(() => {
+    if (!detail) {
+      setArtifacts([])
+      setSelectedArtifactId(null)
+      setSelectedArtifactPath(null)
+      setArtifactBody(null)
+      return
+    }
+    window.gt.persistentAgents.artifacts.list(detail.id).then((list) => {
+      setArtifacts(list)
+      setSelectedArtifactId((prev) => prev && list.some((a) => a.id === prev) ? prev : list[0]?.id || null)
+    })
+  }, [detail?.id, detail?.updatedAt])
+  useEffect(() => {
     if (detail) refreshFiles(fileDir)
   }, [fileDir]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!detail || !selectedArtifactId) {
+      setSelectedArtifactPath(null)
+      setArtifactBody(null)
+      return
+    }
+    const artifact = artifacts.find((a) => a.id === selectedArtifactId)
+    const path = artifact?.primaryPath || artifact?.files.find((f) => f.name !== 'artifact.json')?.path || null
+    setSelectedArtifactPath(path)
+  }, [detail?.id, selectedArtifactId, artifacts])
+  useEffect(() => {
+    if (!detail || !selectedArtifactPath) {
+      setArtifactBody(null)
+      return
+    }
+    window.gt.persistentAgents.artifacts.read(detail.id, selectedArtifactPath).then(setArtifactBody)
+  }, [detail?.id, selectedArtifactPath])
 
   const filtered = agents.filter((a) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
     return [a.title, a.id, a.description || '', a.tags.join(' ')].some((v) => v.toLowerCase().includes(q))
   })
+  const selectedArtifact = artifacts.find((a) => a.id === selectedArtifactId) || null
+  const artifactFile = selectedArtifact?.files.find((f) => f.path === selectedArtifactPath) || null
+  const refreshArtifacts = async () => {
+    if (!detail) return
+    const list = await window.gt.persistentAgents.artifacts.list(detail.id)
+    setArtifacts(list)
+    setSelectedArtifactId((prev) => prev && list.some((a) => a.id === prev) ? prev : list[0]?.id || null)
+  }
+  const renderArtifactBody = () => {
+    if (!selectedArtifact) {
+      return <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">No artifacts yet.</div>
+    }
+    if (!selectedArtifactPath) {
+      return <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">Select an artifact file.</div>
+    }
+    if (!artifactBody) {
+      return <div className="p-4 text-[12px] text-zinc-600">Loading...</div>
+    }
+    if (!artifactBody.ok) {
+      return <div className="p-4 text-[12px] text-[var(--gt-red)]">{artifactBody.reason}</div>
+    }
+    if (artifactBody.kind === 'markdown') {
+      return (
+        <div className="h-full overflow-auto p-5">
+          <Markdown>{artifactBody.content}</Markdown>
+        </div>
+      )
+    }
+    if (artifactBody.kind === 'json') {
+      let pretty = artifactBody.content
+      try {
+        pretty = JSON.stringify(JSON.parse(artifactBody.content), null, 2)
+      } catch {
+        /* keep raw */
+      }
+      return <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[12px] leading-relaxed text-[var(--gt-text-soft)]">{pretty}</pre>
+    }
+    if (artifactBody.kind === 'image' && artifactBody.dataUrl) {
+      return (
+        <div className="flex h-full items-center justify-center overflow-auto bg-[var(--gt-code-bg)] p-4">
+          <img src={artifactBody.dataUrl} alt={artifactFile?.name || 'artifact'} className="max-h-full max-w-full object-contain" />
+        </div>
+      )
+    }
+    if (artifactBody.kind === 'html') {
+      return <iframe sandbox="" srcDoc={artifactBody.content} className="h-full w-full border-0 bg-white" title={artifactFile?.name || 'artifact'} />
+    }
+    return <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[12px] leading-relaxed text-[var(--gt-text-soft)]">{artifactBody.content}</pre>
+  }
 
   const create = async () => {
     const title = createTitle.trim()
@@ -601,7 +692,7 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
   }
 
   const saveFile = async () => {
-    if (!detail || fileKey === 'files') return
+    if (!detail || fileKey === 'files' || fileKey === 'artifacts') return
     const r = await window.gt.persistentAgents.updateFile(detail.id, fileKey, fileDraft)
     if ('error' in r) {
       setErr(r.error)
@@ -788,7 +879,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
             {err && <div className="border-b border-[var(--gt-border)] px-5 py-2 text-[11px] text-[var(--gt-red)]">{err}</div>}
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1.5">
-                {(['instructions', 'memory', 'state', 'journal', 'files'] as PersistentViewKey[]).map((k) => (
+                {(['instructions', 'memory', 'state', 'journal', 'artifacts', 'files'] as PersistentViewKey[]).map((k) => (
                   <button
                     key={k}
                     onClick={() => setFileKey(k)}
@@ -800,7 +891,14 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                   </button>
                 ))}
                 <div className="flex-1" />
-                {fileKey === 'files' ? (
+                {fileKey === 'artifacts' ? (
+                  <button
+                    onClick={refreshArtifacts}
+                    className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                  >
+                    Refresh
+                  </button>
+                ) : fileKey === 'files' ? (
                   <button
                     onClick={saveAgentFile}
                     disabled={!agentFilePath || !agentFileDirty || !!agentFileErr}
@@ -817,7 +915,73 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                   </button>
                 )}
               </div>
-              {fileKey === 'files' ? (
+              {fileKey === 'artifacts' ? (
+                <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]">
+                  <aside className="min-h-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
+                    {artifacts.length === 0 ? (
+                      <div className="p-4 text-[12px] leading-relaxed text-zinc-600">
+                        No artifacts yet. Persistent agents should write durable output to{' '}
+                        <span className="font-mono">artifacts/&lt;run&gt;/report.md</span>.
+                      </div>
+                    ) : (
+                      artifacts.map((artifact) => (
+                        <button
+                          key={artifact.id}
+                          onClick={() => setSelectedArtifactId(artifact.id)}
+                          className={`block w-full border-b border-[var(--gt-border)]/50 px-3 py-2 text-left ${
+                            selectedArtifactId === artifact.id ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <ClipboardList size={12} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+                            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">{artifact.title}</span>
+                            <Badge tone="blue">{artifact.kind}</Badge>
+                          </div>
+                          {artifact.summary && (
+                            <div className="mt-1 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{artifact.summary}</div>
+                          )}
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-600">
+                            <span>{fmtRelative(artifact.createdAt)}</span>
+                            <span>{artifact.files.length} file{artifact.files.length === 1 ? '' : 's'}</span>
+                            {artifact.runId && <span className="truncate font-mono">{artifact.runId.slice(0, 8)}</span>}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </aside>
+                  <section className="flex min-w-0 flex-col">
+                    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-200">
+                        {selectedArtifact?.title || 'Artifacts'}
+                      </span>
+                      {artifactFile && (
+                        <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+                          {artifactFile.name} · {fmtBytes(artifactFile.size)}
+                        </span>
+                      )}
+                    </div>
+                    {selectedArtifact && selectedArtifact.files.length > 1 && (
+                      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--gt-border)] px-2 py-1">
+                        {selectedArtifact.files.map((file) => (
+                          <button
+                            key={file.path}
+                            onClick={() => setSelectedArtifactPath(file.path)}
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10.5px] ${
+                              selectedArtifactPath === file.path
+                                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                                : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
+                            }`}
+                          >
+                            <FileText size={11} strokeWidth={2} />
+                            <span className="max-w-[180px] truncate">{file.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="min-h-0 flex-1 bg-[var(--gt-code-bg)]">{renderArtifactBody()}</div>
+                  </section>
+                </div>
+              ) : fileKey === 'files' ? (
                 <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)]">
                   <div className="min-h-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
                     <div className="flex items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1.5">

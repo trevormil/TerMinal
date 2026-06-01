@@ -127,6 +127,10 @@ const gt = {
         ipcRenderer.invoke('persistent-agents:files-create', id, rel, dir),
       del: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-delete', id, rel),
     },
+    artifacts: {
+      list: (id: string) => ipcRenderer.invoke('persistent-agents:artifacts-list', id),
+      read: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:artifacts-read', id, rel),
+    },
   },
 
   // scheduled (cron) agent runs

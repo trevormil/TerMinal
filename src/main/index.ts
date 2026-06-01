@@ -109,9 +109,11 @@ import {
 import {
   getPersistentAgent,
   createPersistentAgentFile,
+  listPersistentAgentArtifacts,
   listPersistentAgents,
   listPersistentAgentFiles,
   persistentAgentLaunchPrompt,
+  readPersistentAgentArtifact,
   readPersistentAgentFile,
   removePersistentAgent,
   removePersistentAgentFile,
@@ -773,6 +775,12 @@ ipcMain.handle('persistent-agents:files-create', (_e, id: string, rel: string, d
 )
 ipcMain.handle('persistent-agents:files-delete', (_e, id: string, rel: string) =>
   removePersistentAgentFile(id, rel),
+)
+ipcMain.handle('persistent-agents:artifacts-list', (_e, id: string) =>
+  listPersistentAgentArtifacts(id),
+)
+ipcMain.handle('persistent-agents:artifacts-read', (_e, id: string, rel: string) =>
+  readPersistentAgentArtifact(id, rel),
 )
 // Schedules are backed by real launchd jobs; every mutation syncs launchd in
 // lockstep, and `enriched` annotates each with its human cadence + next fire.
