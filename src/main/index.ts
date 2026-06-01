@@ -89,6 +89,8 @@ import {
   runTicketSpawn,
   runFactorySpawn,
   runDesignerSpawn,
+  runPersistentAgent,
+  runPersistentAgentDesignerSpawn,
   runScheduleDesignerSpawn,
   locateScript,
   readAgentState,
@@ -746,8 +748,16 @@ ipcMain.handle('persistent-agents:remove', (_e, id: string) => removePersistentA
 ipcMain.handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) =>
   updatePersistentAgentFile(id, file as any, body),
 )
-ipcMain.handle('persistent-agents:launch-prompt', (_e, id: string, task: string) =>
-  persistentAgentLaunchPrompt(id, task),
+ipcMain.handle(
+  'persistent-agents:launch-prompt',
+  (_e, id: string, task: string, repoRoot?: string, engine?: Engine, model?: string) =>
+    persistentAgentLaunchPrompt(id, task, { repoRoot: repoRoot || repoRootOf(cur().cwd), engine, model }),
+)
+ipcMain.handle('persistent-agents:run', (_e, id: string, task: string, engine?: Engine, model?: string) =>
+  runPersistentAgent(repoRootOf(cur().cwd), id, task, engine, model),
+)
+ipcMain.handle('persistent-agents:design', (_e, text: string, engine: Engine, model?: string) =>
+  runPersistentAgentDesignerSpawn(repoRootOf(cur().cwd), text, engine, model),
 )
 ipcMain.handle('persistent-agents:files-list', (_e, id: string, rel: string) =>
   listPersistentAgentFiles(id, rel || ''),

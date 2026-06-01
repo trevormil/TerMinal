@@ -23,6 +23,7 @@ import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
 import { hiddenPresetIds } from './presets'
 import { getTicket } from './backlog'
+import { persistentAgentDesignerPrompt, persistentAgentLaunchPrompt } from './persistent-agents'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
@@ -101,6 +102,8 @@ export type RerunSpec =
   | { kind: 'ticket-spawn'; text: string; engine: Engine; model?: string }
   | { kind: 'factory'; engine: Engine }
   | { kind: 'agent-designer'; text: string; engine: Engine; scope: 'repo' | 'global'; model?: string }
+  | { kind: 'persistent-agent'; persistentAgentId: string; task: string; engine: Engine; model?: string }
+  | { kind: 'persistent-agent-designer'; text: string; engine: Engine; model?: string }
   | { kind: 'schedule-designer'; text: string; engine: Engine }
 
 const OUTPUT_CAP = 400_000
@@ -1100,6 +1103,59 @@ DO NOT open a PR, do not modify any existing agents, do not invent extra files.`
 
 export { saveGlobalAgent }
 
+/** Spawn an in-place run for a global persistent memory agent. The memory
+ *  directory is global, but the engine runs from the active repo so repo
+ *  commands, diffs, tests, and relative paths behave like the user's current
+ *  workspace. */
+export function runPersistentAgent(
+  repoRoot: string,
+  persistentAgentId: string,
+  task: string,
+  engine?: Engine,
+  model?: string,
+): AgentRun | { error: string } {
+  const prepared = persistentAgentLaunchPrompt(persistentAgentId, task, { repoRoot, engine, model })
+  if ('error' in prepared) return prepared
+  const resolvedEngine = engine || prepared.agent.engine
+  const resolvedModel = model ?? prepared.agent.model
+  return runSpec(repoRoot, {
+    id: `persistent-${prepared.agent.id}`,
+    title: `Persistent · ${prepared.agent.title}`,
+    steps: [{ label: 'persistent agent', prompt: prepared.prompt }],
+    engine: resolvedEngine,
+    model: resolvedModel,
+    inPlace: true,
+    rerun: {
+      kind: 'persistent-agent',
+      persistentAgentId: prepared.agent.id,
+      task,
+      engine: resolvedEngine,
+      model: resolvedModel,
+    },
+  })
+}
+
+/** Spawn an in-place designer that creates a global persistent memory agent
+ *  under ~/.config/TerMinal/persistent-agents. */
+export function runPersistentAgentDesignerSpawn(
+  repoRoot: string,
+  text: string,
+  engine: Engine,
+  model?: string,
+): AgentRun | { error: string } {
+  const t = text.trim()
+  if (!t) return { error: 'empty request' }
+  return runSpec(repoRoot, {
+    id: 'persistent-agent-designer',
+    title: `Design persistent agent · ${t.slice(0, 48)}`,
+    steps: [{ label: 'design persistent agent', prompt: persistentAgentDesignerPrompt(t, engine, model) }],
+    engine,
+    model,
+    inPlace: true,
+    rerun: { kind: 'persistent-agent-designer', text: t, engine, model },
+  })
+}
+
 /** Spawn an agent run that designs a new schedule entry from a natural-
  *  language description. Reads the active agent list + existing schedules,
  *  appends a new entry to ~/.config/TerMinal/schedules.json. After the run
@@ -1301,6 +1357,12 @@ export function rerunAgentRun(runId: string): AgentRun | { error: string } {
   if (spec.kind === 'ticket-spawn') return runTicketSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
   if (spec.kind === 'factory') return runFactorySpawn(run.repoRoot, spec.engine)
   if (spec.kind === 'agent-designer') return runDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.scope, spec.model)
+  if (spec.kind === 'persistent-agent') {
+    return runPersistentAgent(run.repoRoot, spec.persistentAgentId, spec.task, spec.engine, spec.model)
+  }
+  if (spec.kind === 'persistent-agent-designer') {
+    return runPersistentAgentDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
+  }
   if (spec.kind === 'schedule-designer') return runScheduleDesignerSpawn(run.repoRoot, spec.text, spec.engine)
   return { error: 'unsupported run type' }
 }

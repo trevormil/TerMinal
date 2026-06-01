@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto'
 import type { Engine } from './agents'
 import { createEntry, listDir, readFile as readScopedFile, removeEntry, writeFile as writeScopedFile } from './files'
 
-const ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
+export const PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
 
 export type PersistentAgent = {
   id: string
@@ -60,11 +60,11 @@ const slugify = (s: string) =>
     .slice(0, 48)
 
 function ensureRoot() {
-  mkdirSync(ROOT, { recursive: true })
+  mkdirSync(PERSISTENT_AGENTS_ROOT, { recursive: true })
 }
 
 function agentDir(id: string) {
-  return join(ROOT, id)
+  return join(PERSISTENT_AGENTS_ROOT, id)
 }
 
 function safeId(id: string): string {
@@ -96,8 +96,8 @@ Operating rules:
 - Append a concise entry to JOURNAL.md after every run.
 - Update MEMORY.md only for durable facts, preferences, decisions, or recurring lessons.
 - Do not silently rewrite INSTRUCTIONS.md. If you want to improve your instructions, append a proposal to STATE.md.
-- Use the current terminal working directory as your agent home.
-- If a task needs repo work, ask for or navigate to the target repo explicitly.
+- Use this directory as your persistent memory home.
+- If a task needs repo work, operate in the current workspace repo provided at launch.
 `
 }
 
@@ -155,10 +155,10 @@ function writeMeta(agent: PersistentAgent) {
 
 export function listPersistentAgents(): PersistentAgent[] {
   ensureRoot()
-  return readdirSync(ROOT)
+  return readdirSync(PERSISTENT_AGENTS_ROOT)
     .filter((f) => {
       try {
-        return statSync(join(ROOT, f)).isDirectory()
+        return statSync(join(PERSISTENT_AGENTS_ROOT, f)).isDirectory()
       } catch {
         return false
       }
@@ -254,7 +254,17 @@ export function updatePersistentAgentFile(
   return getPersistentAgent(agent.id)!
 }
 
-export function persistentAgentLaunchPrompt(id: string, task: string): { agent: PersistentAgent; prompt: string } | { error: string } {
+export type PersistentAgentLaunchOptions = {
+  repoRoot?: string
+  engine?: Engine
+  model?: string
+}
+
+export function persistentAgentLaunchPrompt(
+  id: string,
+  task: string,
+  opts: PersistentAgentLaunchOptions = {},
+): { agent: PersistentAgent; prompt: string } | { error: string } {
   const detail = getPersistentAgent(id)
   if (!detail) return { error: 'agent not found' }
   const runId = randomUUID()
@@ -263,10 +273,17 @@ export function persistentAgentLaunchPrompt(id: string, task: string): { agent: 
   detail.updatedAt = now
   writeMeta(detail)
   const taskText = task.trim() || 'Review your current STATE.md and continue the most important open thread.'
+  const repoLine = opts.repoRoot
+    ? `Active workspace repo:\n${opts.repoRoot}`
+    : 'Active workspace repo:\n- Not provided. Ask for the target repo before making repo changes.'
+  const engine = opts.engine || detail.engine
+  const model = opts.model ?? detail.model
   const prompt = `You are running as persistent TerMinal agent "${detail.title}".
 
-Agent home directory:
+Persistent agent memory home:
 ${detail.dir}
+
+${repoLine}
 
 Run id:
 ${runId}
@@ -291,9 +308,59 @@ Required workflow:
 6. Do not silently rewrite INSTRUCTIONS.md. If your instructions should change, add a proposal under "Instruction improvement proposals" in STATE.md.
 
 Preferred engine/model:
-${detail.engine}${detail.model ? ` / ${detail.model}` : ''}
+${engine}${model ? ` / ${model}` : ''}
 `
   return { agent: detail, prompt }
+}
+
+export function persistentAgentDesignerPrompt(text: string, engine: Engine, model?: string): string {
+  const t = text.trim()
+  return `Create a new global persistent TerMinal memory agent from this request:
+
+${t}
+
+Persistent agents are global, directory-backed, and memory-aware. They are stored under:
+${PERSISTENT_AGENTS_ROOT}
+
+Create exactly one new directory:
+${PERSISTENT_AGENTS_ROOT}/<kebab-case-id>/
+
+Required files:
+- agent.json
+- INSTRUCTIONS.md
+- MEMORY.md
+- STATE.md
+- JOURNAL.md
+- artifacts/
+
+agent.json schema:
+{
+  "id": "<kebab-case-id>",
+  "title": "<short label>",
+  "description": "<one-line purpose>",
+  "engine": "claude" | "codex" | "cursor",
+  "model": "<optional model alias>",
+  "tags": [],
+  "createdAt": <epoch ms>,
+  "updatedAt": <epoch ms>
+}
+
+Use this selected engine/model unless the user request clearly says otherwise:
+${engine}${model ? ` / ${model}` : ''}
+
+File guidance:
+- INSTRUCTIONS.md: stable operating instructions for this agent.
+- MEMORY.md: durable facts, preferences, decisions, recurring lessons. Start sparse.
+- STATE.md: current state and open threads. Start with Idle plus suggested first actions.
+- JOURNAL.md: append-only run log. Add an initial creation entry.
+- artifacts/: empty directory for future output files.
+
+Rules:
+- Do not modify this repo except if the user explicitly requested repo changes. The target is the global TerMinal config directory above.
+- Do not create more than one persistent agent.
+- Do not open a PR/MR.
+- Keep the files concise and immediately useful.
+- End with the created agent id and absolute directory path.`
 }
 
 export function listPersistentAgentFiles(id: string, rel = '') {

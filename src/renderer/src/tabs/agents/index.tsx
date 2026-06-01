@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { langs } from '@uiw/codemirror-extensions-langs'
+import type { Extension } from '@codemirror/state'
 import {
   Bot,
   FileText,
@@ -46,6 +48,7 @@ import { Badge, ForceChip } from '../../components/ui'
 import { EnginePicker } from '../../components/EnginePicker'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
+import { CodeEditor } from '../../components/CodeEditor'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
@@ -137,6 +140,30 @@ const runsAs = (engine: Engine): string =>
 
 const FIELD =
   'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
+const AGENT_FILE_EXT: Record<string, string> = {
+  md: 'markdown',
+  mdx: 'markdown',
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yaml',
+  js: 'js',
+  ts: 'ts',
+  tsx: 'tsx',
+  sh: 'sh',
+  bash: 'sh',
+  zsh: 'sh',
+  py: 'py',
+  toml: 'toml',
+  txt: '',
+}
+function langForAgentFile(path: string): Extension[] {
+  const key = AGENT_FILE_EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | ''
+  try {
+    return key && langs[key] ? [langs[key]()] : []
+  } catch {
+    return []
+  }
+}
 
 // Add / edit an agent. Saving writes <repo>/.agents/agents.json (overriding a
 // built-in default = same id). The id is immutable once set.
@@ -455,19 +482,25 @@ function AgentEditor({
 type PersistentFileKey = keyof PersistentAgentFiles
 type PersistentViewKey = PersistentFileKey | 'files'
 
-function PersistentAgentsPanel() {
+function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
   const [agents, setAgents] = useState<PersistentAgent[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(() => localStorage.getItem('gt.persistentAgents.sel'))
   const [detail, setDetail] = useState<PersistentAgentDetail | null>(null)
   const [query, setQuery] = useState('')
   const [task, setTask] = useState('')
+  const [pickingRun, setPickingRun] = useState(false)
   const [fileKey, setFileKey] = useState<PersistentViewKey>('instructions')
   const [fileDraft, setFileDraft] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createMode, setCreateMode] = useState<'ai' | 'custom'>('ai')
+  const [createRequest, setCreateRequest] = useState('')
   const [createTitle, setCreateTitle] = useState('')
   const [createDescription, setCreateDescription] = useState('')
   const [createEngine, setCreateEngine] = useState<Engine>('claude')
   const [createModel, setCreateModel] = useState<string | undefined>(undefined)
+  const [createLaunchMode, setCreateLaunchMode] = useState<LaunchMode>('terminal')
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createMsg, setCreateMsg] = useState('')
   const [err, setErr] = useState('')
   const [fileDir, setFileDir] = useState('')
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
@@ -539,16 +572,27 @@ function PersistentAgentsPanel() {
     await loadList()
   }
 
-  const launch = async () => {
+  const launch = async (engine: Engine, model?: string, launchMode: LaunchMode = 'terminal') => {
     if (!detail) return
-    const r = await window.gt.persistentAgents.launchPrompt(detail.id, task)
+    if (launchMode === 'process') {
+      const r = await window.gt.persistentAgents.run(detail.id, task, engine, model)
+      if ('error' in r) {
+        setErr(r.error)
+        return
+      }
+      setTask('')
+      await loadList()
+      navigateTo('runs', { runId: r.id })
+      return
+    }
+    const r = await window.gt.persistentAgents.launchPrompt(detail.id, task, ctx.repoRoot, engine, model)
     if ('error' in r) {
       setErr(r.error)
       return
     }
     openPromptInTerminal({
-      engine: r.agent.engine,
-      cwd: r.agent.dir,
+      engine,
+      cwd: ctx.repoRoot,
       name: r.agent.title,
       prompt: r.prompt,
     })
@@ -587,6 +631,53 @@ function PersistentAgentsPanel() {
       await refreshFiles()
       const fresh = await window.gt.persistentAgents.get(detail.id)
       if (fresh) setDetail(fresh)
+    }
+  }
+  const design = async () => {
+    const text = createRequest.trim()
+    if (!text || createBusy) return
+    setCreateBusy(true)
+    setErr('')
+    setCreateMsg('')
+    try {
+      if (createLaunchMode === 'terminal') {
+        const prompt = `Create a new global persistent TerMinal memory agent from this request:
+
+${text}
+
+Target root:
+~/.config/TerMinal/persistent-agents
+
+Create exactly one new directory there with:
+- agent.json
+- INSTRUCTIONS.md
+- MEMORY.md
+- STATE.md
+- JOURNAL.md
+- artifacts/
+
+Use the persistent agent schema TerMinal expects. Keep the files concise. Do not open a PR. Do not modify this repo unless explicitly needed. End with the created agent id and absolute directory path.`
+        openPromptInTerminal({
+          engine: createEngine,
+          cwd: ctx.repoRoot,
+          name: 'Design persistent agent',
+          prompt,
+        })
+        setCreating(false)
+        setCreateRequest('')
+        return
+      }
+      const r = await window.gt.persistentAgents.design(text, createEngine, createModel)
+      if ('error' in r) {
+        setErr(r.error)
+        return
+      }
+      setCreateMsg(`${createEngine} is creating the persistent agent`)
+      setCreating(false)
+      setCreateRequest('')
+      navigateTo('runs', { runId: r.id })
+    } finally {
+      setCreateBusy(false)
     }
   }
 
@@ -654,11 +745,11 @@ function PersistentAgentsPanel() {
               {detail.model && <span className="text-[10px] text-zinc-600">{detail.model}</span>}
               <div className="flex-1" />
               <button
-                onClick={() => window.gt.openInEditor(detail.dir)}
+                onClick={() => setFileKey('files')}
                 className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
               >
                 <FolderOpen size={12} strokeWidth={2} />
-                Folder
+                Files
               </button>
               <button
                 onClick={async () => {
@@ -687,7 +778,7 @@ function PersistentAgentsPanel() {
                 className="resize-none rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
               />
               <button
-                onClick={launch}
+                onClick={() => setPickingRun(true)}
                 className="inline-flex h-full min-w-28 items-center justify-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 text-[12px] font-semibold text-white hover:opacity-90"
               >
                 <Play size={13} strokeWidth={2.5} />
@@ -807,63 +898,154 @@ function PersistentAgentsPanel() {
                     {agentFileErr ? (
                       <div className="p-4 text-[12px] text-[var(--gt-red)]">{agentFileErr}</div>
                     ) : (
-                      <textarea
-                        value={agentFileContent}
-                        onChange={(e) => {
-                          setAgentFileContent(e.target.value)
-                          setAgentFileDirty(true)
-                        }}
-                        disabled={!agentFilePath}
-                        spellCheck={false}
-                        className="min-h-0 flex-1 resize-none bg-[var(--gt-code-bg)] p-4 font-mono text-[12px] leading-relaxed text-[var(--gt-text-soft)] outline-none disabled:opacity-50"
-                      />
+                      <div className="min-h-0 flex-1">
+                        <CodeEditor
+                          value={agentFileContent}
+                          onChange={(v) => {
+                            setAgentFileContent(v)
+                            setAgentFileDirty(true)
+                          }}
+                          editable={!!agentFilePath}
+                          extensions={langForAgentFile(agentFilePath)}
+                          wrap
+                        />
+                      </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <textarea
-                  value={fileDraft}
-                  onChange={(e) => setFileDraft(e.target.value)}
-                  spellCheck={false}
-                  className="min-h-0 flex-1 resize-none bg-[var(--gt-code-bg)] p-4 font-mono text-[12px] leading-relaxed text-[var(--gt-text-soft)] outline-none"
-                />
+                <div className="min-h-0 flex-1">
+                  <CodeEditor
+                    value={fileDraft}
+                    onChange={setFileDraft}
+                    extensions={langForAgentFile(
+                      fileKey === 'instructions'
+                        ? 'INSTRUCTIONS.md'
+                        : fileKey === 'memory'
+                          ? 'MEMORY.md'
+                          : fileKey === 'state'
+                            ? 'STATE.md'
+                            : 'JOURNAL.md',
+                    )}
+                    wrap
+                  />
+                </div>
               )}
             </div>
           </>
         )}
       </section>
 
+      {pickingRun && detail && (
+        <EnginePicker
+          title={`Run persistent · ${detail.title}`}
+          showPersona={false}
+          showPipeline={false}
+          hint={
+            <>
+              Runs from the current workspace repo, while reading and updating this agent's global memory files under{' '}
+              <code className="font-mono text-zinc-300">~/.config/TerMinal/persistent-agents/{detail.id}</code>.
+            </>
+          }
+          onClose={() => setPickingRun(false)}
+          onPick={(engine, _persona, _pipeline, model, launchMode) => {
+            setPickingRun(false)
+            launch(engine, model, launchMode || 'terminal')
+          }}
+        />
+      )}
+
       {creating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setCreating(false)}>
           <div
-            className="w-[560px] max-w-full rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 shadow-2xl"
+            className="w-[640px] max-w-full rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="mb-3 text-sm font-bold text-zinc-100">New persistent agent</h2>
+            <div className="mb-3 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-zinc-100">New persistent agent</h2>
+              <div className="ml-auto flex items-center rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
+                {(['ai', 'custom'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setCreateMode(mode)}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-medium uppercase ${
+                      createMode === mode
+                        ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-3">
-              <input
-                value={createTitle}
-                onChange={(e) => setCreateTitle(e.target.value)}
-                placeholder="Agent name"
-                autoFocus
-                className={FIELD}
-              />
-              <textarea
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                rows={4}
-                placeholder="What should this agent remember and improve over time?"
-                className={`${FIELD} resize-none`}
-              />
-              <EngineModelPicker
-                engine={createEngine}
-                model={createModel}
-                onChange={(e, m) => {
-                  setCreateEngine(e)
-                  setCreateModel(m)
-                }}
-                size="sm"
-              />
+              {createMode === 'ai' ? (
+                <>
+                  <SkillHint>
+                    You can also create one from a terminal with{' '}
+                    <code className="font-mono text-zinc-300">/new-persistent-agent "Create a memory agent that …"</code>{' '}
+                    or <code className="font-mono text-zinc-300">$new-persistent-agent "Create a memory agent that …"</code>.
+                  </SkillHint>
+                  <textarea
+                    value={createRequest}
+                    onChange={(e) => setCreateRequest(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') design()
+                    }}
+                    rows={6}
+                    autoFocus
+                    placeholder="Describe the persistent agent: what it should remember, what it should do over time, and what good state/memory should look like."
+                    className={`${FIELD} resize-none`}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <EngineModelPicker
+                      engine={createEngine}
+                      model={createModel}
+                      onChange={(e, m) => {
+                        setCreateEngine(e)
+                        setCreateModel(m)
+                      }}
+                      size="sm"
+                    />
+                    <select
+                      value={createLaunchMode}
+                      onChange={(e) => setCreateLaunchMode(e.target.value as LaunchMode)}
+                      className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                    >
+                      <option value="terminal">{engineInstanceLabel(createEngine)} instance</option>
+                      <option value="process">Process</option>
+                    </select>
+                    {createMsg && <span className="text-[11px] text-[var(--gt-green)]">{createMsg}</span>}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    value={createTitle}
+                    onChange={(e) => setCreateTitle(e.target.value)}
+                    placeholder="Agent name"
+                    autoFocus
+                    className={FIELD}
+                  />
+                  <textarea
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    rows={4}
+                    placeholder="What should this agent remember and improve over time?"
+                    className={`${FIELD} resize-none`}
+                  />
+                  <EngineModelPicker
+                    engine={createEngine}
+                    model={createModel}
+                    onChange={(e, m) => {
+                      setCreateEngine(e)
+                      setCreateModel(m)
+                    }}
+                    size="sm"
+                  />
+                </>
+              )}
               {err && <div className="text-[11px] text-[var(--gt-red)]">{err}</div>}
               <div className="flex justify-end gap-2">
                 <button
@@ -873,10 +1055,17 @@ function PersistentAgentsPanel() {
                   Cancel
                 </button>
                 <button
-                  onClick={create}
-                  className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                  onClick={createMode === 'ai' ? design : create}
+                  disabled={createMode === 'ai' ? !createRequest.trim() || createBusy : !createTitle.trim()}
+                  className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
                 >
-                  Create
+                  {createMode === 'ai'
+                    ? createBusy
+                      ? 'Spawning...'
+                      : createLaunchMode === 'terminal'
+                        ? 'Open instance'
+                        : 'Create with AI'
+                    : 'Create'}
                 </button>
               </div>
             </div>
@@ -1138,7 +1327,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     return (
       <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
         {header}
-        <PersistentAgentsPanel />
+        <PersistentAgentsPanel ctx={ctx} />
       </div>
     )
   }

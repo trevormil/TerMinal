@@ -777,7 +777,17 @@ export type GtApi = {
     launchPrompt: (
       id: string,
       task: string,
+      repoRoot?: string,
+      engine?: Engine,
+      model?: string,
     ) => Promise<{ agent: PersistentAgent; prompt: string } | { error: string }>
+    run: (
+      id: string,
+      task: string,
+      engine?: Engine,
+      model?: string,
+    ) => Promise<AgentRun | { error: string }>
+    design: (text: string, engine: Engine, model?: string) => Promise<AgentRun | { error: string }>
     files: {
       list: (id: string, rel: string) => Promise<FileEntry[]>
       read: (id: string, rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>

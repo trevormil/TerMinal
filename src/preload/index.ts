@@ -112,8 +112,12 @@ const gt = {
     remove: (id: string) => ipcRenderer.invoke('persistent-agents:remove', id),
     updateFile: (id: string, file: string, body: string) =>
       ipcRenderer.invoke('persistent-agents:update-file', id, file, body),
-    launchPrompt: (id: string, task: string) =>
-      ipcRenderer.invoke('persistent-agents:launch-prompt', id, task),
+    launchPrompt: (id: string, task: string, repoRoot?: string, engine?: string, model?: string) =>
+      ipcRenderer.invoke('persistent-agents:launch-prompt', id, task, repoRoot, engine, model),
+    run: (id: string, task: string, engine?: string, model?: string) =>
+      ipcRenderer.invoke('persistent-agents:run', id, task, engine, model),
+    design: (text: string, engine: string, model?: string) =>
+      ipcRenderer.invoke('persistent-agents:design', text, engine, model),
     files: {
       list: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-list', id, rel),
       read: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-read', id, rel),
