@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, Globe, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, Globe, PanelLeftClose, PanelLeftOpen, X, Plus, Trash2 } from 'lucide-react'
 import type { Tab, TabContext } from '../../lib/types'
 import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
 import claudeLogo from '../../assets/ai-tools/claude.png'
@@ -32,6 +32,8 @@ type Webview = HTMLElement & {
 
 const HOME = 'https://www.google.com'
 const SIDEBAR_KEY = 'gt.browser.aiToolsExpanded'
+const CUSTOM_KEY = 'gt.browser.customBookmarks'
+const HIDDEN_PRESETS_KEY = 'gt.browser.hiddenPresetBookmarks'
 const AI_TOOLS = [
   { id: 'chatgpt', title: 'ChatGPT', url: 'https://chatgpt.com/', logo: chatgptLogo },
   { id: 'claude', title: 'Claude', url: 'https://claude.ai/new', logo: claudeLogo },
@@ -48,6 +50,31 @@ const AI_TOOLS = [
   { id: 'you', title: 'You.com', url: 'https://you.com/', logo: youLogo },
   { id: 't3chat', title: 'T3 Chat', url: 'https://t3.chat/', logo: t3chatLogo },
 ] as const
+
+type BrowserBookmark = {
+  id: string
+  title: string
+  url: string
+  logo?: string
+  source: 'preset' | 'custom'
+}
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function saveJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore */
+  }
+}
 
 function normalizeUrl(input: string): string {
   const s = input.trim()
@@ -66,6 +93,15 @@ function BrowserTab(_props: { ctx: TabContext }) {
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
   const [browserName, setBrowserName] = useState('Brave Browser')
+  const [customBookmarks, setCustomBookmarks] = useState<BrowserBookmark[]>(() =>
+    loadJson<BrowserBookmark[]>(CUSTOM_KEY, []),
+  )
+  const [hiddenPresets, setHiddenPresets] = useState<string[]>(() =>
+    loadJson<string[]>(HIDDEN_PRESETS_KEY, []),
+  )
+  const [adding, setAdding] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newUrl, setNewUrl] = useState('')
   const [toolsExpanded, setToolsExpanded] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_KEY) !== '0'
@@ -85,6 +121,8 @@ function BrowserTab(_props: { ctx: TabContext }) {
       /* ignore */
     }
   }, [toolsExpanded])
+  useEffect(() => saveJson(CUSTOM_KEY, customBookmarks), [customBookmarks])
+  useEffect(() => saveJson(HIDDEN_PRESETS_KEY, hiddenPresets), [hiddenPresets])
 
   useEffect(() => {
     const host = hostRef.current
@@ -144,6 +182,41 @@ function BrowserTab(_props: { ctx: TabContext }) {
     setAddr(url)
     wvRef.current?.loadURL(url).catch(() => {})
   }
+  const presetBookmarks: BrowserBookmark[] = AI_TOOLS
+    .filter((tool) => !hiddenPresets.includes(tool.id))
+    .map((tool) => ({ ...tool, source: 'preset' as const }))
+  const bookmarks = [...presetBookmarks, ...customBookmarks]
+  const addBookmark = () => {
+    const url = normalizeUrl(newUrl || addr)
+    if (!url) return
+    const title =
+      newTitle.trim() ||
+      (() => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, '')
+        } catch {
+          return 'Bookmark'
+        }
+      })()
+    const bookmark: BrowserBookmark = {
+      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      url,
+      source: 'custom',
+    }
+    setCustomBookmarks((prev) => [bookmark, ...prev])
+    setNewTitle('')
+    setNewUrl('')
+    setAdding(false)
+  }
+  const deleteBookmark = (bookmark: BrowserBookmark) => {
+    if (bookmark.source === 'preset') {
+      setHiddenPresets((prev) => (prev.includes(bookmark.id) ? prev : [...prev, bookmark.id]))
+      return
+    }
+    setCustomBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id))
+  }
+  const resetPresets = () => setHiddenPresets([])
   const currentHost = (() => {
     try {
       return new URL(addr).hostname.replace(/^www\./, '')
@@ -217,13 +290,68 @@ function BrowserTab(_props: { ctx: TabContext }) {
             </button>
             {toolsExpanded && (
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-zinc-200">AI tools</div>
-                <div className="text-[9.5px] text-zinc-600">{AI_TOOLS.length} saved</div>
+                <div className="text-[11px] font-semibold text-zinc-200">Bookmarks</div>
+                <div className="text-[9.5px] text-zinc-600">{bookmarks.length} saved</div>
               </div>
+            )}
+            {toolsExpanded && (
+              <button
+                onClick={() => {
+                  setAdding((v) => !v)
+                  setNewUrl(addr)
+                }}
+                title="Add bookmark"
+                className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              >
+                <Plus size={13} strokeWidth={2.5} />
+              </button>
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-            {AI_TOOLS.map((tool) => {
+            {toolsExpanded && adding && (
+              <div className="mb-2 space-y-1 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
+                <input
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Title"
+                  className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+                <input
+                  value={newUrl}
+                  onChange={(e) => setNewUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addBookmark()
+                    if (e.key === 'Escape') setAdding(false)
+                  }}
+                  placeholder="URL or search"
+                  className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={addBookmark}
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-[var(--gt-accent)] px-2 py-1 text-[11px] font-semibold text-white hover:opacity-90"
+                  >
+                    <Plus size={11} strokeWidth={2.5} />
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setAdding(false)}
+                    className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {toolsExpanded && hiddenPresets.length > 0 && (
+              <button
+                onClick={resetPresets}
+                className="mb-2 w-full rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-500 hover:border-[var(--gt-accent)]/60 hover:text-zinc-300"
+              >
+                Restore {hiddenPresets.length} preset{hiddenPresets.length === 1 ? '' : 's'}
+              </button>
+            )}
+            {bookmarks.map((tool) => {
               const toolHost = new URL(tool.url).hostname.replace(/^www\./, '')
               const active = currentHost === toolHost || currentHost.endsWith(`.${toolHost}`)
               return (
@@ -231,22 +359,39 @@ function BrowserTab(_props: { ctx: TabContext }) {
                   key={tool.id}
                   onClick={() => loadTool(tool.url)}
                   title={tool.title}
-                  className={`mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
+                  className={`group mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
                     active
                       ? 'bg-[var(--gt-accent)]/18 text-zinc-100'
                       : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                   }`}
                 >
-                  <img
-                    src={tool.logo}
-                    alt=""
-                    draggable={false}
-                    className="h-5 w-5 shrink-0 rounded-[5px] object-contain"
-                  />
+                  {tool.logo ? (
+                    <img
+                      src={tool.logo}
+                      alt=""
+                      draggable={false}
+                      className="h-5 w-5 shrink-0 rounded-[5px] object-contain"
+                    />
+                  ) : (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[var(--gt-border)] bg-black/30 text-zinc-500">
+                      <Globe size={12} strokeWidth={2} />
+                    </span>
+                  )}
                   {toolsExpanded && (
                     <>
                       <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{tool.title}</span>
+                      {tool.source === 'custom' && <span className="shrink-0 text-[9px] uppercase text-zinc-700">custom</span>}
                       {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />}
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteBookmark(tool)
+                        }}
+                        title={tool.source === 'preset' ? 'Hide preset' : 'Delete bookmark'}
+                        className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-[var(--gt-red)] group-hover:inline-flex"
+                      >
+                        <Trash2 size={11} strokeWidth={2} />
+                      </span>
                     </>
                   )}
                 </button>
