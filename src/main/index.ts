@@ -152,7 +152,6 @@ import {
   startListenerInboxWatcher,
 } from './listeners'
 import { knownModels } from './ai-pricing'
-import { startMenuBar } from './tray'
 import {
   readBudgets,
   setDailyCap,
@@ -1404,8 +1403,6 @@ app.whenReady().then(() => {
   setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
   // AI fleet observability — periodic transcript scans for cost/token rollups.
   startAICollectionLoop()
-  // Menu-bar fleet status (NSStatusItem). 5s poll of HITL/runs/spend.
-  startMenuBar()
   // Background-task watcher (#0004) — reconciles bg-tasks.json state with
   // actual PIDs, sweeps completed tasks, fires Telegram pings on MR ready.
   startBgWatcher()

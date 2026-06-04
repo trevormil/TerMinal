@@ -22,6 +22,7 @@ import { ALL_TABS } from './tabs/registry'
 import { navigateTo, onNavigate } from './lib/nav'
 import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 import { applyTheme } from './lib/themes'
+import { loadHiddenTabs } from './lib/tabVisibility'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -157,6 +158,7 @@ export default function App() {
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
 
   // first-run gate: show onboarding until the user completes (or skips) it
@@ -221,6 +223,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gt.terminalSessionOrder', JSON.stringify(terminalSessionOrder))
   }, [terminalSessionOrder])
+  useEffect(() => {
+    const onChange = () => setHiddenTabs(new Set(loadHiddenTabs()))
+    window.addEventListener('gt.tabs.hidden.changed', onChange)
+    return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
+  }, [])
   const statusByKey = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
 
   useEffect(() => {
@@ -523,6 +530,13 @@ export default function App() {
   }
 
   const showEntry = adding !== false || sessions.length === 0
+  const activeTabs = useMemo(
+    () =>
+      activeCtx
+        ? ALL_TABS.filter((t) => t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
+        : [],
+    [activeCtx, hiddenTabs],
+  )
   const layoutButton = (
     mode: TerminalLayout,
     title: string,
@@ -703,7 +717,7 @@ export default function App() {
               Terminal
             </button>
             {activeCtx &&
-              ALL_TABS.filter((t) => t.appliesTo(activeCtx)).map((t) => (
+              activeTabs.map((t) => (
                 <button
                   key={t.id}
                   style={noDrag}

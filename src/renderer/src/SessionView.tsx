@@ -279,7 +279,18 @@ export function SessionView({
   // Cross-tab navigation: any tab can call navigateTo(tabId, payload) to
   // jump the session view to a different tab. Receiving tabs read the payload
   // out of the same event (e.g. Runs tab pre-selects a runId from payload).
-  useEffect(() => onNavigate((ev) => setActiveTab(ev.tabId)), [])
+  useEffect(() => {
+    if (terminalTile) setActiveTab('terminal')
+  }, [terminalTile])
+
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (terminalTile && ev.tabId !== 'terminal') return
+        setActiveTab(ev.tabId)
+      }),
+    [terminalTile],
+  )
 
   useEffect(() => {
     const fresh = availablePlugins.filter((p) => !known.includes(p.id))
@@ -354,7 +365,7 @@ export function SessionView({
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
-  const onTerminal = activeTab === 'terminal'
+  const onTerminal = terminalTile || activeTab === 'terminal'
 
   const tabPill = (id: string, Icon: LucideIcon, label: string) => {
     const count = tabBadges[id]
