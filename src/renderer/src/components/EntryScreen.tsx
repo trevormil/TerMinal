@@ -1,6 +1,24 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw, Server, ArrowUp, Home, Check } from 'lucide-react'
-import type { Engine, RemoteDirList, RemoteHost, RemoteSession, SessionEngine, SessionMeta } from '../lib/types'
+import {
+  X,
+  FolderOpen,
+  Plus,
+  GitBranch,
+  SquareTerminal,
+  RefreshCw,
+  Server,
+  ArrowUp,
+  Home,
+  Check,
+} from 'lucide-react'
+import type {
+  Engine,
+  RemoteDirList,
+  RemoteHost,
+  RemoteSession,
+  SessionEngine,
+  SessionMeta,
+} from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
@@ -28,11 +46,15 @@ const pathLabel = (p: string) => {
     const rest = p.replace(/^ssh:\/\//, '')
     const slash = rest.indexOf('/')
     const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
-    return remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() || (slash >= 0 ? rest.slice(0, slash) : rest)
+    return (
+      remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() ||
+      (slash >= 0 ? rest.slice(0, slash) : rest)
+    )
   }
   return p.replace(/\/$/, '').split('/').pop() || p
 }
-const remoteDisplayPath = (p: string) => (p.startsWith('/home/') ? p.replace(/^\/home\/[^/]+/, '~') : p)
+const remoteDisplayPath = (p: string) =>
+  p.startsWith('/home/') ? p.replace(/^\/home\/[^/]+/, '~') : p
 const underDir = (sessionCwd: string, dir: string) =>
   sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
@@ -54,7 +76,9 @@ export function EntryScreen({
   lockedCwd?: string
   lockedRemote?: RemoteSession
 }) {
-  const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>({})
+  const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>(
+    {},
+  )
   const [loadingSessions, setLoadingSessions] = useState<Partial<Record<Engine, boolean>>>({})
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
@@ -186,7 +210,11 @@ export function EntryScreen({
 
   const canResume = isAiEngine(engine) && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
-  const shown = sessions ? (filterDir ? sessions.filter((s) => underDir(s.cwd, filterDir)) : sessions) : []
+  const shown = sessions
+    ? filterDir
+      ? sessions.filter((s) => underDir(s.cwd, filterDir))
+      : sessions
+    : []
   const visibleShown = shown.slice(0, visibleSessionCount)
   const hiddenShown = Math.max(0, shown.length - visibleShown.length)
   const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
@@ -254,7 +282,9 @@ export function EntryScreen({
     const slash = rest.indexOf('/')
     const target = slash >= 0 ? rest.slice(0, slash) : rest
     const remotePath = slash >= 0 ? '/' + rest.slice(slash + 1).replace(/^\/+/, '') : '~'
-    const host = remoteHosts.find((h) => h.label === target || h.sshTarget === target || h.id === target)
+    const host = remoteHosts.find(
+      (h) => h.label === target || h.sshTarget === target || h.id === target,
+    )
     if (!host) return { mode: 'new', engine, cwd: path }
     const resolvedEngine = engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine
     return {
@@ -282,13 +312,33 @@ export function EntryScreen({
       : projParent
         ? tilde(projParent)
         : parentLabel
+  const engineOptions = ['local', 'claude', 'codex', 'cursor'] as SessionEngine[]
+  const daemonLabel =
+    location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'
+  const daemonSubLabel =
+    location === 'remote' ? remoteHost?.sshTarget || 'Add an SSH profile in Settings' : 'this Mac'
+  const selectedWorkspaceLabel =
+    location === 'remote'
+      ? remoteDisplayPath(remoteListing?.cwd || remoteCwd || '~')
+      : cwd.trim()
+        ? tilde(cwd.trim())
+        : '~'
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
+  const sectionTitle = 'text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500'
+  const pickButton = (active: boolean, disabled = false) =>
+    `group flex min-h-[56px] items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
+      active
+        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+        : disabled
+          ? 'cursor-not-allowed border-[var(--gt-border)] bg-black/10 text-zinc-700'
+          : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+    }`
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[var(--gt-bg)]">
-      <div className="mx-auto max-w-2xl px-8 py-10">
+      <div className="mx-auto max-w-[860px] px-8 py-9">
         <div className="mb-1 flex items-center gap-2.5">
           <img src={logo} alt="" draggable={false} className="h-9 w-9 rounded-lg" />
           <h1 className="gt-grad-text text-2xl font-bold tracking-tight">TerMinal</h1>
@@ -306,312 +356,371 @@ export function EntryScreen({
         <p className="mb-6 text-sm text-zinc-500">
           {lockedCwd ? (
             <>
-              New session in{' '}
-              <span className="font-mono text-zinc-300">{tilde(lockedCwd)}</span> — pick "Start"
-              for a fresh session{lockedRemote ? '.' : ' or attach to a prior one below.'}
+              New session in <span className="font-mono text-zinc-300">{tilde(lockedCwd)}</span> —
+              pick "Start" for a fresh session
+              {lockedRemote ? '.' : ' or attach to a prior one below.'}
             </>
           ) : (
             <>
-              Start Claude, Codex, Cursor, or a local shell. This window pins to one session so workspace
-              tabs track the same repo.
+              Pick an engine, attach it to a local or SSH daemon profile, then choose the workspace
+              that Tickets, MRs, Agents, Runs, Files, CI, and Search should read from.
             </>
           )}
         </p>
 
-        {/* Recently closed workspaces. Click to re-open as a fresh session on
-            that repo. Only shown for the "+ workspace" flow — inside a locked
-            workspace the recents are irrelevant. */}
-        {!lockedCwd &&
-          (() => {
-            let recents: string[] = []
-            try {
-              recents = JSON.parse(localStorage.getItem('gt.recentWorkspaces') || '[]')
-            } catch {
-              /* ignore */
-            }
-            recents = [...new Set(recents.filter((x) => typeof x === 'string'))].slice(0, 8)
-            if (!recents.length) return null
-            return (
-              <div className="mb-4">
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  Recent
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {recents.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => onChoose(choiceFromRecent(r))}
-                      title={r}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
-                    >
-                      {isRemotePath(r) ? <Server size={11} strokeWidth={2} className="text-[var(--gt-accent-2)]" /> : <FolderOpen size={11} strokeWidth={2} className="text-zinc-500" />}
-                      <span>{pathLabel(r)}</span>
-                      {isRemotePath(r) && <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">ssh</span>}
-                    </button>
-                  ))}
-                </div>
+        <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]">
+          <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-4 py-3">
+            <div>
+              <div className="text-[12px] font-semibold text-zinc-100">New workspace session</div>
+              <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                {daemonLabel} daemon · <span className="font-mono">{selectedWorkspaceLabel}</span>
               </div>
-            )
-          })()}
-
-        {/* new project from template — hidden when adding inside an existing
-            workspace (the repo is fixed) */}
-        {!lockedCwd && (
-        <div className="mb-4 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4">
-          <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            <FolderGit2 size={13} strokeWidth={2} />
-            New project from template
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              value={projName}
-              onChange={(e) => {
-                setProjName(e.target.value)
-                setScaffoldErr('')
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && createProject()}
-              placeholder="project-name"
-              spellCheck={false}
-              className={`${sel} min-w-0 flex-1 font-mono`}
-            />
-            <button
-              onClick={pickParent}
-              title="Choose parent directory"
-              className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-            >
-              {location === 'remote' ? <Server size={13} strokeWidth={2} /> : <FolderOpen size={13} strokeWidth={2} />}
-              {projectParentLabel}
-            </button>
-            <button
-              onClick={createProject}
-              disabled={!projName.trim() || scaffoldBusy}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              {scaffoldBusy ? 'Creating…' : 'Create'}
-            </button>
-          </div>
-          <div className="mt-2 text-[11px] leading-relaxed text-zinc-600">
-            Copies <span className="font-mono text-zinc-500">project-template</span> →{' '}
-            <span className="font-mono text-zinc-500">
-              {projectParentLabel}/{projName.trim() || 'name'}
-            </span>
-            , runs <span className="font-mono text-zinc-500">git init</span>, and opens a session there.
-          </div>
-          {scaffoldErr && <div className="mt-1 text-[11px] text-[var(--gt-red)]">{scaffoldErr}</div>}
-        </div>
-        )}
-
-        {/* start new */}
-        <div className="mb-6 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4">
-          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            Start a new session
-          </div>
-          <div className="mb-2 grid grid-cols-4 gap-2">
-            {(['local', 'claude', 'codex', 'cursor'] as SessionEngine[]).map((e) => (
-              <button
-                key={e}
-                onClick={() => selectEngine(e)}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium ${
-                  engine === e
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                }`}
-              >
-                {e === 'local' ? <SquareTerminal size={14} strokeWidth={2} /> : <EngineLogo engine={e} size={14} />}
-                {e}
-              </button>
-            ))}
-          </div>
-          {!lockedCwd && (
-            <div className="mb-2 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => switchLocation('local')}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
-                  location === 'local'
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                }`}
-              >
-                <FolderOpen size={13} strokeWidth={2} />
-                <span className="flex flex-col items-start leading-tight">
-                  <span>Local</span>
-                  <span className="text-[9.5px] font-normal text-zinc-600">this Mac</span>
-                </span>
-              </button>
-              <button
-                onClick={() => switchLocation('remote')}
-                disabled={remoteHosts.length === 0}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
-                  location === 'remote'
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : remoteHosts.length === 0
-                      ? 'cursor-not-allowed border-[var(--gt-border)] bg-black/10 text-zinc-700'
-                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                }`}
-              >
-                <Server size={13} strokeWidth={2} />
-                <span className="flex flex-col items-start leading-tight">
-                  <span>Remote SSH</span>
-                  <span className="text-[9.5px] font-normal text-zinc-600">
-                    {remoteHost ? remoteHost.label || remoteHost.sshTarget : 'host profile'}
-                  </span>
-                </span>
-              </button>
             </div>
-          )}
-          {location === 'remote' && (
-            <div className="mb-2 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-              <div className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-500">
-                <Server size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
-                <span className="font-semibold text-zinc-200">Remote daemon</span>
-                <span className="truncate font-mono">{remoteHost?.sshTarget || 'no host selected'}</span>
-                <span className="hidden text-zinc-600 sm:inline">
-                  tabs read from this SSH workspace
-                </span>
-              </div>
-              {lockedRemote ? (
-                <div className="flex items-center gap-2 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-zinc-300">
-                  <span>{lockedRemote.label || lockedRemote.sshTarget}</span>
-                  <span className="font-mono text-zinc-600">{lockedRemote.sshTarget}</span>
-                </div>
-              ) : remoteHosts.length === 0 ? (
-                <div className="text-[11px] text-zinc-600">Add remote hosts in Settings &gt; Remote hosts.</div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {remoteHosts.map((h) => (
-                    <button
-                      key={h.id}
-                      onClick={() => {
-                        setRemoteHostId(h.id)
-                        const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
-                        setCwd(nextCwd)
-                        setProjParent(nextCwd)
-                      }}
-                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
-                        remoteHostId === h.id
-                          ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
-                          : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                      }`}
-                    >
-                      <Server size={11} strokeWidth={2} />
-                      <span>{h.label || h.sshTarget}</span>
-                      <span className="font-mono text-zinc-600">{h.sshTarget}</span>
-                      <span className="rounded bg-white/5 px-1 text-[9px] uppercase tracking-wide text-zinc-600">
-                        {h.platform}
+            <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-[var(--gt-accent-2)]">
+              {location === 'remote' ? 'SSH daemon' : 'Local daemon'}
+            </span>
+          </div>
+
+          <div className="space-y-4 p-4">
+            {!lockedCwd &&
+              (() => {
+                let recents: string[] = []
+                try {
+                  recents = JSON.parse(localStorage.getItem('gt.recentWorkspaces') || '[]')
+                } catch {
+                  /* ignore */
+                }
+                recents = [...new Set(recents.filter((x) => typeof x === 'string'))].slice(0, 8)
+                if (!recents.length) return null
+                return (
+                  <div>
+                    <div className={`${sectionTitle} mb-2`}>Recent workspaces</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {recents.map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => onChoose(choiceFromRecent(r))}
+                          title={r}
+                          className="inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
+                        >
+                          {isRemotePath(r) ? (
+                            <Server
+                              size={12}
+                              strokeWidth={2}
+                              className="shrink-0 text-[var(--gt-accent-2)]"
+                            />
+                          ) : (
+                            <FolderOpen
+                              size={12}
+                              strokeWidth={2}
+                              className="shrink-0 text-zinc-500"
+                            />
+                          )}
+                          <span className="truncate">{pathLabel(r)}</span>
+                          {isRemotePath(r) && (
+                            <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
+                              ssh
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
+            <div>
+              <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
+              <div className="grid grid-cols-4 gap-2">
+                {engineOptions.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => selectEngine(e)}
+                    className={pickButton(engine === e)}
+                  >
+                    {e === 'local' ? (
+                      <SquareTerminal size={16} strokeWidth={2} className="shrink-0" />
+                    ) : (
+                      <EngineLogo engine={e} size={16} />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12.5px] font-semibold">{e}</span>
+                      <span className="block truncate text-[9.5px] font-normal text-zinc-600">
+                        {e === 'local' ? 'shell' : e === 'cursor' ? 'agent' : 'code'}
                       </span>
-                    </button>
-                  ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!lockedCwd && (
+              <div>
+                <div className={`${sectionTitle} mb-2`}>2 · Daemon profile</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => switchLocation('local')}
+                    className={pickButton(location === 'local')}
+                  >
+                    <FolderOpen size={16} strokeWidth={2} className="shrink-0 text-zinc-400" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-semibold">Local</span>
+                      <span className="block truncate text-[10px] text-zinc-600">
+                        this Mac · local daemon
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => switchLocation('remote')}
+                    disabled={remoteHosts.length === 0}
+                    className={pickButton(location === 'remote', remoteHosts.length === 0)}
+                  >
+                    <Server
+                      size={16}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--gt-accent-2)]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-semibold">Remote SSH</span>
+                      <span className="block truncate text-[10px] text-zinc-600">
+                        {daemonSubLabel}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+                {remoteHosts.length === 0 && (
+                  <div className="mt-2 text-[10.5px] text-zinc-600">
+                    SSH profiles are configured in Settings → SSH Hosts, then tuned under Daemon
+                    profile.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div>
+              <div className={`${sectionTitle} mb-2`}>3 · Workspace</div>
+              {location === 'remote' && (
+                <div className="space-y-2">
+                  <div className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-500">
+                    <Server
+                      size={13}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--gt-accent-2)]"
+                    />
+                    <span className="font-semibold text-zinc-200">Remote daemon</span>
+                    <span className="truncate font-mono">
+                      {remoteHost?.sshTarget || 'no host selected'}
+                    </span>
+                  </div>
+                  {lockedRemote ? (
+                    <div className="flex items-center gap-2 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-zinc-300">
+                      <span>{lockedRemote.label || lockedRemote.sshTarget}</span>
+                      <span className="font-mono text-zinc-600">{lockedRemote.sshTarget}</span>
+                    </div>
+                  ) : remoteHosts.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {remoteHosts.map((h) => (
+                        <button
+                          key={h.id}
+                          onClick={() => {
+                            setRemoteHostId(h.id)
+                            const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
+                            setCwd(nextCwd)
+                            setProjParent(nextCwd)
+                          }}
+                          className={`inline-flex max-w-[260px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
+                            remoteHostId === h.id
+                              ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                          }`}
+                        >
+                          <Server size={11} strokeWidth={2} className="shrink-0" />
+                          <span className="truncate">{h.label || h.sshTarget}</span>
+                          <span className="truncate font-mono text-zinc-600">{h.sshTarget}</span>
+                          <span className="rounded bg-white/5 px-1 text-[9px] uppercase tracking-wide text-zinc-600">
+                            {h.platform}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )}
-              <div className="rounded-lg border border-[var(--gt-border)] bg-black/20">
-                <div className="flex items-center gap-1.5 border-b border-[var(--gt-border)] p-2">
+              {location === 'remote' && (
+                <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20">
+                  <div className="flex items-center gap-1.5 border-b border-[var(--gt-border)] p-2">
+                    <input
+                      value={cwd}
+                      onChange={(e) => setCwd(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && loadRemoteDir(cwd, { select: true })}
+                      placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                      spellCheck={false}
+                      className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[12px] text-zinc-200 outline-none placeholder:text-zinc-700"
+                    />
+                    <button
+                      onClick={() => loadRemoteDir('~', { select: true })}
+                      className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                      title="Remote home"
+                    >
+                      <Home size={13} strokeWidth={2} />
+                    </button>
+                    <button
+                      onClick={() =>
+                        remoteListing?.parent &&
+                        loadRemoteDir(remoteListing.parent, { select: true })
+                      }
+                      disabled={!remoteListing?.parent}
+                      className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200 disabled:opacity-35"
+                      title="Parent folder"
+                    >
+                      <ArrowUp size={13} strokeWidth={2} />
+                    </button>
+                    <button
+                      onClick={() =>
+                        loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })
+                      }
+                      className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                      title="Refresh"
+                    >
+                      <RefreshCw
+                        size={13}
+                        strokeWidth={2}
+                        className={remoteListingLoading ? 'animate-spin' : ''}
+                      />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const selected = remoteListing?.cwd || cwd
+                        setCwd(selected)
+                        setProjParent(selected)
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-1.5 text-[11px] text-zinc-100"
+                    >
+                      <Check size={12} strokeWidth={2.5} />
+                      Use
+                    </button>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto p-1.5">
+                    {remoteListingLoading && !remoteListing ? (
+                      <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-zinc-600">
+                        <RefreshCw size={12} strokeWidth={2} className="animate-spin" />
+                        Loading folders…
+                      </div>
+                    ) : remoteListingErr ? (
+                      <div className="px-2 py-3 text-[11px] text-[var(--gt-red)]">
+                        {remoteListingErr}
+                      </div>
+                    ) : remoteListing && remoteListing.entries.length === 0 ? (
+                      <div className="px-2 py-3 text-[11px] text-zinc-600">No child folders.</div>
+                    ) : (
+                      remoteListing?.entries.map((d) => (
+                        <button
+                          key={d.path}
+                          onClick={() => loadRemoteDir(d.path, { select: true })}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
+                        >
+                          <FolderOpen
+                            size={13}
+                            strokeWidth={2}
+                            className="shrink-0 text-zinc-500"
+                          />
+                          <span className="truncate">{d.name}</span>
+                          <span className="ml-auto truncate font-mono text-[10px] text-zinc-700">
+                            {remoteDisplayPath(d.path)}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+              {lockedCwd && location === 'local' && (
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[12px] text-zinc-300">
+                  <FolderOpen size={13} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                  <span className="font-semibold text-zinc-200">Current workspace</span>
+                  <span className="min-w-0 truncate font-mono text-zinc-500">
+                    {tilde(lockedCwd)}
+                  </span>
+                </div>
+              )}
+              {!lockedCwd && location === 'local' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={browse}
+                    className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                  >
+                    <FolderOpen size={13} strokeWidth={2} />
+                    Folder
+                  </button>
                   <input
                     value={cwd}
                     onChange={(e) => setCwd(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && loadRemoteDir(cwd, { select: true })}
-                    placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                    placeholder="~ (home)"
                     spellCheck={false}
-                    className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[12px] text-zinc-200 outline-none placeholder:text-zinc-700"
+                    className={`${sel} min-w-0 flex-1 font-mono`}
+                  />
+                </div>
+              )}
+            </div>
+
+            {!lockedCwd && (
+              <div>
+                <div className={`${sectionTitle} mb-2`}>Optional · Create from template</div>
+                <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+                  <input
+                    value={projName}
+                    onChange={(e) => {
+                      setProjName(e.target.value)
+                      setScaffoldErr('')
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                    placeholder="project-name"
+                    spellCheck={false}
+                    className={`${sel} min-w-0 font-mono`}
                   />
                   <button
-                    onClick={() => loadRemoteDir('~', { select: true })}
-                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-                    title="Remote home"
+                    onClick={pickParent}
+                    title="Choose parent directory"
+                    className={`${sel} inline-flex max-w-[220px] shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
                   >
-                    <Home size={13} strokeWidth={2} />
+                    {location === 'remote' ? (
+                      <Server size={13} strokeWidth={2} />
+                    ) : (
+                      <FolderOpen size={13} strokeWidth={2} />
+                    )}
+                    <span className="truncate">{projectParentLabel}</span>
                   </button>
                   <button
-                    onClick={() => remoteListing?.parent && loadRemoteDir(remoteListing.parent, { select: true })}
-                    disabled={!remoteListing?.parent}
-                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200 disabled:opacity-35"
-                    title="Parent folder"
+                    onClick={createProject}
+                    disabled={!projName.trim() || scaffoldBusy}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
                   >
-                    <ArrowUp size={13} strokeWidth={2} />
-                  </button>
-                  <button
-                    onClick={() => loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })}
-                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
-                    title="Refresh"
-                  >
-                    <RefreshCw size={13} strokeWidth={2} className={remoteListingLoading ? 'animate-spin' : ''} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      const selected = remoteListing?.cwd || cwd
-                      setCwd(selected)
-                      setProjParent(selected)
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-1.5 text-[11px] text-zinc-100"
-                  >
-                    <Check size={12} strokeWidth={2.5} />
-                    Use
+                    <Plus size={14} strokeWidth={2.5} />
+                    {scaffoldBusy ? 'Creating…' : 'Create'}
                   </button>
                 </div>
-                <div className="max-h-44 overflow-y-auto p-1.5">
-                  {remoteListingLoading && !remoteListing ? (
-                    <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-zinc-600">
-                      <RefreshCw size={12} strokeWidth={2} className="animate-spin" />
-                      Loading folders…
-                    </div>
-                  ) : remoteListingErr ? (
-                    <div className="px-2 py-3 text-[11px] text-[var(--gt-red)]">{remoteListingErr}</div>
-                  ) : remoteListing && remoteListing.entries.length === 0 ? (
-                    <div className="px-2 py-3 text-[11px] text-zinc-600">No child folders.</div>
-                  ) : (
-                    remoteListing?.entries.map((d) => (
-                      <button
-                        key={d.path}
-                        onClick={() => loadRemoteDir(d.path, { select: true })}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
-                      >
-                        <FolderOpen size={13} strokeWidth={2} className="shrink-0 text-zinc-500" />
-                        <span className="truncate">{d.name}</span>
-                        <span className="ml-auto truncate font-mono text-[10px] text-zinc-700">{remoteDisplayPath(d.path)}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
+                {scaffoldErr && (
+                  <div className="mt-1 text-[11px] text-[var(--gt-red)]">{scaffoldErr}</div>
+                )}
               </div>
-              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-zinc-600">
-                <span className="font-mono">{remoteDisplayPath(remoteListing?.cwd || remoteCwd || '~')}</span>
-                <span>drives Tickets, MRs, Agents, Runs, Schedules, Files, Docs, CI, and Search.</span>
-              </div>
-            </div>
-          )}
-          {!lockedCwd && location === 'local' && (
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                onClick={browse}
-                className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-              >
-                <FolderOpen size={13} strokeWidth={2} />
-                Folder
-              </button>
+            )}
+
+            <div className="flex items-center gap-2 border-t border-[var(--gt-border)] pt-4">
               <input
-                value={cwd}
-                onChange={(e) => setCwd(e.target.value)}
-                placeholder="~ (home)"
-                spellCheck={false}
-                className={`${sel} min-w-0 flex-1 font-mono`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="session name (optional)"
+                className={`${sel} min-w-0 flex-1`}
               />
+              <button
+                onClick={() => onChoose(buildChoice())}
+                disabled={location === 'remote' && !remoteHost}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                New session
+              </button>
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="session name (optional)"
-              className={`${sel} min-w-0 flex-1`}
-            />
-            <button
-              onClick={() => onChoose(buildChoice())}
-              disabled={location === 'remote' && !remoteHost}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              New session
-            </button>
           </div>
         </div>
 
@@ -619,14 +728,20 @@ export function EntryScreen({
           <>
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Resume {engine}{filterDir ? ` · ${filterDir.split('/').pop()}` : ''}{resumeCountLabel}
+                Resume {engine}
+                {filterDir ? ` · ${filterDir.split('/').pop()}` : ''}
+                {resumeCountLabel}
               </span>
               <button
                 onClick={() => loadEngineSessions(undefined, true)}
                 disabled={isLoadingThisEngine}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-[var(--gt-accent-2)] hover:border-[var(--gt-accent)]/50 disabled:opacity-50"
               >
-                <RefreshCw size={11} strokeWidth={2} className={isLoadingThisEngine ? 'animate-spin' : ''} />
+                <RefreshCw
+                  size={11}
+                  strokeWidth={2}
+                  className={isLoadingThisEngine ? 'animate-spin' : ''}
+                />
                 {sessions ? 'refresh' : 'load sessions'}
               </button>
               {filterDir && (
@@ -653,19 +768,25 @@ export function EntryScreen({
               </div>
             ) : shown.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
-                {filterDir ? 'No sessions for this folder — start a new one above.' : `No prior ${engine} sessions found.`}
+                {filterDir
+                  ? 'No sessions for this folder — start a new one above.'
+                  : `No prior ${engine} sessions found.`}
               </div>
             ) : (
               <div className="space-y-2">
                 {visibleShown.map((s) => (
                   <button
                     key={s.id}
-                    onClick={() => onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })}
+                    onClick={() =>
+                      onChoose({ mode: 'resume', engine: s.engine, sessionId: s.id, cwd: s.cwd })
+                    }
                     className="flex w-full items-center gap-3 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 text-left hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] text-zinc-100">
-                        {s.firstUserText || <span className="italic text-zinc-500">untitled session</span>}
+                        {s.firstUserText || (
+                          <span className="italic text-zinc-500">untitled session</span>
+                        )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
                         <EngineLogo engine={s.engine} size={10} />
