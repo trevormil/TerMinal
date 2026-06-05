@@ -3,8 +3,8 @@ import { formatRunLog } from './runLogFormat'
 
 describe('formatRunLog', () => {
   test('splits leading TerMinal metadata from output', () => {
-    const out = formatRunLog('▸ Agent · claude\n▸ branch main\n\n━━ step 1/1 · run ━━\nhello')
-    expect(out.meta).toEqual(['Agent · claude', 'branch main'])
+    const out = formatRunLog('▸ Agent · claude\n▸ branch main\n▸ command codex exec -C <worktree> <prompt>\n\n━━ step 1/1 · run ━━\nhello')
+    expect(out.meta).toEqual(['Agent · claude', 'branch main', 'command codex exec -C <worktree> <prompt>'])
     expect(out.lines.map((l) => l.kind)).toEqual(['step', 'normal'])
   })
 

@@ -173,6 +173,8 @@ function runStart(root,input){
   const engine=String(input.engine||'claude'),bin=shellBin(engine,input.enginePath),model=String(input.model||'');
   const labels=steps.map(s=>String(s&&s.label||'run'));
   const modelFlag=model?' --model '+sq(model):'';
+  const displayModelFlag=model?' --model '+model:'';
+  const displayCommand=scriptFirst?scriptAgent:(engine==='claude'?bin+' -p <prompt> --dangerously-skip-permissions --permission-mode auto'+displayModelFlag:engine==='cursor'?bin+' -p --force --trust --output-format text --workspace '+worktree+displayModelFlag+' <prompt>':bin+' exec -s danger-full-access -C '+worktree+displayModelFlag+' <prompt>');
   const stepBlocks=promptFiles.map((pf,i)=>[
     'echo '+sq('━━ step '+(i+1)+'/'+promptFiles.length+' · '+labels[i]+' ━━'),
     'PROMPT="$(cat '+sq(pf)+')"',
@@ -217,6 +219,7 @@ function runStart(root,input){
     'echo '+sq('▸ Remote agent · '+String(input.agentTitle||input.agentId||'Agent')+' · '+engine+(model?'/'+model:'')),
     'echo '+sq('▸ branch '+branch),
     'echo '+sq('▸ worktree '+worktree),
+    'echo '+sq('▸ command '+displayCommand),
     'echo',
     stepBlocks,
     'finish 0',

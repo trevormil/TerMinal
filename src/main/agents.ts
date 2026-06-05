@@ -716,6 +716,19 @@ function buildCmd(engine: Engine, worktree: string, prompt: string, model?: stri
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
 
+function displayCmd(engine: Engine, worktree: string, model?: string, scriptPath?: string | null): string {
+  if (scriptPath) return `${scriptPath} # script-first agent`
+  const bin = enginePath(engine)
+  const modelFlag = model ? ` --model ${model}` : ''
+  if (engine === 'claude') {
+    return `${bin} -p <prompt> --output-format stream-json --dangerously-skip-permissions --permission-mode auto${modelFlag}`
+  }
+  if (engine === 'cursor') {
+    return `${bin} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${worktree}${modelFlag} <prompt>`
+  }
+  return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
+}
+
 // Pipeline definitions + composition are pure (see ./pipelines, unit-tested).
 // All stages share the worktree + branch, so a later stage sees what an earlier
 // one committed. buildSteps just resolves the persona prompt off disk first.
@@ -804,13 +817,16 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     }
   }
   const repoLabel = repoForCwd(repoRoot)?.path || basename(repoRoot)
+  const launchScriptPath = locateScript(repoRoot, spec.id)
+  const launchModel = spec.model || engineDefaultModel(spec.engine) || ''
   const baseLine = spec.prRef
     ? `▸ on ${forgeFor(repoRoot).label} ${forgeFor(repoRoot).sym}${spec.prRef.iid} · branch ${branch}`
     : `▸ branch ${branch} (off ${defaultBase(repoRoot)})`
   const forceLine = spec.force ? '▸ ⚠ FORCE MODE — TERMINAL_FORCE_MAIN=1 (main-push allowed)\n' : ''
   const header =
     `▸ ${spec.title} · ${spec.engine}${spec.persona ? ` · as ${spec.persona}` : ''}` +
-    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n${forceLine}\n`
+    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n` +
+    `▸ command ${displayCmd(spec.engine, worktree, launchModel || undefined, launchScriptPath)}\n${forceLine}\n`
   const run: AgentRun = {
     id: randomUUID(),
     agentId: spec.id,
@@ -895,13 +911,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // exists, exec it directly with env vars instead of building a prompt-based
     // command from the prompt. Inside the script the operator can mix
     // deterministic shell with `claude -p` / `codex exec` however they want.
-    const scriptPath = locateScript(repoRoot, spec.id)
+    const scriptPath = launchScriptPath
     // Resolve model in priority order: explicit spec override > per-engine
     // Settings default > nothing (engine picks its own default). Same value
     // flows into both TERMINAL_MODEL (visible to scripts) and the buildCmd
     // fallback for prompt-style agents — so a script's `--model
     // "${TERMINAL_MODEL:-sonnet}"` pattern sees the user's Settings default.
-    const effectiveModel = spec.model || engineDefaultModel(spec.engine) || ''
+    const effectiveModel = launchModel
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Inject TerMinal's bin dir so scripts can call `terminal-cli ...`.

@@ -18,6 +18,16 @@ const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
 const LOG_DIR = join(CFG, 'bg-tasks')
 
+function displayArg(arg: string, prompt: string): string {
+  if (arg === prompt) return '<prompt>'
+  if (/^[\w@%+=:,./-]+$/.test(arg)) return arg
+  return JSON.stringify(arg)
+}
+
+function displayCommand(command: { bin: string; args: string[] }, prompt: string): string {
+  return [command.bin, ...command.args.map((arg) => displayArg(arg, prompt))].join(' ')
+}
+
 export type BgTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled'
 
 export type BgTask = {
@@ -196,7 +206,13 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   // can make macOS attribute broad home-folder probes to TerMinal and can leak
   // control markers like ^D into logs. Engine cwd + explicit workspace flags
   // keep the task scoped to the generated worktree.
-  writeFileSync(logFile, `▸ Background task · ${engine}${effectiveModel ? `/${effectiveModel}` : ''}\n▸ branch ${branch}\n▸ worktree ${worktree}\n\n`)
+  writeFileSync(
+    logFile,
+    `▸ Background task · ${engine}${effectiveModel ? `/${effectiveModel}` : ''}\n` +
+      `▸ branch ${branch}\n` +
+      `▸ worktree ${worktree}\n` +
+      `▸ command ${displayCommand(command, enrichedPrompt)}\n\n`,
+  )
   const out = openSync(logFile, 'a')
   const startedAt = Date.now()
   const childEnv = {
