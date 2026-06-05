@@ -459,7 +459,7 @@ export function SessionView({
       onClick={() => !disabled && onTerminalLayoutChange?.(mode)}
       disabled={disabled}
       title={title}
-      className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
+      className={`flex h-full w-8 items-center justify-center transition-colors ${
         terminalLayout === mode
           ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
           : disabled
@@ -707,7 +707,7 @@ export function SessionView({
                   {onTerminal && onTerminalLayoutChange && (
                     <div
                       style={noDrag}
-                      className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5"
+                      className="-mr-2 flex h-7 shrink-0 items-center overflow-hidden border-l border-[var(--gt-border)] bg-[var(--gt-panel)]/70"
                     >
                       {layoutButton('single', 'Single terminal', Square)}
                       {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
