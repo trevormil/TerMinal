@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
-import { Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -59,7 +59,7 @@ const loadTerminalSessionOrder = (): Record<string, string[]> => {
 // top tab bar shows ONE pill per workspace with the sessions rendered inline
 // inside it — so the model maps to the user's mental model ("project →
 // terminals") instead of the old session-first flat list.
-type Workspace = { repoRoot: string; label: string; sessions: Sess[] }
+type Workspace = { repoRoot: string; label: string; remote: boolean; sessions: Sess[] }
 
 // Trim a transcript's first user message into a session-tab-friendly label.
 // 24 chars fits comfortably in the in-Terminal session sub-bar. We drop
@@ -425,7 +425,7 @@ export default function App() {
     const map = new Map<string, Workspace>()
     for (const s of sessions) {
       const root = cwdOf(s) || '(no cwd)'
-      if (!map.has(root)) map.set(root, { repoRoot: root, label: repoLabelOf(root), sessions: [] })
+      if (!map.has(root)) map.set(root, { repoRoot: root, label: repoLabelOf(root), remote: !!s.choice.remote || root.startsWith('ssh://'), sessions: [] })
       map.get(root)!.sessions.push(s)
     }
     return [...map.values()].map((ws) => {
@@ -626,7 +626,9 @@ export default function App() {
                     title={anyWorking ? 'a session is working' : 'idle'}
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-[var(--gt-accent-2)]'}`}
                   />
+                  {ws.remote && <Server size={11} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
                   <span className="max-w-[180px] truncate font-semibold">{ws.label}</span>
+                  {ws.remote && <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">ssh</span>}
                   {ws.sessions.length > 1 && <span className="rounded-full bg-black/30 px-1 text-[9.5px] tabular-nums text-zinc-500">{ws.sessions.length}</span>}
                   <button
                     onClick={(e) => {

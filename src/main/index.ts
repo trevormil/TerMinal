@@ -135,12 +135,14 @@ import {
   remoteAgents,
   remoteCi,
   remoteCommandForEngine,
+  remoteDirs,
   remoteDocs,
   remoteFiles,
   remoteGitStatus,
   remoteMrs,
   remoteNotes,
   remoteProbe,
+  remoteProject,
   remoteRuns,
   remoteSchedules,
   remoteSessions,
@@ -222,6 +224,19 @@ function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
 
 function displaySessionName(cwd: string, fallback = 'session') {
   return repoLabelFor(cwd) || basename(cwd) || fallback
+}
+
+function remoteFromHostId(hostId: string, cwd?: string): RemoteSession | null {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return null
+  return {
+    hostId: host.id,
+    label: host.label,
+    sshTarget: host.sshTarget,
+    cwd: cwd || host.defaultCwd || host.daemon.projectsDir || '~',
+    platform: host.platform,
+    daemon: host.daemon,
+  }
 }
 
 function startSession(key: string, opts: StartOpts) {
@@ -617,6 +632,32 @@ ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) => {
       detail: r.ok ? r.path : r.error,
       repo: r.ok && r.path ? basename(r.path) : undefined,
       repoRoot: r.ok ? r.path : undefined,
+    },
+    { notify: !r.ok },
+  )
+  return r
+})
+ipcMain.handle('remote:dirs', (_e, hostId: string, path?: string) => {
+  const remote = remoteFromHostId(hostId, path)
+  if (!remote) return { cwd: path || '', parent: '', entries: [], error: 'remote host not found' }
+  return remoteDirs.list(remote, path).catch((e) => ({ cwd: path || '', parent: '', entries: [], error: (e as Error).message }))
+})
+ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: string) => {
+  const remote = remoteFromHostId(hostId, parentDir)
+  if (!remote) return { ok: false, error: 'remote host not found' }
+  const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
+  const r = await remoteProject.scaffold(remote, name, parentDir || remote.cwd || '~', templateRepo).catch((e) => ({
+    ok: false,
+    path: undefined,
+    error: (e as Error).message,
+  }))
+  emitActivity(
+    {
+      kind: r.ok ? 'task-complete' : 'error',
+      title: r.ok ? `Remote project scaffolded · ${basename(r.path || name)}` : `Remote project scaffold failed · ${name}`,
+      detail: r.ok ? `${remote.sshTarget}:${r.path}` : r.error,
+      repo: r.ok && r.path ? basename(r.path) : undefined,
+      repoRoot: '',
     },
     { notify: !r.ok },
   )

@@ -212,6 +212,8 @@ export type RemoteSettingsProbe = {
   engines: Record<Engine, string>
   tools: Record<string, string>
 }
+export type RemoteDirEntry = { name: string; path: string; dir: true }
+export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
 
 export type Agent = {
   id: string
@@ -740,6 +742,12 @@ export type GtApi = {
   detectEnv: () => Promise<EnvDetect>
   installGtNotify: () => Promise<{ ok: boolean; path?: string; error?: string }>
   scaffoldProject: (
+    name: string,
+    parentDir?: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>
+  remoteDirs: (hostId: string, path?: string) => Promise<RemoteDirList>
+  remoteScaffoldProject: (
+    hostId: string,
     name: string,
     parentDir?: string,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>

@@ -33,6 +33,9 @@ const gt = {
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
   scaffoldProject: (name: string, parentDir?: string) =>
     ipcRenderer.invoke('project:scaffold', name, parentDir),
+  remoteDirs: (hostId: string, path?: string) => ipcRenderer.invoke('remote:dirs', hostId, path),
+  remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
+    ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
   isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:is-fullscreen'),
   onFullscreen: (cb: (v: boolean) => void) => {
     const h = (_e: unknown, v: boolean) => cb(v)

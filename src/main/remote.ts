@@ -35,6 +35,9 @@ export type RemoteRunStartInput = {
   enginePath?: string
   scheduleId?: string
 }
+export type RemoteDirEntry = { name: string; path: string; dir: true }
+export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
+export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
 
 export type RemoteProbe = {
   cwd: string
@@ -107,6 +110,9 @@ function sessionGet(root,slug){const safeSlug=String(slug||'').replace(/[^\w-]/g
 function notesPath(root,scope){return scope==='global'?path.join(cfg(),'notes.md'):path.join(root,'.TerMinal','notes.md')}
 function notesRead(root,scope){try{return fs.readFileSync(notesPath(root,scope),'utf8')}catch{return ''}}
 function notesWrite(root,scope,content){const p=notesPath(root,scope);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,String(content||''));if(scope==='repo'){try{const gi=path.join(root,'.gitignore'),entry='.TerMinal/notes.md';let c=exists(gi)?fs.readFileSync(gi,'utf8'):'';if(!c.split('\n').some(l=>l.trim()===entry)){if(c&&!c.endsWith('\n'))c+='\n';fs.writeFileSync(gi,c+entry+'\n')}}catch{}}return true}
+function expandPath(p){p=String(p||'').trim();if(!p||p==='~')return home();if(p.startsWith('~/'))return path.join(home(),p.slice(2));return path.isAbsolute(p)?p:path.resolve(cwdInput,p)}
+function dirList(){const here=expandPath(input.path||'.');const st=stat(here);if(!st||!st.isDirectory())return {cwd:here,parent:'',entries:[],error:'not a directory'};const skip=new Set(['node_modules','.DS_Store']);const entries=fs.readdirSync(here,{withFileTypes:true}).filter(d=>d.isDirectory()&&!d.name.startsWith('.')&&!skip.has(d.name)).map(d=>({name:d.name,path:path.join(here,d.name),dir:true})).sort((a,b)=>a.name.localeCompare(b.name));return {cwd:here,parent:path.dirname(here)===here?'':path.dirname(here),entries}}
+function scaffoldRemote(){const safe=String(input.name||'').trim().replace(/[^\w.-]/g,'-').replace(/^-+|-+$/g,'');if(!safe||/^\.+$/.test(safe))return {ok:false,error:'enter a project name'};const parent=expandPath(input.parentDir||'.');const dest=path.join(parent,safe);if(path.resolve(path.dirname(dest))!==path.resolve(parent))return {ok:false,error:'invalid name'};if(exists(dest))return {ok:false,error:'"'+safe+'" already exists in that folder'};const template=String(input.templateRepo||'https://github.com/trevormil/project-template').trim();const os=require('os');const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gt-template-'));try{const cloned=runObj('git',['clone','--depth','1',template,tmp],{timeout:60000});if(cloned.error&&!exists(path.join(tmp,'bootstrap.sh')))return {ok:false,error:"couldn't fetch template — "+cloned.error};if(!exists(path.join(tmp,'bootstrap.sh')))return {ok:false,error:"couldn't fetch template"};const skip=new Set(['.git','.gitmodules','node_modules','.DS_Store']);fs.mkdirSync(dest,{recursive:true});fs.cpSync(tmp,dest,{recursive:true,filter:(s)=>!skip.has(path.basename(s))});const env={...process.env,GIT_AUTHOR_NAME:process.env.GIT_AUTHOR_NAME||'TerMinal',GIT_AUTHOR_EMAIL:process.env.GIT_AUTHOR_EMAIL||'noreply@terminal.local',GIT_COMMITTER_NAME:process.env.GIT_COMMITTER_NAME||'TerMinal',GIT_COMMITTER_EMAIL:process.env.GIT_COMMITTER_EMAIL||'noreply@terminal.local'};cp.execFileSync('git',['-C',dest,'init','-q'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'add','-A'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'commit','-qm','chore: scaffold from project-template'],{stdio:'ignore',env});return {ok:true,path:dest}}catch(e){return {ok:false,error:e.message||String(e)}}finally{try{fs.rmSync(tmp,{recursive:true,force:true})}catch{}}}
 function sq(s){return "'"+String(s||'').replace(/'/g,"'\\''")+"'";}
 function shPath(s){s=String(s||'');return s.startsWith('~/')?'"$HOME"/'+sq(s.slice(2)):sq(s)}
 function shellBin(engine,override){if(override&&String(override).trim())return String(override).trim();return engine==='cursor'?'cursor-agent':engine}
@@ -226,6 +232,7 @@ else if(op==='runs.all')out(unifiedRuns());else if(op==='runs.log')out(runLog(in
 else if(op==='runs.start')out(runStart(root,input.run||{}));
 else if(op==='sessions.list')out(sessionsList(root));else if(op==='sessions.get')out(sessionGet(root,input.slug));
 else if(op==='notes.read')out(notesRead(root,input.scope));else if(op==='notes.write')out(notesWrite(root,input.scope,input.content));
+else if(op==='dirs.list')out(dirList());else if(op==='project.scaffold')out(scaffoldRemote());
 else if(op==='workspace.search'){const q=String(input.q||'').toLowerCase(),selected=new Set(input.kinds&&input.kinds.length?input.kinds:['file','ticket','mr','doc']);const results=[];function push(x){if(results.length<260)results.push(x)}if(selected.has('file'))for(const h of search(root,q))push({id:'file:'+h.file+':'+h.line,kind:'file',title:h.file+':'+h.line,subtitle:'File',detail:h.text,path:h.file,line:h.line,payload:{path:h.file,line:h.line}});if(selected.has('ticket'))for(const t of listTickets(root)){const hay=[t.id,t.title,t.status,t.priority,t.type,t.body].join(' ').toLowerCase();if(hay.includes(q))push({id:'ticket:'+t.slug,kind:'ticket',title:'#'+t.id+' '+t.title,subtitle:t.status+' - '+t.priority+' - '+t.type,detail:t.body.slice(0,260),path:'backlog/'+t.slug+'.md',payload:{slug:t.slug}})}if(selected.has('mr')){const l=listMrs(root);for(const m of l.mrs){const hay=[m.iid,m.title,m.state,m.author,m.sourceBranch,(m.labels||[]).join(' ')].join(' ').toLowerCase();if(hay.includes(q))push({id:'mr:'+m.iid,kind:'mr',title:'MR/PR '+m.iid+' '+m.title,subtitle:m.state+' - '+m.author,detail:m.sourceBranch,payload:{iid:m.iid}})}}if(selected.has('doc'))for(const c of docs(root).categories)for(const d of c.items){const body=readFile(root,d.path).content||'';if([d.title,d.path,c.label,body].join(' ').toLowerCase().includes(q))push({id:'doc:'+d.path,kind:'doc',title:d.title,subtitle:c.label+' - '+d.path,detail:body.replace(/\s+/g,' ').slice(0,260),path:d.path,payload:{path:d.path}})}out({results})}
 else throw new Error('unknown op '+op)}catch(e){out({_remoteError:e.message||String(e)})}
 `
@@ -339,6 +346,13 @@ export const remoteSessions = {
 export const remoteNotes = {
   read: (remote: RemoteSessionRef, scope: NotesScope) => remoteJson<string>(remote, { op: 'notes.read', scope }),
   write: (remote: RemoteSessionRef, scope: NotesScope, content: string) => remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
+}
+export const remoteDirs = {
+  list: (remote: RemoteSessionRef, path?: string) => remoteJson<RemoteDirList>(remote, { op: 'dirs.list', path }),
+}
+export const remoteProject = {
+  scaffold: (remote: RemoteSessionRef, name: string, parentDir: string, templateRepo?: string) =>
+    remoteJson<RemoteScaffoldResult>(remote, { op: 'project.scaffold', name, parentDir, templateRepo }),
 }
 export const remoteWorkspaceSearch = (remote: RemoteSessionRef, q: string, kinds?: WorkspaceSearchKind[]) =>
   remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })

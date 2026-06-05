@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw, Server } from 'lucide-react'
-import type { Engine, RemoteHost, RemoteSession, SessionEngine, SessionMeta } from '../lib/types'
+import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw, Server, ArrowUp, Home, Check } from 'lucide-react'
+import type { Engine, RemoteDirList, RemoteHost, RemoteSession, SessionEngine, SessionMeta } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
@@ -22,6 +22,17 @@ function rel(ms: number): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
+const isRemotePath = (p: string) => p.startsWith('ssh://')
+const pathLabel = (p: string) => {
+  if (isRemotePath(p)) {
+    const rest = p.replace(/^ssh:\/\//, '')
+    const slash = rest.indexOf('/')
+    const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
+    return remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() || (slash >= 0 ? rest.slice(0, slash) : rest)
+  }
+  return p.replace(/\/$/, '').split('/').pop() || p
+}
+const remoteDisplayPath = (p: string) => (p.startsWith('/home/') ? p.replace(/^\/home\/[^/]+/, '~') : p)
 const underDir = (sessionCwd: string, dir: string) =>
   sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
@@ -59,9 +70,16 @@ export function EntryScreen({
   const [scaffoldBusy, setScaffoldBusy] = useState(false)
   const [scaffoldErr, setScaffoldErr] = useState('')
   const [defaultParent, setDefaultParent] = useState('') // configured projects dir ('' → ~)
+  const [remoteListing, setRemoteListing] = useState<RemoteDirList | null>(null)
+  const [remoteListingLoading, setRemoteListingLoading] = useState(false)
+  const [remoteListingErr, setRemoteListingErr] = useState('')
   const parentLabel = defaultParent ? tilde(defaultParent) : '~'
 
   const pickParent = async () => {
+    if (location === 'remote') {
+      setProjParent(cwd || remoteListing?.cwd || '')
+      return
+    }
     const d = await window.gt.pickDir()
     if (d) setProjParent(d)
   }
@@ -69,10 +87,35 @@ export function EntryScreen({
     if (!projName.trim() || scaffoldBusy) return
     setScaffoldBusy(true)
     setScaffoldErr('')
-    const r = await window.gt.scaffoldProject(projName.trim(), projParent || undefined)
+    const parent = location === 'remote' ? projParent || cwd || undefined : projParent || undefined
+    const r =
+      location === 'remote' && remoteHostId
+        ? await window.gt.remoteScaffoldProject(remoteHostId, projName.trim(), parent)
+        : await window.gt.scaffoldProject(projName.trim(), parent)
     setScaffoldBusy(false)
-    if (r.ok && r.path) onChoose({ mode: 'new', engine, cwd: r.path })
-    else setScaffoldErr(r.error || 'scaffold failed')
+    if (r.ok && r.path) {
+      if (location === 'remote') {
+        const host = remoteHosts.find((h) => h.id === remoteHostId)
+        if (!host) return setScaffoldErr('remote host not found')
+        onChoose({
+          mode: 'new',
+          engine: engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine,
+          cwd: r.path,
+          remote: {
+            hostId: host.id,
+            label: host.label || host.sshTarget,
+            sshTarget: host.sshTarget,
+            cwd: r.path,
+            platform: host.platform,
+            daemon: host.daemon,
+          },
+        })
+      } else {
+        onChoose({ mode: 'new', engine, cwd: r.path })
+      }
+    } else {
+      setScaffoldErr(r.error || 'scaffold failed')
+    }
   }
 
   useEffect(() => {
@@ -111,15 +154,19 @@ export function EntryScreen({
     if (lockedCwd) return
     if (next === 'local') {
       setCwd('')
+      setProjParent('')
       return
     }
     const host = remoteHosts.find((h) => h.id === remoteHostId) || remoteHosts[0]
     if (host) {
       setRemoteHostId(host.id)
-      setCwd(host.defaultCwd || host.daemon.projectsDir || '')
+      const nextCwd = host.defaultCwd || host.daemon.projectsDir || ''
+      setCwd(nextCwd)
+      setProjParent(nextCwd)
       if (engine === 'local') setEngine(host.daemon.defaultEngine || 'claude')
     } else {
       setCwd('')
+      setProjParent('')
     }
   }
 
@@ -154,6 +201,33 @@ export function EntryScreen({
       }
     : remoteHosts.find((h) => h.id === remoteHostId) || null
   const remoteCwd = cwd.trim() || remoteHost?.defaultCwd || remoteHost?.daemon?.projectsDir || ''
+
+  const loadRemoteDir = async (path?: string, opts?: { select?: boolean }) => {
+    if (!remoteHost) return
+    const target = path || remoteCwd || '~'
+    setRemoteListingLoading(true)
+    setRemoteListingErr('')
+    const r = await window.gt.remoteDirs(remoteHost.id, target)
+    setRemoteListingLoading(false)
+    setRemoteListing(r)
+    if (r.error) {
+      setRemoteListingErr(r.error)
+      return
+    }
+    if (opts?.select) {
+      setCwd(r.cwd)
+      setProjParent(r.cwd)
+    }
+  }
+
+  useEffect(() => {
+    if (location !== 'remote' || !remoteHost) return
+    setRemoteListing(null)
+    setRemoteListingErr('')
+    loadRemoteDir(remoteCwd || '~', { select: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, remoteHost?.id])
+
   const buildChoice = (): Choice => {
     const base = {
       mode: 'new' as const,
@@ -174,11 +248,40 @@ export function EntryScreen({
       },
     }
   }
+  const choiceFromRecent = (path: string): Choice => {
+    if (!isRemotePath(path)) return { mode: 'new', engine, cwd: path }
+    const rest = path.replace(/^ssh:\/\//, '')
+    const slash = rest.indexOf('/')
+    const target = slash >= 0 ? rest.slice(0, slash) : rest
+    const remotePath = slash >= 0 ? '/' + rest.slice(slash + 1).replace(/^\/+/, '') : '~'
+    const host = remoteHosts.find((h) => h.label === target || h.sshTarget === target || h.id === target)
+    if (!host) return { mode: 'new', engine, cwd: path }
+    const resolvedEngine = engine === 'local' ? host.daemon.defaultEngine || 'claude' : engine
+    return {
+      mode: 'new',
+      engine: resolvedEngine,
+      cwd: remotePath,
+      remote: {
+        hostId: host.id,
+        label: host.label || host.sshTarget,
+        sshTarget: host.sshTarget,
+        cwd: remotePath,
+        platform: host.platform,
+        daemon: host.daemon,
+      },
+    }
+  }
   const resumeCountLabel = sessions
     ? shown.length > visibleShown.length
       ? ` (${visibleShown.length}/${shown.length})`
       : ` (${shown.length})`
     : ''
+  const projectParentLabel =
+    location === 'remote'
+      ? remoteDisplayPath(projParent || cwd || remoteCwd || '~')
+      : projParent
+        ? tilde(projParent)
+        : parentLabel
 
   const sel =
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
@@ -226,7 +329,7 @@ export function EntryScreen({
             } catch {
               /* ignore */
             }
-            recents = recents.filter((x) => typeof x === 'string').slice(0, 6)
+            recents = [...new Set(recents.filter((x) => typeof x === 'string'))].slice(0, 8)
             if (!recents.length) return null
             return (
               <div className="mb-4">
@@ -237,11 +340,13 @@ export function EntryScreen({
                   {recents.map((r) => (
                     <button
                       key={r}
-                      onClick={() => onChoose({ mode: 'new', engine, cwd: r })}
+                      onClick={() => onChoose(choiceFromRecent(r))}
                       title={r}
-                      className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
                     >
-                      {r.replace(/\/$/, '').split('/').pop() || r}
+                      {isRemotePath(r) ? <Server size={11} strokeWidth={2} className="text-[var(--gt-accent-2)]" /> : <FolderOpen size={11} strokeWidth={2} className="text-zinc-500" />}
+                      <span>{pathLabel(r)}</span>
+                      {isRemotePath(r) && <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">ssh</span>}
                     </button>
                   ))}
                 </div>
@@ -274,8 +379,8 @@ export function EntryScreen({
               title="Choose parent directory"
               className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
             >
-              <FolderOpen size={13} strokeWidth={2} />
-              {projParent ? tilde(projParent) : parentLabel}
+              {location === 'remote' ? <Server size={13} strokeWidth={2} /> : <FolderOpen size={13} strokeWidth={2} />}
+              {projectParentLabel}
             </button>
             <button
               onClick={createProject}
@@ -289,7 +394,7 @@ export function EntryScreen({
           <div className="mt-2 text-[11px] leading-relaxed text-zinc-600">
             Copies <span className="font-mono text-zinc-500">project-template</span> →{' '}
             <span className="font-mono text-zinc-500">
-              {(projParent ? tilde(projParent) : parentLabel)}/{projName.trim() || 'name'}
+              {projectParentLabel}/{projName.trim() || 'name'}
             </span>
             , runs <span className="font-mono text-zinc-500">git init</span>, and opens a session there.
           </div>
@@ -379,7 +484,9 @@ export function EntryScreen({
                       key={h.id}
                       onClick={() => {
                         setRemoteHostId(h.id)
-                        setCwd(h.defaultCwd || h.daemon.projectsDir || '')
+                        const nextCwd = h.defaultCwd || h.daemon.projectsDir || ''
+                        setCwd(nextCwd)
+                        setProjParent(nextCwd)
                       }}
                       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                         remoteHostId === h.id
@@ -397,15 +504,78 @@ export function EntryScreen({
                   ))}
                 </div>
               )}
-              <input
-                value={cwd}
-                onChange={(e) => setCwd(e.target.value)}
-                placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
-                spellCheck={false}
-                className={`${sel} w-full font-mono`}
-              />
-              <div className="mt-1 text-[10.5px] text-zinc-600">
-                Tickets, MRs, Agents, Runs, Schedules, Files, Docs, CI, and Search use this remote workspace.
+              <div className="rounded-lg border border-[var(--gt-border)] bg-black/20">
+                <div className="flex items-center gap-1.5 border-b border-[var(--gt-border)] p-2">
+                  <input
+                    value={cwd}
+                    onChange={(e) => setCwd(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && loadRemoteDir(cwd, { select: true })}
+                    placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent px-1 font-mono text-[12px] text-zinc-200 outline-none placeholder:text-zinc-700"
+                  />
+                  <button
+                    onClick={() => loadRemoteDir('~', { select: true })}
+                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                    title="Remote home"
+                  >
+                    <Home size={13} strokeWidth={2} />
+                  </button>
+                  <button
+                    onClick={() => remoteListing?.parent && loadRemoteDir(remoteListing.parent, { select: true })}
+                    disabled={!remoteListing?.parent}
+                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200 disabled:opacity-35"
+                    title="Parent folder"
+                  >
+                    <ArrowUp size={13} strokeWidth={2} />
+                  </button>
+                  <button
+                    onClick={() => loadRemoteDir(cwd || remoteListing?.cwd || '~', { select: true })}
+                    className="rounded-md border border-[var(--gt-border)] p-1.5 text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+                    title="Refresh"
+                  >
+                    <RefreshCw size={13} strokeWidth={2} className={remoteListingLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const selected = remoteListing?.cwd || cwd
+                      setCwd(selected)
+                      setProjParent(selected)
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2 py-1.5 text-[11px] text-zinc-100"
+                  >
+                    <Check size={12} strokeWidth={2.5} />
+                    Use
+                  </button>
+                </div>
+                <div className="max-h-44 overflow-y-auto p-1.5">
+                  {remoteListingLoading && !remoteListing ? (
+                    <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-zinc-600">
+                      <RefreshCw size={12} strokeWidth={2} className="animate-spin" />
+                      Loading folders…
+                    </div>
+                  ) : remoteListingErr ? (
+                    <div className="px-2 py-3 text-[11px] text-[var(--gt-red)]">{remoteListingErr}</div>
+                  ) : remoteListing && remoteListing.entries.length === 0 ? (
+                    <div className="px-2 py-3 text-[11px] text-zinc-600">No child folders.</div>
+                  ) : (
+                    remoteListing?.entries.map((d) => (
+                      <button
+                        key={d.path}
+                        onClick={() => loadRemoteDir(d.path, { select: true })}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
+                      >
+                        <FolderOpen size={13} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                        <span className="truncate">{d.name}</span>
+                        <span className="ml-auto truncate font-mono text-[10px] text-zinc-700">{remoteDisplayPath(d.path)}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-zinc-600">
+                <span className="font-mono">{remoteDisplayPath(remoteListing?.cwd || remoteCwd || '~')}</span>
+                <span>drives Tickets, MRs, Agents, Runs, Schedules, Files, Docs, CI, and Search.</span>
               </div>
             </div>
           )}
