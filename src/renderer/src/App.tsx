@@ -577,7 +577,7 @@ export default function App() {
       onClick={() => !disabled && setTerminalLayout(mode)}
       disabled={disabled}
       title={title}
-      className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
+      className={`flex h-5 w-7 items-center justify-center rounded-md transition-colors ${
         terminalLayout === mode ? 'bg-[var(--gt-accent)]/25 text-zinc-100' : disabled ? 'cursor-not-allowed text-zinc-700' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
       }`}
     >
@@ -802,7 +802,7 @@ export default function App() {
                 <Plus size={11} strokeWidth={2.5} />
               </button>
               <div className="flex-1" />
-              <div style={noDrag} className="-mr-2 flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-[1.5px] py-0.5">
+              <div style={noDrag} className="mr-1 flex h-6 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-[1.5px] py-px">
                 {layoutButton('single', 'Single terminal', Square)}
                 {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
                 {layoutButton('grid4', 'Four-terminal grid', Grid2x2, activeWorkspaceSessions.length < 2)}
