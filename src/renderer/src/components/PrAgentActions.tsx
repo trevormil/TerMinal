@@ -25,6 +25,7 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
         cwd: meta.cwd,
         name: `${k} ${sym}${pr.iid}`,
         prompt: prAgentPrompt(pr, k, { forgeSym: sym, persona, pipeline, model }),
+        remote: meta.remote,
       })
       setDone({ msg: 'opened instance', ok: true })
       setTimeout(() => setDone(null), 4000)

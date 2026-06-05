@@ -1,5 +1,5 @@
 import { navigateTo } from './nav'
-import type { Engine } from './types'
+import type { Engine, RemoteSession, TabContext } from './types'
 
 export type LaunchMode = 'process' | 'terminal'
 
@@ -11,13 +11,28 @@ export function openPromptInTerminal(input: {
   cwd: string
   name: string
   prompt: string
+  remote?: RemoteSession
 }): void {
   navigateTo('terminal:new', {
     engine: input.engine,
     cwd: input.cwd,
     name: input.name,
     initialInput: input.prompt,
+    remote: input.remote,
   })
+}
+
+export function remoteForTabContext(ctx: TabContext): RemoteSession | undefined {
+  if (ctx.remoteSession?.sshTarget) return { ...ctx.remoteSession, cwd: ctx.repoRoot || ctx.cwd || ctx.remoteSession.cwd }
+  if (!ctx.remote || !ctx.remoteSshTarget) return undefined
+  return {
+    hostId: ctx.remoteHostId || ctx.remoteSshTarget,
+    label: ctx.remoteLabel || ctx.remoteSshTarget,
+    sshTarget: ctx.remoteSshTarget,
+    cwd: ctx.repoRoot || ctx.cwd || '~',
+    platform: ctx.remotePlatform,
+    daemon: ctx.remoteDaemon,
+  }
 }
 
 export function withLaunchContext(

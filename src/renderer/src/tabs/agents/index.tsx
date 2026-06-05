@@ -54,7 +54,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
-import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../../lib/launch'
 import { agentPrompt } from '../../lib/agentPrompts'
 import type { Tab, TabContext, Agent, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactRead } from '../../lib/types'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
@@ -170,11 +170,13 @@ function langForAgentFile(path: string): Extension[] {
 // built-in default = same id). The id is immutable once set.
 function AgentDesigner({
   repoRoot,
+  remote,
   onClose,
   onSpawned,
   onAdvanced,
 }: {
   repoRoot: string
+  remote?: TabContext['remoteSession']
   onClose: () => void
   onSpawned: (run: AgentRun) => void
   onAdvanced: () => void
@@ -200,6 +202,7 @@ function AgentDesigner({
         cwd: repoRoot,
         name: 'Design agent',
         prompt: `Design a new TerMinal agent for this repository from this request:\n\n${t}\n\nWrite the agent files according to this repo's .agents conventions, commit the result, and summarize what you created.`,
+        remote,
       })
       onClose()
       return
@@ -686,6 +689,7 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
       cwd: ctx.repoRoot,
       name: r.agent.title,
       prompt: r.prompt,
+      remote: remoteForTabContext(ctx),
     })
     setTask('')
     await loadList()
@@ -753,6 +757,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
           cwd: ctx.repoRoot,
           name: 'Design persistent agent',
           prompt,
+          remote: remoteForTabContext(ctx),
         })
         setCreating(false)
         setCreateRequest('')
@@ -2309,6 +2314,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 cwd: ctx.repoRoot,
                 name: selectedAgent.title,
                 prompt: agentPrompt(selectedAgent, { persona, pipeline, model }),
+                remote: remoteForTabContext(ctx),
               })
             } else {
               run(picking.id, e, persona, pipeline, model)
@@ -2321,6 +2327,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
       {designerOpen && (
         <AgentDesigner
           repoRoot={ctx.repoRoot}
+          remote={remoteForTabContext(ctx)}
           onClose={() => setDesignerOpen(false)}
           onSpawned={(r) => {
             setDesignerOpen(false)

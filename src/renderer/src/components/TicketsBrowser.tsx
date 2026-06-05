@@ -9,7 +9,7 @@ import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import { onNavigate } from '../lib/nav'
-import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
 import type { Ticket, TabContext, Mr, Engine } from '../lib/types'
@@ -117,6 +117,7 @@ function NewTicketModal({
           cwd: ctx.repoRoot,
           name: `File ticket`,
           prompt: fileTicketPrompt(text, { model: spawnModel }),
+          remote: remoteForTabContext(ctx),
         })
         setSpawnText('')
         setTimeout(onClose, 250)
@@ -570,6 +571,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         cwd: ctx.repoRoot,
                         name: `Implement #${selected.id}`,
                         prompt: ticketImplementationPrompt(selected, { persona, pipeline, model }),
+                        remote: remoteForTabContext(ctx),
                       })
                       return
                     }

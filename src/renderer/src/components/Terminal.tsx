@@ -390,6 +390,7 @@ export function TerminalPane({
         `Save it to ${target}. Preserve existing snippets and upsert one entry using this schema:\n` +
         `{\n  "version": 2,\n  "snippets": [\n    { "id": "kebab-id", "title": "Short title", "group": "Group", "description": "Optional short description", "prompt": "Pasteable prompt text" }\n  ]\n}\n\n` +
         `Scope: ${newScope}. Preferred model: ${newModel || 'engine default'}. Commit the change if this repo normally commits TerMinal metadata, then summarize what you saved.`,
+      remote: choice.remote,
     })
     setNewOpen(false)
     setMenuOpen(false)

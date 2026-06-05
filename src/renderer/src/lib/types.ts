@@ -608,6 +608,9 @@ export type TabContext = {
   remoteHostId?: string
   remoteLabel?: string
   remoteSshTarget?: string
+  remotePlatform?: RemotePlatform
+  remoteDaemon?: DaemonCfg
+  remoteSession?: RemoteSession
   repoRoot: string
   repoPath: string
   repoHost: string

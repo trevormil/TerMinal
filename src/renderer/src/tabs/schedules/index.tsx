@@ -15,7 +15,7 @@ import {
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo } from '../../lib/nav'
-import { engineInstanceLabel, openPromptInTerminal, withLaunchContext, type LaunchMode } from '../../lib/launch'
+import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
@@ -65,12 +65,14 @@ const statusTone = (s?: string): BadgeTone =>
 // The structured + advanced-cron builder. Produces a ScheduleSpec.
 function ScheduleForm({
   repoRoot,
+  remote,
   agents,
   onCancel,
   onSave,
   onCustomSpawned,
 }: {
   repoRoot: string
+  remote?: TabContext['remoteSession']
   agents: Agent[]
   onCancel: () => void
   onSave: (
@@ -165,6 +167,7 @@ function ScheduleForm({
         cwd: repoRoot,
         name: 'Design schedule',
         prompt: scheduleDesignerPrompt(t, { model: model || undefined }),
+        remote,
       })
       onCustomSpawned()
       return
@@ -811,6 +814,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             {agents.length ? (
               <ScheduleForm
                 repoRoot={ctx.repoRoot}
+                remote={remoteForTabContext(ctx)}
                 agents={agents}
                 onCancel={() => setCreating(false)}
                 onSave={save}

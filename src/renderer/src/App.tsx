@@ -303,7 +303,12 @@ export default function App() {
         if (ev.tabId === 'terminal:new') {
           const payload = ev.payload || {}
           const engine = payload.engine === 'codex' || payload.engine === 'claude' || payload.engine === 'cursor' ? payload.engine : 'claude'
-          const cwd = typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || ''
+          const remotePayload = payload.remote as unknown
+          const remote =
+            remotePayload && typeof remotePayload === 'object' && 'sshTarget' in remotePayload && typeof remotePayload.sshTarget === 'string'
+              ? (remotePayload as Choice['remote'])
+              : undefined
+          const cwd = remote?.cwd || (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
           const key = crypto.randomUUID()
@@ -311,7 +316,7 @@ export default function App() {
             ...s,
             {
               key,
-              choice: { mode: 'new', engine, cwd, name, initialInput },
+              choice: { mode: 'new', engine, cwd, name, initialInput, remote },
               info: { sessionId: '', cwd },
             },
           ])
