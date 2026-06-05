@@ -1,5 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Clipboard, ClipboardPaste, Copy, EyeOff, MessageSquareText, Play, Plus, Search, X } from 'lucide-react'
+import {
+  Bot,
+  Clipboard,
+  ClipboardCheck,
+  ClipboardPaste,
+  Copy,
+  Eraser,
+  EyeOff,
+  FileText,
+  MessageSquareText,
+  Play,
+  Plus,
+  Send,
+  Sparkles,
+  SquareDashedMousePointer,
+  X,
+  Search,
+} from 'lucide-react'
 import { Terminal as Xterm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -351,6 +368,55 @@ export function TerminalPane({
     setMenuOpen(false)
     requestAnimationFrame(() => termRef.current?.focus())
   }
+  const selectedText = () => termRef.current?.getSelection().trim() || ''
+  const agentEngine = (): Engine =>
+    choice.engine === 'claude' || choice.engine === 'codex' || choice.engine === 'cursor'
+      ? choice.engine
+      : newEngine
+  const focusTerminalSoon = () => requestAnimationFrame(() => termRef.current?.focus())
+  const closeContextMenu = () => {
+    setContextMenu(null)
+    focusTerminalSoon()
+  }
+  const terminalOutputPrompt = (task: string, text: string) =>
+    `${task}\n\nTerminal output:\n\n\`\`\`\n${text}\n\`\`\``
+  const sendSelectionToAgent = (task: string, name: string, sameSession = false) => {
+    const text = selectedText()
+    if (!text) return
+    const prompt = terminalOutputPrompt(task, text)
+    setContextMenu(null)
+    const engine = agentEngine()
+    if (sameSession && choice.engine === engine) {
+      inject(prompt, true)
+      return
+    }
+    openPromptInTerminal({
+      engine,
+      cwd: choice.cwd || '',
+      name,
+      prompt,
+      remote: choice.remote,
+    })
+  }
+  const copySelectionAsPrompt = () => {
+    const text = selectedText()
+    if (!text) return
+    window.gt.clipboardWrite(terminalOutputPrompt('Analyze this terminal output.', text))
+    closeContextMenu()
+  }
+  const startSnippetFromSelection = () => {
+    const text = selectedText()
+    if (!text || isRemote) return
+    setDraft({
+      title: 'Terminal output',
+      group: 'Terminal',
+      prompt: text,
+    })
+    setNewScope('repo')
+    setNewMode('custom')
+    setNewOpen(true)
+    setContextMenu(null)
+  }
   const hidePresetSnippet = async (id: string) => {
     await window.gt.presets.hide('snippets', id)
     await reloadSnippets()
@@ -470,8 +536,7 @@ export function TerminalPane({
               window.gt.clipboardRead().then((text) => {
                 if (text) writeInputRef.current(text)
               })
-              setContextMenu(null)
-              requestAnimationFrame(() => termRef.current?.focus())
+              closeContextMenu()
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
           >
@@ -480,22 +545,94 @@ export function TerminalPane({
           </button>
           <button
             onClick={() => {
-              termRef.current?.selectAll()
-              setContextMenu(null)
-              requestAnimationFrame(() => termRef.current?.focus())
+              window.gt.clipboardRead().then((text) => {
+                if (text) writeInputRef.current(`${text}\r`)
+              })
+              closeContextMenu()
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
           >
+            <Play size={13} strokeWidth={2} />
+            Paste and run
+          </button>
+          <div className="my-1 border-t border-[var(--gt-border)]/60" />
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={copySelectionAsPrompt}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <ClipboardCheck size={13} strokeWidth={2} />
+            Copy as prompt
+          </button>
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() =>
+              sendSelectionToAgent(
+                'Explain what happened, identify likely causes, and suggest the next command or code change.',
+                'Explain terminal output',
+                true,
+              )
+            }
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <Send size={13} strokeWidth={2} />
+            Send to agent
+          </button>
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() =>
+              sendSelectionToAgent(
+                'Debug this terminal output. Be concrete: name the failing command, root cause, and exact fix.',
+                'Debug terminal output',
+              )
+            }
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <Sparkles size={13} strokeWidth={2} />
+            Debug in new agent
+          </button>
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() =>
+              sendSelectionToAgent(
+                'File exactly one backlog ticket for the issue implied by this terminal output. Include reproduction context and acceptance criteria. Do not implement it.',
+                'File ticket from terminal',
+              )
+            }
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <FileText size={13} strokeWidth={2} />
+            File ticket from selection
+          </button>
+          {!isRemote && (
+            <button
+              disabled={!contextMenu.hasSelection}
+              onClick={startSnippetFromSelection}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+            >
+              <MessageSquareText size={13} strokeWidth={2} />
+              Save as snippet
+            </button>
+          )}
+          <div className="my-1 border-t border-[var(--gt-border)]/60" />
+          <button
+            onClick={() => {
+              termRef.current?.selectAll()
+              closeContextMenu()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            <SquareDashedMousePointer size={13} strokeWidth={2} />
             Select all
           </button>
           <button
             onClick={() => {
               termRef.current?.clear()
-              setContextMenu(null)
-              requestAnimationFrame(() => termRef.current?.focus())
+              closeContextMenu()
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
           >
+            <Eraser size={13} strokeWidth={2} />
             Clear scrollback
           </button>
         </div>
