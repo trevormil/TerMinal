@@ -147,7 +147,7 @@ function findRepoRoot(repoArg) {
 
 // --- tickets ---------------------------------------------------------------
 
-function listTicketsForRoot(repoRoot, filter) {
+function listTicketsForRoot(repoRoot, filter, includeBody) {
   const dir = join(repoRoot, 'backlog')
   if (!existsSync(dir)) return []
   const out = []
@@ -180,8 +180,12 @@ function listTicketsForRoot(repoRoot, filter) {
       updated: meta.updated,
       prs: meta.prs || [],
       repo: basename(repoRoot),
-      body: body.slice(0, 600), // truncate; agents can fetch full via get_ticket
     }
+    // Index view by default — body is omitted to keep list responses small;
+    // fetch the full body on demand via get_ticket. include_body opts into a
+    // short preview for callers that genuinely need it.
+    if (includeBody) ticket.body = body.slice(0, 600)
+    if (filter?.excludeClosed && ticket.status === 'closed') continue
     if (filter?.status && ticket.status !== filter.status) continue
     if (filter?.type && ticket.type !== filter.type) continue
     out.push(ticket)
@@ -192,8 +196,17 @@ function listTicketsForRoot(repoRoot, filter) {
 function listTicketsTool(args) {
   const repo = args.repo
   const roots = repo ? [findRepoRoot(repo)].filter(Boolean) : knownRepoRoots()
-  const filter = { status: args.status, type: args.type }
-  return roots.flatMap((r) => listTicketsForRoot(r, filter))
+  // Default to ACTIVE tickets (exclude closed — the workflow rarely needs
+  // history, and closed is usually the bulk). status:'all' returns everything;
+  // a specific status filters exactly to it.
+  const statusArg = args.status
+  const filter = {
+    type: args.type,
+    status: statusArg && statusArg !== 'all' ? statusArg : undefined,
+    excludeClosed: !statusArg,
+  }
+  const all = roots.flatMap((r) => listTicketsForRoot(r, filter, args.include_body === true))
+  return typeof args.limit === 'number' && args.limit > 0 ? all.slice(0, args.limit) : all
 }
 
 function getTicketTool(args) {
@@ -313,7 +326,23 @@ function recentAgentRuns(args) {
           const r = JSON.parse(readFileSync(join(cronDir, f), 'utf8'))
           if (args.repo && !r.repoLabel?.toLowerCase().includes(args.repo.toLowerCase())) continue
           if (args.status && r.status !== args.status) continue
-          out.push({ ...r, source: 'cron' })
+          // Project to a summary — never spread the whole run record (the
+          // error field can be a large stack/log). Truncate error to a preview;
+          // detail lives in the run file on disk.
+          out.push({
+            id: r.id,
+            agentId: r.agentId,
+            agentTitle: r.agentTitle,
+            repoLabel: r.repoLabel,
+            branch: r.branch,
+            status: r.status,
+            startedAt: r.startedAt,
+            endedAt: r.endedAt,
+            engine: r.engine,
+            scheduleId: r.scheduleId,
+            error: typeof r.error === 'string' ? r.error.slice(0, 200) : r.error,
+            source: 'cron',
+          })
         } catch {}
       }
     } catch {}
@@ -984,13 +1013,15 @@ const TOOLS = [
   {
     name: 'list_tickets',
     description:
-      'List backlog tickets across managed repos. Filter by repo (basename), status (open|in-progress|closed|stuck|icebox), or type (bug|feature|...).',
+      'List backlog tickets across managed repos (index view: frontmatter only, no body — use get_ticket for the full body). Defaults to ACTIVE tickets (excludes closed); pass status:"all" for everything including closed, or a specific status (open|in-progress|closed|stuck|icebox). Also filter by repo (basename) or type. include_body adds a 600-char preview; limit caps the count.',
     inputSchema: {
       type: 'object',
       properties: {
         repo: { type: 'string' },
         status: { type: 'string' },
         type: { type: 'string' },
+        include_body: { type: 'boolean' },
+        limit: { type: 'number' },
       },
     },
   },
@@ -1313,6 +1344,45 @@ const HANDLERS = {
   nearest_session: nearestSessionTool,
 }
 
+// Tool exposure filter — keep the in-context schema list lean for clients that
+// load every tool schema eagerly (Codex, older Claude Code). Default exposes
+// every tool (backward compatible). Override with GT_MCP_TOOLS env or
+// settings.json `mcp.tools`: a preset ("all" | "core" | "write" | "read") or a
+// comma-separated allowlist of tool names (presets and names may be mixed).
+const TOOL_PRESETS = {
+  write: [
+    'file_ticket', 'update_ticket', 'file_hitl', 'resolve_hitl',
+    'emit_activity', 'set_agent_state', 'get_agent_state', 'set_run_outcome',
+  ],
+  read: [
+    'list_tickets', 'get_ticket', 'list_prs', 'get_pr_artifact',
+    'list_scheduled_agents', 'recent_agent_runs', 'ai_spend_today',
+    'list_activity', 'list_hitl', 'list_bg_tasks', 'harness_status',
+    'list_agents', 'list_review_patterns', 'factory_health',
+    'search_decisions', 'recent_changes', 'nearest_session',
+  ],
+}
+// core = the deterministic-filing tools (the server's reason to exist) plus the
+// few most-used reads. ~11 tools vs 25 — roughly half the schema tokens.
+TOOL_PRESETS.core = [...TOOL_PRESETS.write, 'list_tickets', 'list_hitl', 'harness_status']
+
+function exposedTools() {
+  let raw = process.env.GT_MCP_TOOLS
+  if (!raw) {
+    const s = readSettings()
+    raw = s.mcp && typeof s.mcp.tools === 'string' ? s.mcp.tools : ''
+  }
+  raw = (raw || 'all').trim()
+  if (!raw || raw === 'all') return TOOLS
+  const wanted = new Set()
+  for (const tok of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+    if (TOOL_PRESETS[tok]) TOOL_PRESETS[tok].forEach((n) => wanted.add(n))
+    else wanted.add(tok)
+  }
+  const filtered = TOOLS.filter((t) => wanted.has(t.name))
+  return filtered.length ? filtered : TOOLS // never accidentally expose nothing
+}
+
 function jsonRpc(id, result, error) {
   const msg = error ? { jsonrpc: '2.0', id, error } : { jsonrpc: '2.0', id, result }
   process.stdout.write(JSON.stringify(msg) + '\n')
@@ -1329,7 +1399,7 @@ function handleRequest(req) {
   }
   if (method === 'notifications/initialized') return // notification, no reply
   if (method === 'tools/list') {
-    return jsonRpc(id, { tools: TOOLS })
+    return jsonRpc(id, { tools: exposedTools() })
   }
   if (method === 'tools/call') {
     const name = params?.name
