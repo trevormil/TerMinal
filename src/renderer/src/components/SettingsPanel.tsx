@@ -875,56 +875,73 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-[760px] space-y-3">
-          <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Server size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+          <section className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70">
+            <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
+                <Server size={15} strokeWidth={2} />
+              </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
-                <div className="text-[10.5px] text-zinc-500">
-                  Paths, engines, default models, forge mode, template, and harness settings apply to the selected daemon.
+                <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
+                  Choose where TerMinal reads paths, engines, models, forge settings, and template defaults.
                 </div>
               </div>
-              {selectedHost && (
-                <button onClick={() => refreshRemoteProbe(selectedHost)} className={buttonSoft}>
-                  {selectedProbe && 'loading' in selectedProbe ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                  Probe
-                </button>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                  {selectedHost ? 'SSH' : 'Local'}
+                </span>
+                {selectedHost && (
+                  <button onClick={() => refreshRemoteProbe(selectedHost)} className={buttonSoft}>
+                    {selectedProbe && 'loading' in selectedProbe ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                    Probe
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setProfile('local')}
-                className={`rounded-lg border px-2.5 py-1.5 text-left text-[11.5px] ${
-                  profile === 'local'
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50'
-                }`}
-              >
-                <span className="block font-semibold">Local</span>
-                <span className="text-[10px] text-zinc-600">this Mac</span>
-              </button>
-              {s.remoteHosts.map((h) => (
+            <div className="space-y-2 p-3">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <button
-                  key={h.id}
-                  onClick={() => setProfile(h.id)}
-                  className={`rounded-lg border px-2.5 py-1.5 text-left text-[11.5px] ${
-                    profile === h.id
+                  onClick={() => setProfile('local')}
+                  className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                    profile === 'local'
                       ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50'
+                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                   }`}
                 >
-                  <span className="block font-semibold">{h.label || h.id}</span>
-                  <span className="font-mono text-[10px] text-zinc-600">{h.sshTarget}</span>
+                  <Monitor size={16} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-semibold">Local machine</span>
+                    <span className="block truncate text-[10.5px] text-zinc-600">this Mac · ~/.config/TerMinal</span>
+                  </span>
+                  {profile === 'local' && <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">Active</span>}
                 </button>
-              ))}
-            </div>
-            {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
-              <div className={`mt-2 rounded-md border px-2 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] text-zinc-500' : 'border-[var(--gt-red)]/40 text-amber-400'}`}>
-                {selectedProbe.ok
-                  ? `Connected · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
-                  : selectedProbe.error}
+                {s.remoteHosts.map((h) => (
+                  <button
+                    key={h.id}
+                    onClick={() => setProfile(h.id)}
+                    className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                      profile === h.id
+                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                        : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Server size={16} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-semibold">{h.label || h.id}</span>
+                      <span className="block truncate font-mono text-[10.5px] text-zinc-600">{h.sshTarget}</span>
+                    </span>
+                    {profile === h.id && <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">Active</span>}
+                  </button>
+                ))}
               </div>
-            )}
+              {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
+                <div className={`rounded-md border px-2.5 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] bg-black/20 text-zinc-500' : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-amber-400'}`}>
+                  {selectedProbe.ok
+                    ? `Connected to ${selectedHost.sshTarget} · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
+                    : selectedProbe.error}
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Projects & worktrees */}
