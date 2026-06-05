@@ -1,4 +1,4 @@
-export const DEFAULT_HIDDEN_TABS = ['docs', 'reports', 'notes', 'sessions'] as const
+export const DEFAULT_HIDDEN_TABS = ['docs', 'reports', 'notes', 'sessions', 'workflow'] as const
 
 const HIDDEN_TABS_KEY = 'gt.tabs.hidden'
 

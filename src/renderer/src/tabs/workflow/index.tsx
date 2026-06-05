@@ -77,7 +77,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const dirty = !!active && active.content !== active.saved
-  const title = active ? base(active.path) : 'My Workflow'
+  const title = active ? base(active.path) : 'Agent Config'
 
   const loadRoots = async () => setRoots(await window.gt.workflow.list(''))
   useEffect(() => {
@@ -111,7 +111,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
           <Workflow size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-semibold text-zinc-200">My Workflow</div>
+            <div className="truncate text-[12px] font-semibold text-zinc-200">Agent Config</div>
             <div className="truncate text-[10.5px] text-zinc-600">~/.claude · ~/.codex</div>
           </div>
           <button
@@ -153,7 +153,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
         <div className="min-h-0 flex-1">
           {!active ? (
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
-              Select a workflow file.
+              Select an agent config file.
             </div>
           ) : active.err ? (
             <div className="p-6 text-[12px] text-zinc-600">
@@ -177,7 +177,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
 
 const tab: Tab = {
   id: 'workflow',
-  title: 'My Workflow',
+  title: 'Agent Config',
   icon: Workflow,
   order: 8.5,
   appliesTo: () => true,
