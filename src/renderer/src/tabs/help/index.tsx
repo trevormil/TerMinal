@@ -231,6 +231,12 @@ function HelpTab(_props: { ctx: TabContext }) {
               — context window, usage + burn-rate, TDD status, git, todos, open-PR summary, and Skills. Toggle any
               of them from the Plugins drawer; the × on a widget hides it.
             </p>
+            <p>
+              <span className="font-semibold text-zinc-200">Keyboard:</span>{' '}
+              <code className="font-mono">Cmd/Ctrl+K</code> opens search;{' '}
+              <code className="font-mono">Option/Alt+1..9</code> jumps tabs;{' '}
+              <code className="font-mono">Option/Alt+←/→</code> cycles tabs.
+            </p>
           </div>
         </Section>
 

@@ -38,6 +38,14 @@ function load<T>(key: string, fallback: T): T {
   return fallback
 }
 
+function isEditableNonTerminalTarget(target: EventTarget | null): boolean {
+  const el = target instanceof HTMLElement ? target : null
+  if (!el) return false
+  const editable = el.closest('input, textarea, select, [contenteditable="true"]')
+  if (!editable) return false
+  return !el.closest('.xterm')
+}
+
 export type Info = { sessionId: string; cwd: string }
 
 // Banner shown at the top of a session when the repo lacks .agents/ — gives
@@ -293,6 +301,36 @@ export function SessionView({
       }),
     [terminalTile],
   )
+
+  useEffect(() => {
+    if (!active || terminalTile) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || isEditableNonTerminalTarget(e.target)) return
+      const ids = ['terminal', ...tabs.map((t) => t.id)]
+      if (ids.length === 0) return
+
+      const digit = e.code.match(/^Digit([1-9])$/)?.[1]
+      if (!e.shiftKey && digit) {
+        const id = ids[Number(digit) - 1]
+        if (!id) return
+        e.preventDefault()
+        setActiveTab(id)
+        return
+      }
+
+      const prev = e.key === 'ArrowLeft'
+      const next = e.key === 'ArrowRight'
+      if (!prev && !next) return
+
+      e.preventDefault()
+      setActiveTab((cur) => {
+        const i = Math.max(0, ids.indexOf(cur))
+        return ids[(i + (next ? 1 : -1) + ids.length) % ids.length]
+      })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [active, terminalTile, tabs])
 
   useEffect(() => {
     const fresh = availablePlugins.filter((p) => !known.includes(p.id))
