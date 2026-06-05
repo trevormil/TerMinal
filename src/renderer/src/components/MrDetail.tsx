@@ -632,6 +632,13 @@ export function MrDetailView({
           </>,
         )}
         {sub(
+          'diff',
+          <>
+            <GitCompare size={13} strokeWidth={2} />
+            Diff
+          </>,
+        )}
+        {sub(
           'review',
           <>
             <ScanSearch size={13} strokeWidth={2} />
@@ -653,13 +660,6 @@ export function MrDetailView({
             Suggestions
           </>,
           mr.suggestions.length,
-        )}
-        {sub(
-          'diff',
-          <>
-            <GitCompare size={13} strokeWidth={2} />
-            Diff
-          </>,
         )}
         <span className="ml-2 inline-flex items-center gap-0.5 truncate text-[10px] text-zinc-700">
           <GitBranch size={11} strokeWidth={2} />
