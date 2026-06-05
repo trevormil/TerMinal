@@ -308,7 +308,22 @@ function listSchedules(args) {
   if (!existsSync(sf)) return []
   try {
     const arr = JSON.parse(readFileSync(sf, 'utf8'))
-    return arr.filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
+    return arr
+      .filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
+      // Drop the full prompt (often >1.5k chars) — keep a short preview; the
+      // model rarely needs the whole prompt just to list schedules.
+      .map((s) => ({
+        id: s.id,
+        agentId: s.agentId,
+        agentTitle: s.agentTitle,
+        repoLabel: s.repoLabel,
+        spec: s.spec,
+        engine: s.engine,
+        enabled: s.enabled,
+        lastStatus: s.lastStatus,
+        lastRun: s.lastRun,
+        promptPreview: typeof s.prompt === 'string' ? s.prompt.slice(0, 120) : undefined,
+      }))
   } catch {
     return []
   }
@@ -684,7 +699,18 @@ function listActivityTool(args) {
       events.push(ev)
     } catch {}
   }
-  return events.slice(-limit).reverse()
+  return events
+    .slice(-limit)
+    .reverse()
+    // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
+    .map((ev) => ({
+      id: ev.id,
+      ts: ev.ts,
+      kind: ev.kind,
+      title: ev.title,
+      detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
+      repo: ev.repo,
+    }))
 }
 
 // --- list_hitl ------------------------------------------------------------
@@ -699,6 +725,19 @@ function listHitlTool(args) {
       .filter((h) => (status === 'all' ? true : h.status === status))
       .filter((h) => !repo || (h.repo || '').toLowerCase().includes(repo.toLowerCase()))
       .slice(0, limit)
+      // Project to what an agent needs — drop session/terminal plumbing
+      // (sessionId, terminalKey, terminalCwd, transcriptPath, repoRoot).
+      .map((h) => ({
+        id: h.id,
+        title: h.title,
+        action: h.action,
+        detail: typeof h.detail === 'string' ? h.detail.slice(0, 300) : h.detail,
+        repo: h.repo,
+        source: h.source,
+        status: h.status,
+        createdAt: h.createdAt,
+        resolvedAt: h.resolvedAt,
+      }))
   } catch {
     return []
   }
