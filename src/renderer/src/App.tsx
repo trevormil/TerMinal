@@ -42,6 +42,7 @@ const repoLabelOf = (cwd: string) => {
   }
   return cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
 }
+const REMOTE_TABS = new Set(['tickets', 'mrs', 'files', 'docs', 'ci', 'browser', 'activity', 'help'])
 const loadTerminalLayout = (): TerminalLayout => {
   try {
     const raw = localStorage.getItem('gt.terminalLayout')
@@ -592,8 +593,8 @@ export default function App() {
         }
   const activeTabs = useMemo(
     () =>
-      activeCtx && !activeCtx.remote
-        ? ALL_TABS.filter((t) => t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
+      activeCtx
+        ? ALL_TABS.filter((t) => (!activeCtx.remote || REMOTE_TABS.has(t.id)) && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
         : [],
     [activeCtx, hiddenTabs],
   )
@@ -722,21 +723,18 @@ export default function App() {
           <button
             style={noDrag}
             onClick={() => {
-              if (activeCtx?.remote) return
               setSearchOpen((v) => !v)
               setFleet(false)
               setInbox(false)
             }}
-            disabled={!activeCtx || !!activeCtx.remote}
+            disabled={!activeCtx}
             title={
-              activeCtx?.remote
-                ? 'Search requires a local workspace until remote daemon search is available'
-                : 'Search workspace'
+              activeCtx?.remote ? 'Search remote workspace' : 'Search workspace'
             }
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
               searchOpen
                 ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                : !activeCtx || activeCtx.remote
+                : !activeCtx
                   ? 'cursor-not-allowed text-zinc-700'
                   : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
             }`}
@@ -990,7 +988,7 @@ export default function App() {
             </div>
           </div>
         )}
-        {searchOpen && activeCtx && !activeCtx.remote && !showEntry && (
+        {searchOpen && activeCtx && !showEntry && (
           <div className="absolute inset-0 z-50 bg-black/25" onClick={() => setSearchOpen(false)}>
             <div
               className="absolute right-3 top-3 flex h-[min(660px,calc(100%-24px))] w-[min(860px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
