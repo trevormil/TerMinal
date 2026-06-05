@@ -33,18 +33,13 @@ import { emitActivity, readActivity, clearActivity, onActivity, startActivityTai
 import { readUsage } from './usage'
 import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
-import { repoRootOf, repoForCwd, gitStatus } from './repo'
-import { listTickets, getTicket, createTicket, updateTicket, type NewTicket } from './backlog'
-import { listMrs, getMr, getMrDiff, getMrCi, mergeMr, mrSummary } from './mrs'
-import { listSkills } from './skills'
-import { forgeFor } from './forge'
-import { readNotes, writeNotes, type NotesScope } from './notes'
+import { repoRootOf, repoForCwd } from './repo'
+import { getTicket, type NewTicket } from './backlog'
+import { mrSummary } from './mrs'
+import { type NotesScope } from './notes'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
-import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
-import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
-import { listDocs, readDoc } from './docs'
 import { listDisabled, setDisabled as setAgentDisabled, setAllDisabled as setAllSchedulesDisabled } from './agents-disabled'
 import { scaffoldProject } from './scaffold'
 import {
@@ -67,7 +62,6 @@ import {
   DEFAULT_AGENTS,
   saveAgent,
   resetAgent,
-  hasAgents as repoHasAgents,
   runAgent,
   runTicketAgent,
   runTicketSpawn,
@@ -131,25 +125,19 @@ import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
 import { readPersonas } from './personas'
 import { composeSteps, pipelineLabel } from './pipelines'
-import { workspaceSearch, type WorkspaceSearchKind } from './workspace-search'
+import { type WorkspaceSearchKind } from './workspace-search'
 import {
   remoteAgents,
-  remoteCi,
   remoteCommandForEngine,
   remoteDirs,
-  remoteDocs,
-  remoteFiles,
-  remoteGitStatus,
   remoteMrs,
-  remoteNotes,
   remoteProbe,
   remoteProject,
   remoteRuns,
   remoteSchedules,
-  remoteSessions,
   remoteTickets,
-  remoteWorkspaceSearch,
 } from './remote'
+import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -225,6 +213,20 @@ function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
   const target = remote.label || remote.sshTarget
   const path = cwd || '~'
   return `ssh://${target}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+function daemonForRemote(remote: RemoteSession, displayCwd?: string) {
+  return createSshWorkspaceDaemon(remote, displayCwd || displayRemoteCwd(remote, remote.cwd || '~'))
+}
+
+function activeDaemon() {
+  const pinned = cur()
+  return pinned.remote ? daemonForRemote(pinned.remote, pinned.cwd) : createLocalWorkspaceDaemon(pinned.cwd)
+}
+
+function daemonForRequest(input: unknown) {
+  const remote = requestedRemote(input)
+  return remote ? daemonForRemote(remote) : activeDaemon()
 }
 
 function displaySessionName(cwd: string, fallback = 'session') {
@@ -1263,8 +1265,7 @@ ipcMain.handle('data:transcript', () => readTranscriptStats(cur().sessionId))
 ipcMain.handle('data:harness-tdd', () => readHarnessTdd(cur().cwd))
 ipcMain.handle('data:usage', () => readUsage(cur().sessionId))
 ipcMain.handle('data:git-status', () => {
-  const r = curRemote()
-  return r ? remoteGitStatus(r) : gitStatus(cur().cwd)
+  return activeDaemon().gitStatus()
 })
 ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
 ipcMain.handle('data:mr-summary', async () => {
@@ -1290,217 +1291,107 @@ ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, cur()
 
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
 ipcMain.handle('tab:context', async () => {
-  const current = cur()
-  if (current.remote) {
-    const remote = current.remote
-    const probe = await remoteProbe(remote).catch(() => null)
-    return {
-      cwd: current.cwd,
-      sessionId: current.sessionId,
-      remote: true,
-      remoteHostId: remote.hostId,
-      remoteLabel: remote.label,
-      remoteSshTarget: remote.sshTarget,
-      remotePlatform: remote.platform,
-      remoteDaemon: remote.daemon,
-      remoteSession: remote,
-      repoRoot: probe?.repoRoot || '',
-      repoPath: repoLabelFor(current.cwd),
-      repoHost: probe?.repoHost || remote.sshTarget,
-      forgeKind: probe?.forgeKind || 'github',
-      forgeLabel: probe?.forgeLabel || 'PR',
-      forgeSym: probe?.forgeSym || '#',
-      hasBacklog: !!probe?.hasBacklog,
-      hasSessions: !!probe?.hasSessions,
-      hasAgents: true,
-      capabilities: {
-        terminal: true,
-        tickets: true,
-        mrs: true,
-        agents: true,
-        runs: true,
-        schedules: true,
-        ci: true,
-        files: true,
-        docs: true,
-        sessions: true,
-        notes: true,
-        reports: true,
-        browser: true,
-        activity: true,
-        help: true,
-      },
-    }
-  }
-  const repoRoot = repoRootOf(cur().cwd)
-  const repo = repoForCwd(cur().cwd)
-  const forge = forgeFor(repoRoot)
-  return {
-    cwd: cur().cwd,
-    sessionId: cur().sessionId,
-    repoRoot,
-    repoPath: repo?.path || '',
-    repoHost: repo?.host || '',
-    forgeKind: forge.kind,
-    forgeLabel: forge.label,
-    forgeSym: forge.sym,
-    hasBacklog: !!repoRoot && existsSync(join(repoRoot, 'backlog')),
-    hasSessions: repoHasSessions(repoRoot),
-    hasAgents: repoHasAgents(repoRoot),
-  }
+  return activeDaemon().context(cur().sessionId)
 })
 ipcMain.handle('docs:list', () => {
-  const r = curRemote()
-  return r ? remoteDocs.list(r) : listDocs(repoRootOf(cur().cwd) || '')
+  return activeDaemon().docsList()
 })
 ipcMain.handle('docs:get', (_e, relPath: string) => {
-  const r = curRemote()
-  return r ? remoteDocs.get(r, relPath) : readDoc(repoRootOf(cur().cwd) || '', relPath)
+  return activeDaemon().docsGet(relPath)
 })
 ipcMain.handle('sessions:project-list', () => {
-  const r = curRemote()
-  return r ? remoteSessions.list(r).catch(() => []) : listProjectSessions(repoRootOf(cur().cwd))
+  return activeDaemon().sessionsList()
 })
-ipcMain.handle('sessions:project-get', (_e, slug: string) =>
-  curRemote() ? remoteSessions.get(curRemote()!, slug).catch(() => null) : getProjectSession(repoRootOf(cur().cwd), slug),
-)
+ipcMain.handle('sessions:project-get', (_e, slug: string) => activeDaemon().sessionGet(slug))
 ipcMain.handle('tickets:list', () => {
-  const r = curRemote()
-  return r ? remoteTickets.list(r) : listTickets(repoRootOf(cur().cwd))
+  return activeDaemon().ticketsList()
 })
 ipcMain.handle('tickets:get', (_e, slug: string) => {
-  const r = curRemote()
-  return r ? remoteTickets.get(r, slug) : getTicket(repoRootOf(cur().cwd), slug)
+  return activeDaemon().ticketGet(slug)
 })
 ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
-  const remote = curRemote()
-  if (remote) {
-    const t = await remoteTickets.create(remote, input)
-    emitActivity({
-      kind: 'ticket-filed',
-      title: `Ticket filed · #${t.id}`,
-      detail: t.title,
-      repo: repoLabelFor(cur().cwd),
-      repoRoot: '',
-      sessionId: cur().sessionId,
-      ref: { ticket: t.id },
-    })
-    return t
-  }
-  const root = repoRootOf(cur().cwd)
-  const t = createTicket(root, input)
+  const daemon = activeDaemon()
+  const t = await daemon.ticketCreate(input)
   emitActivity({
     kind: 'ticket-filed',
     title: `Ticket filed · #${t.id}`,
     detail: t.title,
-    repo: repoLabelFor(root),
-    repoRoot: root,
+    repo: daemon.repoLabel(),
+    repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
     sessionId: cur().sessionId,
     ref: { ticket: t.id },
   })
   return t
 })
 ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
-  const remote = requestedRemote(requested) || curRemote()
-  if (!remote) return runTicketSpawn(repoRootOf(cur().cwd), text, engine, model)
+  const daemon = daemonForRequest(requested)
+  if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
   const t = text.trim()
   if (!t) return { error: 'empty request' }
   const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples, put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
-  return remoteRuns.start(remote, {
+  return remoteRuns.start(daemon.remote, {
     agentId: 'ticket-spawn',
     agentTitle: `File ticket · ${t.slice(0, 48)}`,
     engine,
-    model: remoteEngineModel(remote, engine, model),
+    model: remoteEngineModel(daemon.remote, engine, model),
     steps: [{ label: 'file ticket', prompt }],
     inPlace: true,
   })
 })
 ipcMain.handle('tickets:update', async (_e, slug: string, patch: { status?: string; priority?: string }) => {
-  const remote = curRemote()
-  if (remote) {
-    const before = await remoteTickets.get(remote, slug).catch(() => null)
-    const ok = await remoteTickets.update(remote, slug, patch)
-    const t = ok ? await remoteTickets.get(remote, slug).catch(() => null) : null
-    if (ok && patch.status) {
-      emitActivity({
-        kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
-        title: before?.status === 'stuck' && patch.status !== 'stuck' ? `Ticket unblocked · #${t?.id ?? slug}` : `Ticket ${patch.status} · #${t?.id ?? slug}`,
-        detail: t?.title,
-        repo: repoLabelFor(cur().cwd),
-        repoRoot: '',
-        sessionId: cur().sessionId,
-        ref: t?.id ? { ticket: t.id } : undefined,
-      })
-    }
-    return ok
-  }
-  const root = repoRootOf(cur().cwd)
-  const before = getTicket(root, slug)
-  const ok = updateTicket(root, slug, patch)
+  const daemon = activeDaemon()
+  const before = await daemon.ticketGet(slug)
+  const ok = await daemon.ticketUpdate(slug, patch)
   if (ok && patch.status) {
-    const t = getTicket(root, slug)
+    const t = await daemon.ticketGet(slug)
     const unblocked = before?.status === 'stuck' && patch.status !== 'stuck'
     emitActivity({
       kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
       title: unblocked ? `Ticket unblocked · #${t?.id ?? slug}` : `Ticket ${patch.status} · #${t?.id ?? slug}`,
       detail: unblocked ? `${t?.title || slug} · ${patch.status}` : t?.title,
-      repo: repoLabelFor(root),
-      repoRoot: root,
+      repo: daemon.repoLabel(),
+      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
       sessionId: cur().sessionId,
       ref: t?.id ? { ticket: t.id } : undefined,
     })
   } else if (ok && patch.priority) {
-    const t = getTicket(root, slug)
+    const t = await daemon.ticketGet(slug)
     emitActivity({
       kind: 'info',
       title: `Ticket priority · #${t?.id ?? slug}`,
       detail: `${t?.title || slug} · ${patch.priority}`,
-      repo: repoLabelFor(root),
-      repoRoot: root,
+      repo: daemon.repoLabel(),
+      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
       sessionId: cur().sessionId,
       ref: t?.id ? { ticket: t.id } : undefined,
     })
   }
   return ok
 })
-ipcMain.handle('skills:list', () => (curRemote() ? [] : listSkills(repoRootOf(cur().cwd))))
+ipcMain.handle('skills:list', () => activeDaemon().skillsList())
 ipcMain.handle('mrs:list', () => {
-  const r = curRemote()
-  return r ? remoteMrs.list(r) : listMrs(repoRootOf(cur().cwd))
+  return activeDaemon().mrsList()
 })
 ipcMain.handle('mrs:get', (_e, iid: number) => {
-  const r = curRemote()
-  return r ? remoteMrs.get(r, iid) : getMr(repoRootOf(cur().cwd), iid)
+  return activeDaemon().mrGet(iid)
 })
 ipcMain.handle('mrs:diff', (_e, iid: number) => {
-  const r = curRemote()
-  return r ? remoteMrs.diff(r, iid) : getMrDiff(repoRootOf(cur().cwd), iid)
+  return activeDaemon().mrDiff(iid)
 })
 ipcMain.handle('mrs:ci', (_e, iid: number) => {
-  const r = curRemote()
-  return r ? remoteMrs.ci(r, iid) : getMrCi(repoRootOf(cur().cwd), iid)
+  return activeDaemon().mrCi(iid)
 })
 ipcMain.handle('mrs:merge', (_e, iid: number) => {
-  const r = curRemote()
-  return r ? remoteMrs.merge(r, iid) : mergeMr(repoRootOf(cur().cwd), iid)
+  return activeDaemon().mrMerge(iid)
 })
 ipcMain.handle('ci:list', async (_e, limit?: number) => {
-  const r = curRemote()
-  if (r) return remoteCi.list(r, limit)
-  const { listCiRuns } = await import('./ci')
-  return listCiRuns(repoRootOf(cur().cwd), limit)
+  return activeDaemon().ciList(limit)
 })
 ipcMain.handle('ci:jobs', async (_e, runId: string) => {
-  const r = curRemote()
-  if (r) return remoteCi.jobs(r, runId)
-  const { listCiJobs } = await import('./ci')
-  return listCiJobs(repoRootOf(cur().cwd), runId)
+  return activeDaemon().ciJobs(runId)
 })
 ipcMain.handle('ci:log', async (_e, jobId: string) => {
-  const r = curRemote()
-  if (r) return remoteCi.log(r, jobId)
-  const { fetchCiLog } = await import('./ci')
-  return fetchCiLog(repoRootOf(cur().cwd), jobId)
+  return activeDaemon().ciLog(jobId)
 })
 ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
@@ -1816,46 +1707,36 @@ ipcMain.handle('clipboard:read', () => clipboard.readText())
 
 // ---- notes (repo-bound + global, persisted) ----
 ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
-  const remote = curRemote()
-  return remote ? remoteNotes.read(remote, scope).catch(() => '') : readNotes(scope, repoRootOf(cur().cwd))
+  return activeDaemon().notesRead(scope)
 })
 ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
-  curRemote() ? remoteNotes.write(curRemote()!, scope, content).catch(() => false) : writeNotes(scope, content, repoRootOf(cur().cwd)),
+  activeDaemon().notesWrite(scope, content),
 )
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----
-const filesRoot = () => repoRootOf(cur().cwd) || cur().cwd || homedir()
 ipcMain.handle('files:list', (_e, rel: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.list(r, rel || '') : listDir(filesRoot(), rel || '')
+  return activeDaemon().filesList(rel || '')
 })
 ipcMain.handle('files:read', (_e, rel: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.read(r, rel) : readFile(filesRoot(), rel)
+  return activeDaemon().filesRead(rel)
 })
 ipcMain.handle('files:write', (_e, rel: string, content: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.write(r, rel, content) : writeFile(filesRoot(), rel, content)
+  return activeDaemon().filesWrite(rel, content)
 })
 ipcMain.handle('files:search', (_e, q: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.search(r, q) : searchRepo(filesRoot(), q)
+  return activeDaemon().filesSearch(q)
 })
 ipcMain.handle('workspace:search', (_e, q: string, kinds?: WorkspaceSearchKind[]) => {
-  const r = curRemote()
-  return r ? remoteWorkspaceSearch(r, q, kinds) : workspaceSearch(filesRoot(), q, kinds)
+  return activeDaemon().search(q, kinds)
 })
 ipcMain.handle('files:create', (_e, rel: string, dir: boolean) => {
-  const r = curRemote()
-  return r ? remoteFiles.create(r, rel, dir) : createEntry(filesRoot(), rel, dir)
+  return activeDaemon().filesCreate(rel, dir)
 })
 ipcMain.handle('files:rename', (_e, from: string, to: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.rename(r, from, to) : renameEntry(filesRoot(), from, to)
+  return activeDaemon().filesRename(from, to)
 })
 ipcMain.handle('files:delete', (_e, rel: string) => {
-  const r = curRemote()
-  return r ? remoteFiles.del(r, rel) : removeEntry(filesRoot(), rel)
+  return activeDaemon().filesDelete(rel)
 })
 
 // ---- my workflow (local Claude/Codex configuration) ----

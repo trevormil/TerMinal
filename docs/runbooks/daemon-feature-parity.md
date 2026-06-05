@@ -14,6 +14,9 @@ and hiding features that are explicitly unsupported.
 
 - A session may carry `remoteSession` metadata: host id, label, SSH target,
   remote cwd, platform, and daemon settings.
+- Main-process repo operations should go through `WorkspaceDaemon`
+  (`src/main/workspace-daemon.ts`). `LocalWorkspaceDaemon` wraps existing local
+  modules; `SshWorkspaceDaemon` wraps the existing SSH JSON shim.
 - `tab:context` is the capability boundary for the renderer. Tabs should key off
   `ctx.capabilities`, `ctx.remoteSession`, `ctx.repoRoot`, and repo feature
   flags instead of ad hoc SSH checks.
@@ -44,9 +47,10 @@ and hiding features that are explicitly unsupported.
 
 ## DRY/refactor targets
 
-1. Create a `WorkspaceDaemon` interface in main for repo-scoped operations:
-   tickets, MRs, files, docs, agents, schedules, runs, notes, search, git, and
-   probe. Implement `LocalWorkspaceDaemon` and `SshWorkspaceDaemon`.
+1. Keep expanding `WorkspaceDaemon` until all repo-scoped operations route
+   through it: tickets, MRs, files, docs, agents, schedules, runs, notes, search,
+   git, and probe. The first pass covers repo context, tickets, MRs/CI, docs,
+   sessions, notes, files, skills, and workspace search.
 2. Replace repeated `curRemote() ? remoteX : localX` branches in IPC handlers
    with `daemonForCurrentSession()`. IPC handlers should become thin permission,
    activity, and response-shaping layers.
