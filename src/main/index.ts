@@ -42,6 +42,7 @@ import { readNotes, writeNotes, type NotesScope } from './notes'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
+import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { listDocs, readDoc } from './docs'
 import { listDisabled, setDisabled as setAgentDisabled, setAllDisabled as setAllSchedulesDisabled } from './agents-disabled'
@@ -1856,6 +1857,11 @@ ipcMain.handle('files:delete', (_e, rel: string) => {
   const r = curRemote()
   return r ? remoteFiles.del(r, rel) : removeEntry(filesRoot(), rel)
 })
+
+// ---- my workflow (local Claude/Codex configuration) ----
+ipcMain.handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
+ipcMain.handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
+ipcMain.handle('workflow:write', (_e, rel: string, content: string) => writeWorkflowFile(rel, content))
 
 // Safety net: never let a stray async error (e.g. a late PTY write) take down
 // the whole app.

@@ -305,6 +305,11 @@ const gt = {
     rename: (from: string, to: string) => ipcRenderer.invoke('files:rename', from, to),
     del: (rel: string) => ipcRenderer.invoke('files:delete', rel),
   },
+  workflow: {
+    list: (rel: string) => ipcRenderer.invoke('workflow:list', rel),
+    read: (rel: string) => ipcRenderer.invoke('workflow:read', rel),
+    write: (rel: string, content: string) => ipcRenderer.invoke('workflow:write', rel, content),
+  },
 
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {

@@ -1101,6 +1101,11 @@ export type GtApi = {
     rename: (from: string, to: string) => Promise<boolean>
     del: (rel: string) => Promise<boolean>
   }
+  workflow: {
+    list: (rel: string) => Promise<FileEntry[]>
+    read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+    write: (rel: string, content: string) => Promise<boolean>
+  }
 }
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
