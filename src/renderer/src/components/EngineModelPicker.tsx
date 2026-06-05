@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import type { Engine } from '../lib/types'
+import { engineLabel } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 
 // One DRY surface for the "pick engine + model" UX everywhere a run is
@@ -131,7 +132,7 @@ export function EngineModelPicker({
         title="Pick the engine + model — model defaults to the engine's default when not set."
       >
         <EngineLogo engine={engine} size={size === 'sm' ? 11 : 13} />
-        <span>{engine}</span>
+        <span>{engineLabel(engine)}</span>
         <span className="text-zinc-600">·</span>
         <span className={model ? 'text-zinc-200' : 'text-zinc-500'}>{modelLabel}</span>
         <ChevronDown size={size === 'sm' ? 10 : 12} strokeWidth={2} className="text-zinc-500" />
@@ -149,7 +150,7 @@ export function EngineModelPicker({
               <div key={e} className="mb-2 last:mb-0">
                 <div className="mb-1 flex items-center gap-1.5 px-1">
                   <EngineLogo engine={e} size={12} />
-                  <span className="text-[11px] font-semibold text-zinc-200">{e}</span>
+                  <span className="text-[11px] font-semibold text-zinc-200">{engineLabel(e)}</span>
                   <span className="text-[10px] text-zinc-600">· {VENDOR[e]}</span>
                 </div>
                 <div className="flex flex-wrap gap-1 px-1">

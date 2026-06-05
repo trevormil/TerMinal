@@ -4,6 +4,7 @@ import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { onNavigate } from '../../lib/nav'
+import { engineLabel } from '../../lib/engines'
 import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
@@ -304,7 +305,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
                   <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.repoLabel}</span>
                   <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
                     <EngineLogo engine={r.engine} size={10} />
-                    {r.engine}
+                    {engineLabel(r.engine)}
                   </span>
                   <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">{dur}</span>
                   <span
@@ -336,7 +337,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
               <span className="text-[13px] font-semibold text-zinc-100">{selectedRun.agentTitle}</span>
               <span className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-600">
                 <EngineLogo engine={selectedRun.engine} size={11} />
-                {selectedRun.engine}
+                {engineLabel(selectedRun.engine)}
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
               <div className="flex-1" />

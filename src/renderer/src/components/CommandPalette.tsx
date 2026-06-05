@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
 import type { Tab, Mr, Ticket } from '../lib/types'
 import { navigateTo } from '../lib/nav'
+import { sessionEngineLabel } from '../lib/engines'
 
 // ⌘K command palette: one fuzzy list over every navigation target — tabs in the
 // current session, other open sessions, tickets, MRs/PRs, and content-search
@@ -134,7 +135,7 @@ export function CommandPalette({
         id: `session:${s.key}`,
         group: 'Session',
         label: s.name || base(s.cwd),
-        hint: `${s.engine} · ${s.cwd.replace(/^\/Users\/[^/]+/, '~')}`,
+        hint: `${sessionEngineLabel(s.engine)} · ${s.cwd.replace(/^\/Users\/[^/]+/, '~')}`,
         run: close(() => onActivateSession(s.key)),
       })
     }

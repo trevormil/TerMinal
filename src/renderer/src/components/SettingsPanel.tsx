@@ -44,6 +44,7 @@ import type {
   RemotePlatform,
   RemoteSettingsProbe,
 } from '../lib/types'
+import { engineLabel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 
@@ -753,7 +754,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       <div key={e} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1">
-            <Readiness ok={found} name={e} hint={found ? detPath || vendor : 'not on PATH'} />
+            <Readiness ok={found} name={engineLabel(e)} hint={found ? detPath || vendor : 'not on PATH'} />
             <div className="mt-0.5 text-[10.5px] text-zinc-600">
               {overridePath ? <>override: <span className="font-mono text-zinc-500">{tilde(overridePath)}</span></> : 'using detected binary'}
             </div>
@@ -1168,7 +1169,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                       : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  {e}
+                  {engineLabel(e)}
                 </button>
               ))}
             </div>

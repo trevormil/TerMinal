@@ -2,6 +2,7 @@ import type { Engine } from '../lib/types'
 import openaiLogo from '../assets/openai.svg'
 import claudeLogo from '../assets/claude.svg'
 import cursorLogo from '../assets/cursor.png'
+import { engineLabel } from '../lib/engines'
 
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
@@ -26,7 +27,7 @@ export function EngineLogo({
   return (
     <img
       src={src}
-      alt={engine}
+      alt={engineLabel(engine)}
       width={size}
       height={size}
       draggable={false}

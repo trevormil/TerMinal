@@ -253,22 +253,36 @@ export function TerminalPane({
     // re-layout, which re-fires the observer ("ResizeObserver loop") and
     // thrashes the layout (visible flicker).
     let raf = 0
-    const ro = new ResizeObserver(() => {
+    let fitTimer: number | undefined
+    const refit = (force = false) => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         const dims = fit.proposeDimensions()
         if (!dims || !dims.cols || !dims.rows) return
-        if (dims.cols === term.cols && dims.rows === term.rows) return
+        const changed = dims.cols !== term.cols || dims.rows !== term.rows
+        if (!force && !changed) return
         fit.fit()
-        gt.pty.resize(sessionKey, { cols: term.cols, rows: term.rows })
+        if (changed) gt.pty.resize(sessionKey, { cols: term.cols, rows: term.rows })
+        term.refresh(0, term.rows - 1)
       })
-    })
+    }
+    const onSettingsChanged = (e: Event) => {
+      const appearance = (e as CustomEvent).detail?.appearance
+      if (!appearance || appearance.uiScale === undefined) return
+      refit(true)
+      if (fitTimer) window.clearTimeout(fitTimer)
+      fitTimer = window.setTimeout(() => refit(true), 80)
+    }
+    const ro = new ResizeObserver(() => refit())
     ro.observe(el)
+    window.addEventListener('gt.settings.changed', onSettingsChanged)
 
     return () => {
       cancelAnimationFrame(raf)
+      if (fitTimer) window.clearTimeout(fitTimer)
       el.removeEventListener('contextmenu', onContext)
       window.removeEventListener('gt.theme.changed', onTheme)
+      window.removeEventListener('gt.settings.changed', onSettingsChanged)
       offData()
       offExit()
       onInput.dispose()

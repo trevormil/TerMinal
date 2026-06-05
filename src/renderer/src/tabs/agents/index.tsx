@@ -54,6 +54,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
+import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../../lib/launch'
 import { agentPrompt } from '../../lib/agentPrompts'
 import type { Tab, TabContext, Agent, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactRead } from '../../lib/types'
@@ -230,7 +231,7 @@ function AgentDesigner({
           <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-zinc-500">
             Describe what it does —
             <EngineLogo engine={engine} size={11} />
-            {engine} writes the prompt + saves it
+            {engineLabel(engine)} writes the prompt + saves it
           </span>
         </div>
         <SkillHint>
@@ -353,7 +354,7 @@ function AgentDesigner({
               className="inline-flex items-center gap-1.5 rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
             >
               {busy ? <Bot size={12} strokeWidth={2.5} /> : <EngineLogo engine={engine} size={12} />}
-              {busy ? 'Spawning…' : launchMode === 'terminal' ? 'Open instance' : `Design with ${engine}`}
+              {busy ? 'Spawning…' : launchMode === 'terminal' ? 'Open instance' : `Design with ${engineLabel(engine)}`}
             </button>
           </div>
         </div>
@@ -768,7 +769,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
         setErr(r.error)
         return
       }
-      setCreateMsg(`${createEngine} is creating the persistent agent`)
+      setCreateMsg(`${engineLabel(createEngine)} is creating the persistent agent`)
       setCreating(false)
       setCreateRequest('')
       navigateTo('runs', { runId: r.id })
@@ -1970,7 +1971,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                             </span>
                             <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
                               <EngineLogo engine={r.engine} size={10} />
-                              {r.engine}
+                              {engineLabel(r.engine)}
                             </span>
                             <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
                               {reltime(r.startedAt)}
@@ -2232,7 +2233,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{repoOf(r.repoRoot)}</span>
                   <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
                     <EngineLogo engine={r.engine} size={10} />
-                    {r.engine}
+                    {engineLabel(r.engine)}
                   </span>
                   <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{reltime(r.startedAt)}</span>
                 </button>
@@ -2253,7 +2254,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 <span className="text-[12px] font-semibold text-zinc-100">{selectedRun.agentTitle}</span>
                 <span className="inline-flex items-center gap-1 text-[9.5px] uppercase text-zinc-600">
                   <EngineLogo engine={selectedRun.engine} size={11} />
-                  {selectedRun.engine}
+                  {engineLabel(selectedRun.engine)}
                 </span>
                 {selectedRun.persona && (
                   <span className="text-[10px] text-[var(--gt-accent-light)]">as {selectedRun.persona}</span>

@@ -15,6 +15,7 @@ import {
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo } from '../../lib/nav'
+import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
@@ -250,7 +251,7 @@ function ScheduleForm({
                 disabled={!customText.trim() || customBusy}
                 className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
               >
-                {customBusy ? 'Spawning…' : customLaunchMode === 'terminal' ? 'Open instance' : `Design with ${engine}`}
+                {customBusy ? 'Spawning…' : customLaunchMode === 'terminal' ? 'Open instance' : `Design with ${engineLabel(engine)}`}
               </button>
             </div>
           </div>
@@ -607,7 +608,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                     <Badge tone="blue">{s.describe || ''}</Badge>
                     <span className="inline-flex items-center gap-1 text-[10px] uppercase text-zinc-600">
                       <EngineLogo engine={s.engine} size={10} />
-                      {s.engine}
+                      {engineLabel(s.engine)}
                     </span>
                     {s.lastStatus && s.lastStatus !== 'never' && (
                       <Badge tone={statusTone(s.lastStatus)}>{s.lastStatus}</Badge>

@@ -9,6 +9,7 @@ import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
 import { onNavigate } from '../lib/nav'
+import { engineLabel } from '../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
@@ -127,7 +128,7 @@ function NewTicketModal({
       if (r && 'error' in r) setSpawnMsg(`couldn't start: ${r.error}`)
       else {
         setSpawnText('')
-        setSpawnMsg(`${spawnEngine} is filing the ticket · watch the Agents tab`)
+        setSpawnMsg(`${engineLabel(spawnEngine)} is filing the ticket · watch the Agents tab`)
         setTimeout(onClose, 900)
       }
     } finally {

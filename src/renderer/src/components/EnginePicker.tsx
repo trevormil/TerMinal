@@ -25,6 +25,7 @@ import type { LaunchMode } from '../lib/launch'
 import { EngineModelPicker } from './EngineModelPicker'
 import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
+import { engineLabel } from '../lib/engines'
 
 // Three-step launch picker: engine → persona (none + built-ins)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
@@ -144,7 +145,7 @@ export function EnginePicker({
                     key={e}
                     onClick={() => ok && setEngine(e)}
                     disabled={!ok}
-                    title={ok ? '' : `${e} is not installed or not on PATH`}
+                    title={ok ? '' : `${engineLabel(e)} is not installed or not on PATH`}
                     className={`flex flex-col items-center gap-2 rounded-xl border bg-black/20 px-3 py-4 transition-colors ${
                       ok
                         ? 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60 hover:bg-white/5'
@@ -152,7 +153,7 @@ export function EnginePicker({
                     }`}
                   >
                     <EngineLogo engine={e} size={28} />
-                    <span className="text-[13px] font-semibold text-zinc-100">{e}</span>
+                    <span className="text-[13px] font-semibold text-zinc-100">{engineLabel(e)}</span>
                     <span className="text-[10px] text-zinc-500">{ok ? VENDOR[e] : 'not installed'}</span>
                   </button>
                 )
@@ -170,7 +171,7 @@ export function EnginePicker({
           <>
             <div className="mb-3 flex items-center gap-2">
               <p className="text-[11.5px] text-zinc-500">
-                {stepNum} · Run as a persona? <span className="text-zinc-600">(via {engine})</span>
+                {stepNum} · Run as a persona? <span className="text-zinc-600">(via {engineLabel(engine || '')})</span>
               </p>
               <div className="ml-auto">
                 <EngineModelPicker
@@ -221,7 +222,7 @@ export function EnginePicker({
             <p className="mb-3 text-[11.5px] text-zinc-500">
               {stepNum} · Pipeline?{' '}
               <span className="text-zinc-600">
-                ({engine}
+                ({engineLabel(engine || '')}
                 {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''})
               </span>
             </p>
@@ -252,7 +253,7 @@ export function EnginePicker({
               <p className="text-[11.5px] text-zinc-500">
                 {stepNum} · Launch as{' '}
                 <span className="text-zinc-600">
-                  ({engine}
+                  ({engineLabel(engine || '')}
                   {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''}
                   {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''})
                 </span>

@@ -19,6 +19,7 @@ import type {
   SessionEngine,
   SessionMeta,
 } from '../lib/types'
+import { engineLabel, sessionEngineLabel } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
@@ -444,7 +445,7 @@ export function EntryScreen({
                       <EngineLogo engine={e} size={16} />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate text-[12.5px] font-semibold">{e}</span>
+                      <span className="block truncate text-[12.5px] font-semibold">{sessionEngineLabel(e)}</span>
                       <span className="block truncate text-[9.5px] font-normal text-zinc-600">
                         {e === 'local' ? 'shell' : e === 'cursor' ? 'agent' : 'code'}
                       </span>
@@ -728,7 +729,7 @@ export function EntryScreen({
           <>
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                Resume {engine}
+                Resume {engineLabel(engine)}
                 {filterDir ? ` · ${filterDir.split('/').pop()}` : ''}
                 {resumeCountLabel}
               </span>
@@ -759,18 +760,18 @@ export function EntryScreen({
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300"
               >
                 <EngineLogo engine={engine} size={13} />
-                Load prior {engine} sessions
+                Load prior {engineLabel(engine)} sessions
               </button>
             ) : isLoadingThisEngine ? (
               <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-[12px] text-zinc-500">
                 <RefreshCw size={13} strokeWidth={2} className="animate-spin" />
-                Scanning {engine} sessions…
+                Scanning {engineLabel(engine)} sessions…
               </div>
             ) : shown.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
                 {filterDir
                   ? 'No sessions for this folder — start a new one above.'
-                  : `No prior ${engine} sessions found.`}
+                  : `No prior ${engineLabel(engine)} sessions found.`}
               </div>
             ) : (
               <div className="space-y-2">

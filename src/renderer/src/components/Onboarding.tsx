@@ -66,9 +66,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Row ok={env.claude.found} name="claude" hint={env.claude.found ? env.claude.path : 'install the Claude CLI to run sessions'} />
-              <Row ok={env.codex.found} name="codex" hint={env.codex.found ? env.codex.path : 'optional — install for the Codex engine'} />
-              <Row ok={env.cursor.found} name="cursor-agent" hint={env.cursor.found ? env.cursor.path : 'optional — install Cursor Agent for the Cursor engine'} />
+              <Row ok={env.claude.found} name="Claude" hint={env.claude.found ? env.claude.path : 'install the Claude CLI to run sessions'} />
+              <Row ok={env.codex.found} name="Codex" hint={env.codex.found ? env.codex.path : 'optional — install for the Codex engine'} />
+              <Row ok={env.cursor.found} name="Cursor" hint={env.cursor.found ? env.cursor.path : 'optional — install Cursor Agent for the Cursor engine'} />
               <Row ok={env.gh.found && env.gh.authed} name="gh" hint={env.gh.found ? (env.gh.authed ? `GitHub PRs ready${env.gh.authHost ? ` (${env.gh.authHost})` : ''}` : 'run `gh auth login`') : 'optional — for GitHub PRs'} />
               <Row ok={env.glab.found && env.glab.authed} name="glab" hint={env.glab.found ? (env.glab.authed ? `GitLab MRs ready${env.glab.authHost ? ` (${env.glab.authHost})` : ''}` : 'run `glab auth login`') : 'optional — for GitLab MRs'} />
             </div>
