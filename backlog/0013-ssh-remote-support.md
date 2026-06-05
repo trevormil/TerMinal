@@ -8,7 +8,7 @@ hitl: false
 type: feature
 source: brainstorm
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-06-05
 prs: []
 refs: []
 ---
@@ -59,6 +59,33 @@ Mac TerMinal:
 - Settings has a `hosts:` list; sessions tagged by host
 
 This is the version worth building.
+
+## Product guardrail
+
+Do not ship a remote mode that exposes obviously broken local-only surfaces.
+Every remote workspace must advertise explicit capabilities, and the renderer
+must gate tabs/widgets/actions from that capability map.
+
+Default stance:
+
+- Show the remote terminal only once PTY launch works reliably.
+- Hide cockpit widgets unless their data source is backed by the remote agent
+  or a local mirror.
+- Hide or disable tabs that still call local-only IPC for the active remote
+  workspace.
+- If a feature is partially supported, show a short disabled state that says
+  what remote capability is missing; do not show stale local data.
+- Never let remote sessions write to local repo paths by accident. Remote file,
+  ticket, MR, run, and search APIs must route through the remote workspace
+  client.
+
+Practical first slice:
+
+- Supported: Terminal, remote badge/profile, host health/detect.
+- Hidden until remote-backed: Cockpit, Tickets, MRs, Files, Docs, Search,
+  Runs, Agents, Schedules, CI.
+- Re-enable each surface one at a time only after its data path is remote-aware
+  and tested against Ubuntu.
 
 ## Open design questions (to think on)
 
