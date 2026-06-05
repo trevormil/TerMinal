@@ -174,6 +174,7 @@ import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hi
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
 import { readPersonas } from './personas'
+import { workspaceSearch, type WorkspaceSearchKind } from './workspace-search'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -1392,6 +1393,9 @@ ipcMain.handle('files:write', (_e, rel: string, content: string) =>
   writeFile(filesRoot(), rel, content),
 )
 ipcMain.handle('files:search', (_e, q: string) => searchRepo(filesRoot(), q))
+ipcMain.handle('workspace:search', (_e, q: string, kinds?: WorkspaceSearchKind[]) =>
+  workspaceSearch(filesRoot(), q, kinds),
+)
 ipcMain.handle('files:create', (_e, rel: string, dir: boolean) => createEntry(filesRoot(), rel, dir))
 ipcMain.handle('files:rename', (_e, from: string, to: string) => renameEntry(filesRoot(), from, to))
 ipcMain.handle('files:delete', (_e, rel: string) => removeEntry(filesRoot(), rel))

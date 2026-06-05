@@ -3,6 +3,7 @@ import { BookText, FileText, Sparkles, ChevronDown, ChevronRight, Folder, Folder
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
+import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, DocsTree, DocEntry, DocCategory } from '../../lib/types'
 
 // A node in the per-category folder tree (GitHub-style).
@@ -140,6 +141,17 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
 
   const allEntries = tree?.categories.flatMap((c) => c.items) ?? []
   const totalCount = allEntries.length
+
+  useEffect(() => {
+    if (!tree) return
+    return onNavigate((ev) => {
+      if (ev.tabId !== 'docs') return
+      const path = ev.payload?.path
+      if (typeof path !== 'string') return
+      const entry = tree.categories.flatMap((c) => c.items).find((e) => e.path === path)
+      if (entry) setSelected(entry)
+    })
+  }, [tree])
 
   return (
     <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">

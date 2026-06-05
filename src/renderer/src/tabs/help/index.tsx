@@ -223,8 +223,9 @@ function HelpTab(_props: { ctx: TabContext }) {
             <p>
               <span className="font-semibold text-zinc-200">Tabs (top bar):</span> Terminal is the live{' '}
               <code className="font-mono">claude</code> session. Tickets browses the backlog; MRs/PRs lists changes
-              with their review verdicts (filter Open/Merged/Closed/All); Agents shows spawned runs; Inbox collects
-              anything waiting on you from the top-right button; Activity is the live event feed; Notes / Files / Sessions round it out.
+              with their review verdicts (filter Open/Merged/Closed/All); Search spans files, tickets, MRs, docs,
+              runs, snippets, and activity; Agents shows spawned runs; Inbox collects anything waiting on you from
+              the top-right button; Activity is the live event feed; Notes / Files / Sessions round it out.
             </p>
             <p>
               <span className="font-semibold text-zinc-200">Cockpit (right, the Plugins button):</span> live widgets

@@ -107,6 +107,18 @@ export function CommandPalette({
       icon: TerminalIcon,
       run: close(() => navigateTo('terminal')),
     })
+    out.push({
+      id: 'command:workspace-search',
+      group: 'Command',
+      label: q.trim() ? `Search workspace for "${q.trim()}"` : 'Workspace search',
+      hint: 'files, tickets, MRs, docs, runs, snippets, activity',
+      icon: Search,
+      run: close(() => {
+        const payload = q.trim() ? { q: q.trim() } : undefined
+        navigateTo('search', payload)
+        setTimeout(() => navigateTo('search', payload), 50)
+      }),
+    })
     for (const t of tabs)
       out.push({
         id: `tab:${t.id}`,

@@ -245,6 +245,7 @@ const gt = {
   workspace: {
     isBootstrapped: (repoRoot: string) => ipcRenderer.invoke('workspace:is-bootstrapped', repoRoot),
     bootstrap: (repoRoot: string) => ipcRenderer.invoke('workspace:bootstrap', repoRoot),
+    search: (q: string, kinds?: string[]) => ipcRenderer.invoke('workspace:search', q, kinds),
   },
   release: {
     start: () => ipcRenderer.invoke('release:start'),

@@ -643,6 +643,31 @@ export type PromptSnippet = {
   source?: 'preset' | 'global' | 'repo'
 }
 
+export type WorkspaceSearchKind =
+  | 'file'
+  | 'ticket'
+  | 'mr'
+  | 'activity'
+  | 'doc'
+  | 'run'
+  | 'snippet'
+  | 'agent-artifact'
+export type WorkspaceSearchResult = {
+  id: string
+  kind: WorkspaceSearchKind
+  title: string
+  subtitle?: string
+  detail?: string
+  path?: string
+  line?: number
+  ts?: number
+  payload?: Record<string, unknown>
+}
+export type WorkspaceSearchResponse = {
+  results: WorkspaceSearchResult[]
+  error?: string
+}
+
 export type PresetKind = 'agents' | 'snippets'
 export type PresetPrefs = {
   version: number
@@ -922,6 +947,7 @@ export type GtApi = {
   workspace: {
     isBootstrapped: (repoRoot: string) => Promise<{ bootstrapped: boolean }>
     bootstrap: (repoRoot: string) => Promise<{ ok: true } | { error: string }>
+    search: (q: string, kinds?: WorkspaceSearchKind[]) => Promise<WorkspaceSearchResponse>
   }
   release: {
     start: () => Promise<{ ok: true; pid: number | null; log: string; repoRoot: string } | { error: string }>
