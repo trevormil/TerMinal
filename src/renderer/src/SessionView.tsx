@@ -21,7 +21,7 @@ import { EngineLogo } from './components/EngineLogo'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { commandWidgetToPlugin } from './lib/commandWidget'
-import type { Engine, Plugin, SessionEngine, TabContext } from './lib/types'
+import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
 import type { TerminalLayout } from './App'
@@ -189,6 +189,7 @@ export function SessionView({
   onReorderSession,
   terminalTile = false,
   terminalLayout = 'single',
+  tabLayout = 'horizontal',
   onTerminalLayoutChange,
   canSplitTerminal = false,
   focusTerminal = false,
@@ -209,6 +210,7 @@ export function SessionView({
   onRenameSession?: (key: string, name: string) => void
   onReorderSession?: (fromKey: string, toKey: string) => void
   terminalLayout?: TerminalLayout
+  tabLayout?: AppearanceTabLayout
   onTerminalLayoutChange?: (layout: TerminalLayout) => void
   canSplitTerminal?: boolean
   focusTerminal?: boolean
@@ -366,25 +368,31 @@ export function SessionView({
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
   const onTerminal = terminalTile || activeTab === 'terminal'
+  const sidebarTabs = !terminalTile && tabLayout === 'sidebar'
 
-  const tabPill = (id: string, Icon: LucideIcon, label: string) => {
+  const tabPill = (id: string, Icon: LucideIcon, label: string, variant: 'top' | 'side' = 'top') => {
     const count = tabBadges[id]
+    const on = activeTab === id
     return (
       <button
         key={id}
         style={noDrag}
         onClick={() => setActiveTab(id)}
-        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-          activeTab === id
+        className={`${
+          variant === 'side'
+            ? 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11.5px]'
+            : 'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px]'
+        } font-medium transition-colors ${
+          on
             ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
             : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
         }`}
       >
         <Icon size={13} strokeWidth={2} />
-        {label}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
         {count ? (
           <span
-            className={`ml-0.5 rounded-full px-1.5 text-[9px] font-bold tabular-nums ${
+            className={`ml-auto rounded-full px-1.5 text-[9px] font-bold tabular-nums ${
               id === 'hitl'
                 ? 'bg-[var(--gt-red)]/25 text-[var(--gt-red)]'
                 : 'bg-[var(--gt-yellow)]/20 text-[var(--gt-yellow)]'
@@ -426,6 +434,14 @@ export function SessionView({
     if (fromKey && fromKey !== toKey) onReorderSession?.(fromKey, toKey)
     setDraggingKey(null)
   }
+  const tabLabel = (id: string, title: string) => (id === 'mrs' && ctx ? `${ctx.forgeLabel}s` : title)
+  const activeTabTitle = activeTab === 'terminal' ? 'Terminal' : ActiveTab ? tabLabel(ActiveTab.id, ActiveTab.title) : 'Terminal'
+  const renderPrimaryTabs = (variant: 'top' | 'side') => (
+    <>
+      {tabPill('terminal', SquareTerminal, 'Terminal', variant)}
+      {tabs.map((t) => tabPill(t.id, t.icon, tabLabel(t.id, t.title), variant))}
+    </>
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -437,11 +453,14 @@ export function SessionView({
           terminalTile ? 'hidden' : 'flex'
         }`}
       >
-        <div className="flex items-center gap-0.5">
-          {tabPill('terminal', SquareTerminal, 'Terminal')}
-          {tabs.map((t) =>
-            // the MR/PR tab title tracks the repo's forge (Merge vs Pull requests)
-            tabPill(t.id, t.icon, t.id === 'mrs' && ctx ? `${ctx.forgeLabel}s` : t.title),
+        <div className={sidebarTabs ? 'flex min-w-0 items-center gap-1.5' : 'flex items-center gap-0.5'}>
+          {sidebarTabs ? (
+            <>
+              <SquareTerminal size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+              <span className="truncate text-[11.5px] font-semibold text-zinc-300">{activeTabTitle}</span>
+            </>
+          ) : (
+            renderPrimaryTabs('top')
           )}
         </div>
         <div className="flex-1" />
@@ -492,7 +511,16 @@ export function SessionView({
         )}
       </header>
 
-      <div className="relative min-h-0 flex-1">
+      <div className={sidebarTabs ? 'flex min-h-0 flex-1' : 'relative min-h-0 flex-1'}>
+        {sidebarTabs && (
+          <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/35 p-2">
+            <div className="mb-1.5 px-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+              Tabs
+            </div>
+            <nav className="space-y-0.5">{renderPrimaryTabs('side')}</nav>
+          </aside>
+        )}
+        <div className={sidebarTabs ? 'relative min-h-0 flex-1' : 'contents'}>
         {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
             keeps its size while backgrounded — no refit-from-zero, no flicker. */}
         <div
@@ -715,6 +743,7 @@ export function SessionView({
           />
         )}
 
+      </div>
       </div>
     </div>
   )

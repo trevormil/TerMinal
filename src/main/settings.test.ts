@@ -38,11 +38,29 @@ describe('migrate', () => {
   })
 
   test('appearance defaults to dark and accepts light/system modes', () => {
-    expect(migrate({}).appearance).toEqual({ mode: 'dark', theme: 'terminal', accent: '' })
-    expect(migrate({ appearance: { mode: 'light', theme: 'terminal', accent: '#0ea5e9' } }).appearance).toEqual({
+    expect(migrate({}).appearance).toEqual({
+      mode: 'dark',
+      theme: 'terminal',
+      accent: '',
+      uiScale: 1,
+      tabLayout: 'horizontal',
+    })
+    expect(
+      migrate({
+        appearance: {
+          mode: 'light',
+          theme: 'terminal',
+          accent: '#0ea5e9',
+          uiScale: 1.15,
+          tabLayout: 'sidebar',
+        },
+      }).appearance,
+    ).toEqual({
       mode: 'light',
       theme: 'terminal',
       accent: '#0ea5e9',
+      uiScale: 1.15,
+      tabLayout: 'sidebar',
     })
     expect(migrate({ appearance: { mode: 'system' } }).appearance.mode).toBe('system')
   })

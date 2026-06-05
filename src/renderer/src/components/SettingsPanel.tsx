@@ -28,7 +28,17 @@ import {
   Monitor,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Settings, SettingsPatch, EnvDetect, Engine, ForgePref, PresetKind, PresetPrefs, AppearanceMode } from '../lib/types'
+import type {
+  Settings,
+  SettingsPatch,
+  EnvDetect,
+  Engine,
+  ForgePref,
+  PresetKind,
+  PresetPrefs,
+  AppearanceMode,
+  AppearanceTabLayout,
+} from '../lib/types'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 
@@ -525,6 +535,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     'inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
   const actionButton =
     'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50'
+  const scalePct = Math.round((s.appearance.uiScale || 1) * 100)
   const valueText = (value: string, fallback: string) => (
     <span className={`min-w-0 truncate font-mono text-[11.5px] ${value ? 'text-zinc-300' : 'text-zinc-500'}`}>
       {value ? tilde(value) : fallback}
@@ -675,6 +686,20 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       <span className="text-[12px] font-semibold">{label}</span>
     </button>
   )
+  const tabLayoutOpt = (layout: AppearanceTabLayout, label: string, hint: string) => (
+    <button
+      key={layout}
+      onClick={() => save({ appearance: { tabLayout: layout } })}
+      className={`flex min-w-0 flex-1 flex-col rounded-lg border px-3 py-2 text-left transition-colors ${
+        s.appearance.tabLayout === layout
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+      }`}
+    >
+      <span className="text-[12px] font-semibold">{label}</span>
+      <span className="mt-0.5 text-[10.5px] text-zinc-500">{hint}</span>
+    </button>
+  )
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -819,6 +844,40 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 {modeOpt('dark', 'Dark', Moon)}
                 {modeOpt('light', 'Light', Sun)}
                 {modeOpt('system', 'System', Monitor)}
+              </div>
+              <div className="grid gap-2 md:grid-cols-[1fr_1.2fr]">
+                <div className="grid grid-cols-2 gap-2">
+                  {tabLayoutOpt('horizontal', 'Top tabs', 'Classic row across the session header')}
+                  {tabLayoutOpt('sidebar', 'Sidebar tabs', 'Vertical nav beside the active view')}
+                </div>
+                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
+                      <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
+                      <div className="text-[10.5px] text-zinc-500">Scales the whole app shell.</div>
+                    </div>
+                    <button
+                      onClick={() => save({ appearance: { uiScale: 1 } })}
+                      className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                    >
+                      {scalePct}%
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min={85}
+                    max={135}
+                    step={5}
+                    value={scalePct}
+                    onChange={(e) => save({ appearance: { uiScale: Number(e.target.value) / 100 } })}
+                    className="w-full accent-[var(--gt-accent)]"
+                  />
+                  <div className="mt-1 flex justify-between text-[9.5px] text-zinc-600">
+                    <span>85</span>
+                    <span>100</span>
+                    <span>135</span>
+                  </div>
+                </div>
               </div>
               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
                 <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">

@@ -18,9 +18,10 @@ import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
+import { CommandPalette } from './components/CommandPalette'
 import { ALL_TABS } from './tabs/registry'
 import { navigateTo, onNavigate } from './lib/nav'
-import type { Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
+import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 import { applyTheme } from './lib/themes'
 import { loadHiddenTabs } from './lib/tabVisibility'
 
@@ -108,6 +109,14 @@ const restored: Saved[] = (() => {
   }
 })().filter((s: Saved) => s?.sessionId && s.engine !== 'local')
 
+const defaultAppearance: AppearanceCfg = {
+  mode: 'dark',
+  theme: 'terminal',
+  accent: '',
+  uiScale: 1,
+  tabLayout: 'horizontal',
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<Sess[]>(() =>
     restored.map((s) => {
@@ -158,7 +167,9 @@ export default function App() {
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [palette, setPalette] = useState(false)
   const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
+  const [appearance, setAppearance] = useState<AppearanceCfg>(defaultAppearance)
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
 
   // first-run gate: show onboarding until the user completes (or skips) it
@@ -172,7 +183,9 @@ export default function App() {
       window.gt.settings
         .get()
         .then((s) => {
-          if (alive) applyTheme(s.appearance)
+          if (!alive) return
+          applyTheme(s.appearance)
+          setAppearance({ ...defaultAppearance, ...s.appearance })
         })
         .catch(() => {})
     load()
@@ -227,6 +240,18 @@ export default function App() {
     const onChange = () => setHiddenTabs(new Set(loadHiddenTabs()))
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
+  }, [])
+  // ⌘K / Ctrl+K toggles the command palette. Captured at the window so it works
+  // regardless of focus (terminal, a tab, etc.).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPalette((p) => !p)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
   const statusByKey = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
 
@@ -530,6 +555,16 @@ export default function App() {
   }
 
   const showEntry = adding !== false || sessions.length === 0
+  const uiScale = Math.min(1.35, Math.max(0.85, appearance.uiScale || 1))
+  const scaledShellStyle: CSSProperties =
+    uiScale === 1
+      ? {}
+      : {
+          width: `${100 / uiScale}%`,
+          height: `${100 / uiScale}%`,
+          transform: `scale(${uiScale})`,
+          transformOrigin: 'top left',
+        }
   const activeTabs = useMemo(
     () =>
       activeCtx
@@ -576,7 +611,8 @@ export default function App() {
     )
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)]">
+    <div className="h-full w-full overflow-hidden bg-[var(--gt-bg)]">
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)]" style={scaledShellStyle}>
       {/* session tab bar (top-level, also the window drag region) */}
       <header
         style={drag}
@@ -859,6 +895,7 @@ export default function App() {
                 onReorderSession={reorderSession}
                 terminalTile={multiTerminal}
                 terminalLayout={terminalLayout}
+                tabLayout={appearance.tabLayout}
                 onTerminalLayoutChange={setTerminalLayout}
                 canSplitTerminal={activeWorkspaceSessions.length >= 2}
                 focusTerminal={s.key === activeKey}
@@ -923,6 +960,22 @@ export default function App() {
           }}
         />
       )}
+      {palette && !showEntry && (
+        <CommandPalette
+          tabs={activeTabs}
+          sessions={sessions.map((s) => ({
+            key: s.key,
+            name: s.choice.name || '',
+            cwd: s.info.cwd || s.choice.cwd || '',
+            engine: s.choice.engine || 'claude',
+          }))}
+          activeKey={activeKey}
+          mrSym={activeCtx?.forgeSym}
+          onActivateSession={activate}
+          onClose={() => setPalette(false)}
+        />
+      )}
+    </div>
     </div>
   )
 }

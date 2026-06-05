@@ -43,6 +43,7 @@ import {
 import { fixPath, detectEnv, installGtNotify } from './env'
 import { emitActivity, readActivity, clearActivity, onActivity, startActivityTail } from './events'
 import { readUsage } from './usage'
+import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd, gitStatus } from './repo'
 import { listTickets, getTicket, createTicket, updateTicket, type NewTicket } from './backlog'
@@ -243,6 +244,9 @@ function startSession(key: string, opts: StartOpts) {
     args.push('--session-id', sessionId)
     if (opts.name) args.push('--name', opts.name)
   }
+
+  // Wire Claude sessions to the status-line shim (zero-API usage + context).
+  if (engine === 'claude') args.push('--settings', statuslineSettingsArg())
 
   const env = {
     ...process.env,
@@ -467,6 +471,9 @@ function createWindow() {
     ? join(process.resourcesPath, 'terminal-mcp-server')
     : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // Status-line shim: lets the Plan Usage + Context widgets read rate_limits /
+  // context_window_size from a per-session cache instead of the throttled API.
+  installStatuslineShim()
   // Once the MCP binary is on disk, register it with Claude Code (~/.claude.json)
   // and Codex CLI (~/.codex/config.toml) so every spawned agent — TerMinal's own
   // or ad-hoc — discovers the harness tools natively without per-repo config.
@@ -971,7 +978,7 @@ ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number })
 // ---- data IPC (plugin pollers; all keyed to the attached session) ----
 ipcMain.handle('data:transcript', () => readTranscriptStats(cur().sessionId))
 ipcMain.handle('data:harness-tdd', () => readHarnessTdd(cur().cwd))
-ipcMain.handle('data:usage', () => readUsage())
+ipcMain.handle('data:usage', () => readUsage(cur().sessionId))
 ipcMain.handle('data:git-status', () => gitStatus(cur().cwd))
 ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
 ipcMain.handle('data:mr-summary', () => mrSummary(repoRootOf(cur().cwd)))

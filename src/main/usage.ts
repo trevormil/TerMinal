@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { userInfo } from 'node:os'
+import { readStatusLine } from './statusline'
 
 // ---------------------------------------------------------------------------
 // Plan usage — mirrors Claude Code's `/usage`.
@@ -58,8 +59,30 @@ function win(w: any): Window {
   return { pct, resetsAt }
 }
 
-export async function readUsage(): Promise<Usage> {
+export async function readUsage(sessionId?: string): Promise<Usage> {
   const now = Date.now()
+
+  // Preferred source: the statusLine cache for the active session — zero API
+  // calls, never throttled, and authoritative. Claude only emits rate_limits
+  // after the first API response (and only for Pro/Max), so fall through to the
+  // API when the cache lacks them.
+  if (sessionId) {
+    const sl = readStatusLine(sessionId)
+    if (sl && (sl.fiveHour || sl.sevenDay)) {
+      const creds = keychainOauth()
+      return {
+        ok: true,
+        plan: creds?.subscriptionType || '',
+        tier: creds?.rateLimitTier || '',
+        fiveHour: sl.fiveHour ?? null,
+        sevenDay: sl.sevenDay ?? null,
+        overagePct: null,
+        stale: false,
+        ts: sl.ts,
+      }
+    }
+  }
+
   if (cache && now - cache.ts < TTL) return cache
   if (now < backoffUntil && cache) return { ...cache, stale: true }
 

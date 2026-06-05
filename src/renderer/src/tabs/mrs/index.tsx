@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { onNavigate } from '../../lib/nav'
 
 // project-template convention: agents tag their docs/ticket/report PRs with
 // this label so they're visually distinguishable from PRs that touch code.
@@ -217,6 +218,18 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
     }
     refresh()
   }, [ctx.sessionId, ctx.repoPath]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cross-tab nav: navigateTo('mrs', { iid }) opens straight to that MR/PR
+  // (e.g. from the command palette).
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'mrs') return
+        const iid = Number(ev.payload?.iid)
+        if (Number.isFinite(iid) && iid > 0) setSelectedMrIid(iid)
+      }),
+    [],
+  )
 
   if (selectedMrIid !== null)
     return (

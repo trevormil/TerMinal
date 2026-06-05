@@ -15,6 +15,7 @@ import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
+import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
 // Values must be valid @uiw/codemirror-extensions-langs keys — which are the
@@ -179,6 +180,21 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         : [...o, { path, content: r.ok ? r.content : '', dirty: false, err: r.ok ? undefined : r.reason, scrollLine: line }],
     )
   }
+  // Cross-tab nav: navigateTo('files', { path, line }) opens that file (from
+  // the command palette / search). Held in a ref so the listener always sees
+  // the latest openFile without re-subscribing every render.
+  const openFileRef = useRef(openFile)
+  openFileRef.current = openFile
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'files') return
+        const path = ev.payload?.path as string | undefined
+        if (path) openFileRef.current(path, ev.payload?.line as number | undefined)
+      }),
+    [],
+  )
+
   const closeFile = (path: string) =>
     setOpen((o) => {
       const idx = o.findIndex((f) => f.path === path)

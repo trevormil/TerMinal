@@ -23,10 +23,13 @@ export type InboxCfg = {
   completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
 }
 export type AppearanceMode = 'dark' | 'light' | 'system'
+export type AppearanceTabLayout = 'horizontal' | 'sidebar'
 export type AppearanceCfg = {
   mode: AppearanceMode
   theme: string
   accent: string
+  uiScale: number
+  tabLayout: AppearanceTabLayout
 }
 // External-app handoffs: macOS app names used with `open -a <name>` — robust
 // (no PATH/CLI dependency). '' → the built-in default.
@@ -86,7 +89,7 @@ export function defaultSettings(): Settings {
     forge: 'auto',
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     inbox: { completionHook: true },
-    appearance: { mode: 'dark', theme: 'terminal', accent: '' },
+    appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     harnessDir: '',
@@ -119,6 +122,12 @@ export function migrate(raw: unknown): Settings {
     }
     if (typeof r.appearance.theme === 'string' && r.appearance.theme.trim()) s.appearance.theme = r.appearance.theme
     if (typeof r.appearance.accent === 'string') s.appearance.accent = r.appearance.accent
+    if (typeof r.appearance.uiScale === 'number' && Number.isFinite(r.appearance.uiScale)) {
+      s.appearance.uiScale = Math.min(1.35, Math.max(0.85, r.appearance.uiScale))
+    }
+    if (r.appearance.tabLayout === 'horizontal' || r.appearance.tabLayout === 'sidebar') {
+      s.appearance.tabLayout = r.appearance.tabLayout
+    }
   }
 
   if (typeof r.onboarded === 'boolean') s.onboarded = r.onboarded

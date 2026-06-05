@@ -141,7 +141,14 @@ export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 export type InboxCfg = { completionHook: boolean }
 export type AppearanceMode = 'dark' | 'light' | 'system'
-export type AppearanceCfg = { mode: AppearanceMode; theme: string; accent: string }
+export type AppearanceTabLayout = 'horizontal' | 'sidebar'
+export type AppearanceCfg = {
+  mode: AppearanceMode
+  theme: string
+  accent: string
+  uiScale: number
+  tabLayout: AppearanceTabLayout
+}
 export type AppsCfg = { editor: string; browser: string }
 export type OpenRouterCfg = { apiKey: string; defaultModel: string }
 export type Settings = {

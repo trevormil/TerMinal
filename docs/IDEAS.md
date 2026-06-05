@@ -5,14 +5,14 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
 ## Deferred / partially-done prompts
 
-- **`/usage` is rate-limited.** The Plan Usage widget hits `GET /api/oauth/usage`
-  with the keychain OAuth token. The endpoint 429s aggressively, so the 5h/weekly
-  gauges often show "cached"/empty. **Better fix (attempted next):** capture the
-  `rate_limits` + `context_window` JSON that Claude Code pipes to a `statusLine`
-  command — set a statusLine shim on the sessions we launch (via `--settings`)
-  that tees the JSON to a cache file we read. Zero API calls, never throttled,
-  and also gives an *authoritative* per-model context window size (fixes the
-  200k-vs-1M guess in the context widget).
+- **`/usage` rate-limit — DONE.** Sessions we launch now get a `statusLine` shim
+  (via `--settings`) that tees Claude Code's `rate_limits` + `context_window`
+  JSON to `~/.config/TerMinal/statusline/<sid>.json`. `readUsage()` reads that
+  cache first (zero API calls, never throttled) and falls back to the API only
+  before the first response of a session. The authoritative
+  `context_window.context_window_size` also overrides the model-table guess in
+  the Context widget (fixes 200k-vs-1M). See `src/main/statusline.ts`. The shim
+  delegates to the user's own statusline so their in-terminal display is kept.
 - **Bundle size (~7.2 MB).** `@uiw/codemirror-extensions-langs` eagerly bundles
   every language grammar. Switch to lazy per-extension language loading
   (`loadLanguage` / dynamic import) or curated individual `@codemirror/lang-*`
@@ -55,7 +55,12 @@ ideas. Vibe-coded; this is the "what's next / what we punted" list.
 
 ## Bigger swings
 
-- **Command palette** (Cmd+K) to jump to any tab / file / ticket / MR / session.
+- **Command palette (⌘K) — DONE.** `CommandPalette.tsx`: fuzzy list over the
+  current session's tabs, other open sessions, tickets, MRs/PRs, and content
+  search hits. Each row dispatches the existing `navigateTo()`/`activate()`.
+  Receiving tabs honor a nav payload to pre-select (tickets→slug, mrs→iid,
+  files→path/line). *Possible next:* filename fuzzy-find (needs a `git ls-files`
+  IPC — today files are content-search only).
 - **Session timeline**: a scrubber of the attached session's turns (from the
   transcript) with jump-to-context.
 - **Multi-session split view** (two cockpits side by side).

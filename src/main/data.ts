@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { repoForCwd, repoRootOf } from './repo'
 import { reviewForPrDir, newestReviewDirForRepo } from './review'
+import { readStatusLine } from './statusline'
 
 // ---------------------------------------------------------------------------
 // Claude Code transcript reader
@@ -366,9 +367,24 @@ export function readTranscriptStats(sessionId: string): TranscriptStats {
     return emptyStats(sessionId)
   }
   if (tCache && tCache.id === sessionId && tCache.mtime === mtime) return tCache.stats
-  const stats = parseTranscriptFile(file, sessionId)
+  const stats = withStatusLineContext(parseTranscriptFile(file, sessionId), sessionId)
   tCache = { id: sessionId, mtime, stats }
   return stats
+}
+
+// Claude's statusLine reports the authoritative context_window_size, which
+// fixes the model-table guess in contextLimitFor (e.g. 200k vs 1M). When the
+// cache has it, recompute the limit/pct from that.
+function withStatusLineContext(stats: TranscriptStats, sessionId: string): TranscriptStats {
+  if (process.env.GT_CONTEXT_LIMIT) return stats
+  const sl = readStatusLine(sessionId)
+  if (!sl?.contextWindowSize) return stats
+  const contextLimit = sl.contextWindowSize
+  return {
+    ...stats,
+    contextLimit,
+    contextPct: Math.min(100, (stats.contextTokens / contextLimit) * 100),
+  }
 }
 
 /** All sessions across all projects, newest first — for the entry picker. */
