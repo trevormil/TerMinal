@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Tray, Menu, nativeImage, safeStorage } from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -19,14 +19,20 @@ function sourceCheckoutRoot(marker: string): string {
   return ''
 }
 
-function localProjectTemplateRoot(): string {
+function projectTemplateSource(marker: string): TemplateSource | { error: string } {
   const configured = resolvedTemplateRepo()
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(configured) && existsSync(join(configured, 'bootstrap.sh'))) {
-    return configured
-  }
-  const checkout = sourceCheckoutRoot(join('templates', 'project-template', 'bootstrap.sh'))
-  return checkout ? join(checkout, 'templates', 'project-template') : ''
+  return pickTemplateSource({
+    candidates: templateCandidates({
+      configured,
+      appPath: app.getAppPath(),
+      sourceRoots: [process.env.GT_TERMINAL_REPO || '', process.cwd(), join(moduleDir, '..', '..')],
+    }),
+    marker,
+    templateRepo: configured,
+    cloneToTmp: cloneTemplateToTmp,
+  })
 }
+
 import { readTranscriptStats, readHarnessTdd, listSessions, findSessionFile, readSessionTasks, lastAssistantTurn } from './data'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import { emitActivity, readActivity, clearActivity, onActivity, startActivityTail } from './events'
@@ -45,6 +51,7 @@ import { scaffoldProject } from './scaffold'
 import {
   readSettings,
   patchSettings,
+  setSettingsSecretStorage,
   telegramControlEnabled,
   resolvedProjectsDir,
   resolvedEditorApp,
@@ -52,10 +59,14 @@ import {
   resolvedTemplateRepo,
   enginePath,
   engineDefaultModel,
+  resolveEngineModel,
+  classifyProjectsDir,
   type SettingsPatch,
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
+import { classifyBootstrapStatus } from './bootstrap'
+import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce, testTelegram } from './telegram'
 import {
   readAgents,
@@ -134,12 +145,20 @@ import {
   remoteProbe,
   remoteProject,
   remoteRuns,
+  remoteSettings,
   remoteSchedules,
   remoteTickets,
 } from './remote'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
+import { processSpawnCwd } from './spawn-cwd'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
+
+setSettingsSecretStorage({
+  canEncrypt: () => safeStorage.isEncryptionAvailable(),
+  seal: (value) => safeStorage.encryptString(value).toString('base64'),
+  open: (payload) => safeStorage.decryptString(Buffer.from(payload, 'base64')),
+})
 
 let win: BrowserWindow | null = null
 
@@ -251,7 +270,7 @@ function startSession(key: string, opts: StartOpts) {
   sessions.get(key)?.pty.kill()
 
   const remote = opts.remote?.sshTarget ? opts.remote : undefined
-  const cwd = remote ? remote.cwd || opts.cwd || '' : opts.cwd || homedir()
+  const cwd = remote ? remote.cwd || opts.cwd || '' : processSpawnCwd(opts.cwd || homedir())
   const displayCwd = remote ? displayRemoteCwd(remote, cwd) : cwd
   const engine = opts.engine || 'claude'
   const args: string[] = []
@@ -722,6 +741,20 @@ ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
     return { ok: false, error: (e as Error).message, engines: {}, tools: {} }
   }
 })
+ipcMain.handle('settings:validate-projects-dir', async (_e, input: { dir?: string; hostId?: string }) => {
+  const dir = input?.dir || ''
+  if (input?.hostId) {
+    const remote = remoteFromHostId(input.hostId, dir || undefined)
+    if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
+    return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
+      ok: false,
+      reason: 'error',
+      dir,
+      message: (e as Error).message,
+    }))
+  }
+  return classifyProjectsDir(dir, (d) => existsSync(join(d, '.git')))
+})
 ipcMain.handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
 ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
   const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
@@ -774,7 +807,7 @@ function remoteSteps(base: { label: string; prompt: string }, personaId?: string
 }
 
 function remoteEngineModel(remote: NonNullable<ReturnType<typeof curRemote>>, engine: Engine, model?: string) {
-  return model || remote.daemon?.engines?.[engine]?.defaultModel || undefined
+  return resolveEngineModel(engine, model, remote.daemon) || undefined
 }
 
 ipcMain.handle('agents:list', async () => {
@@ -1449,30 +1482,42 @@ ipcMain.handle('data:first-prompt', (_e, sessionId: string) => {
 })
 
 ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
-  if (!repoRoot) return { bootstrapped: true }
-  return { bootstrapped: existsSync(join(repoRoot, '.agents')) }
+  const remote = curRemote()
+  if (remote) return remoteProject.bootstrapStatus(remote).catch((e) => ({
+    state: 'none',
+    bootstrapped: false,
+    missing: [],
+    message: (e as Error).message,
+  }))
+  if (!repoRoot) return { bootstrapped: true, state: 'full', missing: [], message: '' }
+  return classifyBootstrapStatus(repoRoot, (rel) => existsSync(join(repoRoot, rel)))
 })
 // Run project-template/bootstrap.sh against a repo. The script is idempotent
 // and skips clobbering existing files (it writes `<name>.workflow` sidecars
 // for conflicts). Streams nothing — we just wait and return ok/error.
 ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
+  const remote = curRemote()
+  if (remote) {
+    const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
+    return remoteProject.bootstrap(remote, templateRepo).catch((e) => ({ error: (e as Error).message }))
+  }
   if (!repoRoot) return { error: 'no repoRoot' }
-  const templateRoot = localProjectTemplateRoot()
-  if (!templateRoot)
-    return {
-      error: 'project-template checkout not found — initialize templates/project-template or set Settings → template repo to a local project-template path',
-    }
-  const script = join(templateRoot, 'bootstrap.sh')
-  if (!existsSync(script)) return { error: `bootstrap.sh not found at ${script} — check project-template checkout` }
+  const src = projectTemplateSource('bootstrap.sh')
+  if ('error' in src) return { error: src.error }
+  const script = join(src.dir, 'bootstrap.sh')
   return new Promise<{ ok: true } | { error: string }>((resolve) => {
     const p = cpSpawn('bash', [script, repoRoot], { stdio: 'pipe' })
     let stderr = ''
     p.stderr.on('data', (d) => (stderr += d.toString()))
     p.on('exit', (code) => {
+      src.cleanup?.()
       if (code === 0) resolve({ ok: true })
       else resolve({ error: `bootstrap exited ${code}${stderr ? `: ${stderr.slice(0, 200)}` : ''}` })
     })
-    p.on('error', (e) => resolve({ error: e.message }))
+    p.on('error', (e) => {
+      src.cleanup?.()
+      resolve({ error: e.message })
+    })
   })
 })
 

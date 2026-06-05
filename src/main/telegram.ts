@@ -4,6 +4,7 @@ import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { telegramControlEnabled, readSettings, resolvedTemplateRepo } from './settings'
+import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 import { readAgents, runAgent, listRuns, cancelRun, readAgentState, resetAgentState } from './agents'
 import { readPersonas } from './personas'
 import { parseCommand, classifyRunArgs, parsePollLine } from './telegram-parse'
@@ -45,13 +46,17 @@ function sourceCheckoutRoot(marker: string): string {
   return ''
 }
 
-function localProjectTemplateRoot(): string {
+function localProjectTemplateSource(): TemplateSource | { error: string } {
   const configured = resolvedTemplateRepo()
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(configured) && existsSync(join(configured, '.agents'))) {
-    return configured
-  }
-  const checkout = sourceCheckoutRoot(join('templates', 'project-template', '.agents'))
-  return checkout ? join(checkout, 'templates', 'project-template') : ''
+  return pickTemplateSource({
+    candidates: templateCandidates({
+      configured,
+      sourceRoots: [sourceCheckoutRoot(join('templates', 'project-template', '.agents'))],
+    }),
+    marker: '.agents',
+    templateRepo: configured,
+    cloneToTmp: cloneTemplateToTmp,
+  })
 }
 
 const nativeConfigured = () => {
@@ -650,15 +655,13 @@ function cmdInstall(args: string[]) {
   const repo = resolveRepo(args[1])
   if (!repo) return reply('No repo — /repos to list.')
   // Source: project-template's .agents/<id>.sh + sidecar JSON.
-  const templateRoot = localProjectTemplateRoot()
-  if (!templateRoot) {
-    return reply('No local project-template checkout — initialize templates/project-template or set Settings → template repo to a local path.')
-  }
-  const srcSh = join(templateRoot, '.agents', `${agentId}.sh`)
-  const srcJson = join(templateRoot, '.agents', `${agentId}.json`)
-  if (!existsSync(srcSh)) return reply(`No ${agentId}.sh in project-template/.agents.`)
-  const dstDir = join(repo.repoRoot, '.agents')
+  const source = localProjectTemplateSource()
+  if ('error' in source) return reply(source.error)
   try {
+    const srcSh = join(source.dir, '.agents', `${agentId}.sh`)
+    const srcJson = join(source.dir, '.agents', `${agentId}.json`)
+    if (!existsSync(srcSh)) return reply(`No ${agentId}.sh in project-template/.agents.`)
+    const dstDir = join(repo.repoRoot, '.agents')
     mkdirSync(dstDir, { recursive: true })
     writeFileSync(join(dstDir, `${agentId}.sh`), readFileSync(srcSh, 'utf8'), { mode: 0o755 })
     if (existsSync(srcJson))
@@ -666,6 +669,8 @@ function cmdInstall(args: string[]) {
     reply(`📦 Installed ${agentId} into ${repo.label}/.agents/`)
   } catch (e) {
     reply(`⛔ install failed: ${(e as Error).message}`)
+  } finally {
+    source.cleanup?.()
   }
 }
 

@@ -47,6 +47,8 @@ const gt = {
     get: () => ipcRenderer.invoke('settings:get'),
     patch: (patch: unknown) => ipcRenderer.invoke('settings:patch', patch),
     remoteProbe: (hostId: string) => ipcRenderer.invoke('settings:remote-probe', hostId),
+    validateProjectsDir: (input: { dir?: string; hostId?: string }) =>
+      ipcRenderer.invoke('settings:validate-projects-dir', input),
   },
   snippets: {
     list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),

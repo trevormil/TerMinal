@@ -117,6 +117,7 @@ const statusTone = (s: string): BadgeTone =>
           ? 'mute'
           : 'blue'
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
+const AGENT_RUN_REPO_FILTER_KEY = 'gt.agents.runRepoFilter'
 
 function reltime(ts: number): string {
   const s = (Date.now() - ts) / 1000
@@ -1442,7 +1443,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [ctx.sessionId])
 
-  const [repoFilter, setRepoFilter] = useState('') // '' = all repos
+  const [repoFilter, setRepoFilterState] = useState(() => localStorage.getItem(AGENT_RUN_REPO_FILTER_KEY) ?? '__auto__')
   const selectedRun = runs.find((r) => r.id === sel) || null
   const runningByAgent = useMemo(
     () => new Set(runs.filter((r) => r.status === 'running').map((r) => r.agentId)),
@@ -1450,7 +1451,16 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   )
   // Runs are global across every repo; the filter just narrows the list.
   const repoOptions = useMemo(() => [...new Set(runs.map((r) => repoOf(r.repoRoot)))].sort(), [runs])
-  const shownRuns = repoFilter ? runs.filter((r) => repoOf(r.repoRoot) === repoFilter) : runs
+  const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || '')
+  useEffect(() => {
+    if (repoFilter !== '__auto__' || !activeRepoLabel || !repoOptions.includes(activeRepoLabel)) return
+    setRepoFilterState(activeRepoLabel)
+  }, [activeRepoLabel, repoFilter, repoOptions])
+  const setRepoFilter = (value: string) => {
+    localStorage.setItem(AGENT_RUN_REPO_FILTER_KEY, value)
+    setRepoFilterState(value)
+  }
+  const shownRuns = repoFilter !== '__auto__' && repoFilter ? runs.filter((r) => repoOf(r.repoRoot) === repoFilter) : runs
   useEffect(() => {
     const el = logRef.current
     if (el) el.scrollTop = el.scrollHeight
@@ -2197,11 +2207,11 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--gt-border)]">
             <div className="flex items-center gap-2 px-3 py-1.5">
               <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Runs</span>
-              <span className="text-[10px] text-zinc-700">all repos</span>
+              <span className="text-[10px] text-zinc-700">{repoFilter ? 'scoped runs' : 'all repos'}</span>
               <div className="flex-1" />
               {repoOptions.length > 1 && (
                 <select
-                  value={repoFilter}
+                  value={repoFilter === '__auto__' ? '' : repoFilter}
                   onChange={(e) => setRepoFilter(e.target.value)}
                   title="Filter by repo"
                   className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none"
@@ -2218,7 +2228,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
             {runs.length === 0 ? (
               <div className="px-3 pb-3 text-[12px] text-zinc-600">No runs yet.</div>
             ) : shownRuns.length === 0 ? (
-              <div className="px-3 pb-3 text-[12px] text-zinc-600">No runs for {repoFilter}.</div>
+              <div className="px-3 pb-3 text-[12px] text-zinc-600">No runs for {repoFilter === '__auto__' ? 'this repo' : repoFilter}.</div>
             ) : (
               shownRuns.map((r) => (
                 <button

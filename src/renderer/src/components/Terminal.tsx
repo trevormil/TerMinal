@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Bot,
+  ChevronDown,
+  ChevronUp,
   Clipboard,
   ClipboardCheck,
   ClipboardPaste,
@@ -20,6 +22,7 @@ import {
 import { Terminal as Xterm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { SearchAddon } from '@xterm/addon-search'
 import type { Choice } from './EntryScreen'
 import type { Engine, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
@@ -111,7 +114,9 @@ export function TerminalPane({
   active?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const termRef = useRef<Xterm | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
   const writeInputRef = useRef<(data: string) => void>(() => {})
   const [menuOpen, setMenuOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<{
@@ -132,6 +137,8 @@ export function TerminalPane({
   const [draft, setDraft] = useState({ title: '', group: 'Custom', prompt: '' })
   const [newBusy, setNewBusy] = useState(false)
   const [newErr, setNewErr] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const isRemote = !!choice.remote
 
   useEffect(() => {
@@ -174,12 +181,16 @@ export function TerminalPane({
       cursorBlink: true,
       allowProposedApi: true,
       minimumContrastRatio: 4.5,
+      scrollback: 10000,
       theme: xtermThemeFromCss(),
     })
     termRef.current = term
     const fit = new FitAddon()
+    const searchAddon = new SearchAddon()
     term.loadAddon(fit)
+    term.loadAddon(searchAddon)
     term.loadAddon(new WebLinksAddon((_e, uri) => window.gt.openExternal(uri)))
+    searchAddonRef.current = searchAddon
     term.open(el)
     fit.fit()
 
@@ -306,6 +317,7 @@ export function TerminalPane({
       ro.disconnect()
       term.dispose()
       if (termRef.current === term) termRef.current = null
+      if (searchAddonRef.current === searchAddon) searchAddonRef.current = null
       writeInputRef.current = () => {}
     }
   }, [sessionKey, isRemote])
@@ -374,6 +386,31 @@ export function TerminalPane({
       ? choice.engine
       : newEngine
   const focusTerminalSoon = () => requestAnimationFrame(() => termRef.current?.focus())
+  const searchOptions = {
+    caseSensitive: false,
+    decorations: {
+      matchBackground: '#3f3f46',
+      matchOverviewRuler: '#a1a1aa',
+      activeMatchBackground: cssVar('--gt-accent', '#7c6ef6'),
+      activeMatchColorOverviewRuler: cssVar('--gt-accent', '#7c6ef6'),
+    },
+  }
+  const findInScrollback = (direction: 'next' | 'previous') => {
+    const q = searchQuery.trim()
+    if (!q) return
+    const addon = searchAddonRef.current
+    if (direction === 'previous') addon?.findPrevious(q, searchOptions)
+    else addon?.findNext(q, searchOptions)
+  }
+  const openSearch = () => {
+    setSearchOpen(true)
+    requestAnimationFrame(() => searchInputRef.current?.select())
+  }
+  const closeSearch = () => {
+    searchAddonRef.current?.clearDecorations()
+    setSearchOpen(false)
+    focusTerminalSoon()
+  }
   const closeContextMenu = () => {
     setContextMenu(null)
     focusTerminalSoon()
@@ -421,6 +458,49 @@ export function TerminalPane({
     await window.gt.presets.hide('snippets', id)
     await reloadSnippets()
   }
+
+  useEffect(() => {
+    if (!searchOpen) return
+    requestAnimationFrame(() => searchInputRef.current?.select())
+  }, [searchOpen])
+
+  useEffect(() => {
+    if (!searchOpen) {
+      searchAddonRef.current?.clearDecorations()
+      return
+    }
+    const q = searchQuery.trim()
+    if (!q) {
+      searchAddonRef.current?.clearDecorations()
+      return
+    }
+    searchAddonRef.current?.findNext(q, { ...searchOptions, incremental: true })
+  }, [searchOpen, searchQuery])
+
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const editing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && (!editing || searchOpen)) {
+        e.preventDefault()
+        openSearch()
+        return
+      }
+      if (!searchOpen) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeSearch()
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        findInScrollback(e.shiftKey ? 'previous' : 'next')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, searchOpen, searchQuery])
 
   const draftWithAi = async () => {
     const text = newText.trim()
@@ -501,6 +581,15 @@ export function TerminalPane({
       <div className="absolute inset-0 overflow-hidden p-3">
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
+      <div className={`absolute top-4 z-20 ${isRemote ? 'right-4' : 'right-14'}`}>
+        <button
+          onClick={openSearch}
+          title="Find in scrollback"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+        >
+          <Search size={14} strokeWidth={2} />
+        </button>
+      </div>
       {!isRemote && (
       <div className="absolute right-4 top-4 z-20">
         <button
@@ -511,6 +600,51 @@ export function TerminalPane({
           <MessageSquareText size={14} strokeWidth={2} />
         </button>
       </div>
+      )}
+      {searchOpen && (
+        <div className="absolute right-4 top-14 z-30 flex w-[min(360px,calc(100%-2rem))] items-center gap-1 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-1.5 shadow-2xl backdrop-blur">
+          <Search size={13} strokeWidth={2} className="ml-1 shrink-0 text-zinc-500" />
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.stopPropagation()
+                findInScrollback(e.shiftKey ? 'previous' : 'next')
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                e.stopPropagation()
+                closeSearch()
+              }
+            }}
+            placeholder="Find in scrollback..."
+            className="h-7 min-w-0 flex-1 bg-transparent px-1 text-[12px] text-zinc-100 outline-none placeholder:text-zinc-600"
+          />
+          <button
+            onClick={() => findInScrollback('previous')}
+            title="Previous match"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
+            <ChevronUp size={13} strokeWidth={2} />
+          </button>
+          <button
+            onClick={() => findInScrollback('next')}
+            title="Next match"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
+            <ChevronDown size={13} strokeWidth={2} />
+          </button>
+          <button
+            onClick={closeSearch}
+            title="Close find"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        </div>
       )}
       {contextMenu && (
         <div

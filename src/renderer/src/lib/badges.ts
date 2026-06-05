@@ -57,6 +57,7 @@ export const horizonTone = (h: string): BadgeTone =>
 // readable; unknown kinds fall through to 'mute'.
 const ACTIVITY_TONES: Record<string, BadgeTone> = {
   'task-complete': 'green',
+  deploy: 'green',
   'tests-pass': 'green',
   'pr-merged': 'green',
   'ticket-closed': 'green',

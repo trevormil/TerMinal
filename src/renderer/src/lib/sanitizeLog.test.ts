@@ -35,6 +35,10 @@ describe('sanitizeLog', () => {
     )
   })
 
+  it('renders CRLF logs as normal lines instead of blank output', () => {
+    expect(sanitizeLog('first line\r\nsecond line\r\n')).toBe('first line\nsecond line\n')
+  })
+
   it('passes plain text through untouched', () => {
     expect(sanitizeLog('hello world\nno escapes here')).toBe('hello world\nno escapes here')
   })

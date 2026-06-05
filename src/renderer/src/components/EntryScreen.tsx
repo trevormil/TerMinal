@@ -10,6 +10,7 @@ import {
   ArrowUp,
   Home,
   Check,
+  Search,
 } from 'lucide-react'
 import type {
   Engine,
@@ -22,6 +23,7 @@ import type {
 import { engineLabel, sessionEngineLabel } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
+import { filterSessionMetas } from '../lib/sessionSearch'
 
 export type Choice = {
   mode: 'new' | 'resume'
@@ -56,8 +58,6 @@ const pathLabel = (p: string) => {
 }
 const remoteDisplayPath = (p: string) =>
   p.startsWith('/home/') ? p.replace(/^\/home\/[^/]+/, '~') : p
-const underDir = (sessionCwd: string, dir: string) =>
-  sessionCwd === dir || sessionCwd.startsWith(dir.replace(/\/$/, '') + '/')
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 const SESSION_PAGE_SIZE = 50
@@ -82,6 +82,7 @@ export function EntryScreen({
   )
   const [loadingSessions, setLoadingSessions] = useState<Partial<Record<Engine, boolean>>>({})
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
+  const [sessionSearch, setSessionSearch] = useState('')
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
@@ -197,7 +198,7 @@ export function EntryScreen({
 
   useEffect(() => {
     setVisibleSessionCount(SESSION_PAGE_SIZE)
-  }, [engine, filterDir])
+  }, [engine, filterDir, sessionSearch])
 
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
@@ -211,11 +212,8 @@ export function EntryScreen({
 
   const canResume = isAiEngine(engine) && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
-  const shown = sessions
-    ? filterDir
-      ? sessions.filter((s) => underDir(s.cwd, filterDir))
-      : sessions
-    : []
+  const scopedSessionCount = sessions ? filterSessionMetas(sessions, { filterDir }).length : 0
+  const shown = sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []
   const visibleShown = shown.slice(0, visibleSessionCount)
   const hiddenShown = Math.max(0, shown.length - visibleShown.length)
   const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
@@ -303,9 +301,9 @@ export function EntryScreen({
     }
   }
   const resumeCountLabel = sessions
-    ? shown.length > visibleShown.length
-      ? ` (${visibleShown.length}/${shown.length})`
-      : ` (${shown.length})`
+    ? ` · showing ${visibleShown.length} of ${shown.length}${
+        scopedSessionCount !== shown.length ? ` (${scopedSessionCount} in scope)` : ''
+      }`
     : ''
   const projectParentLabel =
     location === 'remote'
@@ -753,6 +751,21 @@ export function EntryScreen({
                   show all
                 </button>
               )}
+              {sessions && (
+                <label className="relative ml-auto min-w-[180px]">
+                  <Search
+                    size={11}
+                    strokeWidth={2}
+                    className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600"
+                  />
+                  <input
+                    value={sessionSearch}
+                    onChange={(e) => setSessionSearch(e.target.value)}
+                    placeholder="search sessions..."
+                    className="w-full rounded-md border border-[var(--gt-border)] bg-black/25 py-1 pl-6 pr-2 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+                  />
+                </label>
+              )}
             </div>
             {!sessions && !isLoadingThisEngine ? (
               <button
@@ -769,7 +782,9 @@ export function EntryScreen({
               </div>
             ) : shown.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
-                {filterDir
+                {sessionSearch.trim()
+                  ? 'No sessions match that search.'
+                  : filterDir
                   ? 'No sessions for this folder — start a new one above.'
                   : `No prior ${engineLabel(engine)} sessions found.`}
               </div>

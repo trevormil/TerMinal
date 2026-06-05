@@ -56,7 +56,7 @@ type BrowserBookmark = {
   title: string
   url: string
   logo?: string
-  source: 'preset' | 'custom'
+  source: 'repo' | 'preset' | 'custom'
 }
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -85,10 +85,25 @@ function normalizeUrl(input: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(s)}`
 }
 
-function BrowserTab(_props: { ctx: TabContext }) {
+function repoBookmarkFor(ctx: TabContext): BrowserBookmark | null {
+  const host = ctx.repoHost?.trim()
+  const path = ctx.repoPath?.trim().replace(/\.git$/i, '')
+  if (!host || !path) return null
+  return {
+    id: `repo-${host}-${path}`,
+    title: path.split('/').pop() || 'Repository',
+    url: `https://${host}/${path}`,
+    source: 'repo',
+  }
+}
+
+function BrowserTab({ ctx }: { ctx: TabContext }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const wvRef = useRef<Webview | null>(null)
-  const [addr, setAddr] = useState(HOME)
+  const repoBookmark = repoBookmarkFor(ctx)
+  const homeUrl = repoBookmark?.url || HOME
+  const autoHomeRef = useRef(homeUrl)
+  const [addr, setAddr] = useState(homeUrl)
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
@@ -130,7 +145,7 @@ function BrowserTab(_props: { ctx: TabContext }) {
     const wv = document.createElement('webview') as Webview
     wv.setAttribute('partition', 'persist:browser') // persist logins/cookies
     wv.setAttribute('allowpopups', 'false')
-    wv.setAttribute('src', HOME)
+    wv.setAttribute('src', homeUrl)
     wv.style.width = '100%'
     wv.style.height = '100%'
     host.appendChild(wv)
@@ -170,7 +185,16 @@ function BrowserTab(_props: { ctx: TabContext }) {
       wv.remove()
       wvRef.current = null
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (homeUrl === autoHomeRef.current) return
+    const shouldFollow = !addr || addr === autoHomeRef.current || addr === HOME
+    autoHomeRef.current = homeUrl
+    if (!shouldFollow) return
+    setAddr(homeUrl)
+    wvRef.current?.loadURL(homeUrl).catch(() => {})
+  }, [addr, homeUrl])
 
   const go = () => {
     const u = normalizeUrl(addr)
@@ -185,7 +209,7 @@ function BrowserTab(_props: { ctx: TabContext }) {
   const presetBookmarks: BrowserBookmark[] = AI_TOOLS
     .filter((tool) => !hiddenPresets.includes(tool.id))
     .map((tool) => ({ ...tool, source: 'preset' as const }))
-  const bookmarks = [...presetBookmarks, ...customBookmarks]
+  const bookmarks = [...(repoBookmark ? [repoBookmark] : []), ...presetBookmarks, ...customBookmarks]
   const addBookmark = () => {
     const url = normalizeUrl(newUrl || addr)
     if (!url) return
@@ -210,6 +234,7 @@ function BrowserTab(_props: { ctx: TabContext }) {
     setAdding(false)
   }
   const deleteBookmark = (bookmark: BrowserBookmark) => {
+    if (bookmark.source === 'repo') return
     if (bookmark.source === 'preset') {
       setHiddenPresets((prev) => (prev.includes(bookmark.id) ? prev : [...prev, bookmark.id]))
       return
@@ -380,18 +405,20 @@ function BrowserTab(_props: { ctx: TabContext }) {
                   {toolsExpanded && (
                     <>
                       <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{tool.title}</span>
-                      {tool.source === 'custom' && <span className="shrink-0 text-[9px] uppercase text-zinc-700">custom</span>}
+                      {tool.source !== 'preset' && <span className="shrink-0 text-[9px] uppercase text-zinc-700">{tool.source}</span>}
                       {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />}
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteBookmark(tool)
-                        }}
-                        title={tool.source === 'preset' ? 'Hide preset' : 'Delete bookmark'}
-                        className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-[var(--gt-red)] group-hover:inline-flex"
-                      >
-                        <Trash2 size={11} strokeWidth={2} />
-                      </span>
+                      {tool.source !== 'repo' && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteBookmark(tool)
+                          }}
+                          title={tool.source === 'preset' ? 'Hide preset' : 'Delete bookmark'}
+                          className="hidden rounded p-1 text-zinc-600 hover:bg-white/10 hover:text-[var(--gt-red)] group-hover:inline-flex"
+                        >
+                          <Trash2 size={11} strokeWidth={2} />
+                        </span>
+                      )}
                     </>
                   )}
                 </button>

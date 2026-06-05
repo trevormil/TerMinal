@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Activity,
   CircleCheck,
+  Rocket,
   Ticket,
   TicketCheck,
   GitPullRequest,
@@ -47,6 +48,7 @@ async function navForEvent(ev: ActivityEvent): Promise<void> {
 const ICON: Record<ActivityKind, LucideIcon> = {
   'session-start': Cpu,
   'session-end': LogOut,
+  deploy: Rocket,
   'ticket-filed': Ticket,
   'ticket-closed': TicketCheck,
   'pr-opened': GitPullRequestArrow,
@@ -66,6 +68,7 @@ const ICON: Record<ActivityKind, LucideIcon> = {
 const KIND_LABEL: Record<ActivityKind, string> = {
   'session-start': 'session',
   'session-end': 'session end',
+  deploy: 'deploy',
   'ticket-filed': 'ticket',
   'ticket-closed': 'closed',
   'pr-opened': 'opened',

@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
 import { app } from 'electron'
 import { resolvedProjectsDir, resolvedTemplateRepo } from './settings'
+import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 
 // Spin up a new repo from the configured template (default:
 // github.com/trevormil/project-template). In dev the template ships as a git
@@ -13,23 +13,28 @@ const SKIP = new Set(['.git', '.gitmodules', 'node_modules', '.DS_Store'])
 
 export type ScaffoldResult = { ok: boolean; path?: string; error?: string }
 
-function templateSource(): { dir: string; cleanup?: () => void } {
-  const local = join(app.getAppPath(), 'templates', 'project-template')
-  if (existsSync(join(local, 'bootstrap.sh'))) {
-    // refresh to the latest upstream so scaffolds track the maintained template
-    try {
-      execFileSync('git', ['-C', local, 'pull', '--ff-only'], { stdio: 'ignore', timeout: 15_000 })
-    } catch {
-      /* offline / detached — use the pinned submodule as-is */
-    }
-    return { dir: local }
-  }
-  const tmp = mkdtempSync(join(tmpdir(), 'gt-template-'))
-  execFileSync('git', ['clone', '--depth', '1', resolvedTemplateRepo(), tmp], {
-    stdio: 'ignore',
-    timeout: 60_000,
+function templateSource(): TemplateSource {
+  const configured = resolvedTemplateRepo()
+  const source = pickTemplateSource({
+    candidates: templateCandidates({
+      configured,
+      appPath: app.getAppPath(),
+      sourceRoots: [process.env.GT_TERMINAL_REPO || '', process.cwd()],
+    }),
+    marker: 'bootstrap.sh',
+    templateRepo: configured,
+    cloneToTmp: cloneTemplateToTmp,
+    onLocalPick: (dir) => {
+      // refresh to the latest upstream so scaffolds track the maintained template
+      try {
+        execFileSync('git', ['-C', dir, 'pull', '--ff-only'], { stdio: 'ignore', timeout: 15_000 })
+      } catch {
+        /* offline / detached — use the pinned checkout as-is */
+      }
+    },
   })
-  return { dir: tmp, cleanup: () => rmSync(tmp, { recursive: true, force: true }) }
+  if ('error' in source) throw new Error(source.error)
+  return source
 }
 
 /** Create <parentDir>/<name> from the template: copy → git init → first commit. */

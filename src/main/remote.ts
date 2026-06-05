@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import type { RemoteHost } from './settings'
+import { readSettings, type RemoteHost } from './settings'
 import type { Ticket, NewTicket } from './backlog'
 import type { MrDetail, MrListResult } from './mrs'
 import type { Entry, ReadResult, SearchHit } from './files'
@@ -34,10 +34,20 @@ export type RemoteRunStartInput = {
   worktreesDir?: string
   enginePath?: string
   scheduleId?: string
+  contextPreamble?: boolean
 }
 export type RemoteDirEntry = { name: string; path: string; dir: true }
 export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
 export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
+export type RemoteProjectsDirValidation =
+  | { ok: true; dir: string }
+  | { ok: false; reason: 'is-repo' | 'error'; dir: string; suggestedParent?: string; message: string }
+export type RemoteBootstrapStatus = {
+  state: 'full' | 'partial' | 'none'
+  bootstrapped: boolean
+  missing: string[]
+  message: string
+}
 
 export type RemoteProbe = {
   cwd: string
@@ -83,7 +93,10 @@ function listDir(root,rel){const abs=safe(root,rel);if(!abs||!exists(abs))return
 function readFile(root,rel){const abs=safe(root,rel);if(!abs||!exists(abs))return {ok:false,content:'',reason:'not found'};const st=stat(abs);if(!st)return {ok:false,content:'',reason:'not found'};if(st.isDirectory())return {ok:false,content:'',reason:'directory'};if(st.size>2000000)return {ok:false,content:'',reason:'file too large (>2 MB)'};const b=fs.readFileSync(abs);if(b.includes(0))return {ok:false,content:'',reason:'binary file'};return {ok:true,content:b.toString('utf8')}}
 function writeFile(root,rel,content){const abs=safe(root,rel);if(!abs)return false;fs.mkdirSync(path.dirname(abs),{recursive:true});fs.writeFileSync(abs,String(content||''));return true}
 function search(root,q){q=String(q||'').trim();if(q.length<2)return [];let r=runObj('git',['-C',root,'grep','-n','-I','--no-color','--untracked','-F','-i','-m','30','-e',q],{cwd:root,maxBuffer:16*1024*1024});let out=r.stdout;if(!out&&r.error)out=runObj('grep',['-rnI','-F','-i','-m','30','--exclude-dir=.git','--exclude-dir=node_modules',q,root],{cwd:root,maxBuffer:16*1024*1024}).stdout.replaceAll(root+path.sep,'');return String(out||'').split('\n').filter(Boolean).slice(0,300).map(l=>{const m=l.match(/^(.*?):(\d+):(.*)$/);return m?{file:m[1],line:Number(m[2]),text:m[3].slice(0,240)}:null}).filter(Boolean)}
-function docs(root){const cats=['changelog','maintainer','developer','personal','reports','other'];const labels={changelog:'Changelog',maintainer:'Maintainer',developer:'Developer',personal:'Personal',reports:'Reports',other:'Other'};const items=[];function add(p){const rel=path.relative(root,p).split(path.sep).join('/');const txt=fs.readFileSync(p,'utf8');const h=txt.match(/^#\s+(.+?)\s*$/m);let c='other';if(rel==='CHANGELOG.md')c='changelog';else if(rel.startsWith('docs/maintainer/'))c='maintainer';else if(rel.startsWith('docs/developer/'))c='developer';else if(rel.startsWith('docs/personal/'))c='personal';else if(rel.startsWith('reports/')||rel.startsWith('checks/'))c='reports';items.push({path:rel,title:h?h[1].trim():path.basename(rel).replace(/\.(md|mdx|markdown)$/i,''),category:c,subgroup:c==='reports'?rel.split('/')[1]:undefined})}function walk(d){if(!exists(d))return;for(const n of fs.readdirSync(d)){if(n.startsWith('.'))continue;const p=path.join(d,n),st=stat(p);if(!st)continue;if(st.isDirectory())walk(p);else if(/\.(md|mdx|markdown)$/i.test(n))add(p)}}walk(path.join(root,'docs'));walk(path.join(root,'reports'));walk(path.join(root,'checks'));const changelog=path.join(root,'CHANGELOG.md');if(exists(changelog))add(changelog);return {categories:cats.map(id=>({id,label:labels[id],items:items.filter(x=>x.category===id).sort((a,b)=>a.path.localeCompare(b.path))}))}}
+function docs(root){const cats=['changelog','decisions','maintainer','developer','personal','reports','other'];const labels={changelog:'Changelog',decisions:'Decisions',maintainer:'Maintainer',developer:'Developer',personal:'Personal',reports:'Reports',other:'Other'};const items=[];function add(p){const rel=path.relative(root,p).split(path.sep).join('/');const txt=fs.readFileSync(p,'utf8');const h=txt.match(/^#\s+(.+?)\s*$/m);let c='other';if(rel==='CHANGELOG.md')c='changelog';else if(rel.startsWith('docs/decisions/'))c='decisions';else if(rel.startsWith('docs/maintainer/'))c='maintainer';else if(rel.startsWith('docs/developer/'))c='developer';else if(rel.startsWith('docs/personal/'))c='personal';else if(rel.startsWith('reports/')||rel.startsWith('checks/'))c='reports';items.push({path:rel,title:h?h[1].trim():path.basename(rel).replace(/\.(md|mdx|markdown)$/i,''),category:c,subgroup:c==='reports'?rel.split('/')[1]:undefined})}function walk(d){if(!exists(d))return;for(const n of fs.readdirSync(d)){if(n.startsWith('.'))continue;const p=path.join(d,n),st=stat(p);if(!st)continue;if(st.isDirectory())walk(p);else if(/\.(md|mdx|markdown)$/i.test(n))add(p)}}walk(path.join(root,'docs'));walk(path.join(root,'reports'));walk(path.join(root,'checks'));const changelog=path.join(root,'CHANGELOG.md');if(exists(changelog))add(changelog);return {categories:cats.map(id=>({id,label:labels[id],items:items.filter(x=>x.category===id).sort((a,b)=>a.path.localeCompare(b.path))}))}}
+function isExecutable(p){const st=stat(p);return !!(st&&st.isFile()&&(st.mode&0o111))}
+function contextPreamble(root){const dirs=['docs/learnings','docs/decisions','docs/runbooks'],files=[];function walk(d){if(!exists(d))return;for(const n of fs.readdirSync(d)){if(n.startsWith('.'))continue;const p=path.join(d,n),st=stat(p);if(!st)continue;if(st.isDirectory())walk(p);else if(/\.mdx?$/i.test(n)){const rel=path.relative(root,p).split(path.sep).join('/');if(!/(^|\/)(readme|index)\.mdx?$/i.test(rel))files.push(p)}}}for(const d of dirs)walk(path.join(root,d));const lines=['Prior context from this repo. Use it to avoid repeating known mistakes:'];for(const p of files.sort().slice(0,6)){let body='';try{body=fs.readFileSync(p,'utf8')}catch{continue}body=body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/,'');const title=(body.match(/^#\s+(.+?)\s*$/m)||[])[1]||path.basename(p).replace(/\.mdx?$/i,'').replace(/[-_]+/g,' ');const summary=(body.split(/\r?\n/).map(l=>l.trim()).find(l=>l&&!l.startsWith('#')&&l!=='---')||'').replace(/\s+/g,' ').slice(0,220);if(summary)lines.push('- '+title+' ('+path.relative(root,p).split(path.sep).join('/')+'): '+summary)}if(lines.length===1)return '';let out=lines.join('\n')+'\n\n';while(Buffer.byteLength(out,'utf8')>1800&&lines.length>1){lines.pop();out=lines.join('\n')+'\n\n'}return Buffer.byteLength(out,'utf8')<=1800?out:''}
+function withContext(root,prompt,enabled){if(enabled===false)return String(prompt||'');const pre=contextPreamble(root);return pre?pre+String(prompt||''):String(prompt||'')}
 function normLabels(raw){if(!Array.isArray(raw))return [];return raw.map(x=>typeof x==='string'?x:(x&&x.name)||'').filter(Boolean)}
 function normState(s){s=String(s||'').toLowerCase();return s==='open'?'opened':s}
 function ghRaw(m){return {iid:Number(m.number),title:m.title||'',state:normState(m.state),author:(m.author&& (m.author.login||m.author.name))||'',webUrl:m.url||'',sourceBranch:m.headRefName||'',draft:!!m.isDraft,headShort:String(m.headRefOid||'').slice(0,7),labels:normLabels(m.labels),review:null}}
@@ -111,8 +124,14 @@ function notesPath(root,scope){return scope==='global'?path.join(cfg(),'notes.md
 function notesRead(root,scope){try{return fs.readFileSync(notesPath(root,scope),'utf8')}catch{return ''}}
 function notesWrite(root,scope,content){const p=notesPath(root,scope);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,String(content||''));if(scope==='repo'){try{const gi=path.join(root,'.gitignore'),entry='.TerMinal/notes.md';let c=exists(gi)?fs.readFileSync(gi,'utf8'):'';if(!c.split('\n').some(l=>l.trim()===entry)){if(c&&!c.endsWith('\n'))c+='\n';fs.writeFileSync(gi,c+entry+'\n')}}catch{}}return true}
 function expandPath(p){p=String(p||'').trim();if(!p||p==='~')return home();if(p.startsWith('~/'))return path.join(home(),p.slice(2));return path.isAbsolute(p)?p:path.resolve(cwdInput,p)}
+function validateProjectsDir(){const d=String(input.dir||'').trim();if(!d)return {ok:true,dir:''};const expanded=expandPath(d);if(exists(path.join(expanded,'.git'))){const parent=path.dirname(expanded);return {ok:false,reason:'is-repo',dir:d,suggestedParent:parent,message:'Projects folder points at a git repo. Use its parent folder instead: '+parent}}return {ok:true,dir:d}}
 function dirList(){const here=expandPath(input.path||'.');const st=stat(here);if(!st||!st.isDirectory())return {cwd:here,parent:'',entries:[],error:'not a directory'};const skip=new Set(['node_modules','.DS_Store']);const entries=fs.readdirSync(here,{withFileTypes:true}).filter(d=>d.isDirectory()&&!d.name.startsWith('.')&&!skip.has(d.name)).map(d=>({name:d.name,path:path.join(here,d.name),dir:true})).sort((a,b)=>a.name.localeCompare(b.name));return {cwd:here,parent:path.dirname(here)===here?'':path.dirname(here),entries}}
-function scaffoldRemote(){const safe=String(input.name||'').trim().replace(/[^\w.-]/g,'-').replace(/^-+|-+$/g,'');if(!safe||/^\.+$/.test(safe))return {ok:false,error:'enter a project name'};const parent=expandPath(input.parentDir||'.');const dest=path.join(parent,safe);if(path.resolve(path.dirname(dest))!==path.resolve(parent))return {ok:false,error:'invalid name'};if(exists(dest))return {ok:false,error:'"'+safe+'" already exists in that folder'};const template=String(input.templateRepo||'https://github.com/trevormil/project-template').trim();const os=require('os');const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gt-template-'));try{const cloned=runObj('git',['clone','--depth','1',template,tmp],{timeout:60000});if(cloned.error&&!exists(path.join(tmp,'bootstrap.sh')))return {ok:false,error:"couldn't fetch template — "+cloned.error};if(!exists(path.join(tmp,'bootstrap.sh')))return {ok:false,error:"couldn't fetch template"};const skip=new Set(['.git','.gitmodules','node_modules','.DS_Store']);fs.mkdirSync(dest,{recursive:true});fs.cpSync(tmp,dest,{recursive:true,filter:(s)=>!skip.has(path.basename(s))});const env={...process.env,GIT_AUTHOR_NAME:process.env.GIT_AUTHOR_NAME||'TerMinal',GIT_AUTHOR_EMAIL:process.env.GIT_AUTHOR_EMAIL||'noreply@terminal.local',GIT_COMMITTER_NAME:process.env.GIT_COMMITTER_NAME||'TerMinal',GIT_COMMITTER_EMAIL:process.env.GIT_COMMITTER_EMAIL||'noreply@terminal.local'};cp.execFileSync('git',['-C',dest,'init','-q'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'add','-A'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'commit','-qm','chore: scaffold from project-template'],{stdio:'ignore',env});return {ok:true,path:dest}}catch(e){return {ok:false,error:e.message||String(e)}}finally{try{fs.rmSync(tmp,{recursive:true,force:true})}catch{}}}
+const TEMPLATE_DEFAULT='https://github.com/trevormil/project-template',URL_RE=/^[a-z][a-z0-9+.-]*:\/\//i;
+function validTemplateRepo(repo){return !!repo&&repo.trim()===repo&&!repo.startsWith('-')&&!/[\0\r\n]/.test(repo)}
+function pickTemplate(marker){const configured=String(input.templateRepo||'').trim();const candidates=[];if(configured&&!URL_RE.test(configured))candidates.push({dir:expandPath(configured),explicit:true});candidates.push({dir:path.join(cwdInput,'templates','project-template')});const root=repoRoot();if(root)candidates.push({dir:path.join(root,'templates','project-template')});for(const c of candidates){if(exists(path.join(c.dir,marker)))return {dir:c.dir};if(c.explicit)return {error:'configured template path is missing '+marker+': '+c.dir}}const repo=configured||TEMPLATE_DEFAULT;if(!validTemplateRepo(repo))return {error:'invalid template repo: '+(repo||'(empty)')};const os=require('os'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gt-template-'));const cleanup=()=>{try{fs.rmSync(tmp,{recursive:true,force:true})}catch{}};const cloned=runObj('git',['clone','--depth','1','--',repo,tmp],{timeout:60000});if(cloned.error){cleanup();return {error:"couldn't fetch template from "+repo+': '+cloned.error}}if(!exists(path.join(tmp,marker))){cleanup();return {error:'template from '+repo+' is missing '+marker}}return {dir:tmp,cleanup}}
+function bootstrapStatus(){const root=repoRoot()||cwdInput;const markers=['.agents','backlog','docs','sessions','.claude/skills','.codex/skills'];const missing=[];let present=0;for(const m of markers){if(exists(path.join(root,m)))present++;else missing.push(m)}if(present===markers.length)return {state:'full',bootstrapped:true,missing:[],message:'Project-template workflow files are present.'};if(present===0)return {state:'none',bootstrapped:false,missing,message:'This repo is not bootstrapped with project-template.'};return {state:'partial',bootstrapped:false,missing,message:'This repo is partially bootstrapped. Bootstrap will repair missing workflow files: '+missing.join(', ')+'.'}}
+function bootstrapWorkspace(){const root=repoRoot()||cwdInput;if(!root)return {error:'no repoRoot'};const src=pickTemplate('bootstrap.sh');if(src.error)return {error:src.error};try{const r=runObj('bash',[path.join(src.dir,'bootstrap.sh'),root],{timeout:120000,maxBuffer:8*1024*1024});return r.error?{error:'bootstrap failed: '+r.error}:{ok:true}}finally{if(src.cleanup)src.cleanup()}}
+function scaffoldRemote(){const safe=String(input.name||'').trim().replace(/[^\w.-]/g,'-').replace(/^-+|-+$/g,'');if(!safe||/^\.+$/.test(safe))return {ok:false,error:'enter a project name'};const parent=expandPath(input.parentDir||'.');const dest=path.join(parent,safe);if(path.resolve(path.dirname(dest))!==path.resolve(parent))return {ok:false,error:'invalid name'};if(exists(dest))return {ok:false,error:'"'+safe+'" already exists in that folder'};const src=pickTemplate('bootstrap.sh');if(src.error)return {ok:false,error:src.error};try{const skip=new Set(['.git','.gitmodules','node_modules','.DS_Store']);fs.mkdirSync(dest,{recursive:true});fs.cpSync(src.dir,dest,{recursive:true,filter:(s)=>!skip.has(path.basename(s))});const env={...process.env,GIT_AUTHOR_NAME:process.env.GIT_AUTHOR_NAME||'TerMinal',GIT_AUTHOR_EMAIL:process.env.GIT_AUTHOR_EMAIL||'noreply@terminal.local',GIT_COMMITTER_NAME:process.env.GIT_COMMITTER_NAME||'TerMinal',GIT_COMMITTER_EMAIL:process.env.GIT_COMMITTER_EMAIL||'noreply@terminal.local'};cp.execFileSync('git',['-C',dest,'init','-q'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'add','-A'],{stdio:'ignore',env});cp.execFileSync('git',['-C',dest,'commit','-qm','chore: scaffold from project-template'],{stdio:'ignore',env});return {ok:true,path:dest}}catch(e){return {ok:false,error:e.message||String(e)}}finally{if(src.cleanup)src.cleanup()}}
 function sq(s){return "'"+String(s||'').replace(/'/g,"'\\''")+"'";}
 function shPath(s){s=String(s||'');return s.startsWith('~/')?'"$HOME"/'+sq(s.slice(2)):sq(s)}
 function shellBin(engine,override){if(override&&String(override).trim())return String(override).trim();return engine==='cursor'?'cursor-agent':engine}
@@ -148,8 +167,9 @@ function runStart(root,input){
     }
   }
   const logFile=path.join(runsDir,id+'.log'),jsonFile=path.join(runsDir,id+'.json'),scriptPath=path.join(promptDir,'run.sh');
-  const promptFiles=steps.map((s,i)=>{const f=path.join(promptDir,String(i)+'.txt');fs.writeFileSync(f,String(s&&s.prompt||''));return f});
   const scriptAgent=path.join(root,'.agents',String(input.agentId||'').replace(/[^\w-]/g,'')+'.sh');
+  const scriptFirst=isExecutable(scriptAgent);
+  const promptFiles=steps.map((s,i)=>{const f=path.join(promptDir,String(i)+'.txt');fs.writeFileSync(f,withContext(root,String(s&&s.prompt||''),input.contextPreamble!==false&&!scriptFirst));return f});
   const engine=String(input.engine||'claude'),bin=shellBin(engine,input.enginePath),model=String(input.model||'');
   const labels=steps.map(s=>String(s&&s.label||'run'));
   const modelFlag=model?' --model '+sq(model):'';
@@ -232,7 +252,9 @@ else if(op==='runs.all')out(unifiedRuns());else if(op==='runs.log')out(runLog(in
 else if(op==='runs.start')out(runStart(root,input.run||{}));
 else if(op==='sessions.list')out(sessionsList(root));else if(op==='sessions.get')out(sessionGet(root,input.slug));
 else if(op==='notes.read')out(notesRead(root,input.scope));else if(op==='notes.write')out(notesWrite(root,input.scope,input.content));
+else if(op==='settings.validateProjectsDir')out(validateProjectsDir());
 else if(op==='dirs.list')out(dirList());else if(op==='project.scaffold')out(scaffoldRemote());
+else if(op==='workspace.bootstrapStatus')out(bootstrapStatus());else if(op==='workspace.bootstrap')out(bootstrapWorkspace());
 else if(op==='workspace.search'){const q=String(input.q||'').toLowerCase(),selected=new Set(input.kinds&&input.kinds.length?input.kinds:['file','ticket','mr','doc']);const results=[];function push(x){if(results.length<260)results.push(x)}if(selected.has('file'))for(const h of search(root,q))push({id:'file:'+h.file+':'+h.line,kind:'file',title:h.file+':'+h.line,subtitle:'File',detail:h.text,path:h.file,line:h.line,payload:{path:h.file,line:h.line}});if(selected.has('ticket'))for(const t of listTickets(root)){const hay=[t.id,t.title,t.status,t.priority,t.type,t.body].join(' ').toLowerCase();if(hay.includes(q))push({id:'ticket:'+t.slug,kind:'ticket',title:'#'+t.id+' '+t.title,subtitle:t.status+' - '+t.priority+' - '+t.type,detail:t.body.slice(0,260),path:'backlog/'+t.slug+'.md',payload:{slug:t.slug}})}if(selected.has('mr')){const l=listMrs(root);for(const m of l.mrs){const hay=[m.iid,m.title,m.state,m.author,m.sourceBranch,(m.labels||[]).join(' ')].join(' ').toLowerCase();if(hay.includes(q))push({id:'mr:'+m.iid,kind:'mr',title:'MR/PR '+m.iid+' '+m.title,subtitle:m.state+' - '+m.author,detail:m.sourceBranch,payload:{iid:m.iid}})}}if(selected.has('doc'))for(const c of docs(root).categories)for(const d of c.items){const body=readFile(root,d.path).content||'';if([d.title,d.path,c.label,body].join(' ').toLowerCase().includes(q))push({id:'doc:'+d.path,kind:'doc',title:d.title,subtitle:c.label+' - '+d.path,detail:body.replace(/\s+/g,' ').slice(0,260),path:d.path,payload:{path:d.path}})}out({results})}
 else throw new Error('unknown op '+op)}catch(e){out({_remoteError:e.message||String(e)})}
 `
@@ -336,6 +358,7 @@ export const remoteRuns = {
         ...run,
         worktreesDir: run.worktreesDir ?? remote.daemon?.worktreesDir,
         enginePath: run.enginePath ?? remote.daemon?.engines?.[run.engine]?.path,
+        contextPreamble: run.contextPreamble ?? readSettings().inbox.agentContextPreamble,
       },
     }),
 }
@@ -350,9 +373,17 @@ export const remoteNotes = {
 export const remoteDirs = {
   list: (remote: RemoteSessionRef, path?: string) => remoteJson<RemoteDirList>(remote, { op: 'dirs.list', path }),
 }
+export const remoteSettings = {
+  validateProjectsDir: (remote: RemoteSessionRef, dir: string) =>
+    remoteJson<RemoteProjectsDirValidation>(remote, { op: 'settings.validateProjectsDir', dir }),
+}
 export const remoteProject = {
   scaffold: (remote: RemoteSessionRef, name: string, parentDir: string, templateRepo?: string) =>
     remoteJson<RemoteScaffoldResult>(remote, { op: 'project.scaffold', name, parentDir, templateRepo }),
+  bootstrapStatus: (remote: RemoteSessionRef) =>
+    remoteJson<RemoteBootstrapStatus>(remote, { op: 'workspace.bootstrapStatus' }),
+  bootstrap: (remote: RemoteSessionRef, templateRepo?: string) =>
+    remoteJson<{ ok: true } | { error: string }>(remote, { op: 'workspace.bootstrap', templateRepo }),
 }
 export const remoteWorkspaceSearch = (remote: RemoteSessionRef, q: string, kinds?: WorkspaceSearchKind[]) =>
   remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })

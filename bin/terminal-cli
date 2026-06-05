@@ -11,6 +11,7 @@
 //   terminal-cli ticket "<title>" "<body>"              file a backlog ticket on TERMINAL_REPO
 //   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
+//   terminal-cli deploy "<env>" "[sha]" "[detail]"      emit a deploy activity event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
 //   terminal-cli inbox enqueue '<json>'                 queue local automation inbox request
 //   terminal-cli inbox enqueue --source x --type y      queue via flags (less shell quoting)
@@ -92,6 +93,7 @@ function hitlButtons(item) {
 const KIND_PATTERNS = [
   [/^session\s+started?/i, 'session-start'],
   [/^session\s+(end|closed?|wrapped)/i, 'session-end'],
+  [/^(deploy|deployed|ship|shipped|publish|published|release|released)\b/i, 'deploy'],
   [/^ticket\s+(filed|created|opened)/i, 'ticket-filed'],
   [/^ticket\s+(closed|resolved|done)/i, 'ticket-closed'],
   [/^(pr|mr)\s+(?:[!#]?\d+\s+)?(opened|created|filed)/i, 'pr-opened'],
@@ -135,6 +137,17 @@ function emitActivity(kind, title, detail, opts = {}) {
     ...(opts.suppressTelegram ? { suppressTelegram: true } : {}),
   }
   appendFileSync(ACTIVITY, JSON.stringify(ev) + '\n')
+}
+
+function emitDeploy(env, sha, detail) {
+  const target = String(env || '').trim()
+  if (!target) {
+    console.error('terminal-cli deploy: environment/name is required')
+    process.exit(2)
+  }
+  const version = String(sha || '').trim()
+  const extra = String(detail || '').trim()
+  emitActivity('deploy', `Deploy · ${target}`, [version, extra].filter(Boolean).join(' · '))
 }
 
 function fileHitl(title, action) {
@@ -746,6 +759,10 @@ switch (cmd) {
   case 'activity':
     emitActivity(args[0], args[1], args[2])
     break
+  case 'deploy':
+  case 'ship':
+    emitDeploy(args[0], args[1], args[2])
+    break
   case 'notify':
     pingTelegram(args[0] || '')
     break
@@ -764,11 +781,12 @@ switch (cmd) {
     break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|notify|inbox|state|mcp|classify> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
+        '  deploy "<env>" "[sha]" "[detail]"        emit one deploy activity event\n' +
         '  notify "<message>"                       send a Telegram message (raw)\n' +
         '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
         '  inbox status|dir|example                  inspect automation inbox helpers\n' +

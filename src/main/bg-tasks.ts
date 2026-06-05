@@ -12,7 +12,7 @@ import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
 import { emitActivity } from './events'
-import { enginePath, resolvedWorktreesDir } from './settings'
+import { enginePath, readSettings, resolvedWorktreesDir, resolveEngineModel } from './settings'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
@@ -114,6 +114,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   ensure()
   const id = randomUUID()
   const engine = input.engine || 'claude'
+  const effectiveModel = resolveEngineModel(engine, input.model)
   const repo = basename(input.repoRoot)
   const short = id.slice(0, 6)
   const branch = `bg/${repo}-${short}`
@@ -160,7 +161,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
             '--dangerously-skip-permissions',
             '--permission-mode',
             'auto',
-            ...(input.model ? ['--model', input.model] : []),
+            ...(effectiveModel ? ['--model', effectiveModel] : []),
           ],
         }
       : engine === 'cursor'
@@ -174,7 +175,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
               'text',
               '--workspace',
               worktree,
-              ...(input.model ? ['--model', input.model] : []),
+              ...(effectiveModel ? ['--model', effectiveModel] : []),
               enrichedPrompt,
             ],
           }
@@ -186,7 +187,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
               'danger-full-access',
               '-C',
               worktree,
-              ...(input.model ? ['--model', input.model] : []),
+              ...(effectiveModel ? ['--model', effectiveModel] : []),
               enrichedPrompt,
             ],
           }
@@ -195,7 +196,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   // can make macOS attribute broad home-folder probes to TerMinal and can leak
   // control markers like ^D into logs. Engine cwd + explicit workspace flags
   // keep the task scoped to the generated worktree.
-  writeFileSync(logFile, `▸ Background task · ${engine}${input.model ? `/${input.model}` : ''}\n▸ branch ${branch}\n▸ worktree ${worktree}\n\n`)
+  writeFileSync(logFile, `▸ Background task · ${engine}${effectiveModel ? `/${effectiveModel}` : ''}\n▸ branch ${branch}\n▸ worktree ${worktree}\n\n`)
   const out = openSync(logFile, 'a')
   const startedAt = Date.now()
   const childEnv = {
@@ -206,7 +207,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     TERMINAL_BRANCH: branch,
     TERMINAL_WORKTREE: worktree,
     TERMINAL_ENGINE: engine,
-    ...(input.model ? { TERMINAL_MODEL: input.model } : {}),
+    ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
   }
   const child = cpSpawn(command.bin, command.args, {
     cwd: worktree,
@@ -237,7 +238,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     {
       kind: 'agent-run',
       title: `Background task started · ${repo}`,
-      detail: `${engine}${input.model ? `/${input.model}` : ''} · ${task.label}`,
+      detail: `${engine}${effectiveModel ? `/${effectiveModel}` : ''} · ${task.label}`,
       repo,
       repoRoot: input.repoRoot,
       runId: id,
@@ -327,10 +328,7 @@ function extractDone(log: string): string | undefined {
 // Send a one-off Telegram message via the existing settings/auth boundary.
 function telegramPing(text: string): void {
   try {
-    const settings = JSON.parse(
-      readFileSync(join(CFG, 'settings.json'), 'utf8'),
-    ) as { telegram?: { botToken?: string; chatId?: string } }
-    const t = settings?.telegram
+    const t = readSettings().telegram
     if (!t?.botToken || !t?.chatId) return
     fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
       method: 'POST',

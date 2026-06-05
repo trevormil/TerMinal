@@ -43,12 +43,15 @@ function fmtDuration(ms: number): string {
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
   return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`
 }
-function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
+const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
+const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
+
+function RunsTab({ ctx }: { ctx: TabContext }) {
   const [view, setView] = useState<'runs' | 'inbox'>('runs')
   const [runs, setRuns] = useState<UnifiedRun[] | null>(null)
   const [source, setSource] = useState<'all' | 'cron' | 'agent' | 'bg'>('all')
   const [status, setStatus] = useState<string>('all')
-  const [repo, setRepo] = useState('')
+  const [repo, setRepo] = useState(() => localStorage.getItem(RUNS_REPO_FILTER_KEY) ?? '__auto__')
   const [agentFilter, setAgentFilter] = useState('')
   const [search, setSearch] = useState('')
   const [sel, setSel] = useState<string | null>(null)
@@ -105,6 +108,15 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
     if (!runs) return []
     return [...new Set(runs.map((r) => r.repoLabel).filter(Boolean))].sort()
   }, [runs])
+  const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
+  useEffect(() => {
+    if (repo !== '__auto__' || !activeRepoLabel || !repoOptions.includes(activeRepoLabel)) return
+    setRepo(activeRepoLabel)
+  }, [activeRepoLabel, repo, repoOptions])
+  const setRepoFilter = (value: string) => {
+    localStorage.setItem(RUNS_REPO_FILTER_KEY, value)
+    setRepo(value)
+  }
   const agentOptions = useMemo(() => {
     if (!runs) return []
     return [...new Set(runs.map((r) => r.agentId))].sort()
@@ -120,7 +132,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
     return runs.filter((r) => {
       if (source !== 'all' && r.source !== source) return false
       if (status !== 'all' && r.status !== status) return false
-      if (repo && r.repoLabel !== repo) return false
+      if (repo !== '__auto__' && repo && r.repoLabel !== repo) return false
       if (agentFilter && r.agentId !== agentFilter) return false
       if (!q) return true
       return (
@@ -218,7 +230,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
       </div>
 
       {view === 'inbox' ? (
-        <AutomationInboxView ctx={_ctx} />
+        <AutomationInboxView ctx={ctx} />
       ) : (
         <div className="flex min-h-0 flex-1">
           {/* List */}
@@ -271,7 +283,7 @@ function RunsTab({ ctx: _ctx }: { ctx: TabContext }) {
               ))}
             </div>
             <FilterSelect value={status} onChange={(v) => setStatus(v || 'all')} options={statusOptions} placeholder="all status" />
-            <FilterSelect value={repo} onChange={setRepo} options={repoOptions} placeholder="all repos" />
+            <FilterSelect value={repo === '__auto__' ? '' : repo} onChange={setRepoFilter} options={repoOptions} placeholder="all repos" />
             <FilterSelect value={agentFilter} onChange={setAgentFilter} options={agentOptions} placeholder="all agents" />
           </div>
         </div>

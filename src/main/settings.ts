@@ -30,6 +30,7 @@ export type TelegramCfg = {
 }
 export type InboxCfg = {
   completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
+  agentContextPreamble: boolean // prepend capped repo docs/learnings/decisions context to prompt-style runs
 }
 export type AppearanceMode = 'dark' | 'light' | 'system'
 export type AppearanceTabLayout = 'horizontal' | 'sidebar'
@@ -99,7 +100,25 @@ export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appea
 const DEFAULT_EDITOR = 'Cursor'
 const DEFAULT_BROWSER = 'Brave Browser'
 
-const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/project-template'
+export const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/project-template'
+const SECRET_MARKER = 'terminal-secret:v1'
+const SECRET_PATHS = [
+  ['telegram', 'botToken'],
+  ['telegram', 'chatId'],
+  ['openrouter', 'apiKey'],
+] as const
+
+export type SettingsSecretStorage = {
+  seal(value: string): string
+  open(payload: string): string
+  canEncrypt?: () => boolean
+}
+type EncryptedSecret = { __terminalSecret: typeof SECRET_MARKER; payload: string }
+let secretStorage: SettingsSecretStorage | null = null
+
+export function setSettingsSecretStorage(adapter: SettingsSecretStorage | null): void {
+  secretStorage = adapter
+}
 
 export function defaultDaemonSettings(): DaemonCfg {
   return {
@@ -127,7 +146,7 @@ export function defaultSettings(): Settings {
     defaultEngine: daemon.defaultEngine, // claude is the required engine; codex is optional
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
-    inbox: { completionHook: true },
+    inbox: { completionHook: true, agentContextPreamble: true },
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
@@ -229,6 +248,7 @@ export function migrate(raw: unknown): Settings {
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
+    if (typeof r.inbox.agentContextPreamble === 'boolean') s.inbox.agentContextPreamble = r.inbox.agentContextPreamble
   }
   if (r.appearance && typeof r.appearance === 'object') {
     if (r.appearance.mode === 'dark' || r.appearance.mode === 'light' || r.appearance.mode === 'system') {
@@ -270,11 +290,51 @@ export function migrate(raw: unknown): Settings {
 
 const FILE = join(homedir(), '.config', 'TerMinal', 'settings.json')
 
+function isEncryptedSecret(value: unknown): value is EncryptedSecret {
+  return !!value && typeof value === 'object' && (value as Record<string, unknown>).__terminalSecret === SECRET_MARKER && typeof (value as Record<string, unknown>).payload === 'string'
+}
+
+function clonePlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function transformSecretPaths(raw: unknown, visit: (value: unknown) => unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const out = clonePlain(raw)
+  for (const [section, key] of SECRET_PATHS) {
+    const parent = (out as Record<string, any>)[section]
+    if (parent && typeof parent === 'object' && key in parent) {
+      parent[key] = visit(parent[key])
+    }
+  }
+  return out
+}
+
+export function openSettingsFromDisk(raw: unknown, storage: SettingsSecretStorage | null = secretStorage): unknown {
+  return transformSecretPaths(raw, (value) => {
+    if (!isEncryptedSecret(value)) return value
+    if (!storage) return ''
+    try {
+      return storage.open(value.payload)
+    } catch {
+      return ''
+    }
+  })
+}
+
+export function sealSettingsForDisk(settings: Settings, storage: SettingsSecretStorage | null = secretStorage): unknown {
+  const canEncrypt = !!storage && (storage.canEncrypt ? storage.canEncrypt() : true)
+  return transformSecretPaths(settings, (value) => {
+    if (typeof value !== 'string' || !value || !canEncrypt || !storage) return value
+    return { __terminalSecret: SECRET_MARKER, payload: storage.seal(value) } satisfies EncryptedSecret
+  })
+}
+
 let cache: Settings | null = null
 export function readSettings(): Settings {
   if (cache) return cache
   try {
-    cache = migrate(JSON.parse(readFileSync(FILE, 'utf8')))
+    cache = migrate(openSettingsFromDisk(JSON.parse(readFileSync(FILE, 'utf8'))))
   } catch {
     cache = defaultSettings()
   }
@@ -282,9 +342,8 @@ export function readSettings(): Settings {
 }
 
 /** Deep-merge a patch over current settings (telegram/engines merge per-key). */
-export function patchSettings(patch: SettingsPatch): Settings {
-  const cur = readSettings()
-  const next: Settings = {
+export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Settings {
+  return {
     ...cur,
     ...patch,
     telegram: { ...cur.telegram, ...(patch.telegram || {}) },
@@ -299,10 +358,15 @@ export function patchSettings(patch: SettingsPatch): Settings {
     openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
     noteFolders: patch.noteFolders ? noteFolders(patch.noteFolders) : cur.noteFolders,
   }
+}
+
+/** Deep-merge a patch over current settings (telegram/engines merge per-key). */
+export function patchSettings(patch: SettingsPatch): Settings {
+  const next = mergeSettingsPatch(readSettings(), patch)
   cache = next
   try {
     mkdirSync(dirname(FILE), { recursive: true })
-    writeFileSync(FILE, JSON.stringify(next, null, 2))
+    writeFileSync(FILE, JSON.stringify(sealSettingsForDisk(next), null, 2))
   } catch {
     /* best effort */
   }
@@ -314,6 +378,27 @@ export function patchSettings(patch: SettingsPatch): Settings {
 /** Pure: where worktrees live, given a settings value + a resolved projects dir. */
 export function worktreesFrom(worktreesDir: string, projectsResolved: string): string {
   return worktreesDir || join(projectsResolved, '.worktrees')
+}
+
+export type ProjectsDirValidation =
+  | { ok: true; dir: string }
+  | { ok: false; reason: 'is-repo'; dir: string; suggestedParent: string; message: string }
+
+export function classifyProjectsDir(
+  dir: string,
+  hasGitDir: (d: string) => boolean,
+): ProjectsDirValidation {
+  const trimmed = dir.trim()
+  if (!trimmed) return { ok: true, dir: '' }
+  if (!hasGitDir(trimmed)) return { ok: true, dir: trimmed }
+  const suggestedParent = dirname(trimmed)
+  return {
+    ok: false,
+    reason: 'is-repo',
+    dir: trimmed,
+    suggestedParent,
+    message: `Projects folder points at a git repo. Use its parent folder instead: ${suggestedParent}`,
+  }
 }
 
 export function resolvedProjectsDir(): string {
@@ -348,6 +433,12 @@ export function enginePath(engine: EngineId): string {
  *  case callers should let the engine pick its own default. */
 export function engineDefaultModel(engine: EngineId): string {
   return readSettings().engines[engine]?.defaultModel || ''
+}
+
+export function resolveEngineModel(engine: EngineId, model?: string, daemon?: DaemonCfg): string {
+  const explicit = model?.trim()
+  if (explicit) return explicit
+  return daemon ? daemon.engines[engine]?.defaultModel || '' : engineDefaultModel(engine)
 }
 
 export const telegramNotifyEnabled = () => readSettings().telegram.notify

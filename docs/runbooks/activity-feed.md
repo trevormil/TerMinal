@@ -29,7 +29,7 @@ Use the helper (shipped at `bin/activity`, and in project-template at
 activity <kind> "<title>" ["<detail>"]
 ```
 
-`kind` ∈ `ticket-filed` · `pr-verdict` · `session-start` · `session-end` ·
+`kind` ∈ `deploy` · `ticket-filed` · `pr-verdict` · `session-start` · `session-end` ·
 `agent-run` · `task-complete` · `info` · `error`. It derives `repo`/`repoRoot`
 from git in the cwd, JSON-encodes, and appends one line. It **always exits 0** —
 logging never breaks the calling skill.
@@ -48,6 +48,7 @@ an event at each meaningful milestone. Wire points:
 | moment                         | call                                                              |
 | ------------------------------ | ----------------------------------------------------------------- |
 | ticket filed (`/ticket`)       | `activity ticket-filed "Ticket filed · #<id>" "<title>"`         |
+| deploy shipped                 | `terminal-cli deploy production "$GIT_SHA" "v1.2.3"`             |
 | review done (`/code-review`)   | `activity pr-verdict "Review · <verdict> · !<n>" "<repo> #<sha>"` |
 | MR/PR opened (`/pr-creation`)  | `activity pr-verdict "PR opened · !<n>" "<title>"`               |
 | session start (`/session-start`)| `activity session-start "Session · <goal>"`                      |
@@ -55,3 +56,6 @@ an event at each meaningful milestone. Wire points:
 
 New skills should follow suit — one `activity` call at the milestone is the
 whole integration.
+
+For MCP callers, use the existing generic `emit_activity` operation with
+`kind: "deploy"` rather than a provider-specific deploy tool.

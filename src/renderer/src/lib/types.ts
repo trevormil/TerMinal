@@ -33,6 +33,7 @@ export type TaskItem = { id: string; subject: string; status: string; activeForm
 export type ActivityKind =
   | 'session-start'
   | 'session-end'
+  | 'deploy'
   | 'ticket-filed'
   | 'ticket-closed'
   | 'pr-opened'
@@ -122,7 +123,7 @@ export type ProjectSession = {
 
 export type NewTicket = { title: string; type: string; priority: string; status: string; body: string }
 
-export type DocCategory = 'changelog' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
+export type DocCategory = 'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
 export type DocEntry = {
   path: string
   title: string
@@ -139,7 +140,7 @@ export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
-export type InboxCfg = { completionHook: boolean }
+export type InboxCfg = { completionHook: boolean; agentContextPreamble: boolean }
 export type DaemonCfg = {
   projectsDir: string
   worktreesDir: string
@@ -215,8 +216,17 @@ export type RemoteSettingsProbe = {
   engines: Record<Engine, string>
   tools: Record<string, string>
 }
+export type ProjectsDirValidation =
+  | { ok: true; dir: string }
+  | { ok: false; reason: 'is-repo' | 'error'; dir: string; suggestedParent?: string; message: string }
 export type RemoteDirEntry = { name: string; path: string; dir: true }
 export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
+export type BootstrapStatus = {
+  state: 'full' | 'partial' | 'none'
+  bootstrapped: boolean
+  missing: string[]
+  message: string
+}
 
 export type Agent = {
   id: string
@@ -396,6 +406,8 @@ export type HitlItem = {
   sessionId?: string
   terminalKey?: string
   terminalCwd?: string
+  occurrenceCount?: number
+  lastOccurredAt?: number
 }
 export type BgTask = {
   id: string
@@ -763,6 +775,7 @@ export type GtApi = {
     get: () => Promise<Settings>
     patch: (patch: SettingsPatch) => Promise<Settings>
     remoteProbe: (hostId: string) => Promise<RemoteSettingsProbe>
+    validateProjectsDir: (input: { dir?: string; hostId?: string }) => Promise<ProjectsDirValidation>
   }
   snippets: {
     list: (repoRoot?: string) => Promise<{
@@ -1006,7 +1019,7 @@ export type GtApi = {
   openConfigDir: () => Promise<string>
   mcpInstall: () => Promise<{ ok: true; installed: string[] } | { error: string }>
   workspace: {
-    isBootstrapped: (repoRoot: string) => Promise<{ bootstrapped: boolean }>
+    isBootstrapped: (repoRoot: string) => Promise<BootstrapStatus>
     bootstrap: (repoRoot: string) => Promise<{ ok: true } | { error: string }>
     search: (q: string, kinds?: WorkspaceSearchKind[]) => Promise<WorkspaceSearchResponse>
   }

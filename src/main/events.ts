@@ -83,6 +83,7 @@ const MAX_KEEP = 2000 // cap the on-disk log
 export type ActivityKind =
   | 'session-start'
   | 'session-end'
+  | 'deploy'
   | 'ticket-filed'
   | 'ticket-closed'
   | 'pr-opened'
@@ -129,6 +130,7 @@ export type ActivityEvent = {
 const NOTIFY: Record<ActivityKind, boolean> = {
   'session-start': false,
   'session-end': false,
+  deploy: false,
   'ticket-filed': true,
   'ticket-closed': false,
   'pr-opened': false,

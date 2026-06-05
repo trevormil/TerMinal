@@ -187,6 +187,14 @@ export function InboxDrawer({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[12.5px] font-semibold text-zinc-100">{h.title}</span>
                         <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                        {h.source !== 'completion-hook' && (h.occurrenceCount || 1) > 1 && (
+                          <span
+                            title={`Repeated ${h.occurrenceCount} times within the recent dedupe window`}
+                            className="rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 py-px text-[9.5px] font-semibold text-[var(--gt-yellow)]"
+                          >
+                            x{h.occurrenceCount}
+                          </span>
+                        )}
                         {h.repo && <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>}
                         <span className="text-[10px] text-zinc-600">· {reltime(h.createdAt)}</span>
                       </div>
@@ -297,6 +305,12 @@ export function InboxDrawer({
                     )}
                     <button
                       onClick={async () => {
+                        if (
+                          !confirm(
+                            'Delete this Inbox item permanently? Resolving keeps the record in the resolved view; deleting removes it from the durable Inbox file.',
+                          )
+                        )
+                          return
                         await window.gt.hitl.remove(h.id)
                         reload()
                       }}

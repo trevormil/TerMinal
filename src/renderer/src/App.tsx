@@ -896,7 +896,7 @@ export default function App() {
           {searchOpen && activeCtx && !showEntry && (
             <div className="absolute inset-0 z-50 bg-black/25" onClick={() => setSearchOpen(false)}>
               <div
-                className="absolute right-3 top-3 flex h-[min(660px,calc(100%-24px))] w-[min(860px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+                className="absolute inset-x-3 top-3 flex h-[min(660px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <WorkspaceSearchPanel ctx={activeCtx} initialQuery={searchQuery} onClose={() => setSearchOpen(false)} />

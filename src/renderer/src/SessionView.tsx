@@ -58,6 +58,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
     'unknown',
   )
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const dismissedKey = `gt.bootstrapDismissed.${repoRoot}`
   const dismissed = (() => {
@@ -72,6 +73,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
     let cancelled = false
     window.gt.workspace.isBootstrapped(repoRoot).then((r) => {
       if (cancelled) return
+      setMessage(r.message || '')
       setState(r.bootstrapped ? 'ok' : 'needed')
     })
     return () => {
@@ -102,8 +104,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
           <span className="flex-1 text-[var(--gt-red)]">Bootstrap failed: {error}</span>
         ) : (
           <span className="flex-1">
-            This repo isn't bootstrapped with project-template — agents/skills/backlog/docs are
-            missing.
+            {message || "This repo isn't bootstrapped with project-template — agents/skills/backlog/docs are missing."}
           </span>
         )}
         <div className="flex items-center gap-1">

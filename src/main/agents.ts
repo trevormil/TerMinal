@@ -17,13 +17,15 @@ import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona } from './personas'
-import { enginePath, engineDefaultModel, resolvedWorktreesDir } from './settings'
+import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir } from './settings'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
 import { hiddenPresetIds } from './presets'
 import { getTicket } from './backlog'
 import { persistentAgentDesignerPrompt, persistentAgentLaunchPrompt } from './persistent-agents'
+import { createAgentStreamDecoder } from './agent-stream'
+import { withAgentContextPreamble } from './context-preamble'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
@@ -706,10 +708,10 @@ function buildCmd(engine: Engine, worktree: string, prompt: string, model?: stri
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${shq(model)}` : ''
   if (engine === 'claude') {
-    return `${shq(bin)} -p ${shq(prompt)} --dangerously-skip-permissions --permission-mode auto${modelFlag}`
+    return `${shq(bin)} -p ${shq(prompt)} --output-format stream-json --dangerously-skip-permissions --permission-mode auto${modelFlag}`
   }
   if (engine === 'cursor') {
-    return `${shq(bin)} -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
+    return `${shq(bin)} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
   }
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
@@ -836,6 +838,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   )
 
   const append = (chunk: string) => {
+    if (!chunk) return
     run.output += chunk
     if (run.output.length > OUTPUT_CAP) run.output = run.output.slice(-OUTPUT_CAP)
     appendLog(run.id, chunk)
@@ -918,7 +921,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // For prompt-style (non-script) FORCE agents, prepend the preamble so the
     // spawned model knows it has main-push authority; script-first agents read
     // the env var directly.
-    const promptForStep = spec.force && !scriptPath ? FORCE_PREAMBLE + step.prompt : step.prompt
+    const contextEnabled = readSettings().inbox.agentContextPreamble
+    const contextPrompt = scriptPath ? step.prompt : withAgentContextPreamble(repoRoot, step.prompt, contextEnabled)
+    const promptForStep = spec.force && !scriptPath ? FORCE_PREAMBLE + contextPrompt : contextPrompt
     const cmd = scriptPath
       ? shq(scriptPath)
       : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined)
@@ -933,9 +938,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     procs.set(run.id, p)
+    const streamDecoder = createAgentStreamDecoder(spec.engine, !scriptPath)
     const stdoutDecoder = new StringDecoder('utf8')
     const stderrDecoder = new StringDecoder('utf8')
-    p.stdout?.on('data', (d: Buffer) => append(stdoutDecoder.write(d)))
+    p.stdout?.on('data', (d: Buffer) => append(streamDecoder.write(stdoutDecoder.write(d))))
     p.stderr?.on('data', (d: Buffer) => append(stderrDecoder.write(d)))
     p.on('error', (err) => {
       append(`\n[spawn error] ${err.message}\n`)
@@ -944,7 +950,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     p.on('exit', (code) => {
       const stdoutTail = stdoutDecoder.end()
       const stderrTail = stderrDecoder.end()
-      if (stdoutTail) append(stdoutTail)
+      if (stdoutTail) append(streamDecoder.write(stdoutTail))
+      append(streamDecoder.end())
       if (stderrTail) append(stderrTail)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
       if (code !== 0) return finalize('failed', code ?? undefined)

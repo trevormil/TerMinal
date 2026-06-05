@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process'
 import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
+import { hitlRecurrenceKey } from './hitl-recurrence'
 
 // GLOBAL human-in-the-loop inbox — one cross-repo queue of TRUE human-needs
 // (decisions, destructive/cost approvals, creds, a failed cron job, anything an
@@ -51,6 +52,8 @@ export type HitlItem = {
   terminalCwd?: string
   // Stable bucket id for review-pattern HITLs so re-mining doesn't dup.
   patternKey?: string
+  occurrenceCount?: number
+  lastOccurredAt?: number
 }
 
 export function readHitl(): HitlItem[] {
@@ -120,22 +123,6 @@ function alwaysPingTelegram(item: HitlItem): void {
   }
 }
 
-/** File a HITL item (newest first) and fire the blocked notification. */
-/** Cheap title fingerprint for dedup — collapse case + whitespace, drop the
- *  short transient bits (run/sha ids). */
-function hitlFingerprint(title: string, repo?: string): string {
-  return (
-    (title || '')
-      .toLowerCase()
-      .replace(/\b[0-9a-f]{6,}\b/g, '') // sha-ish blobs
-      .replace(/\b\d{4,}\b/g, '') // long numbers (PRs, runs)
-      .replace(/\s+/g, ' ')
-      .trim() +
-    '|' +
-    (repo || '')
-  )
-}
-
 const DEDUP_WINDOW_MS = 60 * 60 * 1000 // 1 hour
 
 export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): HitlItem {
@@ -143,22 +130,29 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   // (filed within the last hour), return that one instead of double-filing.
   // Avoids cron-retry storms that flood the inbox.
   const existing = readHitl()
-  const fp = hitlFingerprint(input.title, input.repo)
+  const fp = hitlRecurrenceKey(input)
   const since = Date.now() - DEDUP_WINDOW_MS
-  const dup = existing.find(
+  const dupIndex = existing.findIndex(
     (h) =>
       h.status === 'open' &&
       h.createdAt >= since &&
-      hitlFingerprint(h.title, h.repo) === fp,
+      hitlRecurrenceKey(h) === fp,
   )
-  if (dup) {
+  if (dupIndex >= 0) {
+    const dup = {
+      ...existing[dupIndex],
+      occurrenceCount: (existing[dupIndex].occurrenceCount || 1) + 1,
+      lastOccurredAt: Date.now(),
+    }
+    existing[dupIndex] = dup
+    write(existing)
     // Re-ping the activity feed so the operator sees the recurrence count,
     // but don't double-file. Surface "still blocked, N occurrences".
     emitActivity(
       {
         kind: hitlActivityKind(input.source),
         title: `${input.source === 'completion-hook' ? 'Done recur' : 'HITL recur'} · ${input.title}`,
-        detail: 'duplicate filing collapsed (within 1h window)',
+        detail: `duplicate filing collapsed (${dup.occurrenceCount} occurrences within 1h window)`,
         repo: input.repo,
         repoRoot: input.repoRoot,
         hitlId: dup.id,
@@ -170,7 +164,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     )
     return dup
   }
-  const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now() }
+  const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now(), occurrenceCount: 1 }
   write([item, ...readHitl()])
   emitActivity(
     {

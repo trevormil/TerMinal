@@ -43,6 +43,7 @@ import type {
   RemoteHost,
   RemotePlatform,
   RemoteSettingsProbe,
+  ProjectsDirValidation,
 } from '../lib/types'
 import { engineLabel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
@@ -501,6 +502,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const [copied, setCopied] = useState(false)
   const [profile, setProfile] = useState('local')
   const [remoteProbe, setRemoteProbe] = useState<Record<string, RemoteSettingsProbe | { loading: true }>>({})
+  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(null)
   const [remoteDraft, setRemoteDraft] = useState({
     label: '',
     sshTarget: '',
@@ -534,6 +536,17 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const selectedDaemon = s ? (selectedHost ? selectedHost.daemon : daemonFromSettings(s)) : emptyDaemon()
   const selectedProbe = selectedHost ? remoteProbe[selectedHost.id] : null
   const selectedIsRemote = !!selectedHost
+  useEffect(() => {
+    let alive = true
+    window.gt.settings
+      .validateProjectsDir({ dir: selectedDaemon.projectsDir, hostId: selectedHost?.id })
+      .then((v) => {
+        if (alive) setProjectsDirValidation(v)
+      })
+    return () => {
+      alive = false
+    }
+  }, [selectedDaemon.projectsDir, selectedHost?.id])
   const saveDaemon = async (
     patch: Partial<Omit<DaemonCfg, 'engines'>> & { engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>> },
   ) => {
@@ -956,6 +969,19 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
                 onClear={() => saveDaemon({ projectsDir: '' })}
               >
+                {projectsDirValidation && !projectsDirValidation.ok && projectsDirValidation.reason === 'is-repo' && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+                    <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
+                    {projectsDirValidation.suggestedParent && (
+                      <button
+                        onClick={() => saveDaemon({ projectsDir: projectsDirValidation.suggestedParent || '' })}
+                        className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                      >
+                        Use parent
+                      </button>
+                    )}
+                  </div>
+                )}
                 <EditDetails>
                   <input
                     key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
@@ -1368,6 +1394,12 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
                 label="File completion hooks to Inbox"
                 hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
+              />
+              <Toggle
+                on={s.inbox.agentContextPreamble}
+                onToggle={() => save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })}
+                label="Add repo context to prompt agents"
+                hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
               />
               <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
                 <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">

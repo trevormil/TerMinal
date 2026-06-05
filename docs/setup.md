@@ -105,7 +105,7 @@ JSON line to `~/.config/TerMinal/activity.jsonl`:
 {"id":"...","ts":1700000000000,"kind":"task-complete","title":"...","detail":"...","repo":"...","repoRoot":"...","sessionId":"..."}
 ```
 
-`kind` is one of `task-complete | ticket-filed | pr-verdict | session-start |
+`kind` is one of `deploy | task-complete | ticket-filed | pr-verdict | session-start |
 agent-run | error | info`. The portable helper does the escaping for you:
 
 ```sh

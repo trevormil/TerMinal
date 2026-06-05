@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FolderOpen, CircleCheck, CircleSlash, ArrowRight, Loader2 } from 'lucide-react'
-import type { EnvDetect } from '../lib/types'
+import type { EnvDetect, ProjectsDirValidation } from '../lib/types'
 import logo from '../assets/logo.png'
 
 // First-run welcome. Everything here has a working default, so "skip" is safe —
@@ -24,6 +24,7 @@ function Row({ ok, name, hint }: { ok: boolean; name: string; hint: string }) {
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [projectsDir, setProjectsDir] = useState('')
+  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -35,6 +36,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     const d = await window.gt.pickDir()
     if (d) setProjectsDir(d)
   }
+  useEffect(() => {
+    let alive = true
+    window.gt.settings.validateProjectsDir({ dir: projectsDir }).then((v) => {
+      if (alive) setProjectsDirValidation(v)
+    })
+    return () => {
+      alive = false
+    }
+  }, [projectsDir])
   const finish = async () => {
     setBusy(true)
     await window.gt.settings.patch({ projectsDir: projectsDir.trim(), onboarded: true })
@@ -105,6 +115,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               className="min-w-0 flex-1 rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 font-mono text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
             />
           </div>
+          {projectsDirValidation && !projectsDirValidation.ok && projectsDirValidation.reason === 'is-repo' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+              <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
+              {projectsDirValidation.suggestedParent && (
+                <button
+                  onClick={() => setProjectsDir(projectsDirValidation.suggestedParent || '')}
+                  className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                >
+                  Use parent
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">

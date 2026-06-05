@@ -18,8 +18,10 @@ const MISC_ESC = /\x1b(?:[=>NOPM78c]|\([AB012])/g
 
 function collapseCarriageReturns(s: string): string {
   if (!s.includes('\r')) return s
+  const normalized = s.replace(/\r\n/g, '\n')
+  if (!normalized.includes('\r')) return normalized
   // Process line-by-line so an overwrite is bounded to its own line.
-  return s
+  return normalized
     .split('\n')
     .map((line) => {
       if (!line.includes('\r')) return line

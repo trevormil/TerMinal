@@ -93,12 +93,12 @@ export type SessionMeta = {
 // opus 4.x blended estimate ($/token). Cache reads are ~10% of input price.
 const PRICE = { input: 15 / 1e6, output: 75 / 1e6, cacheRead: 1.5 / 1e6 }
 
-// Context window per model. Opus 4.6/4.7 and Sonnet 4.5+ run the 1M window;
+// Context window per model. Opus 4.6+ and Sonnet 4.5+ run the 1M window;
 // everything else (older Opus, Haiku, Claude 3.x) defaults to 200k.
 function modelContextWindow(model: string): number {
   const m = model.toLowerCase()
   if (/\[1m\]|-1m\b/.test(m)) return 1_000_000
-  if (/opus-4-[67]/.test(m)) return 1_000_000
+  if (/opus-4-[678]/.test(m)) return 1_000_000
   if (/sonnet-4-[567]/.test(m)) return 1_000_000
   return 200_000
 }

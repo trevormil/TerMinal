@@ -120,7 +120,7 @@ const TABLE: Record<string, ModelPrice> = {
   },
 }
 
-const ZERO: ModelPrice = { input: 0, output: 0, contextWindow: 200_000, family: 'unknown' }
+const ZERO: ModelPrice = { input: 0, output: 0, contextWindow: 0, family: 'unknown' }
 
 /** Look up a price row. Tries exact match first, then prefix match against
  *  the full set so 'claude-opus-4-7-20250920' resolves to 'claude-opus-4-7'.
