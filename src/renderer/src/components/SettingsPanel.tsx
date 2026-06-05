@@ -136,7 +136,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'paths', title: 'Paths', icon: FolderTree },
   { id: 'appearance', title: 'Appearance', icon: Palette },
   { id: 'engines', title: 'Engines', icon: Cpu },
-  { id: 'remote', title: 'Remote', icon: Server },
+  { id: 'remote', title: 'SSH Hosts', icon: Server },
   { id: 'forge', title: 'Forge', icon: GitPullRequest },
   { id: 'apps', title: 'Apps', icon: AppWindow },
   { id: 'inbox', title: 'Inbox', icon: Inbox },
@@ -1161,51 +1161,65 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           <Section
             id="remote"
             icon={Server}
-            title="Remote hosts"
-            desc="SSH profiles. Select one in Daemon profile above to customize its paths, engines, models, forge mode, and template settings."
+            title="SSH hosts"
+            desc="Remote profiles for terminal sessions and daemon-backed tabs. Pick a host here, then use Daemon profile to tune its paths, engines, models, forge mode, and template repo."
           >
-            <div className="space-y-2">
+            <div className="space-y-3">
               {s.remoteHosts.length > 0 ? (
-                <div className="space-y-1.5">
+                <div className="grid gap-2 md:grid-cols-2">
                   {s.remoteHosts.map((h) => (
                     <div
                       key={h.id}
-                      className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[11.5px] md:grid-cols-[1fr_1fr_1fr_auto]"
+                      className={`rounded-lg border p-3 ${
+                        profile === h.id
+                          ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
+                          : 'border-[var(--gt-border)] bg-black/20'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-zinc-200">{h.label}</div>
-                        <div className="truncate font-mono text-zinc-600">{h.id}</div>
+                      <div className="mb-2 flex items-start gap-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-2)]">
+                          <Server size={14} strokeWidth={2} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[12px] font-semibold text-zinc-100">{h.label}</div>
+                          <div className="truncate font-mono text-[10.5px] text-zinc-600">{h.sshTarget}</div>
+                        </div>
+                        <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-500">
+                          {h.platform}
+                        </span>
                       </div>
-                      <div className="min-w-0 font-mono text-zinc-400">{h.sshTarget}</div>
-                      <div className="min-w-0 font-mono text-zinc-500">
-                        {h.defaultCwd || h.daemon.projectsDir || '~'} - {h.platform}
+                      <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-black/20 px-2 py-1.5 text-[10.5px]">
+                        <span className="text-zinc-600">cwd</span>
+                        <span className="truncate font-mono text-zinc-400">{h.defaultCwd || h.daemon.projectsDir || '~'}</span>
+                        <span className="text-zinc-600">id</span>
+                        <span className="truncate font-mono text-zinc-500">{h.id}</span>
                       </div>
-                      <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => setProfile(h.id)}
-                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                      >
-                        Settings
-                      </button>
-                      <button
-                        onClick={() =>
-                          setRemoteDraft({
-                            label: h.label,
-                            sshTarget: h.sshTarget,
-                            defaultCwd: h.defaultCwd,
-                            platform: h.platform,
-                          })
-                        }
-                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => removeRemoteHost(h.id)}
-                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
-                      >
-                        Remove
-                      </button>
+                      <div className="mt-2 flex items-center gap-1">
+                        <button
+                          onClick={() => setProfile(h.id)}
+                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                        >
+                          Use profile
+                        </button>
+                        <button
+                          onClick={() =>
+                            setRemoteDraft({
+                              label: h.label,
+                              sshTarget: h.sshTarget,
+                              defaultCwd: h.defaultCwd,
+                              platform: h.platform,
+                            })
+                          }
+                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => removeRemoteHost(h.id)}
+                          className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1215,39 +1229,59 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   No remote hosts yet. Add one with an SSH config alias like <span className="font-mono">tm</span> or a target like <span className="font-mono">user@example.com</span>.
                 </div>
               )}
-              <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
-                <input
-                  value={remoteDraft.label}
-                  onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
-                  placeholder="label"
-                  className={`${inp} font-mono`}
-                />
-                <input
-                  value={remoteDraft.sshTarget}
-                  onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
-                  placeholder="ssh target (tm)"
-                  spellCheck={false}
-                  className={`${inp} font-mono`}
-                />
-                <input
-                  value={remoteDraft.defaultCwd}
-                  onChange={(e) => setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))}
-                  placeholder="remote cwd (~)"
-                  spellCheck={false}
-                  className={`${inp} font-mono`}
-                />
-                <select
-                  value={remoteDraft.platform}
-                  onChange={(e) => setRemoteDraft((d) => ({ ...d, platform: e.target.value as RemotePlatform }))}
-                  className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                >
-                  <option value="linux" className="bg-[var(--gt-panel)]">Linux</option>
-                  <option value="macos" className="bg-[var(--gt-panel)]">macOS</option>
-                  <option value="auto" className="bg-[var(--gt-panel)]">Auto</option>
-                </select>
-                <button onClick={saveRemoteDraft} disabled={!remoteDraft.sshTarget.trim()} className={actionButton}>
-                  Save
-                </button>
+              <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[12px] font-semibold text-zinc-200">Add or update host</div>
+                    <div className="text-[10.5px] text-zinc-600">Using the same label replaces an existing profile.</div>
+                  </div>
+                  <button onClick={saveRemoteDraft} disabled={!remoteDraft.sshTarget.trim()} className={actionButton}>
+                    Save host
+                  </button>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Label</span>
+                    <input
+                      value={remoteDraft.label}
+                      onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
+                      placeholder="remote desktop"
+                      className={`${inp} font-mono`}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">SSH target</span>
+                    <input
+                      value={remoteDraft.sshTarget}
+                      onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
+                      placeholder="tm or user@example.com"
+                      spellCheck={false}
+                      className={`${inp} font-mono`}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Default cwd</span>
+                    <input
+                      value={remoteDraft.defaultCwd}
+                      onChange={(e) => setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))}
+                      placeholder="~"
+                      spellCheck={false}
+                      className={`${inp} font-mono`}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Platform</span>
+                    <select
+                      value={remoteDraft.platform}
+                      onChange={(e) => setRemoteDraft((d) => ({ ...d, platform: e.target.value as RemotePlatform }))}
+                      className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                    >
+                      <option value="linux" className="bg-[var(--gt-panel)]">Linux</option>
+                      <option value="macos" className="bg-[var(--gt-panel)]">macOS</option>
+                      <option value="auto" className="bg-[var(--gt-panel)]">Auto</option>
+                    </select>
+                  </label>
+                </div>
               </div>
             </div>
           </Section>
