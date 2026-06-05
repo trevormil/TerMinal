@@ -8,11 +8,12 @@ import type { GitStatus } from './repo'
 import type { CiInfo } from './forge'
 import type { CiListResult, CiJobsResult, CiLogResult } from './ci'
 import type { WorkspaceSearchKind, WorkspaceSearchResponse } from './workspace-search'
-import type { Agent } from './agents'
+import type { Agent, AgentRun } from './agents'
 import type { Schedule } from './schedules'
 import type { CronRun, UnifiedRun } from './cron-runs'
 import type { ProjectSession } from './sessions'
 import type { NotesScope } from './notes'
+import type { Engine } from './agents'
 
 export type RemoteSessionRef = {
   hostId: string
@@ -20,6 +21,19 @@ export type RemoteSessionRef = {
   sshTarget: string
   cwd?: string
   platform?: RemoteHost['platform']
+  daemon?: RemoteHost['daemon']
+}
+export type RemoteRunStartInput = {
+  agentId: string
+  agentTitle: string
+  engine: Engine
+  model?: string
+  steps: { label: string; prompt: string }[]
+  inPlace?: boolean
+  prRef?: { iid: number; sourceBranch: string }
+  worktreesDir?: string
+  enginePath?: string
+  scheduleId?: string
 }
 
 export type RemoteProbe = {
@@ -85,7 +99,7 @@ function readRepoAgents(root){const out=[];const dir=path.join(root,'.agents');f
 function readAgentScript(root,id){const safe=String(id||'').replace(/[^\w-]/g,'');const p=path.join(root,'.agents',safe+'.sh');if(!exists(p))return null;return {path:p,body:fs.readFileSync(p,'utf8')}}
 function schedules(){return readJson(path.join(cfg(),'schedules.json'),[])}
 function cronRuns(scheduleId,limit){const dir=path.join(cfg(),'cron-runs');if(!exists(dir))return [];const out=[];for(const f of fs.readdirSync(dir)){if(!f.endsWith('.json'))continue;try{const r=JSON.parse(fs.readFileSync(path.join(dir,f),'utf8'));if(!scheduleId||r.scheduleId===scheduleId)out.push(r)}catch{}}return out.sort((a,b)=>(b.startedAt||0)-(a.startedAt||0)).slice(0,limit||200)}
-function unifiedRuns(){return cronRuns(null,400).map(r=>({id:r.id,source:'cron',agentId:r.agentId,agentTitle:r.agentTitle,engine:r.engine,status:r.status,startedAt:r.startedAt,endedAt:r.endedAt,exitCode:r.exitCode,repoRoot:r.repoRoot||'',repoLabel:r.repoLabel||'',branch:r.branch||'',worktree:r.worktree||'',scheduleId:r.scheduleId,error:r.error}))}
+function unifiedRuns(){return cronRuns(null,400).map(r=>({id:r.id,source:r.source||'cron',agentId:r.agentId,agentTitle:r.agentTitle,engine:r.engine,status:r.status,startedAt:r.startedAt,endedAt:r.endedAt,exitCode:r.exitCode,repoRoot:r.repoRoot||'',repoLabel:r.repoLabel||'',branch:r.branch||'',worktree:r.worktree||'',scheduleId:r.scheduleId,error:r.error}))}
 function runLog(id){const safe=String(id||'').replace(/[^\w-]/g,'');try{return fs.readFileSync(path.join(cfg(),'cron-runs',safe+'.log'),'utf8')}catch{return ''}}
 function projectSession(slug,md,withBody){const p=parseFm(md),f=p.fm;return {slug,id:Number(f.id)||0,title:f.title||slug,status:f.status||'active',goal:f.goal||'',started:f.started||'',ended:f.ended==='null'?'':(f.ended||''),anchor:f.anchor||'',tickets:arr(f.tickets),branches:arr(f.branches),prs:arr(f.prs),...(withBody?{body:p.body}: {})}}
 function sessionsList(root){const dir=path.join(root,'sessions');if(!exists(dir))return [];return fs.readdirSync(dir).filter(d=>/^\d+-/.test(d)&&exists(path.join(dir,d,'session.md'))).map(d=>{try{return projectSession(d,fs.readFileSync(path.join(dir,d,'session.md'),'utf8'),false)}catch{return null}}).filter(Boolean).sort((a,b)=>b.id-a.id)}
@@ -93,6 +107,107 @@ function sessionGet(root,slug){const safeSlug=String(slug||'').replace(/[^\w-]/g
 function notesPath(root,scope){return scope==='global'?path.join(cfg(),'notes.md'):path.join(root,'.TerMinal','notes.md')}
 function notesRead(root,scope){try{return fs.readFileSync(notesPath(root,scope),'utf8')}catch{return ''}}
 function notesWrite(root,scope,content){const p=notesPath(root,scope);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,String(content||''));if(scope==='repo'){try{const gi=path.join(root,'.gitignore'),entry='.TerMinal/notes.md';let c=exists(gi)?fs.readFileSync(gi,'utf8'):'';if(!c.split('\n').some(l=>l.trim()===entry)){if(c&&!c.endsWith('\n'))c+='\n';fs.writeFileSync(gi,c+entry+'\n')}}catch{}}return true}
+function sq(s){return "'"+String(s||'').replace(/'/g,"'\\''")+"'";}
+function shPath(s){s=String(s||'');return s.startsWith('~/')?'"$HOME"/'+sq(s.slice(2)):sq(s)}
+function shellBin(engine,override){if(override&&String(override).trim())return String(override).trim();return engine==='cursor'?'cursor-agent':engine}
+function runStart(root,input){
+  const crypto=require('crypto');
+  if(!root)throw new Error('not a git repo');
+  const steps=Array.isArray(input.steps)?input.steps:[];
+  if(!steps.length)throw new Error('no steps');
+  const id=crypto.randomUUID(),startedAt=Date.now(),short=id.slice(0,6);
+  const tag=String(input.agentId||'agent').replace(/[^\w-]/g,'').slice(0,40)||'agent';
+  const repoLabel=(forge(root).repo&&forge(root).repo.path)||path.basename(root);
+  const runsDir=path.join(cfg(),'cron-runs'),promptDir=path.join(cfg(),'remote-run-prompts',id);
+  fs.mkdirSync(runsDir,{recursive:true});fs.mkdirSync(promptDir,{recursive:true});
+  let worktree=root,branch='(working tree)';
+  if(!input.inPlace){
+    const parent=input.worktreesDir||path.join(cfg(),'remote-worktrees',path.basename(root)||'repo');
+    fs.mkdirSync(parent,{recursive:true});
+    worktree=path.join(parent,tag+'-'+short);
+    if(input.prRef&&input.prRef.sourceBranch){
+      runObj('git',['-C',root,'fetch','origin',String(input.prRef.sourceBranch)],{timeout:60000});
+      let ref='origin/'+String(input.prRef.sourceBranch);
+      if(!run('git',['-C',root,'rev-parse','--verify','--quiet',ref]))ref='FETCH_HEAD';
+      const r=runObj('git',['-C',root,'worktree','add','--detach',worktree,ref],{timeout:60000});
+      if(r.error)throw new Error('worktree: '+r.error);
+      branch=String(input.prRef.sourceBranch);
+    }else{
+      branch='agent/'+tag+'-'+short;
+      let base='HEAD';
+      if(run('git',['-C',root,'rev-parse','--verify','--quiet','main']))base='main';
+      else if(run('git',['-C',root,'rev-parse','--verify','--quiet','master']))base='master';
+      const r=runObj('git',['-C',root,'worktree','add',worktree,'-b',branch,base],{timeout:60000});
+      if(r.error)throw new Error('worktree: '+r.error);
+    }
+  }
+  const logFile=path.join(runsDir,id+'.log'),jsonFile=path.join(runsDir,id+'.json'),scriptPath=path.join(promptDir,'run.sh');
+  const promptFiles=steps.map((s,i)=>{const f=path.join(promptDir,String(i)+'.txt');fs.writeFileSync(f,String(s&&s.prompt||''));return f});
+  const scriptAgent=path.join(root,'.agents',String(input.agentId||'').replace(/[^\w-]/g,'')+'.sh');
+  const engine=String(input.engine||'claude'),bin=shellBin(engine,input.enginePath),model=String(input.model||'');
+  const labels=steps.map(s=>String(s&&s.label||'run'));
+  const modelFlag=model?' --model '+sq(model):'';
+  const stepBlocks=promptFiles.map((pf,i)=>[
+    'echo '+sq('━━ step '+(i+1)+'/'+promptFiles.length+' · '+labels[i]+' ━━'),
+    'PROMPT="$(cat '+sq(pf)+')"',
+    'if [ -x '+sq(scriptAgent)+' ]; then',
+    '  '+sq(scriptAgent),
+    'elif [ '+sq(engine)+' = "claude" ]; then',
+    '  '+shPath(bin)+' -p "$PROMPT" --dangerously-skip-permissions'+modelFlag,
+    'elif [ '+sq(engine)+' = "cursor" ]; then',
+    '  '+shPath(bin)+' -p --force --trust --output-format text --workspace '+sq(worktree)+modelFlag+' "$PROMPT"',
+    'else',
+    '  '+shPath(bin)+' exec -s danger-full-access -C '+sq(worktree)+modelFlag+' "$PROMPT"',
+    'fi',
+    'code=$?',
+    'if [ "$code" != "0" ]; then finish "$code"; exit "$code"; fi',
+  ].join('\n')).join('\n');
+  const runner=[
+    '#!/usr/bin/env bash',
+    'set +e',
+    'export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"',
+    '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"',
+    'export TERM=xterm-256color COLORTERM=truecolor CLICOLOR=1 CLICOLOR_FORCE=1',
+    'export TERMINAL_REPO='+sq(root),
+    'export TERMINAL_RUN_ID='+sq(id),
+    'export TERMINAL_AGENT_ID='+sq(input.agentId||'remote-agent'),
+    'export TERMINAL_BRANCH='+sq(branch),
+    'export TERMINAL_WORKTREE='+sq(worktree),
+    'export TERMINAL_ENGINE='+sq(engine),
+    model?'export TERMINAL_MODEL='+sq(model):'',
+    'finish() {',
+    '  code="$1"',
+    '  status=done',
+    '  [ "$code" = "0" ] || status=failed',
+    '  node - "$JSON_FILE" "$status" "$code" <<'+"'NODE'",
+    'const fs=require("fs"); const [file,status,code]=process.argv.slice(2);',
+    'let r={}; try{r=JSON.parse(fs.readFileSync(file,"utf8"))}catch{}',
+    'r.status=status; r.endedAt=Date.now(); r.exitCode=Number(code)||0;',
+    'fs.writeFileSync(file, JSON.stringify(r,null,2));',
+    'NODE',
+    '}',
+    "trap 'finish 130; exit 130' INT TERM",
+    'JSON_FILE='+sq(jsonFile),
+    'echo '+sq('▸ Remote agent · '+String(input.agentTitle||input.agentId||'Agent')+' · '+engine+(model?'/'+model:'')),
+    'echo '+sq('▸ branch '+branch),
+    'echo '+sq('▸ worktree '+worktree),
+    'echo',
+    stepBlocks,
+    'finish 0',
+    '',
+  ].filter(Boolean).join('\n');
+  fs.writeFileSync(scriptPath,runner,{mode:0o755});
+  const record={id,source:input.scheduleId?'cron':'agent',scheduleId:input.scheduleId||'',agentId:input.agentId||'remote-agent',agentTitle:input.agentTitle||input.agentId||'Remote agent',engine,status:'running',startedAt,branch,repoLabel,repoRoot:root,worktree,logFile};
+  fs.writeFileSync(jsonFile,JSON.stringify(record,null,2));
+  const child=cp.spawn('bash',[scriptPath],{cwd:worktree,detached:true,stdio:['ignore',fs.openSync(logFile,'a'),fs.openSync(logFile,'a')]});
+  child.unref();
+  record.pid=child.pid;
+  fs.writeFileSync(jsonFile,JSON.stringify(record,null,2));
+  return {...record,output:'▸ remote run started\\n',force:false}
+}
+function schedulesSave(input){const list=schedules();const idx=list.findIndex(s=>s.id===input.id);if(idx>=0)list[idx]=input;else list.push(input);writeJson(path.join(cfg(),'schedules.json'),list);return {ok:true,id:input.id}}
+function scheduleRemove(id){const next=schedules().filter(s=>s.id!==id);writeJson(path.join(cfg(),'schedules.json'),next);return true}
+function scheduleToggle(id,enabled){const list=schedules();const s=list.find(x=>x.id===id);if(!s)return false;s.enabled=!!enabled;writeJson(path.join(cfg(),'schedules.json'),list);return true}
 function out(v){process.stdout.write(JSON.stringify(v))}
 try{const op=input.op;const root=repoRoot()||cwdInput; if(op==='probe'){const rr=repoRoot();const f=rr?forge(rr):{repo:null,kind:'github',label:'PR',sym:'#'};out({cwd:cwdInput,repoRoot:rr,repoPath:f.repo?f.repo.path:'',repoHost:f.repo?f.repo.host:'',forgeKind:f.kind,forgeLabel:f.label,forgeSym:f.sym,hasBacklog:!!(rr&&exists(path.join(rr,'backlog'))),hasDocs:!!(rr&&(exists(path.join(rr,'docs'))||exists(path.join(rr,'reports'))||exists(path.join(rr,'CHANGELOG.md')))),hasSessions:!!(rr&&exists(path.join(rr,'sessions'))),hasAgents:!!(rr&&exists(path.join(rr,'.agents'))),engines:{claude:run('bash',['-lc','command -v claude || true']),codex:run('bash',['-lc','command -v codex || true']),cursor:run('bash',['-lc','command -v cursor-agent || true'])},tools:{node:run('bash',['-lc','command -v node || true']),git:run('bash',['-lc','command -v git || true']),gh:run('bash',['-lc','command -v gh || true']),glab:run('bash',['-lc','command -v glab || true']),rg:run('bash',['-lc','command -v rg || true'])}})}
 else if(op==='gitStatus'){const b=run('git',['-C',root,'rev-parse','--abbrev-ref','HEAD']);const ab=run('git',['-C',root,'rev-list','--left-right','--count','@{upstream}...HEAD']);const p=run('git',['-C',root,'status','--porcelain']);const parts=ab?ab.split(/\s+/).map(Number):[0,0];out({ok:!!b,branch:b,ahead:parts[1]||0,behind:parts[0]||0,dirty:p?p.split('\n').filter(Boolean).length:0})}
@@ -106,7 +221,9 @@ else if(op==='files.list')out(listDir(root,input.rel||''));else if(op==='files.r
 else if(op==='docs.list')out(docs(root));else if(op==='docs.get')out(readFile(root,input.relPath||'').content||'');
 else if(op==='agents.list')out(readRepoAgents(root));else if(op==='agents.script')out(readAgentScript(root,input.id));
 else if(op==='schedules.list')out(schedules());else if(op==='schedules.runs')out(cronRuns(input.id,200));else if(op==='schedules.runLog')out(runLog(input.runId));
+else if(op==='schedules.save')out(schedulesSave(input.schedule));else if(op==='schedules.remove')out(scheduleRemove(input.id));else if(op==='schedules.toggle')out(scheduleToggle(input.id,input.enabled));else if(op==='schedules.runNow'){const s=schedules().find(x=>x.id===input.id);if(!s)out({error:'schedule not found'});else out(runStart(root,{agentId:s.agentId,agentTitle:s.agentTitle,engine:s.engine,model:s.model,steps:[{label:s.agentTitle||s.agentId,prompt:s.prompt}],inPlace:false,worktreesDir:input.worktreesDir,enginePath:input.enginePath,scheduleId:s.id}))}
 else if(op==='runs.all')out(unifiedRuns());else if(op==='runs.log')out(runLog(input.runId));
+else if(op==='runs.start')out(runStart(root,input.run||{}));
 else if(op==='sessions.list')out(sessionsList(root));else if(op==='sessions.get')out(sessionGet(root,input.slug));
 else if(op==='notes.read')out(notesRead(root,input.scope));else if(op==='notes.write')out(notesWrite(root,input.scope,input.content));
 else if(op==='workspace.search'){const q=String(input.q||'').toLowerCase(),selected=new Set(input.kinds&&input.kinds.length?input.kinds:['file','ticket','mr','doc']);const results=[];function push(x){if(results.length<260)results.push(x)}if(selected.has('file'))for(const h of search(root,q))push({id:'file:'+h.file+':'+h.line,kind:'file',title:h.file+':'+h.line,subtitle:'File',detail:h.text,path:h.file,line:h.line,payload:{path:h.file,line:h.line}});if(selected.has('ticket'))for(const t of listTickets(root)){const hay=[t.id,t.title,t.status,t.priority,t.type,t.body].join(' ').toLowerCase();if(hay.includes(q))push({id:'ticket:'+t.slug,kind:'ticket',title:'#'+t.id+' '+t.title,subtitle:t.status+' - '+t.priority+' - '+t.type,detail:t.body.slice(0,260),path:'backlog/'+t.slug+'.md',payload:{slug:t.slug}})}if(selected.has('mr')){const l=listMrs(root);for(const m of l.mrs){const hay=[m.iid,m.title,m.state,m.author,m.sourceBranch,(m.labels||[]).join(' ')].join(' ').toLowerCase();if(hay.includes(q))push({id:'mr:'+m.iid,kind:'mr',title:'MR/PR '+m.iid+' '+m.title,subtitle:m.state+' - '+m.author,detail:m.sourceBranch,payload:{iid:m.iid}})}}if(selected.has('doc'))for(const c of docs(root).categories)for(const d of c.items){const body=readFile(root,d.path).content||'';if([d.title,d.path,c.label,body].join(' ').toLowerCase().includes(q))push({id:'doc:'+d.path,kind:'doc',title:d.title,subtitle:c.label+' - '+d.path,detail:body.replace(/\s+/g,' ').slice(0,260),path:d.path,payload:{path:d.path}})}out({results})}
@@ -115,7 +232,7 @@ else throw new Error('unknown op '+op)}catch(e){out({_remoteError:e.message||Str
 
 function remoteEnvCommand(inner: string, cwd?: string): string {
   const path =
-    'export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:$PATH"; ' +
+    'export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"; ' +
     '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"; '
   const cd = cwd?.trim() && cwd.trim() !== '~' ? `cd -- ${cwd.trim().startsWith('~/') ? `~/${shq(cwd.trim().slice(2))}` : shq(cwd.trim())}; ` : ''
   return `bash -lc ${shq(path + cd + inner)}`
@@ -135,7 +252,7 @@ function remoteJson<T>(remote: RemoteSessionRef, input: Record<string, unknown>)
     execFile(
       'ssh',
       ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', remote.sshTarget, remoteEnvCommand(inner, remote.cwd)],
-      { encoding: 'utf8', timeout: 30_000, maxBuffer: 32 * 1024 * 1024 },
+      { encoding: 'utf8', timeout: 60_000, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) return reject(new Error((stderr || err.message || 'ssh failed').trim()))
         try {
@@ -156,8 +273,7 @@ export const remoteTickets = {
   list: (remote: RemoteSessionRef) => remoteJson<Ticket[]>(remote, { op: 'tickets.list' }),
   get: (remote: RemoteSessionRef, slug: string) => remoteJson<Ticket | null>(remote, { op: 'tickets.get', slug }),
   create: (remote: RemoteSessionRef, ticket: NewTicket) => remoteJson<Ticket>(remote, { op: 'tickets.create', ticket }),
-  update: (remote: RemoteSessionRef, slug: string, patch: { status?: string; priority?: string }) =>
-    remoteJson<boolean>(remote, { op: 'tickets.update', slug, patch }),
+  update: (remote: RemoteSessionRef, slug: string, patch: { status?: string; priority?: string }) => remoteJson<boolean>(remote, { op: 'tickets.update', slug, patch }),
 }
 export const remoteMrs = {
   list: (remote: RemoteSessionRef) => remoteJson<MrListResult>(remote, { op: 'mrs.list' }),
@@ -186,17 +302,35 @@ export const remoteDocs = {
 }
 export const remoteAgents = {
   list: (remote: RemoteSessionRef) => remoteJson<Agent[]>(remote, { op: 'agents.list' }),
-  script: (remote: RemoteSessionRef, id: string) =>
-    remoteJson<{ path: string; body: string } | null>(remote, { op: 'agents.script', id }),
+  script: (remote: RemoteSessionRef, id: string) => remoteJson<{ path: string; body: string } | null>(remote, { op: 'agents.script', id }),
 }
 export const remoteSchedules = {
   list: (remote: RemoteSessionRef) => remoteJson<Schedule[]>(remote, { op: 'schedules.list' }),
+  save: (remote: RemoteSessionRef, schedule: Schedule) => remoteJson<{ ok: true; id: string }>(remote, { op: 'schedules.save', schedule }),
+  remove: (remote: RemoteSessionRef, id: string) => remoteJson<boolean>(remote, { op: 'schedules.remove', id }),
+  toggle: (remote: RemoteSessionRef, id: string, enabled: boolean) => remoteJson<boolean>(remote, { op: 'schedules.toggle', id, enabled }),
+  runNow: (remote: RemoteSessionRef, id: string, opts?: { enginePath?: string; worktreesDir?: string }) =>
+    remoteJson<AgentRun | { error: string }>(remote, {
+      op: 'schedules.runNow',
+      id,
+      worktreesDir: opts?.worktreesDir ?? remote.daemon?.worktreesDir,
+      enginePath: opts?.enginePath,
+    }),
   runs: (remote: RemoteSessionRef, id?: string) => remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
   runLog: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
 }
 export const remoteRuns = {
   all: (remote: RemoteSessionRef) => remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }),
   log: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'runs.log', runId }),
+  start: (remote: RemoteSessionRef, run: RemoteRunStartInput) =>
+    remoteJson<AgentRun | { error: string }>(remote, {
+      op: 'runs.start',
+      run: {
+        ...run,
+        worktreesDir: run.worktreesDir ?? remote.daemon?.worktreesDir,
+        enginePath: run.enginePath ?? remote.daemon?.engines?.[run.engine]?.path,
+      },
+    }),
 }
 export const remoteSessions = {
   list: (remote: RemoteSessionRef) => remoteJson<ProjectSession[]>(remote, { op: 'sessions.list' }),
@@ -204,8 +338,7 @@ export const remoteSessions = {
 }
 export const remoteNotes = {
   read: (remote: RemoteSessionRef, scope: NotesScope) => remoteJson<string>(remote, { op: 'notes.read', scope }),
-  write: (remote: RemoteSessionRef, scope: NotesScope, content: string) =>
-    remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
+  write: (remote: RemoteSessionRef, scope: NotesScope, content: string) => remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
 }
 export const remoteWorkspaceSearch = (remote: RemoteSessionRef, q: string, kinds?: WorkspaceSearchKind[]) =>
   remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })
