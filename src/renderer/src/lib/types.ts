@@ -151,6 +151,14 @@ export type AppearanceCfg = {
 }
 export type AppsCfg = { editor: string; browser: string }
 export type OpenRouterCfg = { apiKey: string; defaultModel: string }
+export type RemotePlatform = 'auto' | 'linux' | 'macos'
+export type RemoteHost = {
+  id: string
+  label: string
+  sshTarget: string
+  defaultCwd: string
+  platform: RemotePlatform
+}
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -163,6 +171,7 @@ export type Settings = {
   appearance: AppearanceCfg
   apps: AppsCfg
   openrouter: OpenRouterCfg
+  remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
 }
@@ -575,6 +584,10 @@ export type CiLogResult = { log: string; truncated?: boolean; error?: string }
 export type TabContext = {
   cwd: string
   sessionId: string
+  remote?: boolean
+  remoteHostId?: string
+  remoteLabel?: string
+  remoteSshTarget?: string
   repoRoot: string
   repoPath: string
   repoHost: string
@@ -621,8 +634,17 @@ export type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  remote?: RemoteSession
   cols: number
   rows: number
+}
+
+export type RemoteSession = {
+  hostId: string
+  label: string
+  sshTarget: string
+  cwd?: string
+  platform?: RemotePlatform
 }
 
 export type SessionInfo = {
@@ -631,6 +653,7 @@ export type SessionInfo = {
   mode: '' | 'new' | 'resume'
   name: string
   engine: SessionEngine
+  remote?: RemoteSession
   claude: string
 }
 

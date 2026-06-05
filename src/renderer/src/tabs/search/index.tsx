@@ -10,6 +10,7 @@ import {
   Search,
   ScrollText,
   Ticket,
+  X,
 } from 'lucide-react'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, WorkspaceSearchKind, WorkspaceSearchResult } from '../../lib/types'
@@ -89,8 +90,16 @@ function timeAgo(ts?: number) {
   return `${Math.floor(hr / 24)}d ago`
 }
 
-function SearchTab({ ctx }: { ctx: TabContext }) {
-  const [query, setQuery] = useState('')
+export function WorkspaceSearchPanel({
+  ctx,
+  initialQuery = '',
+  onClose,
+}: {
+  ctx: TabContext
+  initialQuery?: string
+  onClose?: () => void
+}) {
+  const [query, setQuery] = useState(initialQuery)
   const [enabled, setEnabled] = useState<Set<WorkspaceSearchKind>>(() => new Set(KINDS.map((k) => k.id)))
   const [results, setResults] = useState<WorkspaceSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -106,6 +115,7 @@ function SearchTab({ ctx }: { ctx: TabContext }) {
       }),
     [],
   )
+  useEffect(() => setQuery(initialQuery), [initialQuery])
 
   const activeKinds = useMemo(() => KINDS.map((k) => k.id).filter((k) => enabled.has(k)), [enabled])
 
@@ -160,6 +170,15 @@ function SearchTab({ ctx }: { ctx: TabContext }) {
           />
           {loading && <Loader2 size={14} className="animate-spin text-zinc-500" />}
           <span className="text-[11px] text-zinc-600">{ctx.repoPath || ctx.repoRoot}</span>
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Close search"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          )}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {KINDS.map((k) => {
@@ -228,6 +247,10 @@ function SearchTab({ ctx }: { ctx: TabContext }) {
       )}
     </div>
   )
+}
+
+function SearchTab({ ctx }: { ctx: TabContext }) {
+  return <WorkspaceSearchPanel ctx={ctx} />
 }
 
 const tab: Tab = {

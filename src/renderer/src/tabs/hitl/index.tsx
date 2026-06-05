@@ -90,6 +90,7 @@ export function InboxDrawer({
   const [items, setItems] = useState<HitlItem[] | null>(null)
   const [showResolved, setShowResolved] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [resolvingAll, setResolvingAll] = useState(false)
 
   const reload = () => window.gt.hitl.list().then(setItems)
   useEffect(() => {
@@ -108,6 +109,17 @@ export function InboxDrawer({
   const open = (items || []).filter((h) => h.status === 'open')
   const resolved = (items || []).filter((h) => h.status === 'resolved')
   const shown = showResolved ? resolved : open
+  const resolveAll = async () => {
+    if (open.length === 0 || resolvingAll) return
+    if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
+    setResolvingAll(true)
+    try {
+      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true).catch(() => false)))
+      await reload()
+    } finally {
+      setResolvingAll(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
@@ -116,6 +128,16 @@ export function InboxDrawer({
         <span className="text-[12px] font-semibold text-zinc-200">Inbox</span>
         <span className="text-[11px] text-zinc-600">one global inbox · everything that needs you</span>
         <div className="flex-1" />
+        {!showResolved && open.length > 0 && (
+          <button
+            onClick={resolveAll}
+            disabled={resolvingAll}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)] disabled:cursor-wait disabled:opacity-60"
+          >
+            <Check size={12} strokeWidth={2.5} />
+            {resolvingAll ? 'Resolving...' : 'Resolve all'}
+          </button>
+        )}
         <button
           onClick={() => setShowResolved((v) => !v)}
           className={`rounded-full border px-2.5 py-0.5 text-[11px] ${

@@ -72,6 +72,7 @@ import {
   resolvedTemplateRepo,
   enginePath,
   type SettingsPatch,
+  type RemotePlatform,
 } from './settings'
 import {
   configureTelegramControl,
@@ -192,12 +193,29 @@ function send(channel: string, ...args: unknown[]) {
 // generated tab key. Data IPC reads the *active* session; PTY IPC is routed by
 // key so every (even backgrounded) terminal keeps streaming.
 type SessionEngine = Engine | 'local'
-type Pinned = { sessionId: string; cwd: string; mode: '' | 'new' | 'resume'; name: string; engine: SessionEngine }
+type RemoteSession = {
+  hostId: string
+  label: string
+  sshTarget: string
+  cwd?: string
+  platform?: RemotePlatform
+}
+type Pinned = {
+  sessionId: string
+  cwd: string
+  mode: '' | 'new' | 'resume'
+  name: string
+  engine: SessionEngine
+  remote?: RemoteSession
+}
 const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
 let activeKey = ''
 const cur = (): Pinned =>
   sessions.get(activeKey)?.pinned ?? { sessionId: '', cwd: '', mode: '', name: '', engine: 'claude' }
-const repoLabelFor = (cwdOrRoot: string) => repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
+const repoLabelFor = (cwdOrRoot: string) =>
+  cwdOrRoot.startsWith('ssh://')
+    ? cwdOrRoot.replace(/^ssh:\/\//, '')
+    : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
 
 type StartOpts = {
   mode: 'new' | 'resume'
@@ -206,16 +224,44 @@ type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  remote?: RemoteSession
   cols: number
   rows: number
 }
 
 const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
 
+function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
+  const target = remote.label || remote.sshTarget
+  const path = cwd || '~'
+  return `ssh://${target}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+function remoteCd(cwd: string): string {
+  const trimmed = cwd.trim()
+  if (!trimmed || trimmed === '~' || trimmed === '$HOME') return ''
+  if (trimmed.startsWith('~/')) return `cd -- ~/${shq(trimmed.slice(2))} && `
+  return `cd -- ${shq(trimmed)} && `
+}
+
+function remoteEngineBin(engine: SessionEngine): string {
+  if (engine === 'local') return '"${SHELL:-/bin/bash}"'
+  if (engine === 'cursor') return 'cursor-agent'
+  return engine
+}
+
+function remoteCommand(engine: SessionEngine, args: string[], cwd: string): string {
+  const exports = 'export TERM=xterm-256color COLORTERM=truecolor CLICOLOR=1; '
+  if (engine === 'local') return `${exports}${remoteCd(cwd)}exec ${remoteEngineBin(engine)} -l`
+  return `${exports}${remoteCd(cwd)}exec ${[remoteEngineBin(engine), ...args].map(shq).join(' ')}`
+}
+
 function startSession(key: string, opts: StartOpts) {
   sessions.get(key)?.pty.kill()
 
-  const cwd = opts.cwd || homedir()
+  const remote = opts.remote?.sshTarget ? opts.remote : undefined
+  const cwd = remote ? remote.cwd || opts.cwd || '' : opts.cwd || homedir()
+  const displayCwd = remote ? displayRemoteCwd(remote, cwd) : cwd
   const engine = opts.engine || 'claude'
   const args: string[] = []
   let sessionId: string
@@ -247,7 +293,7 @@ function startSession(key: string, opts: StartOpts) {
   }
 
   // Wire Claude sessions to the status-line shim (zero-API usage + context).
-  if (engine === 'claude') args.push('--settings', statuslineSettingsArg())
+  if (engine === 'claude' && !remote) args.push('--settings', statuslineSettingsArg())
 
   const env = {
     ...process.env,
@@ -257,19 +303,27 @@ function startSession(key: string, opts: StartOpts) {
     CLICOLOR: '1',
     GT_TERMINAL_SESSION_KEY: key,
     GT_TERMINAL_SESSION_ID: sessionId,
-    GT_TERMINAL_CWD: cwd,
+    GT_TERMINAL_CWD: displayCwd,
   } as Record<string, string>
   delete env.NO_COLOR
 
   const proc =
-    engine === 'local'
-      ? pty.spawn(LOGIN_SHELL, ['-l'], {
+    remote
+      ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommand(engine, args, cwd)], {
           name: 'xterm-256color',
           cols: opts.cols || 80,
           rows: opts.rows || 30,
-          cwd,
+          cwd: homedir(),
           env,
         })
+      : engine === 'local'
+        ? pty.spawn(LOGIN_SHELL, ['-l'], {
+            name: 'xterm-256color',
+            cols: opts.cols || 80,
+            rows: opts.rows || 30,
+            cwd,
+            env,
+          })
       : pty.spawn(LOGIN_SHELL, ['-l', '-c', [enginePath(engine), ...args].map(shq).join(' ')], {
           name: 'xterm-256color',
           cols: opts.cols || 80,
@@ -283,10 +337,10 @@ function startSession(key: string, opts: StartOpts) {
     emitActivity(
       {
         kind: exitCode === 0 ? 'session-end' : 'error',
-        title: `${opts.name || basename(cwd) || 'session'} · ${engine} · exited`,
-        detail: `exit ${exitCode ?? 0} · ${cwd.replace(homedir(), '~')}`,
-        repo: repoLabelFor(cwd),
-        repoRoot: repoRootOf(cwd),
+        title: `${opts.name || basename(cwd) || remote?.label || 'session'} · ${engine} · exited`,
+        detail: `exit ${exitCode ?? 0} · ${displayCwd.replace(homedir(), '~')}`,
+        repo: repoLabelFor(displayCwd),
+        repoRoot: remote ? '' : repoRootOf(cwd),
         sessionId,
       },
       { notify: exitCode !== 0 },
@@ -295,19 +349,19 @@ function startSession(key: string, opts: StartOpts) {
 
   sessions.set(key, {
     pty: proc,
-    pinned: { sessionId, cwd, mode: opts.mode, name: opts.name || '', engine },
+    pinned: { sessionId, cwd: displayCwd, mode: opts.mode, name: opts.name || '', engine, remote },
   })
   activeKey = key
   watchSession()
   emitActivity({
     kind: 'session-start',
-    title: `${opts.name || basename(cwd) || 'session'} · ${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
-    detail: cwd.replace(homedir(), '~'),
-    repo: repoLabelFor(cwd),
-    repoRoot: repoRootOf(cwd),
+    title: `${opts.name || basename(cwd) || remote?.label || 'session'} · ${remote ? `${remote.label || remote.sshTarget} · ` : ''}${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
+    detail: displayCwd.replace(homedir(), '~'),
+    repo: repoLabelFor(displayCwd),
+    repoRoot: remote ? '' : repoRootOf(cwd),
     sessionId,
   })
-  return { sessionId, cwd }
+  return { sessionId, cwd: displayCwd, remote }
 }
 
 function setActiveSession(key: string) {
@@ -344,6 +398,7 @@ function watchSession() {
   watchedFile = ''
   lastMtime = 0
   watchTimer = setInterval(() => {
+    if (cur().remote) return
     const sid = cur().sessionId
     if (!sid) return
     if (!watchedFile) {
@@ -373,6 +428,7 @@ let activityTimer: ReturnType<typeof setInterval> | null = null
 let telegramTimer: ReturnType<typeof setInterval> | null = null
 function pollActivity() {
   for (const [key, s] of sessions) {
+    if (s.pinned.remote) continue
     const sid = s.pinned.sessionId
     if (!sid) continue
     let w = turnWatch.get(key)
@@ -500,6 +556,7 @@ function createWindow() {
       const seen = new Set<string>()
       const out: { label: string; repoRoot: string }[] = []
       for (const s of sessions.values()) {
+        if (s.pinned.remote) continue
         const root = repoRootOf(s.pinned.cwd)
         if (!root || seen.has(root)) continue
         seen.add(root)
@@ -508,6 +565,7 @@ function createWindow() {
       return out
     },
     active: () => {
+      if (cur().remote) return null
       const root = repoRootOf(cur().cwd)
       return root ? { label: repoForCwd(cur().cwd)?.path || basename(root), repoRoot: root } : null
     },
@@ -543,9 +601,9 @@ ipcMain.handle('fleet:list', () => {
     out.push({
       key,
       sessionId: sid,
-      name: s.pinned.name || basename(s.pinned.cwd) || 'session',
+      name: s.pinned.name || (s.pinned.remote ? s.pinned.remote.label || s.pinned.remote.sshTarget : basename(s.pinned.cwd)) || 'session',
       cwd: s.pinned.cwd,
-      repo: repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || s.pinned.cwd),
+      repo: s.pinned.remote ? s.pinned.remote.label || s.pinned.remote.sshTarget : repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || s.pinned.cwd),
       branch: st.gitBranch,
       model: st.model,
       status,
@@ -991,6 +1049,27 @@ ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, cur()
 
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
 ipcMain.handle('tab:context', () => {
+  const current = cur()
+  if (current.remote) {
+    const remote = current.remote
+    return {
+      cwd: current.cwd,
+      sessionId: current.sessionId,
+      remote: true,
+      remoteHostId: remote.hostId,
+      remoteLabel: remote.label,
+      remoteSshTarget: remote.sshTarget,
+      repoRoot: '',
+      repoPath: '',
+      repoHost: '',
+      forgeKind: 'github',
+      forgeLabel: 'PR',
+      forgeSym: '#',
+      hasBacklog: false,
+      hasSessions: false,
+      hasAgents: false,
+    }
+  }
   const repoRoot = repoRootOf(cur().cwd)
   const repo = repoForCwd(cur().cwd)
   const forge = forgeFor(repoRoot)

@@ -7,6 +7,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Server,
   Square,
   SquareTerminal,
   X,
@@ -244,6 +245,7 @@ export function SessionView({
     }
   })
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
+  const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
     () => [...ALL_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
@@ -252,9 +254,9 @@ export function SessionView({
   const availablePlugins = useMemo(
     () =>
       allPlugins.filter(
-        (p) => choice.engine !== 'local' && (!p.engines || p.engines.includes(choice.engine as Engine)),
+        (p) => !isRemote && choice.engine !== 'local' && (!p.engines || p.engines.includes(choice.engine as Engine)),
       ),
-    [allPlugins, choice.engine],
+    [allPlugins, choice.engine, isRemote],
   )
   // Tab visibility: user can hide tabs they don't use via Settings → Tabs.
   // The hidden list lives in localStorage so a fresh window respects it
@@ -270,10 +272,10 @@ export function SessionView({
   }, [])
   const tabs = useMemo(
     () =>
-      ctx
+      ctx && !isRemote
         ? ALL_TABS.filter((t) => t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id))
         : [],
-    [ctx, hiddenTabs],
+    [ctx, hiddenTabs, isRemote],
   )
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
@@ -292,14 +294,18 @@ export function SessionView({
   useEffect(() => {
     if (terminalTile) setActiveTab('terminal')
   }, [terminalTile])
+  useEffect(() => {
+    if (isRemote && activeTab !== 'terminal') setActiveTab('terminal')
+  }, [isRemote, activeTab])
 
   useEffect(
     () =>
       onNavigate((ev) => {
         if (terminalTile && ev.tabId !== 'terminal') return
+        if (isRemote && ev.tabId !== 'terminal') return
         setActiveTab(ev.tabId)
       }),
-    [terminalTile],
+    [terminalTile, isRemote],
   )
 
   useEffect(() => {
@@ -361,15 +367,17 @@ export function SessionView({
   useEffect(() => {
     if (!info.sessionId || !active) return
     const raf = requestAnimationFrame(() => {
-      window.gt.transcript().then((t) => t.gitBranch && setBranch(t.gitBranch))
-      window.gt
-        .listCommandWidgets()
-        .then((ws) => setCmdPlugins(ws.map(commandWidgetToPlugin)))
-        .catch(() => {})
+      if (!isRemote) {
+        window.gt.transcript().then((t) => t.gitBranch && setBranch(t.gitBranch))
+        window.gt
+          .listCommandWidgets()
+          .then((ws) => setCmdPlugins(ws.map(commandWidgetToPlugin)))
+          .catch(() => {})
+      }
       window.gt.tabContext().then(setCtx).catch(() => {})
     })
     return () => cancelAnimationFrame(raf)
-  }, [info.sessionId, active])
+  }, [info.sessionId, active, isRemote])
 
   // Poll tab badges (e.g. HITL count) for any tab that declares one — refresh
   // on the transcript tick and a slow interval. Initial run also deferred by
@@ -400,7 +408,7 @@ export function SessionView({
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
   const activeWidgets = availablePlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
-  const showCockpit = !terminalTile && choice.engine !== 'local'
+  const showCockpit = !terminalTile && !isRemote && choice.engine !== 'local'
   const cockpitVisible = showCockpit && !cockpitCollapsed
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
@@ -484,7 +492,7 @@ export function SessionView({
   return (
     <div className="flex h-full flex-col">
       <div className={terminalTile ? 'hidden' : undefined}>
-        <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active} />
+        <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
       </div>
       <header
         className={`h-8 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300 ${
@@ -502,6 +510,15 @@ export function SessionView({
           )}
         </div>
         <div className="flex-1" />
+        {isRemote && (
+          <span
+            title={choice.remote?.sshTarget}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-px text-[10px] font-medium text-[var(--gt-accent-light)]"
+          >
+            <Server size={10} strokeWidth={2} />
+            {choice.remote?.label || choice.remote?.sshTarget || 'remote'}
+          </span>
+        )}
         {branch && (
           <span className="inline-flex items-center gap-1 truncate text-[11px] text-zinc-600">
             <GitBranch size={11} strokeWidth={2} />

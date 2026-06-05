@@ -7,6 +7,13 @@ type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  remote?: {
+    hostId: string
+    label: string
+    sshTarget: string
+    cwd?: string
+    platform?: 'auto' | 'linux' | 'macos'
+  }
   cols: number
   rows: number
 }

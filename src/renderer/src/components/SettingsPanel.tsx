@@ -26,6 +26,7 @@ import {
   Moon,
   Sun,
   Monitor,
+  Server,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
@@ -38,6 +39,7 @@ import type {
   PresetPrefs,
   AppearanceMode,
   AppearanceTabLayout,
+  RemotePlatform,
 } from '../lib/types'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
@@ -100,6 +102,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'paths', title: 'Paths', icon: FolderTree },
   { id: 'appearance', title: 'Appearance', icon: Palette },
   { id: 'engines', title: 'Engines', icon: Cpu },
+  { id: 'remote', title: 'Remote', icon: Server },
   { id: 'forge', title: 'Forge', icon: GitPullRequest },
   { id: 'apps', title: 'Apps', icon: AppWindow },
   { id: 'inbox', title: 'Inbox', icon: Inbox },
@@ -461,6 +464,12 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
   const [notify, setNotify] = useState<{ busy?: boolean; ok?: boolean; path?: string; error?: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [remoteDraft, setRemoteDraft] = useState({
+    label: '',
+    sshTarget: '',
+    defaultCwd: '',
+    platform: 'linux' as RemotePlatform,
+  })
 
   useEffect(() => {
     window.gt.settings.get().then(setS)
@@ -471,6 +480,32 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     const next = await window.gt.settings.patch(patch)
     setS(next)
     window.dispatchEvent(new CustomEvent('gt.settings.changed', { detail: next }))
+  }
+  const remoteId = (value: string) =>
+    value
+      .trim()
+      .replace(/[^\w.-]/g, '-')
+      .replace(/^-+|-+$/g, '')
+  const saveRemoteDraft = () => {
+    if (!s || !remoteDraft.sshTarget.trim()) return
+    const id = remoteId(remoteDraft.label || remoteDraft.sshTarget)
+    if (!id) return
+    const next = [
+      ...s.remoteHosts.filter((h) => h.id !== id),
+      {
+        id,
+        label: remoteDraft.label.trim() || remoteDraft.sshTarget.trim(),
+        sshTarget: remoteDraft.sshTarget.trim(),
+        defaultCwd: remoteDraft.defaultCwd.trim(),
+        platform: remoteDraft.platform,
+      },
+    ]
+    save({ remoteHosts: next })
+    setRemoteDraft({ label: '', sshTarget: '', defaultCwd: '', platform: 'linux' })
+  }
+  const removeRemoteHost = (id: string) => {
+    if (!s) return
+    save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
   }
   const appOptions = (detected: string[] | undefined, fallback: string[], current: string) => {
     const list = [...new Set([...(detected?.length ? detected : fallback), ...(current ? [current] : [])])]
@@ -962,6 +997,80 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   {e}
                 </button>
               ))}
+            </div>
+          </Section>
+
+          {/* Remote hosts */}
+          <Section
+            id="remote"
+            icon={Server}
+            title="Remote hosts"
+            desc="SSH profiles for remote terminal sessions. First slice is terminal-only; cockpit and repo tabs stay hidden until the remote daemon backs those data paths."
+          >
+            <div className="space-y-2">
+              {s.remoteHosts.length > 0 ? (
+                <div className="space-y-1.5">
+                  {s.remoteHosts.map((h) => (
+                    <div
+                      key={h.id}
+                      className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[11.5px] md:grid-cols-[1fr_1fr_1fr_auto]"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-zinc-200">{h.label}</div>
+                        <div className="truncate font-mono text-zinc-600">{h.id}</div>
+                      </div>
+                      <div className="min-w-0 font-mono text-zinc-400">{h.sshTarget}</div>
+                      <div className="min-w-0 font-mono text-zinc-500">
+                        {h.defaultCwd || '~'} - {h.platform}
+                      </div>
+                      <button
+                        onClick={() => removeRemoteHost(h.id)}
+                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-[11px] text-zinc-600">
+                  No remote hosts yet. Add one with an SSH config alias like <span className="font-mono">tm</span> or a target like <span className="font-mono">user@example.com</span>.
+                </div>
+              )}
+              <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
+                <input
+                  value={remoteDraft.label}
+                  onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
+                  placeholder="label"
+                  className={`${inp} font-mono`}
+                />
+                <input
+                  value={remoteDraft.sshTarget}
+                  onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
+                  placeholder="ssh target (tm)"
+                  spellCheck={false}
+                  className={`${inp} font-mono`}
+                />
+                <input
+                  value={remoteDraft.defaultCwd}
+                  onChange={(e) => setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))}
+                  placeholder="remote cwd (~)"
+                  spellCheck={false}
+                  className={`${inp} font-mono`}
+                />
+                <select
+                  value={remoteDraft.platform}
+                  onChange={(e) => setRemoteDraft((d) => ({ ...d, platform: e.target.value as RemotePlatform }))}
+                  className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                >
+                  <option value="linux" className="bg-[var(--gt-panel)]">Linux</option>
+                  <option value="macos" className="bg-[var(--gt-panel)]">macOS</option>
+                  <option value="auto" className="bg-[var(--gt-panel)]">Auto</option>
+                </select>
+                <button onClick={saveRemoteDraft} disabled={!remoteDraft.sshTarget.trim()} className={actionButton}>
+                  Add
+                </button>
+              </div>
             </div>
           </Section>
 

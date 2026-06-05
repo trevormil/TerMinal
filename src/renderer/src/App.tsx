@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Mail,
   Plus,
+  Search,
   Settings as SettingsIcon,
   Square,
   SquareTerminal,
@@ -18,6 +19,7 @@ import { Onboarding } from './components/Onboarding'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
+import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
 import { ALL_TABS } from './tabs/registry'
 import { navigateTo, onNavigate } from './lib/nav'
@@ -32,7 +34,14 @@ type Sess = { key: string; choice: Choice; info: Info }
 export type TerminalLayout = 'single' | 'split' | 'grid4'
 
 const cwdOf = (s: Sess) => s.info.cwd || s.choice.cwd || ''
-const repoLabelOf = (cwd: string) => cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
+const repoLabelOf = (cwd: string) => {
+  if (cwd.startsWith('ssh://')) {
+    const rest = cwd.replace(/^ssh:\/\//, '')
+    const slash = rest.indexOf('/')
+    return slash >= 0 ? rest.slice(0, slash) : rest
+  }
+  return cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
+}
 const loadTerminalLayout = (): TerminalLayout => {
   try {
     const raw = localStorage.getItem('gt.terminalLayout')
@@ -100,6 +109,7 @@ type Saved = {
   name: string
   engine?: SessionEngine
   mode?: 'new' | 'resume'
+  remote?: Choice['remote']
 }
 const restored: Saved[] = (() => {
   try {
@@ -129,6 +139,7 @@ export default function App() {
           sessionId: s.sessionId,
           cwd: s.cwd,
           name: s.name,
+          remote: s.remote,
         },
         info: { sessionId: s.sessionId, cwd: s.cwd },
       }
@@ -136,9 +147,9 @@ export default function App() {
   )
   const [activeKey, setActiveKey] = useState<string | null>(restored[restored.length - 1]?.key ?? null)
   // adding === 'workspace' → EntryScreen pick a repo (free cwd)
-  // adding === { repoRoot } → EntryScreen inside an existing workspace, cwd locked
+  // adding === { repoRoot, remote? } → EntryScreen inside an existing workspace, cwd locked
   // false → no overlay
-  const [adding, setAdding] = useState<false | 'workspace' | { repoRoot: string }>(
+  const [adding, setAdding] = useState<false | 'workspace' | { repoRoot: string; remote?: Choice['remote'] }>(
     restored.length === 0 ? 'workspace' : false,
   )
 
@@ -152,14 +163,17 @@ export default function App() {
         name: s.choice.name || '',
         engine: s.choice.engine || 'claude',
         mode: s.choice.mode,
+        remote: s.choice.remote,
       }))
-      .filter((s) => s.sessionId && s.engine !== 'local')
+      .filter((s) => s.sessionId && (s.engine !== 'local' || s.remote))
     localStorage.setItem('gt.openSessions', JSON.stringify(data))
   }, [sessions])
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
   const [inboxOpenCount, setInboxOpenCount] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
   const [terminalSessionOrder, setTerminalSessionOrder] =
     useState<Record<string, string[]>>(loadTerminalSessionOrder)
@@ -293,6 +307,15 @@ export default function App() {
         if (ev.tabId === 'hitl' || ev.tabId === 'inbox') {
           setInbox(true)
           setFleet(false)
+          setSearchOpen(false)
+          return
+        }
+        if (ev.tabId === 'search') {
+          const q = ev.payload?.q
+          setSearchQuery(typeof q === 'string' ? q : '')
+          setSearchOpen(true)
+          setFleet(false)
+          setInbox(false)
           return
         }
         if (ev.tabId === 'terminal:new') {
@@ -313,6 +336,7 @@ export default function App() {
           setTerminalLayout('single')
           setFleet(false)
           setInbox(false)
+          setSearchOpen(false)
           return
         }
         if (ev.tabId !== 'terminal') return
@@ -338,6 +362,7 @@ export default function App() {
         activate(match.key)
         setFleet(false)
         setInbox(false)
+        setSearchOpen(false)
       }),
     [sessions],
   )
@@ -567,7 +592,7 @@ export default function App() {
         }
   const activeTabs = useMemo(
     () =>
-      activeCtx
+      activeCtx && !activeCtx.remote
         ? ALL_TABS.filter((t) => t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
         : [],
     [activeCtx, hiddenTabs],
@@ -696,7 +721,37 @@ export default function App() {
         {sessions.length > 0 && (
           <button
             style={noDrag}
-            onClick={() => setFleet((f) => !f)}
+            onClick={() => {
+              if (activeCtx?.remote) return
+              setSearchOpen((v) => !v)
+              setFleet(false)
+              setInbox(false)
+            }}
+            disabled={!activeCtx || !!activeCtx.remote}
+            title={
+              activeCtx?.remote
+                ? 'Search requires a local workspace until remote daemon search is available'
+                : 'Search workspace'
+            }
+            className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+              searchOpen
+                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                : !activeCtx || activeCtx.remote
+                  ? 'cursor-not-allowed text-zinc-700'
+                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+            }`}
+          >
+            <Search size={13} strokeWidth={2} />
+            Search
+          </button>
+        )}
+        {sessions.length > 0 && (
+          <button
+            style={noDrag}
+            onClick={() => {
+              setFleet((f) => !f)
+              setSearchOpen(false)
+            }}
             title="Fleet overview — all sessions at a glance"
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
               fleet
@@ -713,6 +768,7 @@ export default function App() {
           onClick={() => {
             setInbox((v) => !v)
             setFleet(false)
+            setSearchOpen(false)
           }}
           title="Inbox — unresolved human-needed items"
           className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
@@ -818,7 +874,10 @@ export default function App() {
               )
             })}
             <button
-              onClick={() => setAdding({ repoRoot: activeWorkspaceRoot || '' })}
+              onClick={() => {
+                const active = sessions.find((x) => x.key === activeKey)
+                setAdding({ repoRoot: activeWorkspaceRoot || '', remote: active?.choice.remote })
+              }}
               title="New session in this workspace"
               className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
             >
@@ -889,7 +948,7 @@ export default function App() {
                 onStarted={(i) => setInfo(s.key, i)}
                 peerSessions={peers}
                 onSwitchSession={activate}
-                onAddSession={() => setAdding({ repoRoot: cwdOf(s) || '' })}
+                onAddSession={() => setAdding({ repoRoot: cwdOf(s) || '', remote: s.choice.remote })}
                 onCloseSession={closeSession}
                 onRenameSession={renameSession}
                 onReorderSession={reorderSession}
@@ -931,6 +990,20 @@ export default function App() {
             </div>
           </div>
         )}
+        {searchOpen && activeCtx && !activeCtx.remote && !showEntry && (
+          <div className="absolute inset-0 z-50 bg-black/25" onClick={() => setSearchOpen(false)}>
+            <div
+              className="absolute right-3 top-3 flex h-[min(660px,calc(100%-24px))] w-[min(860px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <WorkspaceSearchPanel
+                ctx={activeCtx}
+                initialQuery={searchQuery}
+                onClose={() => setSearchOpen(false)}
+              />
+            </div>
+          </div>
+        )}
         {showEntry && (
           <div className="absolute inset-0 z-50 bg-[var(--gt-bg)]">
             <EntryScreen
@@ -939,13 +1012,14 @@ export default function App() {
                 // even if the user typed something else (defensive — the UI
                 // hides the cwd input but onChoose can still set it).
                 if (adding && typeof adding === 'object') {
-                  addSession({ ...c, cwd: adding.repoRoot })
+                  addSession({ ...c, cwd: adding.repoRoot, remote: adding.remote || c.remote })
                 } else {
                   addSession(c)
                 }
               }}
               onCancel={sessions.length ? () => setAdding(false) : undefined}
               lockedCwd={adding && typeof adding === 'object' ? adding.repoRoot : undefined}
+              lockedRemote={adding && typeof adding === 'object' ? adding.remote : undefined}
             />
           </div>
         )}

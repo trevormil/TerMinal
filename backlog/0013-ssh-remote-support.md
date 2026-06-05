@@ -1,9 +1,9 @@
 ---
 id: 13
-title: "SSH remote support — run claude/codex on remote hosts from the local cockpit"
-status: icebox
-priority: medium
-horizon: future
+title: "Daemon-first remote support — attach TerMinal to local or SSH hosts"
+status: in-progress
+priority: high
+horizon: next
 hitl: false
 type: feature
 source: brainstorm
@@ -21,7 +21,23 @@ prod, future cloud GPUs / dev boxes) without losing the TerMinal cockpit
 /code-review artifacts). Currently the whole cockpit assumes everything
 is local: PTY spawn, `~/.config/TerMinal/`, MCP server, file tails.
 
-## Two shapes to choose between
+## Decision
+
+Use a daemon-first architecture for both local and remote execution.
+The renderer/main process should attach to a TerMinal daemon endpoint with
+explicit capabilities, regardless of whether that daemon is on localhost or
+behind SSH on an Ubuntu box.
+
+This avoids growing two separate product modes:
+
+- Local mode = attach to local daemon.
+- Remote mode = attach to remote daemon over SSH.
+- UI surfaces key off the daemon's capability map, not off assumptions about
+  the current filesystem.
+- Direct SSH terminal launch is allowed only as a bootstrap/diagnostic bridge
+  while the remote daemon install/probe flow is still coming online.
+
+## Prior shapes
 
 ### Shape A — SSH-wrapper sessions (small, ~1-2 days)
 
@@ -120,16 +136,28 @@ Practical first slice:
 - Not multi-tenant — single-operator (Trevor), single Mac cockpit.
 - Not running TerMinal itself headless on the remote.
 
-## Why icebox
+## Implementation slices
 
-Decision deferred. The cost (~1-2 weeks of focused work) is real but the
-ROI hinges on how many remote boxes Trevor actually wants to drive
-agents on. Today: one (Meridian), and that one mostly needs an SSH tab
-not full cockpit integration. The icebox value is: when there's a second
-or third remote box, Shape B becomes obviously worth it.
+1. Capability-gated remote shell bridge: add host profiles, launch a terminal
+   through SSH, tag sessions as remote, and hide all local-only cockpit/tabs.
+2. Local daemon parity: move local PTY/activity/artifact APIs behind the same
+   daemon contract the renderer will use for remote hosts.
+3. Ubuntu remote daemon: install/probe over SSH, report host health, engine
+   availability, platform, workspace roots, and supported capabilities.
+4. Remote PTY through daemon: spawn/resume engines via the daemon instead of
+   raw SSH commands.
+5. Remote artifacts one surface at a time: activity, HITL, runs, files/search,
+   tickets, MRs, schedules, and cockpit widgets.
 
-Revisit triggers:
-- A second prod box / cloud GPU / dev box enters the picture
-- Trevor wants to run scheduled agents on Meridian (not just ad-hoc
-  drives)
-- TerMinal Mac gets sluggish with all the work happening locally
+## Current first slice
+
+The first shipped slice is intentionally narrow:
+
+- Add remote host settings and SSH terminal launch.
+- Use Ubuntu-compatible shell commands and explicit platform metadata.
+- Treat remote sessions as terminal-only.
+- Hide cockpit, tabs, snippets, skills, bootstrap, plugin widgets, local
+  activity polling, and local workspace search for remote sessions.
+
+This makes the smoke-test path usable without implying that local artifacts
+are already remote-aware.

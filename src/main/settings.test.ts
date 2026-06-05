@@ -74,6 +74,11 @@ describe('migrate', () => {
       harnessDir: '/h',
       templateRepo: 'https://x/y',
       engines: { codex: { path: '/bin/codex' }, claude: { path: '' }, cursor: { path: '/bin/cursor-agent' } },
+      remoteHosts: [
+        { id: 'tm', label: 'Remote Desktop', sshTarget: 'tm', defaultCwd: '~/work', platform: 'linux' },
+        { id: '../../bad', sshTarget: 'bad host' },
+        { id: 'no-target' },
+      ],
     })
     expect(s.projectsDir).toBe('/p')
     expect(s.worktreesDir).toBe('/w')
@@ -83,6 +88,10 @@ describe('migrate', () => {
     expect(s.templateRepo).toBe('https://x/y')
     expect(s.engines.codex.path).toBe('/bin/codex')
     expect(s.engines.cursor.path).toBe('/bin/cursor-agent')
+    expect(s.remoteHosts).toEqual([
+      { id: 'tm', label: 'Remote Desktop', sshTarget: 'tm', defaultCwd: '~/work', platform: 'linux' },
+      { id: '..-..-bad', label: '..-..-bad', sshTarget: 'bad host', defaultCwd: '', platform: 'auto' },
+    ])
   })
 
   test('invalid enum values fall back to defaults', () => {

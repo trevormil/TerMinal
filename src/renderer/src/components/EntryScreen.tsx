@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw } from 'lucide-react'
-import type { Engine, SessionEngine, SessionMeta } from '../lib/types'
+import { X, FolderOpen, Plus, GitBranch, FolderGit2, SquareTerminal, RefreshCw, Server } from 'lucide-react'
+import type { Engine, RemoteHost, RemoteSession, SessionEngine, SessionMeta } from '../lib/types'
 import { EngineLogo } from './EngineLogo'
 import logo from '../assets/logo.png'
 
@@ -11,6 +11,7 @@ export type Choice = {
   cwd?: string
   name?: string
   initialInput?: string
+  remote?: RemoteSession
 }
 
 function rel(ms: number): string {
@@ -31,6 +32,7 @@ export function EntryScreen({
   onChoose,
   onCancel,
   lockedCwd,
+  lockedRemote,
 }: {
   onChoose: (c: Choice) => void
   onCancel?: () => void
@@ -39,13 +41,17 @@ export function EntryScreen({
    *  project-browser sections are hidden. Resume listing is auto-filtered to
    *  this repo. */
   lockedCwd?: string
+  lockedRemote?: RemoteSession
 }) {
   const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>({})
   const [loadingSessions, setLoadingSessions] = useState<Partial<Record<Engine, boolean>>>({})
   const [visibleSessionCount, setVisibleSessionCount] = useState(SESSION_PAGE_SIZE)
-  const [cwd, setCwd] = useState(lockedCwd || '') // new-session target
+  const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
+  const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
+  const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([])
+  const [remoteHostId, setRemoteHostId] = useState(lockedRemote?.hostId || '')
   const [name, setName] = useState('')
   // "new project from template" scaffold form
   const [projName, setProjName] = useState('')
@@ -72,6 +78,8 @@ export function EntryScreen({
   useEffect(() => {
     window.gt.settings.get().then((s) => {
       setDefaultParent(s.projectsDir)
+      setRemoteHosts(s.remoteHosts || [])
+      if (!remoteHostId && s.remoteHosts?.[0]) setRemoteHostId(s.remoteHosts[0].id)
     })
   }, [])
 
@@ -112,12 +120,41 @@ export function EntryScreen({
     if (dir) selectDir(dir)
   }
 
-  const canResume = isAiEngine(engine)
+  const canResume = isAiEngine(engine) && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const shown = sessions ? (filterDir ? sessions.filter((s) => underDir(s.cwd, filterDir)) : sessions) : []
   const visibleShown = shown.slice(0, visibleSessionCount)
   const hiddenShown = Math.max(0, shown.length - visibleShown.length)
   const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
+  const remoteHost = lockedRemote
+    ? {
+        id: lockedRemote.hostId,
+        label: lockedRemote.label,
+        sshTarget: lockedRemote.sshTarget,
+        defaultCwd: lockedRemote.cwd || '',
+        platform: lockedRemote.platform || 'auto',
+      }
+    : remoteHosts.find((h) => h.id === remoteHostId) || null
+  const remoteCwd = cwd.trim() || remoteHost?.defaultCwd || ''
+  const buildChoice = (): Choice => {
+    const base = {
+      mode: 'new' as const,
+      engine,
+      cwd: location === 'remote' ? remoteCwd : cwd.trim() || undefined,
+      name: name.trim() || undefined,
+    }
+    if (location !== 'remote' || !remoteHost) return base
+    return {
+      ...base,
+      remote: {
+        hostId: remoteHost.id,
+        label: remoteHost.label || remoteHost.sshTarget,
+        sshTarget: remoteHost.sshTarget,
+        cwd: remoteCwd,
+        platform: remoteHost.platform,
+      },
+    }
+  }
   const resumeCountLabel = sessions
     ? shown.length > visibleShown.length
       ? ` (${visibleShown.length}/${shown.length})`
@@ -149,7 +186,7 @@ export function EntryScreen({
             <>
               New session in{' '}
               <span className="font-mono text-zinc-300">{tilde(lockedCwd)}</span> — pick "Start"
-              for a fresh session or attach to a prior one below.
+              for a fresh session{lockedRemote ? '.' : ' or attach to a prior one below.'}
             </>
           ) : (
             <>
@@ -263,6 +300,78 @@ export function EntryScreen({
             ))}
           </div>
           {!lockedCwd && (
+            <div className="mb-2 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setLocation('local')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
+                  location === 'local'
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                }`}
+              >
+                <FolderOpen size={13} strokeWidth={2} />
+                Local
+              </button>
+              <button
+                onClick={() => setLocation('remote')}
+                disabled={remoteHosts.length === 0}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
+                  location === 'remote'
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : remoteHosts.length === 0
+                      ? 'cursor-not-allowed border-[var(--gt-border)] bg-black/10 text-zinc-700'
+                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                }`}
+              >
+                <Server size={13} strokeWidth={2} />
+                Remote SSH
+              </button>
+            </div>
+          )}
+          {location === 'remote' && (
+            <div className="mb-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
+              {lockedRemote ? (
+                <div className="mb-2 flex items-center gap-2 text-[12px] text-zinc-300">
+                  <Server size={13} className="text-[var(--gt-accent-2)]" />
+                  <span>{lockedRemote.label || lockedRemote.sshTarget}</span>
+                  <span className="font-mono text-zinc-600">{lockedRemote.sshTarget}</span>
+                </div>
+              ) : remoteHosts.length === 0 ? (
+                <div className="text-[11px] text-zinc-600">Add remote hosts in Settings &gt; Remote hosts.</div>
+              ) : (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {remoteHosts.map((h) => (
+                    <button
+                      key={h.id}
+                      onClick={() => {
+                        setRemoteHostId(h.id)
+                        setCwd(h.defaultCwd)
+                      }}
+                      className={`rounded-md border px-2 py-1 text-[11px] ${
+                        remoteHostId === h.id
+                          ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
+                          : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                      }`}
+                    >
+                      {h.label || h.sshTarget}
+                      <span className="ml-1 font-mono text-zinc-600">{h.sshTarget}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                placeholder={remoteHost?.defaultCwd || '~ (remote home)'}
+                spellCheck={false}
+                className={`${sel} w-full font-mono`}
+              />
+              <div className="mt-1 text-[10.5px] text-zinc-600">
+                Remote sessions currently expose terminal-only mode. Cockpit and repo tabs stay hidden until the remote daemon backs them.
+              </div>
+            </div>
+          )}
+          {!lockedCwd && location === 'local' && (
             <div className="mb-2 flex items-center gap-2">
               <button
                 onClick={browse}
@@ -288,9 +397,8 @@ export function EntryScreen({
               className={`${sel} min-w-0 flex-1`}
             />
             <button
-              onClick={() =>
-                onChoose({ mode: 'new', engine, cwd: cwd.trim() || undefined, name: name.trim() || undefined })
-              }
+              onClick={() => onChoose(buildChoice())}
+              disabled={location === 'remote' && !remoteHost}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
             >
               <Plus size={14} strokeWidth={2.5} />

@@ -115,26 +115,36 @@ export function TerminalPane({
   const [draft, setDraft] = useState({ title: '', group: 'Custom', prompt: '' })
   const [newBusy, setNewBusy] = useState(false)
   const [newErr, setNewErr] = useState('')
+  const isRemote = !!choice.remote
 
   useEffect(() => {
     if (!active) return
     requestAnimationFrame(() => termRef.current?.focus())
   }, [active])
 
-  const reloadSnippets = () =>
-    window.gt.snippets
+  const reloadSnippets = () => {
+    if (isRemote) {
+      setSnippets([])
+      return Promise.resolve()
+    }
+    return window.gt.snippets
       .list(choice.cwd || '')
       .then((r) => setSnippets(r.snippets))
       .catch(() => setSnippets([]))
+  }
 
   useEffect(() => {
     reloadSnippets()
+    if (isRemote) {
+      setSkills([])
+      return
+    }
     window.gt
       .listSkills()
       .then(setSkills)
       .catch(() => setSkills([]))
     window.gt.settings.get().then((s) => setNewEngine(s.defaultEngine)).catch(() => {})
-  }, [choice.cwd])
+  }, [choice.cwd, isRemote])
 
   useEffect(() => {
     const el = ref.current
@@ -157,8 +167,8 @@ export function TerminalPane({
     fit.fit()
 
     const gt = window.gt
-    let skillNames = new Set<string>(choice.engine === 'codex' ? ['ticket'] : [])
-    if (choice.engine === 'codex') {
+    let skillNames = new Set<string>(choice.engine === 'codex' && !isRemote ? ['ticket'] : [])
+    if (choice.engine === 'codex' && !isRemote) {
       gt.listSkills()
         .then((skills) => {
           skillNames = new Set(
@@ -267,7 +277,7 @@ export function TerminalPane({
       if (termRef.current === term) termRef.current = null
       writeInputRef.current = () => {}
     }
-  }, [])
+  }, [sessionKey, isRemote])
 
   useEffect(() => {
     if (!contextMenu) return
@@ -410,6 +420,7 @@ export function TerminalPane({
       <div className="absolute inset-0 overflow-hidden p-3">
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
+      {!isRemote && (
       <div className="absolute right-4 top-4 z-20">
         <button
           onClick={() => setMenuOpen((v) => !v)}
@@ -419,6 +430,7 @@ export function TerminalPane({
           <MessageSquareText size={14} strokeWidth={2} />
         </button>
       </div>
+      )}
       {contextMenu && (
         <div
           className="fixed z-[70] min-w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[12px] text-zinc-200 shadow-2xl"

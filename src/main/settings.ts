@@ -41,6 +41,14 @@ export type OpenRouterCfg = {
   apiKey: string
   defaultModel: string // e.g. 'anthropic/claude-haiku-4.5'
 }
+export type RemotePlatform = 'auto' | 'linux' | 'macos'
+export type RemoteHost = {
+  id: string
+  label: string
+  sshTarget: string // ssh config alias or user@host
+  defaultCwd: string // '' = remote login shell home
+  platform: RemotePlatform
+}
 export type Settings = {
   onboarded: boolean
   projectsDir: string // '' → resolved to your home dir
@@ -56,6 +64,7 @@ export type Settings = {
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
    *  precheck escalations, etc. Optional. */
   openrouter: OpenRouterCfg
+  remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
 }
@@ -92,9 +101,36 @@ export function defaultSettings(): Settings {
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
+    remoteHosts: [],
     harnessDir: '',
     templateRepo: '',
   }
+}
+
+function remoteHosts(raw: unknown): RemoteHost[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x) => {
+      const sshTarget = typeof x.sshTarget === 'string' ? x.sshTarget.trim() : ''
+      const idRaw = typeof x.id === 'string' ? x.id.trim() : ''
+      const id = (idRaw || sshTarget).replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '')
+      const platform: RemotePlatform =
+        x.platform === 'linux' || x.platform === 'macos' || x.platform === 'auto'
+          ? x.platform
+          : 'auto'
+      return {
+        id,
+        label:
+          typeof x.label === 'string' && x.label.trim()
+            ? x.label.trim()
+            : id || sshTarget,
+        sshTarget,
+        defaultCwd: typeof x.defaultCwd === 'string' ? x.defaultCwd.trim() : '',
+        platform,
+      }
+    })
+    .filter((h) => h.id && h.sshTarget)
 }
 
 /** Coerce any on-disk shape (incl. the legacy flat booleans) into Settings. */
@@ -153,6 +189,7 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.openrouter.apiKey === 'string') s.openrouter.apiKey = r.openrouter.apiKey
     if (typeof r.openrouter.defaultModel === 'string') s.openrouter.defaultModel = r.openrouter.defaultModel
   }
+  s.remoteHosts = remoteHosts(r.remoteHosts)
   return s
 }
 
