@@ -105,6 +105,22 @@ export function EntryScreen({
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (isAiEngine(next)) loadEngineSessions(next)
   }
+  const switchLocation = (next: 'local' | 'remote') => {
+    setLocation(next)
+    setFilterDir('')
+    if (lockedCwd) return
+    if (next === 'local') {
+      setCwd('')
+      return
+    }
+    const host = remoteHosts.find((h) => h.id === remoteHostId) || remoteHosts[0]
+    if (host) {
+      setRemoteHostId(host.id)
+      setCwd(host.defaultCwd || '')
+    } else {
+      setCwd('')
+    }
+  }
 
   useEffect(() => {
     setVisibleSessionCount(SESSION_PAGE_SIZE)
@@ -302,7 +318,7 @@ export function EntryScreen({
           {!lockedCwd && (
             <div className="mb-2 grid grid-cols-2 gap-2">
               <button
-                onClick={() => setLocation('local')}
+                onClick={() => switchLocation('local')}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
                   location === 'local'
                     ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
@@ -310,10 +326,13 @@ export function EntryScreen({
                 }`}
               >
                 <FolderOpen size={13} strokeWidth={2} />
-                Local
+                <span className="flex flex-col items-start leading-tight">
+                  <span>Local</span>
+                  <span className="text-[9.5px] font-normal text-zinc-600">this Mac</span>
+                </span>
               </button>
               <button
-                onClick={() => setLocation('remote')}
+                onClick={() => switchLocation('remote')}
                 disabled={remoteHosts.length === 0}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] ${
                   location === 'remote'
@@ -324,10 +343,37 @@ export function EntryScreen({
                 }`}
               >
                 <Server size={13} strokeWidth={2} />
-                Remote SSH
+                <span className="flex flex-col items-start leading-tight">
+                  <span>Remote SSH</span>
+                  <span className="text-[9.5px] font-normal text-zinc-600">
+                    {remoteHost ? remoteHost.label || remoteHost.sshTarget : 'host profile'}
+                  </span>
+                </span>
               </button>
             </div>
           )}
+          <div
+            className={`mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] ${
+              location === 'remote'
+                ? 'border-[var(--gt-accent)]/30 bg-[var(--gt-accent)]/10 text-zinc-300'
+                : 'border-[var(--gt-border)] bg-black/20 text-zinc-500'
+            }`}
+          >
+            {location === 'remote' ? (
+              <>
+                <Server size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
+                <span className="font-semibold text-zinc-200">Remote</span>
+                <span className="font-mono text-zinc-500">{remoteHost?.sshTarget || 'no host selected'}</span>
+                <span className="text-zinc-600">repo tabs read from the SSH host</span>
+              </>
+            ) : (
+              <>
+                <FolderOpen size={13} strokeWidth={2} />
+                <span className="font-semibold text-zinc-300">Local</span>
+                <span className="text-zinc-600">repo tabs read from this machine</span>
+              </>
+            )}
+          </div>
           {location === 'remote' && (
             <div className="mb-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
               {lockedRemote ? (
@@ -345,16 +391,20 @@ export function EntryScreen({
                       key={h.id}
                       onClick={() => {
                         setRemoteHostId(h.id)
-                        setCwd(h.defaultCwd)
+                        setCwd(h.defaultCwd || '')
                       }}
-                      className={`rounded-md border px-2 py-1 text-[11px] ${
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                         remoteHostId === h.id
                           ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
                           : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                       }`}
                     >
-                      {h.label || h.sshTarget}
-                      <span className="ml-1 font-mono text-zinc-600">{h.sshTarget}</span>
+                      <Server size={11} strokeWidth={2} />
+                      <span>{h.label || h.sshTarget}</span>
+                      <span className="font-mono text-zinc-600">{h.sshTarget}</span>
+                      <span className="rounded bg-white/5 px-1 text-[9px] uppercase tracking-wide text-zinc-600">
+                        {h.platform}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -367,7 +417,7 @@ export function EntryScreen({
                 className={`${sel} w-full font-mono`}
               />
               <div className="mt-1 text-[10.5px] text-zinc-600">
-                Remote sessions currently expose terminal-only mode. Cockpit and repo tabs stay hidden until the remote daemon backs them.
+                Remote sessions launch on the SSH host. Tickets, MRs, Files, Docs, CI, and Search read from that remote workspace.
               </div>
             </div>
           )}
