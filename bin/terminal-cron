@@ -707,7 +707,7 @@ async function runSchedule(id) {
   const cmd = scriptPath
     ? shq(scriptPath)
     : sched.engine === 'claude'
-      ? `claude -p ${shq(sched.prompt)} --dangerously-skip-permissions${modelFlag}`
+      ? `claude -p ${shq(sched.prompt)} --dangerously-skip-permissions --permission-mode auto${modelFlag}`
       : sched.engine === 'cursor'
         ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
       : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`

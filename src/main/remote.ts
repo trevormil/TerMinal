@@ -159,7 +159,7 @@ function runStart(root,input){
     'if [ -x '+sq(scriptAgent)+' ]; then',
     '  '+sq(scriptAgent),
     'elif [ '+sq(engine)+' = "claude" ]; then',
-    '  '+shPath(bin)+' -p "$PROMPT" --dangerously-skip-permissions'+modelFlag,
+    '  '+shPath(bin)+' -p "$PROMPT" --dangerously-skip-permissions --permission-mode auto'+modelFlag,
     'elif [ '+sq(engine)+' = "cursor" ]; then',
     '  '+shPath(bin)+' -p --force --trust --output-format text --workspace '+sq(worktree)+modelFlag+' "$PROMPT"',
     'else',

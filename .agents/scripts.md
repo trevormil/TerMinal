@@ -58,7 +58,7 @@ A minimal "old-style" agent translates 1:1:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-exec claude -p 'Act as the documentation agent ...' --dangerously-skip-permissions
+exec claude -p 'Act as the documentation agent ...' --dangerously-skip-permissions --permission-mode auto
 ```
 
 A pipeline-style script with a conditional escalation:
@@ -78,6 +78,7 @@ fi
 # Failed precheck — escalate
 claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file a HITL with the failure context." \
   --dangerously-skip-permissions \
+  --permission-mode auto \
   --model "${TERMINAL_MODEL:-sonnet}"
 ```
 

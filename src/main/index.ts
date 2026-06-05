@@ -208,6 +208,7 @@ type StartOpts = {
 }
 
 const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
+const CLAUDE_AUTO_FLAGS = ['--dangerously-skip-permissions', '--permission-mode', 'auto']
 
 function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
   const target = remote.label || remote.sshTarget
@@ -282,6 +283,7 @@ function startSession(key: string, opts: StartOpts) {
     args.push('--session-id', sessionId)
     if (opts.name) args.push('--name', opts.name)
   }
+  if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
   if (defaultModel && engine !== 'local') args.push('--model', defaultModel)
   const remoteEnginePath = remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
 

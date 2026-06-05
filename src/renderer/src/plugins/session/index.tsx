@@ -7,6 +7,7 @@ const shortModel = (m: string) =>
   m.replace('claude-', '').replace(/-(\d+)-(\d+)/, '-$1.$2').replace(/\[1m\]/, ' 1M')
 
 const MODE: Record<string, { label: string; tone: BadgeTone }> = {
+  auto: { label: 'auto', tone: 'yellow' },
   bypassPermissions: { label: 'auto', tone: 'yellow' },
   acceptEdits: { label: 'accept-edits', tone: 'blue' },
   plan: { label: 'plan', tone: 'blue' },

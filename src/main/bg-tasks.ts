@@ -157,8 +157,9 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
             enrichedPrompt,
             '--add-dir',
             worktree,
+            '--dangerously-skip-permissions',
             '--permission-mode',
-            'acceptEdits',
+            'auto',
             ...(input.model ? ['--model', input.model] : []),
           ],
         }

@@ -706,7 +706,7 @@ function buildCmd(engine: Engine, worktree: string, prompt: string, model?: stri
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${shq(model)}` : ''
   if (engine === 'claude') {
-    return `${shq(bin)} -p ${shq(prompt)} --dangerously-skip-permissions${modelFlag}`
+    return `${shq(bin)} -p ${shq(prompt)} --dangerously-skip-permissions --permission-mode auto${modelFlag}`
   }
   if (engine === 'cursor') {
     return `${shq(bin)} -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
@@ -1043,7 +1043,7 @@ The script body MUST follow this shape:
       TERMINAL_ENGINE    — hint from sidecar / schedule override (default fallback when calling an agent engine)
       TERMINAL_MODEL     — hint from sidecar / schedule override
   - For LLM calls inside the script:
-      claude -p "<prompt>" --dangerously-skip-permissions --model "\${TERMINAL_MODEL:-sonnet}"
+      claude -p "<prompt>" --dangerously-skip-permissions --permission-mode auto --model "\${TERMINAL_MODEL:-sonnet}"
       codex exec -s danger-full-access -C "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-gpt-5}" "<prompt>"
       cursor-agent -p --force --trust --workspace "\${TERMINAL_WORKTREE}" --model "\${TERMINAL_MODEL:-composer-2.5-fast}" "<prompt>"
   - For TerMinal helpers, use these (on PATH via ~/.config/TerMinal/bin/terminal-cli):

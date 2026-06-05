@@ -68,7 +68,7 @@ function callClaudeP(
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   return new Promise((resolve) => {
     const bin = enginePath('claude') || 'claude'
-    const args = ['-p', prompt, '--dangerously-skip-permissions', '--model', model]
+    const args = ['-p', prompt, '--dangerously-skip-permissions', '--permission-mode', 'auto', '--model', model]
     execFile(
       bin,
       args,

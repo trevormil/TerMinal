@@ -135,7 +135,7 @@ const SOURCE: Record<string, { label: string; tone: BadgeTone }> = {
 // How the engine wraps the prompt at run time (worktree filled in per run).
 const runsAs = (engine: Engine): string =>
   engine === 'claude'
-    ? "claude -p '<prompt>' --dangerously-skip-permissions"
+    ? "claude -p '<prompt>' --dangerously-skip-permissions --permission-mode auto"
     : engine === 'cursor'
       ? "cursor-agent -p --force --trust --workspace <worktree> '<prompt>'"
       : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
