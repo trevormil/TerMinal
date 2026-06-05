@@ -42,7 +42,6 @@ const repoLabelOf = (cwd: string) => {
   }
   return cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
 }
-const REMOTE_TABS = new Set(['tickets', 'mrs', 'files', 'docs', 'ci', 'browser', 'activity', 'help'])
 const loadTerminalLayout = (): TerminalLayout => {
   try {
     const raw = localStorage.getItem('gt.terminalLayout')
@@ -594,7 +593,7 @@ export default function App() {
   const activeTabs = useMemo(
     () =>
       activeCtx
-        ? ALL_TABS.filter((t) => (!activeCtx.remote || REMOTE_TABS.has(t.id)) && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
+        ? ALL_TABS.filter((t) => activeCtx.capabilities?.[t.id] !== false && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id))
         : [],
     [activeCtx, hiddenTabs],
   )

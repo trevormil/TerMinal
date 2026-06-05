@@ -52,7 +52,7 @@ import { listSkills } from './skills'
 import { forgeFor } from './forge'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
-import { hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
+import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry } from './files'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions } from './sessions'
 import { listDocs, readDoc } from './docs'
@@ -105,6 +105,7 @@ import {
   removeWorktree,
   onAgentEvent,
   loadPersistedRuns,
+  type Agent,
   type Engine,
   type PrAgentKind,
 } from './agents'
@@ -177,13 +178,18 @@ import { describeSpec, nextRun, type ScheduleSpec } from './cron'
 import { readPersonas } from './personas'
 import { workspaceSearch, type WorkspaceSearchKind } from './workspace-search'
 import {
+  remoteAgents,
   remoteCi,
   remoteCommandForEngine,
   remoteDocs,
   remoteFiles,
   remoteGitStatus,
   remoteMrs,
+  remoteNotes,
   remoteProbe,
+  remoteRuns,
+  remoteSchedules,
+  remoteSessions,
   remoteTickets,
   remoteWorkspaceSearch,
 } from './remote'
@@ -702,8 +708,25 @@ ipcMain.handle('presets:get', () => ({
 }))
 ipcMain.handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
 ipcMain.handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
-ipcMain.handle('agents:list', () => readAgents(repoRootOf(cur().cwd)))
+ipcMain.handle('agents:list', async () => {
+  const remote = curRemote()
+  if (!remote) return readAgents(repoRootOf(cur().cwd))
+  const hiddenDefaults = hiddenPresetIds('agents')
+  const byId = new Map<string, Agent>()
+  for (const a of DEFAULT_AGENTS.filter((a) => !hiddenDefaults.has(a.id))) {
+    byId.set(a.id, { ...a, source: 'default', hasScript: false })
+  }
+  for (const a of await remoteAgents.list(remote).catch(() => [])) {
+    byId.set(a.id, {
+      ...byId.get(a.id),
+      ...a,
+      source: byId.has(a.id) ? ('repo-override' as const) : ('repo' as const),
+    })
+  }
+  return [...byId.values()]
+})
 ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
+  if (curRemote()) return { error: 'remote agent editing needs the remote daemon writer' }
   const root = repoRootOf(cur().cwd)
   const r = saveAgent(root, agent)
   if ('ok' in r) {
@@ -719,6 +742,7 @@ ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: s
   return r
 })
 ipcMain.handle('agents:reset', (_e, id: string) => {
+  if (curRemote()) return { error: 'remote agent reset needs the remote daemon writer' }
   const root = repoRootOf(cur().cwd)
   const r = resetAgent(root, id)
   if ('ok' in r) {
@@ -737,6 +761,8 @@ ipcMain.handle('agents:reset', (_e, id: string) => {
 // { path, body } when found, null otherwise — used by the Agents tab to render
 // the bash inline alongside the prompt.
 ipcMain.handle('agents:script', (_e, id: string) => {
+  const remote = curRemote()
+  if (remote) return remoteAgents.script(remote, id)
   const root = repoRootOf(cur().cwd) || ''
   const p = locateScript(root, id)
   if (!p) return null
@@ -747,10 +773,12 @@ ipcMain.handle('agents:script', (_e, id: string) => {
   }
 })
 ipcMain.handle('agents:state', (_e, id: string) => {
+  if (curRemote()) return { path: `remote:${id}`, exists: false, state: {} }
   const root = repoRootOf(cur().cwd) || ''
   return readAgentState(root, id)
 })
 ipcMain.handle('agents:state-reset', (_e, id: string) => {
+  if (curRemote()) return { ok: true }
   const root = repoRootOf(cur().cwd) || ''
   const r = resetAgentState(root, id)
   if ('ok' in r) {
@@ -768,17 +796,20 @@ ipcMain.handle('agents:state-reset', (_e, id: string) => {
 ipcMain.handle(
   'agents:design',
   (_e, text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
-    runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope, model),
+    curRemote() ? { error: 'remote agent design needs the remote daemon writer' } : runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope, model),
 )
 ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
-  runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
+  curRemote() ? { error: 'remote schedule design needs the remote daemon writer' } : runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string) =>
-  runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model),
+  curRemote()
+    ? { error: 'remote agent runs require the remote daemon runner; start the agent in a remote terminal for now' }
+    : runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model),
 )
 ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string) => {
+  if (curRemote()) return { error: 'remote ticket agents require the remote daemon runner; start the agent in a remote terminal for now' }
   const root = repoRootOf(cur().cwd)
   const t = getTicket(root, slug)
   return t
@@ -795,12 +826,17 @@ ipcMain.handle(
     persona?: string,
     pipeline?: string,
     model?: string,
-  ) => runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model),
+  ) =>
+    curRemote()
+      ? { error: 'remote MR agents require the remote daemon runner; start the agent in a remote terminal for now' }
+      : runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model),
 )
-ipcMain.handle('agents:runs', () => listRuns())
-ipcMain.handle('agents:rerun', (_e, runId: string) => rerunAgentRun(runId))
-ipcMain.handle('agents:cancel', (_e, runId: string) => cancelRun(runId))
-ipcMain.handle('agents:remove-worktree', (_e, runId: string) => removeWorktree(runId))
+ipcMain.handle('agents:runs', () => (curRemote() ? [] : listRuns()))
+ipcMain.handle('agents:rerun', (_e, runId: string) =>
+  curRemote() ? { error: 'remote rerun needs the remote daemon runner' } : rerunAgentRun(runId),
+)
+ipcMain.handle('agents:cancel', (_e, runId: string) => (curRemote() ? false : cancelRun(runId)))
+ipcMain.handle('agents:remove-worktree', (_e, runId: string) => (curRemote() ? false : removeWorktree(runId)))
 ipcMain.handle('persistent-agents:list', () => listPersistentAgents())
 ipcMain.handle('persistent-agents:get', (_e, id: string) => getPersistentAgent(id))
 ipcMain.handle('persistent-agents:save', (_e, input: unknown) => savePersistentAgent(input as any))
@@ -844,6 +880,13 @@ ipcMain.handle('persistent-agents:artifacts-read', (_e, id: string, rel: string)
 // lockstep, and `enriched` annotates each with its human cadence + next fire.
 ipcMain.handle('schedules:list', () => {
   const now = Date.now()
+  const remote = curRemote()
+  if (remote) {
+    return remoteSchedules
+      .list(remote)
+      .then((rows) => rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) })))
+      .catch(() => [])
+  }
   return readSchedules(now).map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) }))
 })
 ipcMain.handle(
@@ -860,6 +903,7 @@ ipcMain.handle(
       env?: Record<string, string>
     },
   ) => {
+    if (curRemote()) return { error: 'remote schedule editing needs the remote daemon writer' }
     const root = repoRootOf(cur().cwd)
     if (!root) return { error: 'not a git repo' }
     const agent = readAgents(root).find((a) => a.id === input.agentId)
@@ -906,6 +950,7 @@ function sanitizeScheduleEnv(raw: unknown): Record<string, string> | undefined {
   return Object.keys(out).length ? out : undefined
 }
 ipcMain.handle('schedules:remove', (_e, id: string) => {
+  if (curRemote()) return false
   const s = getSchedule(id)
   unscheduleJob(id)
   const ok = removeSchedule(id)
@@ -922,6 +967,7 @@ ipcMain.handle('schedules:remove', (_e, id: string) => {
   return ok
 })
 ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
+  if (curRemote()) return false
   const ok = toggleSchedule(id, enabled)
   const s = getSchedule(id)
   if (s) {
@@ -944,6 +990,7 @@ ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
   return ok
 })
 ipcMain.handle('schedules:run-now', (_e, id: string) => {
+  if (curRemote()) return { error: 'remote schedule run-now needs the remote daemon runner' }
   const s = getSchedule(id)
   runScheduleNow(id)
   emitActivity({
@@ -956,16 +1003,25 @@ ipcMain.handle('schedules:run-now', (_e, id: string) => {
   })
   return { ok: true }
 })
-ipcMain.handle('schedules:runs', (_e, id?: string) => readCronRuns(id))
-ipcMain.handle('runs:all', () => listAllRuns())
+ipcMain.handle('schedules:runs', (_e, id?: string) => {
+  const remote = curRemote()
+  return remote ? remoteSchedules.runs(remote, id).catch(() => []) : readCronRuns(id)
+})
+ipcMain.handle('runs:all', () => {
+  const remote = curRemote()
+  return remote ? remoteRuns.all(remote).catch(() => []) : listAllRuns()
+})
 ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg', runId: string) => {
+  const remote = curRemote()
+  if (remote) return remoteRuns.log(remote, runId).catch(() => '')
   if (source === 'cron') return readCronRunLog(runId)
   if (source === 'bg') return readBgTaskLog(runId)
   // In-process agent run output lives in memory via listRuns(); look it up by id.
   return listRuns().find((r) => r.id === runId)?.output || ''
 })
-ipcMain.handle('schedules:disabled-list', () => listDisabled())
+ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
+  if (curRemote()) return false
   const ok = setAgentDisabled(id, disabled)
   emitActivity({
     kind: 'check',
@@ -976,6 +1032,7 @@ ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) 
   return ok
 })
 ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
+  if (curRemote()) return false
   const ids = readSchedules(Date.now()).map((s) => s.id)
   const ok = setAllSchedulesDisabled(ids, disabled)
   emitActivity({
@@ -986,8 +1043,11 @@ ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
   })
   return ok
 })
-ipcMain.handle('schedules:run-log', (_e, runId: string) => readCronRunLog(runId))
-ipcMain.handle('schedules:reconcile', () => reconcileSchedules())
+ipcMain.handle('schedules:run-log', (_e, runId: string) => {
+  const remote = curRemote()
+  return remote ? remoteSchedules.runLog(remote, runId).catch(() => '') : readCronRunLog(runId)
+})
+ipcMain.handle('schedules:reconcile', () => (curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : reconcileSchedules()))
 ipcMain.handle('listeners:status', () => readListenerStatus())
 ipcMain.handle('listeners:process', () => {
   const r = processListenerInbox()
@@ -1007,6 +1067,7 @@ ipcMain.handle('hitl:remove', (_e, id: string) => removeHitl(id))
 ipcMain.handle('factory:health', () => factoryHealth())
 ipcMain.handle('factory:start', (_e, engine: Engine) => runFactorySpawn(repoRootOf(cur().cwd), engine || 'codex'))
 ipcMain.handle('schedules:remove-all', () => {
+  if (curRemote()) return { removed: 0 }
   const n = removeAllJobs()
   for (const s of readSchedules()) removeSchedule(s.id)
   emitActivity({
@@ -1078,7 +1139,24 @@ ipcMain.handle('tab:context', async () => {
       forgeSym: probe?.forgeSym || '#',
       hasBacklog: !!probe?.hasBacklog,
       hasSessions: !!probe?.hasSessions,
-      hasAgents: false,
+      hasAgents: true,
+      capabilities: {
+        terminal: true,
+        tickets: true,
+        mrs: true,
+        agents: true,
+        runs: true,
+        schedules: true,
+        ci: true,
+        files: true,
+        docs: true,
+        sessions: true,
+        notes: true,
+        reports: true,
+        browser: true,
+        activity: true,
+        help: true,
+      },
     }
   }
   const repoRoot = repoRootOf(cur().cwd)
@@ -1106,9 +1184,14 @@ ipcMain.handle('docs:get', (_e, relPath: string) => {
   const r = curRemote()
   return r ? remoteDocs.get(r, relPath) : readDoc(repoRootOf(cur().cwd) || '', relPath)
 })
-ipcMain.handle('sessions:project-list', () => listProjectSessions(repoRootOf(cur().cwd)))
+ipcMain.handle('sessions:project-list', () => {
+  const r = curRemote()
+  return r ? remoteSessions.list(r).catch(() => []) : listProjectSessions(repoRootOf(cur().cwd))
+})
 ipcMain.handle('sessions:project-get', (_e, slug: string) =>
-  getProjectSession(repoRootOf(cur().cwd), slug),
+  curRemote()
+    ? remoteSessions.get(curRemote()!, slug).catch(() => null)
+    : getProjectSession(repoRootOf(cur().cwd), slug),
 )
 ipcMain.handle('tickets:list', () => {
   const r = curRemote()
@@ -1394,15 +1477,15 @@ ipcMain.handle('release:tail', () => {
 // how the harness itself is doing without ls-ing config dirs. Cheap: one
 // directory listing + the in-memory run map.
 // Background tasks IPCs. /bg <prompt> fires a detached run.
-ipcMain.handle('bg:list', () => listBgTasks())
-ipcMain.handle('bg:get', (_e, id: string) => getBgTask(id))
-ipcMain.handle('bg:log', (_e, id: string) => readBgTaskLog(id))
+ipcMain.handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
+ipcMain.handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
+ipcMain.handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
 ipcMain.handle(
   'bg:spawn',
   (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) =>
-    spawnBgTask(input),
+    curRemote() ? { error: 'remote background tasks need the remote daemon runner' } : spawnBgTask(input),
 )
-ipcMain.handle('bg:cancel', (_e, id: string) => cancelBgTask(id))
+ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
 
 // OpenRouter IPCs — test connectivity + chat passthrough.
 ipcMain.handle('openrouter:test', async () => {
@@ -1459,10 +1542,12 @@ ipcMain.handle('budgets:override', (_e, durationMs: number) => {
 ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
-ipcMain.handle('observability:summary', (_e, range: Range = 'today') => summaryFor(range))
-ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => agentROI(range))
-ipcMain.handle('observability:daily', (_e, days: number = 7) => dailySpend(days))
-ipcMain.handle('observability:runs', (_e, limit: number = 100) => listAIRuns(limit))
+ipcMain.handle('observability:summary', (_e, range: Range = 'today') =>
+  curRemote() ? { totalUsd: 0, totalRuns: 0, byModel: {}, bySource: {}, byAgent: {}, byRepo: {} } : summaryFor(range),
+)
+ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => (curRemote() ? [] : agentROI(range)))
+ipcMain.handle('observability:daily', (_e, days: number = 7) => (curRemote() ? [] : dailySpend(days)))
+ipcMain.handle('observability:runs', (_e, limit: number = 100) => (curRemote() ? [] : listAIRuns(limit)))
 ipcMain.handle('observability:models', () => knownModels())
 
 ipcMain.handle('harness:status', () => {
@@ -1538,9 +1623,14 @@ ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text
 ipcMain.handle('clipboard:read', () => clipboard.readText())
 
 // ---- notes (repo-bound + global, persisted) ----
-ipcMain.handle('notes:read', (_e, scope: NotesScope) => readNotes(scope, repoRootOf(cur().cwd)))
+ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
+  const remote = curRemote()
+  return remote ? remoteNotes.read(remote, scope).catch(() => '') : readNotes(scope, repoRootOf(cur().cwd))
+})
 ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
-  writeNotes(scope, content, repoRootOf(cur().cwd)),
+  curRemote()
+    ? remoteNotes.write(curRemote()!, scope, content).catch(() => false)
+    : writeNotes(scope, content, repoRootOf(cur().cwd)),
 )
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----

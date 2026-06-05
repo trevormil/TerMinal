@@ -136,7 +136,7 @@ export function EntryScreen({
     if (dir) selectDir(dir)
   }
 
-  const canResume = isAiEngine(engine) && !lockedRemote
+  const canResume = isAiEngine(engine) && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const shown = sessions ? (filterDir ? sessions.filter((s) => underDir(s.cwd, filterDir)) : sessions) : []
   const visibleShown = shown.slice(0, visibleSessionCount)
@@ -352,40 +352,25 @@ export function EntryScreen({
               </button>
             </div>
           )}
-          <div
-            className={`mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[11px] ${
-              location === 'remote'
-                ? 'border-[var(--gt-accent)]/30 bg-[var(--gt-accent)]/10 text-zinc-300'
-                : 'border-[var(--gt-border)] bg-black/20 text-zinc-500'
-            }`}
-          >
-            {location === 'remote' ? (
-              <>
-                <Server size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                <span className="font-semibold text-zinc-200">Remote</span>
-                <span className="font-mono text-zinc-500">{remoteHost?.sshTarget || 'no host selected'}</span>
-                <span className="text-zinc-600">repo tabs read from the SSH host</span>
-              </>
-            ) : (
-              <>
-                <FolderOpen size={13} strokeWidth={2} />
-                <span className="font-semibold text-zinc-300">Local</span>
-                <span className="text-zinc-600">repo tabs read from this machine</span>
-              </>
-            )}
-          </div>
           {location === 'remote' && (
-            <div className="mb-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2">
+            <div className="mb-2 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+              <div className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-500">
+                <Server size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
+                <span className="font-semibold text-zinc-200">Remote daemon</span>
+                <span className="truncate font-mono">{remoteHost?.sshTarget || 'no host selected'}</span>
+                <span className="hidden text-zinc-600 sm:inline">
+                  tabs read from this SSH workspace
+                </span>
+              </div>
               {lockedRemote ? (
-                <div className="mb-2 flex items-center gap-2 text-[12px] text-zinc-300">
-                  <Server size={13} className="text-[var(--gt-accent-2)]" />
+                <div className="flex items-center gap-2 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-zinc-300">
                   <span>{lockedRemote.label || lockedRemote.sshTarget}</span>
                   <span className="font-mono text-zinc-600">{lockedRemote.sshTarget}</span>
                 </div>
               ) : remoteHosts.length === 0 ? (
                 <div className="text-[11px] text-zinc-600">Add remote hosts in Settings &gt; Remote hosts.</div>
               ) : (
-                <div className="mb-2 flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {remoteHosts.map((h) => (
                     <button
                       key={h.id}
@@ -417,7 +402,7 @@ export function EntryScreen({
                 className={`${sel} w-full font-mono`}
               />
               <div className="mt-1 text-[10.5px] text-zinc-600">
-                Remote sessions launch on the SSH host. Tickets, MRs, Files, Docs, CI, and Search read from that remote workspace.
+                Tickets, MRs, Agents, Runs, Schedules, Files, Docs, CI, and Search use this remote workspace.
               </div>
             </div>
           )}

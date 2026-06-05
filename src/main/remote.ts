@@ -8,6 +8,11 @@ import type { GitStatus } from './repo'
 import type { CiInfo } from './forge'
 import type { CiListResult, CiJobsResult, CiLogResult } from './ci'
 import type { WorkspaceSearchKind, WorkspaceSearchResponse } from './workspace-search'
+import type { Agent } from './agents'
+import type { Schedule } from './schedules'
+import type { CronRun, UnifiedRun } from './cron-runs'
+import type { ProjectSession } from './sessions'
+import type { NotesScope } from './notes'
 
 export type RemoteSessionRef = {
   hostId: string
@@ -71,6 +76,23 @@ function listMrs(root){const f=forge(root);if(f.kind==='github'){const r=runObj(
 function mrDetail(root,iid){const f=forge(root);if(f.kind==='github'){const r=runObj('gh',['pr','view',String(iid),'--json','number,title,state,author,headRefName,isDraft,url,labels,baseRefName,body'],{cwd:root});const m=parseJson(r.stdout,null);return m?{...ghRaw(m),description:m.body||'',targetBranch:m.baseRefName||'',reviewMd:'',reviewMeta:null,findings:[],suggestions:[],artifactShortSha:''}:null}const r=runObj('glab',['mr','view',String(iid),'-F','json'],{cwd:root});const m=parseJson(r.stdout,null);return m?{...glabRaw(m),iid:Number(m.iid||m.IID||iid),description:m.description||'',targetBranch:m.target_branch||'',reviewMd:'',reviewMeta:null,findings:[],suggestions:[],artifactShortSha:''}:null}
 function ciStatus(s,c){if(s==='completed')return c==='success'?'success':c==='cancelled'?'canceled':c==='skipped'?'skipped':'failed';if(s==='in_progress')return 'in_progress';if(['queued','waiting','requested'].includes(s))return 'queued';return s||'pending'}
 function ciList(root,limit){const f=forge(root);if(f.kind!=='github')return {runs:[],error:'remote GitLab CI not implemented yet'};const r=runObj('gh',['run','list','--limit',String(limit||40),'--json','databaseId,status,conclusion,workflowName,headBranch,headSha,event,url,createdAt,updatedAt'],{cwd:root});if(r.error&&!r.stdout)return {runs:[],error:r.error};return {runs:parseJson(r.stdout,[]).map(x=>{const created=Date.parse(x.createdAt||'')||0,updated=Date.parse(x.updatedAt||'')||created,status=ciStatus(x.status||'',x.conclusion);return {id:String(x.databaseId||''),name:x.workflowName||'',status,branch:x.headBranch||'',shortSha:String(x.headSha||'').slice(0,7),event:x.event||'',webUrl:x.url||'',createdAt:created,updatedAt:updated,durationMs:status==='in_progress'||status==='queued'?null:Math.max(0,updated-created)}})}}
+function home(){return process.env.HOME||''}
+function cfg(){return path.join(home(),'.config','TerMinal')}
+function readJson(p,f){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return f}}
+function writeJson(p,v){fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(v,null,2));return true}
+function agentArr(v){return Array.isArray(v)?v:(Array.isArray(v&&v.agents)?v.agents:[])}
+function readRepoAgents(root){const out=[];const dir=path.join(root,'.agents');for(const a of agentArr(readJson(path.join(dir,'agents.json'),[]))){if(a&&a.id&&a.title)out.push({...a,source:'repo',hasScript:exists(path.join(dir,a.id+'.sh'))})}if(exists(dir)){for(const f of fs.readdirSync(dir)){if(!f.endsWith('.sh'))continue;const id=f.replace(/\.sh$/,'');if(out.some(a=>a.id===id))continue;out.push({id,title:id.replace(/-/g,' '),prompt:'Script-based remote agent · body in .agents/'+f,source:'repo',hasScript:true})}}return out}
+function readAgentScript(root,id){const safe=String(id||'').replace(/[^\w-]/g,'');const p=path.join(root,'.agents',safe+'.sh');if(!exists(p))return null;return {path:p,body:fs.readFileSync(p,'utf8')}}
+function schedules(){return readJson(path.join(cfg(),'schedules.json'),[])}
+function cronRuns(scheduleId,limit){const dir=path.join(cfg(),'cron-runs');if(!exists(dir))return [];const out=[];for(const f of fs.readdirSync(dir)){if(!f.endsWith('.json'))continue;try{const r=JSON.parse(fs.readFileSync(path.join(dir,f),'utf8'));if(!scheduleId||r.scheduleId===scheduleId)out.push(r)}catch{}}return out.sort((a,b)=>(b.startedAt||0)-(a.startedAt||0)).slice(0,limit||200)}
+function unifiedRuns(){return cronRuns(null,400).map(r=>({id:r.id,source:'cron',agentId:r.agentId,agentTitle:r.agentTitle,engine:r.engine,status:r.status,startedAt:r.startedAt,endedAt:r.endedAt,exitCode:r.exitCode,repoRoot:r.repoRoot||'',repoLabel:r.repoLabel||'',branch:r.branch||'',worktree:r.worktree||'',scheduleId:r.scheduleId,error:r.error}))}
+function runLog(id){const safe=String(id||'').replace(/[^\w-]/g,'');try{return fs.readFileSync(path.join(cfg(),'cron-runs',safe+'.log'),'utf8')}catch{return ''}}
+function projectSession(slug,md,withBody){const p=parseFm(md),f=p.fm;return {slug,id:Number(f.id)||0,title:f.title||slug,status:f.status||'active',goal:f.goal||'',started:f.started||'',ended:f.ended==='null'?'':(f.ended||''),anchor:f.anchor||'',tickets:arr(f.tickets),branches:arr(f.branches),prs:arr(f.prs),...(withBody?{body:p.body}: {})}}
+function sessionsList(root){const dir=path.join(root,'sessions');if(!exists(dir))return [];return fs.readdirSync(dir).filter(d=>/^\d+-/.test(d)&&exists(path.join(dir,d,'session.md'))).map(d=>{try{return projectSession(d,fs.readFileSync(path.join(dir,d,'session.md'),'utf8'),false)}catch{return null}}).filter(Boolean).sort((a,b)=>b.id-a.id)}
+function sessionGet(root,slug){const safeSlug=String(slug||'').replace(/[^\w-]/g,'');const p=path.join(root,'sessions',safeSlug,'session.md');return exists(p)?projectSession(safeSlug,fs.readFileSync(p,'utf8'),true):null}
+function notesPath(root,scope){return scope==='global'?path.join(cfg(),'notes.md'):path.join(root,'.TerMinal','notes.md')}
+function notesRead(root,scope){try{return fs.readFileSync(notesPath(root,scope),'utf8')}catch{return ''}}
+function notesWrite(root,scope,content){const p=notesPath(root,scope);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,String(content||''));if(scope==='repo'){try{const gi=path.join(root,'.gitignore'),entry='.TerMinal/notes.md';let c=exists(gi)?fs.readFileSync(gi,'utf8'):'';if(!c.split('\n').some(l=>l.trim()===entry)){if(c&&!c.endsWith('\n'))c+='\n';fs.writeFileSync(gi,c+entry+'\n')}}catch{}}return true}
 function out(v){process.stdout.write(JSON.stringify(v))}
 try{const op=input.op;const root=repoRoot()||cwdInput; if(op==='probe'){const rr=repoRoot();const f=rr?forge(rr):{repo:null,kind:'github',label:'PR',sym:'#'};out({cwd:cwdInput,repoRoot:rr,repoPath:f.repo?f.repo.path:'',repoHost:f.repo?f.repo.host:'',forgeKind:f.kind,forgeLabel:f.label,forgeSym:f.sym,hasBacklog:!!(rr&&exists(path.join(rr,'backlog'))),hasDocs:!!(rr&&(exists(path.join(rr,'docs'))||exists(path.join(rr,'reports'))||exists(path.join(rr,'CHANGELOG.md')))),hasSessions:!!(rr&&exists(path.join(rr,'sessions'))),hasAgents:!!(rr&&exists(path.join(rr,'.agents'))),engines:{claude:run('bash',['-lc','command -v claude || true']),codex:run('bash',['-lc','command -v codex || true']),cursor:run('bash',['-lc','command -v cursor-agent || true'])},tools:{node:run('bash',['-lc','command -v node || true']),git:run('bash',['-lc','command -v git || true']),gh:run('bash',['-lc','command -v gh || true']),glab:run('bash',['-lc','command -v glab || true']),rg:run('bash',['-lc','command -v rg || true'])}})}
 else if(op==='gitStatus'){const b=run('git',['-C',root,'rev-parse','--abbrev-ref','HEAD']);const ab=run('git',['-C',root,'rev-list','--left-right','--count','@{upstream}...HEAD']);const p=run('git',['-C',root,'status','--porcelain']);const parts=ab?ab.split(/\s+/).map(Number):[0,0];out({ok:!!b,branch:b,ahead:parts[1]||0,behind:parts[0]||0,dirty:p?p.split('\n').filter(Boolean).length:0})}
@@ -82,6 +104,11 @@ else if(op==='mrs.ci')out(null);else if(op==='mrs.merge'){const f=forge(root);co
 else if(op==='ci.list')out(ciList(root,input.limit||40));else if(op==='ci.jobs')out({jobs:[],error:'remote job detail not implemented yet'});else if(op==='ci.log')out({log:'',error:'remote CI log not implemented yet'});
 else if(op==='files.list')out(listDir(root,input.rel||''));else if(op==='files.read')out(readFile(root,input.rel||''));else if(op==='files.write')out(writeFile(root,input.rel||'',input.content||''));else if(op==='files.search')out(search(root,input.q||''));else if(op==='files.create'){const p=safe(root,input.rel||'');if(!p||exists(p))out(false);else{if(input.dir)fs.mkdirSync(p,{recursive:true});else{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,'')}out(true)}}else if(op==='files.rename'){const a=safe(root,input.from||''),b=safe(root,input.to||'');if(!a||!b||!exists(a)||exists(b))out(false);else{fs.mkdirSync(path.dirname(b),{recursive:true});fs.renameSync(a,b);out(true)}}else if(op==='files.delete'){const p=safe(root,input.rel||'');if(!p||p===path.resolve(root)||!exists(p))out(false);else{fs.rmSync(p,{recursive:true,force:true});out(true)}}
 else if(op==='docs.list')out(docs(root));else if(op==='docs.get')out(readFile(root,input.relPath||'').content||'');
+else if(op==='agents.list')out(readRepoAgents(root));else if(op==='agents.script')out(readAgentScript(root,input.id));
+else if(op==='schedules.list')out(schedules());else if(op==='schedules.runs')out(cronRuns(input.id,200));else if(op==='schedules.runLog')out(runLog(input.runId));
+else if(op==='runs.all')out(unifiedRuns());else if(op==='runs.log')out(runLog(input.runId));
+else if(op==='sessions.list')out(sessionsList(root));else if(op==='sessions.get')out(sessionGet(root,input.slug));
+else if(op==='notes.read')out(notesRead(root,input.scope));else if(op==='notes.write')out(notesWrite(root,input.scope,input.content));
 else if(op==='workspace.search'){const q=String(input.q||'').toLowerCase(),selected=new Set(input.kinds&&input.kinds.length?input.kinds:['file','ticket','mr','doc']);const results=[];function push(x){if(results.length<260)results.push(x)}if(selected.has('file'))for(const h of search(root,q))push({id:'file:'+h.file+':'+h.line,kind:'file',title:h.file+':'+h.line,subtitle:'File',detail:h.text,path:h.file,line:h.line,payload:{path:h.file,line:h.line}});if(selected.has('ticket'))for(const t of listTickets(root)){const hay=[t.id,t.title,t.status,t.priority,t.type,t.body].join(' ').toLowerCase();if(hay.includes(q))push({id:'ticket:'+t.slug,kind:'ticket',title:'#'+t.id+' '+t.title,subtitle:t.status+' - '+t.priority+' - '+t.type,detail:t.body.slice(0,260),path:'backlog/'+t.slug+'.md',payload:{slug:t.slug}})}if(selected.has('mr')){const l=listMrs(root);for(const m of l.mrs){const hay=[m.iid,m.title,m.state,m.author,m.sourceBranch,(m.labels||[]).join(' ')].join(' ').toLowerCase();if(hay.includes(q))push({id:'mr:'+m.iid,kind:'mr',title:'MR/PR '+m.iid+' '+m.title,subtitle:m.state+' - '+m.author,detail:m.sourceBranch,payload:{iid:m.iid}})}}if(selected.has('doc'))for(const c of docs(root).categories)for(const d of c.items){const body=readFile(root,d.path).content||'';if([d.title,d.path,c.label,body].join(' ').toLowerCase().includes(q))push({id:'doc:'+d.path,kind:'doc',title:d.title,subtitle:c.label+' - '+d.path,detail:body.replace(/\s+/g,' ').slice(0,260),path:d.path,payload:{path:d.path}})}out({results})}
 else throw new Error('unknown op '+op)}catch(e){out({_remoteError:e.message||String(e)})}
 `
@@ -155,6 +182,29 @@ export const remoteFiles = {
 export const remoteDocs = {
   list: (remote: RemoteSessionRef) => remoteJson<DocsTree>(remote, { op: 'docs.list' }),
   get: (remote: RemoteSessionRef, relPath: string) => remoteJson<string>(remote, { op: 'docs.get', relPath }),
+}
+export const remoteAgents = {
+  list: (remote: RemoteSessionRef) => remoteJson<Agent[]>(remote, { op: 'agents.list' }),
+  script: (remote: RemoteSessionRef, id: string) =>
+    remoteJson<{ path: string; body: string } | null>(remote, { op: 'agents.script', id }),
+}
+export const remoteSchedules = {
+  list: (remote: RemoteSessionRef) => remoteJson<Schedule[]>(remote, { op: 'schedules.list' }),
+  runs: (remote: RemoteSessionRef, id?: string) => remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
+  runLog: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
+}
+export const remoteRuns = {
+  all: (remote: RemoteSessionRef) => remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }),
+  log: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'runs.log', runId }),
+}
+export const remoteSessions = {
+  list: (remote: RemoteSessionRef) => remoteJson<ProjectSession[]>(remote, { op: 'sessions.list' }),
+  get: (remote: RemoteSessionRef, slug: string) => remoteJson<ProjectSession | null>(remote, { op: 'sessions.get', slug }),
+}
+export const remoteNotes = {
+  read: (remote: RemoteSessionRef, scope: NotesScope) => remoteJson<string>(remote, { op: 'notes.read', scope }),
+  write: (remote: RemoteSessionRef, scope: NotesScope, content: string) =>
+    remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
 }
 export const remoteWorkspaceSearch = (remote: RemoteSessionRef, q: string, kinds?: WorkspaceSearchKind[]) =>
   remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })

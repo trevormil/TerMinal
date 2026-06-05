@@ -597,6 +597,7 @@ export type TabContext = {
   hasBacklog: boolean
   hasSessions: boolean
   hasAgents: boolean
+  capabilities?: Record<string, boolean>
 }
 
 export type SessionMeta = {

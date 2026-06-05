@@ -28,7 +28,6 @@ import { loadHiddenTabs } from './lib/tabVisibility'
 import type { TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
-const REMOTE_TABS = new Set(['tickets', 'mrs', 'files', 'docs', 'ci', 'browser', 'activity', 'help'])
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -274,9 +273,9 @@ export function SessionView({
   const tabs = useMemo(
     () =>
       ctx
-        ? ALL_TABS.filter((t) => (!isRemote || REMOTE_TABS.has(t.id)) && t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id))
+        ? ALL_TABS.filter((t) => ctx.capabilities?.[t.id] !== false && t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id))
         : [],
-    [ctx, hiddenTabs, isRemote],
+    [ctx, hiddenTabs],
   )
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
