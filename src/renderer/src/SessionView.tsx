@@ -707,7 +707,7 @@ export function SessionView({
                   {onTerminal && onTerminalLayoutChange && (
                     <div
                       style={noDrag}
-                      className="-mr-2 flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-px py-0.5"
+                      className="-mr-2 flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-[1.5px] py-0.5"
                     >
                       {layoutButton('single', 'Single terminal', Square)}
                       {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}

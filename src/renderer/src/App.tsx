@@ -802,7 +802,7 @@ export default function App() {
                 <Plus size={11} strokeWidth={2.5} />
               </button>
               <div className="flex-1" />
-              <div style={noDrag} className="-mr-2 flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-px py-0.5">
+              <div style={noDrag} className="-mr-2 flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-[1.5px] py-0.5">
                 {layoutButton('single', 'Single terminal', Square)}
                 {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
                 {layoutButton('grid4', 'Four-terminal grid', Grid2x2, activeWorkspaceSessions.length < 2)}
