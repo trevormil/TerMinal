@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
-import { formatRunLog, type LogLineKind } from '../../lib/runLogFormat'
+import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 
 type RunSource = 'cron' | 'agent' | 'bg'
 
@@ -72,6 +72,27 @@ export function RunLogPane({
 
   const formatted = useMemo(() => formatRunLog(visibleLog), [visibleLog])
 
+  const highlightClass = (kind: LogHighlight['kind']) => {
+    switch (kind) {
+      case 'link':
+        return 'border-[var(--gt-accent)]/35 bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)]'
+      case 'done':
+        return 'border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 text-[var(--gt-green)]'
+      case 'failed':
+        return 'border-[var(--gt-red)]/35 bg-[var(--gt-red)]/10 text-[var(--gt-red)]'
+      default:
+        return 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200'
+    }
+  }
+
+  const highlightIcon = (kind: LogHighlight['kind']) => {
+    if (kind === 'link') return <ExternalLink size={11} strokeWidth={2} />
+    if (kind === 'done') return <CheckCircle2 size={11} strokeWidth={2} />
+    if (kind === 'failed') return <TriangleAlert size={11} strokeWidth={2} />
+    if (kind === 'tool') return <Wrench size={11} strokeWidth={2} />
+    return <Terminal size={11} strokeWidth={2} />
+  }
+
   const lineClass = (kind: LogLineKind) => {
     switch (kind) {
       case 'heading':
@@ -141,6 +162,34 @@ export function RunLogPane({
                       <span className="truncate">{line}</span>
                     </span>
                   ))}
+                </div>
+              </div>
+            )}
+            {formatted.highlights.length > 0 && (
+              <div className="border-b border-[var(--gt-border)]/45 bg-[var(--gt-panel)]/20 px-4 py-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
+                  Highlights
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {formatted.highlights.map((h, i) => {
+                    const content = (
+                      <>
+                        {highlightIcon(h.kind)}
+                        <span className="shrink-0 font-semibold">{h.label}</span>
+                        <span className="min-w-0 truncate font-mono text-[10px] opacity-90">{h.value}</span>
+                      </>
+                    )
+                    const cls = `inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] ${highlightClass(h.kind)}`
+                    return h.url ? (
+                      <button key={`${h.kind}-${i}`} onClick={() => window.gt.openExternal(h.url!)} className={`${cls} hover:brightness-125`} title={h.value}>
+                        {content}
+                      </button>
+                    ) : (
+                      <span key={`${h.kind}-${i}`} className={cls} title={h.value}>
+                        {content}
+                      </span>
+                    )
+                  })}
                 </div>
               </div>
             )}
