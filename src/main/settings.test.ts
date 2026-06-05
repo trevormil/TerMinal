@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { migrate, defaultSettings, worktreesFrom } from './settings'
+import { migrate, defaultSettings, defaultDaemonSettings, worktreesFrom } from './settings'
 
 describe('migrate', () => {
   test('empty / garbage → defaults', () => {
@@ -75,7 +75,19 @@ describe('migrate', () => {
       templateRepo: 'https://x/y',
       engines: { codex: { path: '/bin/codex' }, claude: { path: '' }, cursor: { path: '/bin/cursor-agent' } },
       remoteHosts: [
-        { id: 'tm', label: 'Remote Desktop', sshTarget: 'tm', defaultCwd: '~/work', platform: 'linux' },
+        {
+          id: 'tm',
+          label: 'Remote Desktop',
+          sshTarget: 'tm',
+          defaultCwd: '~/work',
+          platform: 'linux',
+          daemon: {
+            projectsDir: '~/src',
+            engines: { claude: { path: '~/.local/bin/claude', defaultModel: 'sonnet' } },
+            defaultEngine: 'cursor',
+            forge: 'gitlab',
+          },
+        },
         { id: '../../bad', sshTarget: 'bad host' },
         { id: 'no-target' },
       ],
@@ -89,8 +101,31 @@ describe('migrate', () => {
     expect(s.engines.codex.path).toBe('/bin/codex')
     expect(s.engines.cursor.path).toBe('/bin/cursor-agent')
     expect(s.remoteHosts).toEqual([
-      { id: 'tm', label: 'Remote Desktop', sshTarget: 'tm', defaultCwd: '~/work', platform: 'linux' },
-      { id: '..-..-bad', label: '..-..-bad', sshTarget: 'bad host', defaultCwd: '', platform: 'auto' },
+      {
+        id: 'tm',
+        label: 'Remote Desktop',
+        sshTarget: 'tm',
+        defaultCwd: '~/work',
+        platform: 'linux',
+        daemon: {
+          ...defaultDaemonSettings(),
+          projectsDir: '~/src',
+          defaultEngine: 'cursor',
+          forge: 'gitlab',
+          engines: {
+            ...defaultDaemonSettings().engines,
+            claude: { path: '~/.local/bin/claude', defaultModel: 'sonnet' },
+          },
+        },
+      },
+      {
+        id: '..-..-bad',
+        label: '..-..-bad',
+        sshTarget: 'bad host',
+        defaultCwd: '',
+        platform: 'auto',
+        daemon: defaultDaemonSettings(),
+      },
     ])
   })
 

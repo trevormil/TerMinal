@@ -32,6 +32,7 @@ import type { LucideIcon } from 'lucide-react'
 import type {
   Settings,
   SettingsPatch,
+  DaemonCfg,
   EnvDetect,
   Engine,
   ForgePref,
@@ -39,7 +40,9 @@ import type {
   PresetPrefs,
   AppearanceMode,
   AppearanceTabLayout,
+  RemoteHost,
   RemotePlatform,
+  RemoteSettingsProbe,
 } from '../lib/types'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
@@ -47,6 +50,37 @@ import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
+const emptyDaemon = (): DaemonCfg => ({
+  projectsDir: '',
+  worktreesDir: '',
+  harnessDir: '',
+  templateRepo: '',
+  engines: {
+    codex: { path: '', defaultModel: '' },
+    claude: { path: '', defaultModel: '' },
+    cursor: { path: '', defaultModel: '' },
+  },
+  defaultEngine: 'claude',
+  forge: 'auto',
+})
+const daemonFromSettings = (s: Settings): DaemonCfg => ({
+  projectsDir: s.projectsDir,
+  worktreesDir: s.worktreesDir,
+  harnessDir: s.harnessDir,
+  templateRepo: s.templateRepo,
+  engines: s.engines,
+  defaultEngine: s.defaultEngine,
+  forge: s.forge,
+})
+const mergeDaemon = (base: DaemonCfg, patch: Partial<Omit<DaemonCfg, 'engines'>> & { engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>> }): DaemonCfg => ({
+  ...base,
+  ...patch,
+  engines: {
+    codex: { ...base.engines.codex, ...(patch.engines?.codex || {}) },
+    claude: { ...base.engines.claude, ...(patch.engines?.claude || {}) },
+    cursor: { ...base.engines.cursor, ...(patch.engines?.cursor || {}) },
+  },
+})
 
 function Section({
   id,
@@ -464,6 +498,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
   const [notify, setNotify] = useState<{ busy?: boolean; ok?: boolean; path?: string; error?: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [profile, setProfile] = useState('local')
+  const [remoteProbe, setRemoteProbe] = useState<Record<string, RemoteSettingsProbe | { loading: true }>>({})
   const [remoteDraft, setRemoteDraft] = useState({
     label: '',
     sshTarget: '',
@@ -475,11 +511,55 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     window.gt.settings.get().then(setS)
     window.gt.detectEnv().then(setEnv)
   }, [])
+  useEffect(() => {
+    if (s && profile !== 'local' && !s.remoteHosts.some((h) => h.id === profile)) setProfile('local')
+  }, [s, profile])
 
   const save = async (patch: SettingsPatch) => {
     const next = await window.gt.settings.patch(patch)
     setS(next)
     window.dispatchEvent(new CustomEvent('gt.settings.changed', { detail: next }))
+  }
+  useEffect(() => {
+    if (!s || profile === 'local') return
+    const host = s.remoteHosts.find((h) => h.id === profile)
+    if (!host || remoteProbe[host.id]) return
+    setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
+    window.gt.settings.remoteProbe(host.id).then((probe) =>
+      setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })),
+    )
+  }, [s, profile, remoteProbe])
+  const selectedHost = s?.remoteHosts.find((h) => h.id === profile) || null
+  const selectedDaemon = s ? (selectedHost ? selectedHost.daemon : daemonFromSettings(s)) : emptyDaemon()
+  const selectedProbe = selectedHost ? remoteProbe[selectedHost.id] : null
+  const selectedIsRemote = !!selectedHost
+  const saveDaemon = async (
+    patch: Partial<Omit<DaemonCfg, 'engines'>> & { engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>> },
+  ) => {
+    if (!s) return
+    if (!selectedHost) {
+      const next = mergeDaemon(daemonFromSettings(s), patch)
+      await save({
+        projectsDir: next.projectsDir,
+        worktreesDir: next.worktreesDir,
+        harnessDir: next.harnessDir,
+        templateRepo: next.templateRepo,
+        engines: next.engines,
+        defaultEngine: next.defaultEngine,
+        forge: next.forge,
+      })
+      return
+    }
+    const hosts = s.remoteHosts.map((h) =>
+      h.id === selectedHost.id ? { ...h, daemon: mergeDaemon(h.daemon || emptyDaemon(), patch) } : h,
+    )
+    await save({ remoteHosts: hosts })
+  }
+  const refreshRemoteProbe = (host: RemoteHost) => {
+    setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
+    window.gt.settings.remoteProbe(host.id).then((probe) =>
+      setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })),
+    )
   }
   const remoteId = (value: string) =>
     value
@@ -490,6 +570,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     if (!s || !remoteDraft.sshTarget.trim()) return
     const id = remoteId(remoteDraft.label || remoteDraft.sshTarget)
     if (!id) return
+    const existing = s.remoteHosts.find((h) => h.id === id)
     const next = [
       ...s.remoteHosts.filter((h) => h.id !== id),
       {
@@ -498,6 +579,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
         sshTarget: remoteDraft.sshTarget.trim(),
         defaultCwd: remoteDraft.defaultCwd.trim(),
         platform: remoteDraft.platform,
+        daemon: existing?.daemon || emptyDaemon(),
       },
     ]
     save({ remoteHosts: next })
@@ -515,9 +597,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       </option>
     ))
   }
-  const browse = async (key: 'projectsDir' | 'worktreesDir' | 'harnessDir') => {
+  const browseDaemon = async (key: 'projectsDir' | 'worktreesDir' | 'harnessDir') => {
+    if (selectedIsRemote) return
     const d = await window.gt.pickDir()
-    if (d) save({ [key]: d })
+    if (d) saveDaemon({ [key]: d })
   }
   const testTelegram = async () => {
     setTg({ busy: true })
@@ -651,16 +734,28 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     ],
   }
   const engineRow = (e: Engine, vendor: string) => {
-    const found = env ? (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
-    const detPath = env ? (e === 'codex' ? env.codex.path : e === 'cursor' ? env.cursor.path : env.claude.path) : ''
-    const defModel = s.engines[e].defaultModel
+    const remoteDetected =
+      selectedProbe && !('loading' in selectedProbe) && selectedProbe.ok ? selectedProbe.engines[e] || '' : ''
+    const localFound = env ? (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
+    const found = selectedIsRemote ? !!remoteDetected : localFound
+    const detPath = selectedIsRemote
+      ? remoteDetected
+      : env
+        ? e === 'codex'
+          ? env.codex.path
+          : e === 'cursor'
+            ? env.cursor.path
+            : env.claude.path
+        : ''
+    const defModel = selectedDaemon.engines[e].defaultModel
+    const overridePath = selectedDaemon.engines[e].path
     return (
       <div key={e} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1">
             <Readiness ok={found} name={e} hint={found ? detPath || vendor : 'not on PATH'} />
             <div className="mt-0.5 text-[10.5px] text-zinc-600">
-              {s.engines[e].path ? <>override: <span className="font-mono text-zinc-500">{tilde(s.engines[e].path)}</span></> : 'using detected binary'}
+              {overridePath ? <>override: <span className="font-mono text-zinc-500">{tilde(overridePath)}</span></> : 'using detected binary'}
             </div>
           </div>
           <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
@@ -668,7 +763,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             <select
               value={defModel}
               onChange={(ev) =>
-                save({ engines: { [e]: { defaultModel: ev.target.value } } })
+                saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })
               }
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
             >
@@ -682,8 +777,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
         </div>
         <EditDetails label="Override binary path">
           <input
-            defaultValue={s.engines[e].path}
-            onBlur={(ev) => ev.target.value !== s.engines[e].path && save({ engines: { [e]: { path: ev.target.value.trim() } } })}
+            key={`${profile}-${e}-path-${overridePath}`}
+            defaultValue={overridePath}
+            onBlur={(ev) => ev.target.value !== overridePath && saveDaemon({ engines: { [e]: { path: ev.target.value.trim() } } })}
             placeholder={`${e} or /absolute/path/to/${e}`}
             spellCheck={false}
             className={`${inp} font-mono`}
@@ -696,9 +792,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const forgeOpt = (val: ForgePref, label: string, hint: string) => (
     <button
       key={val}
-      onClick={() => save({ forge: val })}
+      onClick={() => saveDaemon({ forge: val })}
       className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors ${
-        s.forge === val
+        selectedDaemon.forge === val
           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
           : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50'
       }`}
@@ -779,22 +875,75 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-[760px] space-y-3">
+          <section className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Server size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
+                <div className="text-[10.5px] text-zinc-500">
+                  Paths, engines, default models, forge mode, template, and harness settings apply to the selected daemon.
+                </div>
+              </div>
+              {selectedHost && (
+                <button onClick={() => refreshRemoteProbe(selectedHost)} className={buttonSoft}>
+                  {selectedProbe && 'loading' in selectedProbe ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                  Probe
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setProfile('local')}
+                className={`rounded-lg border px-2.5 py-1.5 text-left text-[11.5px] ${
+                  profile === 'local'
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50'
+                }`}
+              >
+                <span className="block font-semibold">Local</span>
+                <span className="text-[10px] text-zinc-600">this Mac</span>
+              </button>
+              {s.remoteHosts.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => setProfile(h.id)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-left text-[11.5px] ${
+                    profile === h.id
+                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50'
+                  }`}
+                >
+                  <span className="block font-semibold">{h.label || h.id}</span>
+                  <span className="font-mono text-[10px] text-zinc-600">{h.sshTarget}</span>
+                </button>
+              ))}
+            </div>
+            {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
+              <div className={`mt-2 rounded-md border px-2 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] text-zinc-500' : 'border-[var(--gt-red)]/40 text-amber-400'}`}>
+                {selectedProbe.ok
+                  ? `Connected · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
+                  : selectedProbe.error}
+              </div>
+            )}
+          </section>
+
           {/* Projects & worktrees */}
-          <Section id="paths" icon={FolderTree} title="Projects & worktrees" desc="Where the entry screen looks for repos, and where agent worktrees are created.">
+          <Section id="paths" icon={FolderTree} title="Projects & worktrees" desc={selectedIsRemote ? 'Remote daemon paths. Enter paths as they exist on the SSH host.' : 'Where the entry screen looks for repos, and where agent worktrees are created.'}>
             <div className="space-y-2">
               <PathSetting
                 label="Projects directory"
-                value={s.projectsDir}
-                fallback="Home folder"
-                detail="Used by the entry screen for new workspaces and scaffold destinations."
-                onBrowse={() => browse('projectsDir')}
-                onClear={() => save({ projectsDir: '' })}
+                value={selectedDaemon.projectsDir}
+                fallback={selectedIsRemote ? 'Remote home folder' : 'Home folder'}
+                detail={selectedIsRemote ? 'Default remote workspace directory for this SSH profile.' : 'Used by the entry screen for new workspaces and scaffold destinations.'}
+                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
+                onClear={() => saveDaemon({ projectsDir: '' })}
               >
                 <EditDetails>
                   <input
-                    defaultValue={s.projectsDir}
-                    onBlur={(e) => e.target.value !== s.projectsDir && save({ projectsDir: e.target.value.trim() })}
-                    placeholder="/path/to/projects"
+                    key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
+                    defaultValue={selectedDaemon.projectsDir}
+                    onBlur={(e) => e.target.value !== selectedDaemon.projectsDir && saveDaemon({ projectsDir: e.target.value.trim() })}
+                    placeholder={selectedIsRemote ? "~/projects" : "/path/to/projects"}
                     spellCheck={false}
                     className={`${inp} font-mono`}
                   />
@@ -802,17 +951,18 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               </PathSetting>
               <PathSetting
                 label="Worktrees directory"
-                value={s.worktreesDir}
-                fallback={`${tilde(s.projectsDir) || '<projects>'}/.worktrees`}
+                value={selectedDaemon.worktreesDir}
+                fallback={`${tilde(selectedDaemon.projectsDir) || '<projects>'}/.worktrees`}
                 detail="Agent process worktrees are created here."
-                onBrowse={() => browse('worktreesDir')}
-                onClear={() => save({ worktreesDir: '' })}
+                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('worktreesDir')}
+                onClear={() => saveDaemon({ worktreesDir: '' })}
               >
                 <EditDetails>
                   <input
-                    defaultValue={s.worktreesDir}
-                    onBlur={(e) => e.target.value !== s.worktreesDir && save({ worktreesDir: e.target.value.trim() })}
-                    placeholder="/path/to/worktrees"
+                    key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
+                    defaultValue={selectedDaemon.worktreesDir}
+                    onBlur={(e) => e.target.value !== selectedDaemon.worktreesDir && saveDaemon({ worktreesDir: e.target.value.trim() })}
+                    placeholder={selectedIsRemote ? "~/.worktrees" : "/path/to/worktrees"}
                     spellCheck={false}
                     className={`${inp} font-mono`}
                   />
@@ -820,15 +970,16 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               </PathSetting>
               <PathSetting
                 label="Template repository"
-                value={s.templateRepo}
+                value={selectedDaemon.templateRepo}
                 fallback="trevormil/project-template"
                 detail="Used when creating a new project from template."
-                onClear={() => save({ templateRepo: '' })}
+                onClear={() => saveDaemon({ templateRepo: '' })}
               >
                 <EditDetails>
                   <input
-                    defaultValue={s.templateRepo}
-                    onBlur={(e) => e.target.value !== s.templateRepo && save({ templateRepo: e.target.value.trim() })}
+                    key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
+                    defaultValue={selectedDaemon.templateRepo}
+                    onBlur={(e) => e.target.value !== selectedDaemon.templateRepo && saveDaemon({ templateRepo: e.target.value.trim() })}
                     placeholder="owner/repo or https://github.com/owner/repo"
                     spellCheck={false}
                     className={`${inp} font-mono`}
@@ -837,17 +988,18 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               </PathSetting>
               <PathSetting
                 label="Harness directory"
-                value={s.harnessDir}
+                value={selectedDaemon.harnessDir}
                 fallback="Not set"
                 detail="Optional review artifact harness path."
-                onBrowse={() => browse('harnessDir')}
-                onClear={() => save({ harnessDir: '' })}
+                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('harnessDir')}
+                onClear={() => saveDaemon({ harnessDir: '' })}
               >
                 <EditDetails>
                   <input
-                    defaultValue={s.harnessDir}
-                    onBlur={(e) => e.target.value !== s.harnessDir && save({ harnessDir: e.target.value.trim() })}
-                    placeholder="/path/to/autopilot-harness"
+                    key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
+                    defaultValue={selectedDaemon.harnessDir}
+                    onBlur={(e) => e.target.value !== selectedDaemon.harnessDir && saveDaemon({ harnessDir: e.target.value.trim() })}
+                    placeholder={selectedIsRemote ? "~/autopilot-harness" : "/path/to/autopilot-harness"}
                     spellCheck={false}
                     className={`${inp} font-mono`}
                   />
@@ -976,7 +1128,12 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </Section>
 
           {/* Engines */}
-          <Section id="engines" icon={Cpu} title="Engines" desc="The agent backends. Detected on your PATH; override the binary path if needed.">
+          <Section
+            id="engines"
+            icon={Cpu}
+            title="Engines"
+            desc={selectedIsRemote ? 'Detected on the selected SSH host; override paths as remote paths.' : 'The agent backends. Detected on your PATH; override the binary path if needed.'}
+          >
             <div className="space-y-2">
               {engineRow('codex', 'OpenAI Codex')}
               {engineRow('claude', 'Anthropic Claude')}
@@ -987,9 +1144,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               {(['codex', 'claude', 'cursor'] as Engine[]).map((e) => (
                 <button
                   key={e}
-                  onClick={() => save({ defaultEngine: e })}
+                  onClick={() => saveDaemon({ defaultEngine: e })}
                   className={`rounded-md border px-2.5 py-1 text-[11px] ${
-                    s.defaultEngine === e
+                    selectedDaemon.defaultEngine === e
                       ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
                       : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                   }`}
@@ -1005,7 +1162,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             id="remote"
             icon={Server}
             title="Remote hosts"
-            desc="SSH profiles for remote terminal sessions. First slice is terminal-only; cockpit and repo tabs stay hidden until the remote daemon backs those data paths."
+            desc="SSH profiles. Select one in Daemon profile above to customize its paths, engines, models, forge mode, and template settings."
           >
             <div className="space-y-2">
               {s.remoteHosts.length > 0 ? (
@@ -1021,14 +1178,35 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                       </div>
                       <div className="min-w-0 font-mono text-zinc-400">{h.sshTarget}</div>
                       <div className="min-w-0 font-mono text-zinc-500">
-                        {h.defaultCwd || '~'} - {h.platform}
+                        {h.defaultCwd || h.daemon.projectsDir || '~'} - {h.platform}
                       </div>
+                      <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setProfile(h.id)}
+                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                      >
+                        Settings
+                      </button>
+                      <button
+                        onClick={() =>
+                          setRemoteDraft({
+                            label: h.label,
+                            sshTarget: h.sshTarget,
+                            defaultCwd: h.defaultCwd,
+                            platform: h.platform,
+                          })
+                        }
+                        className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => removeRemoteHost(h.id)}
                         className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
                       >
                         Remove
                       </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1068,7 +1246,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   <option value="auto" className="bg-[var(--gt-panel)]">Auto</option>
                 </select>
                 <button onClick={saveRemoteDraft} disabled={!remoteDraft.sshTarget.trim()} className={actionButton}>
-                  Add
+                  Save
                 </button>
               </div>
             </div>
@@ -1081,7 +1259,12 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               {forgeOpt('github', 'GitHub', 'force gh / PRs')}
               {forgeOpt('gitlab', 'GitLab', 'force glab / MRs')}
             </div>
-            {env && (
+            {selectedIsRemote && selectedProbe && !('loading' in selectedProbe) ? (
+              <div className="mt-3 space-y-1">
+                <Readiness ok={!!selectedProbe.tools.gh} name="gh" hint={selectedProbe.tools.gh || 'not detected on remote PATH'} />
+                <Readiness ok={!!selectedProbe.tools.glab} name="glab" hint={selectedProbe.tools.glab || 'not detected on remote PATH'} />
+              </div>
+            ) : env && (
               <div className="mt-3 space-y-1">
                 <Readiness ok={env.gh.found && env.gh.authed} name="gh" hint={env.gh.found ? (env.gh.authed ? `authenticated${env.gh.authHost ? ` (${env.gh.authHost})` : ''}` : 'installed — run `gh auth login`') : 'not installed — `brew install gh`'} />
                 <Readiness ok={env.glab.found && env.glab.authed} name="glab" hint={env.glab.found ? (env.glab.authed ? `authenticated${env.glab.authHost ? ` (${env.glab.authHost})` : ''}` : 'installed — run `glab auth login`') : 'not installed — `brew install glab`'} />

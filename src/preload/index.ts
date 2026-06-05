@@ -13,6 +13,7 @@ type StartOpts = {
     sshTarget: string
     cwd?: string
     platform?: 'auto' | 'linux' | 'macos'
+    daemon?: unknown
   }
   cols: number
   rows: number
@@ -42,6 +43,7 @@ const gt = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     patch: (patch: unknown) => ipcRenderer.invoke('settings:patch', patch),
+    remoteProbe: (hostId: string) => ipcRenderer.invoke('settings:remote-probe', hostId),
   },
   snippets: {
     list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),

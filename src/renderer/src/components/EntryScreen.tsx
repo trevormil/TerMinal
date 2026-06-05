@@ -116,7 +116,8 @@ export function EntryScreen({
     const host = remoteHosts.find((h) => h.id === remoteHostId) || remoteHosts[0]
     if (host) {
       setRemoteHostId(host.id)
-      setCwd(host.defaultCwd || '')
+      setCwd(host.defaultCwd || host.daemon.projectsDir || '')
+      if (engine === 'local') setEngine(host.daemon.defaultEngine || 'claude')
     } else {
       setCwd('')
     }
@@ -149,9 +150,10 @@ export function EntryScreen({
         sshTarget: lockedRemote.sshTarget,
         defaultCwd: lockedRemote.cwd || '',
         platform: lockedRemote.platform || 'auto',
+        daemon: lockedRemote.daemon,
       }
     : remoteHosts.find((h) => h.id === remoteHostId) || null
-  const remoteCwd = cwd.trim() || remoteHost?.defaultCwd || ''
+  const remoteCwd = cwd.trim() || remoteHost?.defaultCwd || remoteHost?.daemon?.projectsDir || ''
   const buildChoice = (): Choice => {
     const base = {
       mode: 'new' as const,
@@ -168,6 +170,7 @@ export function EntryScreen({
         sshTarget: remoteHost.sshTarget,
         cwd: remoteCwd,
         platform: remoteHost.platform,
+        daemon: remoteHost.daemon,
       },
     }
   }
@@ -376,7 +379,7 @@ export function EntryScreen({
                       key={h.id}
                       onClick={() => {
                         setRemoteHostId(h.id)
-                        setCwd(h.defaultCwd || '')
+                        setCwd(h.defaultCwd || h.daemon.projectsDir || '')
                       }}
                       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                         remoteHostId === h.id

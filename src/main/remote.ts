@@ -121,9 +121,10 @@ function remoteEnvCommand(inner: string, cwd?: string): string {
   return `bash -lc ${shq(path + cd + inner)}`
 }
 
-export function remoteCommandForEngine(engine: string, args: string[], cwd?: string): string {
-  const bin = engine === 'local' ? '"${SHELL:-/bin/bash}"' : engine === 'cursor' ? 'cursor-agent' : engine
-  const cmd = engine === 'local' ? `exec ${bin} -l` : `exec ${[bin, ...args].map(shq).join(' ')}`
+export function remoteCommandForEngine(engine: string, args: string[], cwd?: string, overridePath?: string): string {
+  const bin = engine === 'local' ? '"${SHELL:-/bin/bash}"' : overridePath?.trim() || (engine === 'cursor' ? 'cursor-agent' : engine)
+  const renderedBin = bin.startsWith('~/') ? `"$HOME"/${shq(bin.slice(2))}` : shq(bin)
+  const cmd = engine === 'local' ? `exec ${bin} -l` : `exec ${[renderedBin, ...args.map(shq)].join(' ')}`
   return remoteEnvCommand('export TERM=xterm-256color COLORTERM=truecolor CLICOLOR=1; ' + cmd, cwd)
 }
 

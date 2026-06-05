@@ -140,6 +140,15 @@ export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 export type InboxCfg = { completionHook: boolean }
+export type DaemonCfg = {
+  projectsDir: string
+  worktreesDir: string
+  harnessDir: string
+  templateRepo: string
+  engines: Record<Engine, EngineCfg>
+  defaultEngine: Engine
+  forge: ForgePref
+}
 export type AppearanceMode = 'dark' | 'light' | 'system'
 export type AppearanceTabLayout = 'horizontal' | 'sidebar'
 export type AppearanceCfg = {
@@ -158,6 +167,7 @@ export type RemoteHost = {
   sshTarget: string
   defaultCwd: string
   platform: RemotePlatform
+  daemon: DaemonCfg
 }
 export type Settings = {
   onboarded: boolean
@@ -193,6 +203,14 @@ export type EnvDetect = {
   glab: { found: boolean; path: string; authed: boolean; authHost: string }
   tgScripts: boolean
   apps: { editors: string[]; browsers: string[] }
+}
+export type RemoteSettingsProbe = {
+  ok: boolean
+  error?: string
+  cwd?: string
+  repoRoot?: string
+  engines: Record<Engine, string>
+  tools: Record<string, string>
 }
 
 export type Agent = {
@@ -646,6 +664,7 @@ export type RemoteSession = {
   sshTarget: string
   cwd?: string
   platform?: RemotePlatform
+  daemon?: DaemonCfg
 }
 
 export type SessionInfo = {
@@ -729,6 +748,7 @@ export type GtApi = {
   settings: {
     get: () => Promise<Settings>
     patch: (patch: SettingsPatch) => Promise<Settings>
+    remoteProbe: (hostId: string) => Promise<RemoteSettingsProbe>
   }
   snippets: {
     list: (repoRoot?: string) => Promise<{

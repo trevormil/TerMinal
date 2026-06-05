@@ -71,8 +71,10 @@ import {
   resolvedBrowserApp,
   resolvedTemplateRepo,
   enginePath,
+  engineDefaultModel,
   type SettingsPatch,
   type RemotePlatform,
+  type DaemonCfg,
 } from './settings'
 import {
   configureTelegramControl,
@@ -216,6 +218,7 @@ type RemoteSession = {
   sshTarget: string
   cwd?: string
   platform?: RemotePlatform
+  daemon?: DaemonCfg
 }
 type Pinned = {
   sessionId: string
@@ -264,6 +267,10 @@ function startSession(key: string, opts: StartOpts) {
   const engine = opts.engine || 'claude'
   const args: string[] = []
   let sessionId: string
+  const defaultModel =
+    engine !== 'local'
+      ? remote?.daemon?.engines?.[engine]?.defaultModel || (!remote ? engineDefaultModel(engine) : '')
+      : ''
 
   if (engine === 'local') {
     sessionId = opts.sessionId || randomUUID()
@@ -290,6 +297,8 @@ function startSession(key: string, opts: StartOpts) {
     args.push('--session-id', sessionId)
     if (opts.name) args.push('--name', opts.name)
   }
+  if (defaultModel && engine !== 'local') args.push('--model', defaultModel)
+  const remoteEnginePath = remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
 
   // Wire Claude sessions to the status-line shim (zero-API usage + context).
   if (engine === 'claude' && !remote) args.push('--settings', statuslineSettingsArg())
@@ -308,7 +317,7 @@ function startSession(key: string, opts: StartOpts) {
 
   const proc =
     remote
-      ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd)], {
+      ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)], {
           name: 'xterm-256color',
           cols: opts.cols || 80,
           rows: opts.rows || 30,
@@ -682,6 +691,28 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
     })
   }
   return next
+})
+ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return { ok: false, error: 'remote host not found', engines: {}, tools: {} }
+  try {
+    const probe = await remoteProbe({
+      hostId: host.id,
+      label: host.label,
+      sshTarget: host.sshTarget,
+      cwd: host.defaultCwd || host.daemon.projectsDir || '~',
+      platform: host.platform,
+    })
+    return {
+      ok: true,
+      cwd: probe.cwd,
+      repoRoot: probe.repoRoot,
+      engines: probe.engines,
+      tools: probe.tools,
+    }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message, engines: {}, tools: {} }
+  }
 })
 ipcMain.handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
 ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {

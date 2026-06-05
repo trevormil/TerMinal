@@ -13,6 +13,15 @@ export type EngineCfg = {
   defaultModel: string // '' = let the engine pick its own default
 }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
+export type DaemonCfg = {
+  projectsDir: string
+  worktreesDir: string
+  harnessDir: string
+  templateRepo: string
+  engines: Record<EngineId, EngineCfg>
+  defaultEngine: EngineId
+  forge: ForgePref
+}
 export type TelegramCfg = {
   notify: boolean // mirror notifications to Telegram (opt-in)
   control: boolean // accept inbound AFK commands from Telegram (opt-in)
@@ -48,6 +57,7 @@ export type RemoteHost = {
   sshTarget: string // ssh config alias or user@host
   defaultCwd: string // '' = remote login shell home
   platform: RemotePlatform
+  daemon: DaemonCfg
 }
 export type Settings = {
   onboarded: boolean
@@ -84,27 +94,65 @@ const DEFAULT_BROWSER = 'Brave Browser'
 
 const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/project-template'
 
-export function defaultSettings(): Settings {
+export function defaultDaemonSettings(): DaemonCfg {
   return {
-    onboarded: false,
     projectsDir: '',
     worktreesDir: '',
+    harnessDir: '',
+    templateRepo: '',
     engines: {
       codex: { path: '', defaultModel: '' },
       claude: { path: '', defaultModel: '' },
       cursor: { path: '', defaultModel: '' },
     },
-    defaultEngine: 'claude', // claude is the required engine; codex is optional
+    defaultEngine: 'claude',
     forge: 'auto',
+  }
+}
+
+export function defaultSettings(): Settings {
+  const daemon = defaultDaemonSettings()
+  return {
+    onboarded: false,
+    projectsDir: daemon.projectsDir,
+    worktreesDir: daemon.worktreesDir,
+    engines: daemon.engines,
+    defaultEngine: daemon.defaultEngine, // claude is the required engine; codex is optional
+    forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     inbox: { completionHook: true },
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     remoteHosts: [],
-    harnessDir: '',
-    templateRepo: '',
+    harnessDir: daemon.harnessDir,
+    templateRepo: daemon.templateRepo,
   }
+}
+
+function engineCfg(raw: unknown): EngineCfg {
+  const out: EngineCfg = { path: '', defaultModel: '' }
+  if (!raw || typeof raw !== 'object') return out
+  const r = raw as Record<string, unknown>
+  if (typeof r.path === 'string') out.path = r.path
+  if (typeof r.defaultModel === 'string') out.defaultModel = r.defaultModel
+  return out
+}
+
+function daemonCfg(raw: unknown): DaemonCfg {
+  const out = defaultDaemonSettings()
+  if (!raw || typeof raw !== 'object') return out
+  const r = raw as Record<string, unknown>
+  for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
+    if (typeof r[k] === 'string') out[k] = r[k]
+  }
+  if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') out.defaultEngine = r.defaultEngine
+  if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') out.forge = r.forge
+  if (r.engines && typeof r.engines === 'object') {
+    const engines = r.engines as Record<string, unknown>
+    for (const e of ['codex', 'claude', 'cursor'] as EngineId[]) out.engines[e] = engineCfg(engines[e])
+  }
+  return out
 }
 
 function remoteHosts(raw: unknown): RemoteHost[] {
@@ -128,6 +176,7 @@ function remoteHosts(raw: unknown): RemoteHost[] {
         sshTarget,
         defaultCwd: typeof x.defaultCwd === 'string' ? x.defaultCwd.trim() : '',
         platform,
+        daemon: daemonCfg(x.daemon),
       }
     })
     .filter((h) => h.id && h.sshTarget)
@@ -174,11 +223,7 @@ export function migrate(raw: unknown): Settings {
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
     for (const e of ['codex', 'claude', 'cursor'] as EngineId[]) {
-      const cfg = r.engines[e]
-      if (cfg && typeof cfg === 'object') {
-        if (typeof cfg.path === 'string') s.engines[e].path = cfg.path
-        if (typeof cfg.defaultModel === 'string') s.engines[e].defaultModel = cfg.defaultModel
-      }
+      s.engines[e] = engineCfg(r.engines[e])
     }
   }
   if (r.apps && typeof r.apps === 'object') {
