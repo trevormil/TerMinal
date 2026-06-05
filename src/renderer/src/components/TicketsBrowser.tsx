@@ -123,7 +123,7 @@ function NewTicketModal({
         setTimeout(onClose, 250)
         return
       }
-      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel)
+      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel, remoteForTabContext(ctx))
       if (r && 'error' in r) setSpawnMsg(`couldn't start: ${r.error}`)
       else {
         setSpawnText('')
@@ -575,7 +575,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       })
                       return
                     }
-                    const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model)
+                    const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model, remoteForTabContext(ctx))
                     if (!('error' in r)) {
                       setStarted(true)
                       setTimeout(() => setStarted(false), 4000)

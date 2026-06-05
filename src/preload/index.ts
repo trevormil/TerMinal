@@ -88,10 +88,10 @@ const gt = {
       ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
-    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string) =>
-      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model),
-    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string) =>
-      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model),
+    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown) =>
+      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote),
+    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown) =>
+      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
       kind: 'review' | 'iterate',
@@ -99,7 +99,8 @@ const gt = {
       persona?: string,
       pipeline?: string,
       model?: string,
-    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model),
+      remote?: unknown,
+    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model, remote),
     runs: () => ipcRenderer.invoke('agents:runs'),
     rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
@@ -229,8 +230,8 @@ const gt = {
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     update: (slug: string, patch: { status?: string; priority?: string }) =>
       ipcRenderer.invoke('tickets:update', slug, patch),
-    spawn: (text: string, engine: string, model?: string) =>
-      ipcRenderer.invoke('tickets:spawn', text, engine, model),
+    spawn: (text: string, engine: string, model?: string, remote?: unknown) =>
+      ipcRenderer.invoke('tickets:spawn', text, engine, model, remote),
   },
   docs: {
     list: () => ipcRenderer.invoke('docs:list'),

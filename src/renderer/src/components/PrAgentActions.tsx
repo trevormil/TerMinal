@@ -31,7 +31,8 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
       setTimeout(() => setDone(null), 4000)
       return
     }
-    const r = await window.gt.agents.runPr(pr, k, engine, persona, pipeline, model)
+    const meta = await window.gt.meta()
+    const r = await window.gt.agents.runPr(pr, k, engine, persona, pipeline, model, meta.remote)
     const ok = !('error' in r)
     setDone({ msg: ok ? `${k} spun out` : (r as { error: string }).error, ok })
     setTimeout(() => setDone(null), ok ? 4000 : 6000)

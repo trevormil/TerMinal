@@ -1456,7 +1456,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   }, [sel, selectedRun && outputs[selectedRun.id]])
 
   const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string) => {
-    const r = await window.gt.agents.run(id, engine, persona, pipeline, model)
+    const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx))
     if ('error' in r) {
       setOutputs((o) => ({ ...o, __err: r.error }))
       return

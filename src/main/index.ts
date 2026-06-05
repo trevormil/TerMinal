@@ -193,6 +193,10 @@ const cur = (): Pinned =>
     engine: 'claude',
   }
 const curRemote = () => cur().remote
+function requestedRemote(input: unknown): RemoteSession | undefined {
+  if (!input || typeof input !== 'object' || !('sshTarget' in input) || typeof input.sshTarget !== 'string') return undefined
+  return input as RemoteSession
+}
 function sshPathBasename(cwdOrRoot: string): string {
   const rest = cwdOrRoot.replace(/^ssh:\/\//, '')
   const slash = rest.indexOf('/')
@@ -849,9 +853,9 @@ ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string) =>
+ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) =>
   (async () => {
-    const remote = curRemote()
+    const remote = requestedRemote(requested) || curRemote()
     if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model)
     const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
     if (!agent) return { error: 'unknown agent' }
@@ -879,8 +883,8 @@ ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: st
     return run
   })(),
 )
-ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string) => {
-  const remote = curRemote()
+ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) => {
+  const remote = requestedRemote(requested) || curRemote()
   if (remote) {
     return (async () => {
       const t = await remoteTickets.get(remote, slug)
@@ -902,9 +906,9 @@ ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?:
 })
 ipcMain.handle(
   'agents:run-pr',
-  (_e, pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string }, kind: PrAgentKind, engine: Engine, persona?: string, pipeline?: string, model?: string) =>
+  (_e, pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string }, kind: PrAgentKind, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) =>
     (async () => {
-      const remote = curRemote()
+      const remote = requestedRemote(requested) || curRemote()
       if (!remote) return runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model)
       if (!pr?.sourceBranch) return { error: 'PR/MR has no source branch' }
       const probe = await remoteProbe(remote).catch(() => null)
@@ -1395,8 +1399,8 @@ ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   })
   return t
 })
-ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string) => {
-  const remote = curRemote()
+ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
+  const remote = requestedRemote(requested) || curRemote()
   if (!remote) return runTicketSpawn(repoRootOf(cur().cwd), text, engine, model)
   const t = text.trim()
   if (!t) return { error: 'empty request' }

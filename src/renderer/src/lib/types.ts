@@ -839,6 +839,7 @@ export type GtApi = {
       persona?: string,
       pipeline?: string,
       model?: string,
+      remote?: RemoteSession,
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,
@@ -846,6 +847,7 @@ export type GtApi = {
       persona?: string,
       pipeline?: string,
       model?: string,
+      remote?: RemoteSession,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -854,6 +856,7 @@ export type GtApi = {
       persona?: string,
       pipeline?: string,
       model?: string,
+      remote?: RemoteSession,
     ) => Promise<AgentRun | { error: string }>
     runs: () => Promise<AgentRun[]>
     rerun: (runId: string) => Promise<AgentRun | { error: string }>
@@ -975,7 +978,7 @@ export type GtApi = {
     get: (slug: string) => Promise<Ticket | null>
     create: (input: NewTicket) => Promise<Ticket>
     update: (slug: string, patch: { status?: string; priority?: string }) => Promise<boolean>
-    spawn: (text: string, engine: Engine, model?: string) => Promise<AgentRun | { error: string }>
+    spawn: (text: string, engine: Engine, model?: string, remote?: RemoteSession) => Promise<AgentRun | { error: string }>
   }
   docs: {
     list: () => Promise<DocsTree>
