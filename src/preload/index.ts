@@ -295,6 +295,10 @@ const gt = {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('notes:read', scope),
     write: (scope: 'repo' | 'global', content: string) =>
       ipcRenderer.invoke('notes:write', scope, content),
+    folderList: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-list', id, rel),
+    folderRead: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-read', id, rel),
+    folderWrite: (id: string, rel: string, content: string) =>
+      ipcRenderer.invoke('notes:folder-write', id, rel, content),
   },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),

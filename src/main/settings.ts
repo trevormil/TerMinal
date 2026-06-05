@@ -50,6 +50,11 @@ export type OpenRouterCfg = {
   apiKey: string
   defaultModel: string // e.g. 'anthropic/claude-haiku-4.5'
 }
+export type NoteFolder = {
+  id: string
+  title: string
+  path: string
+}
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
   id: string
@@ -74,6 +79,7 @@ export type Settings = {
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
    *  precheck escalations, etc. Optional. */
   openrouter: OpenRouterCfg
+  noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
@@ -87,6 +93,7 @@ export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appea
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
+  noteFolders?: NoteFolder[]
 }
 
 const DEFAULT_EDITOR = 'Cursor'
@@ -124,6 +131,7 @@ export function defaultSettings(): Settings {
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
+    noteFolders: [],
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
     templateRepo: daemon.templateRepo,
@@ -182,6 +190,27 @@ function remoteHosts(raw: unknown): RemoteHost[] {
     .filter((h) => h.id && h.sshTarget)
 }
 
+function noteFolders(raw: unknown): NoteFolder[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x) => {
+      const path = typeof x.path === 'string' ? x.path.trim() : ''
+      const title =
+        typeof x.title === 'string' && x.title.trim()
+          ? x.title.trim()
+          : path.split('/').filter(Boolean).pop() || 'Notes'
+      const rawId = typeof x.id === 'string' ? x.id.trim() : title
+      let id = rawId.replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '') || 'notes'
+      let i = 2
+      while (seen.has(id)) id = `${id}-${i++}`
+      seen.add(id)
+      return { id, title, path }
+    })
+    .filter((f) => f.path)
+}
+
 /** Coerce any on-disk shape (incl. the legacy flat booleans) into Settings. */
 export function migrate(raw: unknown): Settings {
   const s = defaultSettings()
@@ -234,6 +263,7 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.openrouter.apiKey === 'string') s.openrouter.apiKey = r.openrouter.apiKey
     if (typeof r.openrouter.defaultModel === 'string') s.openrouter.defaultModel = r.openrouter.defaultModel
   }
+  s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
   return s
 }
@@ -267,6 +297,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
       cursor: { ...cur.engines.cursor, ...(patch.engines?.cursor || {}) },
     },
     openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
+    noteFolders: patch.noteFolders ? noteFolders(patch.noteFolders) : cur.noteFolders,
   }
   cache = next
   try {

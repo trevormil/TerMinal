@@ -36,7 +36,7 @@ import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd } from './repo'
 import { getTicket, type NewTicket } from './backlog'
 import { mrSummary } from './mrs'
-import { type NotesScope } from './notes'
+import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
@@ -1714,6 +1714,21 @@ ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
 ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
   activeDaemon().notesWrite(scope, content),
 )
+function configuredNoteFolder(id: string) {
+  return readSettings().noteFolders.find((f) => f.id === id)
+}
+ipcMain.handle('notes:folder-list', (_e, id: string, rel: string) => {
+  const folder = configuredNoteFolder(id)
+  return folder ? listNoteFolder(folder.path, rel || '') : []
+})
+ipcMain.handle('notes:folder-read', (_e, id: string, rel: string) => {
+  const folder = configuredNoteFolder(id)
+  return folder ? readNoteFolderFile(folder.path, rel) : { ok: false, content: '', reason: 'note folder not found' }
+})
+ipcMain.handle('notes:folder-write', (_e, id: string, rel: string, content: string) => {
+  const folder = configuredNoteFolder(id)
+  return folder ? writeNoteFolderFile(folder.path, rel, content) : false
+})
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----
 ipcMain.handle('files:list', (_e, rel: string) => {

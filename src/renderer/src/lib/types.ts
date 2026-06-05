@@ -160,6 +160,7 @@ export type AppearanceCfg = {
 }
 export type AppsCfg = { editor: string; browser: string }
 export type OpenRouterCfg = { apiKey: string; defaultModel: string }
+export type NoteFolder = { id: string; title: string; path: string }
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
   id: string
@@ -181,6 +182,7 @@ export type Settings = {
   appearance: AppearanceCfg
   apps: AppsCfg
   openrouter: OpenRouterCfg
+  noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
@@ -192,6 +194,7 @@ export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appea
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
+  noteFolders?: NoteFolder[]
 }
 
 /** Tool/engine readiness probed by the main process (env:detect). */
@@ -1091,6 +1094,9 @@ export type GtApi = {
   notes: {
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
+    folderList: (id: string, rel: string) => Promise<FileEntry[]>
+    folderRead: (id: string, rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+    folderWrite: (id: string, rel: string, content: string) => Promise<boolean>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>

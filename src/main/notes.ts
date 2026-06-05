@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { join, dirname, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 
 // Notes:
@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 // Both persist on disk, so they survive across sessions.
 
 export type NotesScope = 'repo' | 'global'
+export type NoteFolderEntry = { name: string; path: string; dir: boolean }
 
 const GLOBAL = join(homedir(), '.config', 'TerMinal', 'notes.md')
 const repoNotesPath = (repoRoot: string) => join(repoRoot, '.TerMinal', 'notes.md')
@@ -47,6 +48,68 @@ export function writeNotes(scope: NotesScope, content: string, repoRoot: string)
   try {
     mkdirSync(dirname(p), { recursive: true })
     writeFileSync(p, content)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const NOTE_EXT = new Set(['.md', '.markdown', '.mdx', '.txt'])
+const IGNORE = new Set(['.git', 'node_modules', '.obsidian', '.trash', '.DS_Store'])
+
+function safe(root: string, rel: string): string | null {
+  const r = resolve(root)
+  const p = resolve(root, rel || '.')
+  if (p !== r && !p.startsWith(r + sep)) return null
+  return p
+}
+
+function noteLike(name: string): boolean {
+  const lower = name.toLowerCase()
+  return [...NOTE_EXT].some((ext) => lower.endsWith(ext))
+}
+
+export function listNoteFolder(root: string, rel: string): NoteFolderEntry[] {
+  const abs = safe(root, rel)
+  if (!abs || !existsSync(abs)) return []
+  try {
+    return readdirSync(abs)
+      .filter((name) => !IGNORE.has(name) && !name.startsWith('.'))
+      .map((name) => {
+        const child = join(abs, name)
+        const st = statSync(child)
+        return { name, path: rel ? join(rel, name) : name, dir: st.isDirectory() }
+      })
+      .filter((entry) => entry.dir || noteLike(entry.name))
+      .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1))
+  } catch {
+    return []
+  }
+}
+
+export function readNoteFolderFile(root: string, rel: string): { ok: boolean; content: string; reason?: string } {
+  if (!noteLike(rel)) return { ok: false, content: '', reason: 'not a note file' }
+  const abs = safe(root, rel)
+  if (!abs || !existsSync(abs)) return { ok: false, content: '', reason: 'not found' }
+  try {
+    const st = statSync(abs)
+    if (st.isDirectory()) return { ok: false, content: '', reason: 'directory' }
+    if (st.size > 2_000_000) return { ok: false, content: '', reason: 'file too large (>2 MB)' }
+    const buf = readFileSync(abs)
+    if (buf.includes(0)) return { ok: false, content: '', reason: 'binary file' }
+    return { ok: true, content: buf.toString('utf8') }
+  } catch (e) {
+    return { ok: false, content: '', reason: (e as Error).message }
+  }
+}
+
+export function writeNoteFolderFile(root: string, rel: string, content: string): boolean {
+  if (!noteLike(rel)) return false
+  const abs = safe(root, rel)
+  if (!abs) return false
+  try {
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, content)
     return true
   } catch {
     return false
