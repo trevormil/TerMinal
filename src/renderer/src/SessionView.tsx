@@ -104,7 +104,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
           <span className="flex-1 text-[var(--gt-red)]">Bootstrap failed: {error}</span>
         ) : (
           <span className="flex-1">
-            {message || "This repo isn't bootstrapped with project-template — agents/skills/backlog/docs are missing."}
+            {message || "This repo isn't bootstrapped with project-template — agents, skills, .TerMinal state, or docs are missing."}
           </span>
         )}
         <div className="flex items-center gap-1">
