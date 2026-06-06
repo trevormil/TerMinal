@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
 import {
+  Bell,
   Columns2,
   GitBranch,
   Grid2x2,
@@ -213,7 +214,7 @@ export function SessionView({
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
-  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine }[]
+  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine; needsAttention?: boolean }[]
   onSwitchSession?: (key: string) => void
   onAddSession?: () => void
   onCloseSession?: (key: string) => void
@@ -639,22 +640,27 @@ export function SessionView({
                         className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
                           on
                             ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                            : p.needsAttention
+                              ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
                             : draggingKey === p.key
                               ? 'text-zinc-500 opacity-60'
                             : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                         }`}
                       >
                         <span
-                          title={p.status === 'working' ? 'working' : 'idle'}
+                          title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
                           className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                             p.status === 'working'
                               ? 'bg-[var(--gt-green)] gt-pulse'
+                              : p.needsAttention
+                                ? 'bg-[var(--gt-yellow)]'
                               : p.mode === 'new'
                                 ? 'bg-[var(--gt-accent)]'
                                 : 'bg-[var(--gt-accent-2)]'
                           }`}
                         />
                         <EngineLogo engine={p.engine} size={10} className="opacity-80" />
+                        {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
                         {isEditing ? (
                           <input
                             autoFocus

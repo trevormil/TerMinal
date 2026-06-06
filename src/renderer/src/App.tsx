@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
-import { Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { Bell, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -19,6 +19,7 @@ const drag = { WebkitAppRegion: 'drag' } as CSSProperties
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
 type Sess = { key: string; choice: Choice; info: Info }
+type Attention = { reason: 'ready' | 'done' | 'exited'; at: number; exitCode?: number }
 export type TerminalLayout = 'single' | 'split' | 'grid4'
 
 const cwdOf = (s: Sess) => s.info.cwd || s.choice.cwd || ''
@@ -161,6 +162,9 @@ export default function App() {
   const [terminalSessionOrder, setTerminalSessionOrder] = useState<Record<string, string[]>>(loadTerminalSessionOrder)
   const [draggingSessionKey, setDraggingSessionKey] = useState<string | null>(null)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
+  const [attentionByKey, setAttentionByKey] = useState<Map<string, Attention>>(() => new Map())
+  const [attentionOpen, setAttentionOpen] = useState(false)
+  const previousFleetStatus = useRef<Record<string, string>>({})
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [palette, setPalette] = useState(false)
@@ -250,6 +254,61 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
   const statusByKey = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
+  const markAttention = (key: string, attention: Attention) =>
+    setAttentionByKey((prev) => {
+      const next = new Map(prev)
+      next.set(key, attention)
+      return next
+    })
+  const clearAttention = (key: string) =>
+    setAttentionByKey((prev) => {
+      if (!prev.has(key)) return prev
+      const next = new Map(prev)
+      next.delete(key)
+      return next
+    })
+
+  useEffect(() => {
+    const liveKeys = new Set(sessions.map((s) => s.key))
+    setAttentionByKey((prev) => {
+      const next = new Map<string, Attention>()
+      for (const [key, attention] of prev) if (liveKeys.has(key)) next.set(key, attention)
+      return next.size === prev.size ? prev : next
+    })
+  }, [sessions])
+
+  useEffect(() => {
+    const offExit = window.gt.pty.onExit((key, code) => {
+      markAttention(key, { reason: 'exited', at: Date.now(), exitCode: code })
+    })
+    return offExit
+  }, [])
+
+  useEffect(() => {
+    const off = window.gt.activity.onEvent((ev) => {
+      if (ev.kind !== 'task-complete' || !ev.sessionId) return
+      const session = sessions.find((s) => (s.info.sessionId || s.choice.sessionId || '') === ev.sessionId)
+      if (session) markAttention(session.key, { reason: 'done', at: Date.now() })
+    })
+    return off
+  }, [sessions])
+
+  useEffect(() => {
+    const current = Object.fromEntries(fleetData.map((f) => [f.key, f.status]))
+    setAttentionByKey((prev) => {
+      let next = prev
+      for (const f of fleetData) {
+        const before = previousFleetStatus.current[f.key]
+        const session = sessions.find((s) => s.key === f.key)
+        if (before === 'working' && f.status === 'idle' && session?.choice.engine !== 'local') {
+          if (next === prev) next = new Map(prev)
+          next.set(f.key, { reason: 'ready', at: Date.now() })
+        }
+      }
+      return next
+    })
+    previousFleetStatus.current = current
+  }, [fleetData, sessions])
 
   useEffect(() => {
     if (!activeKey || adding !== false || sessions.length === 0) return
@@ -278,6 +337,7 @@ export default function App() {
   // await keeps the visual swap snappy without introducing a real race.
   const activate = (key: string) => {
     setActiveKey(key)
+    clearAttention(key)
     window.gt.setActiveSession(key).catch(() => {
       /* main rejected (e.g. session removed) — UI already flipped, accept */
     })
@@ -480,6 +540,27 @@ export default function App() {
     [sessions],
   )
   const multiTerminal = terminalLayout !== 'single' && visibleSessionKeys.size > 1
+  const attentionItems = useMemo(
+    () =>
+      sessions
+        .map((s) => {
+          const attention = attentionByKey.get(s.key)
+          if (!attention) return null
+          const ws = workspaces.find((w) => w.sessions.some((x) => x.key === s.key))
+          const index = ws?.sessions.findIndex((x) => x.key === s.key) ?? 0
+          return {
+            key: s.key,
+            label: labelForSession(s, index, autoNamesByKey),
+            workspace: repoLabelOf(cwdOf(s)),
+            engine: s.choice.engine,
+            attention,
+          }
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x)
+        .sort((a, b) => b.attention.at - a.attention.at),
+    [sessions, attentionByKey, workspaces, autoNamesByKey],
+  )
+  const attentionCount = attentionItems.length
 
   // Pre-compute peer-session lists ONCE per workspace, then look up by session
   // key in the map. Without this, every App re-render (every fleet tick, every
@@ -495,6 +576,7 @@ export default function App() {
         status: string
         mode: 'new' | 'resume'
         engine: SessionEngine
+        needsAttention: boolean
       }[]
     >()
     for (const ws of workspaces) {
@@ -504,11 +586,12 @@ export default function App() {
         status: statusByKey[x.key] || 'idle',
         mode: x.choice.mode,
         engine: x.choice.engine,
+        needsAttention: attentionByKey.has(x.key),
       }))
       for (const s of ws.sessions) m.set(s.key, peers)
     }
     return m
-  }, [workspaces, statusByKey, autoNamesByKey])
+  }, [workspaces, statusByKey, autoNamesByKey, attentionByKey])
 
   const closeWorkspace = (root: string) => {
     const ws = workspaces.find((w) => w.repoRoot === root)
@@ -617,6 +700,7 @@ export default function App() {
               // Terminal-tab session sub-bar inside SessionView — top bar shows
               // PROJECTS, not pty instances.
               const anyWorking = ws.sessions.some((s) => statusByKey[s.key] === 'working')
+              const needsAttention = ws.sessions.some((s) => attentionByKey.has(s.key))
               return (
                 <div
                   key={ws.repoRoot}
@@ -624,16 +708,21 @@ export default function App() {
                   title={ws.repoRoot}
                   onClick={() => activate(ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key)}
                   className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] ${
-                    workspaceActive ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-zinc-100' : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                    workspaceActive
+                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-zinc-100'
+                      : needsAttention
+                        ? 'border-[var(--gt-yellow)]/60 bg-[var(--gt-yellow)]/10 text-zinc-200'
+                        : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   <span
-                    title={anyWorking ? 'a session is working' : 'idle'}
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-[var(--gt-accent-2)]'}`}
+                    title={anyWorking ? 'a session is working' : needsAttention ? 'needs attention' : 'idle'}
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                   />
                   {ws.remote && <Server size={11} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
                   <span className="max-w-[180px] truncate font-semibold">{ws.label}</span>
                   {ws.remote && <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">ssh</span>}
+                  {needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
                   {ws.sessions.length > 1 && <span className="rounded-full bg-black/30 px-1 text-[9.5px] tabular-nums text-zinc-500">{ws.sessions.length}</span>}
                   <button
                     onClick={(e) => {
@@ -665,6 +754,7 @@ export default function App() {
                 setSearchOpen((v) => !v)
                 setFleet(false)
                 setInbox(false)
+                setAttentionOpen(false)
               }}
               disabled={!activeCtx}
               title={activeCtx?.remote ? 'Search remote workspace' : 'Search workspace'}
@@ -677,11 +767,80 @@ export default function App() {
             </button>
           )}
           {sessions.length > 0 && (
+            <div className="relative ml-1 shrink-0" style={noDrag}>
+              <button
+                onClick={() => setAttentionOpen((v) => !v)}
+                title={attentionCount ? 'Terminals needing attention' : 'No terminals need attention'}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+                  attentionOpen
+                    ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                    : attentionCount
+                      ? 'text-[var(--gt-yellow)] hover:bg-[var(--gt-yellow)]/10'
+                      : 'text-zinc-600 hover:bg-white/5 hover:text-zinc-300'
+                }`}
+              >
+                <Bell size={13} strokeWidth={2} className={attentionCount ? 'gt-pulse' : undefined} />
+                Idle
+                {attentionCount > 0 && (
+                  <span className="ml-0.5 rounded-full bg-[var(--gt-yellow)]/20 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-yellow)]">{attentionCount}</span>
+                )}
+              </button>
+              {attentionOpen && (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-[70] w-80 overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-3 py-2">
+                    <span className="text-[11px] font-semibold text-zinc-200">Terminals Needing Attention</span>
+                    {attentionCount > 0 && (
+                      <button
+                        onClick={() => setAttentionByKey(new Map())}
+                        className="rounded-md px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  {attentionItems.length === 0 ? (
+                    <div className="px-3 py-5 text-center text-[12px] text-zinc-600">No idle terminals need attention.</div>
+                  ) : (
+                    <div className="max-h-72 overflow-y-auto p-1.5">
+                      {attentionItems.map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => {
+                            activate(item.key)
+                            setAttentionOpen(false)
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-white/5"
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-yellow)]" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-zinc-200">
+                              <span className="truncate font-semibold">{item.label}</span>
+                              <span className="shrink-0 text-[10px] uppercase text-zinc-600">{item.engine}</span>
+                            </div>
+                            <div className="truncate text-[10.5px] text-zinc-600">
+                              {item.attention.reason === 'exited'
+                                ? `exited${typeof item.attention.exitCode === 'number' ? ` ${item.attention.exitCode}` : ''}`
+                                : item.attention.reason === 'done'
+                                  ? 'done'
+                                  : 'idle'}{' '}
+                              · {item.workspace}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {sessions.length > 0 && (
             <button
               style={noDrag}
               onClick={() => {
                 setFleet((f) => !f)
                 setSearchOpen(false)
+                setAttentionOpen(false)
               }}
               title="Fleet overview — all sessions at a glance"
               className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
@@ -698,6 +857,7 @@ export default function App() {
               setInbox((v) => !v)
               setFleet(false)
               setSearchOpen(false)
+              setAttentionOpen(false)
             }}
             title="Inbox — unresolved human-needed items"
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
@@ -776,6 +936,8 @@ export default function App() {
                     className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
                       p.key === activeKey
                         ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                        : p.needsAttention
+                          ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
                         : draggingSessionKey === p.key
                           ? 'text-zinc-500 opacity-60'
                           : visible
@@ -784,9 +946,10 @@ export default function App() {
                     }`}
                   >
                     <span
-                      title={p.status === 'working' ? 'working' : 'idle'}
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-[var(--gt-accent-2)]'}`}
+                      title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : p.needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                     />
+                    {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
                     <span className="max-w-[120px] truncate">{p.label}</span>
                   </button>
                 )
@@ -824,20 +987,27 @@ export default function App() {
               const peers = peersByKey.get(s.key)
               const visible = !showEntry && visibleSessionKeys.has(s.key)
               const status = statusByKey[s.key] || 'idle'
+              const needsAttention = attentionByKey.has(s.key)
               return (
                 <div
                   key={s.key}
                   onPointerDownCapture={() => {
+                    clearAttention(s.key)
                     if (multiTerminal && s.key !== activeKey) activate(s.key)
                   }}
                   onFocusCapture={() => {
+                    clearAttention(s.key)
                     if (multiTerminal && s.key !== activeKey) activate(s.key)
                   }}
                   className={
                     visible
                       ? multiTerminal
                         ? `relative min-h-0 min-w-0 overflow-hidden border bg-[var(--gt-bg)] ${
-                            status === 'working' ? 'border-[var(--gt-green)]/25' : 'border-[var(--gt-yellow)]/60'
+                            status === 'working'
+                              ? 'border-[var(--gt-green)]/25'
+                              : needsAttention
+                                ? 'border-[var(--gt-yellow)]/70'
+                                : 'border-[var(--gt-border)]'
                           } ${s.key === activeKey ? 'outline outline-2 -outline-offset-2 outline-[var(--gt-accent)]/90' : ''}`
                         : 'absolute inset-0'
                       : 'absolute inset-0'
