@@ -116,6 +116,7 @@ export async function cheapCall(opts: {
     if (cp.ok) {
       return { ok: true, text: cp.text, model: anthroModel || 'haiku', route: 'claude-p' }
     }
+    if (route === 'claude-p') return { ok: false, error: cp.error, route: 'claude-p' }
     // Fall through to OpenRouter on failure (claude not installed, auth
     // issue, etc.). Important: callers shouldn't have to know whether
     // claude is set up.

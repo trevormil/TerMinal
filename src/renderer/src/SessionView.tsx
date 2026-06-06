@@ -204,6 +204,8 @@ export function SessionView({
   onTerminalLayoutChange,
   canSplitTerminal = false,
   focusTerminal = false,
+  needsAttention = false,
+  onClearAttention,
 }: {
   sessionKey: string
   choice: Choice
@@ -225,6 +227,8 @@ export function SessionView({
   onTerminalLayoutChange?: (layout: TerminalLayout) => void
   canSplitTerminal?: boolean
   focusTerminal?: boolean
+  needsAttention?: boolean
+  onClearAttention?: () => void
 }) {
   const [info, setInfo] = useState<Info>({ sessionId: '', cwd: '' })
   // Inline rename in the session sub-bar — null when not editing, otherwise
@@ -730,6 +734,8 @@ export function SessionView({
                 choice={choice}
                 onStarted={handleStarted}
                 active={focusTerminal}
+                needsAttention={needsAttention}
+                onClearAttention={onClearAttention}
               />
             </div>
           </main>

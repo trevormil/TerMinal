@@ -10,6 +10,7 @@ import {
   Eraser,
   EyeOff,
   FileText,
+  Loader2,
   MessageSquareText,
   Play,
   Plus,
@@ -18,6 +19,7 @@ import {
   SquareDashedMousePointer,
   X,
   Search,
+  Settings2,
 } from 'lucide-react'
 import { Terminal as Xterm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -42,11 +44,78 @@ type LauncherItem =
     }
   | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
 
+type SuggestionMode = 'off' | 'deterministic' | 'ai'
+type SuggestedReply = { label: string; prompt: string }
+
 const cssVar = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
 const withAlpha = (color: string, alpha: string, fallback: string) =>
   /^#[0-9a-f]{6}$/i.test(color.trim()) ? `${color.trim()}${alpha}` : fallback
+
+const redactTerminalText = (text: string) =>
+  text
+    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+    .replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*['"]?[^'"\s]+/gi, '$1=[redacted]')
+    .replace(/\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/g, '[redacted-token]')
+
+function recentTerminalText(term: Xterm | null, maxLines = 180): string {
+  if (!term) return ''
+  const buffer = term.buffer.active
+  const end = buffer.baseY + buffer.cursorY
+  const start = Math.max(0, end - maxLines + 1)
+  const lines: string[] = []
+  for (let i = start; i <= end; i++) {
+    const line = buffer.getLine(i)?.translateToString(true).trimEnd()
+    if (line !== undefined) lines.push(line)
+  }
+  return redactTerminalText(lines.join('\n')).trim().slice(-14_000)
+}
+
+function deterministicReplies(output: string, engine: string): SuggestedReply[] {
+  const lower = output.toLowerCase()
+  const replies: SuggestedReply[] = []
+  const add = (label: string, prompt: string) => {
+    if (!replies.some((r) => r.prompt === prompt)) replies.push({ label, prompt })
+  }
+
+  if (/\b(do you want|would you like|should i|confirm|approve|continue|ready|waiting)\b/.test(lower)) {
+    add('Continue', 'Looks good to me. Continue.')
+  }
+  if (/\b(error|failed|failure|traceback|exception|fatal|exit 1|denied|not found|typecheck|tsc)\b/.test(lower)) {
+    add('Fix failure', 'Identify the root cause of the failure, apply the smallest safe fix, and rerun the relevant check.')
+    add('Explain error', 'Explain the failure and the exact next command or code change you recommend.')
+  }
+  if (/\b(test|spec|suite|bun test|pytest|vitest|jest)\b/.test(lower)) {
+    add('Run tests', 'Run the relevant test suite and fix any failures.')
+  }
+  if (/\b(done|implemented|rebuilt|released|pushed|committed|all set|complete|passed)\b/.test(lower)) {
+    add('Summarize', 'Summarize what changed, what was verified, and any remaining risks.')
+    add('Next step', 'Suggest the highest-leverage next step from here.')
+  }
+  add('Keep going', 'Continue with the next obvious step.')
+  add('Check status', 'Check git status and summarize the current state.')
+  if (engine !== 'local') add('Commit if ready', 'If the work is complete and verified, commit it with a concise conventional commit message.')
+  return replies.slice(0, 5)
+}
+
+function parseAiReplies(text: string): SuggestedReply[] {
+  const raw = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+  const parsed = JSON.parse(raw) as { suggestions?: unknown }
+  const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
+  return suggestions
+    .map((s): SuggestedReply | null => {
+      if (typeof s === 'string') return { label: s.slice(0, 36), prompt: s }
+      if (!s || typeof s !== 'object') return null
+      const r = s as Record<string, unknown>
+      const prompt = typeof r.prompt === 'string' ? r.prompt.trim() : ''
+      if (!prompt) return null
+      const label = typeof r.label === 'string' && r.label.trim() ? r.label.trim() : prompt.slice(0, 36)
+      return { label: label.slice(0, 36), prompt }
+    })
+    .filter((s): s is SuggestedReply => !!s)
+    .slice(0, 5)
+}
 
 function xtermThemeFromCss(): ITheme {
   const accent = cssVar('--gt-accent', '#7c6ef6')
@@ -107,11 +176,15 @@ export function TerminalPane({
   choice,
   onStarted,
   active = false,
+  needsAttention = false,
+  onClearAttention,
 }: {
   sessionKey: string
   choice: Choice
   onStarted?: (info: { sessionId: string; cwd: string }) => void
   active?: boolean
+  needsAttention?: boolean
+  onClearAttention?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -119,6 +192,11 @@ export function TerminalPane({
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const writeInputRef = useRef<(data: string) => void>(() => {})
   const [menuOpen, setMenuOpen] = useState(false)
+  const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
+  const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('deterministic')
+  const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
+  const [suggestionBusy, setSuggestionBusy] = useState(false)
+  const [suggestionErr, setSuggestionErr] = useState('')
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -378,7 +456,70 @@ export function TerminalPane({
   const inject = (prompt: string, run = false) => {
     window.gt.pty.input(sessionKey, run ? `${prompt}\r` : prompt)
     setMenuOpen(false)
+    setSuggestionSettingsOpen(false)
     requestAnimationFrame(() => termRef.current?.focus())
+  }
+  const runSuggestion = (prompt: string) => {
+    window.gt.pty.input(sessionKey, `${prompt}\r`)
+    setSuggestions([])
+    setSuggestionErr('')
+    onClearAttention?.()
+    requestAnimationFrame(() => termRef.current?.focus())
+  }
+  const generateSuggestions = async (mode: SuggestionMode = suggestionMode) => {
+    if (mode === 'off') {
+      setSuggestions([])
+      setSuggestionBusy(false)
+      setSuggestionErr('')
+      return
+    }
+    const output = recentTerminalText(termRef.current)
+    const fallback = deterministicReplies(output, choice.engine)
+    if (mode === 'deterministic') {
+      setSuggestions(fallback)
+      setSuggestionBusy(false)
+      setSuggestionErr('')
+      return
+    }
+
+    setSuggestionBusy(true)
+    setSuggestionErr('')
+    setSuggestions([])
+    const r = await window.gt.cheapLlm({
+      route: 'claude-p',
+      model: 'haiku',
+      maxTokens: 650,
+      temperature: 0.2,
+      timeoutMs: 18_000,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You generate likely next human replies for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return 1-5 concise, actionable replies. Do not include markdown.',
+        },
+        {
+          role: 'user',
+          content:
+            `Engine: ${choice.engine}\nDirectory: ${choice.cwd || '(unknown)'}\n\nRecent terminal output:\n\n` +
+            '```\n' +
+            output +
+            '\n```',
+        },
+      ],
+    })
+    setSuggestionBusy(false)
+    if (!r.ok || !r.text) {
+      setSuggestionErr(r.error || 'AI suggestions unavailable')
+      setSuggestions(fallback)
+      return
+    }
+    try {
+      const parsed = parseAiReplies(r.text)
+      setSuggestions(parsed.length ? parsed : fallback)
+    } catch {
+      setSuggestionErr('AI returned unreadable suggestions')
+      setSuggestions(fallback)
+    }
   }
   const selectedText = () => termRef.current?.getSelection().trim() || ''
   const agentEngine = (): Engine =>
@@ -458,6 +599,13 @@ export function TerminalPane({
     await window.gt.presets.hide('snippets', id)
     await reloadSnippets()
   }
+
+  useEffect(() => {
+    if (!needsAttention) return
+    generateSuggestions(suggestionMode)
+    // Generate once when this terminal enters an attention state or the local
+    // mode changes. The function reads live xterm scrollback at that moment.
+  }, [needsAttention, suggestionMode])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -581,13 +729,28 @@ export function TerminalPane({
       <div className="absolute inset-0 overflow-hidden p-3">
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
-      <div className={`absolute top-4 z-20 ${isRemote ? 'right-4' : 'right-14'}`}>
+      <div className={`absolute top-4 z-20 ${isRemote ? 'right-14' : 'right-24'}`}>
         <button
           onClick={openSearch}
           title="Find in scrollback"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
         >
           <Search size={14} strokeWidth={2} />
+        </button>
+      </div>
+      <div className={`absolute top-4 z-20 ${isRemote ? 'right-4' : 'right-14'}`}>
+        <button
+          onClick={() => setSuggestionSettingsOpen((v) => !v)}
+          title="Suggested replies"
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border shadow-lg backdrop-blur ${
+            suggestionMode === 'off'
+              ? 'border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-600 hover:border-[var(--gt-accent)]/60 hover:text-zinc-300'
+              : needsAttention
+                ? 'border-[var(--gt-yellow)]/50 bg-[var(--gt-yellow)]/10 text-[var(--gt-yellow)]'
+                : 'border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
+          }`}
+        >
+          <Settings2 size={14} strokeWidth={2} />
         </button>
       </div>
       {!isRemote && (
@@ -600,6 +763,85 @@ export function TerminalPane({
           <MessageSquareText size={14} strokeWidth={2} />
         </button>
       </div>
+      )}
+      {suggestionSettingsOpen && (
+        <div className={`absolute top-14 z-30 w-64 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur ${isRemote ? 'right-4' : 'right-14'}`}>
+          <div className="mb-1.5 flex items-center gap-2 px-1">
+            <Sparkles size={13} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            <span className="text-[11px] font-semibold text-zinc-200">Suggested replies</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {(['off', 'deterministic', 'ai'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setSuggestionMode(mode)
+                  setSuggestionSettingsOpen(false)
+                }}
+                className={`rounded-md border px-2 py-1.5 text-[10.5px] font-semibold capitalize ${
+                  suggestionMode === mode
+                    ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 text-zinc-100'
+                    : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                {mode === 'deterministic' ? 'Rules' : mode}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-[10.5px] leading-4 text-zinc-500">
+            AI uses local <span className="font-mono text-zinc-400">claude -p haiku</span> only; it will not fall back to OpenRouter.
+          </div>
+        </div>
+      )}
+      {needsAttention && suggestionMode !== 'off' && (
+        <div className="absolute inset-x-4 bottom-4 z-20 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur">
+          <div className="mb-2 flex items-center gap-2">
+            <Sparkles size={13} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
+            <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
+            <span className="rounded bg-black/25 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-600">
+              {suggestionMode === 'ai' ? 'Haiku' : 'Rules'}
+            </span>
+            {suggestionBusy && (
+              <span className="inline-flex items-center gap-1 text-[10.5px] text-zinc-500">
+                <Loader2 size={11} strokeWidth={2} className="animate-spin" />
+                reading terminal
+              </span>
+            )}
+            {suggestionErr && <span className="truncate text-[10.5px] text-[var(--gt-yellow)]">{suggestionErr}</span>}
+            <div className="flex-1" />
+            <button
+              onClick={() => generateSuggestions(suggestionMode)}
+              disabled={suggestionBusy}
+              className="rounded-md px-1.5 py-0.5 text-[10.5px] text-zinc-500 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-40"
+            >
+              Refresh
+            </button>
+          </div>
+          {suggestionBusy && suggestions.length === 0 ? (
+            <div className="grid gap-1.5 sm:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-8 animate-pulse rounded-md bg-white/5" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-1.5 overflow-x-auto">
+              {suggestions.map((s, i) => (
+                <button
+                  key={`${s.label}-${i}`}
+                  onClick={() => runSuggestion(s.prompt)}
+                  title={s.prompt}
+                  className="group flex min-w-[150px] max-w-[260px] items-center gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
+                >
+                  <Play size={12} strokeWidth={2.5} className="shrink-0 text-[var(--gt-accent-light)]" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
+                    <span className="block truncate text-[10px] text-zinc-600 group-hover:text-zinc-500">{s.prompt}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       {searchOpen && (
         <div className="absolute right-4 top-14 z-30 flex w-[min(360px,calc(100%-2rem))] items-center gap-1 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-1.5 shadow-2xl backdrop-blur">

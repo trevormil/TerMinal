@@ -992,11 +992,9 @@ export default function App() {
                 <div
                   key={s.key}
                   onPointerDownCapture={() => {
-                    clearAttention(s.key)
                     if (multiTerminal && s.key !== activeKey) activate(s.key)
                   }}
                   onFocusCapture={() => {
-                    clearAttention(s.key)
                     if (multiTerminal && s.key !== activeKey) activate(s.key)
                   }}
                   className={
@@ -1034,6 +1032,8 @@ export default function App() {
                     onTerminalLayoutChange={setTerminalLayout}
                     canSplitTerminal={activeWorkspaceSessions.length >= 2}
                     focusTerminal={s.key === activeKey}
+                    needsAttention={attentionByKey.has(s.key)}
+                    onClearAttention={() => clearAttention(s.key)}
                   />
                 </div>
               )
