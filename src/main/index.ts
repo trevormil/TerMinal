@@ -43,6 +43,7 @@ import { repoRootOf, repoForCwd } from './repo'
 import { getTicket, type NewTicket } from './backlog'
 import { mrSummary } from './mrs'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
+import { readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
@@ -1773,6 +1774,12 @@ ipcMain.handle('notes:folder-read', (_e, id: string, rel: string) => {
 ipcMain.handle('notes:folder-write', (_e, id: string, rel: string, content: string) => {
   const folder = configuredNoteFolder(id)
   return folder ? writeNoteFolderFile(folder.path, rel, content) : false
+})
+ipcMain.handle('knowledge:read', (_e, scope: KnowledgeScope) => {
+  return readKnowledge(scope, activeDaemon().repoRoot())
+})
+ipcMain.handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase) => {
+  return writeKnowledge(scope, activeDaemon().repoRoot(), kb)
 })
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----

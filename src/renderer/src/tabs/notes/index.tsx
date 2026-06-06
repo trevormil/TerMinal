@@ -1,510 +1,601 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown,
-  ChevronRight,
-  FilePlus,
+  BookOpen,
+  ExternalLink,
+  File,
+  FileText,
   FolderGit2,
-  FolderOpen,
   Globe,
+  Image,
+  Link2,
   NotebookText,
   Plus,
+  Search,
+  Tags,
   Trash2,
+  Video,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import { CodeEditor } from '../../components/CodeEditor'
 import { Markdown } from '../../components/Markdown'
-import { fileIcon } from '../../lib/fileIcons'
-import type { FileEntry, NoteFolder, Tab, TabContext } from '../../lib/types'
+import type {
+  KnowledgeBase,
+  KnowledgeCategory,
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgeScope,
+  Tab,
+  TabContext,
+} from '../../lib/types'
 
-type Scope = 'repo' | 'global'
-type Mode = 'edit' | 'split' | 'preview'
-type Surface = 'scratch' | 'folders'
-type OpenNote = { folderId: string; path: string; content: string; dirty: boolean; err?: string }
+type ViewMode = 'knowledge' | 'scratch'
+type PreviewMode = 'edit' | 'preview' | 'split'
 
-const base = (p: string) => p.split('/').filter(Boolean).pop() || p
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'notes'
-
-function NoteTree({
-  entry,
-  folderId,
-  active,
-  selectedDir,
-  version,
-  onOpen,
-  onSelectDir,
-  depth = 0,
-}: {
-  entry: FileEntry
-  folderId: string
-  active: string | null
-  selectedDir: string
-  version: number
-  onOpen: (path: string) => void
-  onSelectDir: (path: string) => void
-  depth?: number
-}) {
-  const [open, setOpen] = useState(false)
-  const [children, setChildren] = useState<FileEntry[] | null>(null)
-  useEffect(() => {
-    if (open) window.gt.notes.folderList(folderId, entry.path).then(setChildren)
-  }, [folderId, entry.path, open, version])
-  const click = async () => {
-    if (!entry.dir) return onOpen(entry.path)
-    onSelectDir(entry.path)
-    if (!open && children === null) setChildren(await window.gt.notes.folderList(folderId, entry.path))
-    setOpen((v) => !v)
-  }
-  const { Icon, cls } = fileIcon(entry.name, entry.dir, open)
-  const selected = entry.dir ? selectedDir === entry.path : active === entry.path
-  return (
-    <>
-      <button
-        onClick={click}
-        title={entry.path}
-        style={{ paddingLeft: depth * 12 + 8 }}
-        className={`flex w-full items-center gap-1 py-[3px] pr-2 text-left text-[12px] hover:bg-white/5 ${
-          selected ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
-        }`}
-      >
-        <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
-          {entry.dir ? (
-            open ? (
-              <ChevronDown size={12} strokeWidth={2} />
-            ) : (
-              <ChevronRight size={12} strokeWidth={2} />
-            )
-          ) : null}
-        </span>
-        <Icon size={14} strokeWidth={2} className={`shrink-0 ${cls}`} />
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-      </button>
-      {entry.dir &&
-        open &&
-        children?.map((child) => (
-          <NoteTree
-            key={child.path}
-            entry={child}
-            folderId={folderId}
-            active={active}
-            selectedDir={selectedDir}
-            version={version}
-            onOpen={onOpen}
-            onSelectDir={onSelectDir}
-            depth={depth + 1}
-          />
-        ))}
-    </>
-  )
+const kindMeta: Record<KnowledgeItemKind, { label: string; Icon: typeof FileText; hint: string }> = {
+  markdown: { label: 'Markdown', Icon: FileText, hint: 'Snippet, note, playbook, transcript excerpt' },
+  link: { label: 'Link', Icon: Link2, hint: 'URL, dashboard, issue, doc, repo page' },
+  image: { label: 'Image', Icon: Image, hint: 'Remote image URL or local image path' },
+  video: { label: 'Video', Icon: Video, hint: 'YouTube/Vimeo/direct video URL or local path' },
+  file: { label: 'File', Icon: File, hint: 'Local file path or remote document URL' },
 }
 
-function NotesTab({ ctx }: { ctx: TabContext }) {
-  const hasRepo = !!ctx.repoRoot
-  const [surface, setSurface] = useState<Surface>('scratch')
-  const [scope, setScope] = useState<Scope>(hasRepo ? 'repo' : 'global')
-  const [text, setText] = useState('')
-  const [mode, setMode] = useState<Mode>('split')
-  const [saved, setSaved] = useState(true)
-  const [folders, setFolders] = useState<NoteFolder[]>([])
-  const [activeFolderId, setActiveFolderId] = useState('')
-  const [folderRoots, setFolderRoots] = useState<FileEntry[] | null>(null)
-  const [selectedDir, setSelectedDir] = useState('')
-  const [openNote, setOpenNote] = useState<OpenNote | null>(null)
-  const [folderSaved, setFolderSaved] = useState(true)
-  const [version, setVersion] = useState(0)
-  const [newNoteName, setNewNoteName] = useState<string | null>(null)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const folderSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const latest = useRef({ scope, text, saved })
-  const latestFolder = useRef(openNote)
-  latest.current = { scope, text, saved }
-  latestFolder.current = openNote
+const slug = (input: string) =>
+  input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item'
 
-  const activeFolder = folders.find((f) => f.id === activeFolderId) || null
+const newId = (base: string) => `${slug(base)}-${Math.random().toString(36).slice(2, 8)}`
+const now = () => Date.now()
+const starterKb = (): KnowledgeBase => ({
+  version: 1,
+  categories: [
+    {
+      id: 'general',
+      title: 'General',
+      description: 'Links, snippets, media, and references that do not need their own category yet.',
+      order: 0,
+      createdAt: now(),
+      updatedAt: now(),
+    },
+  ],
+  items: [],
+})
+
+const displayPath = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
+const sourceOf = (item: KnowledgeItem) => item.url?.trim() || item.path?.trim() || ''
+const fileUrl = (path: string) => `file://${path.split('/').map(encodeURIComponent).join('/')}`
+const mediaSrc = (item: KnowledgeItem) => {
+  const src = sourceOf(item)
+  if (!src) return ''
+  if (/^https?:\/\//i.test(src) || /^file:\/\//i.test(src)) return src
+  if (src.startsWith('/')) return fileUrl(src)
+  return src
+}
+const videoEmbed = (src: string) => {
+  const yt = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]+)/)
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
+  const vimeo = src.match(/vimeo\.com\/(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  return ''
+}
+
+function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
+  const ts = now()
+  return {
+    id: newId(kind),
+    categoryId,
+    kind,
+    title: kindMeta[kind].label,
+    description: '',
+    content: kind === 'markdown' ? '# New note\n\n' : '',
+    url: '',
+    path: '',
+    tags: [],
+    createdAt: ts,
+    updatedAt: ts,
+  }
+}
+
+function KnowledgeTab({ ctx }: { ctx: TabContext }) {
+  const hasRepo = !!ctx.repoRoot
+  const [scope, setScope] = useState<KnowledgeScope>(hasRepo ? 'repo' : 'global')
+  const [view, setView] = useState<ViewMode>('knowledge')
+  const [kb, setKb] = useState<KnowledgeBase>(starterKb)
+  const [activeCategoryId, setActiveCategoryId] = useState('general')
+  const [activeItemId, setActiveItemId] = useState('')
+  const [query, setQuery] = useState('')
+  const [newCategory, setNewCategory] = useState('')
+  const [newKind, setNewKind] = useState<KnowledgeItemKind>('markdown')
+  const [saved, setSaved] = useState(true)
+  const [scratch, setScratch] = useState('')
+  const [scratchSaved, setScratchSaved] = useState(true)
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('split')
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scratchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestKb = useRef(kb)
+  const latestScratch = useRef({ scope, scratch, scratchSaved })
+  latestKb.current = kb
+  latestScratch.current = { scope, scratch, scratchSaved }
 
   useEffect(() => {
-    window.gt.settings.get().then((s) => {
-      const list = s.noteFolders || []
-      setFolders(list)
-      setActiveFolderId((id) => (id && list.some((f) => f.id === id) ? id : list[0]?.id || ''))
-    })
-  }, [])
+    if (scope === 'repo' && !hasRepo) setScope('global')
+  }, [hasRepo, scope])
 
   useEffect(() => {
     let alive = true
-    window.gt.notes.read(scope).then((t) => {
-      if (alive) {
-        setText(t)
-        setSaved(true)
-      }
+    window.gt.knowledge.read(scope).then((next) => {
+      if (!alive) return
+      const normalized = next.categories.length ? next : starterKb()
+      setKb(normalized)
+      setActiveCategoryId((cur) => normalized.categories.some((c) => c.id === cur) ? cur : normalized.categories[0]?.id || 'general')
+      setActiveItemId((cur) => normalized.items.some((i) => i.id === cur) ? cur : normalized.items[0]?.id || '')
+      setSaved(true)
+    })
+    window.gt.notes.read(scope).then((text) => {
+      if (!alive) return
+      setScratch(text)
+      setScratchSaved(true)
     })
     return () => {
       alive = false
     }
   }, [scope, ctx.repoRoot])
 
-  useEffect(() => {
-    if (!activeFolderId) {
-      setFolderRoots(null)
-      return
-    }
-    window.gt.notes.folderList(activeFolderId, '').then(setFolderRoots)
-  }, [activeFolderId, version])
-
   useEffect(
     () => () => {
-      if (!latest.current.saved) window.gt.notes.write(latest.current.scope, latest.current.text)
-      if (latestFolder.current?.dirty && !latestFolder.current.err) {
-        window.gt.notes.folderWrite(
-          latestFolder.current.folderId,
-          latestFolder.current.path,
-          latestFolder.current.content,
-        )
+      if (!saved) window.gt.knowledge.write(scope, latestKb.current)
+      if (!latestScratch.current.scratchSaved) {
+        window.gt.notes.write(latestScratch.current.scope, latestScratch.current.scratch)
       }
     },
     [],
   )
 
-  const patchSettingsFolders = async (next: NoteFolder[]) => {
-    const s = await window.gt.settings.patch({ noteFolders: next })
-    setFolders(s.noteFolders || [])
-    setActiveFolderId((id) => (id && s.noteFolders.some((f) => f.id === id) ? id : s.noteFolders[0]?.id || ''))
-  }
-
-  const addFolder = async () => {
-    const path = await window.gt.pickDir()
-    if (!path) return
-    const title = base(path)
-    const ids = new Set(folders.map((f) => f.id))
-    let id = slug(title)
-    let n = 2
-    while (ids.has(id)) id = `${slug(title)}-${n++}`
-    await patchSettingsFolders([...folders, { id, title, path }])
-    setSurface('folders')
-    setActiveFolderId(id)
-  }
-
-  const removeFolder = async (id: string) => {
-    await patchSettingsFolders(folders.filter((f) => f.id !== id))
-    if (openNote?.folderId === id) setOpenNote(null)
-  }
-
-  const onScratchChange = (v: string) => {
-    setText(v)
+  const persist = (next: KnowledgeBase, immediate = false) => {
+    setKb(next)
     setSaved(false)
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      window.gt.notes.write(scope, v).then(() => setSaved(true))
-    }, 600)
+    const write = () => window.gt.knowledge.write(scope, next).then((ok) => ok && setSaved(true))
+    if (immediate) write()
+    else saveTimer.current = setTimeout(write, 550)
   }
 
-  const onFolderChange = (v: string) => {
-    if (!openNote) return
-    const next = { ...openNote, content: v, dirty: true }
-    setOpenNote(next)
-    setFolderSaved(false)
-    if (folderSaveTimer.current) clearTimeout(folderSaveTimer.current)
-    folderSaveTimer.current = setTimeout(() => {
-      window.gt.notes.folderWrite(next.folderId, next.path, next.content).then((ok) => {
-        if (ok) {
-          setFolderSaved(true)
-          setOpenNote((cur) =>
-            cur && cur.folderId === next.folderId && cur.path === next.path
-              ? { ...cur, dirty: false }
-              : cur,
-          )
-        }
-      })
-    }, 700)
+  const saveScratch = (next: string) => {
+    setScratch(next)
+    setScratchSaved(false)
+    if (scratchTimer.current) clearTimeout(scratchTimer.current)
+    scratchTimer.current = setTimeout(() => {
+      window.gt.notes.write(scope, next).then((ok) => ok && setScratchSaved(true))
+    }, 550)
   }
 
-  const switchScope = (s: Scope) => {
-    if (s === scope) return
-    if (!saved) window.gt.notes.write(scope, text)
-    setScope(s)
-  }
+  const counts = useMemo(() => {
+    const out = new Map<string, number>()
+    for (const item of kb.items) out.set(item.categoryId, (out.get(item.categoryId) || 0) + 1)
+    return out
+  }, [kb.items])
 
-  const openFolderFile = async (path: string) => {
-    if (!activeFolderId) return
-    const r = await window.gt.notes.folderRead(activeFolderId, path)
-    setOpenNote({
-      folderId: activeFolderId,
-      path,
-      content: r.ok ? r.content : '',
-      dirty: false,
-      err: r.ok ? undefined : r.reason,
-    })
-    setFolderSaved(true)
-  }
+  const activeCategory = kb.categories.find((c) => c.id === activeCategoryId) || kb.categories[0]
+  const activeItem = kb.items.find((i) => i.id === activeItemId) || null
+  const filteredItems = kb.items.filter((item) => {
+    if (activeCategoryId && item.categoryId !== activeCategoryId) return false
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return [item.title, item.description || '', item.content || '', item.url || '', item.path || '', item.tags.join(' ')]
+      .some((value) => value.toLowerCase().includes(q))
+  })
 
-  const createNote = async () => {
-    if (!activeFolderId) return
-    const name = newNoteName?.trim()
-    if (!name) {
-      setNewNoteName(null)
-      return
+  const addCategory = () => {
+    const title = newCategory.trim()
+    if (!title) return
+    const ts = now()
+    const category: KnowledgeCategory = {
+      id: newId(title),
+      title,
+      description: '',
+      order: kb.categories.length,
+      createdAt: ts,
+      updatedAt: ts,
     }
-    const clean = name.trim().endsWith('.md') ? name.trim() : `${name.trim()}.md`
-    const path = selectedDir ? `${selectedDir}/${clean}` : clean
-    if (await window.gt.notes.folderWrite(activeFolderId, path, '')) {
-      setVersion((v) => v + 1)
-      setNewNoteName(null)
-      openFolderFile(path)
-    }
+    persist({ ...kb, categories: [...kb.categories, category] }, true)
+    setActiveCategoryId(category.id)
+    setNewCategory('')
   }
 
-  const segSurface = (s: Surface, label: ReactNode) => (
-    <button
-      onClick={() => setSurface(s)}
-      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium ${
-        surface === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
-      }`}
-    >
-      {label}
-    </button>
-  )
-  const segScope = (s: Scope, label: ReactNode, disabled = false) => (
+  const deleteCategory = (id: string) => {
+    if (kb.categories.length <= 1 || counts.get(id)) return
+    const nextCategories = kb.categories.filter((c) => c.id !== id)
+    persist({ ...kb, categories: nextCategories }, true)
+    setActiveCategoryId(nextCategories[0]?.id || 'general')
+  }
+
+  const addItem = () => {
+    const item = emptyItem(activeCategory?.id || 'general', newKind)
+    persist({ ...kb, items: [item, ...kb.items] }, true)
+    setActiveItemId(item.id)
+  }
+
+  const updateItem = (patch: Partial<KnowledgeItem>, immediate = false) => {
+    if (!activeItem) return
+    const nextItem = { ...activeItem, ...patch, updatedAt: now() }
+    persist({ ...kb, items: kb.items.map((item) => item.id === nextItem.id ? nextItem : item) }, immediate)
+  }
+
+  const deleteItem = (id: string) => {
+    const nextItems = kb.items.filter((item) => item.id !== id)
+    persist({ ...kb, items: nextItems }, true)
+    setActiveItemId(nextItems[0]?.id || '')
+  }
+
+  const scopeButton = (next: KnowledgeScope, label: string, Icon: typeof Globe, disabled = false) => (
     <button
       disabled={disabled}
-      onClick={() => switchScope(s)}
-      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium disabled:opacity-30 ${
-        scope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+      onClick={() => setScope(next)}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold disabled:opacity-35 ${
+        scope === next ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
       }`}
     >
+      <Icon size={13} strokeWidth={2} />
       {label}
     </button>
   )
-  const segMode = (m: Mode, label: string) => (
+
+  const modeButton = (next: PreviewMode, label: string) => (
     <button
-      onClick={() => setMode(m)}
-      className={`rounded-md px-2.5 py-1 text-[11px] ${
-        mode === m ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+      onClick={() => setPreviewMode(next)}
+      className={`rounded-md px-2 py-1 text-[10.5px] font-medium ${
+        previewMode === next ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
       }`}
     >
       {label}
     </button>
   )
 
-  const editor = (value: string, onChange: (v: string) => void) => (
-    <div className="h-full min-h-0 overflow-hidden">
-      <CodeEditor value={value} onChange={onChange} extensions={[langs.markdown()]} wrap />
-    </div>
-  )
-  const preview = (value: string) => (
-    <div className="h-full overflow-y-auto p-5">
-      {value.trim() ? (
-        <Markdown>{value}</Markdown>
-      ) : (
-        <div className="text-[12px] italic text-zinc-600">Nothing yet.</div>
-      )}
-    </div>
-  )
-  const noteBody = openNote ? (
-    openNote.err ? (
-      <div className="p-6 text-[12px] text-zinc-600">Can't open {openNote.path} — {openNote.err}</div>
-    ) : mode === 'edit' ? (
-      editor(openNote.content, onFolderChange)
-    ) : mode === 'preview' ? (
-      preview(openNote.content)
-    ) : (
-      <div className="flex h-full min-h-0">
-        <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-          {editor(openNote.content, onFolderChange)}
+  const itemPreview = (item: KnowledgeItem) => {
+    const src = mediaSrc(item)
+    if (item.kind === 'markdown') {
+      return <Markdown>{item.content || ''}</Markdown>
+    }
+    if (item.kind === 'image') {
+      return src ? (
+        <img src={src} alt={item.title} className="max-h-[56vh] max-w-full rounded-lg border border-[var(--gt-border)] object-contain" />
+      ) : <EmptyPreview text="Add an image URL or local path." />
+    }
+    if (item.kind === 'video') {
+      const embed = src ? videoEmbed(src) : ''
+      if (embed) {
+        return <iframe title={item.title} src={embed} className="aspect-video w-full rounded-lg border border-[var(--gt-border)]" allowFullScreen />
+      }
+      return src ? (
+        <video src={src} controls className="max-h-[56vh] w-full rounded-lg border border-[var(--gt-border)]" />
+      ) : <EmptyPreview text="Add a YouTube, Vimeo, direct video URL, or local path." />
+    }
+    const target = sourceOf(item)
+    return target ? (
+      <div className="rounded-xl border border-[var(--gt-border)] bg-black/20 p-4">
+        <div className="mb-1 text-[12px] font-semibold text-zinc-200">{item.kind === 'link' ? 'Link target' : 'File target'}</div>
+        <div className="mb-3 break-all font-mono text-[11px] text-zinc-500">{displayPath(target)}</div>
+        <button
+          onClick={() => item.kind === 'file' && item.path ? window.gt.openInEditor(item.path) : window.gt.openInBrowser(target)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
+        >
+          <ExternalLink size={13} strokeWidth={2} />
+          Open
+        </button>
+      </div>
+    ) : <EmptyPreview text="Add a URL or path." />
+  }
+
+  const editorPane = (item: KnowledgeItem) => (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-[minmax(0,1fr)_150px_160px]">
+        <input
+          value={item.title}
+          onChange={(e) => updateItem({ title: e.target.value })}
+          onBlur={() => updateItem({}, true)}
+          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2.5 py-1.5 text-[13px] font-semibold text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
+        />
+        <select
+          value={item.kind}
+          onChange={(e) => updateItem({ kind: e.target.value as KnowledgeItemKind }, true)}
+          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 text-[12px] text-zinc-200 outline-none"
+        >
+          {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
+            <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
+              {kindMeta[kind].label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={item.categoryId}
+          onChange={(e) => updateItem({ categoryId: e.target.value }, true)}
+          className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 text-[12px] text-zinc-200 outline-none"
+        >
+          {kb.categories.map((category) => (
+            <option key={category.id} value={category.id} className="bg-[var(--gt-panel)]">
+              {category.title}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <input
+          value={item.description || ''}
+          onChange={(e) => updateItem({ description: e.target.value })}
+          placeholder="Short description"
+          className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+        />
+        <div className="flex items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
+          <Tags size={12} strokeWidth={2} className="text-zinc-600" />
+          <input
+            value={item.tags.join(', ')}
+            onChange={(e) => updateItem({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) })}
+            placeholder="tags"
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
+          />
         </div>
-        <div className="min-h-0 w-1/2">{preview(openNote.content)}</div>
       </div>
-    )
-  ) : (
-    <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
-      Select a note from a folder.
+      {item.kind !== 'markdown' && (
+        <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-2">
+          <input
+            value={item.url || ''}
+            onChange={(e) => updateItem({ url: e.target.value })}
+            placeholder="https://..."
+            className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+          <input
+            value={item.path || ''}
+            onChange={(e) => updateItem({ path: e.target.value })}
+            placeholder="/local/path.ext"
+            className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        {item.kind === 'markdown' ? (
+          previewMode === 'edit' ? (
+            <CodeEditor value={item.content || ''} onChange={(value) => updateItem({ content: value })} extensions={[langs.markdown()]} wrap />
+          ) : previewMode === 'preview' ? (
+            <div className="h-full overflow-y-auto p-5">{itemPreview(item)}</div>
+          ) : (
+            <div className="flex h-full min-h-0">
+              <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
+                <CodeEditor value={item.content || ''} onChange={(value) => updateItem({ content: value })} extensions={[langs.markdown()]} wrap />
+              </div>
+              <div className="min-h-0 w-1/2 overflow-y-auto p-5">{itemPreview(item)}</div>
+            </div>
+          )
+        ) : (
+          <div className="h-full overflow-y-auto p-5">{itemPreview(item)}</div>
+        )}
+      </div>
     </div>
   )
-  const scratchBody =
-    mode === 'edit' ? (
-      editor(text, onScratchChange)
-    ) : mode === 'preview' ? (
-      preview(text)
-    ) : (
-      <div className="flex h-full min-h-0">
-        <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">{editor(text, onScratchChange)}</div>
-        <div className="min-h-0 w-1/2">{preview(text)}</div>
+
+  const scratchBody = previewMode === 'edit' ? (
+    <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+  ) : previewMode === 'preview' ? (
+    <div className="h-full overflow-y-auto p-5"><Markdown>{scratch}</Markdown></div>
+  ) : (
+    <div className="flex h-full min-h-0">
+      <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
+        <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
       </div>
-    )
+      <div className="min-h-0 w-1/2 overflow-y-auto p-5"><Markdown>{scratch}</Markdown></div>
+    </div>
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-        <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {segSurface(
-            'scratch',
-            <>
-              <NotebookText size={13} strokeWidth={2} />
-              Scratch
-            </>,
-          )}
-          {segSurface(
-            'folders',
-            <>
-              <FolderOpen size={13} strokeWidth={2} />
-              Folders
-            </>,
-          )}
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
+        <div className="flex items-center gap-2">
+          <BookOpen size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+          <div>
+            <div className="text-[12px] font-semibold text-zinc-100">Knowledge Base</div>
+            <div className="text-[10.5px] text-zinc-600">{kb.items.length} items · {kb.categories.length} categories</div>
+          </div>
         </div>
-        {surface === 'scratch' ? (
-          <>
-            <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-              {segScope(
-                'repo',
-                <>
-                  <FolderGit2 size={13} strokeWidth={2} />
-                  Repo{hasRepo ? '' : ' (none)'}
-                </>,
-                !hasRepo,
-              )}
-              {segScope(
-                'global',
-                <>
-                  <Globe size={13} strokeWidth={2} />
-                  Global
-                </>,
-              )}
-            </div>
-            <span className="truncate text-[11px] text-zinc-600">
-              {scope === 'repo' ? ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '') : 'all repos'}
-            </span>
-          </>
-        ) : (
-          <>
-            <select
-              value={activeFolderId}
-              onChange={(e) => {
-                setActiveFolderId(e.target.value)
-                setOpenNote(null)
-                setSelectedDir('')
-              }}
-              className="h-8 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 text-[12px] text-zinc-300 outline-none"
-            >
-              {folders.length === 0 ? (
-                <option value="">No folders</option>
-              ) : (
-                folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {folder.title}
-                  </option>
-                ))
-              )}
-            </select>
-            <span className="max-w-[360px] truncate text-[11px] text-zinc-600">
-              {activeFolder?.path || 'Add any markdown directory. Obsidian is optional.'}
-            </span>
-            {activeFolder && (
-              <button
-                onClick={() => removeFolder(activeFolder.id)}
-                className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-              >
-                <Trash2 size={12} strokeWidth={2} />
-                Remove
-              </button>
-            )}
-            <button
-              onClick={addFolder}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-            >
-              <Plus size={12} strokeWidth={2.5} />
-              Add folder
-            </button>
-          </>
-        )}
-        <div className="flex-1" />
-        <span
-          className={`text-[10.5px] ${
-            surface === 'scratch'
-              ? saved
-                ? 'text-zinc-600'
-                : 'text-amber-400'
-              : folderSaved
-                ? 'text-zinc-600'
-                : 'text-amber-400'
-          }`}
-        >
-          {surface === 'scratch' ? (saved ? 'saved' : 'saving…') : folderSaved ? 'saved' : 'saving…'}
+        <div className="ml-2 flex rounded-lg border border-[var(--gt-border)] p-0.5">
+          <button
+            onClick={() => setView('knowledge')}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold ${view === 'knowledge' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'}`}
+          >
+            <BookOpen size={13} strokeWidth={2} />
+            Items
+          </button>
+          <button
+            onClick={() => setView('scratch')}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold ${view === 'scratch' ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'}`}
+          >
+            <NotebookText size={13} strokeWidth={2} />
+            Scratch
+          </button>
+        </div>
+        <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
+          {scopeButton('repo', 'Repo', FolderGit2, !hasRepo)}
+          {scopeButton('global', 'Global', Globe)}
+        </div>
+        <div className="min-w-[180px] max-w-[360px] flex-1">
+          <div className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
+            <Search size={13} strokeWidth={2} className="text-zinc-600" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search knowledge..."
+              className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
+            />
+          </div>
+        </div>
+        <span className={`text-[10.5px] ${view === 'scratch' ? (scratchSaved ? 'text-zinc-600' : 'text-amber-400') : (saved ? 'text-zinc-600' : 'text-amber-400')}`}>
+          {view === 'scratch' ? (scratchSaved ? 'saved' : 'saving...') : (saved ? 'saved' : 'saving...')}
         </span>
         <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {segMode('edit', 'Edit')}
-          {segMode('split', 'Split')}
-          {segMode('preview', 'Preview')}
+          {modeButton('edit', 'Edit')}
+          {modeButton('split', 'Split')}
+          {modeButton('preview', 'Preview')}
         </div>
-      </div>
-      {surface === 'scratch' ? (
+      </header>
+
+      {view === 'scratch' ? (
         <div className="min-h-0 flex-1">{scratchBody}</div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--gt-border)]">
-            <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-2">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Notes</span>
-              <div className="flex-1" />
-              <button
-                onClick={() => setNewNoteName('Untitled.md')}
-                disabled={!activeFolderId}
-                className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100 disabled:opacity-40"
-              >
-                <FilePlus size={11} strokeWidth={2} />
-                New
-              </button>
-            </div>
-            {newNoteName !== null && (
-              <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-black/30 px-2 py-1.5">
-                <span className="text-[10px] text-zinc-500">note</span>
+          <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
+            <div className="border-b border-[var(--gt-border)] p-2">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Categories</div>
+              <div className="flex gap-1">
                 <input
-                  autoFocus
-                  value={newNoteName}
-                  onChange={(e) => setNewNoteName(e.target.value)}
-                  onFocus={(e) => e.currentTarget.select()}
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') createNote()
-                    if (e.key === 'Escape') setNewNoteName(null)
+                    if (e.key === 'Enter') addCategory()
                   }}
-                  className="min-w-0 flex-1 rounded border border-[var(--gt-border)] bg-black/40 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                  placeholder="new category"
+                  className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
                 />
+                <button onClick={addCategory} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100">
+                  <Plus size={13} strokeWidth={2.5} />
+                </button>
               </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-y-auto py-1">
-              {!activeFolderId ? (
-                <div className="p-4 text-[12px] text-zinc-600">
-                  Add a markdown folder, docs directory, or Obsidian vault.
-                </div>
-              ) : folderRoots === null ? (
-                <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
-              ) : folderRoots.length === 0 ? (
-                <div className="p-4 text-[12px] text-zinc-600">No markdown files found.</div>
-              ) : (
-                folderRoots.map((entry) => (
-                  <NoteTree
-                    key={entry.path}
-                    entry={entry}
-                    folderId={activeFolderId}
-                    active={openNote?.folderId === activeFolderId ? openNote.path : null}
-                    selectedDir={selectedDir}
-                    version={version}
-                    onOpen={openFolderFile}
-                    onSelectDir={setSelectedDir}
-                  />
-                ))
-              )}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {kb.categories.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => setActiveCategoryId(category.id)}
+                  className={`group mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-2 text-left ${
+                    activeCategoryId === category.id
+                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/12 text-zinc-100'
+                      : 'border-transparent text-zinc-400 hover:border-[var(--gt-border)] hover:bg-white/5 hover:text-zinc-200'
+                  }`}
+                >
+                  <BookOpen size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-semibold">{category.title}</span>
+                    <span className="text-[10px] text-zinc-600">{counts.get(category.id) || 0} items</span>
+                  </span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteCategory(category.id)
+                    }}
+                    className={`rounded p-1 text-zinc-700 ${counts.get(category.id) || kb.categories.length <= 1 ? 'opacity-0' : 'opacity-0 group-hover:opacity-100 hover:bg-white/5 hover:text-[var(--gt-red)]'}`}
+                  >
+                    <Trash2 size={11} strokeWidth={2} />
+                  </span>
+                </button>
+              ))}
             </div>
           </aside>
-          <div className="min-w-0 flex-1">{noteBody}</div>
+
+          <section className="flex w-80 shrink-0 flex-col border-r border-[var(--gt-border)]">
+            <div className="border-b border-[var(--gt-border)] p-2">
+              <div className="mb-2 flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12px] font-semibold text-zinc-100">{activeCategory?.title || 'Category'}</div>
+                  <div className="truncate text-[10.5px] text-zinc-600">{activeCategory?.description || 'Typed references and media.'}</div>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <select
+                  value={newKind}
+                  onChange={(e) => setNewKind(e.target.value as KnowledgeItemKind)}
+                  className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none"
+                >
+                  {(Object.keys(kindMeta) as KnowledgeItemKind[]).map((kind) => (
+                    <option key={kind} value={kind} className="bg-[var(--gt-panel)]">
+                      {kindMeta[kind].label}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={addItem} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60">
+                  <Plus size={12} strokeWidth={2.5} />
+                  Add
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {filteredItems.length === 0 ? (
+                <div className="p-4 text-[12px] text-zinc-600">No matching knowledge items.</div>
+              ) : (
+                filteredItems.map((item) => {
+                  const meta = kindMeta[item.kind]
+                  const Icon = meta.Icon
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveItemId(item.id)}
+                      className={`mb-1.5 flex w-full items-start gap-2 rounded-lg border p-2 text-left ${
+                        activeItemId === item.id
+                          ? 'border-[var(--gt-accent)]/55 bg-[var(--gt-accent)]/12'
+                          : 'border-[var(--gt-border)] bg-black/15 hover:border-[var(--gt-accent)]/35 hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12px] font-semibold text-zinc-200">{item.title}</span>
+                        <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-600">
+                          {item.description || sourceOf(item) || meta.hint}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </section>
+
+          <main className="min-w-0 flex-1">
+            {activeItem ? (
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
+                  <span className="truncate text-[11px] text-zinc-500">{kindMeta[activeItem.kind].label}</span>
+                  <span className="text-zinc-700">/</span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-300">{activeItem.title}</span>
+                  <button
+                    onClick={() => deleteItem(activeItem.id)}
+                    className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                  >
+                    <Trash2 size={11} strokeWidth={2} />
+                    Delete
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1">{editorPane(activeItem)}</div>
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center p-6 text-center">
+                <div className="max-w-md">
+                  <BookOpen size={28} strokeWidth={1.8} className="mx-auto mb-3 text-[var(--gt-accent-light)]" />
+                  <div className="text-sm font-semibold text-zinc-200">Build a local knowledge base</div>
+                  <div className="mt-1 text-[12px] leading-relaxed text-zinc-600">
+                    Add markdown snippets, links, images, videos, or files. Categories are dynamic and scoped to this repo or globally.
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
         </div>
       )}
     </div>
   )
 }
 
+function EmptyPreview({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-6 text-center text-[12px] text-zinc-600">
+      {text}
+    </div>
+  )
+}
+
 const tab: Tab = {
   id: 'notes',
-  title: 'Notes',
-  icon: NotebookText,
+  title: 'Knowledge Base',
+  icon: BookOpen,
   order: 7,
   appliesTo: () => true,
-  Component: NotesTab,
+  Component: KnowledgeTab,
 }
 export default tab

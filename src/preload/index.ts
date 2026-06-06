@@ -302,6 +302,10 @@ const gt = {
     folderWrite: (id: string, rel: string, content: string) =>
       ipcRenderer.invoke('notes:folder-write', id, rel, content),
   },
+  knowledge: {
+    read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),
+    write: (scope: 'repo' | 'global', kb: unknown) => ipcRenderer.invoke('knowledge:write', scope, kb),
+  },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),

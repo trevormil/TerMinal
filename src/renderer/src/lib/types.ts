@@ -168,6 +168,34 @@ export type SuggestionsCfg = {
   autoModel: string
 }
 export type NoteFolder = { id: string; title: string; path: string }
+export type KnowledgeScope = 'repo' | 'global'
+export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file'
+export type KnowledgeCategory = {
+  id: string
+  title: string
+  description?: string
+  order: number
+  createdAt: number
+  updatedAt: number
+}
+export type KnowledgeItem = {
+  id: string
+  categoryId: string
+  kind: KnowledgeItemKind
+  title: string
+  description?: string
+  content?: string
+  url?: string
+  path?: string
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+}
+export type KnowledgeBase = {
+  version: 1
+  categories: KnowledgeCategory[]
+  items: KnowledgeItem[]
+}
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
   id: string
@@ -1120,6 +1148,10 @@ export type GtApi = {
     folderList: (id: string, rel: string) => Promise<FileEntry[]>
     folderRead: (id: string, rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     folderWrite: (id: string, rel: string, content: string) => Promise<boolean>
+  }
+  knowledge: {
+    read: (scope: KnowledgeScope) => Promise<KnowledgeBase>
+    write: (scope: KnowledgeScope, kb: KnowledgeBase) => Promise<boolean>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>
