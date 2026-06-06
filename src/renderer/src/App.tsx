@@ -337,7 +337,6 @@ export default function App() {
   // await keeps the visual swap snappy without introducing a real race.
   const activate = (key: string) => {
     setActiveKey(key)
-    clearAttention(key)
     window.gt.setActiveSession(key).catch(() => {
       /* main rejected (e.g. session removed) — UI already flipped, accept */
     })
