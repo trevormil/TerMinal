@@ -141,6 +141,9 @@ export function EngineModelPicker({
       {open && menuPos && createPortal(
         <div
           ref={menuRef}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           className="fixed z-[10000] w-[300px] overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-2xl"
           style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
         >
