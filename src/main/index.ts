@@ -1363,7 +1363,7 @@ ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: strin
   if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples, put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
   return remoteRuns.start(daemon.remote, {
     agentId: 'ticket-spawn',
     agentTitle: `File ticket · ${t.slice(0, 48)}`,

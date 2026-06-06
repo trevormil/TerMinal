@@ -133,12 +133,12 @@ function HelpTab(_props: { ctx: TabContext }) {
         <Section icon={RefreshCw} title="The loop">
           <div className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-4">
             <LoopStep n={1} icon={Play} cmd="/session-start">
-              Open a session — seeds a live <code className="font-mono">sessions/NNNN/session.md</code> by scanning
-              the repo for in-scope tickets, prior work, and tools.
+              Open a session — seeds a live <code className="font-mono">.TerMinal/sessions/NNNN/session.md</code>{' '}
+              by scanning the repo for in-scope tickets, prior work, and tools.
             </LoopStep>
             <LoopStep n={2} icon={TicketIcon} cmd="/ticket">
-              Capture work as backlog tickets (<code className="font-mono">backlog/NNNN-slug.md</code>) — or pick
-              one from the <span className="text-zinc-300">Tickets</span> tab.
+              Capture work as tickets (<code className="font-mono">.TerMinal/backlog/NNNN-slug.md</code>) — or
+              pick one from the <span className="text-zinc-300">Tickets</span> tab.
             </LoopStep>
             <LoopStep n={3} icon={GitBranch} cmd="/pr-creation">
               Branch (optionally a worktree) → implement TDD-first → push → open the PR/MR → link it back into the
@@ -149,7 +149,7 @@ function HelpTab(_props: { ctx: TabContext }) {
             </LoopStep>
             <LoopStep n={5} icon={ScanSearch} cmd="/code-review">
               The checkpoint: Codex runs the suite (the gate), scores six axes, and writes one combined artifact
-              to <code className="font-mono">.reviews/</code>. Runs in the background — keep working.
+              to <code className="font-mono">.TerMinal/reviews/</code>. Runs in the background — keep working.
             </LoopStep>
             <LoopStep n={6} icon={GitMerge} cmd="you merge">
               When it hits the bar, <span className="font-semibold text-zinc-200">you</span> merge. Agents never
@@ -177,10 +177,12 @@ function HelpTab(_props: { ctx: TabContext }) {
               Ad-hoc Codex test run reported to chat — the fast inner loop.
             </SkillCard>
             <SkillCard cmd="/code-review" when="a PR is ready">
-              Codex: tests-as-gate + six-axis score + findings, written to <code className="font-mono">.reviews/</code>.
+              Codex: tests-as-gate + six-axis score + findings, written to{' '}
+              <code className="font-mono">.TerMinal/reviews/</code>.
             </SkillCard>
             <SkillCard cmd="/check" when="weekly / on cadence">
-              Repo-level inspection (dead-code, dep drift) → dated <code className="font-mono">.checks/</code> artifact.
+              Repo-level inspection (dead-code, dep drift) → dated{' '}
+              <code className="font-mono">.TerMinal/checks/</code> artifact.
             </SkillCard>
             <SkillCard cmd="/stacked-mr" when="AFK / overnight batch">
               Stack a queue of tickets as dependent PRs, then batch-review the whole stack at the end.

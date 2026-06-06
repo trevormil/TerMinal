@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { listTickets } from './backlog'
+import { backlogRel, listTickets } from './backlog'
 import { listMrs } from './mrs'
 import { readActivity } from './events'
 import { listDocs, readDoc } from './docs'
@@ -116,7 +116,7 @@ export async function workspaceSearch(
           title: `#${t.id} ${t.title}`,
           subtitle: `${t.status} - ${t.priority} - ${t.type}`,
           detail: short(t.body),
-          path: `backlog/${t.slug}.md`,
+          path: `${backlogRel(repoRoot)}/${t.slug}.md`,
           payload: { slug: t.slug },
         })
       }

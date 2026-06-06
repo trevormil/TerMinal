@@ -17,7 +17,7 @@ Implement the ticket end to end. Keep changes surgical, add or adjust tests, com
 
 export function fileTicketPrompt(text: string, opts: { model?: string } = {}): string {
   return withLaunchContext(
-    `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions. Allocate the next id, write backlog/NNNN-slug.md with valid YAML frontmatter matching backlog/EXAMPLE.md, put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR.
+    `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions. Allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the ticket example (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR.
 
 Request: ${text.trim()}`,
     opts,

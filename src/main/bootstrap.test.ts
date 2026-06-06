@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { BOOTSTRAP_MARKERS, classifyBootstrapStatus } from './bootstrap'
+import { BOOTSTRAP_MARKER_LABELS, classifyBootstrapStatus } from './bootstrap'
 
 describe('classifyBootstrapStatus', () => {
   test('full when all project-template markers exist', () => {
@@ -13,7 +13,7 @@ describe('classifyBootstrapStatus', () => {
     const status = classifyBootstrapStatus('/repo', () => false)
     expect(status.state).toBe('none')
     expect(status.bootstrapped).toBe(false)
-    expect(status.missing).toEqual([...BOOTSTRAP_MARKERS])
+    expect(status.missing).toEqual([...BOOTSTRAP_MARKER_LABELS])
   })
 
   test('partial lists missing markers', () => {
@@ -23,6 +23,13 @@ describe('classifyBootstrapStatus', () => {
     expect(status.bootstrapped).toBe(false)
     expect(status.missing).toEqual(['docs', 'sessions', '.claude/skills', '.codex/skills'])
     expect(status.message).toContain('partially bootstrapped')
+  })
+
+  test('v2 state directories satisfy v1-compatible markers', () => {
+    const present = new Set(['.agents', '.TerMinal/backlog', 'docs', '.TerMinal/sessions', '.claude/skills', '.codex/skills'])
+    const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
+    expect(status.state).toBe('full')
+    expect(status.bootstrapped).toBe(true)
   })
 
   test('unreadable marker checks are treated as missing', () => {

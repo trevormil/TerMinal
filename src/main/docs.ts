@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join, relative, basename, sep } from 'node:path'
+import { existingProjectAreaPaths } from './project-layout'
 
 // GitBook-style docs surface for a repo. Lists every markdown file under
-// docs/ + reports/ + a root CHANGELOG.md, grouped by category for the
+// docs/ + reports/checks + a root CHANGELOG.md, grouped by category for the
 // renderer's sidebar.
 //
 // Categories (per project-template convention):
@@ -11,7 +12,8 @@ import { join, relative, basename, sep } from 'node:path'
 //   - maintainer  — docs/maintainer/**.md (auto-docs agent)
 //   - developer   — docs/developer/**.md  (auto-docs agent)
 //   - personal    — docs/personal/**.md   (auto-docs agent)
-//   - reports     — reports/<kind>/**.md  (scheduled-agent run artifacts;
+//   - reports     — reports/<kind>/**.md or .TerMinal/reports/<kind>/**.md
+//                   (scheduled-agent run artifacts;
 //                   each kind sub-grouped in the sidebar via DocEntry.subgroup)
 //   - other       — everything else under docs/**.md (human-authored runbooks,
 //                   architecture.md at root, etc.)
@@ -60,15 +62,23 @@ function categorize(rel: string): DocCategory {
   if (norm.startsWith('docs/developer/')) return 'developer'
   if (norm.startsWith('docs/personal/')) return 'personal'
   if (norm.startsWith('reports/')) return 'reports'
+  if (norm.startsWith('.checks/')) return 'reports'
   if (norm.startsWith('checks/')) return 'reports' // checks/ surfaces alongside reports/
+  if (norm.startsWith('.TerMinal/reports/')) return 'reports'
+  if (norm.startsWith('.TerMinal/checks/')) return 'reports'
   return 'other'
 }
 
 function reportSubgroup(rel: string): string | undefined {
   const parts = rel.split(sep).join('/').split('/')
-  // reports/<kind>/<file>.md → "<kind>"
-  // checks/<kind>/<file>.md  → "<kind>"
+  // reports/<kind>/<file>.md              → "<kind>"
+  // .TerMinal/reports/<kind>/<file>.md    → "<kind>"
+  // .checks/<kind>/<file>.md              → "<kind>"
+  // checks/<kind>/<file>.md               → "<kind>"
+  // .TerMinal/checks/<kind>/<file>.md     → "<kind>"
   if (parts.length >= 3 && (parts[0] === 'reports' || parts[0] === 'checks')) return parts[1]
+  if (parts.length >= 3 && parts[0] === '.checks') return parts[1]
+  if (parts.length >= 4 && parts[0] === '.TerMinal' && (parts[1] === 'reports' || parts[1] === 'checks')) return parts[2]
   return undefined
 }
 
@@ -99,10 +109,12 @@ export function listDocs(repoRoot: string): DocsTree {
   const paths: string[] = []
   const docsDir = join(repoRoot, 'docs')
   if (existsSync(docsDir) && statSync(docsDir).isDirectory()) walk(repoRoot, docsDir, paths)
-  const reportsDir = join(repoRoot, 'reports')
-  if (existsSync(reportsDir) && statSync(reportsDir).isDirectory()) walk(repoRoot, reportsDir, paths)
-  const checksDir = join(repoRoot, 'checks')
-  if (existsSync(checksDir) && statSync(checksDir).isDirectory()) walk(repoRoot, checksDir, paths)
+  for (const reportsDir of existingProjectAreaPaths(repoRoot, 'reports')) {
+    if (existsSync(reportsDir) && statSync(reportsDir).isDirectory()) walk(repoRoot, reportsDir, paths)
+  }
+  for (const checksDir of existingProjectAreaPaths(repoRoot, 'checks')) {
+    if (existsSync(checksDir) && statSync(checksDir).isDirectory()) walk(repoRoot, checksDir, paths)
+  }
   const changelog = join(repoRoot, 'CHANGELOG.md')
   if (existsSync(changelog)) paths.push('CHANGELOG.md')
 

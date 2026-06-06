@@ -1,10 +1,10 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
+import { existingProjectAreaPaths } from './project-layout'
 
-// Project sessions: <repoRoot>/sessions/NNNN-slug/session.md (project-template
-// convention). Distinct from Claude Code sessions — these are the repo's live
-// work-session docs.
+// Project sessions. v2 repos use .TerMinal/sessions; v1 repos use sessions/.
+// Distinct from Claude Code sessions — these are the repo's live work docs.
 export type ProjectSession = {
   slug: string
   id: number
@@ -19,8 +19,6 @@ export type ProjectSession = {
   prs: string[]
   body?: string
 }
-
-const sessionsDir = (repoRoot: string) => join(repoRoot, 'sessions')
 
 function toSession(slug: string, md: string, withBody = false): ProjectSession {
   const { fm, body } = parseFrontmatter(md)
@@ -44,27 +42,27 @@ function toSession(slug: string, md: string, withBody = false): ProjectSession {
 }
 
 export function hasSessions(repoRoot: string): boolean {
-  return !!repoRoot && existsSync(sessionsDir(repoRoot))
+  return !!repoRoot && existingProjectAreaPaths(repoRoot, 'sessions').length > 0
 }
 
 export function listProjectSessions(repoRoot: string): ProjectSession[] {
-  const dir = sessionsDir(repoRoot)
-  if (!existsSync(dir)) return []
   const out: ProjectSession[] = []
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return []
-  }
-  for (const d of entries) {
-    if (!/^\d+-/.test(d)) continue
-    const sm = join(dir, d, 'session.md')
-    if (!existsSync(sm)) continue
+  for (const dir of existingProjectAreaPaths(repoRoot, 'sessions')) {
+    let entries: string[]
     try {
-      out.push(toSession(d, readFileSync(sm, 'utf8')))
+      entries = readdirSync(dir)
     } catch {
-      /* skip */
+      continue
+    }
+    for (const d of entries) {
+      if (!/^\d+-/.test(d)) continue
+      const sm = join(dir, d, 'session.md')
+      if (!existsSync(sm)) continue
+      try {
+        out.push(toSession(d, readFileSync(sm, 'utf8')))
+      } catch {
+        /* skip */
+      }
     }
   }
   return out.sort((a, b) => b.id - a.id)
@@ -72,8 +70,10 @@ export function listProjectSessions(repoRoot: string): ProjectSession[] {
 
 export function getProjectSession(repoRoot: string, slug: string): ProjectSession | null {
   const safe = slug.replace(/[^\w-]/g, '')
-  const sm = join(sessionsDir(repoRoot), safe, 'session.md')
-  if (!existsSync(sm)) return null
+  const sm = existingProjectAreaPaths(repoRoot, 'sessions')
+    .map((dir) => join(dir, safe, 'session.md'))
+    .find((candidate) => existsSync(candidate))
+  if (!sm) return null
   try {
     return toSession(safe, readFileSync(sm, 'utf8'), true)
   } catch {

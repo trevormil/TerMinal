@@ -37,6 +37,36 @@ function configuredHarnessDir() {
   return typeof s.harnessDir === 'string' ? s.harnessDir : ''
 }
 
+function areaCandidates(area) {
+  return {
+    backlog: ['.TerMinal/backlog', 'backlog'],
+    sessions: ['.TerMinal/sessions', 'sessions'],
+    reviews: ['.TerMinal/reviews', '.reviews'],
+    checks: ['.TerMinal/checks', '.checks', 'checks'],
+    reports: ['.TerMinal/reports', 'reports'],
+  }[area] || [area]
+}
+
+function hasV2Layout(root) {
+  return (
+    existsSync(join(root, '.TerMinal', 'template.json')) ||
+    ['backlog', 'sessions', 'reviews', 'checks', 'reports'].some((area) =>
+      existsSync(join(root, areaCandidates(area)[0])),
+    )
+  )
+}
+
+function areaPaths(root, area) {
+  return areaCandidates(area).map((rel) => join(root, rel)).filter((p) => existsSync(p))
+}
+
+function areaPath(root, area) {
+  const existing = areaPaths(root, area)[0]
+  if (existing) return existing
+  const rels = areaCandidates(area)
+  return join(root, hasV2Layout(root) ? rels[0] : rels[rels.length - 1])
+}
+
 function pingTelegram(text, inlineKeyboard) {
   const telegram = readSettings()?.telegram
   if (telegram?.botToken && telegram?.chatId) {
@@ -148,47 +178,47 @@ function findRepoRoot(repoArg) {
 // --- tickets ---------------------------------------------------------------
 
 function listTicketsForRoot(repoRoot, filter, includeBody) {
-  const dir = join(repoRoot, 'backlog')
-  if (!existsSync(dir)) return []
   const out = []
-  let files
-  try {
-    files = readdirSync(dir)
-  } catch {
-    return []
-  }
-  for (const f of files) {
-    if (!/^\d{4}-.*\.md$/.test(f)) continue
-    let raw
+  for (const dir of areaPaths(repoRoot, 'backlog')) {
+    let files
     try {
-      raw = readFileSync(join(dir, f), 'utf8')
+      files = readdirSync(dir)
     } catch {
       continue
     }
-    const { meta, body } = parseFrontmatter(raw)
-    const slug = f.replace(/\.md$/, '')
-    const ticket = {
-      slug,
-      id: typeof meta.id === 'number' ? meta.id : parseInt(slug.slice(0, 4), 10),
-      title: meta.title || slug,
-      status: meta.status || 'open',
-      priority: meta.priority || 'medium',
-      type: meta.type || 'feature',
-      horizon: meta.horizon || 'now',
-      hitl: meta.hitl === true,
-      created: meta.created,
-      updated: meta.updated,
-      prs: meta.prs || [],
-      repo: basename(repoRoot),
+    for (const f of files) {
+      if (!/^\d{4}-.*\.md$/.test(f)) continue
+      let raw
+      try {
+        raw = readFileSync(join(dir, f), 'utf8')
+      } catch {
+        continue
+      }
+      const { meta, body } = parseFrontmatter(raw)
+      const slug = f.replace(/\.md$/, '')
+      const ticket = {
+        slug,
+        id: typeof meta.id === 'number' ? meta.id : parseInt(slug.slice(0, 4), 10),
+        title: meta.title || slug,
+        status: meta.status || 'open',
+        priority: meta.priority || 'medium',
+        type: meta.type || 'feature',
+        horizon: meta.horizon || 'now',
+        hitl: meta.hitl === true,
+        created: meta.created,
+        updated: meta.updated,
+        prs: meta.prs || [],
+        repo: basename(repoRoot),
+      }
+      // Index view by default — body is omitted to keep list responses small;
+      // fetch the full body on demand via get_ticket. include_body opts into a
+      // short preview for callers that genuinely need it.
+      if (includeBody) ticket.body = body.slice(0, 600)
+      if (filter?.excludeClosed && ticket.status === 'closed') continue
+      if (filter?.status && ticket.status !== filter.status) continue
+      if (filter?.type && ticket.type !== filter.type) continue
+      out.push(ticket)
     }
-    // Index view by default — body is omitted to keep list responses small;
-    // fetch the full body on demand via get_ticket. include_body opts into a
-    // short preview for callers that genuinely need it.
-    if (includeBody) ticket.body = body.slice(0, 600)
-    if (filter?.excludeClosed && ticket.status === 'closed') continue
-    if (filter?.status && ticket.status !== filter.status) continue
-    if (filter?.type && ticket.type !== filter.type) continue
-    out.push(ticket)
   }
   return out.sort((a, b) => a.id - b.id)
 }
@@ -214,8 +244,8 @@ function getTicketTool(args) {
   if (!slug) return null
   // Try every known repo until we find it
   for (const root of knownRepoRoots()) {
-    const f = join(root, 'backlog', `${slug}.md`)
-    if (existsSync(f)) {
+    const f = areaPaths(root, 'backlog').map((dir) => join(dir, `${slug}.md`)).find((p) => existsSync(p))
+    if (f) {
       const raw = readFileSync(f, 'utf8')
       const { meta, body } = parseFrontmatter(raw)
       return {
@@ -418,8 +448,8 @@ function fileTicket(args) {
   if (!title) throw new Error('title is required')
   const repoRoot = findRepoRoot(repo)
   if (!repoRoot) throw new Error(`no repo matching "${repo}"`)
-  const backlogDir = join(repoRoot, 'backlog')
-  if (!existsSync(backlogDir)) throw new Error(`${repoRoot}/backlog/ does not exist`)
+  const backlogDir = areaPath(repoRoot, 'backlog')
+  mkdirSync(backlogDir, { recursive: true })
   // Atomic-ish ID allocation via .next-id (matches bin/next-backlog-id semantics)
   const nextIdFile = join(backlogDir, '.next-id')
   let nextId = 1
@@ -472,8 +502,8 @@ function updateTicket(args) {
   let path = null
   let repoRoot = null
   for (const root of knownRepoRoots()) {
-    const p = join(root, 'backlog', `${slug}.md`)
-    if (existsSync(p)) {
+    const p = areaPaths(root, 'backlog').map((dir) => join(dir, `${slug}.md`)).find((candidate) => existsSync(candidate))
+    if (p) {
       path = p
       repoRoot = root
       break
@@ -910,8 +940,8 @@ function factoryHealthTool() {
     const repo = basename(root)
     const repoOut = { repo, ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 }, openPrs: 0 }
     // Tickets
-    const backlog = join(root, 'backlog')
-    if (existsSync(backlog)) {
+    const backlogs = areaPaths(root, 'backlog')
+    for (const backlog of backlogs) {
       try {
         for (const f of readdirSync(backlog)) {
           if (!/^\d{4}-.*\.md$/.test(f)) continue

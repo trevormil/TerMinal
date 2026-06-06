@@ -50,4 +50,16 @@ describe('listDocs', () => {
     expect(count('reports')).toBe(1)
     expect(count('other')).toBe(1)
   })
+
+  test('categorizes v2 reports and checks under .TerMinal', () => {
+    const root = repo()
+    write(root, '.TerMinal/reports/health/today.md', '# Health\n')
+    write(root, '.TerMinal/checks/dead-code/today.md', '# Dead code\n')
+
+    const reports = listDocs(root).categories.find((c) => c.id === 'reports')?.items ?? []
+    expect(reports).toMatchObject([
+      { path: '.TerMinal/checks/dead-code/today.md', category: 'reports', subgroup: 'dead-code' },
+      { path: '.TerMinal/reports/health/today.md', category: 'reports', subgroup: 'health' },
+    ])
+  })
 })

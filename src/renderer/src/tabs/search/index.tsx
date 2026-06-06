@@ -157,7 +157,7 @@ export function WorkspaceSearchPanel({
     })
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+    <div className="flex h-full min-h-0 w-full flex-col bg-[var(--gt-bg)]">
       <header className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/55 px-4 py-3">
         <div className="flex items-center gap-2">
           <Search size={16} className="text-[var(--gt-accent-light)]" />

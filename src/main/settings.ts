@@ -410,7 +410,7 @@ export function resolvedWorktreesDir(): string {
 }
 
 /** Optional cross-repo review-artifact store. '' (default) = none; the in-repo
- *  .reviews/ dir is the primary source and needs no configuration. */
+ *  project reviews dir is the primary source and needs no configuration. */
 export function resolvedHarnessDir(): string {
   return readSettings().harnessDir
 }

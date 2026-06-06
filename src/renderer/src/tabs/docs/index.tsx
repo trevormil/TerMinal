@@ -16,7 +16,7 @@ const CATEGORY_PREFIX: Partial<Record<DocCategory, string>> = {
   maintainer: 'docs/maintainer/',
   developer: 'docs/developer/',
   personal: 'docs/personal/',
-  reports: 'reports/',
+  reports: '.TerMinal/reports/',
   other: 'docs/',
 }
 

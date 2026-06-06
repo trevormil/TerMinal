@@ -79,7 +79,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : shown.length === 0 ? (
             <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
-              No session docs in <span className="font-mono">sessions/</span> yet. Start one with{' '}
+              No session docs in <span className="font-mono">.TerMinal/sessions/</span> yet. Start one with{' '}
               <span className="font-mono text-zinc-400">/session-start</span> in the terminal.
             </div>
           ) : (

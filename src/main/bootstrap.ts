@@ -7,32 +7,34 @@ export type BootstrapStatus = {
 }
 
 export const BOOTSTRAP_MARKERS = [
-  '.agents',
-  'backlog',
-  'docs',
-  'sessions',
-  '.claude/skills',
-  '.codex/skills',
+  { label: '.agents', anyOf: ['.agents'] },
+  { label: 'backlog', anyOf: ['.TerMinal/backlog', 'backlog'] },
+  { label: 'docs', anyOf: ['docs'] },
+  { label: 'sessions', anyOf: ['.TerMinal/sessions', 'sessions'] },
+  { label: '.claude/skills', anyOf: ['.claude/skills'] },
+  { label: '.codex/skills', anyOf: ['.codex/skills'] },
 ] as const
+
+export const BOOTSTRAP_MARKER_LABELS = BOOTSTRAP_MARKERS.map((m) => m.label)
 
 export function classifyBootstrapStatus(
   repoRoot: string,
   hasPath: (rel: string) => boolean,
 ): BootstrapStatus {
   if (!repoRoot) {
-    return { state: 'none', bootstrapped: false, missing: [...BOOTSTRAP_MARKERS], message: 'No repo selected.' }
+    return { state: 'none', bootstrapped: false, missing: [...BOOTSTRAP_MARKER_LABELS], message: 'No repo selected.' }
   }
   let present = 0
   const missing: string[] = []
   for (const marker of BOOTSTRAP_MARKERS) {
     let ok = false
     try {
-      ok = hasPath(marker)
+      ok = marker.anyOf.some((rel) => hasPath(rel))
     } catch {
       ok = false
     }
     if (ok) present++
-    else missing.push(marker)
+    else missing.push(marker.label)
   }
   if (present === BOOTSTRAP_MARKERS.length) {
     return { state: 'full', bootstrapped: true, missing: [], message: 'Project-template workflow files are present.' }

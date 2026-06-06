@@ -47,6 +47,34 @@ const repoLabel = repo ? basename(repo) : ''
 const runId = process.env.TERMINAL_RUN_ID || ''
 const agentId = process.env.TERMINAL_AGENT_ID || ''
 
+function areaCandidates(area) {
+  return {
+    backlog: ['.TerMinal/backlog', 'backlog'],
+    sessions: ['.TerMinal/sessions', 'sessions'],
+    reviews: ['.TerMinal/reviews', '.reviews'],
+    checks: ['.TerMinal/checks', '.checks', 'checks'],
+    reports: ['.TerMinal/reports', 'reports'],
+  }[area] || [area]
+}
+
+function hasV2Layout(root) {
+  return (
+    existsSync(join(root, '.TerMinal', 'template.json')) ||
+    ['backlog', 'sessions', 'reviews', 'checks', 'reports'].some((area) =>
+      existsSync(join(root, areaCandidates(area)[0])),
+    )
+  )
+}
+
+function areaPath(root, area) {
+  for (const rel of areaCandidates(area)) {
+    const p = join(root, rel)
+    if (existsSync(p)) return p
+  }
+  const rels = areaCandidates(area)
+  return join(root, hasV2Layout(root) ? rels[0] : rels[rels.length - 1])
+}
+
 function readTelegram() {
   try {
     return JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
@@ -582,11 +610,8 @@ function fileTicket(title, body) {
     console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
     process.exit(2)
   }
-  const backlog = join(repo, 'backlog')
-  if (!existsSync(backlog)) {
-    console.error(`terminal-cli ticket: ${backlog} does not exist in this repo`)
-    process.exit(2)
-  }
+  const backlog = areaPath(repo, 'backlog')
+  mkdirSync(backlog, { recursive: true })
   const files = readdirSync(backlog).filter((f) => /^\d{4}-.*\.md$/.test(f))
   const maxId = files.reduce((m, f) => Math.max(m, parseInt(f.slice(0, 4), 10)), 0)
   const id = String(maxId + 1).padStart(4, '0')

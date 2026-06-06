@@ -1,8 +1,16 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
+import {
+  ensureProjectArea,
+  existingProjectAreaPaths,
+  projectAreaPathForRead,
+  projectAreaPathForWrite,
+  projectAreaRelForPath,
+} from './project-layout'
 
-// Per-repo backlog: <repoRoot>/backlog/NNNN-slug.md with YAML frontmatter.
+// Per-repo backlog. v2 repos store tickets in .TerMinal/backlog; v1 repos
+// store them in backlog/. Reads check both layouts so old repos keep working.
 
 export type Ticket = {
   slug: string
@@ -30,8 +38,12 @@ export type NewTicket = {
   body: string
 }
 
-function backlogDir(repoRoot: string): string {
-  return join(repoRoot, 'backlog')
+export function backlogDir(repoRoot: string): string {
+  return projectAreaPathForRead(repoRoot, 'backlog')
+}
+
+export function backlogRel(repoRoot: string): string {
+  return projectAreaRelForPath(repoRoot, 'backlog', backlogDir(repoRoot))
 }
 
 function toTicket(slug: string, md: string): Ticket {
@@ -71,16 +83,16 @@ function depsArr(v: unknown): number[] {
 }
 
 export function listTickets(repoRoot: string): Ticket[] {
-  const dir = backlogDir(repoRoot)
-  if (!existsSync(dir)) return []
   const out: Ticket[] = []
-  for (const f of readdirSync(dir)) {
-    // Tickets are NNNN-slug.md — a leading digit excludes README.md, EXAMPLE.md, etc.
-    if (!/^\d/.test(f) || !f.endsWith('.md')) continue
-    try {
-      out.push(toTicket(f.replace(/\.md$/, ''), readFileSync(join(dir, f), 'utf8')))
-    } catch {
-      /* skip unreadable */
+  for (const dir of existingProjectAreaPaths(repoRoot, 'backlog')) {
+    for (const f of readdirSync(dir)) {
+      // Tickets are NNNN-slug.md — a leading digit excludes README.md, EXAMPLE.md, etc.
+      if (!/^\d/.test(f) || !f.endsWith('.md')) continue
+      try {
+        out.push(toTicket(f.replace(/\.md$/, ''), readFileSync(join(dir, f), 'utf8')))
+      } catch {
+        /* skip unreadable */
+      }
     }
   }
   return out.sort((a, b) => b.id - a.id)
@@ -88,8 +100,10 @@ export function listTickets(repoRoot: string): Ticket[] {
 
 export function getTicket(repoRoot: string, slug: string): Ticket | null {
   const safe = slug.replace(/[^\w-]/g, '')
-  const p = join(backlogDir(repoRoot), `${safe}.md`)
-  if (!existsSync(p)) return null
+  const p = existingProjectAreaPaths(repoRoot, 'backlog')
+    .map((dir) => join(dir, `${safe}.md`))
+    .find((candidate) => existsSync(candidate))
+  if (!p) return null
   return toTicket(safe, readFileSync(p, 'utf8'))
 }
 
@@ -113,8 +127,10 @@ export function updateTicket(
   patch: { status?: string; priority?: string },
 ): boolean {
   const safe = slug.replace(/[^\w-]/g, '')
-  const p = join(backlogDir(repoRoot), `${safe}.md`)
-  if (!existsSync(p)) return false
+  const p = existingProjectAreaPaths(repoRoot, 'backlog')
+    .map((dir) => join(dir, `${safe}.md`))
+    .find((candidate) => existsSync(candidate))
+  if (!p) return false
   let md: string
   try {
     md = readFileSync(p, 'utf8')
@@ -141,8 +157,9 @@ export function updateTicket(
 }
 
 export function createTicket(repoRoot: string, input: NewTicket): Ticket {
-  const dir = backlogDir(repoRoot)
-  if (!existsSync(dir)) throw new Error('no backlog/ in this repo')
+  const dir = existsSync(projectAreaPathForWrite(repoRoot, 'backlog'))
+    ? projectAreaPathForWrite(repoRoot, 'backlog')
+    : ensureProjectArea(repoRoot, 'backlog')
   const nextId = listTickets(repoRoot).reduce((max, t) => Math.max(max, t.id), 0) + 1
   const num = String(nextId).padStart(4, '0')
   const slug = `${num}-${slugify(input.title)}`

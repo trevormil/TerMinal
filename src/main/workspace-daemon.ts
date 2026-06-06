@@ -1,6 +1,5 @@
 import { homedir } from 'node:os'
-import { existsSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import { basename } from 'node:path'
 import { listTickets, getTicket, createTicket, updateTicket, type NewTicket, type Ticket } from './backlog'
 import { listCiJobs, listCiRuns, fetchCiLog, type CiJobsResult, type CiListResult, type CiLogResult } from './ci'
 import { listDocs, readDoc, type DocsTree } from './docs'
@@ -13,6 +12,7 @@ import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions,
 import { listSkills, type SkillInfo } from './skills'
 import { workspaceSearch, type WorkspaceSearchKind, type WorkspaceSearchResponse } from './workspace-search'
 import { hasAgents as repoHasAgents } from './agents'
+import { hasProjectArea } from './project-layout'
 import {
   remoteCi,
   remoteDocs,
@@ -144,7 +144,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
         forgeKind: forge.kind,
         forgeLabel: forge.label,
         forgeSym: forge.sym,
-        hasBacklog: !!repoRoot && existsSync(join(repoRoot, 'backlog')),
+        hasBacklog: !!repoRoot && hasProjectArea(repoRoot, 'backlog'),
         hasSessions: repoHasSessions(repoRoot),
         hasAgents: repoHasAgents(repoRoot),
       } as DaemonContext

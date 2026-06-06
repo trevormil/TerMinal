@@ -1,9 +1,11 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { existingProjectAreaPaths, projectAreaPathForRead } from './project-layout'
 import { resolvedHarnessDir } from './settings'
 
 // Reads code-review/test artifacts from two locations:
-//   in-repo (project-template):  <repoRoot>/.reviews/<iid>/<short_sha>.md  (+ findings/suggestions.json, no meta.json)
+//   in-repo v2 (project-template): <repoRoot>/.TerMinal/reviews/<iid>/<short_sha>.md
+//   in-repo v1 (legacy):           <repoRoot>/.reviews/<iid>/<short_sha>.md
 //   optional harness store:      <harnessDir>/prs/<host>/<owner>/<repo>/<iid>/<short_sha>.md (+ meta.json commit list)
 // In-repo wins when present; the harness store is opt-in (Settings → harnessDir, '' = off).
 
@@ -48,14 +50,14 @@ const harnessPrDir = (host: string, repoPath: string, iid: number | string) => {
   return h ? join(h, 'prs', host, ...repoPath.split('/'), String(iid)) : ''
 }
 const inRepoReviewDir = (repoRoot: string, iid: number | string) =>
-  join(repoRoot, '.reviews', String(iid))
+  join(projectAreaPathForRead(repoRoot, 'reviews'), String(iid))
 
 function hasArtifacts(dir: string): boolean {
   if (!existsSync(dir)) return false
   return safeReaddir(dir).some((n) => /^[0-9a-f]{7,40}\.md$/.test(n)) || existsSync(join(dir, 'meta.json'))
 }
 
-/** The PR's artifact dir: prefer in-repo .reviews/<iid>, else harness prs/. */
+/** The PR's artifact dir: prefer in-repo project reviews, else harness prs/. */
 export function resolveReviewDir(
   repoRoot: string,
   host: string,
@@ -63,8 +65,10 @@ export function resolveReviewDir(
   iid: number | string,
 ): string | null {
   if (repoRoot) {
-    const d = inRepoReviewDir(repoRoot, iid)
-    if (hasArtifacts(d)) return d
+    for (const base of existingProjectAreaPaths(repoRoot, 'reviews')) {
+      const d = join(base, String(iid))
+      if (hasArtifacts(d)) return d
+    }
   }
   const h = harnessPrDir(host, repoPath, iid)
   if (h && hasArtifacts(h)) return h
@@ -174,8 +178,7 @@ export function newestArtifactShortSha(dir: string): string {
 /** Newest reviewed PR dir for a repo (for the TDD widget): in-repo first. */
 export function newestReviewDirForRepo(repoRoot: string, host: string, repoPath: string): string | null {
   if (repoRoot) {
-    const rdir = join(repoRoot, '.reviews')
-    if (existsSync(rdir)) {
+    for (const rdir of existingProjectAreaPaths(repoRoot, 'reviews')) {
       let best: { dir: string; mtime: number } | null = null
       for (const n of safeReaddir(rdir)) {
         const f = newestBareShaMd(join(rdir, n))

@@ -264,7 +264,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Target',
     opensPr: false,
     prompt:
-      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. Write the substantive strategic read (alignment vs. drift assessment + top 3 strategic moves) to reports/YYYY-MM-DD-strategy-read.md (create reports/ if missing). End with the report path and the ticket ids filed.",
+      "Act as a strategy-review agent for this repository. Step back from execution and assess direction: read the README, architecture.md, ADRs, recent commits, and the open backlog. Identify drift between stated goals and actual work, abandoned-but-not-formally-deprioritized lines, and missing strategic bets the codebase implies but doesn't pursue. File backlog tickets (type: docs for ADR candidates, type: feature for missing strategic moves) — never edit code. Write the substantive strategic read (alignment vs. drift assessment + top 3 strategic moves) to .TerMinal/reports/YYYY-MM-DD-strategy-read.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/). End with the report path and the ticket ids filed.",
   },
   {
     id: 'cert-check',
@@ -273,7 +273,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Lock',
     opensPr: false,
     prompt:
-      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. Write the full hostname / expiry / chain / TLS-version table to reports/YYYY-MM-DD-cert-check.md (create reports/ if missing) — durable snapshot of cert hygiene, not just the flagged issues. End with the report path and the ticket ids filed.",
+      "Act as a TLS-hygiene agent for this repository. Find every production hostname this repo serves (from deployment manifests, docker-compose, k8s yaml, .env.example, docs). For each hostname, probe its TLS certificate (openssl s_client or equivalent) and check: days-until-expiry, certificate chain validity, hostname match, and minimum TLS version. File a backlog ticket (type: security or dx) for any cert expiring within 30 days, mismatched cert, or weak TLS config. Don't edit code. Write the full hostname / expiry / chain / TLS-version table to .TerMinal/reports/YYYY-MM-DD-cert-check.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/) — durable snapshot of cert hygiene, not just the flagged issues. End with the report path and the ticket ids filed.",
   },
   {
     id: 'translations-check',
@@ -318,7 +318,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Recycle',
     opensPr: false,
     prompt:
-      "Act as a bloat-check agent for this repository. Audit the backlog and artifact surfaces — open tickets, .reviews/ suggestions, .checks/ reports, sessions/ closed docs — for low-value or stale items: tickets nobody will ever do, suggestions copy-pasted into ticket form, reports older than the work they discuss, abandoned session docs. Close (with a one-line closing note) or icebox the cruft. Don't delete prose lightly; preserve genuinely useful learnings. End with a list of every item closed/iceboxed and the rationale.",
+      "Act as a bloat-check agent for this repository. Audit the backlog and artifact surfaces — open tickets, .TerMinal/reviews/ suggestions, .TerMinal/checks/ reports, .TerMinal/sessions/ closed docs, plus legacy v1 .reviews/.checks/sessions if present — for low-value or stale items: tickets nobody will ever do, suggestions copy-pasted into ticket form, reports older than the work they discuss, abandoned session docs. Close (with a one-line closing note) or icebox the cruft. Don't delete prose lightly; preserve genuinely useful learnings. End with a list of every item closed/iceboxed and the rationale.",
   },
   {
     id: 'knowledge-base',
@@ -345,7 +345,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'Newspaper',
     opensPr: false,
     prompt:
-      "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, backlog/, .reviews/, .checks/. Write it to reports/YYYY-MM-DD-daily-summary.md (create reports/ if missing). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
+      "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, .TerMinal/backlog/, .TerMinal/reviews/, .TerMinal/checks/, plus legacy v1 paths if present. Write it to .TerMinal/reports/YYYY-MM-DD-daily-summary.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
   },
   {
     id: 'beacon',
@@ -1279,7 +1279,7 @@ export function runTicketAgent(
 }
 
 /** Spawn an agent that files ONE backlog ticket from a freeform request. Runs
- *  in-place (no worktree) so the ticket lands in the real backlog/ immediately. */
+ *  in-place (no worktree) so the ticket lands in the active backlog immediately. */
 export function runTicketSpawn(
   repoRoot: string,
   text: string,
@@ -1288,7 +1288,7 @@ export function runTicketSpawn(
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use .claude/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest in backlog/), write backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching backlog/EXAMPLE.md, put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use .claude/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
   return runSpec(repoRoot, {
     id: 'ticket-spawn',
     title: `File ticket · ${t.slice(0, 48)}`,

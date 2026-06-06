@@ -111,6 +111,7 @@ function NotesTab({ ctx }: { ctx: TabContext }) {
   const [openNote, setOpenNote] = useState<OpenNote | null>(null)
   const [folderSaved, setFolderSaved] = useState(true)
   const [version, setVersion] = useState(0)
+  const [newNoteName, setNewNoteName] = useState<string | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const folderSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latest = useRef({ scope, text, saved })
@@ -237,12 +238,16 @@ function NotesTab({ ctx }: { ctx: TabContext }) {
 
   const createNote = async () => {
     if (!activeFolderId) return
-    const name = window.prompt('New note name')
-    if (!name?.trim()) return
+    const name = newNoteName?.trim()
+    if (!name) {
+      setNewNoteName(null)
+      return
+    }
     const clean = name.trim().endsWith('.md') ? name.trim() : `${name.trim()}.md`
     const path = selectedDir ? `${selectedDir}/${clean}` : clean
     if (await window.gt.notes.folderWrite(activeFolderId, path, '')) {
       setVersion((v) => v + 1)
+      setNewNoteName(null)
       openFolderFile(path)
     }
   }
@@ -438,7 +443,7 @@ function NotesTab({ ctx }: { ctx: TabContext }) {
               <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Notes</span>
               <div className="flex-1" />
               <button
-                onClick={createNote}
+                onClick={() => setNewNoteName('Untitled.md')}
                 disabled={!activeFolderId}
                 className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100 disabled:opacity-40"
               >
@@ -446,6 +451,22 @@ function NotesTab({ ctx }: { ctx: TabContext }) {
                 New
               </button>
             </div>
+            {newNoteName !== null && (
+              <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-black/30 px-2 py-1.5">
+                <span className="text-[10px] text-zinc-500">note</span>
+                <input
+                  autoFocus
+                  value={newNoteName}
+                  onChange={(e) => setNewNoteName(e.target.value)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createNote()
+                    if (e.key === 'Escape') setNewNoteName(null)
+                  }}
+                  className="min-w-0 flex-1 rounded border border-[var(--gt-border)] bg-black/40 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                />
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto py-1">
               {!activeFolderId ? (
                 <div className="p-4 text-[12px] text-zinc-600">
