@@ -180,14 +180,14 @@ function runStart(root,input){
   const labels=steps.map(s=>String(s&&s.label||'run'));
   const modelFlag=model?' --model '+sq(model):'';
   const displayModelFlag=model?' --model '+model:'';
-  const displayCommand=scriptFirst?scriptAgent:(engine==='claude'?bin+' -p <prompt> --dangerously-skip-permissions --permission-mode auto'+displayModelFlag:engine==='cursor'?bin+' -p --force --trust --output-format text --workspace '+worktree+displayModelFlag+' <prompt>':bin+' exec -s danger-full-access -C '+worktree+displayModelFlag+' <prompt>');
+  const displayCommand=scriptFirst?scriptAgent:(engine==='claude'?bin+' -p <prompt> --permission-mode auto'+displayModelFlag:engine==='cursor'?bin+' -p --force --trust --output-format text --workspace '+worktree+displayModelFlag+' <prompt>':bin+' exec -s danger-full-access -C '+worktree+displayModelFlag+' <prompt>');
   const stepBlocks=promptFiles.map((pf,i)=>[
     'echo '+sq('━━ step '+(i+1)+'/'+promptFiles.length+' · '+labels[i]+' ━━'),
     'PROMPT="$(cat '+sq(pf)+')"',
     'if [ -x '+sq(scriptAgent)+' ]; then',
     '  '+sq(scriptAgent),
     'elif [ '+sq(engine)+' = "claude" ]; then',
-    '  '+shPath(bin)+' -p "$PROMPT" --dangerously-skip-permissions --permission-mode auto'+modelFlag,
+    '  '+shPath(bin)+' -p "$PROMPT" --permission-mode auto'+modelFlag,
     'elif [ '+sq(engine)+' = "cursor" ]; then',
     '  '+shPath(bin)+' -p --force --trust --output-format text --workspace '+sq(worktree)+modelFlag+' "$PROMPT"',
     'else',

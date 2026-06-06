@@ -227,7 +227,7 @@ type StartOpts = {
 }
 
 const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
-const CLAUDE_AUTO_FLAGS = ['--dangerously-skip-permissions', '--permission-mode', 'auto']
+const CLAUDE_AUTO_FLAGS = ['--permission-mode', 'auto']
 
 function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
   const target = remote.label || remote.sshTarget
