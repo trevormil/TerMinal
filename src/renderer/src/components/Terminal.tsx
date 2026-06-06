@@ -601,6 +601,8 @@ export function TerminalPane({
     await window.gt.presets.hide('snippets', id)
     await reloadSnippets()
   }
+  const showSuggestions = needsAttention && suggestionMode !== 'off' && !suggestionsDismissed
+  const suggestionsPanelHeight = 'min(220px, 34vh)'
 
   useEffect(() => {
     if (!needsAttention) return
@@ -746,7 +748,10 @@ export function TerminalPane({
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[var(--gt-terminal-bg)]">
-      <div className="absolute inset-0 overflow-hidden p-3">
+      <div
+        className="absolute inset-x-0 top-0 overflow-hidden p-3"
+        style={{ bottom: showSuggestions ? suggestionsPanelHeight : 0 }}
+      >
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
       <div className={`absolute top-4 z-20 ${isRemote ? 'right-14' : 'right-24'}`}>
@@ -813,8 +818,11 @@ export function TerminalPane({
           </div>
         </div>
       )}
-      {needsAttention && suggestionMode !== 'off' && !suggestionsDismissed && (
-        <div className="absolute inset-x-4 bottom-4 z-20 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur">
+      {showSuggestions && (
+        <div
+          className="absolute inset-x-0 bottom-0 z-20 border-t border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-[0_-12px_28px_rgba(0,0,0,0.22)] backdrop-blur"
+          style={{ height: suggestionsPanelHeight }}
+        >
           <div className="mb-2 flex items-center gap-2">
             <Sparkles size={13} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
@@ -852,7 +860,7 @@ export function TerminalPane({
               ))}
             </div>
           ) : (
-            <div className="grid max-h-[34vh] gap-1.5 overflow-y-auto lg:grid-cols-2">
+            <div className="grid max-h-[calc(100%-28px)] gap-1.5 overflow-y-auto lg:grid-cols-2">
               {suggestions.map((s, i) => (
                 <button
                   key={`${s.label}-${i}`}
