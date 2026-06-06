@@ -197,6 +197,7 @@ export function TerminalPane({
   const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
   const [suggestionBusy, setSuggestionBusy] = useState(false)
   const [suggestionErr, setSuggestionErr] = useState('')
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -467,6 +468,7 @@ export function TerminalPane({
     requestAnimationFrame(() => termRef.current?.focus())
   }
   const generateSuggestions = async (mode: SuggestionMode = suggestionMode) => {
+    setSuggestionsDismissed(false)
     if (mode === 'off') {
       setSuggestions([])
       setSuggestionBusy(false)
@@ -602,10 +604,28 @@ export function TerminalPane({
 
   useEffect(() => {
     if (!needsAttention) return
+    setSuggestionsDismissed(false)
     generateSuggestions(suggestionMode)
     // Generate once when this terminal enters an attention state or the local
     // mode changes. The function reads live xterm scrollback at that moment.
   }, [needsAttention, suggestionMode])
+
+  useEffect(() => {
+    if (!active || !needsAttention || suggestionMode === 'off' || suggestionsDismissed) return
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const editing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+      if (editing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+      const n = Number(e.key)
+      if (!Number.isInteger(n) || n < 1 || n > 5) return
+      const suggestion = suggestions[n - 1]
+      if (!suggestion) return
+      e.preventDefault()
+      runSuggestion(suggestion.prompt)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [active, needsAttention, suggestionMode, suggestionsDismissed, suggestions])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -793,11 +813,12 @@ export function TerminalPane({
           </div>
         </div>
       )}
-      {needsAttention && suggestionMode !== 'off' && (
+      {needsAttention && suggestionMode !== 'off' && !suggestionsDismissed && (
         <div className="absolute inset-x-4 bottom-4 z-20 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur">
           <div className="mb-2 flex items-center gap-2">
             <Sparkles size={13} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
+            <span className="text-[10.5px] text-zinc-600">1-5 to send</span>
             <span className="rounded bg-black/25 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-600">
               {suggestionMode === 'ai' ? 'Haiku' : 'Rules'}
             </span>
@@ -816,6 +837,13 @@ export function TerminalPane({
             >
               Refresh
             </button>
+            <button
+              onClick={() => setSuggestionsDismissed(true)}
+              title="Dismiss suggestions"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
           </div>
           {suggestionBusy && suggestions.length === 0 ? (
             <div className="grid gap-1.5 sm:grid-cols-3">
@@ -824,18 +852,20 @@ export function TerminalPane({
               ))}
             </div>
           ) : (
-            <div className="flex gap-1.5 overflow-x-auto">
+            <div className="grid max-h-[34vh] gap-1.5 overflow-y-auto lg:grid-cols-2">
               {suggestions.map((s, i) => (
                 <button
                   key={`${s.label}-${i}`}
                   onClick={() => runSuggestion(s.prompt)}
                   title={s.prompt}
-                  className="group flex min-w-[150px] max-w-[260px] items-center gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
+                  className="group flex min-w-0 items-start gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
                 >
-                  <Play size={12} strokeWidth={2.5} className="shrink-0 text-[var(--gt-accent-light)]" />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
-                    <span className="block truncate text-[10px] text-zinc-600 group-hover:text-zinc-500">{s.prompt}</span>
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]">
+                    <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="mb-1 block text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
+                    <span className="block whitespace-pre-wrap break-words text-[10.5px] leading-4 text-zinc-500 group-hover:text-zinc-400">{s.prompt}</span>
                   </span>
                 </button>
               ))}
