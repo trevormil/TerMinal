@@ -208,7 +208,7 @@ export function TerminalPane({
   const writeInputRef = useRef<(data: string) => void>(() => {})
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
-  const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('deterministic')
+  const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('off')
   const [suggestionSettings, setSuggestionSettings] = useState<SuggestionSettings>(DEFAULT_SUGGESTION_SETTINGS)
   const [autoInstructions, setAutoInstructions] = useState('')
   const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
