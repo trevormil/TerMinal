@@ -310,6 +310,8 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
 
   const iconBtn =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent'
+  const toolbarAction =
+    'inline-flex h-[30px] shrink-0 items-center justify-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] leading-none text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white disabled:opacity-50'
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
@@ -349,11 +351,11 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
             onClick={() => setKbMenuOpen((v) => !v)}
             disabled={kbSaving}
             title="Save this page to Knowledge Base"
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white disabled:opacity-50"
+            className={toolbarAction}
           >
-            <BookOpen size={13} strokeWidth={2} />
-            {kbSaving ? 'Saving' : 'Save KB'}
-            <ChevronDown size={12} strokeWidth={2} />
+            <BookOpen size={12} strokeWidth={2} />
+            <span>{kbSaving ? 'Saving' : 'Save KB'}</span>
+            <ChevronDown size={11} strokeWidth={2} />
           </button>
           {kbMenuOpen && (
             <div className="absolute right-0 top-9 z-30 min-w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[11.5px] text-zinc-200 shadow-2xl">
@@ -379,10 +381,10 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
         <button
           onClick={() => window.gt.openInBrowser(addr)}
           title={`Open this page in ${browserName} (your wallet + extensions)`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
+          className={toolbarAction}
         >
           <span className="text-[var(--gt-accent-2)]">◆</span>
-          Open in {browserName.replace(/ Browser$/, '')}
+          <span>Open in {browserName.replace(/ Browser$/, '')}</span>
         </button>
       </div>
       <div className="flex min-h-0 flex-1">
