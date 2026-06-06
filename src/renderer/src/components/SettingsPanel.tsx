@@ -145,7 +145,6 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'inbox', title: 'Inbox', icon: Inbox },
   { id: 'suggestions', title: 'Replies', icon: Sparkles },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
-  { id: 'openrouter', title: 'OpenRouter', icon: Sparkles },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
   { id: 'presets', title: 'Presets', icon: Eye },
@@ -163,67 +162,6 @@ function Readiness({ ok, name, hint }: { ok: boolean; name: string; hint: string
       )}
       <span className="font-mono text-zinc-300">{name}</span>
       <span className="truncate text-zinc-600">{hint}</span>
-    </div>
-  )
-}
-
-// OpenRouter free + cheap-paid preset picker. One click to switch the
-// default model without having to remember the full slug. Anthropic models
-// don't appear here — those route through claude -p (free via Max) anyway.
-function OpenRouterPresets({
-  currentModel,
-  onPick,
-}: {
-  currentModel: string
-  onPick: (model: string) => void
-}) {
-  const [presets, setPresets] = useState<{
-    free: readonly { id: string; label: string }[]
-    cheapPaid: readonly { id: string; label: string; inUsdPerM: number }[]
-  } | null>(null)
-  useEffect(() => {
-    window.gt.openrouter.presets().then(setPresets)
-  }, [])
-  if (!presets) return null
-  const Pill = ({
-    id,
-    label,
-    note,
-  }: {
-    id: string
-    label: string
-    note?: string
-  }) => {
-    const on = currentModel === id
-    return (
-      <button
-        onClick={() => onPick(id)}
-        title={id}
-        className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
-          on
-            ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
-            : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/40'
-        }`}
-      >
-        {label}
-        {note && <span className="ml-0.5 text-[9.5px] text-zinc-600">{note}</span>}
-      </button>
-    )
-  }
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[9.5px] uppercase tracking-wider text-zinc-600">free:</span>
-        {presets.free.map((p) => (
-          <Pill key={p.id} id={p.id} label={p.label} />
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[9.5px] uppercase tracking-wider text-zinc-600">cheap:</span>
-        {presets.cheapPaid.map((p) => (
-          <Pill key={p.id} id={p.id} label={p.label} note={`$${p.inUsdPerM}/M`} />
-        ))}
-      </div>
     </div>
   )
 }
@@ -621,14 +559,6 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const testTelegram = async () => {
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
-  }
-  const [orState, setOrState] = useState<
-    { busy?: boolean; ok?: boolean; text?: string; model?: string; error?: string } | null
-  >(null)
-  const testOpenRouter = async () => {
-    setOrState({ busy: true })
-    const r = await window.gt.openrouter.test()
-    setOrState(r)
   }
   const installNotify = async () => {
     setNotify({ busy: true })
@@ -1444,7 +1374,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             id="suggestions"
             icon={Sparkles}
             title="Suggested replies"
-            desc="Per-terminal modes decide when to use these standalone engines. Suggestions do not route through OpenRouter."
+            desc="Per-terminal modes decide when to use these standalone engines. Suggestions stay on your configured coding CLIs."
           >
             <div className="space-y-2">
               <SuggestionModelSetting
@@ -1532,7 +1462,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                     <span>/close &lt;slug|n&gt;</span>
                     <span>/schedules</span>
                     <span>/pause · /resume · /runnow</span>
-                    <span>/hitl · /resolve · /reopen</span>
+                    <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
                     <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
                     <span>/state &lt;agent&gt;</span>
                     <span>/reset-state &lt;agent&gt;</span>
@@ -1545,69 +1475,6 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   </div>
                 </details>
               )}
-            </div>
-          </Section>
-
-          {/* OpenRouter — one-shot calls for cheap classifiers, health checks, etc. */}
-          <Section
-            id="openrouter"
-            icon={Sparkles}
-            title="OpenRouter (cheap one-shot calls)"
-            desc="Not a full coding harness — use Claude, Codex, or Cursor for that. Used inside scripts for cheap classifiers and health-check escalations. Get a key at openrouter.ai/keys."
-          >
-            <div className="space-y-2">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <label className="block min-w-0 space-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">API key</span>
-                  <input
-                    defaultValue={s.openrouter.apiKey}
-                    onBlur={(e) =>
-                      e.target.value !== s.openrouter.apiKey &&
-                      save({ openrouter: { apiKey: e.target.value.trim() } })
-                    }
-                    placeholder="sk-or-v1-..."
-                    spellCheck={false}
-                    type="password"
-                    className={`${inp} font-mono`}
-                  />
-                </label>
-                <button
-                  onClick={testOpenRouter}
-                  disabled={orState?.busy || !s.openrouter.apiKey}
-                  className={actionButton}
-                >
-                  {orState?.busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
-                  Test
-                </button>
-              </div>
-              <label className="block space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Default model</span>
-                <input
-                  defaultValue={s.openrouter.defaultModel}
-                  onBlur={(e) =>
-                    e.target.value !== s.openrouter.defaultModel &&
-                    save({ openrouter: { defaultModel: e.target.value.trim() } })
-                  }
-                  placeholder="anthropic/claude-haiku-4.5"
-                  spellCheck={false}
-                  className={`${inp} font-mono`}
-                />
-                <span className="text-[10px] text-zinc-600">Examples: openai/gpt-5-mini, google/gemini-2.5-flash</span>
-              </label>
-              {orState && !orState.busy && (
-                <div className={`text-[11px] ${orState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
-                  {orState.ok
-                    ? `✓ Connected via ${orState.model || 'OpenRouter'} — replied "${(orState.text || '').slice(0, 40)}"`
-                    : orState.error}
-                </div>
-              )}
-              {/* Free model presets — one click to switch default. Anthropic
-                  models route through claude -p (free via Max); these are
-                  for when you want a non-Anthropic cheap-tier model. */}
-              <OpenRouterPresets
-                currentModel={s.openrouter.defaultModel}
-                onPick={(m) => save({ openrouter: { defaultModel: m } })}
-              />
             </div>
           </Section>
 

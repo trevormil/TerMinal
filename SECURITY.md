@@ -3,7 +3,7 @@
 TerMinal is a local-first developer tool. It does not run a hosted service or
 phone home, but it intentionally launches powerful local processes: terminal
 sessions, agent scripts, command widgets, scheduled launchd jobs, forge CLIs,
-and optional Telegram/OpenRouter calls. Treat it with the same trust model as an
+and optional Telegram calls. Treat it with the same trust model as an
 integrated terminal plus task runner.
 
 ## Reporting Vulnerabilities
@@ -57,7 +57,6 @@ artifacts live in the repo, such as `backlog/`, `sessions/`, `.reviews/`, and
 Sensitive values may include:
 
 - Telegram bot token and chat id in `~/.config/TerMinal/settings.json`
-- OpenRouter API key in `~/.config/TerMinal/settings.json`
 - Forge auth managed by `gh` / `glab`
 - Claude/Codex auth managed by their CLIs
 - Claude usage access through local Claude Code credentials/keychain entries

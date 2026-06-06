@@ -1618,22 +1618,7 @@ ipcMain.handle('bg:spawn', (_e, input: { repoRoot: string; prompt: string; engin
 })
 ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
 
-// OpenRouter IPCs — test connectivity + chat passthrough.
-ipcMain.handle('openrouter:test', async () => {
-  const { testOpenRouter } = await import('./openrouter')
-  return testOpenRouter()
-})
-ipcMain.handle('openrouter:chat', async (_e, opts: Parameters<typeof import('./openrouter').openrouterChat>[0]) => {
-  const { openrouterChat } = await import('./openrouter')
-  return openrouterChat(opts)
-})
-ipcMain.handle('openrouter:presets', async () => {
-  const m = await import('./openrouter')
-  return { free: m.FREE_MODEL_PRESETS, cheapPaid: m.CHEAP_PAID_PRESETS }
-})
-
-// Cheap one-shot LLM call — smart-routes Anthropic models to `claude -p`
-// (free via Max subscription) and non-Anthropic to OpenRouter.
+// Cheap one-shot LLM call — routes through local coding-agent subscriptions.
 ipcMain.handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
   const { cheapCall } = await import('./cheap-llm')
   return cheapCall(opts)

@@ -174,42 +174,43 @@ describe('settings secrets', () => {
   test('seals and opens configured secret fields', () => {
     const settings = migrate({
       telegram: { notify: true, control: true, botToken: 'bot-secret', chatId: 'chat-secret' },
-      openrouter: { apiKey: 'or-secret', defaultModel: 'model-a' },
       projectsDir: '/projects',
     })
     const sealed = sealSettingsForDisk(settings, adapter)
     const json = JSON.stringify(sealed)
     expect(json).not.toContain('bot-secret')
     expect(json).not.toContain('chat-secret')
-    expect(json).not.toContain('or-secret')
 
     const opened = migrate(openSettingsFromDisk(sealed, adapter))
     expect(opened.telegram.botToken).toBe('bot-secret')
     expect(opened.telegram.chatId).toBe('chat-secret')
-    expect(opened.openrouter.apiKey).toBe('or-secret')
     expect(opened.projectsDir).toBe('/projects')
   })
 
   test('legacy plaintext and empty secrets pass through', () => {
     const opened = migrate(openSettingsFromDisk({
       telegram: { botToken: 'plain-token', chatId: '' },
-      openrouter: { apiKey: '' },
     }, adapter))
     expect(opened.telegram.botToken).toBe('plain-token')
     expect(opened.telegram.chatId).toBe('')
     const sealed = sealSettingsForDisk(opened, adapter) as any
     expect(sealed.telegram.chatId).toBe('')
-    expect(sealed.openrouter.apiKey).toBe('')
   })
 
   test('partial nested patches preserve sibling secret fields', () => {
     const cur = migrate({
       telegram: { notify: false, control: false, botToken: 'bot', chatId: 'chat' },
-      openrouter: { apiKey: 'or', defaultModel: 'model-a' },
     })
-    const next = mergeSettingsPatch(cur, { telegram: { notify: true }, openrouter: { defaultModel: 'model-b' } })
+    const next = mergeSettingsPatch(cur, { telegram: { notify: true } })
     expect(next.telegram).toEqual({ notify: true, control: false, botToken: 'bot', chatId: 'chat' })
-    expect(next.openrouter).toEqual({ apiKey: 'or', defaultModel: 'model-b' })
+  })
+
+  test('legacy third-party model settings are ignored on migrate and patch', () => {
+    const removedKey = 'open' + 'router'
+    const cur = migrate({ [removedKey]: { apiKey: 'or-secret', defaultModel: 'model-a' } })
+    expect((cur as any)[removedKey]).toBeUndefined()
+    const next = mergeSettingsPatch(cur, { [removedKey]: { apiKey: 'still-nope' } } as any)
+    expect((next as any)[removedKey]).toBeUndefined()
   })
 })
 

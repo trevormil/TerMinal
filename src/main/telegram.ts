@@ -216,7 +216,7 @@ function cmdHelp() {
       '/schedules · /pause <id|all> · /resume <id|all> · /runnow <id>',
       '',
       'HITL',
-      '/hitl · /resolve <n> · /reopen <n>',
+      '/hitl · /resolve <n|all> · /reopen <n>',
       '',
       'MRS · ACTIVITY · HARNESS',
       '/mrs [@repo] · /mr <iid> · /activity [N] · /harness · /status',
@@ -467,12 +467,24 @@ function cmdHitl() {
             (h.action ? `\n   → ${h.action}` : ''),
         )
         .join('\n'),
+    [[{ text: '✅ Resolve all open', callback_data: 'hitl:resolve-all' }]],
   )
 }
 
+function resolveAllHitl(): number {
+  const open = readHitl().filter((h) => h.status === 'open')
+  for (const h of open) resolveHitl(h.id, true)
+  return open.length
+}
+
 function cmdResolveHitl(args: string[], resolved: boolean) {
+  if (resolved && (args[0] || '').toLowerCase() === 'all') {
+    const count = resolveAllHitl()
+    lastHitlIds = []
+    return reply(count ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.` : '🟢 No open HITL items.')
+  }
   const n = parseInt(args[0] || '', 10)
-  if (!n || n < 1) return reply(`Usage: /${resolved ? 'resolve' : 'reopen'} <n> (from /hitl)`)
+  if (!n || n < 1) return reply(`Usage: /${resolved ? 'resolve <n|all>' : 'reopen <n>'} (from /hitl)`)
   const id = lastHitlIds[n - 1]
   if (!id) return reply('No such #n — send /hitl first.')
   resolveHitl(id, resolved)
@@ -925,7 +937,7 @@ Available commands (with example syntax):
   /resume <id|all>
   /runnow <id>
   /hitl
-  /resolve <n>
+  /resolve <n|all>
   /mrs [@repo]
   /mr <iid>
   /runs
@@ -1071,6 +1083,13 @@ async function dispatchCallback(data: string, queryId: string) {
       const ok = resolveHitl(id, true)
       ack(queryId, ok ? 'Resolved' : 'Not found')
       reply(ok ? `☑️ Resolved HITL ${id.slice(0, 8)}` : `Could not resolve ${id.slice(0, 8)}`)
+      return
+    }
+    if (domain === 'hitl' && action === 'resolve-all') {
+      const count = resolveAllHitl()
+      lastHitlIds = []
+      ack(queryId, count ? `Resolved ${count}` : 'No open HITL')
+      reply(count ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.` : '🟢 No open HITL items.')
       return
     }
     if (domain === 'hitl' && action === 'reopen') {

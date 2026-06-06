@@ -54,4 +54,27 @@ describe('knowledge base schema', () => {
       faviconUrl: 'https://example.com/favicon.svg',
     })
   })
+
+  test('link previews tolerate reversed attribute order and shortcut icons', () => {
+    const preview = parseKnowledgePreviewHtml(
+      'https://example.com/docs/page',
+      `
+        <html>
+          <head>
+            <meta content="Reverse title" property="og:title" />
+            <meta content="Reverse description" name="description" />
+            <meta content="cards/social.png" property="og:image" />
+            <link href="/favicon.ico" rel="shortcut icon" />
+          </head>
+        </html>
+      `,
+    )
+    expect(preview).toMatchObject({
+      ok: true,
+      title: 'Reverse title',
+      description: 'Reverse description',
+      thumbnailUrl: 'https://example.com/docs/cards/social.png',
+      faviconUrl: 'https://example.com/favicon.ico',
+    })
+  })
 })

@@ -3,17 +3,11 @@
 // When opts.engine is set, run that standalone coding CLI directly:
 // claude -p, codex exec, or cursor-agent -p. This is used by terminal
 // suggested replies so the operator can choose the same engine/model UX used
-// elsewhere in the app without routing through OpenRouter.
+// elsewhere in the app.
 //
 // Anthropic models (haiku/sonnet/opus or claude-*) → `claude -p` so the call
 // hits the user's Max subscription budget (free at the margin) instead of
-// per-token OpenRouter billing.
-//
-// Non-Anthropic models (gpt-*, gemini-*, deepseek/*, free OpenRouter models,
-// etc.) → OpenRouter.
-//
-// Falls back gracefully — if claude -p isn't installed but OpenRouter is
-// configured, anything routes through OpenRouter.
+// a separate per-token API key.
 
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -25,7 +19,7 @@ export type CheapResponse = {
   ok: boolean
   text?: string
   model?: string
-  route?: 'claude-p' | 'codex-exec' | 'cursor-agent' | 'openrouter'
+  route?: 'claude-p' | 'codex-exec' | 'cursor-agent'
   error?: string
 }
 
@@ -40,14 +34,13 @@ const ANTHROPIC_ALIASES = new Set([
   'claude-opus',
 ])
 
-/** Is this model name something claude -p will recognize? Strips OpenRouter
- *  "anthropic/" prefix so callers can pass the OpenRouter-shaped name and
- *  still get routed to claude -p. */
+/** Is this model name something claude -p will recognize? Accepts a legacy
+ *  "anthropic/" prefix so old settings still route through claude -p. */
 export function normalizeAnthropicModel(model: string): string | null {
   if (!model) return null
   let m = model.toLowerCase().trim()
   if (m.startsWith('anthropic/')) m = m.slice('anthropic/'.length)
-  // Map openrouter-style "claude-haiku-4.5" / "claude-sonnet-4.6" etc.
+  // Map long "claude-haiku-4.5" / "claude-sonnet-4.6" etc.
   if (/^claude-(haiku|sonnet|opus)/.test(m)) return m.split(/[-.]/, 3).slice(0, 3).join('-')
   if (ANTHROPIC_ALIASES.has(m)) return m
   return null
@@ -105,7 +98,7 @@ function callStandaloneEngine(
   model: string | undefined,
   timeoutMs: number,
   cwd?: string,
-): Promise<{ ok: boolean; text?: string; error?: string; route: Exclude<CheapResponse['route'], 'openrouter'> }> {
+): Promise<{ ok: boolean; text?: string; error?: string; route: CheapResponse['route'] }> {
   if (engine === 'claude') {
     return callClaudeP(prompt, model, timeoutMs, cwd).then((r) => ({ ...r, route: 'claude-p' as const }))
   }
@@ -160,8 +153,8 @@ export async function cheapCall(opts: {
   messages: CheapMessage[]
   model?: string
   engine?: EngineId
-  /** Force a specific route. Default is "anthropic-models → claude -p; else openrouter". */
-  route?: 'auto' | 'claude-p' | 'openrouter'
+  /** Force a specific route. Default is "anthropic-models → claude -p". */
+  route?: 'auto' | 'claude-p'
   cwd?: string
   maxTokens?: number
   temperature?: number
@@ -188,24 +181,11 @@ export async function cheapCall(opts: {
     if (cp.ok) {
       return { ok: true, text: cp.text, model: anthroModel || 'haiku', route: 'claude-p' }
     }
-    if (route === 'claude-p') return { ok: false, error: cp.error, route: 'claude-p' }
-    // Fall through to OpenRouter on failure (claude not installed, auth
-    // issue, etc.). Important: callers shouldn't have to know whether
-    // claude is set up.
+    return { ok: false, error: cp.error || 'claude -p failed', route: 'claude-p' }
   }
 
-  // OpenRouter path
-  try {
-    const { openrouterChat } = await import('./openrouter')
-    const res = await openrouterChat({
-      messages: opts.messages,
-      model: opts.model || 'anthropic/claude-haiku-4.5',
-      maxTokens: opts.maxTokens,
-      temperature: opts.temperature,
-      timeoutMs,
-    })
-    return { ...res, route: 'openrouter' }
-  } catch (e) {
-    return { ok: false, error: (e as Error).message, route: 'openrouter' }
+  return {
+    ok: false,
+    error: `No built-in cheap route for model "${opts.model || ''}". Select Claude, Codex, or Cursor as the engine for this request.`,
   }
 }

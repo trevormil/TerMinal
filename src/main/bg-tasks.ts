@@ -13,6 +13,7 @@ import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
 import { emitActivity } from './events'
 import { enginePath, readSettings, resolvedWorktreesDir, resolveEngineModel } from './settings'
+import { sendUrl } from './telegram-api'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
@@ -345,7 +346,7 @@ function telegramPing(text: string): void {
   try {
     const t = readSettings().telegram
     if (!t?.botToken || !t?.chatId) return
-    fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
+    fetch(sendUrl(t.botToken), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: t.chatId, text }),
@@ -406,8 +407,8 @@ async function sweep(): Promise<void> {
       })
     } else {
       // No MR, no FAILED marker — treat as failed. Try to summarize the log
-      // via OpenRouter haiku (cheap one-shot); falls back to deterministic
-      // "last error cluster" extraction when no key is set.
+      // via the configured lightweight local engine; falls back to deterministic
+      // "last error cluster" extraction when no engine is available.
       t.status = 'failed'
       const fullLog = (() => {
         try {

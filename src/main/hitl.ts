@@ -7,6 +7,7 @@ import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
 import { hitlRecurrenceKey } from './hitl-recurrence'
+import { hitlActivityKind, hitlNotifyKind, hitlTelegramKeyboard, hitlTelegramText } from './hitl-telegram'
 
 // GLOBAL human-in-the-loop inbox — one cross-repo queue of TRUE human-needs
 // (decisions, destructive/cost approvals, creds, a failed cron job, anything an
@@ -85,30 +86,21 @@ export function openCount(): number {
 // gates the general feed). If no bot/chat or legacy script exists, this is a
 // no-op: Inbox filing must never be blocked by notification setup.
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
-const hitlActivityKind = (source: HitlSource): 'blocked' | 'task-complete' =>
-  source === 'completion-hook' ? 'task-complete' : 'blocked'
-const hitlNotifyKind = (source: HitlSource): 'done' | 'blocked' =>
-  source === 'completion-hook' ? 'done' : 'blocked'
 function alwaysPingTelegram(item: HitlItem): void {
   try {
     const { telegram } = readSettings()
-    const done = item.source === 'completion-hook'
-    const msg = `${done ? '✅ Done' : '⛔ HITL'} · ${item.title}${item.action ? ` — ${item.action}` : ''}`
+    const msg = hitlTelegramText(item)
     if (telegram.botToken && telegram.chatId) {
       // Inline [Resolve] (always) + [Tail run] (when we know the run id) so
       // the chat ping is one-tap actionable instead of "now go open the app
       // and click Resolve."
-      const row: { text: string; callback_data: string }[] = [
-        { text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` },
-      ]
-      if (item.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${item.runId}` })
       fetch(sendUrl(telegram.botToken), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           chat_id: telegram.chatId,
           text: msg,
-          reply_markup: { inline_keyboard: [row] },
+          reply_markup: { inline_keyboard: hitlTelegramKeyboard(item) },
         }),
         signal: AbortSignal.timeout(8000),
       }).catch(() => {})

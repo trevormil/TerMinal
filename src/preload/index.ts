@@ -63,13 +63,7 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
-  openrouter: {
-    test: () => ipcRenderer.invoke('openrouter:test'),
-    chat: (opts: { messages: { role: string; content: string }[]; model?: string; maxTokens?: number; temperature?: number }) =>
-      ipcRenderer.invoke('openrouter:chat', opts),
-    presets: () => ipcRenderer.invoke('openrouter:presets'),
-  },
-  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; engine?: 'codex' | 'claude' | 'cursor'; route?: 'auto' | 'claude-p' | 'openrouter'; cwd?: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
+  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; engine?: 'codex' | 'claude' | 'cursor'; route?: 'auto' | 'claude-p'; cwd?: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
     ipcRenderer.invoke('llm:cheap', opts),
   classify: {
     ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),

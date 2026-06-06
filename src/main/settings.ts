@@ -47,10 +47,6 @@ export type AppsCfg = {
   editor: string // e.g. "Cursor" / "Visual Studio Code" — "Open in editor"
   browser: string // e.g. "Brave Browser" — "Open in browser"
 }
-export type OpenRouterCfg = {
-  apiKey: string
-  defaultModel: string // e.g. 'anthropic/claude-haiku-4.5'
-}
 export type SuggestionsCfg = {
   aiEngine: EngineId
   aiModel: string
@@ -82,10 +78,6 @@ export type Settings = {
   inbox: InboxCfg
   appearance: AppearanceCfg
   apps: AppsCfg
-  /** OpenRouter — NOT a full coding harness (use claude-code/codex for that).
-   *  Used for one-shot calls inside scripts: health-check classifiers, cheap
-   *  precheck escalations, etc. Optional. */
-  openrouter: OpenRouterCfg
   suggestions: SuggestionsCfg
   noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
@@ -94,13 +86,12 @@ export type Settings = {
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter' | 'suggestions'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
-  openrouter?: Partial<OpenRouterCfg>
   suggestions?: Partial<SuggestionsCfg>
   noteFolders?: NoteFolder[]
 }
@@ -113,7 +104,6 @@ const SECRET_MARKER = 'terminal-secret:v1'
 const SECRET_PATHS = [
   ['telegram', 'botToken'],
   ['telegram', 'chatId'],
-  ['openrouter', 'apiKey'],
 ] as const
 
 export type SettingsSecretStorage = {
@@ -157,7 +147,6 @@ export function defaultSettings(): Settings {
     inbox: { completionHook: true, agentContextPreamble: true },
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
-    openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
     suggestions: {
       aiEngine: 'claude',
       aiModel: 'haiku',
@@ -293,10 +282,6 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.apps.editor === 'string') s.apps.editor = r.apps.editor
     if (typeof r.apps.browser === 'string') s.apps.browser = r.apps.browser
   }
-  if (r.openrouter && typeof r.openrouter === 'object') {
-    if (typeof r.openrouter.apiKey === 'string') s.openrouter.apiKey = r.openrouter.apiKey
-    if (typeof r.openrouter.defaultModel === 'string') s.openrouter.defaultModel = r.openrouter.defaultModel
-  }
   if (r.suggestions && typeof r.suggestions === 'object') {
     if (
       r.suggestions.aiEngine === 'codex' ||
@@ -379,21 +364,32 @@ export function readSettings(): Settings {
 
 /** Deep-merge a patch over current settings (telegram/engines merge per-key). */
 export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Settings {
+  const legacyPatch = patch as SettingsPatch & Record<string, unknown>
+  const {
+    telegram,
+    inbox,
+    appearance,
+    apps,
+    engines,
+    suggestions,
+    noteFolders: patchNoteFolders,
+    ...scalarPatch
+  } = legacyPatch
+  delete (scalarPatch as Record<string, unknown>)['open' + 'router']
   return {
     ...cur,
-    ...patch,
-    telegram: { ...cur.telegram, ...(patch.telegram || {}) },
-    inbox: { ...cur.inbox, ...(patch.inbox || {}) },
-    appearance: { ...cur.appearance, ...(patch.appearance || {}) },
-    apps: { ...cur.apps, ...(patch.apps || {}) },
+    ...scalarPatch,
+    telegram: { ...cur.telegram, ...(telegram || {}) },
+    inbox: { ...cur.inbox, ...(inbox || {}) },
+    appearance: { ...cur.appearance, ...(appearance || {}) },
+    apps: { ...cur.apps, ...(apps || {}) },
     engines: {
-      codex: { ...cur.engines.codex, ...(patch.engines?.codex || {}) },
-      claude: { ...cur.engines.claude, ...(patch.engines?.claude || {}) },
-      cursor: { ...cur.engines.cursor, ...(patch.engines?.cursor || {}) },
+      codex: { ...cur.engines.codex, ...(engines?.codex || {}) },
+      claude: { ...cur.engines.claude, ...(engines?.claude || {}) },
+      cursor: { ...cur.engines.cursor, ...(engines?.cursor || {}) },
     },
-    openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
-    suggestions: { ...cur.suggestions, ...(patch.suggestions || {}) },
-    noteFolders: patch.noteFolders ? noteFolders(patch.noteFolders) : cur.noteFolders,
+    suggestions: { ...cur.suggestions, ...(suggestions || {}) },
+    noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
   }
 }
 

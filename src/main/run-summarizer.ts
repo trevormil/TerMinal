@@ -1,10 +1,9 @@
 // Failed-run output summarizer. When a bg-task or cron run fails, the raw log
-// can be 50k lines. Calling claude-p / codex exec to summarize would be
-// expensive. Use OpenRouter haiku for a one-shot summary that fits in the
-// HITL action field.
+// can be 50k lines. Use the configured lightweight local engine for a short
+// one-shot summary that fits in the HITL action field.
 //
-// Falls back to a deterministic "last error cluster" extraction when no
-// OpenRouter key is configured — keeps the path usable even without the key.
+// Falls back to a deterministic "last error cluster" extraction when no engine
+// is available — keeps the path usable without extra setup.
 
 const STRIP_ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g
 
@@ -41,8 +40,7 @@ export function deterministicSummary(rawLog: string): string {
   return lines.slice(anchor, anchor + 6).join(' · ').slice(0, 280)
 }
 
-/** Cheap LLM summarizer routed through cheap-llm (claude -p haiku if
- *  available — uses the Max subscription budget — else OpenRouter haiku).
+/** Cheap LLM summarizer routed through cheap-llm (claude -p haiku by default).
  *  Falls back to deterministic on any error. */
 export async function summarizeFailedRun(opts: {
   rawLog: string

@@ -32,7 +32,7 @@ Status:
 
 | Feature | Fork commits | Status | Score | Recommendation |
 |---|---:|---|---:|---|
-| Encrypt app secrets at rest with Electron `safeStorage` | `3f9f9bc` | Cool to add | 9 | Strong security hygiene. Current settings still appear to store Telegram/OpenRouter-style secrets as plaintext. Port this, but adapt to daemon/local/remote profile settings. |
+| Encrypt app secrets at rest with Electron `safeStorage` | `3f9f9bc` | Cool to add | 9 | Strong security hygiene. Current settings still appear to store Telegram-style secrets as plaintext. Port this, but adapt to daemon/local/remote profile settings. |
 | Terminal scrollback search with `Cmd+F` and larger buffer | `64a56a1` | Cool to add | 9 | Very practical. Current terminal has rich right-click actions but no xterm search addon. Add scoped find overlay, keep it terminal-only, respect Files/browser find behavior. |
 | Stream-json decoding for headless Claude/Cursor runs | `2d26b8e`, `ffd51e6`, `3c2b7e6` | Cool to add | 8 | If any headless process still buffers, this is a direct UX win. Port as daemon-aware output decoders, not as old main-process-only code. |
 | Template source resolver shared by scaffold/bootstrap/install | `df19fde`, `7167198`, `2468e17`, `85c3d23` | Cool to add | 8 | Current local bootstrap path still has older local-checkout behavior; remote scaffold has clone fallback. DRY this into a daemon-aware template resolver. |
@@ -489,7 +489,7 @@ This ledger includes fork-only commits on `jesse/main` in chronological order. M
 | `d284443` | Adds Fleet `needs-me` awaiting state. | Partly superseded by top-right Inbox and badges. | 4 |
 | `a4200cc` | Adds Triage tab for open PR/MR buckets across repos. | Maybe as Fleet/Search dropdown; avoid default tab. | 3 |
 | `d4c039a` | Files backlog gap tickets #0014-0031. | Bookkeeping. | 0 |
-| `3f9f9bc` | Encrypts Telegram/OpenRouter/Cloudflare secrets at rest via safeStorage. | Cool to add, adapted to daemon profiles. | 9 |
+| `3f9f9bc` | Encrypts Telegram/Cloudflare secrets at rest via safeStorage. | Cool to add, adapted to daemon profiles. | 9 |
 | `c265ed5` | Removes Cloudflare-specific poller, keeps generic deploy activity. | Agree with removal. | 1 |
 | `6549905` | Adds CI webhook receiver and `ci-watchdog` script. | Reframe via Automation Inbox; do not expose localhost webhook as-is. | 5 |
 | `ed65293` | Marks CI ticket linked/closed. | Bookkeeping. | 0 |
@@ -621,4 +621,3 @@ Do not port these unless the product direction changes:
 - Separate default Factory/Triage tabs.
 - Full task-first role-routing pipeline and `Cmd+K` task composer.
 - Retargeting project-template to Jesse’s fork.
-

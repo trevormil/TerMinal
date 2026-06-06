@@ -177,13 +177,23 @@ function absUrl(base: URL, value: string): string {
 }
 
 function firstMeta(html: string, names: string[]): string {
+  const tags = html.match(/<meta\s+[^>]*>/gi) || []
   for (const name of names) {
-    const re = new RegExp(`<meta\\s+[^>]*(?:property|name)=["']${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'i')
-    const tag = html.match(re)?.[0] || ''
-    const content = tag.match(/\scontent=["']([^"']+)["']/i)?.[1] || ''
+    const tag = tags.find((t) => attr(t, 'property') === name || attr(t, 'name') === name) || ''
+    const content = attr(tag, 'content')
     if (content.trim()) return decodeHtml(content.trim())
   }
   return ''
+}
+
+function attr(tag: string, name: string): string {
+  const raw = tag.match(new RegExp(`\\s${name}=["']([^"']+)["']`, 'i'))?.[1] || ''
+  return decodeHtml(raw.trim())
+}
+
+function tagHasAnyAttrValue(tag: string, attrName: string, values: string[]): boolean {
+  const value = attr(tag, attrName).toLowerCase()
+  return values.some((v) => value.split(/\s+/).includes(v))
 }
 
 function decodeHtml(value: string): string {
@@ -212,8 +222,10 @@ export function parseKnowledgePreviewHtml(rawUrl: string, html: string): Knowled
   const siteName = firstMeta(html, ['og:site_name', 'application-name']) || url.hostname.replace(/^www\./, '')
   const image = firstMeta(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src'])
   const iconTag =
-    html.match(/<link\s+[^>]*rel=["'][^"']*(?:icon|apple-touch-icon)[^"']*["'][^>]*>/i)?.[0] || ''
-  const icon = iconTag.match(/\shref=["']([^"']+)["']/i)?.[1] || ''
+    (html.match(/<link\s+[^>]*>/gi) || []).find((tag) =>
+      tagHasAnyAttrValue(tag, 'rel', ['icon', 'shortcut', 'apple-touch-icon']),
+    ) || ''
+  const icon = attr(iconTag, 'href')
   return {
     ok: true,
     url: url.toString(),
@@ -236,9 +248,9 @@ export async function fetchKnowledgePreview(rawUrl: string): Promise<KnowledgePr
     return { ok: false, url: rawUrl, error: 'Invalid URL.' }
   }
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8_000)
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8_000)
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
@@ -246,11 +258,12 @@ export async function fetchKnowledgePreview(rawUrl: string): Promise<KnowledgePr
         'user-agent': 'TerMinal knowledge preview (+https://github.com/trevormil/TerMinal)',
       },
     })
-    clearTimeout(timer)
     if (!res.ok) return { ok: false, url: url.toString(), error: `HTTP ${res.status}` }
     const html = (await res.text()).slice(0, 800_000)
     return parseKnowledgePreviewHtml(url.toString(), html)
   } catch (e) {
     return { ok: false, url: url.toString(), error: (e as Error).message }
+  } finally {
+    clearTimeout(timer)
   }
 }

@@ -160,7 +160,6 @@ export type AppearanceCfg = {
   tabLayout: AppearanceTabLayout
 }
 export type AppsCfg = { editor: string; browser: string }
-export type OpenRouterCfg = { apiKey: string; defaultModel: string }
 export type SuggestionsCfg = {
   aiEngine: Engine
   aiModel: string
@@ -229,20 +228,18 @@ export type Settings = {
   inbox: InboxCfg
   appearance: AppearanceCfg
   apps: AppsCfg
-  openrouter: OpenRouterCfg
   suggestions: SuggestionsCfg
   noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
 }
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter' | 'suggestions'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
-  openrouter?: Partial<OpenRouterCfg>
   suggestions?: Partial<SuggestionsCfg>
   noteFolders?: NoteFolder[]
 }
@@ -849,24 +846,11 @@ export type GtApi = {
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>
   }
-  openrouter: {
-    test: () => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
-    chat: (opts: {
-      messages: { role: string; content: string }[]
-      model?: string
-      maxTokens?: number
-      temperature?: number
-    }) => Promise<{ ok: boolean; text?: string; model?: string; error?: string }>
-    presets: () => Promise<{
-      free: readonly { id: string; label: string }[]
-      cheapPaid: readonly { id: string; label: string; inUsdPerM: number }[]
-    }>
-  }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
     model?: string
     engine?: Engine
-    route?: 'auto' | 'claude-p' | 'openrouter'
+    route?: 'auto' | 'claude-p'
     cwd?: string
     maxTokens?: number
     temperature?: number

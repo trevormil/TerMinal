@@ -1,4 +1,4 @@
-// CI failure classifier. Deterministic patterns first, OpenRouter haiku
+// CI failure classifier. Deterministic patterns first, local-engine haiku
 // fallback for ambiguous logs. Used by ticket #0005's webhook receiver to
 // decide whether the failure is cheap-class (lint/format/typecheck) and
 // safe to auto-fix, or real (test/build/deploy) and should HITL.
@@ -125,15 +125,12 @@ export function classifyHeuristic(rawLog: string): Classification {
   }
 }
 
-/** Full classify: heuristic first, OpenRouter haiku fallback. The fallback
- *  is gated on whether OpenRouter is configured AND the heuristic returned
- *  ambiguous. */
+/** Full classify: heuristic first, lightweight local-engine fallback for
+ *  ambiguous logs. */
 export async function classifyCiFailure(rawLog: string): Promise<Classification> {
   const h = classifyHeuristic(rawLog)
   if (h.class !== 'ambiguous') return h
-  // Try LLM fallback — routed to claude -p haiku (free via Max subscription)
-  // when available; falls back to OpenRouter for non-Anthropic models or
-  // when claude isn't installed.
+  // Try LLM fallback — routed to claude -p haiku by default.
   try {
     const { cheapCall } = await import('./cheap-llm')
     const tail = rawLog.replace(STRIP_ANSI, '').split('\n').slice(-80).join('\n')
