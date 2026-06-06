@@ -8,3 +8,4 @@ dist
 backlog/.next-id.lock
 sessions/.next-id.lock
 .status.md
+.TerMinal/notes.md
