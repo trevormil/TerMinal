@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   ClipboardPaste,
   Copy,
+  BookOpen,
   Eraser,
   EyeOff,
   FileText,
@@ -26,7 +27,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import type { Choice } from './EntryScreen'
-import type { Engine, PromptSnippet, SkillInfo } from '../lib/types'
+import type { Engine, KnowledgeBase, KnowledgeItem, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
@@ -57,6 +58,60 @@ const DEFAULT_SUGGESTION_SETTINGS: SuggestionSettings = {
   aiModel: 'haiku',
   autoEngine: 'claude',
   autoModel: 'sonnet',
+}
+
+const slug = (input: string) =>
+  input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item'
+
+const singleHttpUrl = (text: string) => {
+  const trimmed = text.trim()
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return ''
+  try {
+    const url = new URL(trimmed)
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+function appendKnowledgeItem(kb: KnowledgeBase, item: Omit<KnowledgeItem, 'id' | 'categoryId' | 'createdAt' | 'updatedAt'>): KnowledgeBase {
+  const ts = Date.now()
+  const categories = [...kb.categories]
+  let category = categories.find((c) => c.id === 'terminal')
+  if (!category) {
+    category = {
+      id: 'terminal',
+      title: 'Terminal',
+      description: 'Selections captured from terminal sessions.',
+      order: categories.length,
+      createdAt: ts,
+      updatedAt: ts,
+    }
+    categories.push(category)
+  }
+  const base = slug(item.title || item.kind)
+  const seen = new Set(kb.items.map((i) => i.id))
+  let id = base
+  let n = 2
+  while (seen.has(id)) id = `${base}-${n++}`
+  return {
+    ...kb,
+    categories: categories.map((c) => c.id === category.id ? { ...c, updatedAt: ts } : c),
+    items: [
+      {
+        ...item,
+        id,
+        categoryId: category.id,
+        createdAt: ts,
+        updatedAt: ts,
+      },
+      ...kb.items,
+    ],
+  }
 }
 
 const cssVar = (name: string, fallback: string) =>
@@ -215,6 +270,7 @@ export function TerminalPane({
   const [suggestionBusy, setSuggestionBusy] = useState(false)
   const [suggestionErr, setSuggestionErr] = useState('')
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
+  const [terminalToast, setTerminalToast] = useState('')
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -594,6 +650,10 @@ export function TerminalPane({
       ? choice.engine
       : newEngine
   const focusTerminalSoon = () => requestAnimationFrame(() => termRef.current?.focus())
+  const flashTerminalToast = (message: string) => {
+    setTerminalToast(message)
+    window.setTimeout(() => setTerminalToast((cur) => (cur === message ? '' : cur)), 2200)
+  }
   const searchOptions = {
     caseSensitive: false,
     decorations: {
@@ -661,6 +721,50 @@ export function TerminalPane({
     setNewMode('custom')
     setNewOpen(true)
     setContextMenu(null)
+  }
+  const saveSelectionToKnowledge = async (scope: KnowledgeScope) => {
+    const text = selectedText()
+    if (!text) return
+    setContextMenu(null)
+    const kb = await window.gt.knowledge.read(scope)
+    const url = singleHttpUrl(text)
+    if (url) {
+      const preview = await window.gt.knowledge.preview(url).catch(() => null)
+      const next = appendKnowledgeItem(kb, {
+        kind: 'link',
+        title: preview?.ok && preview.title ? preview.title : new URL(url).hostname.replace(/^www\./, ''),
+        description: preview?.ok ? preview.description || '' : '',
+        content: '',
+        url: preview?.ok ? preview.url : url,
+        path: '',
+        thumbnailUrl: preview?.ok ? preview.thumbnailUrl || '' : '',
+        faviconUrl: preview?.ok ? preview.faviconUrl || '' : '',
+        siteName: preview?.ok ? preview.siteName || '' : '',
+        tags: ['terminal'],
+      })
+      const ok = await window.gt.knowledge.write(scope, next)
+      flashTerminalToast(ok ? `Saved link to ${scope} KB` : `Could not save ${scope} KB`)
+      focusTerminalSoon()
+      return
+    }
+
+    const firstLine = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Terminal selection'
+    const title = firstLine.length > 56 ? `${firstLine.slice(0, 53)}...` : firstLine
+    const next = appendKnowledgeItem(kb, {
+      kind: 'markdown',
+      title,
+      description: `Captured from ${choice.engine} terminal${choice.cwd ? ` in ${choice.cwd}` : ''}.`,
+      content: `# ${title}\n\nCaptured from ${choice.engine} terminal${choice.cwd ? ` in \`${choice.cwd}\`` : ''}.\n\n\`\`\`text\n${text}\n\`\`\`\n`,
+      url: '',
+      path: '',
+      thumbnailUrl: '',
+      faviconUrl: '',
+      siteName: '',
+      tags: ['terminal'],
+    })
+    const ok = await window.gt.knowledge.write(scope, next)
+    flashTerminalToast(ok ? `Saved selection to ${scope} KB` : `Could not save ${scope} KB`)
+    focusTerminalSoon()
   }
   const hidePresetSnippet = async (id: string) => {
     await window.gt.presets.hide('snippets', id)
@@ -1118,6 +1222,23 @@ export function TerminalPane({
             <FileText size={13} strokeWidth={2} />
             File ticket from selection
           </button>
+          <button
+            disabled={!contextMenu.hasSelection || isRemote}
+            onClick={() => saveSelectionToKnowledge('repo')}
+            title={isRemote ? 'Repo Knowledge Base capture is local-only for now; use global KB from remote terminals.' : 'Save selection to this repo Knowledge Base'}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <BookOpen size={13} strokeWidth={2} />
+            Save to repo KB
+          </button>
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() => saveSelectionToKnowledge('global')}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <BookOpen size={13} strokeWidth={2} />
+            Save to global KB
+          </button>
           {!isRemote && (
             <button
               disabled={!contextMenu.hasSelection}
@@ -1149,6 +1270,11 @@ export function TerminalPane({
             <Eraser size={13} strokeWidth={2} />
             Clear scrollback
           </button>
+        </div>
+      )}
+      {terminalToast && (
+        <div className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 px-3 py-1.5 text-[11.5px] text-zinc-300 shadow-2xl backdrop-blur">
+          {terminalToast}
         </div>
       )}
       {menuOpen && (
