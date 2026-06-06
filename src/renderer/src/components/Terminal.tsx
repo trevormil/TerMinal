@@ -27,11 +27,12 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import type { Choice } from './EntryScreen'
-import type { Engine, KnowledgeBase, KnowledgeItem, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
+import type { Engine, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
+import { appendKnowledgeItem, singleHttpUrl } from '../lib/knowledge'
 
 type LauncherItem =
   | {
@@ -58,60 +59,6 @@ const DEFAULT_SUGGESTION_SETTINGS: SuggestionSettings = {
   aiModel: 'haiku',
   autoEngine: 'claude',
   autoModel: 'sonnet',
-}
-
-const slug = (input: string) =>
-  input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'item'
-
-const singleHttpUrl = (text: string) => {
-  const trimmed = text.trim()
-  if (!/^https?:\/\/\S+$/i.test(trimmed)) return ''
-  try {
-    const url = new URL(trimmed)
-    return url.toString()
-  } catch {
-    return ''
-  }
-}
-
-function appendKnowledgeItem(kb: KnowledgeBase, item: Omit<KnowledgeItem, 'id' | 'categoryId' | 'createdAt' | 'updatedAt'>): KnowledgeBase {
-  const ts = Date.now()
-  const categories = [...kb.categories]
-  let category = categories.find((c) => c.id === 'terminal')
-  if (!category) {
-    category = {
-      id: 'terminal',
-      title: 'Terminal',
-      description: 'Selections captured from terminal sessions.',
-      order: categories.length,
-      createdAt: ts,
-      updatedAt: ts,
-    }
-    categories.push(category)
-  }
-  const base = slug(item.title || item.kind)
-  const seen = new Set(kb.items.map((i) => i.id))
-  let id = base
-  let n = 2
-  while (seen.has(id)) id = `${base}-${n++}`
-  return {
-    ...kb,
-    categories: categories.map((c) => c.id === category.id ? { ...c, updatedAt: ts } : c),
-    items: [
-      {
-        ...item,
-        id,
-        categoryId: category.id,
-        createdAt: ts,
-        updatedAt: ts,
-      },
-      ...kb.items,
-    ],
-  }
 }
 
 const cssVar = (name: string, fallback: string) =>
@@ -741,7 +688,7 @@ export function TerminalPane({
         faviconUrl: preview?.ok ? preview.faviconUrl || '' : '',
         siteName: preview?.ok ? preview.siteName || '' : '',
         tags: ['terminal'],
-      })
+      }, { id: 'terminal', title: 'Terminal', description: 'Selections captured from terminal sessions.' })
       const ok = await window.gt.knowledge.write(scope, next)
       flashTerminalToast(ok ? `Saved link to ${scope} KB` : `Could not save ${scope} KB`)
       focusTerminalSoon()
@@ -761,7 +708,7 @@ export function TerminalPane({
       faviconUrl: '',
       siteName: '',
       tags: ['terminal'],
-    })
+    }, { id: 'terminal', title: 'Terminal', description: 'Selections captured from terminal sessions.' })
     const ok = await window.gt.knowledge.write(scope, next)
     flashTerminalToast(ok ? `Saved selection to ${scope} KB` : `Could not save ${scope} KB`)
     focusTerminalSoon()

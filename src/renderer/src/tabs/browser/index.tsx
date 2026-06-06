@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, Globe, PanelLeftClose, PanelLeftOpen, X, Plus, Trash2 } from 'lucide-react'
-import type { Tab, TabContext } from '../../lib/types'
+import { ArrowLeft, ArrowRight, RotateCw, Globe, PanelLeftClose, PanelLeftOpen, X, Plus, Trash2, BookOpen, ChevronDown } from 'lucide-react'
+import type { KnowledgeScope, Tab, TabContext } from '../../lib/types'
+import { appendKnowledgeItem, singleHttpUrl } from '../../lib/knowledge'
 import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
 import claudeLogo from '../../assets/ai-tools/claude.png'
 import geminiLogo from '../../assets/ai-tools/gemini.png'
@@ -26,6 +27,7 @@ type Webview = HTMLElement & {
   stop(): void
   loadURL(url: string): Promise<void>
   getURL(): string
+  getTitle(): string
   canGoBack(): boolean
   canGoForward(): boolean
 }
@@ -104,6 +106,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
   const homeUrl = repoBookmark?.url || HOME
   const autoHomeRef = useRef(homeUrl)
   const [addr, setAddr] = useState(homeUrl)
+  const [pageTitle, setPageTitle] = useState('')
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
@@ -115,6 +118,9 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
     loadJson<string[]>(HIDDEN_PRESETS_KEY, []),
   )
   const [adding, setAdding] = useState(false)
+  const [kbMenuOpen, setKbMenuOpen] = useState(false)
+  const [kbSaving, setKbSaving] = useState(false)
+  const [kbToast, setKbToast] = useState('')
   const [newTitle, setNewTitle] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [toolsExpanded, setToolsExpanded] = useState(() => {
@@ -136,6 +142,12 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
       /* ignore */
     }
   }, [toolsExpanded])
+  useEffect(() => {
+    if (!kbMenuOpen) return
+    const close = () => setKbMenuOpen(false)
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [kbMenuOpen])
   useEffect(() => saveJson(CUSTOM_KEY, customBookmarks), [customBookmarks])
   useEffect(() => saveJson(HIDDEN_PRESETS_KEY, hiddenPresets), [hiddenPresets])
 
@@ -157,6 +169,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
         setCanFwd(wv.canGoForward())
         const u = wv.getURL()
         if (u && !u.startsWith('about:')) setAddr(u)
+        setPageTitle(wv.getTitle?.() || '')
       } catch {
         /* webview not ready */
       }
@@ -167,6 +180,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
       sync()
     }
     const onNav = () => sync()
+    const onTitle = (e: Event & { title?: string }) => setPageTitle(e.title || wv.getTitle?.() || '')
     // pop-ups / target=_blank → keep them in this webview instead of new windows
     const onNewWindow = (e: Event & { url?: string }) => {
       if (e.url) wv.loadURL(e.url).catch(() => {})
@@ -175,12 +189,14 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
     wv.addEventListener('did-stop-loading', onStop)
     wv.addEventListener('did-navigate', onNav)
     wv.addEventListener('did-navigate-in-page', onNav)
+    wv.addEventListener('page-title-updated', onTitle as EventListener)
     wv.addEventListener('new-window', onNewWindow as EventListener)
     return () => {
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStop)
       wv.removeEventListener('did-navigate', onNav)
       wv.removeEventListener('did-navigate-in-page', onNav)
+      wv.removeEventListener('page-title-updated', onTitle as EventListener)
       wv.removeEventListener('new-window', onNewWindow as EventListener)
       wv.remove()
       wvRef.current = null
@@ -242,6 +258,48 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
     setCustomBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id))
   }
   const resetPresets = () => setHiddenPresets([])
+  const flashKb = (message: string) => {
+    setKbToast(message)
+    window.setTimeout(() => setKbToast((cur) => (cur === message ? '' : cur)), 2200)
+  }
+  const saveCurrentPageToKb = async (scope: KnowledgeScope) => {
+    const current = wvRef.current?.getURL() || addr
+    const url = singleHttpUrl(current)
+    if (!url) {
+      flashKb('Current page is not a saveable http(s) URL')
+      return
+    }
+    setKbMenuOpen(false)
+    setKbSaving(true)
+    try {
+      const preview = await window.gt.knowledge.preview(url).catch(() => null)
+      const kb = await window.gt.knowledge.read(scope)
+      const host = new URL(url).hostname.replace(/^www\./, '')
+      const title = preview?.ok && preview.title ? preview.title : pageTitle || host
+      const next = appendKnowledgeItem(
+        kb,
+        {
+          kind: 'link',
+          title,
+          description: preview?.ok ? preview.description || '' : '',
+          content: '',
+          url: preview?.ok ? preview.url : url,
+          path: '',
+          thumbnailUrl: preview?.ok ? preview.thumbnailUrl || '' : '',
+          faviconUrl: preview?.ok ? preview.faviconUrl || '' : '',
+          siteName: preview?.ok ? preview.siteName || host : host,
+          tags: ['browser'],
+        },
+        { id: 'browser', title: 'Browser', description: 'Pages saved from TerMinal Browser.' },
+      )
+      const ok = await window.gt.knowledge.write(scope, next)
+      flashKb(ok ? `Saved page to ${scope} KB` : `Could not save ${scope} KB`)
+    } catch {
+      flashKb(`Could not save ${scope} KB`)
+    } finally {
+      setKbSaving(false)
+    }
+  }
   const currentHost = (() => {
     try {
       return new URL(addr).hostname.replace(/^www\./, '')
@@ -286,6 +344,38 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
             className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-200 outline-none"
           />
         </form>
+        <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => setKbMenuOpen((v) => !v)}
+            disabled={kbSaving}
+            title="Save this page to Knowledge Base"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white disabled:opacity-50"
+          >
+            <BookOpen size={13} strokeWidth={2} />
+            {kbSaving ? 'Saving' : 'Save KB'}
+            <ChevronDown size={12} strokeWidth={2} />
+          </button>
+          {kbMenuOpen && (
+            <div className="absolute right-0 top-9 z-30 min-w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[11.5px] text-zinc-200 shadow-2xl">
+              <button
+                onClick={() => saveCurrentPageToKb('global')}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+              >
+                <BookOpen size={12} strokeWidth={2} />
+                Global KB
+              </button>
+              <button
+                onClick={() => saveCurrentPageToKb('repo')}
+                disabled={!ctx.repoRoot || !!ctx.remote}
+                title={ctx.remote ? 'Repo Knowledge Base save is local-only for now.' : !ctx.repoRoot ? 'No repo selected.' : 'Save to this repo Knowledge Base'}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+              >
+                <BookOpen size={12} strokeWidth={2} />
+                Repo KB
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => window.gt.openInBrowser(addr)}
           title={`Open this page in ${browserName} (your wallet + extensions)`}
@@ -428,6 +518,11 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
         </aside>
         <div ref={hostRef} className="min-h-0 min-w-0 flex-1" />
       </div>
+      {kbToast && (
+        <div className="pointer-events-none fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 px-3 py-1.5 text-[11.5px] text-zinc-300 shadow-2xl backdrop-blur">
+          {kbToast}
+        </div>
+      )}
     </div>
   )
 }
