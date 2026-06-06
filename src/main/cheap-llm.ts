@@ -1,4 +1,9 @@
-// Cheap one-shot LLM caller with smart routing.
+// Cheap/short one-shot LLM caller with smart routing.
+//
+// When opts.engine is set, run that standalone coding CLI directly:
+// claude -p, codex exec, or cursor-agent -p. This is used by terminal
+// suggested replies so the operator can choose the same engine/model UX used
+// elsewhere in the app without routing through OpenRouter.
 //
 // Anthropic models (haiku/sonnet/opus or claude-*) → `claude -p` so the call
 // hits the user's Max subscription budget (free at the margin) instead of
@@ -11,7 +16,8 @@
 // configured, anything routes through OpenRouter.
 
 import { execFile } from 'node:child_process'
-import { enginePath } from './settings'
+import { existsSync } from 'node:fs'
+import { enginePath, type EngineId } from './settings'
 
 export type CheapMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
@@ -19,7 +25,7 @@ export type CheapResponse = {
   ok: boolean
   text?: string
   model?: string
-  route?: 'claude-p' | 'openrouter'
+  route?: 'claude-p' | 'codex-exec' | 'cursor-agent' | 'openrouter'
   error?: string
 }
 
@@ -63,16 +69,17 @@ function flattenMessages(msgs: CheapMessage[]): string {
 
 function callClaudeP(
   prompt: string,
-  model: string,
+  model: string | undefined,
   timeoutMs: number,
+  cwd?: string,
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   return new Promise((resolve) => {
     const bin = enginePath('claude') || 'claude'
-    const args = ['-p', prompt, '--permission-mode', 'auto', '--model', model]
+    const args = ['-p', prompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])]
     execFile(
       bin,
       args,
-      { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+      { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, cwd: cwd && existsSync(cwd) ? cwd : undefined },
       (err, stdout, stderr) => {
         if (err) {
           // Distinguish "claude not installed" from "claude ran but errored"
@@ -92,12 +99,70 @@ function callClaudeP(
   })
 }
 
+function callStandaloneEngine(
+  engine: EngineId,
+  prompt: string,
+  model: string | undefined,
+  timeoutMs: number,
+  cwd?: string,
+): Promise<{ ok: boolean; text?: string; error?: string; route: Exclude<CheapResponse['route'], 'openrouter'> }> {
+  if (engine === 'claude') {
+    return callClaudeP(prompt, model, timeoutMs, cwd).then((r) => ({ ...r, route: 'claude-p' as const }))
+  }
+
+  const runCwd = cwd && existsSync(cwd) ? cwd : undefined
+  const bin = enginePath(engine) || (engine === 'cursor' ? 'cursor-agent' : engine)
+  const args =
+    engine === 'codex'
+      ? [
+          'exec',
+          '-s',
+          'danger-full-access',
+          ...(runCwd ? ['-C', runCwd] : []),
+          ...(model ? ['--model', model] : []),
+          prompt,
+        ]
+      : [
+          '-p',
+          '--force',
+          '--trust',
+          '--output-format',
+          'text',
+          ...(runCwd ? ['--workspace', runCwd] : []),
+          ...(model ? ['--model', model] : []),
+          prompt,
+        ]
+
+  return new Promise((resolve) => {
+    execFile(
+      bin,
+      args,
+      { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, cwd: runCwd },
+      (err, stdout, stderr) => {
+        const route = engine === 'codex' ? 'codex-exec' : 'cursor-agent'
+        if (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            resolve({ ok: false, error: `${bin} CLI not installed`, route })
+            return
+          }
+          resolve({ ok: false, error: stderr?.toString().slice(0, 240) || err.message, route })
+          return
+        }
+        const text = (stdout || '').replace(STRIP_ANSI, '').trim()
+        resolve({ ok: true, text, route })
+      },
+    )
+  })
+}
+
 /** Smart-routed cheap LLM call. */
 export async function cheapCall(opts: {
   messages: CheapMessage[]
   model?: string
+  engine?: EngineId
   /** Force a specific route. Default is "anthropic-models → claude -p; else openrouter". */
   route?: 'auto' | 'claude-p' | 'openrouter'
+  cwd?: string
   maxTokens?: number
   temperature?: number
   timeoutMs?: number
@@ -106,12 +171,19 @@ export async function cheapCall(opts: {
   const anthroModel = normalizeAnthropicModel(opts.model || '')
   const wantClaude = route === 'claude-p' || (route === 'auto' && !!anthroModel)
   const timeoutMs = opts.timeoutMs ?? 30_000
+  const prompt = flattenMessages(opts.messages)
+
+  if (opts.engine) {
+    const res = await callStandaloneEngine(opts.engine, prompt, opts.model, timeoutMs, opts.cwd)
+    return { ...res, model: opts.model }
+  }
 
   if (wantClaude) {
     const cp = await callClaudeP(
-      flattenMessages(opts.messages),
+      prompt,
       anthroModel || 'haiku',
       timeoutMs,
+      opts.cwd,
     )
     if (cp.ok) {
       return { ok: true, text: cp.text, model: anthroModel || 'haiku', route: 'claude-p' }

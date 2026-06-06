@@ -48,6 +48,7 @@ import type {
 import { engineLabel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
+import { EngineModelPicker } from './EngineModelPicker'
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
@@ -142,6 +143,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'forge', title: 'Forge', icon: GitPullRequest },
   { id: 'apps', title: 'Apps', icon: AppWindow },
   { id: 'inbox', title: 'Inbox', icon: Inbox },
+  { id: 'suggestions', title: 'Replies', icon: Sparkles },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
   { id: 'openrouter', title: 'OpenRouter', icon: Sparkles },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
@@ -845,6 +847,29 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       <span className="mt-0.5 text-[10.5px] text-zinc-500">{hint}</span>
     </button>
   )
+  const SuggestionModelSetting = ({
+    label,
+    engine,
+    model,
+    onPick,
+    hint,
+  }: {
+    label: string
+    engine: Engine
+    model: string
+    onPick: (engine: Engine, model: string | undefined) => void
+    hint: string
+  }) => (
+    <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11.5px] font-semibold text-zinc-200">{label}</div>
+          <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">{hint}</div>
+        </div>
+        <EngineModelPicker engine={engine} model={model || undefined} onChange={onPick} size="sm" align="right" />
+      </div>
+    </div>
+  )
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -1409,6 +1434,45 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                   <span className="block text-zinc-300">This toggle</span>
                   <span>post-completion review prompts only</span>
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          {/* Suggested replies */}
+          <Section
+            id="suggestions"
+            icon={Sparkles}
+            title="Suggested replies"
+            desc="Per-terminal modes decide when to use these standalone engines. Suggestions do not route through OpenRouter."
+          >
+            <div className="space-y-2">
+              <SuggestionModelSetting
+                label="AI suggestion model"
+                engine={s.suggestions.aiEngine}
+                model={s.suggestions.aiModel}
+                onPick={(aiEngine, aiModel) => save({ suggestions: { aiEngine, aiModel: aiModel || '' } })}
+                hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
+              />
+              <SuggestionModelSetting
+                label="Auto-send model"
+                engine={s.suggestions.autoEngine}
+                model={s.suggestions.autoModel}
+                onPick={(autoEngine, autoModel) => save({ suggestions: { autoEngine, autoModel: autoModel || '' } })}
+                hint="Used when a terminal is set to Auto mode. TerMinal asks for one best reply and submits it after completion."
+              />
+              <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
+                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  <span className="block text-zinc-300">Rules</span>
+                  <span>deterministic suggestions only</span>
+                </div>
+                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  <span className="block text-zinc-300">AI</span>
+                  <span>shows suggestions for you to choose</span>
+                </div>
+                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                  <span className="block text-zinc-300">Auto</span>
+                  <span>submits one reply; per-terminal instructions live in the terminal popover</span>
                 </div>
               </div>
             </div>

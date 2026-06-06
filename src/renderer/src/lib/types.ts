@@ -161,6 +161,12 @@ export type AppearanceCfg = {
 }
 export type AppsCfg = { editor: string; browser: string }
 export type OpenRouterCfg = { apiKey: string; defaultModel: string }
+export type SuggestionsCfg = {
+  aiEngine: Engine
+  aiModel: string
+  autoEngine: Engine
+  autoModel: string
+}
 export type NoteFolder = { id: string; title: string; path: string }
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
@@ -183,18 +189,20 @@ export type Settings = {
   appearance: AppearanceCfg
   apps: AppsCfg
   openrouter: OpenRouterCfg
+  suggestions: SuggestionsCfg
   noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
 }
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
+  suggestions?: Partial<SuggestionsCfg>
   noteFolders?: NoteFolder[]
 }
 
@@ -816,7 +824,9 @@ export type GtApi = {
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
     model?: string
+    engine?: Engine
     route?: 'auto' | 'claude-p' | 'openrouter'
+    cwd?: string
     maxTokens?: number
     temperature?: number
     timeoutMs?: number

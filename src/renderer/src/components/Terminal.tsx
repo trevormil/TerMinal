@@ -44,8 +44,20 @@ type LauncherItem =
     }
   | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
 
-type SuggestionMode = 'off' | 'deterministic' | 'ai'
+type SuggestionMode = 'off' | 'deterministic' | 'ai' | 'auto'
 type SuggestedReply = { label: string; prompt: string }
+type SuggestionSettings = {
+  aiEngine: Engine
+  aiModel: string
+  autoEngine: Engine
+  autoModel: string
+}
+const DEFAULT_SUGGESTION_SETTINGS: SuggestionSettings = {
+  aiEngine: 'claude',
+  aiModel: 'haiku',
+  autoEngine: 'claude',
+  autoModel: 'sonnet',
+}
 
 const cssVar = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -100,7 +112,10 @@ function deterministicReplies(output: string, engine: string): SuggestedReply[] 
 }
 
 function parseAiReplies(text: string): SuggestedReply[] {
-  const raw = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+  const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+  const start = cleaned.indexOf('{')
+  const end = cleaned.lastIndexOf('}')
+  const raw = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned
   const parsed = JSON.parse(raw) as { suggestions?: unknown }
   const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
   return suggestions
@@ -194,6 +209,8 @@ export function TerminalPane({
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
   const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('deterministic')
+  const [suggestionSettings, setSuggestionSettings] = useState<SuggestionSettings>(DEFAULT_SUGGESTION_SETTINGS)
+  const [autoInstructions, setAutoInstructions] = useState('')
   const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
   const [suggestionBusy, setSuggestionBusy] = useState(false)
   const [suggestionErr, setSuggestionErr] = useState('')
@@ -246,7 +263,18 @@ export function TerminalPane({
       .listSkills()
       .then(setSkills)
       .catch(() => setSkills([]))
-    window.gt.settings.get().then((s) => setNewEngine(s.defaultEngine)).catch(() => {})
+    window.gt.settings
+      .get()
+      .then((s) => {
+        setNewEngine(s.defaultEngine)
+        setSuggestionSettings({
+          aiEngine: s.suggestions?.aiEngine ?? DEFAULT_SUGGESTION_SETTINGS.aiEngine,
+          aiModel: s.suggestions?.aiModel ?? DEFAULT_SUGGESTION_SETTINGS.aiModel,
+          autoEngine: s.suggestions?.autoEngine ?? DEFAULT_SUGGESTION_SETTINGS.autoEngine,
+          autoModel: s.suggestions?.autoModel ?? DEFAULT_SUGGESTION_SETTINGS.autoModel,
+        })
+      })
+      .catch(() => {})
   }, [choice.cwd, isRemote])
 
   useEffect(() => {
@@ -374,7 +402,16 @@ export function TerminalPane({
       })
     }
     const onSettingsChanged = (e: Event) => {
-      const appearance = (e as CustomEvent).detail?.appearance
+      const detail = (e as CustomEvent).detail
+      if (detail?.suggestions) {
+        setSuggestionSettings({
+          aiEngine: detail.suggestions.aiEngine ?? DEFAULT_SUGGESTION_SETTINGS.aiEngine,
+          aiModel: detail.suggestions.aiModel ?? DEFAULT_SUGGESTION_SETTINGS.aiModel,
+          autoEngine: detail.suggestions.autoEngine ?? DEFAULT_SUGGESTION_SETTINGS.autoEngine,
+          autoModel: detail.suggestions.autoModel ?? DEFAULT_SUGGESTION_SETTINGS.autoModel,
+        })
+      }
+      const appearance = detail?.appearance
       if (!appearance || appearance.uiScale === undefined) return
       refit(true)
       if (fitTimer) window.clearTimeout(fitTimer)
@@ -400,6 +437,14 @@ export function TerminalPane({
       writeInputRef.current = () => {}
     }
   }, [sessionKey, isRemote])
+
+  useEffect(() => {
+    try {
+      setAutoInstructions(window.localStorage.getItem(`gt:auto-instructions:${sessionKey}`) || '')
+    } catch {
+      setAutoInstructions('')
+    }
+  }, [sessionKey])
 
   useEffect(() => {
     if (!contextMenu) return
@@ -484,25 +529,36 @@ export function TerminalPane({
       return
     }
 
+    const autoMode = mode === 'auto'
+    const engine = autoMode ? suggestionSettings.autoEngine : suggestionSettings.aiEngine
+    const model = autoMode ? suggestionSettings.autoModel : suggestionSettings.aiModel
+    const terminalAutoInstructions = autoMode ? autoInstructions.trim() : ''
     setSuggestionBusy(true)
     setSuggestionErr('')
     setSuggestions([])
     const r = await window.gt.cheapLlm({
-      route: 'claude-p',
-      model: 'haiku',
-      maxTokens: 650,
-      temperature: 0.2,
-      timeoutMs: 18_000,
+      engine,
+      model,
+      cwd: choice.cwd || undefined,
+      maxTokens: autoMode ? 320 : 650,
+      temperature: autoMode ? 0.1 : 0.2,
+      timeoutMs: autoMode ? 30_000 : 18_000,
       messages: [
         {
           role: 'system',
           content:
-            'You generate likely next human replies for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return 1-5 concise, actionable replies. Do not include markdown.',
+            autoMode
+              ? 'You choose the single best next human reply for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return exactly one concise, actionable reply. Do not include markdown.'
+              : 'You generate likely next human replies for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return 1-5 concise, actionable replies. Do not include markdown.',
         },
         {
           role: 'user',
           content:
-            `Engine: ${choice.engine}\nDirectory: ${choice.cwd || '(unknown)'}\n\nRecent terminal output:\n\n` +
+            `Engine: ${choice.engine}\nDirectory: ${choice.cwd || '(unknown)'}\n` +
+            (terminalAutoInstructions
+              ? `\nOperator standing instructions for this terminal's auto-mode:\n${terminalAutoInstructions}\n`
+              : '') +
+            '\nRecent terminal output:\n\n' +
             '```\n' +
             output +
             '\n```',
@@ -511,16 +567,25 @@ export function TerminalPane({
     })
     setSuggestionBusy(false)
     if (!r.ok || !r.text) {
-      setSuggestionErr(r.error || 'AI suggestions unavailable')
-      setSuggestions(fallback)
+      setSuggestionErr(r.error || (autoMode ? 'Auto reply unavailable' : 'AI suggestions unavailable'))
+      if (!autoMode) setSuggestions(fallback)
       return
     }
     try {
       const parsed = parseAiReplies(r.text)
+      if (autoMode) {
+        const top = parsed[0]
+        if (!top) {
+          setSuggestionErr('Auto reply returned no usable prompt')
+          return
+        }
+        runSuggestion(top.prompt)
+        return
+      }
       setSuggestions(parsed.length ? parsed : fallback)
     } catch {
       setSuggestionErr('AI returned unreadable suggestions')
-      setSuggestions(fallback)
+      if (!autoMode) setSuggestions(fallback)
     }
   }
   const selectedText = () => termRef.current?.getSelection().trim() || ''
@@ -790,13 +855,13 @@ export function TerminalPane({
       </div>
       )}
       {suggestionSettingsOpen && (
-        <div className={`absolute top-14 z-30 w-64 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur ${isRemote ? 'right-4' : 'right-14'}`}>
+        <div className={`absolute top-14 z-30 w-80 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur ${isRemote ? 'right-4' : 'right-14'}`}>
           <div className="mb-1.5 flex items-center gap-2 px-1">
             <Sparkles size={13} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested replies</span>
           </div>
-          <div className="grid grid-cols-3 gap-1">
-            {(['off', 'deterministic', 'ai'] as const).map((mode) => (
+          <div className="grid grid-cols-4 gap-1">
+            {(['off', 'deterministic', 'ai', 'auto'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => {
@@ -814,8 +879,31 @@ export function TerminalPane({
             ))}
           </div>
           <div className="mt-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-[10.5px] leading-4 text-zinc-500">
-            AI uses local <span className="font-mono text-zinc-400">claude -p haiku</span> only; it will not fall back to OpenRouter.
+            AI uses standalone <span className="font-mono text-zinc-400">{suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}</span>.
+            Auto submits one reply with <span className="font-mono text-zinc-400">{suggestionSettings.autoEngine} {suggestionSettings.autoModel || 'default'}</span>.
           </div>
+          <label className="mt-2 block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              Auto instructions for this terminal
+            </span>
+            <textarea
+              value={autoInstructions}
+              onChange={(e) => {
+                const next = e.target.value
+                setAutoInstructions(next)
+                try {
+                  if (next.trim()) window.localStorage.setItem(`gt:auto-instructions:${sessionKey}`, next)
+                  else window.localStorage.removeItem(`gt:auto-instructions:${sessionKey}`)
+                } catch {
+                  /* best effort */
+                }
+              }}
+              placeholder="Example: We are in factory mode. Continue iterating through all tickets until the goal is met."
+              rows={3}
+              spellCheck={false}
+              className="w-full resize-y rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1.5 text-[10.5px] leading-4 text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+          </label>
         </div>
       )}
       {showSuggestions && (
@@ -828,12 +916,16 @@ export function TerminalPane({
             <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
             <span className="text-[10.5px] text-zinc-600">1-5 to send</span>
             <span className="rounded bg-black/25 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-600">
-              {suggestionMode === 'ai' ? 'Haiku' : 'Rules'}
+              {suggestionMode === 'auto'
+                ? `Auto · ${suggestionSettings.autoEngine} ${suggestionSettings.autoModel || 'default'}`
+                : suggestionMode === 'ai'
+                  ? `AI · ${suggestionSettings.aiEngine} ${suggestionSettings.aiModel || 'default'}`
+                  : 'Rules'}
             </span>
             {suggestionBusy && (
               <span className="inline-flex items-center gap-1 text-[10.5px] text-zinc-500">
                 <Loader2 size={11} strokeWidth={2} className="animate-spin" />
-                reading terminal
+                {suggestionMode === 'auto' ? 'generating and sending' : 'reading terminal'}
               </span>
             )}
             {suggestionErr && <span className="truncate text-[10.5px] text-[var(--gt-yellow)]">{suggestionErr}</span>}
@@ -858,6 +950,10 @@ export function TerminalPane({
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-8 animate-pulse rounded-md bg-white/5" />
               ))}
+            </div>
+          ) : suggestionMode === 'auto' && suggestions.length === 0 ? (
+            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
+              Auto mode will send the top model-generated reply when this terminal completes or needs attention.
             </div>
           ) : (
             <div className="grid max-h-[calc(100%-28px)] gap-1.5 overflow-y-auto lg:grid-cols-2">

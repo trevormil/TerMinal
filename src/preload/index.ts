@@ -69,7 +69,7 @@ const gt = {
       ipcRenderer.invoke('openrouter:chat', opts),
     presets: () => ipcRenderer.invoke('openrouter:presets'),
   },
-  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; route?: 'auto' | 'claude-p' | 'openrouter'; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
+  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; engine?: 'codex' | 'claude' | 'cursor'; route?: 'auto' | 'claude-p' | 'openrouter'; cwd?: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
     ipcRenderer.invoke('llm:cheap', opts),
   classify: {
     ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),

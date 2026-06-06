@@ -51,6 +51,12 @@ export type OpenRouterCfg = {
   apiKey: string
   defaultModel: string // e.g. 'anthropic/claude-haiku-4.5'
 }
+export type SuggestionsCfg = {
+  aiEngine: EngineId
+  aiModel: string
+  autoEngine: EngineId
+  autoModel: string
+}
 export type NoteFolder = {
   id: string
   title: string
@@ -80,6 +86,7 @@ export type Settings = {
    *  Used for one-shot calls inside scripts: health-check classifiers, cheap
    *  precheck escalations, etc. Optional. */
   openrouter: OpenRouterCfg
+  suggestions: SuggestionsCfg
   noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
@@ -87,13 +94,14 @@ export type Settings = {
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'openrouter' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   openrouter?: Partial<OpenRouterCfg>
+  suggestions?: Partial<SuggestionsCfg>
   noteFolders?: NoteFolder[]
 }
 
@@ -150,6 +158,12 @@ export function defaultSettings(): Settings {
     appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
     apps: { editor: '', browser: '' },
     openrouter: { apiKey: '', defaultModel: 'anthropic/claude-haiku-4.5' },
+    suggestions: {
+      aiEngine: 'claude',
+      aiModel: 'haiku',
+      autoEngine: 'claude',
+      autoModel: 'sonnet',
+    },
     noteFolders: [],
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
@@ -283,6 +297,28 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.openrouter.apiKey === 'string') s.openrouter.apiKey = r.openrouter.apiKey
     if (typeof r.openrouter.defaultModel === 'string') s.openrouter.defaultModel = r.openrouter.defaultModel
   }
+  if (r.suggestions && typeof r.suggestions === 'object') {
+    if (
+      r.suggestions.aiEngine === 'codex' ||
+      r.suggestions.aiEngine === 'claude' ||
+      r.suggestions.aiEngine === 'cursor'
+    ) {
+      s.suggestions.aiEngine = r.suggestions.aiEngine
+    }
+    if (typeof r.suggestions.aiModel === 'string') {
+      s.suggestions.aiModel = r.suggestions.aiModel.trim()
+    }
+    if (
+      r.suggestions.autoEngine === 'codex' ||
+      r.suggestions.autoEngine === 'claude' ||
+      r.suggestions.autoEngine === 'cursor'
+    ) {
+      s.suggestions.autoEngine = r.suggestions.autoEngine
+    }
+    if (typeof r.suggestions.autoModel === 'string') {
+      s.suggestions.autoModel = r.suggestions.autoModel.trim()
+    }
+  }
   s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
   return s
@@ -356,6 +392,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       cursor: { ...cur.engines.cursor, ...(patch.engines?.cursor || {}) },
     },
     openrouter: { ...cur.openrouter, ...(patch.openrouter || {}) },
+    suggestions: { ...cur.suggestions, ...(patch.suggestions || {}) },
     noteFolders: patch.noteFolders ? noteFolders(patch.noteFolders) : cur.noteFolders,
   }
 }
