@@ -305,6 +305,7 @@ const gt = {
   knowledge: {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),
     write: (scope: 'repo' | 'global', kb: unknown) => ipcRenderer.invoke('knowledge:write', scope, kb),
+    preview: (url: string) => ipcRenderer.invoke('knowledge:preview', url),
   },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),

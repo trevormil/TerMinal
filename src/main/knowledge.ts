@@ -21,9 +21,22 @@ export type KnowledgeItem = {
   content?: string
   url?: string
   path?: string
+  thumbnailUrl?: string
+  faviconUrl?: string
+  siteName?: string
   tags: string[]
   createdAt: number
   updatedAt: number
+}
+export type KnowledgePreview = {
+  ok: boolean
+  url: string
+  title?: string
+  description?: string
+  thumbnailUrl?: string
+  faviconUrl?: string
+  siteName?: string
+  error?: string
 }
 export type KnowledgeBase = {
   version: 1
@@ -117,6 +130,9 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
             content: typeof x.content === 'string' ? x.content : '',
             url: typeof x.url === 'string' ? x.url : '',
             path: typeof x.path === 'string' ? x.path : '',
+            thumbnailUrl: typeof x.thumbnailUrl === 'string' ? x.thumbnailUrl : '',
+            faviconUrl: typeof x.faviconUrl === 'string' ? x.faviconUrl : '',
+            siteName: typeof x.siteName === 'string' ? x.siteName : '',
             tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === 'string') : [],
             createdAt: ts,
             updatedAt: typeof x.updatedAt === 'number' ? x.updatedAt : ts,
@@ -149,5 +165,92 @@ export function writeKnowledge(scope: KnowledgeScope, repoRoot: string, kb: Know
     return true
   } catch {
     return false
+  }
+}
+
+function absUrl(base: URL, value: string): string {
+  try {
+    return new URL(value, base).toString()
+  } catch {
+    return ''
+  }
+}
+
+function firstMeta(html: string, names: string[]): string {
+  for (const name of names) {
+    const re = new RegExp(`<meta\\s+[^>]*(?:property|name)=["']${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'i')
+    const tag = html.match(re)?.[0] || ''
+    const content = tag.match(/\scontent=["']([^"']+)["']/i)?.[1] || ''
+    if (content.trim()) return decodeHtml(content.trim())
+  }
+  return ''
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+function pageTitle(html: string): string {
+  const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || ''
+  return decodeHtml(raw.replace(/\s+/g, ' ').trim())
+}
+
+export function parseKnowledgePreviewHtml(rawUrl: string, html: string): KnowledgePreview {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return { ok: false, url: rawUrl, error: 'Invalid URL.' }
+  }
+  const title = firstMeta(html, ['og:title', 'twitter:title']) || pageTitle(html)
+  const description = firstMeta(html, ['og:description', 'twitter:description', 'description'])
+  const siteName = firstMeta(html, ['og:site_name', 'application-name']) || url.hostname.replace(/^www\./, '')
+  const image = firstMeta(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src'])
+  const iconTag =
+    html.match(/<link\s+[^>]*rel=["'][^"']*(?:icon|apple-touch-icon)[^"']*["'][^>]*>/i)?.[0] || ''
+  const icon = iconTag.match(/\shref=["']([^"']+)["']/i)?.[1] || ''
+  return {
+    ok: true,
+    url: url.toString(),
+    title,
+    description,
+    siteName,
+    thumbnailUrl: image ? absUrl(url, decodeHtml(image)) : '',
+    faviconUrl: icon ? absUrl(url, decodeHtml(icon)) : `${url.origin}/favicon.ico`,
+  }
+}
+
+export async function fetchKnowledgePreview(rawUrl: string): Promise<KnowledgePreview> {
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { ok: false, url: rawUrl, error: 'Only http(s) links can be enriched.' }
+    }
+  } catch {
+    return { ok: false, url: rawUrl, error: 'Invalid URL.' }
+  }
+
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8_000)
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': 'TerMinal knowledge preview (+https://github.com/trevormil/TerMinal)',
+      },
+    })
+    clearTimeout(timer)
+    if (!res.ok) return { ok: false, url: url.toString(), error: `HTTP ${res.status}` }
+    const html = (await res.text()).slice(0, 800_000)
+    return parseKnowledgePreviewHtml(url.toString(), html)
+  } catch (e) {
+    return { ok: false, url: url.toString(), error: (e as Error).message }
   }
 }

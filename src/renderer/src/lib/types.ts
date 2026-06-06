@@ -187,6 +187,9 @@ export type KnowledgeItem = {
   content?: string
   url?: string
   path?: string
+  thumbnailUrl?: string
+  faviconUrl?: string
+  siteName?: string
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -195,6 +198,16 @@ export type KnowledgeBase = {
   version: 1
   categories: KnowledgeCategory[]
   items: KnowledgeItem[]
+}
+export type KnowledgePreview = {
+  ok: boolean
+  url: string
+  title?: string
+  description?: string
+  thumbnailUrl?: string
+  faviconUrl?: string
+  siteName?: string
+  error?: string
 }
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
@@ -1152,6 +1165,7 @@ export type GtApi = {
   knowledge: {
     read: (scope: KnowledgeScope) => Promise<KnowledgeBase>
     write: (scope: KnowledgeScope, kb: KnowledgeBase) => Promise<boolean>
+    preview: (url: string) => Promise<KnowledgePreview>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>

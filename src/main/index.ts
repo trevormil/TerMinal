@@ -43,7 +43,7 @@ import { repoRootOf, repoForCwd } from './repo'
 import { getTicket, type NewTicket } from './backlog'
 import { mrSummary } from './mrs'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
-import { readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
+import { fetchKnowledgePreview, readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
@@ -1781,6 +1781,7 @@ ipcMain.handle('knowledge:read', (_e, scope: KnowledgeScope) => {
 ipcMain.handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase) => {
   return writeKnowledge(scope, activeDaemon().repoRoot(), kb)
 })
+ipcMain.handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----
 ipcMain.handle('files:list', (_e, rel: string) => {

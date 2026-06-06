@@ -11,6 +11,7 @@ import {
   NotebookText,
   Plus,
   Search,
+  Sparkles,
   Tags,
   Trash2,
   Video,
@@ -80,6 +81,16 @@ const videoEmbed = (src: string) => {
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
   return ''
 }
+const youtubeThumb = (src: string) => {
+  const yt = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]+)/)
+  return yt ? `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg` : ''
+}
+const visualFor = (item: KnowledgeItem) => {
+  if (item.thumbnailUrl?.trim()) return item.thumbnailUrl.trim()
+  if (item.kind === 'image') return mediaSrc(item)
+  if (item.kind === 'video') return youtubeThumb(sourceOf(item))
+  return ''
+}
 
 function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
   const ts = now()
@@ -92,6 +103,9 @@ function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
     content: kind === 'markdown' ? '# New note\n\n' : '',
     url: '',
     path: '',
+    thumbnailUrl: '',
+    faviconUrl: '',
+    siteName: '',
     tags: [],
     createdAt: ts,
     updatedAt: ts,
@@ -100,7 +114,7 @@ function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
 
 function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   const hasRepo = !!ctx.repoRoot
-  const [scope, setScope] = useState<KnowledgeScope>(hasRepo ? 'repo' : 'global')
+  const [scope, setScope] = useState<KnowledgeScope>('global')
   const [view, setView] = useState<ViewMode>('knowledge')
   const [kb, setKb] = useState<KnowledgeBase>(starterKb)
   const [activeCategoryId, setActiveCategoryId] = useState('general')
@@ -112,6 +126,8 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   const [scratch, setScratch] = useState('')
   const [scratchSaved, setScratchSaved] = useState(true)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('split')
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewErr, setPreviewErr] = useState('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scratchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestKb = useRef(kb)
@@ -229,6 +245,27 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     setActiveItemId(nextItems[0]?.id || '')
   }
 
+  const enrichItem = async (item: KnowledgeItem) => {
+    const target = item.url?.trim()
+    if (!target) return
+    setPreviewBusy(true)
+    setPreviewErr('')
+    const preview = await window.gt.knowledge.preview(target)
+    setPreviewBusy(false)
+    if (!preview.ok) {
+      setPreviewErr(preview.error || 'Preview unavailable')
+      return
+    }
+    updateItem({
+      url: preview.url,
+      title: item.title && item.title !== kindMeta[item.kind].label ? item.title : preview.title || item.title,
+      description: item.description || preview.description || '',
+      thumbnailUrl: item.thumbnailUrl || preview.thumbnailUrl || '',
+      faviconUrl: item.faviconUrl || preview.faviconUrl || '',
+      siteName: item.siteName || preview.siteName || '',
+    }, true)
+  }
+
   const scopeButton = (next: KnowledgeScope, label: string, Icon: typeof Globe, disabled = false) => (
     <button
       disabled={disabled}
@@ -274,9 +311,20 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     }
     const target = sourceOf(item)
     return target ? (
-      <div className="rounded-xl border border-[var(--gt-border)] bg-black/20 p-4">
-        <div className="mb-1 text-[12px] font-semibold text-zinc-200">{item.kind === 'link' ? 'Link target' : 'File target'}</div>
-        <div className="mb-3 break-all font-mono text-[11px] text-zinc-500">{displayPath(target)}</div>
+      <div className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-black/20">
+        {visualFor(item) && (
+          <div className="aspect-[16/7] border-b border-[var(--gt-border)] bg-black/30">
+            <img src={visualFor(item)} alt="" className="h-full w-full object-cover" />
+          </div>
+        )}
+        <div className="p-4">
+        <div className="mb-2 flex items-center gap-2">
+          {item.faviconUrl ? <img src={item.faviconUrl} alt="" className="h-4 w-4 rounded-sm" /> : null}
+          <span className="truncate text-[11px] text-zinc-600">{item.siteName || (item.kind === 'link' ? 'Link target' : 'File target')}</span>
+        </div>
+        <div className="mb-1 text-[14px] font-semibold text-zinc-100">{item.title}</div>
+        {item.description && <div className="mb-3 text-[12px] leading-relaxed text-zinc-500">{item.description}</div>}
+        <div className="mb-3 break-all font-mono text-[11px] text-zinc-600">{displayPath(target)}</div>
         <button
           onClick={() => item.kind === 'file' && item.path ? window.gt.openInEditor(item.path) : window.gt.openInBrowser(target)}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
@@ -284,6 +332,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           <ExternalLink size={13} strokeWidth={2} />
           Open
         </button>
+        </div>
       </div>
     ) : <EmptyPreview text="Add a URL or path." />
   }
@@ -338,10 +387,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
         </div>
       </div>
       {item.kind !== 'markdown' && (
-        <div className="grid shrink-0 gap-2 border-b border-[var(--gt-border)] p-3 lg:grid-cols-2">
+        <div className="shrink-0 border-b border-[var(--gt-border)] p-3">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <input
             value={item.url || ''}
             onChange={(e) => updateItem({ url: e.target.value })}
+            onBlur={() => item.url && enrichItem(item)}
             placeholder="https://..."
             className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
           />
@@ -351,6 +402,36 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             placeholder="/local/path.ext"
             className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
           />
+          <button
+            onClick={() => enrichItem(item)}
+            disabled={!item.url || previewBusy}
+            className="inline-flex h-[33px] items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+          >
+            <Sparkles size={12} strokeWidth={2} className={previewBusy ? 'animate-pulse' : ''} />
+            Preview
+          </button>
+        </div>
+        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+          <input
+            value={item.thumbnailUrl || ''}
+            onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
+            placeholder="thumbnail URL"
+            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+          <input
+            value={item.siteName || ''}
+            onChange={(e) => updateItem({ siteName: e.target.value })}
+            placeholder="site name"
+            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+          <input
+            value={item.faviconUrl || ''}
+            onChange={(e) => updateItem({ faviconUrl: e.target.value })}
+            placeholder="favicon URL"
+            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+          />
+        </div>
+        {previewErr && <div className="mt-1 text-[10.5px] text-amber-400">{previewErr}</div>}
         </div>
       )}
       <div className="min-h-0 flex-1">
@@ -414,8 +495,8 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           </button>
         </div>
         <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
-          {scopeButton('repo', 'Repo', FolderGit2, !hasRepo)}
           {scopeButton('global', 'Global', Globe)}
+          {scopeButton('repo', 'Repo', FolderGit2, !hasRepo)}
         </div>
         <div className="min-w-[180px] max-w-[360px] flex-1">
           <div className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2">
@@ -527,17 +608,27 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                     <button
                       key={item.id}
                       onClick={() => setActiveItemId(item.id)}
-                      className={`mb-1.5 flex w-full items-start gap-2 rounded-lg border p-2 text-left ${
+                      className={`mb-1.5 w-full overflow-hidden rounded-lg border text-left ${
                         activeItemId === item.id
                           ? 'border-[var(--gt-accent)]/55 bg-[var(--gt-accent)]/12'
                           : 'border-[var(--gt-border)] bg-black/15 hover:border-[var(--gt-accent)]/35 hover:bg-white/5'
                       }`}
                     >
-                      <Icon size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px] font-semibold text-zinc-200">{item.title}</span>
-                        <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-600">
+                      {visualFor(item) && (
+                        <div className="aspect-[16/6] bg-black/30">
+                          <img src={visualFor(item)} alt="" className="h-full w-full object-cover" />
+                        </div>
+                      )}
+                      <span className="flex items-start gap-2 p-2">
+                        <Icon size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {item.faviconUrl ? <img src={item.faviconUrl} alt="" className="h-3.5 w-3.5 rounded-sm" /> : null}
+                            <span className="block truncate text-[12px] font-semibold text-zinc-200">{item.title}</span>
+                          </span>
+                          <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-600">
                           {item.description || sourceOf(item) || meta.hint}
+                          </span>
                         </span>
                       </span>
                     </button>

@@ -666,7 +666,7 @@ export function TerminalPane({
     await window.gt.presets.hide('snippets', id)
     await reloadSnippets()
   }
-  const showSuggestions = needsAttention && suggestionMode !== 'off' && !suggestionsDismissed
+  const showSuggestions = suggestionMode !== 'off' && !suggestionsDismissed
   const suggestionsPanelHeight = 'min(220px, 34vh)'
 
   useEffect(() => {
@@ -678,7 +678,7 @@ export function TerminalPane({
   }, [needsAttention, suggestionMode])
 
   useEffect(() => {
-    if (!active || !needsAttention || suggestionMode === 'off' || suggestionsDismissed) return
+    if (!active || suggestionMode === 'off' || suggestionsDismissed) return
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const editing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
@@ -692,7 +692,7 @@ export function TerminalPane({
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [active, needsAttention, suggestionMode, suggestionsDismissed, suggestions])
+  }, [active, suggestionMode, suggestionsDismissed, suggestions])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -866,7 +866,7 @@ export function TerminalPane({
                 key={mode}
                 onClick={() => {
                   setSuggestionMode(mode)
-                  setSuggestionSettingsOpen(false)
+                  setSuggestionsDismissed(false)
                 }}
                 className={`rounded-md border px-2 py-1.5 text-[10.5px] font-semibold capitalize ${
                   suggestionMode === mode
@@ -954,6 +954,10 @@ export function TerminalPane({
           ) : suggestionMode === 'auto' && suggestions.length === 0 ? (
             <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
               Auto mode will send the top model-generated reply when this terminal completes or needs attention.
+            </div>
+          ) : suggestions.length === 0 ? (
+            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
+              Suggested replies stay here for this terminal. They refresh when the terminal needs attention, or you can refresh manually.
             </div>
           ) : (
             <div className="grid max-h-[calc(100%-28px)] gap-1.5 overflow-y-auto lg:grid-cols-2">

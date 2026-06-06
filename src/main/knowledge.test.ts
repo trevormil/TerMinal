@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { migrateKnowledge } from './knowledge'
+import { migrateKnowledge, parseKnowledgePreviewHtml } from './knowledge'
 
 describe('knowledge base schema', () => {
   test('empty input gets a default category', () => {
@@ -27,5 +27,31 @@ describe('knowledge base schema', () => {
     })
     expect(new Set(kb.categories.map((c) => c.id)).size).toBe(kb.categories.length)
     expect(new Set(kb.items.map((i) => i.id)).size).toBe(kb.items.length)
+  })
+
+  test('link previews extract visual metadata without network calls', () => {
+    const preview = parseKnowledgePreviewHtml(
+      'https://example.com/docs/page',
+      `
+        <html>
+          <head>
+            <title>Fallback title</title>
+            <meta property="og:title" content="Open Graph title" />
+            <meta name="description" content="Short page description" />
+            <meta property="og:image" content="/assets/card.png" />
+            <meta property="og:site_name" content="Example Docs" />
+            <link rel="icon" href="/favicon.svg" />
+          </head>
+        </html>
+      `,
+    )
+    expect(preview).toMatchObject({
+      ok: true,
+      title: 'Open Graph title',
+      description: 'Short page description',
+      siteName: 'Example Docs',
+      thumbnailUrl: 'https://example.com/assets/card.png',
+      faviconUrl: 'https://example.com/favicon.svg',
+    })
   })
 })
