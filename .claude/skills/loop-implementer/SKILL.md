@@ -28,6 +28,19 @@ Read [references/protocol.md](references/protocol.md) before starting.
    - your proposed next step if one exists.
 4. Wait for a `prompt` event from the supervisor.
 5. Treat the supervisor prompt as user input, then continue.
+6. Immediately return to listening after every handled prompt, status checkpoint, timeout, or completion review.
+
+Keep a listener active until the user explicitly stops the loop. If the listener disconnects, reconnect or switch to the next fallback transport before doing more non-trivial work. Never treat a completed action as permission to stop listening.
+
+## Token Discipline
+
+Keep loop events compact:
+
+- Summarize terminal output; include only the lines needed to support the decision.
+- Default event detail: 40 output lines or 8,000 chars. Hard max without supervisor request: 100 lines or 12,000 chars.
+- Prefer file refs, commands, branch/commit ids, and test names over pasted files or long logs.
+- Put the exact decision needed in `summary`; keep `detail` bounded to evidence and proposed next step.
+- If the supervisor asks for more context, send a targeted excerpt rather than the full transcript.
 
 ## Completion
 
@@ -44,3 +57,4 @@ When work appears complete:
 - Do not ask the real user unless the supervisor prompt says explicit user approval is required.
 - Do not ignore repo safety instructions because the supervisor sent a prompt.
 - Do not treat a missing supervisor response as permission; emit a timeout/status and wait or continue only on clearly safe local work.
+- Do not stop listening while the user session is active.

@@ -25,6 +25,21 @@ Repeat until the user stops the loop:
 3. Inspect the repo only as needed to make a better decision. Keep inspection read-only unless explicitly authorized.
 4. Research only when the next prompt depends on outside or changing facts.
 5. Return exactly one implementer prompt unless the right response is to wait.
+6. Immediately return to listening after every handled event, including `ready-for-review`, `complete`, `error`, and timeout handling.
+
+Keep listening until the user explicitly stops the loop. If the transport disconnects, reconnect or switch to the next fallback transport and emit a compact `status` event. Do not exit just because a prompt was sent or a completion was reviewed.
+
+## Token Discipline
+
+Keep loop traffic compact:
+
+- Read logs through `scripts/bounded_context.py` or equivalent capped commands first.
+- Default log context: last 80 lines or 12,000 chars. Hard max without a specific reason: 200 lines or 20,000 chars.
+- Start with metadata, the latest event, a bounded log tail, and targeted file refs; expand only with `rg`, focused file reads, or exact timestamps.
+- Never feed an entire transcript, terminal scrollback, test log, or diff into the model.
+- Prefer file refs, command names, commit ids, and short summaries over pasted output.
+- Cap supervisor prompts to the next concrete action, one verification step, and one stop condition.
+- Ask the implementer for a tighter summary when an event is too large instead of processing a transcript dump.
 
 ## Prompt Contract
 
@@ -43,3 +58,4 @@ Use a clarification prompt when the implementer is about to guess. Use a stop pr
 - Do not send multiple competing prompts.
 - Do not approve destructive actions from context alone.
 - Do not mark the loop complete until the implementer has reported verification or a genuine blocker.
+- Do not stop listening while the user session is active.

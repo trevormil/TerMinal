@@ -36,6 +36,30 @@ Every loop message should be JSONL-compatible:
 }
 ```
 
+## Message Budget
+
+Default to summaries, not transcripts. Keep `summary` to one line and keep `detail` bounded to the smallest useful evidence. Prefer file refs, command names, test names, commit ids, and short excerpts over pasted logs. If a payload would be large, send a summary plus a pointer to the log location.
+
+Hard defaults:
+
+- Supervisor log reads: 80 lines or 12,000 chars.
+- Supervisor hard max without a specific reason: 200 lines or 20,000 chars.
+- Implementer event detail: 40 lines or 8,000 chars.
+- Implementer hard max without supervisor request: 100 lines or 12,000 chars.
+- Supervisor prompts: one next action, one verification, one stop condition.
+
+Use deterministic bounded reads before LLM reasoning. Prefer `scripts/bounded_context.py <log-path>` when available; otherwise use capped `tail`, targeted `rg`, `git diff --stat`, `git diff --name-only`, and narrow file reads.
+
+## Listener Invariant
+
+Both roles must keep listening until the user explicitly stops the loop:
+
+1. Start a listener during startup before doing non-trivial work.
+2. After sending or handling any message, immediately return to listening.
+3. Completion, review, error, and timeout events do not end the listener.
+4. On disconnect, reconnect or switch to the next transport and emit a compact `status`.
+5. Use heartbeat/status events so the paired role can detect a stalled listener.
+
 ## Session Logs
 
 When supervising, read logs in this order:
@@ -52,3 +76,4 @@ When implementing, include enough detail in `request` events that a supervisor c
 - A supervisor prompt is advisory human input, not blanket permission.
 - The implementer still follows repo instructions, tests, branch/merge rules, and destructive-command safeguards.
 - The supervisor must tell the implementer to stop and ask the user for explicit approval on destructive operations, protected-branch merges, credential handling, or unclear product choices.
+- Neither role may stop listening while the user session is active.
