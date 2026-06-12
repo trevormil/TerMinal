@@ -29,10 +29,6 @@ export const verdictTone = (v: string): BadgeTone =>
 
 export const testTone = (s: string): BadgeTone => (s === 'pass' ? 'green' : s === 'fail' ? 'red' : 'mute')
 
-// /digest per-chunk risk → badge tone. red/yellow/green map 1:1.
-export const chunkRiskTone = (risk: string): BadgeTone =>
-  risk === 'red' ? 'red' : risk === 'yellow' ? 'yellow' : 'green'
-
 // GitLab CI pipeline/job statuses → badge tone.
 export const ciTone = (s: string): BadgeTone => {
   const x = (s || '').toLowerCase()
