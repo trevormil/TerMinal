@@ -205,16 +205,21 @@ export function FileDiff({
   file,
   mode,
   focusLine,
+  mechanicalHunks,
 }: {
   file: any
   mode: 'unified' | 'split'
   focusLine?: number
+  mechanicalHunks?: { mechanical: boolean; label: string }[]
 }) {
   const langId = langOf(file.to || file.from || '')
   const focusRef = useRef<HTMLTableRowElement>(null)
+  const [openMech, setOpenMech] = useState<Set<number>>(new Set())
   useEffect(() => {
     if (focusLine != null) focusRef.current?.scrollIntoView({ block: 'center' })
   }, [focusLine])
+  // Only collapse when the per-hunk flags line up 1:1 with parse-diff's hunks.
+  const canCollapse = !!mechanicalHunks && mechanicalHunks.length === file.chunks.length
   return (
     <div className="font-mono text-[12px]">
       <div className="sticky top-0 z-10 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-3 py-2 text-[12px] text-zinc-300">
@@ -223,9 +228,23 @@ export function FileDiff({
         <span className="ml-3 text-[var(--gt-green)]">+{file.additions}</span>{' '}
         <span className="text-[var(--gt-red)]">-{file.deletions}</span>
       </div>
-      {file.chunks.map((c: any, ci: number) => (
-        <div key={ci}>
-          <div className="bg-[var(--gt-panel)] px-3 py-1 text-[11px] text-zinc-500">{c.content}</div>
+      {file.chunks.map((c: any, ci: number) => {
+        if (canCollapse && mechanicalHunks![ci].mechanical && !openMech.has(ci)) {
+          const n = c.changes.filter((ch: any) => ch.type !== 'normal').length
+          return (
+            <button
+              key={ci}
+              onClick={() => setOpenMech((s) => new Set(s).add(ci))}
+              className="flex w-full items-center gap-1.5 border-b border-[var(--gt-border)]/40 bg-[var(--gt-panel)]/40 px-3 py-1 text-left text-[11px] text-zinc-600 hover:text-zinc-400"
+            >
+              <ChevronRight size={11} strokeWidth={2} className="shrink-0" />
+              {mechanicalHunks![ci].label} · {n} lines — skip
+            </button>
+          )
+        }
+        return (
+          <div key={ci}>
+            <div className="bg-[var(--gt-panel)] px-3 py-1 text-[11px] text-zinc-500">{c.content}</div>
           {mode === 'unified' ? (
             <table className="w-full border-collapse">
               <tbody>
@@ -274,8 +293,9 @@ export function FileDiff({
               </tbody>
             </table>
           )}
-        </div>
-      ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

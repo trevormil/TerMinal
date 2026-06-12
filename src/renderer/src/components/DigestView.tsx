@@ -180,7 +180,7 @@ function ChunkRow({
           )}
           {file ? (
             <div className="overflow-auto border-t border-[var(--gt-border)]">
-              <FileDiff file={file} mode="unified" />
+              <FileDiff file={file} mode="unified" mechanicalHunks={chunk.hunks} />
             </div>
           ) : (
             <div className="px-3 py-2 text-[11px] italic text-zinc-600">diff unavailable</div>
@@ -340,6 +340,7 @@ function DigestBody({
   const reviewedCount = digest.chunks.filter((c) => reviewed[c.id]).length
   const decisionFiles = new Set(digest.decisions.flatMap((d) => d.files.map(fileOf)))
 
+  const diagrams = digest.diagrams ?? []
   const [filter, setFilter] = useState<'all' | 'risky' | 'red'>('all')
   const visibleChunks =
     filter === 'all'
@@ -351,7 +352,7 @@ function DigestBody({
   const nav: { key: Section; label: string; count?: number; show: boolean }[] = [
     { key: 'summary', label: 'Summary', show: true },
     { key: 'decisions', label: 'Decisions', count: digest.decisions.length, show: digest.decisions.length > 0 },
-    { key: 'flow', label: 'Flow', show: !!digest.diagram },
+    { key: 'flow', label: 'Diagrams', count: diagrams.length, show: diagrams.length > 0 },
     { key: 'changes', label: 'Changes', count: s.chunks, show: true },
   ]
   const active = nav.find((n) => n.key === section)?.show ? section : 'summary'
@@ -425,9 +426,17 @@ function DigestBody({
           </div>
         )}
 
-        {active === 'flow' && digest.diagram && (
-          <div className="p-5">
-            <Mermaid source={digest.diagram} />
+        {active === 'flow' && (
+          <div className="space-y-5 p-5">
+            {diagrams.map((dg, i) => (
+              <div key={i}>
+                <div className="mb-2 flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-400">{dg.title}</span>
+                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-zinc-500">{dg.kind}</span>
+                </div>
+                <Mermaid source={dg.mermaid} />
+              </div>
+            ))}
           </div>
         )}
 

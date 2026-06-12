@@ -244,7 +244,7 @@ export type DigestChunk = {
   note: string | null
   confidence: string | null
   decision_signals: string[]
-  hunks: { header: string; old_start: number; new_start: number }[]
+  hunks: { header: string; old_start: number; new_start: number; mechanical: boolean; label: string }[]
 }
 export type DigestArtifact = {
   pr: string | null
@@ -254,7 +254,7 @@ export type DigestArtifact = {
   joint: { member_mrs: string[] } | false
   brief: string | null
   blast_radius: string | null
-  diagram: string | null
+  diagrams: { title: string; kind: string; mermaid: string }[]
   double_check: { file: string; why: string }[]
   decisions: DigestDecision[]
   stats: {
