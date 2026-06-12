@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight, ChevronDown, ChevronRight, Sparkles, Check, X } from 'lucide-react'
 import { onNavigate } from '../../lib/nav'
 
 // project-template convention: agents tag their docs/ticket/report PRs with
@@ -9,7 +9,7 @@ import { Badge } from '../../components/ui'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
-import { verdictTone, testTone, stateTone } from '../../lib/badges'
+import { stateTone } from '../../lib/badges'
 import type { Tab, Mr, TabContext } from '../../lib/types'
 
 // Three buckets, Tickets-style. Default-collapsed groups match the "closed +
@@ -29,6 +29,25 @@ const GROUPS: {
 ]
 const DEFAULT_COLLAPSED: GroupId[] = ['merged', 'closed']
 
+const scoreColor = (n: number) => (n >= 85 ? 'var(--gt-green)' : n >= 70 ? '#d6a84a' : 'var(--gt-red)')
+const riskColor = (tier?: string) =>
+  tier === 'high' ? 'var(--gt-red)' : tier === 'medium' ? '#d6a84a' : 'var(--gt-green)'
+const verdictColor = (v: string) =>
+  v === 'approve' ? 'var(--gt-green)' : v === 'request-changes' || v === 'blocked' ? 'var(--gt-red)' : '#a1a1aa'
+const testColor = (s: string) => (s === 'pass' ? 'var(--gt-green)' : s === 'fail' ? 'var(--gt-red)' : '#a1a1aa')
+
+// The two numbers a reviewer scans for, as prominent tiles.
+function Stat({ value, label, color }: { value: string; label: string; color: string }) {
+  return (
+    <div className="w-12 shrink-0 text-center">
+      <div className="text-[18px] font-semibold leading-none tabular-nums" style={{ color }}>
+        {value}
+      </div>
+      <div className="mt-1 text-[9px] uppercase tracking-wider text-zinc-600">{label}</div>
+    </div>
+  )
+}
+
 function MrRow({
   m,
   sym,
@@ -40,55 +59,70 @@ function MrRow({
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
+  const r = m.review
   return (
     <div
       onClick={() => onOpen(m.iid)}
       className="cursor-pointer rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3 transition-colors hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
     >
-      <div className="flex items-start gap-2">
-        <span className="font-mono text-[12px] text-zinc-500">{sym}{m.iid}</span>
+      <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] text-zinc-100">
-            {m.draft && <span className="mr-1 text-amber-400">[draft]</span>}
-            {m.title}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
-            <Badge tone={stateTone(m.state)}>{m.state}</Badge>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[12px] text-zinc-500">{sym}{m.iid}</span>
+            {m.draft && <span className="text-[10px] uppercase tracking-wide text-amber-400">draft</span>}
+            <span className="truncate text-[13px] text-zinc-100">{m.title}</span>
             {m.labels?.includes(AUTO_MERGEABLE_LABEL) && (
-              <Badge tone="green">
-                <Sparkles size={9} strokeWidth={2.5} className="mr-0.5" />
-                auto-mergeable
-              </Badge>
+              <Sparkles
+                size={12}
+                strokeWidth={2.5}
+                className="shrink-0 text-[var(--gt-green)]"
+                aria-label="auto-mergeable"
+              />
             )}
-            {m.review && <Badge tone={verdictTone(m.review.verdict)}>{m.review.verdict}</Badge>}
-            {m.review && <Badge tone={testTone(m.review.testStatus)}>tests {m.review.testStatus}</Badge>}
-            {m.review?.riskTier && m.review.riskTier !== 'unscored' && (
-              <Badge
-                tone={
-                  m.review.riskTier === 'high'
-                    ? 'red'
-                    : m.review.riskTier === 'medium'
-                      ? 'yellow'
-                      : 'green'
-                }
-              >
-                {m.review.riskScore != null ? `risk ${m.review.riskScore}/5` : `${m.review.riskTier} risk`}
-              </Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-600">
+            {r ? (
+              <span className="font-medium" style={{ color: verdictColor(r.verdict) }}>
+                {r.verdict}
+              </span>
+            ) : (
+              <span>not reviewed</span>
             )}
-            {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}
-            {m.review?.stale && (
-              <Badge tone="warn">
-                <TriangleAlert size={9} strokeWidth={2.5} />
+            {r && (
+              <span className="inline-flex items-center gap-1" style={{ color: testColor(r.testStatus) }}>
+                {r.testStatus === 'pass' ? (
+                  <Check size={11} strokeWidth={2.5} />
+                ) : r.testStatus === 'fail' ? (
+                  <X size={11} strokeWidth={2.5} />
+                ) : null}
+                tests {r.testStatus}
+              </span>
+            )}
+            {r?.stale && (
+              <span className="inline-flex items-center gap-1 text-amber-400">
+                <TriangleAlert size={10} strokeWidth={2.5} />
                 stale
-              </Badge>
+              </span>
             )}
-            <span className="inline-flex items-center gap-0.5 text-zinc-600">
+            <span className="inline-flex items-center gap-1">
               <GitBranch size={11} strokeWidth={2} />
               {m.sourceBranch}
             </span>
-            {m.author && <span className="text-zinc-600">· @{m.author}</span>}
+            {m.author && <span>@{m.author}</span>}
           </div>
         </div>
+        {r && (
+          <div className="flex shrink-0 items-center gap-1">
+            {r.overall != null && <Stat value={String(r.overall)} label="score" color={scoreColor(r.overall)} />}
+            {r.riskTier && r.riskTier !== 'unscored' && (
+              <Stat
+                value={r.riskScore != null ? `${r.riskScore}/5` : r.riskTier}
+                label="risk"
+                color={riskColor(r.riskTier)}
+              />
+            )}
+          </div>
+        )}
         <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <PrAgentActions pr={m} sym={sym} />
           {m.state === 'opened' && <MrMergeButton iid={m.iid} sym={sym} onMerged={onMerged} />}
