@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import parseDiff from 'parse-diff'
-import { ChevronDown, ChevronRight, TriangleAlert, Eye } from 'lucide-react'
+import { ChevronDown, ChevronRight, TriangleAlert, Eye, Loader2, RefreshCw, Wand2 } from 'lucide-react'
 import { FileDiff } from './MrDetail'
 import { Mermaid } from './Mermaid'
 import type { DigestArtifact, DigestChunk, DigestDecision } from '../lib/types'
@@ -148,14 +148,44 @@ function ChunkRow({ chunk, file }: { chunk: DigestChunk; file: any | undefined }
 
 type Section = 'summary' | 'decisions' | 'flow' | 'changes'
 
-export function DigestView({ iid, short, diff }: { iid: number; short: string; diff: string | null }) {
+const sameSha = (a?: string | null, b?: string | null) =>
+  !!a && !!b && (a.startsWith(b) || b.startsWith(a))
+
+export function DigestView({
+  iid,
+  headShort,
+  diff,
+}: {
+  iid: number
+  headShort: string
+  diff: string | null
+}) {
   const [digest, setDigest] = useState<DigestArtifact | null | undefined>(undefined)
   const [section, setSection] = useState<Section>('summary')
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setDigest(undefined)
-    window.gt.getDigest(iid, short || undefined).then(setDigest)
-  }, [iid, short])
+    setError(null)
+    window.gt.getDigest(iid).then(setDigest)
+    window.gt.digestStatus(iid).then((s) => setRunning(s?.status === 'running'))
+  }, [iid])
+
+  useEffect(() => {
+    const off = window.gt.onDigestStatus((s) => {
+      if (s.iid !== iid) return
+      if (s.status === 'running') setRunning(true)
+      else if (s.status === 'done') {
+        setRunning(false)
+        window.gt.getDigest(iid).then(setDigest)
+      } else {
+        setRunning(false)
+        setError(s.error || 'digest failed')
+      }
+    })
+    return off
+  }, [iid])
 
   const fileMap = useMemo(() => {
     const m = new Map<string, any>()
@@ -167,15 +197,86 @@ export function DigestView({ iid, short, diff }: { iid: number; short: string; d
     return m
   }, [diff])
 
-  if (digest === undefined)
-    return <div className="p-6 text-[12px] text-zinc-600">Loading digest…</div>
-  if (digest === null)
-    return (
+  const stale = digest ? !sameSha(digest.short_sha, headShort) : false
+  const runIt = async () => {
+    setError(null)
+    setRunning(true)
+    const r = await window.gt.runDigest(iid)
+    if (!r.ok) {
+      setRunning(false)
+      setError(r.error || 'could not start digest')
+    }
+  }
+
+  const header = (
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--gt-border)] px-4 py-1.5">
+      <div className="flex min-w-0 items-center gap-2 text-[11px]">
+        {digest && <span className="font-mono text-zinc-600">digest @ {digest.short_sha}</span>}
+        {stale && (
+          <span className="rounded bg-[#d6a84a]/15 px-1.5 py-0.5 text-[#d6a84a]">
+            stale · head {headShort}
+          </span>
+        )}
+        {!digest && !running && <span className="text-zinc-600">no digest yet</span>}
+        {error && <span className="truncate text-[var(--gt-red)]">{error}</span>}
+      </div>
+      <button
+        onClick={runIt}
+        disabled={running}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-60"
+      >
+        {running ? (
+          <>
+            <Loader2 size={12} strokeWidth={2} className="animate-spin" />
+            generating… ~60s
+          </>
+        ) : digest ? (
+          <>
+            <RefreshCw size={12} strokeWidth={2} />
+            {stale ? 'Refresh' : 'Re-run'}
+          </>
+        ) : (
+          <>
+            <Wand2 size={12} strokeWidth={2} />
+            Generate digest
+          </>
+        )}
+      </button>
+    </div>
+  )
+
+  let body: ReactNode
+  if (running && !digest)
+    body = <div className="p-6 text-[12px] text-zinc-600">Generating digest… (~60s)</div>
+  else if (digest === undefined)
+    body = <div className="p-6 text-[12px] text-zinc-600">Loading digest…</div>
+  else if (digest === null)
+    body = (
       <div className="p-6 text-[12px] text-zinc-600">
-        No digest for this MR yet. Run <code className="text-zinc-400">/digest</code> on it, then reopen.
+        No digest for this MR yet. Click <span className="text-zinc-400">Generate digest</span>.
       </div>
     )
+  else body = <DigestBody digest={digest} fileMap={fileMap} section={section} setSection={setSection} />
 
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {header}
+      <div className="min-h-0 flex-1 overflow-hidden">{body}</div>
+    </div>
+  )
+}
+
+function DigestBody({
+  digest,
+  fileMap,
+  section,
+  setSection,
+}: {
+  digest: DigestArtifact
+  fileMap: Map<string, any>
+  section: Section
+  setSection: (s: Section) => void
+}) {
   const s = digest.stats
   const nav: { key: Section; label: string; count?: number; show: boolean }[] = [
     { key: 'summary', label: 'Summary', show: true },

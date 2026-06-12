@@ -6,6 +6,7 @@ import { listDocs, readDoc, type DocsTree } from './docs'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry, type Entry, type ReadResult, type SearchHit } from './files'
 import { forgeFor, type CiInfo } from './forge'
 import { listMrs, getMr, getMrDiff, getDigest, getMrCi, mergeMr, type MrDetail, type MrListResult, type DigestArtifact } from './mrs'
+import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { repoForCwd, repoRootOf, gitStatus, type GitStatus } from './repo'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions, type ProjectSession } from './sessions'
@@ -77,6 +78,8 @@ export type WorkspaceDaemon = {
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
   mrDiff(iid: number): Promise<string> | string
   digestGet(iid: number, short?: string): Promise<DigestArtifact | null> | DigestArtifact | null
+  digestRun(iid: number): Promise<{ ok: boolean; error?: string }>
+  digestRunStatus(iid: number): DigestRunState | null
   mrCi(iid: number): Promise<CiInfo | null> | CiInfo | null
   mrMerge(iid: number): Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string }
   ciList(limit?: number): Promise<CiListResult>
@@ -170,6 +173,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     mrGet: (iid: number) => getMr(root(), iid),
     mrDiff: (iid: number) => getMrDiff(root(), iid),
     digestGet: (iid: number, short?: string) => getDigest(root(), iid, short),
+    digestRun: (iid: number) => startDigest(root(), iid),
+    digestRunStatus: (iid: number) => readDigestStatus(root(), iid),
     mrCi: (iid: number) => getMrCi(root(), iid),
     mrMerge: (iid: number) => mergeMr(root(), iid),
     ciList: (limit?: number) => listCiRuns(root(), limit),
@@ -238,6 +243,8 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
     mrGet: (iid: number) => remoteMrs.get(remote, iid),
     mrDiff: (iid: number) => remoteMrs.diff(remote, iid),
     digestGet: () => null, // digest reads local artifact files; not wired over ssh yet
+    digestRun: () => Promise.resolve({ ok: false, error: 'digest not supported on remote workspaces yet' }),
+    digestRunStatus: () => null,
 
     mrCi: (iid: number) => remoteMrs.ci(remote, iid),
     mrMerge: (iid: number) => remoteMrs.merge(remote, iid),

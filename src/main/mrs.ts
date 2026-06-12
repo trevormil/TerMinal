@@ -9,6 +9,7 @@ import {
   reviewBodyForPrDir,
   newestArtifactShortSha,
   readJsonSafe,
+  readDigest,
   type Review,
 } from './review'
 
@@ -46,6 +47,7 @@ export type MrDetail = {
   findings: Finding[]
   suggestions: Finding[]
   artifactShortSha: string
+  headShort: string
 }
 
 export type Mr = {
@@ -171,6 +173,7 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
     findings,
     suggestions,
     artifactShortSha,
+    headShort: d.headShort,
   }
 }
 
@@ -267,14 +270,10 @@ export type DigestArtifact = {
   chunks: DigestChunk[]
 }
 
-// The digest artifact for an MR at the reviewed short sha. Same dir resolution
-// as the review/diff. null when /digest hasn't been run for this MR.
+// The digest artifact for an MR — newest <sha>.chunks.json (or an exact head-sha
+// match), independent of whether a review .md exists. null when /digest hasn't run.
 export function getDigest(repoRoot: string, iid: number, short?: string): DigestArtifact | null {
   const repo = repoForCwd(repoRoot)
   if (!repo) return null
-  const dir = resolveReviewDir(repoRoot, repo.host, repo.path, iid)
-  if (!dir) return null
-  const s = short || newestArtifactShortSha(dir)
-  if (!s) return null
-  return readJsonSafe<DigestArtifact | null>(join(dir, `${s}.chunks.json`), null)
+  return readDigest(repoRoot, repo.host, repo.path, iid, short) as DigestArtifact | null
 }

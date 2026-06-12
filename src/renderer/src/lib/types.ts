@@ -1019,6 +1019,16 @@ export type MrDetail = {
   findings: Finding[]
   suggestions: Finding[]
   artifactShortSha: string
+  headShort: string
+}
+
+export type DigestRunState = {
+  iid: number
+  short: string
+  status: 'running' | 'done' | 'failed'
+  startedAt: number
+  endedAt?: number
+  error?: string
 }
 
 // /digest artifact (<short>.chunks.json) — the human-review digest.
@@ -1529,6 +1539,9 @@ export type GtApi = {
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>
+  runDigest: (iid: number) => Promise<{ ok: boolean; error?: string }>
+  digestStatus: (iid: number) => Promise<DigestRunState | null>
+  onDigestStatus: (cb: (s: DigestRunState) => void) => () => void
   getMrCi: (iid: number) => Promise<CiInfo | null>
   mergeMr: (iid: number) => Promise<{ ok: boolean; error?: string }>
   ci: {

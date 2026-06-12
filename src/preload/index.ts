@@ -247,6 +247,13 @@ const gt = {
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
+  runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
+  digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),
+  onDigestStatus: (cb: (s: unknown) => void) => {
+    const h = (_e: unknown, s: unknown) => cb(s)
+    ipcRenderer.on('digest:status', h)
+    return () => ipcRenderer.removeListener('digest:status', h)
+  },
   getMrCi: (iid: number) => ipcRenderer.invoke('mrs:ci', iid),
   mergeMr: (iid: number) => ipcRenderer.invoke('mrs:merge', iid),
   ci: {

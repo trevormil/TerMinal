@@ -87,6 +87,41 @@ export function resolveReviewDir(
   return null
 }
 
+// The /digest artifact (<sha>.chunks.json) for an MR — independent of whether a
+// review .md exists (a UI-run digest has no .md). Prefers an exact head-sha match,
+// else the newest chunks.json across the in-repo + harness dirs.
+export function readDigest(
+  repoRoot: string,
+  host: string,
+  repoPath: string,
+  iid: number | string,
+  preferShort?: string,
+): any | null {
+  const dirs: string[] = []
+  if (repoRoot) for (const base of existingProjectAreaPaths(repoRoot, 'reviews')) dirs.push(join(base, String(iid)))
+  const h = harnessPrDir(host, repoPath, iid)
+  if (h) dirs.push(h)
+
+  let exact: string | null = null
+  let newest: { file: string; mtime: number } | null = null
+  for (const dir of dirs) {
+    for (const n of safeReaddir(dir)) {
+      const m = n.match(/^([0-9a-f]{7,40})\.chunks\.json$/)
+      if (!m) continue
+      const p = join(dir, n)
+      if (preferShort && (m[1].startsWith(preferShort) || preferShort.startsWith(m[1]))) exact = p
+      try {
+        const mt = statSync(p).mtimeMs
+        if (!newest || mt > newest.mtime) newest = { file: p, mtime: mt }
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  const file = exact ?? newest?.file
+  return file ? readJsonSafe<any>(file, null) : null
+}
+
 function newestBareShaMd(dir: string): string | null {
   let best: { p: string; mtime: number } | null = null
   for (const n of safeReaddir(dir)) {

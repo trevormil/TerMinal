@@ -701,7 +701,7 @@ export function MrDetailView({
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
         )}
         {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} />}
-        {view === 'digest' && <DigestView iid={iid} short={mr.artifactShortSha} diff={diff} />}
+        {view === 'digest' && <DigestView iid={iid} headShort={mr.headShort} diff={diff} />}
       </div>
     </div>
   )

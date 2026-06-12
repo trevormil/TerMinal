@@ -242,6 +242,7 @@ import {
   type RepoTicketsConfig,
 } from './ticket-provider'
 import { mrSummary } from './mrs'
+import { onDigestEvent } from './digest-run'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
 import { fetchKnowledgePreview, readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
 import { knowledgeRagAddDocument, knowledgeRagAddUrl, knowledgeRagReindex, knowledgeRagSearch, knowledgeRagStatus } from './knowledge-rag'
@@ -800,6 +801,7 @@ function createWindow() {
   onActivity((ev) => send('activity:event', ev))
   startActivityTail() // surface externally-appended events (skills) live
   onAgentEvent((channel, payload) => send(channel, payload))
+  onDigestEvent((channel, payload) => send(channel, payload))
   loadPersistedRuns() // restore past agent runs
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
   // Real cron: install the headless runner at its stable path, then reconcile
@@ -1769,6 +1771,12 @@ ipcMain.handle('mrs:diff', (_e, iid: number) => {
 })
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
+})
+ipcMain.handle('digest:run', (_e, iid: number) => {
+  return activeDaemon().digestRun(iid)
+})
+ipcMain.handle('digest:status', (_e, iid: number) => {
+  return activeDaemon().digestRunStatus(iid)
 })
 ipcMain.handle('mrs:ci', (_e, iid: number) => {
   return activeDaemon().mrCi(iid)
