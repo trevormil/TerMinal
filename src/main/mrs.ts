@@ -235,6 +235,7 @@ export type DigestChunk = {
   old_path: string | null
   kind: string
   risk: 'green' | 'yellow' | 'red'
+  risk_reason: string
   status: string
   added: number
   deleted: number

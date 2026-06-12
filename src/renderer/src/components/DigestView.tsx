@@ -144,9 +144,19 @@ function ChunkRow({
           {isGreen ? (
             <span className="shrink-0 text-[11px] text-zinc-600">{chunk.green_label}</span>
           ) : (
-            <span className="shrink-0 font-mono text-[10px] text-zinc-600">
-              +{chunk.added} −{chunk.deleted}
-            </span>
+            <>
+              {chunk.risk_reason && (
+                <span
+                  className="shrink-0 rounded px-1 text-[10px]"
+                  style={{ color: RISK_COLOR[chunk.risk], backgroundColor: `${RISK_COLOR[chunk.risk]}1a` }}
+                >
+                  {chunk.risk_reason}
+                </span>
+              )}
+              <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+                +{chunk.added} −{chunk.deleted}
+              </span>
+            </>
           )}
         </button>
         <input
@@ -330,6 +340,14 @@ function DigestBody({
   const reviewedCount = digest.chunks.filter((c) => reviewed[c.id]).length
   const decisionFiles = new Set(digest.decisions.flatMap((d) => d.files.map(fileOf)))
 
+  const [filter, setFilter] = useState<'all' | 'risky' | 'red'>('all')
+  const visibleChunks =
+    filter === 'all'
+      ? digest.chunks
+      : filter === 'risky'
+        ? digest.chunks.filter((c) => c.risk !== 'green')
+        : digest.chunks.filter((c) => c.risk === 'red')
+
   const nav: { key: Section; label: string; count?: number; show: boolean }[] = [
     { key: 'summary', label: 'Summary', show: true },
     { key: 'decisions', label: 'Decisions', count: digest.decisions.length, show: digest.decisions.length > 0 },
@@ -416,16 +434,35 @@ function DigestBody({
         {active === 'changes' && (
           <div className="space-y-1.5 p-3">
             <div className="flex items-center justify-between px-1 text-[11px] text-zinc-500">
-              <span>
-                {reviewedCount}/{digest.chunks.length} reviewed
-              </span>
-              {reviewedCount > 0 && (
-                <button onClick={() => setReviewed({})} className="hover:text-zinc-300">
-                  clear
-                </button>
-              )}
+              <div className="flex gap-1">
+                {(
+                  [
+                    ['all', `all ${digest.chunks.length}`],
+                    ['risky', `needs eyes ${s.red + s.yellow}`],
+                    ['red', `high ${s.red}`],
+                  ] as const
+                ).map(([f, label]) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`rounded px-1.5 py-0.5 ${filter === f ? 'bg-white/10 text-zinc-200' : 'hover:text-zinc-300'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <span>
+                  {reviewedCount}/{digest.chunks.length} reviewed
+                </span>
+                {reviewedCount > 0 && (
+                  <button onClick={() => setReviewed({})} className="hover:text-zinc-300">
+                    clear
+                  </button>
+                )}
+              </div>
             </div>
-            {digest.chunks.map((c) => (
+            {visibleChunks.map((c) => (
               <ChunkRow
                 key={c.id}
                 chunk={c}
@@ -435,6 +472,9 @@ function DigestBody({
                 hasDecision={decisionFiles.has(c.file)}
               />
             ))}
+            {visibleChunks.length === 0 && (
+              <div className="px-1 py-4 text-[11px] text-zinc-600">nothing at this filter.</div>
+            )}
           </div>
         )}
       </div>
