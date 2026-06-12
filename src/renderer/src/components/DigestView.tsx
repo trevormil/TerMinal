@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Wand2,
   CircleDot,
+  GitMerge,
 } from 'lucide-react'
 import { FileDiff } from './MrDetail'
 import { Mermaid } from './Mermaid'
@@ -361,6 +362,13 @@ function DigestBody({
       <div className="min-w-0 flex-1 overflow-y-auto">
         {active === 'summary' && (
           <div className="space-y-3 p-5">
+            {digest.joint && (
+              <div className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-2 py-1 text-[11px] text-zinc-200">
+                <GitMerge size={12} strokeWidth={2} className="text-[var(--gt-accent)]" />
+                joint review of {digest.joint.member_mrs.length} MRs ·{' '}
+                {digest.joint.member_mrs.map((m) => `!${m}`).join(' ')}
+              </div>
+            )}
             <div className="flex gap-3 text-[11px]">
               <span style={{ color: RISK_COLOR.red }}>{s.red} high</span>
               <span style={{ color: RISK_COLOR.yellow }}>{s.yellow} medium</span>
