@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   FileText,
   ScanSearch,
@@ -201,8 +201,20 @@ function collectDirPaths(dir: DiffTreeDir): string[] {
   )
 }
 
-export function FileDiff({ file, mode }: { file: any; mode: 'unified' | 'split' }) {
+export function FileDiff({
+  file,
+  mode,
+  focusLine,
+}: {
+  file: any
+  mode: 'unified' | 'split'
+  focusLine?: number
+}) {
   const langId = langOf(file.to || file.from || '')
+  const focusRef = useRef<HTMLTableRowElement>(null)
+  useEffect(() => {
+    if (focusLine != null) focusRef.current?.scrollIntoView({ block: 'center' })
+  }, [focusLine])
   return (
     <div className="font-mono text-[12px]">
       <div className="sticky top-0 z-10 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-3 py-2 text-[12px] text-zinc-300">

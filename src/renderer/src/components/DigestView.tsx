@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import parseDiff from 'parse-diff'
-import { ChevronDown, ChevronRight, TriangleAlert, Eye, Loader2, RefreshCw, Wand2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  TriangleAlert,
+  Eye,
+  Loader2,
+  RefreshCw,
+  Wand2,
+  CircleDot,
+} from 'lucide-react'
 import { FileDiff } from './MrDetail'
 import { Mermaid } from './Mermaid'
 import type { DigestArtifact, DigestChunk, DigestDecision } from '../lib/types'
@@ -32,6 +41,7 @@ function FileDrilldown({
   defaultOpen?: boolean
 }) {
   const file = fileMap.get(fileOf(pathRef))
+  const focusLine = Number(pathRef.match(/:(\d+)/)?.[1]) || undefined
   const [open, setOpen] = useState(defaultOpen && !!file)
   return (
     <div className="overflow-hidden rounded-md border border-[var(--gt-border)]">
@@ -61,7 +71,7 @@ function FileDrilldown({
       </button>
       {open && file && (
         <div className="max-h-80 overflow-auto border-t border-[var(--gt-border)]">
-          <FileDiff file={file} mode="unified" />
+          <FileDiff file={file} mode="unified" focusLine={focusLine} />
         </div>
       )}
     </div>
@@ -94,34 +104,58 @@ function DecisionCard({ d, fileMap }: { d: DigestDecision; fileMap: Map<string, 
   )
 }
 
-function ChunkRow({ chunk, file }: { chunk: DigestChunk; file: any | undefined }) {
+function ChunkRow({
+  chunk,
+  file,
+  reviewed,
+  onToggleReviewed,
+  hasDecision,
+}: {
+  chunk: DigestChunk
+  file: any | undefined
+  reviewed: boolean
+  onToggleReviewed: () => void
+  hasDecision: boolean
+}) {
   const isGreen = chunk.risk === 'green'
   const [open, setOpen] = useState(!isGreen)
   return (
     <div
-      className="overflow-hidden rounded-md border border-[var(--gt-border)] border-l-2"
+      className={`overflow-hidden rounded-md border border-[var(--gt-border)] border-l-2 ${reviewed ? 'opacity-55' : ''}`}
       style={{ borderLeftColor: RISK_COLOR[chunk.risk] }}
     >
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-white/5"
-      >
-        {open ? (
-          <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
-        ) : (
-          <ChevronRight size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
-        )}
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-200" title={chunk.file}>
-          {chunk.file}
-        </span>
-        {isGreen ? (
-          <span className="shrink-0 text-[11px] text-zinc-600">{chunk.green_label}</span>
-        ) : (
-          <span className="shrink-0 font-mono text-[10px] text-zinc-600">
-            +{chunk.added} −{chunk.deleted}
+      <div className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5">
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          {open ? (
+            <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          ) : (
+            <ChevronRight size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          )}
+          <span
+            className={`min-w-0 flex-1 truncate font-mono text-[12px] ${reviewed ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}
+            title={chunk.file}
+          >
+            {chunk.file}
           </span>
-        )}
-      </button>
+          {hasDecision && (
+            <CircleDot size={11} strokeWidth={2} className="shrink-0 text-[var(--gt-accent)]" />
+          )}
+          {isGreen ? (
+            <span className="shrink-0 text-[11px] text-zinc-600">{chunk.green_label}</span>
+          ) : (
+            <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+              +{chunk.added} −{chunk.deleted}
+            </span>
+          )}
+        </button>
+        <input
+          type="checkbox"
+          checked={reviewed}
+          onChange={onToggleReviewed}
+          title="mark reviewed"
+          className="shrink-0 accent-[var(--gt-accent)]"
+        />
+      </div>
       {open && (
         <div className="border-t border-[var(--gt-border)]">
           {!isGreen && (chunk.summary || chunk.note || chunk.confidence) && (
@@ -256,7 +290,7 @@ export function DigestView({
         No digest for this MR yet. Click <span className="text-zinc-400">Generate digest</span>.
       </div>
     )
-  else body = <DigestBody digest={digest} fileMap={fileMap} section={section} setSection={setSection} />
+  else body = <DigestBody iid={iid} digest={digest} fileMap={fileMap} section={section} setSection={setSection} />
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -267,17 +301,34 @@ export function DigestView({
 }
 
 function DigestBody({
+  iid,
   digest,
   fileMap,
   section,
   setSection,
 }: {
+  iid: number
   digest: DigestArtifact
   fileMap: Map<string, any>
   section: Section
   setSection: (s: Section) => void
 }) {
   const s = digest.stats
+  const reviewKey = `gt.digest.reviewed.${iid}`
+  const [reviewed, setReviewed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(reviewKey) || '{}')
+    } catch {
+      return {}
+    }
+  })
+  useEffect(() => {
+    localStorage.setItem(reviewKey, JSON.stringify(reviewed))
+  }, [reviewKey, reviewed])
+  const toggleReviewed = (id: string) => setReviewed((o) => ({ ...o, [id]: !o[id] }))
+  const reviewedCount = digest.chunks.filter((c) => reviewed[c.id]).length
+  const decisionFiles = new Set(digest.decisions.flatMap((d) => d.files.map(fileOf)))
+
   const nav: { key: Section; label: string; count?: number; show: boolean }[] = [
     { key: 'summary', label: 'Summary', show: true },
     { key: 'decisions', label: 'Decisions', count: digest.decisions.length, show: digest.decisions.length > 0 },
@@ -356,8 +407,25 @@ function DigestBody({
 
         {active === 'changes' && (
           <div className="space-y-1.5 p-3">
+            <div className="flex items-center justify-between px-1 text-[11px] text-zinc-500">
+              <span>
+                {reviewedCount}/{digest.chunks.length} reviewed
+              </span>
+              {reviewedCount > 0 && (
+                <button onClick={() => setReviewed({})} className="hover:text-zinc-300">
+                  clear
+                </button>
+              )}
+            </div>
             {digest.chunks.map((c) => (
-              <ChunkRow key={c.id} chunk={c} file={fileMap.get(c.file)} />
+              <ChunkRow
+                key={c.id}
+                chunk={c}
+                file={fileMap.get(c.file)}
+                reviewed={!!reviewed[c.id]}
+                onToggleReviewed={() => toggleReviewed(c.id)}
+                hasDecision={decisionFiles.has(c.file)}
+              />
             ))}
           </div>
         )}
