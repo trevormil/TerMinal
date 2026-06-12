@@ -17,6 +17,57 @@ const RISK_COLOR: Record<string, string> = {
 
 const fileOf = (ref: string) => ref.replace(/:\d+.*$/, '')
 
+// A collapsed reference to a changed file. Click to reveal the real green/red
+// diff inline — never leave the digest to go read the code. `why` is the
+// human-facing reason this reference matters (eyeball note / null).
+function FileDrilldown({
+  pathRef,
+  why,
+  fileMap,
+  defaultOpen = false,
+}: {
+  pathRef: string
+  why?: string | null
+  fileMap: Map<string, any>
+  defaultOpen?: boolean
+}) {
+  const file = fileMap.get(fileOf(pathRef))
+  const [open, setOpen] = useState(defaultOpen && !!file)
+  return (
+    <div className="overflow-hidden rounded-md border border-[var(--gt-border)]">
+      <button
+        onClick={() => file && setOpen((o) => !o)}
+        className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left ${file ? 'hover:bg-white/5' : 'cursor-default'}`}
+      >
+        {file ? (
+          open ? (
+            <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          ) : (
+            <ChevronRight size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
+          )
+        ) : (
+          <span className="w-3 shrink-0" />
+        )}
+        <span className="shrink-0 font-mono text-[11px] text-zinc-400">{pathRef}</span>
+        {why && <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-300">— {why}</span>}
+        {!why && <span className="flex-1" />}
+        {file ? (
+          <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+            +{file.additions} −{file.deletions}
+          </span>
+        ) : (
+          <span className="shrink-0 text-[10px] text-zinc-700">no diff</span>
+        )}
+      </button>
+      {open && file && (
+        <div className="max-h-80 overflow-auto border-t border-[var(--gt-border)]">
+          <FileDiff file={file} mode="unified" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DecisionCard({ d, fileMap }: { d: DigestDecision; fileMap: Map<string, any> }) {
   const files = [...new Set(d.files.map(fileOf))]
   return (
@@ -32,15 +83,12 @@ function DecisionCard({ d, fileMap }: { d: DigestDecision; fileMap: Map<string, 
           {d.alternatives && <div>alt · {d.alternatives}</div>}
         </div>
       )}
-      {files.map((f) =>
-        fileMap.get(f) ? (
-          <div
-            key={f}
-            className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--gt-border)]"
-          >
-            <FileDiff file={fileMap.get(f)} mode="unified" />
-          </div>
-        ) : null,
+      {files.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {files.map((f) => (
+            <FileDrilldown key={f} pathRef={f} fileMap={fileMap} />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -181,13 +229,11 @@ export function DigestView({ iid, short, diff }: { iid: number; short: string; d
                   <Eye size={12} strokeWidth={2} />
                   Eyeball these
                 </div>
-                <ul className="space-y-1">
+                <div className="space-y-1">
                   {digest.double_check.map((dc, i) => (
-                    <li key={i} className="text-[12px] text-zinc-300">
-                      <span className="font-mono text-[11px] text-zinc-500">{dc.file}</span> — {dc.why}
-                    </li>
+                    <FileDrilldown key={i} pathRef={dc.file} why={dc.why} fileMap={fileMap} />
                   ))}
-                </ul>
+                </div>
               </div>
             )}
           </div>
