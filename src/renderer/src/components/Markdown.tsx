@@ -1,5 +1,16 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import hljs from 'highlight.js/lib/common'
+
+function highlighted(code: string, className?: string): string {
+  const lang = className?.replace(/^language-/, '')
+  try {
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    return hljs.highlightAuto(code).value
+  } catch {
+    return code.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] || ch)
+  }
+}
 
 // Shared markdown renderer (ticket bodies, MR descriptions, review bodies).
 // Hand-styled with Tailwind utilities so we don't pull in the typography plugin.
@@ -34,10 +45,13 @@ export function Markdown({ children }: { children: string }) {
             }
             // code blocks come wrapped in <pre>; we detect via className="language-*"
             if (className && className.startsWith('language-')) {
+              const code = String(children ?? '').replace(/\n$/, '')
               return (
-                <code className="font-mono" {...rest}>
-                  {children}
-                </code>
+                <code
+                  className={`hljs font-mono ${className}`}
+                  dangerouslySetInnerHTML={{ __html: highlighted(code, className) }}
+                  {...rest}
+                />
               )
             }
             return (

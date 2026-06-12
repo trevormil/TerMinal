@@ -7,6 +7,7 @@ type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  ticketSlug?: string
   remote?: {
     hostId: string
     label: string
@@ -73,8 +74,9 @@ const gt = {
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
-    runLog: (source: 'cron' | 'agent' | 'bg', runId: string) => ipcRenderer.invoke('runs:log', source, runId),
+    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => ipcRenderer.invoke('runs:log', source, runId),
     list: () => ipcRenderer.invoke('agents:list'),
+    definitions: () => ipcRenderer.invoke('agents:definitions'),
     save: (agent: unknown) => ipcRenderer.invoke('agents:save', agent),
     reset: (id: string) => ipcRenderer.invoke('agents:reset', id),
     script: (id: string) => ipcRenderer.invoke('agents:script', id),
@@ -86,8 +88,8 @@ const gt = {
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
     run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown) =>
       ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote),
-    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown) =>
-      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote),
+    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, lanes?: number) =>
+      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote, lanes),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
       kind: 'review' | 'iterate',
@@ -223,8 +225,13 @@ const gt = {
   tickets: {
     list: () => ipcRenderer.invoke('tickets:list'),
     get: (slug: string) => ipcRenderer.invoke('tickets:get', slug),
+    providerGet: () => ipcRenderer.invoke('tickets:provider-get'),
+    providerSave: (cfg: unknown) => ipcRenderer.invoke('tickets:provider-save', cfg),
+    providerTest: (cfg: unknown, smoke?: boolean) => ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
+    linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
-    update: (slug: string, patch: { status?: string; priority?: string }) =>
+    recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
+    update: (slug: string, patch: unknown) =>
       ipcRenderer.invoke('tickets:update', slug, patch),
     spawn: (text: string, engine: string, model?: string, remote?: unknown) =>
       ipcRenderer.invoke('tickets:spawn', text, engine, model, remote),
@@ -239,6 +246,7 @@ const gt = {
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
+  getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   getMrCi: (iid: number) => ipcRenderer.invoke('mrs:ci', iid),
   mergeMr: (iid: number) => ipcRenderer.invoke('mrs:merge', iid),
   ci: {
@@ -283,6 +291,18 @@ const gt = {
     daily: (days: number = 7) => ipcRenderer.invoke('observability:daily', days),
     runs: (limit: number = 100) => ipcRenderer.invoke('observability:runs', limit),
     models: () => ipcRenderer.invoke('observability:models'),
+    indexStatus: () => ipcRenderer.invoke('observability:index-status'),
+    rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
+    indexQuery: (query: string) => ipcRenderer.invoke('observability:index-query', query),
+  },
+  agentview: {
+    snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),
+    session: (sessionId: string) => ipcRenderer.invoke('agentview:session', sessionId),
+    toolCall: (sessionId: string, callId: string) => ipcRenderer.invoke('agentview:tool-call', sessionId, callId),
+    transcriptWindow: (sessionId: string, centerLine: number = 0, radius: number = 24) => ipcRenderer.invoke('agentview:transcript-window', sessionId, centerLine, radius),
+    upstreamStatus: () => ipcRenderer.invoke('agentview:upstream-status'),
+    upstreamStart: () => ipcRenderer.invoke('agentview:upstream-start'),
+    upstreamStop: () => ipcRenderer.invoke('agentview:upstream-stop'),
   },
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   clipboardRead: (): Promise<string> => ipcRenderer.invoke('clipboard:read'),
@@ -300,6 +320,15 @@ const gt = {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),
     write: (scope: 'repo' | 'global', kb: unknown) => ipcRenderer.invoke('knowledge:write', scope, kb),
     preview: (url: string) => ipcRenderer.invoke('knowledge:preview', url),
+    ragStatus: (scope: 'repo' | 'global', item: unknown) => ipcRenderer.invoke('knowledge:rag-status', scope, item),
+    ragReindex: (scope: 'repo' | 'global', item: unknown, fullRebuild?: boolean) =>
+      ipcRenderer.invoke('knowledge:rag-reindex', scope, item, fullRebuild),
+    ragAddDocument: (scope: 'repo' | 'global', item: unknown, content: string, filepath?: string) =>
+      ipcRenderer.invoke('knowledge:rag-add-document', scope, item, content, filepath),
+    ragAddUrl: (scope: 'repo' | 'global', item: unknown, url: string, title?: string) =>
+      ipcRenderer.invoke('knowledge:rag-add-url', scope, item, url, title),
+    ragSearch: (scope: 'repo' | 'global', item: unknown, query: string) =>
+      ipcRenderer.invoke('knowledge:rag-search', scope, item, query),
   },
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),

@@ -11,6 +11,7 @@ import { basename, extname, join, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import type { Engine } from './agents'
+import type { AgentModelPolicy, AgentQuality } from './agents'
 import { createEntry, listDir, readFile as readScopedFile, removeEntry, writeFile as writeScopedFile } from './files'
 
 export const PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
@@ -21,6 +22,8 @@ export type PersistentAgent = {
   description?: string
   engine: Engine
   model?: string
+  modelPolicy?: AgentModelPolicy
+  quality?: AgentQuality
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -69,6 +72,8 @@ export type PersistentAgentInput = {
   description?: string
   engine?: Engine
   model?: string
+  modelPolicy?: AgentModelPolicy
+  quality?: AgentQuality
   tags?: string[]
   instructions?: string
   memory?: string
@@ -168,6 +173,8 @@ function readMeta(id: string): PersistentAgent | null {
       description: typeof raw.description === 'string' ? raw.description : '',
       engine,
       model: typeof raw.model === 'string' ? raw.model : '',
+      modelPolicy: raw.modelPolicy && typeof raw.modelPolicy === 'object' ? raw.modelPolicy as AgentModelPolicy : undefined,
+      quality: raw.quality && typeof raw.quality === 'object' ? raw.quality as AgentQuality : undefined,
       tags,
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
       updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
@@ -227,6 +234,8 @@ export function savePersistentAgent(input: PersistentAgentInput): PersistentAgen
       description: input.description?.trim() || '',
       engine: input.engine || existing?.engine || 'claude',
       model: input.model ?? existing?.model ?? '',
+      modelPolicy: input.modelPolicy || existing?.modelPolicy,
+      quality: input.quality || existing?.quality,
       tags: input.tags || existing?.tags || [],
       createdAt: existing?.createdAt || now,
       updatedAt: now,

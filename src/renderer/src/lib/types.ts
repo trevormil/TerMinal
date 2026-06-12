@@ -26,6 +26,244 @@ export type TranscriptStats = {
   ts: number
 }
 
+export type ObservabilitySession = {
+  id: string
+  engine: Engine
+  title: string
+  cwd: string
+  repo: string
+  gitBranch: string
+  model: string
+  turns: number
+  mtime: number
+  telemetry: 'ready' | 'metadata-only'
+  contextTokens: number
+  contextLimit: number
+  contextPct: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  estCostUsd: number
+  toolCounts: Record<string, number>
+  toolTotal: number
+  lastAction: { tool: string; detail: string } | null
+  firstUserText: string
+}
+
+export type ObservabilityEventKind =
+  | 'user_message'
+  | 'assistant_message'
+  | 'reasoning'
+  | 'tool_call'
+  | 'tool_result'
+  | 'token_snapshot'
+  | 'agent_launch'
+  | 'skill_invoke'
+  | 'warning'
+  | 'parse_error'
+
+export type ObservabilityTokenSnapshot = {
+  timestamp: number
+  input: number
+  output: number
+  cachedInput: number
+  total: number
+  contextTokens: number
+  cumulativeInput: number
+  cumulativeOutput: number
+  cumulativeTotal: number
+}
+
+export type ObservabilityTimelineEvent = {
+  id: string
+  sessionId: string
+  timestamp: number
+  line: number
+  kind: ObservabilityEventKind
+  severity: 'info' | 'warning' | 'error'
+  turnId?: string
+  callId?: string
+  toolName?: string
+  previewText: string
+  argumentsPreview?: string
+  argumentsBytes?: number
+  commandPreview?: string
+  outputPreview?: string
+  outputBytes?: number
+  durationMs?: number
+  resultEventId?: string
+  joinedOutputPreview?: string
+  tokenSnapshot?: ObservabilityTokenSnapshot
+  agentRole?: string
+  agentTaskPreview?: string
+  skillName?: string
+}
+
+export type ObservabilityToolCall = {
+  callId: string
+  toolName: string
+  startedAt: number
+  completedAt?: number
+  line: number
+  completedLine?: number
+  turnId?: string
+  status: 'open' | 'ok' | 'error'
+  argumentsPreview?: string
+  argumentsBytes?: number
+  commandPreview?: string
+  outputPreview?: string
+  outputBytes?: number
+  durationMs?: number
+  resultEventId?: string
+  agentRole?: string
+  skillName?: string
+}
+
+export type ObservabilityToolCallPayload = {
+  sessionId: string
+  callId: string
+  toolName: string
+  status: 'open' | 'ok' | 'error'
+  inputText: string
+  outputText: string
+  inputBytes: number
+  outputBytes: number
+  sourceFile: string
+  startedLine: number
+  completedLine?: number
+  commandText?: string
+  skillName?: string
+  agentRole?: string
+  error?: string
+}
+
+export type ObservabilityTranscriptLine = {
+  line: number
+  text: string
+  timestamp?: number
+  role?: string
+  kind?: string
+  callId?: string
+  toolName?: string
+}
+
+export type ObservabilityTranscriptWindow = {
+  sessionId: string
+  sourceFile: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  lines: ObservabilityTranscriptLine[]
+  error?: string
+}
+
+export type ObservabilityTurn = {
+  id: string
+  startedAt: number
+  completedAt: number
+  durationMs: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  toolCalls: number
+  lastMessage: string
+}
+
+export type ObservabilityAgentGraph = {
+  nodes: {
+    id: string
+    label: string
+    role: string
+    depth: number
+    tokens: number
+    status: 'root' | 'open' | 'closed' | 'failed'
+    taskPreview?: string
+  }[]
+  edges: {
+    id: string
+    from: string
+    to: string
+    status: 'open' | 'closed' | 'failed'
+    toolCallId?: string
+  }[]
+}
+
+export type ObservabilitySessionDetail = {
+  session: ObservabilitySession
+  events: ObservabilityTimelineEvent[]
+  toolCalls: ObservabilityToolCall[]
+  tokenSnapshots: ObservabilityTokenSnapshot[]
+  turns: ObservabilityTurn[]
+  graph: ObservabilityAgentGraph
+  warnings: string[]
+}
+
+export type ObservabilitySnapshot = {
+  ts: number
+  sessions: ObservabilitySession[]
+  totals: {
+    sessions: number
+    readySessions: number
+    tokens: number
+    inputTokens: number
+    outputTokens: number
+    costUsd: number
+    toolCalls: number
+  }
+  byEngine: Record<string, { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  byRepo: Record<string, { sessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  topTools: { tool: string; count: number }[]
+}
+
+export type ObservabilityIndexStatus = {
+  ok: boolean
+  dbPath: string
+  exists: boolean
+  sqliteAvailable: boolean
+  indexedAt: number | null
+  sessions: number
+  turns: number
+  toolCalls: number
+  tokenSnapshots: number
+  error?: string
+}
+
+export type ObservabilityIndexBuildResult = ObservabilityIndexStatus & {
+  durationMs: number
+  indexedSessions: number
+}
+
+export type ObservabilityIndexQueryId =
+  | 'sessions_by_tokens'
+  | 'low_yield_sessions'
+  | 'tool_calls'
+  | 'tool_call_bloat'
+  | 'turn_hotspots'
+  | 'model_rollup'
+  | 'repo_rollup'
+  | 'audit'
+
+export type ObservabilityIndexQueryResult = {
+  query: ObservabilityIndexQueryId
+  title: string
+  description: string
+  columns: string[]
+  rows: Record<string, unknown>[]
+  indexedAt: number | null
+  dbPath: string
+  error?: string
+}
+
+export type AgentViewUpstreamStatus = {
+  ok: boolean
+  running: boolean
+  starting: boolean
+  url: string
+  apiUrl: string
+  repoRoot: string
+  error?: string
+  log?: string
+}
+
 export type TaskItem = { id: string; subject: string; status: string; activeForm: string }
 
 // Mirror of src/main/events.ts ActivityKind — keep in sync with the tab's
@@ -59,7 +297,7 @@ export type ActivityEvent = {
   sessionId?: string
   ref?: { ticket?: number; pr?: number }
   runId?: string
-  runSource?: 'cron' | 'agent' | 'bg'
+  runSource?: 'cron' | 'agent' | 'bg' | 'session'
   suppressTelegram?: boolean
 }
 
@@ -103,7 +341,30 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[]
+  /** Strict, checkable criteria for a correct/best implementation. Required
+   *  when running >1 lane (lanes are gated + ranked against these). */
+  acceptance: string[]
+  agent: TicketAgent
+  run?: TicketRunLink
   body: string
+  provider?: 'local' | 'github' | 'linear'
+  providerLabel?: string
+  externalId?: string
+  externalKey?: string
+  url?: string
+}
+export type TicketAgent = { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
+export type TicketAgentRecommendation = {
+  agent: TicketAgent
+  reason: string
+  signals: string[]
+}
+export type TicketRunLink = {
+  id: string
+  source: 'agent' | 'cron' | 'bg' | 'session'
+  sessionId?: string
+  startedAt?: string
+  status?: string
 }
 
 export type ProjectSession = {
@@ -121,7 +382,31 @@ export type ProjectSession = {
   body?: string
 }
 
-export type NewTicket = { title: string; type: string; priority: string; status: string; body: string }
+export type NewTicket = { title: string; type: string; priority: string; status: string; body: string; agent?: Partial<TicketAgent> }
+export type TicketProviderKind = 'local' | 'github' | 'linear'
+export type TicketProviderConfig = {
+  provider?: TicketProviderKind
+  github?: {
+    statusLabels?: Record<string, string>
+    priorityLabels?: Record<string, string>
+    typeLabels?: Record<string, string>
+  }
+  linear?: {
+    mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
+    tools?: { list?: string; get?: string; create?: string; update?: string }
+    team?: string
+    teamKey?: string
+    listArgs?: Record<string, unknown>
+  }
+}
+export type TicketProviderTestResult = {
+  ok: boolean
+  provider: TicketProviderKind
+  message: string
+  count?: number
+  teams?: { id: string; name: string; key?: string }[]
+  smoke?: { key?: string; url?: string; status?: string; priority?: string }
+}
 
 export type DocCategory = 'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
 export type DocEntry = {
@@ -168,7 +453,7 @@ export type SuggestionsCfg = {
 }
 export type NoteFolder = { id: string; title: string; path: string }
 export type KnowledgeScope = 'repo' | 'global'
-export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file'
+export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
 export type KnowledgeCategory = {
   id: string
   title: string
@@ -189,9 +474,36 @@ export type KnowledgeItem = {
   thumbnailUrl?: string
   faviconUrl?: string
   siteName?: string
+  rag?: KnowledgeRagConfig
   tags: string[]
   createdAt: number
   updatedAt: number
+}
+export type KnowledgeRagConfig = {
+  rootDir?: string
+  command?: string
+  args?: string[]
+  category?: string
+  hybridAlpha?: number
+  maxResults?: number
+}
+export type KnowledgeRagStatus = {
+  ok: boolean
+  rootDir: string
+  documentsDir: string
+  dataDir: string
+  command: string
+  args: string[]
+  stats?: unknown
+  error?: string
+}
+export type KnowledgeRagSearchResult = {
+  ok: boolean
+  query: string
+  rootDir: string
+  results: unknown[]
+  raw?: unknown
+  error?: string
 }
 export type KnowledgeBase = {
   version: 1
@@ -283,11 +595,106 @@ export type Agent = {
   opensPr?: boolean
   engine?: Engine
   model?: string
+  modelPolicy?: AgentModelPolicy
+  quality?: AgentQuality
+  outputContract?: string
+  acceptanceCriteria?: string[]
   inPlace?: boolean
   /** FORCE MODE — bypasses the main-branch push gate. UI shows a red FORCE chip. */
   force?: boolean
   source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
   hasScript?: boolean
+}
+export type AgentModelPolicy = {
+  default?: string
+  cheap?: string
+  deep?: string
+  judge?: string
+  allowOverride?: boolean
+}
+export type AgentCheck = {
+  id: string
+  title: string
+  command: string
+  cwd?: 'repo' | 'worktree'
+  required?: boolean
+  timeoutMs?: number
+}
+export type AgentJudge = {
+  enabled?: boolean
+  mode?: 'deterministic' | 'llm' | 'hybrid'
+  model?: string
+  rubric?: string[]
+  passThreshold?: number
+}
+export type AgentQuality = {
+  acceptanceCriteria?: string[]
+  requiredArtifacts?: string[]
+  deterministicChecks?: AgentCheck[]
+  judge?: AgentJudge
+}
+export type AgentRunEvaluationCheck = {
+  id: string
+  title: string
+  command?: string
+  status: 'pass' | 'fail' | 'skipped'
+  required?: boolean
+  detail?: string
+}
+export type AgentRunEvaluation = {
+  status: 'pass' | 'fail' | 'incomplete'
+  evaluatedAt: number
+  summary: string
+  checks: AgentRunEvaluationCheck[]
+  judge?: {
+    enabled: boolean
+    mode?: AgentJudge['mode']
+    status: 'not-run'
+    model?: string
+    detail: string
+  }
+}
+export type AgentRunTrace = {
+  ticketSlug?: string
+  ticketId?: number
+  ticketRef?: string
+  prIid?: number
+  prKind?: 'review' | 'iterate'
+  sourceBranch?: string
+}
+export type AgentDefinition = {
+  id: string
+  ref: { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
+  title: string
+  description?: string
+  icon?: string
+  scope: 'repo' | 'global'
+  kind: 'classic' | 'persistent'
+  source: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global' | 'persistent'
+  runtime: {
+    engine?: Engine
+    model?: string
+    modelPolicy?: AgentModelPolicy
+    mode: 'prompt' | 'script' | 'persistent'
+    scriptPath?: string
+    memoryDir?: string
+    inPlace?: boolean
+    opensPr?: boolean
+    force?: boolean
+  }
+  instructions: {
+    prompt?: string
+    system?: string
+    knowledgePolicy?: 'minimal' | 'standard' | 'deep'
+    outputContract?: string
+  }
+  quality: AgentQuality
+  metadata: {
+    tags?: string[]
+    createdAt?: number
+    updatedAt?: number
+    lastRunAt?: number
+  }
 }
 export type PersistentAgentFiles = {
   instructions: string
@@ -301,6 +708,8 @@ export type PersistentAgent = {
   description?: string
   engine: Engine
   model?: string
+  modelPolicy?: AgentModelPolicy
+  quality?: AgentQuality
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -341,7 +750,16 @@ export type AgentStateRecord = {
   lastRunId?: string
   [key: string]: unknown
 }
-export type Persona = { id: string; title: string; description: string; icon?: string; prompt: string }
+export type Persona = {
+  id: string
+  title: string
+  description: string
+  icon?: string
+  prompt: string
+  agentId?: string
+  agentScope?: 'repo' | 'global'
+  agentKind?: 'classic' | 'persistent'
+}
 export type PipelineId = 'single' | 'review' | 'review-iterate'
 export type PipelineInfo = { id: PipelineId; title: string; description: string }
 export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
@@ -363,6 +781,8 @@ export type AgentRun = {
   output: string
   /** Snapshot at run-time of the agent's force flag. */
   force?: boolean
+  trace?: AgentRunTrace
+  evaluation?: AgentRunEvaluation
 }
 
 export type ScheduleSpec =
@@ -447,7 +867,7 @@ export type HitlItem = {
   createdAt: number
   resolvedAt?: number
   runId?: string
-  runSource?: 'cron' | 'agent' | 'bg'
+  runSource?: 'cron' | 'agent' | 'bg' | 'session'
   ticketPath?: string
   sessionId?: string
   terminalKey?: string
@@ -476,7 +896,7 @@ export type BgTask = {
 
 export type UnifiedRun = {
   id: string
-  source: 'cron' | 'agent' | 'bg'
+  source: 'cron' | 'agent' | 'bg' | 'session'
   agentId: string
   agentTitle: string
   engine: string
@@ -492,6 +912,8 @@ export type UnifiedRun = {
   error?: string
   /** Snapshot at run-time of the agent's force flag. */
   force?: boolean
+  trace?: AgentRunTrace
+  evaluation?: AgentRunEvaluation
 }
 
 export type CronRun = {
@@ -562,7 +984,10 @@ export type Review = {
   testStatus: string
   stale: boolean
   commitsBehind: number
-  /** Cross-PR triage: high/medium/low (or unscored if absent). */
+  /** Canonical change blast-radius, 0-5 (null if unscored/tests-only). */
+  riskScore: number | null
+  /** Cross-PR triage: high/medium/low (or unscored if absent). Derived from
+   *  riskScore when present, else the legacy risk_tier frontmatter field. */
   riskTier: 'high' | 'medium' | 'low' | 'unscored'
 }
 
@@ -594,6 +1019,58 @@ export type MrDetail = {
   findings: Finding[]
   suggestions: Finding[]
   artifactShortSha: string
+}
+
+// /digest artifact (<short>.chunks.json) — the human-review digest.
+export type DigestDecision = {
+  id: string
+  title: string
+  category: string
+  files: string[]
+  what: string | null
+  why: string | null
+  alternatives: string | null
+  reversibility: 'low' | 'medium' | 'high'
+}
+export type DigestChunk = {
+  id: string
+  file: string
+  old_path: string | null
+  kind: string
+  risk: 'green' | 'yellow' | 'red'
+  status: string
+  added: number
+  deleted: number
+  green_label: string | null
+  summary: string | null
+  note: string | null
+  confidence: string | null
+  decision_signals: string[]
+  hunks: { header: string; old_start: number; new_start: number }[]
+}
+export type DigestArtifact = {
+  pr: string | null
+  short_sha: string | null
+  generated: string
+  generator: string
+  joint: { member_mrs: string[] } | false
+  brief: string | null
+  blast_radius: string | null
+  diagram: string | null
+  double_check: { file: string; why: string }[]
+  decisions: DigestDecision[]
+  stats: {
+    files: number
+    chunks: number
+    green: number
+    yellow: number
+    red: number
+    llm_chunks: number
+    added: number
+    deleted: number
+    decisions?: number
+  }
+  chunks: DigestChunk[]
 }
 
 export type Mr = {
@@ -679,6 +1156,8 @@ export type TabContext = {
   forgeLabel: 'PR' | 'MR'
   forgeSym: '#' | '!'
   hasBacklog: boolean
+  ticketProvider: 'local' | 'github' | 'linear'
+  ticketProviderLabel: string
   hasSessions: boolean
   hasAgents: boolean
   capabilities?: Record<string, boolean>
@@ -719,6 +1198,7 @@ export type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  ticketSlug?: string
   remote?: RemoteSession
   cols: number
   rows: number
@@ -873,8 +1353,9 @@ export type GtApi = {
   }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
-    runLog: (source: 'cron' | 'agent' | 'bg', runId: string) => Promise<string>
+    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => Promise<string>
     list: () => Promise<Agent[]>
+    definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>
     reset: (id: string) => Promise<{ ok: true } | { error: string }>
     script: (id: string) => Promise<{ path: string; body: string } | null>
@@ -899,6 +1380,7 @@ export type GtApi = {
       pipeline?: string,
       model?: string,
       remote?: RemoteSession,
+      lanes?: number,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -1027,8 +1509,13 @@ export type GtApi = {
   tickets: {
     list: () => Promise<Ticket[]>
     get: (slug: string) => Promise<Ticket | null>
+    providerGet: () => Promise<TicketProviderConfig | { error: string }>
+    providerSave: (cfg: TicketProviderConfig) => Promise<TicketProviderConfig | { error: string }>
+    providerTest: (cfg: TicketProviderConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
+    linearTeams: (cfg?: TicketProviderConfig) => Promise<{ id: string; name: string; key?: string }[]>
     create: (input: NewTicket) => Promise<Ticket>
-    update: (slug: string, patch: { status?: string; priority?: string }) => Promise<boolean>
+    recommendAgent: (input: { title?: string; type?: string; body?: string }) => Promise<TicketAgentRecommendation>
+    update: (slug: string, patch: { status?: string; priority?: string; acceptance?: string[]; agent?: Partial<TicketAgent>; run?: Partial<TicketRunLink> }) => Promise<boolean>
     spawn: (text: string, engine: Engine, model?: string, remote?: RemoteSession) => Promise<AgentRun | { error: string }>
   }
   docs: {
@@ -1041,6 +1528,7 @@ export type GtApi = {
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
+  getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>
   getMrCi: (iid: number) => Promise<CiInfo | null>
   mergeMr: (iid: number) => Promise<{ ok: boolean; error?: string }>
   ci: {
@@ -1097,6 +1585,18 @@ export type GtApi = {
       exitCode?: number
     }[]>
     models: () => Promise<string[]>
+    indexStatus: () => Promise<ObservabilityIndexStatus>
+    rebuildIndex: (limit?: number) => Promise<ObservabilityIndexBuildResult>
+    indexQuery: (query: ObservabilityIndexQueryId) => Promise<ObservabilityIndexQueryResult>
+  }
+  agentview: {
+    snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
+    session: (sessionId: string) => Promise<ObservabilitySessionDetail | null>
+    upstreamStatus: () => Promise<AgentViewUpstreamStatus>
+    upstreamStart: () => Promise<AgentViewUpstreamStatus>
+    upstreamStop: () => Promise<AgentViewUpstreamStatus>
+    toolCall: (sessionId: string, callId: string) => Promise<ObservabilityToolCallPayload | null>
+    transcriptWindow: (sessionId: string, centerLine?: number, radius?: number) => Promise<ObservabilityTranscriptWindow | null>
   }
   budgets: {
     get: () => Promise<{
@@ -1150,6 +1650,11 @@ export type GtApi = {
     read: (scope: KnowledgeScope) => Promise<KnowledgeBase>
     write: (scope: KnowledgeScope, kb: KnowledgeBase) => Promise<boolean>
     preview: (url: string) => Promise<KnowledgePreview>
+    ragStatus: (scope: KnowledgeScope, item: KnowledgeItem) => Promise<KnowledgeRagStatus>
+    ragReindex: (scope: KnowledgeScope, item: KnowledgeItem, fullRebuild?: boolean) => Promise<KnowledgeRagStatus>
+    ragAddDocument: (scope: KnowledgeScope, item: KnowledgeItem, content: string, filepath?: string) => Promise<KnowledgeRagStatus>
+    ragAddUrl: (scope: KnowledgeScope, item: KnowledgeItem, url: string, title?: string) => Promise<KnowledgeRagStatus>
+    ragSearch: (scope: KnowledgeScope, item: KnowledgeItem, query: string) => Promise<KnowledgeRagSearchResult>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>
@@ -1169,8 +1674,10 @@ export type GtApi = {
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
 export type SearchHit = { file: string; line: number; text: string }
-export type GitStatus = { ok: boolean; branch: string; ahead: number; behind: number; dirty: number }
+export type GitStatus = { ok: boolean; branch: string; ahead: number; behind: number; dirty: number; upstream: boolean }
 export type MrSummary = {
+  ok: boolean
+  error?: string
   open: number
   approve: number
   changes: number

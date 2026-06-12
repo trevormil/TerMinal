@@ -32,6 +32,7 @@ export type Choice = {
   cwd?: string
   name?: string
   initialInput?: string
+  ticketSlug?: string
   remote?: RemoteSession
 }
 

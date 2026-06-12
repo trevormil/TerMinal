@@ -343,8 +343,8 @@ export function SessionView({
   useEffect(() => {
     const fresh = availablePlugins.filter((p) => !known.includes(p.id))
     if (fresh.length === 0) return
-    setKnown((k) => [...k, ...fresh.map((p) => p.id)])
-    setEnabled((e) => [...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])
+    setKnown((k) => Array.from(new Set([...k, ...fresh.map((p) => p.id)])))
+    setEnabled((e) => Array.from(new Set([...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])))
   }, [availablePlugins, known])
 
   useEffect(() => {
@@ -368,18 +368,35 @@ export function SessionView({
   // the IPC burst — otherwise the click can feel like it didn't register.
   useEffect(() => {
     if (!info.sessionId || !active) return
+    let alive = true
     const raf = requestAnimationFrame(() => {
       if (!isRemote) {
-        window.gt.transcript().then((t) => t.gitBranch && setBranch(t.gitBranch))
+        window.gt.transcript().then((t) => {
+          if (alive && t.gitBranch) setBranch(t.gitBranch)
+        })
         window.gt
           .listCommandWidgets()
-          .then((ws) => setCmdPlugins(ws.map(commandWidgetToPlugin)))
+          .then((ws) => {
+            if (alive) setCmdPlugins(ws.map(commandWidgetToPlugin))
+          })
           .catch(() => {})
       }
-      window.gt.tabContext().then(setCtx).catch(() => {})
+      window.gt.tabContext().then((next) => alive && setCtx(next)).catch(() => {})
     })
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      alive = false
+      cancelAnimationFrame(raf)
+    }
   }, [info.sessionId, active, isRemote])
+
+  useEffect(() => {
+    if (!active) return
+    const reload = () => {
+      window.gt.tabContext().then(setCtx).catch(() => {})
+    }
+    window.addEventListener('gt.ticket-provider.changed', reload)
+    return () => window.removeEventListener('gt.ticket-provider.changed', reload)
+  }, [active])
 
   // Poll tab badges (e.g. HITL count) for any tab that declares one — refresh
   // on the transcript tick and a slow interval. Initial run also deferred by

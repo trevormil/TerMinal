@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, Repeat2, Check, type LucideIcon } from 'lucide-react'
 import { EnginePicker } from './EnginePicker'
-import type { Engine } from '../lib/types'
+import type { AgentDefinition, Engine, Persona } from '../lib/types'
 import { openPromptInTerminal } from '../lib/launch'
 import { prAgentPrompt } from '../lib/agentPrompts'
 
@@ -14,17 +14,29 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
   const [kind, setKind] = useState<'review' | 'iterate' | null>(null)
   const [done, setDone] = useState<{ msg: string; ok: boolean } | null>(null)
 
-  const launch = async (engine: Engine, persona: string, pipeline: string, model?: string, launchMode?: 'process' | 'terminal') => {
+  const launch = async (
+    engine: Engine,
+    persona: string,
+    pipeline: string,
+    model?: string,
+    launchMode?: 'process' | 'terminal',
+    runContext?: Persona,
+  ) => {
     const k = kind
     setKind(null)
     if (!k) return
     if (launchMode === 'terminal') {
       const meta = await window.gt.meta()
+      let reviewAgent: AgentDefinition | undefined
+      if (k === 'review') {
+        const defs = await window.gt.agents.definitions().catch(() => [])
+        reviewAgent = defs.find((d) => d.ref.id === 'code-review' && d.ref.kind === 'classic')
+      }
       openPromptInTerminal({
         engine,
         cwd: meta.cwd,
         name: `${k} ${sym}${pr.iid}`,
-        prompt: prAgentPrompt(pr, k, { forgeSym: sym, persona, pipeline, model }),
+        prompt: prAgentPrompt(pr, k, { forgeSym: sym, persona, pipeline, model, runContext, reviewAgent }),
         remote: meta.remote,
       })
       setDone({ msg: 'opened instance', ok: true })
@@ -73,9 +85,8 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
           showPipeline={false}
           hint={
             <>
-              You can also start review work from the terminal with{' '}
-              <code className="font-mono text-zinc-300">/code-review</code> or{' '}
-              <code className="font-mono text-zinc-300">$code-review</code>.
+              Review uses the <code className="font-mono text-zinc-300">code-review</code> agent definition;
+              override that agent to customize reviewer model, rubric, artifacts, or checks.
             </>
           }
           onClose={() => setKind(null)}

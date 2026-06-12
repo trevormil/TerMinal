@@ -87,6 +87,8 @@ export async function listMrs(repoRoot: string): Promise<MrListResult> {
 }
 
 export type MrSummary = {
+  ok: boolean
+  error?: string
   open: number
   approve: number
   changes: number
@@ -103,7 +105,19 @@ export async function mrSummary(repoRoot: string): Promise<MrSummary> {
   if (hit && now - hit.ts < 60_000) {
     mrs = hit.mrs
   } else {
-    mrs = (await listMrs(repoRoot)).mrs
+    const res = await listMrs(repoRoot)
+    if (res.error) {
+      return {
+        ok: false,
+        error: res.error,
+        open: 0,
+        approve: 0,
+        changes: 0,
+        needsReview: 0,
+        label: forge.forgeFor(repoRoot).label,
+      }
+    }
+    mrs = res.mrs
     summaryCache.set(repoRoot, { ts: now, mrs })
   }
   const opened = mrs.filter((m) => m.state === 'opened')
@@ -112,6 +126,7 @@ export async function mrSummary(repoRoot: string): Promise<MrSummary> {
     (m) => m.review?.verdict === 'request-changes' || m.review?.verdict === 'blocked',
   ).length
   return {
+    ok: true,
     open: opened.length,
     approve,
     changes,
@@ -194,4 +209,72 @@ export function getMrDiff(repoRoot: string, iid: number): Promise<string> {
     }
   }
   return forge.diff(repoRoot, iid)
+}
+
+// ── Digest (/digest) ─────────────────────────────────────────────────────────
+// The human-review digest artifact (<short>.chunks.json) produced by /digest.
+// Chunks the diff into a risk-ranked, noise-filtered surface with first-class
+// design-decision callouts. See autopilot-harness .agents/digest.md.
+
+export type DigestDecision = {
+  id: string
+  title: string
+  category: string
+  files: string[]
+  what: string | null
+  why: string | null
+  alternatives: string | null
+  reversibility: 'low' | 'medium' | 'high'
+}
+export type DigestChunk = {
+  id: string
+  file: string
+  old_path: string | null
+  kind: string
+  risk: 'green' | 'yellow' | 'red'
+  status: string
+  added: number
+  deleted: number
+  green_label: string | null
+  summary: string | null
+  note: string | null
+  confidence: string | null
+  decision_signals: string[]
+  hunks: { header: string; old_start: number; new_start: number }[]
+}
+export type DigestArtifact = {
+  pr: string | null
+  short_sha: string | null
+  generated: string
+  generator: string
+  joint: { member_mrs: string[] } | false
+  brief: string | null
+  blast_radius: string | null
+  diagram: string | null
+  double_check: { file: string; why: string }[]
+  decisions: DigestDecision[]
+  stats: {
+    files: number
+    chunks: number
+    green: number
+    yellow: number
+    red: number
+    llm_chunks: number
+    added: number
+    deleted: number
+    decisions?: number
+  }
+  chunks: DigestChunk[]
+}
+
+// The digest artifact for an MR at the reviewed short sha. Same dir resolution
+// as the review/diff. null when /digest hasn't been run for this MR.
+export function getDigest(repoRoot: string, iid: number, short?: string): DigestArtifact | null {
+  const repo = repoForCwd(repoRoot)
+  if (!repo) return null
+  const dir = resolveReviewDir(repoRoot, repo.host, repo.path, iid)
+  if (!dir) return null
+  const s = short || newestArtifactShortSha(dir)
+  if (!s) return null
+  return readJsonSafe<DigestArtifact | null>(join(dir, `${s}.chunks.json`), null)
 }

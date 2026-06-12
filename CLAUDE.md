@@ -48,9 +48,21 @@ actually uses; an out-of-date binary silently produces stale behavior. (See
 - `bin/terminal-cron` — the headless runner launchd fires. Self-contained Bun
   script; reads `~/.config/TerMinal/schedules.json`.
 - `bin/terminal-cli` — helper script exposed inside agent `.sh` bodies for
-  ticket/hitl/activity/notify/state subcommands.
+  ticket/hitl/activity/notify/state subcommands plus MCP passthroughs such as
+  `terminal-cli mcp list_agents ...` and
+  `terminal-cli mcp request_agent_artifact ...`.
 - `~/.config/TerMinal/` — runtime state (schedules, cron-runs, agent-state,
   hitl, settings). Use Settings → Open TerMinal config dir to inspect.
+
+## Ticket and agent workflow
+
+Every backlog ticket is owned by exactly one agent via `agent_id`,
+`agent_scope` (`repo` | `global`), and `agent_kind` (`classic` | `persistent`).
+If work needs multiple agents or phases, split it into linked tickets with
+`depends_on`.
+
+The end-to-end owner, knowledge-gathering, delegated-artifact, and follow-up
+contract lives in [`docs/workflow/agent-process.md`](./docs/workflow/agent-process.md).
 
 ## Conventions specific to this repo
 

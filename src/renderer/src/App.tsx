@@ -178,6 +178,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const openSettings = (ev: Event) => {
+      setShowSettings(true)
+      const section = (ev as CustomEvent<{ section?: string }>).detail?.section
+      if (section) setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50)
+    }
+    window.addEventListener('gt.settings.open', openSettings)
+    return () => window.removeEventListener('gt.settings.open', openSettings)
+  }, [])
+
+  useEffect(() => {
     let alive = true
     const load = () =>
       window.gt.settings
@@ -370,12 +380,13 @@ export default function App() {
           const cwd = remote?.cwd || (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
+          const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const key = crypto.randomUUID()
           setSessions((s) => [
             ...s,
             {
               key,
-              choice: { mode: 'new', engine, cwd, name, initialInput, remote },
+              choice: { mode: 'new', engine, cwd, name, initialInput, ticketSlug, remote },
               info: { sessionId: '', cwd },
             },
           ])

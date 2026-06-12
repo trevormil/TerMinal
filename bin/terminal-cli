@@ -8,7 +8,7 @@
 // TERMINAL_AGENT_ID / TERMINAL_RUN_ID before exec-ing scripts.
 //
 // Subcommands:
-//   terminal-cli ticket "<title>" "<body>"              file a backlog ticket on TERMINAL_REPO
+//   terminal-cli ticket "<title>" "<body>"              file a ticket on TERMINAL_REPO's configured provider
 //   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli deploy "<env>" "[sha]" "[detail]"      emit a deploy activity event
@@ -469,7 +469,11 @@ function mcpCommand(tool, kvArgs) {
     console.error(`terminal-cli mcp: server not installed at ${serverBin}`)
     process.exit(2)
   }
-  const child = execFile(serverBin, [], { timeout: 30_000 }, (err, stdout) => {
+  const mcpTimeout =
+    tool === 'request_agent_artifact'
+      ? Math.max(30_000, Math.min(Number(params.timeoutMs || 180_000) + 30_000, 630_000))
+      : 30_000
+  const child = execFile(serverBin, [], { timeout: mcpTimeout }, (err, stdout) => {
     if (err && err.code === 'ETIMEDOUT') {
       console.error('terminal-cli mcp: server timeout')
       process.exit(1)
@@ -610,6 +614,12 @@ function fileTicket(title, body) {
     console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
     process.exit(2)
   }
+  const cfg = readTicketConfig()
+  if (cfg.provider === 'github') return fileGithubIssue(title, body, cfg.github || {})
+  if (cfg.provider === 'linear') {
+    console.error('terminal-cli ticket: Linear repos must file through the configured Linear MCP/CLI, not local backlog markdown')
+    process.exit(2)
+  }
   const backlog = areaPath(repo, 'backlog')
   mkdirSync(backlog, { recursive: true })
   const files = readdirSync(backlog).filter((f) => /^\d{4}-.*\.md$/.test(f))
@@ -622,6 +632,7 @@ function fileTicket(title, body) {
       .replace(/^-|-$/g, '')
       .slice(0, 50) || 'untitled'
   const today = new Date().toISOString().slice(0, 10)
+  const assignedAgent = agentId || 'factory'
   const fm = `---
 id: ${id}
 title: ${JSON.stringify(title || 'Untitled')}
@@ -631,6 +642,9 @@ type: feature
 source: script
 created: ${today}
 updated: ${today}
+agent_id: ${assignedAgent}
+agent_scope: ${agentId ? 'repo' : 'global'}
+agent_kind: classic
 ---
 
 ${body || ''}
@@ -639,6 +653,54 @@ ${body || ''}
   writeFileSync(path, fm)
   emitActivity('ticket-filed', `Ticket filed · #${id}`, title || '')
   console.log(path)
+}
+
+function readTicketConfig() {
+  try {
+    const p = join(repo, '.TerMinal', 'tickets.json')
+    if (!existsSync(p)) return {}
+    const parsed = JSON.parse(readFileSync(p, 'utf8'))
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function ghLabelMaps(cfg) {
+  return {
+    priority: { critical: 'priority:critical', high: 'priority:high', medium: 'priority:medium', low: 'priority:low', ...(cfg.priorityLabels || {}) },
+    type: { feature: 'type:feature', bug: 'type:bug', security: 'type:security', docs: 'type:docs', dx: 'type:dx', testing: 'type:testing', ux: 'type:ux', performance: 'type:performance', ...(cfg.typeLabels || {}) },
+  }
+}
+
+function ensureGhLabel(label) {
+  try {
+    execFileSync('gh', ['label', 'create', label, '--color', 'ededed', '--description', 'Managed by TerMinal tickets'], {
+      cwd: repo,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      encoding: 'utf8',
+    })
+  } catch (e) {
+    const msg = String(e.stderr || e.message || '')
+    if (!/already exists/i.test(msg)) throw e
+  }
+}
+
+function fileGithubIssue(title, body, cfg) {
+  const maps = ghLabelMaps(cfg)
+  const labels = [maps.priority.medium, maps.type.feature].filter(Boolean)
+  for (const label of labels) ensureGhLabel(label)
+  try {
+    const args = ['issue', 'create', '--title', title || 'Untitled', '--body', body || '']
+    if (labels.length) args.push('--label', labels.join(','))
+    const url = execFileSync('gh', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    const id = (url.match(/\/issues\/(\d+)/) || [])[1] || ''
+    emitActivity('ticket-filed', `Ticket filed · ${id ? `#${id}` : 'GitHub Issue'}`, title || '')
+    console.log(url)
+  } catch (e) {
+    console.error(`terminal-cli ticket: gh issue create failed: ${String(e.stderr || e.message || '').trim()}`)
+    process.exit(1)
+  }
 }
 
 function safeFileName(name) {

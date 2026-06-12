@@ -107,7 +107,12 @@ See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 ## Tabs
 
 A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
-repo-aware — each shows based on the attached session's repo.
+repo-aware — each shows based on the attached session's repo. The default top
+level is intentionally focused: **Tickets**, **MRs / PRs**, **Agents**, **Runs**,
+**Schedules**, **CI**, **Browser**, **Observability**, and **Files**.
+Secondary/reference surfaces such as Activity, Docs, Reports, Sessions,
+Knowledge Base, Agent Config, Help, and AgentView are available from
+**Settings → Tabs** when you want them.
 
 - **Terminal** — the `claude` or `codex` CLI with a session-aware cockpit sidebar.
 - **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
@@ -118,8 +123,13 @@ repo-aware — each shows based on the attached session's repo.
   "MR !N" and "PR #N"). Each opens a full review surface: description, the
   **review** body, **findings** + **suggestions**, a syntax-highlighted **diff**
   (unified/split, per-file "viewed"), forge **CI status**, and a **merge** button.
-- **Agents** — on-demand agents (**Codex** or **Claude**) you **Run** from a
-  button. See [Agents](#agents) below.
+- **Agents** — on-demand classic and persistent agents (**Codex**, **Claude**,
+  or Cursor) with model policy, quality contracts, run history, and direct
+  ticket/PR ownership. See [Agents](#agents) below.
+- **Runs** — one operational ledger across in-process agents, scheduled cron
+  runs, background tasks, and terminal-launched ticket work. A run detail shows
+  the live log, lineage back to a ticket/PR when known, deterministic evaluation
+  results, rerun/cancel actions, and worktree cleanup.
 - **Factory** — toggle the autonomous [`/factory`](#factory) orchestrator on for
   the attached repo, watch its live log, and read cross-repo **factory health**:
   throughput (24h/7d), **cycle time** (ticket-filed → PR-merged, with stage
@@ -171,18 +181,29 @@ Cockpit extensions are auto-discovered locally and stay file-backed:
 
 ## <a name="agents"></a>Agents
 
-On-demand agents you trigger from a **Run** button on the Agents tab. Each run
-gets its **own git worktree** off the default branch; the engine does the work,
-files tickets for findings, and opens a **PR/MR** for any code changes — all
-streamed live into the tab (with cancel + worktree controls). A launch picker
-chooses the **engine** ([Codex](https://github.com/openai/codex) or
-[Claude](https://claude.com/claude-code) — only the ones installed are offered),
-an optional **persona** (security, performance, frontend, …), and a **pipeline**
-(single run, or chained review/iterate stages).
+Agents are the assignable unit of work across TerMinal. Classic agents are
+prompt or script definitions; persistent agents are memory-backed directories
+with durable instructions, memory, state, journal, and artifacts. Both normalize
+to one schema for ticket ownership, one-click implementation, PR review, run
+history, schedules, and evals.
 
-Eight ship **by default on every repo** — Improve docs, Deep audit, Ticket/PR
-cleanup, Strengthen tests, Security sweep, Performance pass, Dependency hygiene,
-and Dead-code cleanup.
+Each agent can declare:
+
+- preferred engine/model plus cheap/deep/judge model policy
+- knowledge policy and output contract
+- acceptance criteria and required artifacts
+- deterministic shell checks
+- optional LLM judge configuration
+
+On-demand runs stream live into **Agents** and into the global **Runs** tab. Code
+changing runs get an isolated git worktree off the default branch unless the
+agent explicitly runs in-place. Ticket implementation records the run id back to
+the ticket, so the ticket page can embed the run log and evaluation summary.
+
+The default catalog includes general implementation (`1000x-ai-engineer`),
+factory orchestration, code review, docs, tests, security, performance,
+dependency hygiene, dead-code cleanup, CI, product/strategy audits, and emergency
+FORCE agents.
 
 Override or add your own per-repo in `.agents/agents.json` (merged by id over the
 defaults):

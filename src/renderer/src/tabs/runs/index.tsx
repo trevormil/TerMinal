@@ -3,11 +3,12 @@ import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2 }
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
-import { onNavigate } from '../../lib/nav'
+import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
+import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
 
 // One global view across every run TerMinal has fired — cron (launchd, via
 // bin/terminal-cron) AND in-process (Run button on Agents/Tickets/PRs). The
@@ -25,8 +26,8 @@ const statusTone = (s: string): BadgeTone =>
           ? 'yellow'
           : 'mute'
 
-const sourceTone = (s: 'cron' | 'agent' | 'bg'): BadgeTone =>
-  s === 'cron' ? 'accent' : s === 'bg' ? 'yellow' : 'blue'
+const sourceTone = (s: UnifiedRun['source']): BadgeTone =>
+  s === 'cron' ? 'accent' : s === 'bg' ? 'yellow' : s === 'session' ? 'green' : 'blue'
 
 function fmtWhen(ts?: number): string {
   if (!ts) return '—'
@@ -49,10 +50,12 @@ const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
 function RunsTab({ ctx }: { ctx: TabContext }) {
   const [view, setView] = useState<'runs' | 'inbox'>('runs')
   const [runs, setRuns] = useState<UnifiedRun[] | null>(null)
-  const [source, setSource] = useState<'all' | 'cron' | 'agent' | 'bg'>('all')
+  const [source, setSource] = useState<'all' | UnifiedRun['source']>('all')
   const [status, setStatus] = useState<string>('all')
   const [repo, setRepo] = useState(() => localStorage.getItem(RUNS_REPO_FILTER_KEY) ?? '__auto__')
   const [agentFilter, setAgentFilter] = useState('')
+  const [engineFilter, setEngineFilter] = useState('')
+  const [forceFilter, setForceFilter] = useState<'all' | 'force' | 'normal'>('all')
   const [search, setSearch] = useState('')
   const [sel, setSel] = useState<string | null>(null)
   const [rerunBusy, setRerunBusy] = useState(false)
@@ -125,6 +128,18 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     if (!runs) return []
     return [...new Set(runs.map((r) => r.status))].sort()
   }, [runs])
+  const engineOptions = useMemo(() => {
+    if (!runs) return []
+    return [...new Set(runs.map((r) => r.engine).filter(Boolean))].sort()
+  }, [runs])
+  const filtersActive =
+    source !== 'all' ||
+    status !== 'all' ||
+    (repo !== '__auto__' && !!repo) ||
+    !!agentFilter ||
+    !!engineFilter ||
+    forceFilter !== 'all' ||
+    !!search.trim()
 
   const filtered = useMemo(() => {
     if (!runs) return null
@@ -134,15 +149,21 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       if (status !== 'all' && r.status !== status) return false
       if (repo !== '__auto__' && repo && r.repoLabel !== repo) return false
       if (agentFilter && r.agentId !== agentFilter) return false
+      if (engineFilter && r.engine !== engineFilter) return false
+      if (forceFilter === 'force' && !r.force) return false
+      if (forceFilter === 'normal' && r.force) return false
       if (!q) return true
       return (
         r.agentTitle.toLowerCase().includes(q) ||
         r.agentId.toLowerCase().includes(q) ||
+        r.engine.toLowerCase().includes(q) ||
+        r.repoLabel.toLowerCase().includes(q) ||
+        r.worktree.toLowerCase().includes(q) ||
         r.branch.toLowerCase().includes(q) ||
         r.id.toLowerCase().includes(q)
       )
     })
-  }, [runs, source, status, repo, agentFilter, search])
+  }, [runs, source, status, repo, agentFilter, engineFilter, forceFilter, search])
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
 
@@ -155,12 +176,15 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     try {
       if (run.source === 'cron' && run.scheduleId) {
         await window.gt.schedules.runNow(run.scheduleId)
-      } else {
+      } else if (run.source === 'agent') {
         const r = await window.gt.agents.rerun(run.id)
         if ('error' in r) {
           setRerunError(r.error)
           return
         }
+      } else {
+        setRerunError('This run source cannot be re-run from here yet.')
+        return
       }
       await reload()
     } finally {
@@ -270,7 +294,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               className="min-w-[140px] flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
             />
             <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-              {(['all', 'cron', 'agent', 'bg'] as const).map((s) => (
+              {(['all', 'cron', 'agent', 'bg', 'session'] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setSource(s)}
@@ -285,6 +309,32 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
             <FilterSelect value={status} onChange={(v) => setStatus(v || 'all')} options={statusOptions} placeholder="all status" />
             <FilterSelect value={repo === '__auto__' ? '' : repo} onChange={setRepoFilter} options={repoOptions} placeholder="all repos" />
             <FilterSelect value={agentFilter} onChange={setAgentFilter} options={agentOptions} placeholder="all agents" />
+            <FilterSelect value={engineFilter} onChange={setEngineFilter} options={engineOptions} placeholder="all engines" />
+            <select
+              value={forceFilter}
+              onChange={(e) => setForceFilter(e.target.value as typeof forceFilter)}
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
+            >
+              <option value="all">all modes</option>
+              <option value="force">force only</option>
+              <option value="normal">normal only</option>
+            </select>
+            {filtersActive && (
+              <button
+                onClick={() => {
+                  setSource('all')
+                  setStatus('all')
+                  setRepoFilter('')
+                  setAgentFilter('')
+                  setEngineFilter('')
+                  setForceFilter('all')
+                  setSearch('')
+                }}
+                className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
@@ -361,11 +411,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               </span>
               {selectedRun.worktree && (
                 <button
-                  onClick={() => window.gt.openExternal(`file://${selectedRun.worktree}`)}
+                  onClick={() => {
+                    if (selectedRun.source === 'session') navigateTo('terminal', { sessionId: selectedRun.id, cwd: selectedRun.worktree })
+                    else window.gt.openExternal(`file://${selectedRun.worktree}`)
+                  }}
                   className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
                 >
                   <FolderOpen size={10} strokeWidth={2} />
-                  Worktree
+                  {selectedRun.source === 'session' ? 'Terminal' : 'Worktree'}
                 </button>
               )}
               {/* Cancel: only works for in-process runs (cron runs spawn from
@@ -408,12 +461,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 )}
               <button
                 onClick={() => handleRerun(selectedRun)}
-                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg'}
+                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg' || selectedRun.source === 'session'}
                 title={
                   selectedRun.status === 'running'
                     ? 'Already running'
                     : selectedRun.source === 'bg'
                       ? 'Background inbox tasks cannot be re-run from here yet'
+                    : selectedRun.source === 'session'
+                      ? 'Terminal sessions cannot be re-run from here yet'
                     : selectedRun.source === 'cron' && !selectedRun.scheduleId
                       ? 'Cron run without scheduleId — cannot re-fire'
                       : 'Re-run this agent'
@@ -435,6 +490,30 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
             {selectedRun.error && (
               <div className="shrink-0 border-b border-[var(--gt-border)]/60 bg-[var(--gt-red)]/10 px-5 py-2 text-[11.5px] text-[var(--gt-red)]">
                 {selectedRun.error}
+              </div>
+            )}
+            {(selectedRun.trace || selectedRun.evaluation) && (
+              <div className="shrink-0 space-y-2 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-3">
+                {selectedRun.trace && (
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">Trace</span>
+                    {selectedRun.trace.ticketRef && <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>}
+                    {selectedRun.trace.ticketSlug && (
+                      <span className="font-mono text-[10.5px] text-zinc-500">{selectedRun.trace.ticketSlug}</span>
+                    )}
+                    {selectedRun.trace.prIid !== undefined && (
+                      <Badge tone="accent">
+                        {selectedRun.trace.prKind || 'pr'} #{selectedRun.trace.prIid}
+                      </Badge>
+                    )}
+                    {selectedRun.trace.sourceBranch && (
+                      <span className="font-mono text-[10.5px] text-zinc-500">{selectedRun.trace.sourceBranch}</span>
+                    )}
+                  </div>
+                )}
+                {selectedRun.evaluation && (
+                  <RunEvaluationPanel evaluation={selectedRun.evaluation} />
+                )}
               </div>
             )}
             <RunLogPane source={selectedRun.source} runId={selectedRun.id} status={selectedRun.status} className="flex-1" />

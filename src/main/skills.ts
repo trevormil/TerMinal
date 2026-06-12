@@ -92,10 +92,11 @@ function scanPluginSkills(): SkillInfo[] {
 }
 
 let cache: { ts: number; key: string; skills: SkillInfo[] } | null = null
+const SKILLS_CACHE_MS = 10_000
 
 export function listSkills(repoRoot: string): SkillInfo[] {
   const now = Date.now()
-  if (cache && cache.key === repoRoot && now - cache.ts < 60_000) return cache.skills
+  if (cache && cache.key === repoRoot && now - cache.ts < SKILLS_CACHE_MS) return cache.skills
   const project = repoRoot
     ? [
         ...scanSkillDir(join(repoRoot, '.claude/skills'), 'project', 'claude'),

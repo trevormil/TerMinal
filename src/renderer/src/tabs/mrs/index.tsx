@@ -72,7 +72,7 @@ function MrRow({
                       : 'green'
                 }
               >
-                {m.review.riskTier} risk
+                {m.review.riskScore != null ? `risk ${m.review.riskScore}/5` : `${m.review.riskTier} risk`}
               </Badge>
             )}
             {m.review?.overall != null && <span className="text-zinc-400">score {m.review.overall}</span>}

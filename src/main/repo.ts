@@ -44,10 +44,11 @@ export type GitStatus = {
   ahead: number
   behind: number
   dirty: number
+  upstream: boolean
 }
 
 export function gitStatus(cwd: string): GitStatus {
-  const out: GitStatus = { ok: false, branch: '', ahead: 0, behind: 0, dirty: 0 }
+  const out: GitStatus = { ok: false, branch: '', ahead: 0, behind: 0, dirty: 0, upstream: false }
   if (!cwd) return out
   const run = (args: string[]) => {
     try {
@@ -68,6 +69,7 @@ export function gitStatus(cwd: string): GitStatus {
     const [behind, ahead] = ab.split(/\s+/).map(Number)
     out.behind = behind || 0
     out.ahead = ahead || 0
+    out.upstream = true
   }
   const porcelain = run(['status', '--porcelain'])
   out.dirty = porcelain ? porcelain.split('\n').filter(Boolean).length : 0

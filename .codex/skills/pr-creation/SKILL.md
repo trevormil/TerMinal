@@ -1,175 +1,93 @@
 ---
 name: pr-creation
-description: "Take an in-repo backlog ticket from idea to open GitHub PR: feature branch (optionally a worktree) → implement (TDD) → push → open PR via gh → link the PR back into the ticket's prs:. Does NOT auto-run /test-suite or /code-review — the user triggers those manually when ready. Use when the user runs /pr-creation or asks to start work on a ticket."
+description: "Take owner-compatible backlog tickets from idea to open PR/MR: knowledge phase → branch/worktree → TDD → checks → follow-up tickets → push/open/link. Does not auto-run code review. Use on /pr-creation or 'start work on a ticket'."
 ---
 
-# /pr-creation — Take a ticket from idea to open PR
+# /pr-creation — Ticket to PR/MR
 
-Orchestrates branch setup, implementation, and PR opening for a ticket tracked
-in this repo's `backlog/`. **Does not auto-trigger code review** — the user
-runs `/code-review` manually when ready, usually only at the end after
-iterating, to avoid burning review cycles on every push.
+Implements one assigned-agent lane into one PR/MR. The canonical owner,
+knowledge, artifact, and follow-up contract is
+[`docs/workflow/agent-process.md`](../../../docs/workflow/agent-process.md).
 
-The merge itself is human-only (global CLAUDE.md §8). This skill stops at
-"PR/MR is open" and never crosses that gate.
+This skill stops when the PR/MR is open and linked. It does **not** run
+the `code-review` agent and never merges.
 
-**Forge is detected per repo** — GitHub (`gh`, "PR") or GitLab (`glab`, "MR").
-Resolve it with `forge="$(.claude/bin/forge)"` and use the matching CLI +
-terminology; full command mapping in
-[`.agents/forge.md`](../../../.agents/forge.md). Examples below show GitHub;
-swap for `glab` on GitLab repos. Default branch: `main`.
+## MCP Fast Path
+
+Use MCP for deterministic bookkeeping when available:
+
+- `get_ticket({slug})` / `list_tickets({repo, status})`
+- `update_ticket({slug, status: 'in-progress'})`
+- `update_ticket_run({slug, runId: $TERMINAL_RUN_ID, runSource: 'agent', runStartedAt, runStatus: 'running'})` when a run id exists
+- `list_agents({repo})`
+- `request_agent_artifact({repo, title, prompt, agentId, agentScope, agentKind})`
+- `file_ticket({repo, title, body, type, priority, source, agentId, agentScope, agentKind})`
+- `update_ticket({slug, appendPrUrl})`
+- `emit_activity({kind: 'pr-opened', repo, title, detail})`
+- `set_run_outcome({runId: $TERMINAL_RUN_ID, outcome: 'pr-opened'})` when a run id exists
+
+Fallback commands:
+
+```bash
+.claude/bin/list-agents
+.claude/bin/request-agent-artifact --agent knowledge-base --title "Question" -- "Prompt..."
+```
 
 ## Inputs
 
-- `ticket_id` (preferred) — points to `backlog/<id>-<slug>.md` in THIS repo.
-  The skill reads the ticket for acceptance criteria. **One or more** ids — a PR
-  may close several cohesive tickets (batch them; code review is the bottleneck).
-- OR `task_description` — start without a ticket; the skill invokes `/ticket`
-  first to file one.
+- `ticket_id` / `slug` — preferred. Multiple tickets are allowed only when
+  they share the same assigned owner and form one cohesive PR/MR.
+- `task_description` — file a ticket first, then continue.
 
 ## Process
 
-### 1. Read the ticket
+1. **Read and validate tickets.** Confirm each ticket is runnable, testable,
+   and has exactly one owner. If multiple supplied tickets have different
+   owners, split the work and run one owner lane at a time.
+2. **Start work.** Set each ticket to `in-progress` and link the run with
+   `update_ticket_run` when `$TERMINAL_RUN_ID` exists.
+3. **Knowledge phase.** Follow `docs/workflow/agent-process.md`: read the
+   minimal relevant context and request delegated artifacts for cross-domain
+   questions.
+4. **Branch/worktree.** Create a feature branch from the target base. Use a
+   worktree when other agents may touch the repo in parallel.
+5. **Implement TDD-first.** Write the failing test before new behavior, then
+   make the smallest scoped change.
+6. **Check locally.** Run the relevant type/build/test smoke checks and inspect
+   the diff for unrelated files or secrets.
+7. **File follow-up tickets.** Before opening the PR/MR, file owner-scoped
+   tickets for deferred work and link dependencies with `depends_on`.
+8. **Push and open PR/MR.** Use `gh pr create` or `glab mr create` according to
+   `.claude/bin/forge`. Do not pass merge/automerge flags.
+9. **Link back.** Append the PR/MR URL to each ticket's `prs:` and leave status
+   `in-progress`; `/merge-sync` closes tickets after human merge.
+10. **Handoff.** Report ticket ids, owner agent, PR/MR URL, branch/head SHA,
+    checks, delegated artifact paths, and follow-up ticket ids or `none`.
 
-Open `backlog/<id>-*.md`. Confirm:
-- `status: open` (or `in-progress` if resuming) — if `closed`, stop and ask.
-- Acceptance criteria are testable. If not, push back and refine the ticket
-  before starting work.
+## PR/MR Body
 
-Set `status: in-progress` and `updated:` to today before starting.
-
-### 2. Set up the working branch
-
-```bash
-git fetch origin
-branch="<id>-<short-slug>"     # e.g. 0042-add-rate-limit
-git switch -c "$branch" origin/main
-```
-
-**Worktrees (optional).** When other agents may touch this repo in parallel,
-isolate with a worktree instead:
-
-```bash
-git worktree add -b "$branch" "../.worktrees/$branch" origin/main
-cd "../.worktrees/$branch"
-```
-
-For solo work, a plain feature branch in-place is fine.
-
-### 3. Implement
-
-Apply the ticket's changes. Follow:
-- This repo's `CLAUDE.md` (root + nested in folders touched).
-- Global `~/.claude/CLAUDE.md` §1–11.
-- TDD: write the failing test first when adding new behavior.
-
-Commit incrementally on the feature branch using **Conventional Commits**
-(`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:` …), one logical change
-per commit. Don't push yet.
-
-### 4. Sanity-check before pushing
-
-Not a review pass — a smoke check that the branch is worth pushing:
-
-- **Type-check / build** (`bunx tsc --noEmit`, `cargo check`, `mypy`, etc.).
-  If broken, stop and fix.
-- **Eyeball the diff** (`git diff origin/main...HEAD --stat`). Fix anything
-  obviously wrong (vendored binary, leaked `.env`, an unrelated file).
-
-Optionally run `/test-suite` to see whether tests pass — optional, not
-required. **Do not** auto-run `/code-review`.
-
-### 5. Push the feature branch
-
-```bash
-git push -u origin "$branch"
-```
-
-The merge-to-main hook (`.claude/hooks/block-main-merge.sh`) allows
-feature-branch pushes; it only blocks main/master targets.
-
-### 6. Open the PR/MR
-
-On GitHub use `gh pr create`; on GitLab use `glab mr create --target-branch main
---source-branch "$branch"` with `--description` instead of `--body` (see
-`.agents/forge.md`). GitHub form:
-
-```bash
-gh pr create \
-  --title "<ticket title>" \
-  --base main \
-  --body "$(cat <<'EOF'
-Closes #<id> (backlog ticket). For a multi-ticket PR: Closes #<a> #<b>.
+```markdown
+Closes #<ticket-id>.
 
 ## Summary
-<2-3 sentences: what changed and why>
+<2-3 sentences>
 
 ## What's covered
-<Bulleted notes on the surface this PR touches; flag intentional stubs / known
-gaps so the reviewer knows what to expect>
+- <notable surfaces>
 
 ## Test plan
-<Bulleted checklist of how to verify locally — bun test, docker compose up,
-curl the new endpoint, etc.>
+- <commands / manual checks>
 
 Generated by the project workflow /pr-creation
-EOF
-)"
 ```
 
-Don't pass `--merge` / `--auto` — merging is human-only.
+If the diff is only docs/tickets/reports/agent specs, optionally apply the
+`auto-mergeable` label. Skip the label when unsure.
 
-### 6.5. Apply the `auto-mergeable` label if eligible
+## Hard Rules
 
-If the diff is **only** docs / markdown / tickets / reports / agent specs —
-nothing under `src/`, `lib/`, `app/`, no lockfile, no runtime config — tag the
-change with the `auto-mergeable` label so the human can spot it in the MR
-list and batch-merge safe ones without a full /code-review cycle. Detection:
-
-```bash
-nontxt=$(git diff --name-only "origin/main..HEAD" | grep -v -E '\.(md|json|ya?ml|txt)$|^backlog/|^reports/|^docs/|^.agents/|^.claude/' || true)
-if [ -z "$nontxt" ]; then
-  case "$forge" in
-    github) gh pr edit "$pr" --add-label "auto-mergeable" ;;
-    gitlab) glab mr update "$pr" --label "auto-mergeable" ;;
-  esac
-fi
-```
-
-Skip the label when in doubt — it's purely opt-in. See
-[`.agents/forge.md`](../../../.agents/forge.md) for the canonical convention +
-which scheduled agents should always tag.
-
-### 7. Link the PR back to the ticket(s)
-
-For **each** ticket this PR closes, open `backlog/<id>-*.md`:
-- Add the PR URL to `prs:`.
-- Bump `updated:` to today.
-- Leave `status: in-progress` (NOT `closed`) — only the human closes via merge.
-  After the merge, `/merge-sync` flips these to `closed` and scrubs the url.
-
-### 8. Hand off to the human
-
-State: ticket id + title, PR URL, branch + final commit SHA, one-line summary,
-and: "PR is open — run `/code-review` when you're ready to evaluate, or iterate
-further on the branch." If the work introduced an ADR-worthy decision or a
-learning, mention it ("might be worth `/document`-ing X") but don't auto-invoke.
-
-**Do not attempt the merge.** **Do not auto-run `/code-review`.** Stop here.
-
-## Hard rules
-
-1. Never push to main/master. Always feature branches. (Hook enforces.)
-2. Never merge. `gh pr merge` is blocked by the hook; never propose it.
-3. If the repo has no test suite, stop and file a `/ticket` to add one before
-   proceeding — the TDD gate can't function without one.
-4. If the repo has no `CLAUDE.md`, flag it and propose creating one before
-   writing code — the conformance check needs something to compare against.
-
-## Activity
-
-After the PR/MR is opened, emit a feed event:
-
-```bash
-.claude/bin/activity pr-opened "PR opened · !<iid>" "<title>" --ticket <id> --pr <iid>
-```
+1. Never merge.
+2. Never push directly to `main`/`master` unless this repo explicitly opts out.
+3. No ownerless tickets.
+4. No implementation before the knowledge phase.
+5. No handoff before follow-up tickets are filed or explicitly marked `none`.

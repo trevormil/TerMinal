@@ -46,8 +46,8 @@ type LauncherItem =
     }
   | { kind: 'skill'; id: string; title: string; subtitle: string; prompt: string; group: string }
 
-type SuggestionMode = 'off' | 'deterministic' | 'ai' | 'auto'
-type SuggestedReply = { label: string; prompt: string }
+type SuggestionMode = 'off' | 'deterministic' | 'ai' | 'enhance' | 'auto'
+type SuggestedReply = { label: string; prompt: string; why?: string }
 type SuggestionSettings = {
   aiEngine: Engine
   aiModel: string
@@ -60,6 +60,8 @@ const DEFAULT_SUGGESTION_SETTINGS: SuggestionSettings = {
   autoEngine: 'claude',
   autoModel: 'sonnet',
 }
+const DEFAULT_AUTO_INSTRUCTIONS = 'Act as a 1000x AI engineer'
+const LAST_ENHANCER_LINES = 80
 
 const cssVar = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -128,7 +130,8 @@ function parseAiReplies(text: string): SuggestedReply[] {
       const prompt = typeof r.prompt === 'string' ? r.prompt.trim() : ''
       if (!prompt) return null
       const label = typeof r.label === 'string' && r.label.trim() ? r.label.trim() : prompt.slice(0, 36)
-      return { label: label.slice(0, 36), prompt }
+      const why = typeof r.why === 'string' && r.why.trim() ? r.why.trim() : undefined
+      return { label: label.slice(0, 36), prompt, why }
     })
     .filter((s): s is SuggestedReply => !!s)
     .slice(0, 5)
@@ -208,11 +211,17 @@ export function TerminalPane({
   const termRef = useRef<Xterm | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const writeInputRef = useRef<(data: string) => void>(() => {})
+  const suggestionModeRef = useRef<SuggestionMode>('off')
+  const autoInstructionsRef = useRef('')
+  const interceptEnhanceSubmitRef = useRef<(draft: string) => void>(() => {})
+  const inputLineBufferRef = useRef('')
+  const skipNextEnhanceSubmitRef = useRef(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
   const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('off')
   const [suggestionSettings, setSuggestionSettings] = useState<SuggestionSettings>(DEFAULT_SUGGESTION_SETTINGS)
   const [autoInstructions, setAutoInstructions] = useState('')
+  const [enhancerDraft, setEnhancerDraft] = useState('')
   const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
   const [suggestionBusy, setSuggestionBusy] = useState(false)
   const [suggestionErr, setSuggestionErr] = useState('')
@@ -239,6 +248,14 @@ export function TerminalPane({
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const isRemote = !!choice.remote
+
+  useEffect(() => {
+    suggestionModeRef.current = suggestionMode
+  }, [suggestionMode])
+
+  useEffect(() => {
+    autoInstructionsRef.current = autoInstructions
+  }, [autoInstructions])
 
   useEffect(() => {
     if (!active) return
@@ -320,23 +337,29 @@ export function TerminalPane({
         })
     }
 
-    let lineBuffer = ''
     const writeInput = (data: string) => {
-      if (choice.engine !== 'codex') {
-        gt.pty.input(sessionKey, data)
-        return
-      }
       if (data.includes('\x1b')) {
-        lineBuffer = ''
+        inputLineBufferRef.current = ''
+        skipNextEnhanceSubmitRef.current = false
         gt.pty.input(sessionKey, data)
         return
       }
 
       for (const ch of data) {
         if (ch === '\r' || ch === '\n') {
-          const rewritten = rewriteCodexSkillSubmit(lineBuffer, skillNames)
-          const clearLine = '\x7f'.repeat(lineBuffer.length)
-          lineBuffer = ''
+          const currentLine = inputLineBufferRef.current
+          const draft = currentLine.trim()
+          const clearLine = '\x7f'.repeat(currentLine.length)
+          const skipEnhance = skipNextEnhanceSubmitRef.current
+          skipNextEnhanceSubmitRef.current = false
+          if (suggestionModeRef.current === 'enhance' && draft && !skipEnhance) {
+            inputLineBufferRef.current = ''
+            gt.pty.input(sessionKey, clearLine)
+            interceptEnhanceSubmitRef.current(draft)
+            continue
+          }
+          const rewritten = choice.engine === 'codex' ? rewriteCodexSkillSubmit(currentLine, skillNames) : null
+          inputLineBufferRef.current = ''
           if (rewritten) {
             gt.pty.input(sessionKey, `${clearLine}${rewritten}`)
           } else {
@@ -345,12 +368,16 @@ export function TerminalPane({
           continue
         }
         if (ch === '\x7f') {
-          lineBuffer = lineBuffer.slice(0, -1)
+          inputLineBufferRef.current = inputLineBufferRef.current.slice(0, -1)
           gt.pty.input(sessionKey, ch)
           continue
         }
-        if (ch === '\x03' || ch === '\x15') lineBuffer = ''
-        else if (ch >= ' ') lineBuffer += ch
+        if (ch === '\x03' || ch === '\x15') {
+          inputLineBufferRef.current = ''
+          skipNextEnhanceSubmitRef.current = false
+        } else if (ch >= ' ') {
+          inputLineBufferRef.current += ch
+        }
         gt.pty.input(sessionKey, ch)
       }
     }
@@ -438,14 +465,18 @@ export function TerminalPane({
       if (termRef.current === term) termRef.current = null
       if (searchAddonRef.current === searchAddon) searchAddonRef.current = null
       writeInputRef.current = () => {}
+      inputLineBufferRef.current = ''
+      skipNextEnhanceSubmitRef.current = false
     }
   }, [sessionKey, isRemote])
 
   useEffect(() => {
     try {
-      setAutoInstructions(window.localStorage.getItem(`gt:auto-instructions:${sessionKey}`) || '')
+      setAutoInstructions(window.localStorage.getItem(`gt:auto-instructions:${sessionKey}`) ?? DEFAULT_AUTO_INSTRUCTIONS)
+      setEnhancerDraft(window.localStorage.getItem(`gt:prompt-enhancer:${sessionKey}`) || '')
     } catch {
-      setAutoInstructions('')
+      setAutoInstructions(DEFAULT_AUTO_INSTRUCTIONS)
+      setEnhancerDraft('')
     }
   }, [sessionKey])
 
@@ -512,10 +543,20 @@ export function TerminalPane({
     window.gt.pty.input(sessionKey, `${prompt}\r`)
     setSuggestions([])
     setSuggestionErr('')
+    setSuggestionsDismissed(true)
     onClearAttention?.()
     requestAnimationFrame(() => termRef.current?.focus())
   }
-  const generateSuggestions = async (mode: SuggestionMode = suggestionMode) => {
+  const insertSuggestion = (prompt: string) => {
+    inputLineBufferRef.current = prompt
+    skipNextEnhanceSubmitRef.current = true
+    window.gt.pty.input(sessionKey, prompt)
+    setSuggestions([])
+    setSuggestionErr('')
+    setSuggestionsDismissed(true)
+    requestAnimationFrame(() => termRef.current?.focus())
+  }
+  const generateSuggestions = async (mode: SuggestionMode = suggestionMode, draftOverride?: string) => {
     setSuggestionsDismissed(false)
     if (mode === 'off') {
       setSuggestions([])
@@ -539,6 +580,56 @@ export function TerminalPane({
     setSuggestionBusy(true)
     setSuggestionErr('')
     setSuggestions([])
+    if (mode === 'enhance') {
+      const draft = (draftOverride ?? enhancerDraft).trim()
+      const instructions = autoInstructionsRef.current.trim()
+      const lastLines = recentTerminalText(termRef.current, LAST_ENHANCER_LINES)
+      if (!draft) {
+        setSuggestionBusy(false)
+        setSuggestionErr('Type a draft prompt first')
+        return
+      }
+      const r = await window.gt.cheapLlm({
+        engine,
+        model,
+        cwd: choice.cwd || undefined,
+        maxTokens: 900,
+        temperature: 0.1,
+        timeoutMs: 18_000,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a prompt enhancer for an AI coding terminal. Improve the operator draft without changing intent. Fix grammar and typos, make it specific and actionable, preserve scope boundaries, and add concise clarification wording only where needed. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"enhanced prompt to paste and submit","why":"brief note"}]}. Return 1-3 options. Do not include markdown.',
+          },
+          {
+            role: 'user',
+            content:
+              `Engine being controlled: ${choice.engine}\nDirectory: ${choice.cwd || '(unknown)'}\n\n` +
+              (instructions
+                ? `Operator standing instructions/context for this terminal:\n${instructions}\n\n`
+                : '') +
+              `Rough draft prompt:\n${draft}\n\n` +
+              `Last ${LAST_ENHANCER_LINES} lines of terminal output, for wording only. Do not invent facts from it:\n\n` +
+              '```\n' +
+              lastLines +
+              '\n```',
+          },
+        ],
+      })
+      setSuggestionBusy(false)
+      if (!r.ok || !r.text) {
+        setSuggestionErr(r.error || 'Prompt enhancer unavailable')
+        return
+      }
+      try {
+        const parsed = parseAiReplies(r.text)
+        setSuggestions(parsed.length ? parsed : [{ label: 'Enhanced', prompt: draft }])
+      } catch {
+        setSuggestionErr('Prompt enhancer returned unreadable JSON')
+      }
+      return
+    }
     const r = await window.gt.cheapLlm({
       engine,
       model,
@@ -590,6 +681,17 @@ export function TerminalPane({
       setSuggestionErr('AI returned unreadable suggestions')
       if (!autoMode) setSuggestions(fallback)
     }
+  }
+  interceptEnhanceSubmitRef.current = (draft: string) => {
+    setSuggestionMode('enhance')
+    setSuggestionsDismissed(false)
+    setEnhancerDraft(draft)
+    try {
+      window.localStorage.setItem(`gt:prompt-enhancer:${sessionKey}`, draft)
+    } catch {
+      /* best effort */
+    }
+    void generateSuggestions('enhance', draft)
   }
   const selectedText = () => termRef.current?.getSelection().trim() || ''
   const agentEngine = (): Engine =>
@@ -718,6 +820,8 @@ export function TerminalPane({
     await reloadSnippets()
   }
   const showSuggestions = suggestionMode !== 'off' && !suggestionsDismissed
+  const showEnhanceModal = showSuggestions && suggestionMode === 'enhance'
+  const showBottomSuggestions = showSuggestions && suggestionMode !== 'enhance'
   const suggestionsPanelHeight = 'min(220px, 34vh)'
 
   useEffect(() => {
@@ -866,7 +970,7 @@ export function TerminalPane({
     <div className="relative h-full w-full overflow-hidden bg-[var(--gt-terminal-bg)]">
       <div
         className="absolute inset-x-0 top-0 overflow-hidden p-3"
-        style={{ bottom: showSuggestions ? suggestionsPanelHeight : 0 }}
+        style={{ bottom: showBottomSuggestions ? suggestionsPanelHeight : 0 }}
       >
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
@@ -911,8 +1015,8 @@ export function TerminalPane({
             <Sparkles size={13} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested replies</span>
           </div>
-          <div className="grid grid-cols-4 gap-1">
-            {(['off', 'deterministic', 'ai', 'auto'] as const).map((mode) => (
+          <div className="grid grid-cols-5 gap-1">
+            {(['off', 'deterministic', 'ai', 'enhance', 'auto'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => {
@@ -931,7 +1035,7 @@ export function TerminalPane({
           </div>
           <div className="mt-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-[10.5px] leading-4 text-zinc-500">
             AI uses standalone <span className="font-mono text-zinc-400">{suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}</span>.
-            Auto submits one reply with <span className="font-mono text-zinc-400">{suggestionSettings.autoEngine} {suggestionSettings.autoModel || 'default'}</span>.
+            Enhance catches Enter and uses that same engine to rewrite your draft before sending.
           </div>
           <label className="mt-2 block">
             <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -957,15 +1061,14 @@ export function TerminalPane({
           </label>
         </div>
       )}
-      {showSuggestions && (
+      {showBottomSuggestions && (
         <div
-          className="absolute inset-x-0 bottom-0 z-20 border-t border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-[0_-12px_28px_rgba(0,0,0,0.22)] backdrop-blur"
+          className="absolute inset-x-0 bottom-0 z-20 flex flex-col border-t border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-[0_-12px_28px_rgba(0,0,0,0.22)] backdrop-blur"
           style={{ height: suggestionsPanelHeight }}
         >
-          <div className="mb-2 flex items-center gap-2">
+          <div className="mb-2 flex shrink-0 items-center gap-2">
             <Sparkles size={13} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
-            <span className="text-[10.5px] text-zinc-600">1-5 to send</span>
             <span className="rounded bg-black/25 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-600">
               {suggestionMode === 'auto'
                 ? `Auto · ${suggestionSettings.autoEngine} ${suggestionSettings.autoModel || 'default'}`
@@ -996,40 +1099,165 @@ export function TerminalPane({
               <X size={13} strokeWidth={2} />
             </button>
           </div>
-          {suggestionBusy && suggestions.length === 0 ? (
-            <div className="grid gap-1.5 sm:grid-cols-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-8 animate-pulse rounded-md bg-white/5" />
-              ))}
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {suggestionBusy && suggestions.length === 0 ? (
+              <div className="grid gap-1.5 sm:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-8 animate-pulse rounded-md bg-white/5" />
+                ))}
+              </div>
+            ) : suggestionMode === 'auto' && suggestions.length === 0 ? (
+              <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
+                Auto mode will send the top model-generated reply when this terminal completes or needs attention.
+              </div>
+            ) : suggestions.length === 0 ? (
+              <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
+                Suggested replies stay here for this terminal. They refresh when the terminal needs attention, or you can refresh manually.
+              </div>
+            ) : (
+              <div className="grid gap-1.5 lg:grid-cols-2">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={`${s.label}-${i}`}
+                    onClick={() => runSuggestion(s.prompt)}
+                    title={s.prompt}
+                    className="group flex min-w-0 items-start gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
+                  >
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]">
+                      <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="mb-1 block text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
+                      <span className="block whitespace-pre-wrap break-words text-[10.5px] leading-4 text-zinc-500 group-hover:text-zinc-400">{s.prompt}</span>
+                      {s.why && <span className="mt-1 block text-[10px] leading-4 text-zinc-600">{s.why}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {showEnhanceModal && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm md:p-8">
+          <div className="flex h-[min(780px,100%)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl">
+            <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] px-4 py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Sparkles size={16} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-zinc-100">Enhance prompt</div>
+                  <div className="truncate text-[11px] text-zinc-500">
+                    {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'} rewrites your draft before it reaches {choice.engine}
+                  </div>
+                </div>
+                <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                  Enhance · {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}
+                </span>
+              </div>
+              {suggestionBusy && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-zinc-500">
+                  <Loader2 size={12} strokeWidth={2} className="animate-spin" />
+                  enhancing
+                </span>
+              )}
+              <button
+                onClick={() => generateSuggestions('enhance')}
+                disabled={suggestionBusy}
+                className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100 disabled:opacity-40"
+              >
+                Enhance
+              </button>
+              <button
+                onClick={() => setSuggestionsDismissed(true)}
+                title="Close enhancer"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              >
+                <X size={15} strokeWidth={2} />
+              </button>
             </div>
-          ) : suggestionMode === 'auto' && suggestions.length === 0 ? (
-            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
-              Auto mode will send the top model-generated reply when this terminal completes or needs attention.
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                  Rough prompt
+                </span>
+                <textarea
+                  value={enhancerDraft}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setEnhancerDraft(next)
+                    try {
+                      if (next.trim()) window.localStorage.setItem(`gt:prompt-enhancer:${sessionKey}`, next)
+                      else window.localStorage.removeItem(`gt:prompt-enhancer:${sessionKey}`)
+                    } catch {
+                      /* best effort */
+                    }
+                  }}
+                  placeholder="Type here, or type directly in the terminal and press Enter while Enhance mode is active."
+                  rows={5}
+                  spellCheck
+                  className="max-h-64 min-h-32 w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/25 px-3 py-2.5 text-[14px] leading-6 text-zinc-100 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+                />
+              </label>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
+                <span>
+                  Auto instructions: <span className="text-zinc-400">{autoInstructions.trim() || DEFAULT_AUTO_INSTRUCTIONS}</span>
+                </span>
+                {suggestionErr && <span className="text-[var(--gt-yellow)]">{suggestionErr}</span>}
+              </div>
+
+              <div className="mt-4">
+                {suggestionBusy && suggestions.length === 0 ? (
+                  <div className="flex min-h-44 flex-col items-center justify-center rounded-lg border border-[var(--gt-border)] bg-black/20 px-4 py-8 text-center">
+                    <Loader2 size={26} strokeWidth={2} className="animate-spin text-[var(--gt-accent-light)]" />
+                    <div className="mt-3 text-[13px] font-semibold text-zinc-200">Enhancing prompt</div>
+                    <div className="mt-1 text-[11px] text-zinc-600">
+                      Asking {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'} for stronger prompt options.
+                    </div>
+                  </div>
+                ) : suggestions.length === 0 ? (
+                  <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-4 py-4 text-[13px] leading-6 text-zinc-500">
+                    Type in the terminal and press Enter to catch the draft, or edit the rough prompt here and click Enhance. Full enhanced prompts will appear here with Input and Input + Enter actions.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {suggestions.map((s, i) => (
+                      <div
+                        key={`${s.label}-${i}`}
+                        className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-4"
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[11px] font-bold tabular-nums text-[var(--gt-accent-light)]">
+                            {i + 1}
+                          </span>
+                          <span className="text-[13px] font-semibold text-zinc-100">{s.label}</span>
+                        </div>
+                        <div className="whitespace-pre-wrap break-words text-[14px] leading-6 text-zinc-300">
+                          {s.prompt}
+                        </div>
+                        {s.why && <div className="mt-2 text-[11.5px] leading-5 text-zinc-600">{s.why}</div>}
+                        <div className="mt-3 flex flex-wrap justify-end gap-2">
+                          <button
+                            onClick={() => insertSuggestion(s.prompt)}
+                            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                          >
+                            Input
+                          </button>
+                          <button
+                            onClick={() => runSuggestion(s.prompt)}
+                            className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+                          >
+                            Input + Enter
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : suggestions.length === 0 ? (
-            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
-              Suggested replies stay here for this terminal. They refresh when the terminal needs attention, or you can refresh manually.
-            </div>
-          ) : (
-            <div className="grid max-h-[calc(100%-28px)] gap-1.5 overflow-y-auto lg:grid-cols-2">
-              {suggestions.map((s, i) => (
-                <button
-                  key={`${s.label}-${i}`}
-                  onClick={() => runSuggestion(s.prompt)}
-                  title={s.prompt}
-                  className="group flex min-w-0 items-start gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
-                >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]">
-                    <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="mb-1 block text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
-                    <span className="block whitespace-pre-wrap break-words text-[10.5px] leading-4 text-zinc-500 group-hover:text-zinc-400">{s.prompt}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
       {searchOpen && (

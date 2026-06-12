@@ -12,6 +12,7 @@ import {
   GitBranch,
   Folder,
   File,
+  Rows3,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
@@ -19,6 +20,7 @@ import { Badge } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
+import { DigestView } from './DigestView'
 import { groupJobsByStage } from '../lib/ci'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
 import type { MrDetail, Finding, CiInfo } from '../lib/types'
@@ -199,7 +201,7 @@ function collectDirPaths(dir: DiffTreeDir): string[] {
   )
 }
 
-function FileDiff({ file, mode }: { file: any; mode: 'unified' | 'split' }) {
+export function FileDiff({ file, mode }: { file: any; mode: 'unified' | 'split' }) {
   const langId = langOf(file.to || file.from || '')
   return (
     <div className="font-mono text-[12px]">
@@ -463,6 +465,21 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
         {mr.reviewMeta && (
           <Badge tone={testTone(mr.reviewMeta.testStatus)}>tests {mr.reviewMeta.testStatus}</Badge>
         )}
+        {mr.reviewMeta?.riskTier && mr.reviewMeta.riskTier !== 'unscored' && (
+          <Badge
+            tone={
+              mr.reviewMeta.riskTier === 'high'
+                ? 'red'
+                : mr.reviewMeta.riskTier === 'medium'
+                  ? 'yellow'
+                  : 'green'
+            }
+          >
+            {mr.reviewMeta.riskScore != null
+              ? `risk ${mr.reviewMeta.riskScore}/5`
+              : `${mr.reviewMeta.riskTier} risk`}
+          </Badge>
+        )}
         {mr.reviewMeta?.stale && (
           <Badge tone="warn">
             <TriangleAlert size={9} strokeWidth={2.5} />
@@ -554,9 +571,9 @@ export function MrDetailView({
 }) {
   const [mr, setMr] = useState<MrDetail | null | undefined>(undefined)
   const [ci, setCi] = useState<CiInfo | null | undefined>(undefined)
-  const [view, setView] = useState<'overview' | 'review' | 'findings' | 'suggestions' | 'diff'>(
-    'overview',
-  )
+  const [view, setView] = useState<
+    'overview' | 'review' | 'findings' | 'suggestions' | 'diff' | 'digest'
+  >('overview')
   const [diff, setDiff] = useState<string | null>(null)
 
   useEffect(() => {
@@ -567,7 +584,8 @@ export function MrDetailView({
     window.gt.getMrCi(iid).then(setCi)
   }, [iid])
   useEffect(() => {
-    if (view === 'diff' && diff === null) {
+    // Both the Diff and Digest tabs render the real green/red diff.
+    if ((view === 'diff' || view === 'digest') && diff === null) {
       setDiff('')
       window.gt.getMrDiff(iid).then(setDiff)
     }
@@ -639,6 +657,13 @@ export function MrDetailView({
           </>,
         )}
         {sub(
+          'digest',
+          <>
+            <Rows3 size={13} strokeWidth={2} />
+            Digest
+          </>,
+        )}
+        {sub(
           'review',
           <>
             <ScanSearch size={13} strokeWidth={2} />
@@ -676,6 +701,7 @@ export function MrDetailView({
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
         )}
         {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} />}
+        {view === 'digest' && <DigestView iid={iid} short={mr.artifactShortSha} diff={diff} />}
       </div>
     </div>
   )

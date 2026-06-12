@@ -16,9 +16,12 @@ extraResources:
     to: terminal-cli
   - from: bin/terminal-mcp-server
     to: terminal-mcp-server
-# node-pty ships a native .node binary that can't live inside the asar archive.
+# node-pty and better-sqlite3 ship native .node binaries that can't live inside
+# the asar archive — unpack them so they load at runtime.
 asarUnpack:
   - '**/node_modules/node-pty/**'
+  - '**/node_modules/better-sqlite3/**'
+  - '**/node_modules/bindings/**'
 mac:
   target:
     - dmg

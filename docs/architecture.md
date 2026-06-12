@@ -80,7 +80,10 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   default; `''` resolves at read time) + legacy-shape migration. `env.ts`
   detects which of `claude`/`codex`/`gh`/`glab` are installed + authed.
 - `agents.ts` — on-demand + scheduled + factory agent runs, each in its own git
-  worktree; run records stream over IPC and persist for the Agents tab.
+  worktree; run records stream over IPC and persist for the Agents/Runs tabs.
+  Completed in-process runs also write deterministic evaluation metadata
+  (configured checks, status summary, judge-not-run state) and optional lineage
+  back to a ticket or PR.
 - `events.ts`, `hitl.ts`, `factory-health.ts`, `cycle.ts`, `schedules.ts` +
   `cron*.ts` + `launchd.ts`, `telegram*.ts` — the software-factory layer, below.
 
@@ -117,6 +120,22 @@ sparkline, top repos. **Cycle time** (`cycle.ts`, pure + unit-tested) joins a
 ticket's events by `ref` (`ticket-filed{ticket}` → `pr-opened{ticket,pr}` →
 `pr-merged{pr}`) into median time-to-merge, the two stage splits, and a 7-day
 funnel.
+
+**Run lineage and evaluation**: `cron-runs.ts` normalizes agent, cron,
+background, and terminal-session runs into one `UnifiedRun` shape. Agent runs may
+carry `trace` metadata (`ticketSlug`, `ticketRef`, `prIid`, source branch) and
+an `evaluation` summary. The Runs tab renders both ahead of the raw log; the
+Tickets tab uses the same run id to embed the linked log and evaluation.
+
+## Product hierarchy
+
+Tabs are still auto-discovered, but default visibility is curated in
+`src/renderer/src/lib/tabVisibility.ts`. Primary factory surfaces stay visible:
+Tickets, MRs/PRs, Agents, Runs, Schedules, CI, Browser, Observability, and
+Files. Secondary surfaces — Activity, AgentView, Docs, Help, Notes/Knowledge
+Base, Reports, Sessions, and Agent Config — are hidden by default and can be
+restored from Settings → Tabs. This keeps the default cockpit focused while
+preserving the extensible "folder = tab" model.
 
 **Telegram** (`telegram*.ts`): native Bot API (token + a single authorized
 chat-id as the auth boundary) for notifications and inbound AFK commands, with

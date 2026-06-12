@@ -18,7 +18,14 @@ export function PluginWidget({
 
   useEffect(() => {
     let alive = true
+    let inFlight = false
+    let queued = false
     const tick = async () => {
+      if (inFlight) {
+        queued = true
+        return
+      }
+      inFlight = true
       try {
         const next = await plugin.poll(window.gt, prevRef.current as never)
         if (!alive) return
@@ -26,6 +33,12 @@ export function PluginWidget({
         setData(next)
       } catch {
         /* transient read error — keep last good data */
+      } finally {
+        inFlight = false
+        if (alive && queued) {
+          queued = false
+          void tick()
+        }
       }
     }
     // Defer the first poll by one frame so the cockpit mount (8+ widgets)

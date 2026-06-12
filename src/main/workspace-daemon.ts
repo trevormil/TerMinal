@@ -1,11 +1,11 @@
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
-import { listTickets, getTicket, createTicket, updateTicket, type NewTicket, type Ticket } from './backlog'
+import type { NewTicket, Ticket, TicketPatch } from './backlog'
 import { listCiJobs, listCiRuns, fetchCiLog, type CiJobsResult, type CiListResult, type CiLogResult } from './ci'
 import { listDocs, readDoc, type DocsTree } from './docs'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry, type Entry, type ReadResult, type SearchHit } from './files'
 import { forgeFor, type CiInfo } from './forge'
-import { listMrs, getMr, getMrDiff, getMrCi, mergeMr, type MrDetail, type MrListResult } from './mrs'
+import { listMrs, getMr, getMrDiff, getDigest, getMrCi, mergeMr, type MrDetail, type MrListResult, type DigestArtifact } from './mrs'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { repoForCwd, repoRootOf, gitStatus, type GitStatus } from './repo'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions, type ProjectSession } from './sessions'
@@ -13,6 +13,7 @@ import { listSkills, type SkillInfo } from './skills'
 import { workspaceSearch, type WorkspaceSearchKind, type WorkspaceSearchResponse } from './workspace-search'
 import { hasAgents as repoHasAgents } from './agents'
 import { hasProjectArea } from './project-layout'
+import { createRepoTicket, getRepoTicket, listRepoTickets, repoTicketProvider, updateRepoTicket, type TicketProviderKind } from './ticket-provider'
 import {
   remoteCi,
   remoteDocs,
@@ -40,6 +41,8 @@ export type DaemonContext = {
   forgeLabel: 'PR' | 'MR'
   forgeSym: '#' | '!'
   hasBacklog: boolean
+  ticketProvider: TicketProviderKind
+  ticketProviderLabel: string
   hasSessions: boolean
   hasAgents: boolean
   remote?: true
@@ -68,11 +71,12 @@ export type WorkspaceDaemon = {
   ticketsList(): Promise<Ticket[]> | Ticket[]
   ticketGet(slug: string): Promise<Ticket | null> | Ticket | null
   ticketCreate(input: NewTicket): Promise<Ticket> | Ticket
-  ticketUpdate(slug: string, patch: { status?: string; priority?: string }): Promise<boolean> | boolean
+  ticketUpdate(slug: string, patch: TicketPatch): Promise<boolean> | boolean
   skillsList(): Promise<SkillInfo[]> | SkillInfo[]
   mrsList(): Promise<MrListResult> | MrListResult
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
   mrDiff(iid: number): Promise<string> | string
+  digestGet(iid: number, short?: string): Promise<DigestArtifact | null> | DigestArtifact | null
   mrCi(iid: number): Promise<CiInfo | null> | CiInfo | null
   mrMerge(iid: number): Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string }
   ciList(limit?: number): Promise<CiListResult>
@@ -135,6 +139,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
       const repoRoot = root()
       const repo = repoForCwd(currentCwd)
       const forge = forgeFor(repoRoot)
+      const ticketProvider = repoTicketProvider(repoRoot)
       return {
         cwd: currentCwd,
         sessionId,
@@ -144,7 +149,9 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
         forgeKind: forge.kind,
         forgeLabel: forge.label,
         forgeSym: forge.sym,
-        hasBacklog: !!repoRoot && hasProjectArea(repoRoot, 'backlog'),
+        hasBacklog: !!repoRoot && (hasProjectArea(repoRoot, 'backlog') || ticketProvider.kind !== 'local'),
+        ticketProvider: ticketProvider.kind,
+        ticketProviderLabel: ticketProvider.label,
         hasSessions: repoHasSessions(repoRoot),
         hasAgents: repoHasAgents(repoRoot),
       } as DaemonContext
@@ -154,14 +161,15 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     docsGet: (relPath: string) => readDoc(root() || '', relPath),
     sessionsList: () => listProjectSessions(root()),
     sessionGet: (slug: string) => getProjectSession(root(), slug),
-    ticketsList: () => listTickets(root()),
-    ticketGet: (slug: string) => getTicket(root(), slug),
-    ticketCreate: (input: NewTicket) => createTicket(root(), input),
-    ticketUpdate: (slug: string, patch: { status?: string; priority?: string }) => updateTicket(root(), slug, patch),
+    ticketsList: () => listRepoTickets(root()),
+    ticketGet: (slug: string) => getRepoTicket(root(), slug),
+    ticketCreate: (input: NewTicket) => createRepoTicket(root(), input),
+    ticketUpdate: (slug: string, patch: TicketPatch) => updateRepoTicket(root(), slug, patch),
     skillsList: () => listSkills(root()),
     mrsList: () => listMrs(root()),
     mrGet: (iid: number) => getMr(root(), iid),
     mrDiff: (iid: number) => getMrDiff(root(), iid),
+    digestGet: (iid: number, short?: string) => getDigest(root(), iid, short),
     mrCi: (iid: number) => getMrCi(root(), iid),
     mrMerge: (iid: number) => mergeMr(root(), iid),
     ciList: (limit?: number) => listCiRuns(root(), limit),
@@ -209,6 +217,8 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
         forgeLabel: p?.forgeLabel || 'PR',
         forgeSym: p?.forgeSym || '#',
         hasBacklog: !!p?.hasBacklog,
+        ticketProvider: 'local',
+        ticketProviderLabel: 'Local backlog',
         hasSessions: !!p?.hasSessions,
         hasAgents: true,
         capabilities: remoteCapabilities(),
@@ -222,11 +232,13 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
     ticketsList: () => remoteTickets.list(remote),
     ticketGet: (slug: string) => remoteTickets.get(remote, slug),
     ticketCreate: (input: NewTicket) => remoteTickets.create(remote, input),
-    ticketUpdate: (slug: string, patch: { status?: string; priority?: string }) => remoteTickets.update(remote, slug, patch),
+    ticketUpdate: (slug: string, patch: TicketPatch) => remoteTickets.update(remote, slug, patch),
     skillsList: () => [],
     mrsList: () => remoteMrs.list(remote),
     mrGet: (iid: number) => remoteMrs.get(remote, iid),
     mrDiff: (iid: number) => remoteMrs.diff(remote, iid),
+    digestGet: () => null, // digest reads local artifact files; not wired over ssh yet
+
     mrCi: (iid: number) => remoteMrs.ci(remote, iid),
     mrMerge: (iid: number) => remoteMrs.merge(remote, iid),
     ciList: (limit?: number) => remoteCi.list(remote, limit),

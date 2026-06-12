@@ -1,6 +1,6 @@
 ---
 name: test-suite
-description: "Delegate an ad-hoc test run to Codex via codex exec and report results in chat (no artifact written). The cheap inner-loop step between commits; /code-review is the checkpoint. Use when the user runs /test-suite or asks for an ad-hoc test run."
+description: "Delegate an ad-hoc test run to Codex via codex exec and report results in chat (no artifact written). The cheap inner-loop step between commits; the code-review agent is the checkpoint. Use when the user runs /test-suite or asks for an ad-hoc test run."
 ---
 
 # /test-suite — Run tests, report in chat
@@ -9,7 +9,7 @@ Ad-hoc test runs. Detects the runner per [`.agents/testing.md`](../../../.agents
 runs the suite once, and reports results in chat. **Writes no artifact.**
 
 This is the **cheap inner-loop step**: run it between commits while iterating to
-confirm tests stay green, then run `/code-review` at a checkpoint for the full
+confirm tests stay green, then run the `code-review` agent at a checkpoint for the full
 six-axis review (which runs tests itself as its gate and embeds the result in
 the `.reviews/` artifact). Use `/test-suite` when you want to know whether tests
 pass *without* paying for a full review.
@@ -44,7 +44,7 @@ Run directly in Claude only if `codex` is unavailable or the user asks.
 
 ## What NOT to do
 
-- **Don't write artifact files.** That's `/code-review`'s job (the combined
+- **Don't write artifact files.** That's the `code-review` agent's job (the combined
   `.reviews/` artifact).
 - **Don't edit test files to make them pass.** Failing tests become findings.
 - **Don't mark `pass` when tests were skipped due to install failures** — that's

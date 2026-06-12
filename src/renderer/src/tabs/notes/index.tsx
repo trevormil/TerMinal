@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen,
+  Database,
   ExternalLink,
   File,
   FileText,
@@ -10,10 +11,12 @@ import {
   Link2,
   NotebookText,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Tags,
   Trash2,
+  Upload,
   Video,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
@@ -24,6 +27,8 @@ import type {
   KnowledgeCategory,
   KnowledgeItem,
   KnowledgeItemKind,
+  KnowledgeRagSearchResult,
+  KnowledgeRagStatus,
   KnowledgeScope,
   Tab,
   TabContext,
@@ -38,6 +43,7 @@ const kindMeta: Record<KnowledgeItemKind, { label: string; Icon: typeof FileText
   image: { label: 'Image', Icon: Image, hint: 'Remote image URL or local image path' },
   video: { label: 'Video', Icon: Video, hint: 'YouTube/Vimeo/direct video URL or local path' },
   file: { label: 'File', Icon: File, hint: 'Local file path or remote document URL' },
+  rag: { label: 'RAG', Icon: Database, hint: 'Local vector index powered by knowledge-rag MCP' },
 }
 
 const slug = (input: string) =>
@@ -106,6 +112,7 @@ function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
     thumbnailUrl: '',
     faviconUrl: '',
     siteName: '',
+    rag: kind === 'rag' ? { category: slug(categoryId), command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], hybridAlpha: 0.3, maxResults: 5 } : undefined,
     tags: [],
     createdAt: ts,
     updatedAt: ts,
@@ -128,6 +135,13 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   const [previewMode, setPreviewMode] = useState<PreviewMode>('split')
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewErr, setPreviewErr] = useState('')
+  const [ragBusy, setRagBusy] = useState(false)
+  const [ragStatus, setRagStatus] = useState<KnowledgeRagStatus | null>(null)
+  const [ragSearch, setRagSearch] = useState<KnowledgeRagSearchResult | null>(null)
+  const [ragQuery, setRagQuery] = useState('')
+  const [ragDocPath, setRagDocPath] = useState('')
+  const [ragDocContent, setRagDocContent] = useState('')
+  const [ragUrl, setRagUrl] = useState('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scratchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestKb = useRef(kb)
@@ -168,6 +182,15 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     },
     [],
   )
+
+  useEffect(() => {
+    setRagStatus(null)
+    setRagSearch(null)
+    setRagQuery('')
+    setRagDocPath('')
+    setRagDocContent('')
+    setRagUrl('')
+  }, [activeItemId])
 
   const persist = (next: KnowledgeBase, immediate = false) => {
     setKb(next)
@@ -266,6 +289,58 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     }, true)
   }
 
+  const updateRagConfig = (patch: NonNullable<KnowledgeItem['rag']>, immediate = false) => {
+    if (!activeItem) return
+    updateItem({ rag: { ...(activeItem.rag || {}), ...patch } }, immediate)
+  }
+
+  const runRag = async (fn: () => Promise<KnowledgeRagStatus | KnowledgeRagSearchResult>) => {
+    setRagBusy(true)
+    try {
+      const result = await fn()
+      if ('results' in result) setRagSearch(result)
+      else setRagStatus(result)
+    } finally {
+      setRagBusy(false)
+    }
+  }
+
+  const refreshRagStatus = (item: KnowledgeItem) =>
+    runRag(() => window.gt.knowledge.ragStatus(scope, item))
+
+  const reindexRag = (item: KnowledgeItem, fullRebuild = false) =>
+    runRag(() => window.gt.knowledge.ragReindex(scope, item, fullRebuild))
+
+  const addRagDocument = (item: KnowledgeItem) => {
+    if (!ragDocContent.trim()) return
+    runRag(() => window.gt.knowledge.ragAddDocument(scope, item, ragDocContent, ragDocPath || undefined))
+  }
+
+  const addRagUrl = (item: KnowledgeItem) => {
+    if (!ragUrl.trim()) return
+    runRag(() => window.gt.knowledge.ragAddUrl(scope, item, ragUrl, item.title))
+  }
+
+  const searchRag = (item: KnowledgeItem) => {
+    if (!ragQuery.trim()) return
+    runRag(() => window.gt.knowledge.ragSearch(scope, item, ragQuery))
+  }
+
+  const statValue = (stats: unknown, keys: string[]) => {
+    const s = stats && typeof stats === 'object' ? (stats as Record<string, any>) : {}
+    const nested = s.stats && typeof s.stats === 'object' ? s.stats : s
+    for (const key of keys) {
+      const value = nested[key]
+      if (value !== undefined && value !== null) return String(value)
+    }
+    return '0'
+  }
+
+  const resultField = (result: unknown, key: string) =>
+    result && typeof result === 'object' && typeof (result as Record<string, unknown>)[key] === 'string'
+      ? ((result as Record<string, string>)[key])
+      : ''
+
   const scopeButton = (next: KnowledgeScope, label: string, Icon: typeof Globe, disabled = false) => (
     <button
       disabled={disabled}
@@ -292,6 +367,54 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
 
   const itemPreview = (item: KnowledgeItem) => {
     const src = mediaSrc(item)
+    if (item.kind === 'rag') {
+      return (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <Database size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <div className="text-[13px] font-semibold text-zinc-100">{item.title || 'RAG source'}</div>
+            </div>
+            <div className="text-[12px] leading-relaxed text-zinc-500">
+              Local Knowledge RAG index for this category. It stores documents on disk and searches them through the upstream MCP server.
+            </div>
+            <div className="mt-3 grid gap-2 text-[11px] text-zinc-500 lg:grid-cols-3">
+              <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
+                <div className="text-zinc-600">Documents</div>
+                <div className="text-[13px] font-semibold text-zinc-200">{ragStatus ? statValue(ragStatus.stats, ['total_documents', 'indexed', 'documents']) : '0'}</div>
+              </div>
+              <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
+                <div className="text-zinc-600">Chunks</div>
+                <div className="text-[13px] font-semibold text-zinc-200">{ragStatus ? statValue(ragStatus.stats, ['total_chunks', 'chunks_added']) : '0'}</div>
+              </div>
+              <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
+                <div className="text-zinc-600">Root</div>
+                <div className="truncate font-mono text-[10.5px] text-zinc-300">{ragStatus?.rootDir || item.rag?.rootDir || 'auto'}</div>
+              </div>
+            </div>
+            {ragStatus?.error && <div className="mt-2 text-[11px] text-amber-400">{ragStatus.error}</div>}
+          </div>
+          {ragSearch && (
+            <div className="rounded-lg border border-[var(--gt-border)] bg-black/15">
+              <div className="border-b border-[var(--gt-border)] px-3 py-2 text-[11px] font-semibold text-zinc-300">
+                {ragSearch.ok ? `${ragSearch.results.length} results for "${ragSearch.query}"` : ragSearch.error}
+              </div>
+              <div className="space-y-2 p-3">
+                {ragSearch.results.map((result, i) => (
+                  <div key={i} className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+                    <div className="mb-1 flex items-center gap-2 text-[11px] text-zinc-600">
+                      <span className="font-mono text-zinc-500">#{i + 1}</span>
+                      <span className="truncate">{resultField(result, 'source') || resultField(result, 'filename') || 'RAG result'}</span>
+                    </div>
+                    <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300">{resultField(result, 'content') || JSON.stringify(result, null, 2)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
     if (item.kind === 'markdown') {
       return <Markdown>{item.content || ''}</Markdown>
     }
@@ -386,7 +509,148 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           />
         </div>
       </div>
-      {item.kind !== 'markdown' && (
+      {item.kind === 'rag' && (
+        <div className="shrink-0 space-y-3 border-b border-[var(--gt-border)] p-3">
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_120px_90px_90px]">
+            <input
+              value={item.rag?.rootDir || ''}
+              onChange={(e) => updateRagConfig({ rootDir: e.target.value })}
+              onBlur={() => updateItem({}, true)}
+              placeholder="auto workspace path"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={item.rag?.category || ''}
+              onChange={(e) => updateRagConfig({ category: e.target.value })}
+              onBlur={() => updateItem({}, true)}
+              placeholder="category"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={String(item.rag?.hybridAlpha ?? 0.3)}
+              onChange={(e) => updateRagConfig({ hybridAlpha: Number(e.target.value) })}
+              onBlur={() => updateItem({}, true)}
+              placeholder="alpha"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={String(item.rag?.maxResults ?? 5)}
+              onChange={(e) => updateRagConfig({ maxResults: Number(e.target.value) })}
+              onBlur={() => updateItem({}, true)}
+              placeholder="results"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+          </div>
+          <details>
+            <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">Advanced MCP command</summary>
+            <div className="mt-2 grid gap-2 lg:grid-cols-[160px_minmax(0,1fr)]">
+              <input
+                value={item.rag?.command || 'uvx'}
+                onChange={(e) => updateRagConfig({ command: e.target.value })}
+                onBlur={() => updateItem({}, true)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+              />
+              <input
+                value={(item.rag?.args || ['--python', '3.11', 'knowledge-rag==3.9.0']).join(' ')}
+                onChange={(e) => updateRagConfig({ args: e.target.value.split(/\s+/).filter(Boolean) })}
+                onBlur={() => updateItem({}, true)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+              />
+            </div>
+          </details>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => refreshRagStatus(item)}
+              disabled={ragBusy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <Database size={12} strokeWidth={2} />
+              Status
+            </button>
+            <button
+              onClick={() => reindexRag(item)}
+              disabled={ragBusy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <RefreshCw size={12} strokeWidth={2} className={ragBusy ? 'animate-spin' : ''} />
+              Reindex
+            </button>
+            <button
+              onClick={() => reindexRag(item, true)}
+              disabled={ragBusy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              Full rebuild
+            </button>
+            <button
+              onClick={() => ragStatus?.rootDir && window.gt.openInEditor(ragStatus.rootDir)}
+              disabled={!ragStatus?.rootDir}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <ExternalLink size={12} strokeWidth={2} />
+              Open
+            </button>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              value={ragQuery}
+              onChange={(e) => setRagQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') searchRag(item)
+              }}
+              placeholder="Search this RAG..."
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <button
+              onClick={() => searchRag(item)}
+              disabled={ragBusy || !ragQuery.trim()}
+              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <Search size={12} strokeWidth={2} />
+              Search
+            </button>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              value={ragUrl}
+              onChange={(e) => setRagUrl(e.target.value)}
+              placeholder="https://docs.example.com/page"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <button
+              onClick={() => addRagUrl(item)}
+              disabled={ragBusy || !ragUrl.trim()}
+              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <Upload size={12} strokeWidth={2} />
+              Add URL
+            </button>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_160px_auto]">
+            <textarea
+              value={ragDocContent}
+              onChange={(e) => setRagDocContent(e.target.value)}
+              placeholder="Paste markdown or text to index..."
+              className="min-h-20 resize-y rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-2 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={ragDocPath}
+              onChange={(e) => setRagDocPath(e.target.value)}
+              placeholder="category/file.md"
+              className="h-[33px] rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <button
+              onClick={() => addRagDocument(item)}
+              disabled={ragBusy || !ragDocContent.trim()}
+              className="inline-flex h-[33px] items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <Upload size={12} strokeWidth={2} />
+              Add text
+            </button>
+          </div>
+        </div>
+      )}
+      {item.kind !== 'markdown' && item.kind !== 'rag' && (
         <div className="shrink-0 border-b border-[var(--gt-border)] p-3">
         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <input
@@ -448,6 +712,8 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               <div className="min-h-0 w-1/2 overflow-y-auto p-5">{itemPreview(item)}</div>
             </div>
           )
+        ) : item.kind === 'rag' ? (
+          <div className="h-full overflow-y-auto p-5">{itemPreview(item)}</div>
         ) : (
           <div className="h-full overflow-y-auto p-5">{itemPreview(item)}</div>
         )}

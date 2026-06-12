@@ -14,6 +14,12 @@ const plugin: Plugin<MrSummary> = {
   render: (d) => {
     if (!d) return null
     const title = `Open ${d.label}s`
+    if (!d.ok)
+      return (
+        <Card icon={GitPullRequest} title={title}>
+          <Empty>{d.error || `${d.label} summary unavailable`}</Empty>
+        </Card>
+      )
     if (d.open === 0)
       return (
         <Card icon={GitPullRequest} title={title}>

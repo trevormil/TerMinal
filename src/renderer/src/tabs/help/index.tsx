@@ -147,8 +147,8 @@ function HelpTab(_props: { ctx: TabContext }) {
             <LoopStep n={4} icon={FlaskConical} cmd="/test-suite">
               The cheap inner loop between commits: run tests, report to chat, no artifact.
             </LoopStep>
-            <LoopStep n={5} icon={ScanSearch} cmd="/code-review">
-              The checkpoint: Codex runs the suite (the gate), scores six axes, and writes one combined artifact
+            <LoopStep n={5} icon={ScanSearch} cmd="code-review agent">
+              The checkpoint: the reviewer runs the suite (the gate), scores six axes, and writes one combined artifact
               to <code className="font-mono">.TerMinal/reviews/</code>. Runs in the background — keep working.
             </LoopStep>
             <LoopStep n={6} icon={GitMerge} cmd="you merge">
@@ -176,8 +176,8 @@ function HelpTab(_props: { ctx: TabContext }) {
             <SkillCard cmd="/test-suite" when="between commits">
               Ad-hoc Codex test run reported to chat — the fast inner loop.
             </SkillCard>
-            <SkillCard cmd="/code-review" when="a PR is ready">
-              Codex: tests-as-gate + six-axis score + findings, written to{' '}
+            <SkillCard cmd="code-review agent" when="a PR is ready">
+              Tests-as-gate + six-axis score + findings, written to{' '}
               <code className="font-mono">.TerMinal/reviews/</code>.
             </SkillCard>
             <SkillCard cmd="/check" when="weekly / on cadence">
@@ -314,7 +314,7 @@ function HelpTab(_props: { ctx: TabContext }) {
               The overall score is informational. You do the merge.
             </Rule>
             <Rule icon={FlaskConical} title="TDD gate">
-              Write the failing test before the code. <code className="font-mono">/code-review</code> blocks on red
+              Write the failing test before the code. The <code className="font-mono">code-review</code> agent blocks on red
               tests — no scoring happens until the suite is green.
             </Rule>
             <Rule icon={Layers} title="Stacked MRs">
@@ -349,7 +349,7 @@ function HelpTab(_props: { ctx: TabContext }) {
               open PR.
             </li>
             <li>
-              Run <code className="font-mono text-[var(--gt-accent-light)]">/code-review</code> when ready; fix
+              Run the <code className="font-mono text-[var(--gt-accent-light)]">code-review</code> agent when ready; fix
               findings until it hits the bar.
             </li>
             <li>

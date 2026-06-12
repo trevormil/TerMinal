@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
-import { spawn as cpSpawn } from 'node:child_process'
+import { spawn as cpSpawn, type ChildProcess } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -33,17 +33,218 @@ function projectTemplateSource(marker: string): TemplateSource | { error: string
   })
 }
 
-import { readTranscriptStats, readHarnessTdd, listSessions, findSessionFile, readSessionTasks, lastAssistantTurn } from './data'
+type AgentViewUpstreamStatus = {
+  ok: boolean
+  running: boolean
+  starting: boolean
+  url: string
+  apiUrl: string
+  repoRoot: string
+  error?: string
+  log?: string
+}
+
+const AGENTVIEW_URL = 'http://127.0.0.1:5173'
+const AGENTVIEW_API_URL = 'http://127.0.0.1:4317'
+let agentViewApiProc: ChildProcess | null = null
+let agentViewWebProc: ChildProcess | null = null
+let agentViewInstallProc: ChildProcess | null = null
+let agentViewStarting: Promise<AgentViewUpstreamStatus> | null = null
+let agentViewLog = ''
+
+function appendAgentViewLog(label: string, chunk: unknown) {
+  const text = String(chunk || '')
+  if (!text) return
+  agentViewLog = `${agentViewLog}${text
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => `[${label}] ${line}`)
+    .join('\n')}\n`.slice(-12_000)
+}
+
+function agentViewRepoRoot(): string {
+  const terminalRoot = sourceCheckoutRoot(join('src', 'main', 'index.ts')) || join(moduleDir, '..', '..')
+  const candidates = [
+    process.env.AGENTVIEW_REPO || '',
+    join(terminalRoot, 'vendor', 'agentview'),
+    join(homedir(), 'CompSci', 'gauntlet', 'TerMinal', 'vendor', 'agentview'),
+    join(homedir(), 'CompSci', 'gauntlet', 'agentview'),
+    join(homedir(), 'CompSci', 'gauntlet', '.scratch', 'agentview-fresh'),
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, 'package.json')) && existsSync(join(candidate, 'src', 'frontend', 'App.tsx'))) return candidate
+  }
+  return ''
+}
+
+async function urlOk(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 900)
+    const res = await fetch(url, { signal: controller.signal })
+    clearTimeout(t)
+    return res.ok || res.status < 500
+  } catch {
+    return false
+  }
+}
+
+async function waitForUrl(url: string, timeoutMs = 20_000): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (await urlOk(url)) return true
+    await new Promise((resolve) => setTimeout(resolve, 350))
+  }
+  return false
+}
+
+function spawnAgentViewProcess(repoRoot: string, script: 'api' | 'dev'): ChildProcess {
+  const child = cpSpawn('bun', ['run', script], {
+    cwd: repoRoot,
+    env: { ...process.env, FORCE_COLOR: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  child.stdout?.on('data', (chunk) => appendAgentViewLog(script, chunk))
+  child.stderr?.on('data', (chunk) => appendAgentViewLog(script, chunk))
+  child.on('exit', (code, signal) => {
+    appendAgentViewLog(script, `exited code=${code ?? ''} signal=${signal ?? ''}`)
+    if (script === 'api') agentViewApiProc = null
+    else agentViewWebProc = null
+  })
+  return child
+}
+
+function runAgentViewInstall(repoRoot: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (existsSync(join(repoRoot, 'node_modules'))) {
+      resolve(true)
+      return
+    }
+    appendAgentViewLog('install', 'node_modules missing; running npm ci from upstream package-lock.json')
+    const child = cpSpawn('npm', ['ci'], {
+      cwd: repoRoot,
+      env: { ...process.env, FORCE_COLOR: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    agentViewInstallProc = child
+    child.stdout?.on('data', (chunk) => appendAgentViewLog('install', chunk))
+    child.stderr?.on('data', (chunk) => appendAgentViewLog('install', chunk))
+    child.on('exit', (code, signal) => {
+      appendAgentViewLog('install', `exited code=${code ?? ''} signal=${signal ?? ''}`)
+      agentViewInstallProc = null
+      resolve(code === 0)
+    })
+    child.on('error', (error) => {
+      appendAgentViewLog('install', error.message)
+      agentViewInstallProc = null
+      resolve(false)
+    })
+  })
+}
+
+async function agentViewUpstreamStatus(): Promise<AgentViewUpstreamStatus> {
+  const repoRoot = agentViewRepoRoot()
+  const running = (await urlOk(AGENTVIEW_URL)) && (await urlOk(`${AGENTVIEW_API_URL}/api/health`))
+  return {
+    ok: !!repoRoot,
+    running,
+    starting: !!agentViewStarting,
+    url: AGENTVIEW_URL,
+    apiUrl: AGENTVIEW_API_URL,
+    repoRoot,
+    error: repoRoot ? undefined : 'AgentView checkout not found. Initialize vendor/agentview or set AGENTVIEW_REPO.',
+    log: agentViewLog,
+  }
+}
+
+async function startAgentViewUpstream(): Promise<AgentViewUpstreamStatus> {
+  if (agentViewStarting) return agentViewStarting
+  agentViewStarting = (async () => {
+    const repoRoot = agentViewRepoRoot()
+    if (!repoRoot) return agentViewUpstreamStatus()
+    agentViewLog = ''
+    const installed = await runAgentViewInstall(repoRoot)
+    if (!installed) {
+      return {
+        ok: false,
+        running: false,
+        starting: false,
+        url: AGENTVIEW_URL,
+        apiUrl: AGENTVIEW_API_URL,
+        repoRoot,
+        error: 'AgentView dependency install failed. Check the startup log.',
+        log: agentViewLog,
+      }
+    }
+    const apiLive = await urlOk(`${AGENTVIEW_API_URL}/api/health`)
+    const webLive = await urlOk(AGENTVIEW_URL)
+    if (!apiLive && !agentViewApiProc) agentViewApiProc = spawnAgentViewProcess(repoRoot, 'api')
+    if (!webLive && !agentViewWebProc) agentViewWebProc = spawnAgentViewProcess(repoRoot, 'dev')
+    const ready = await waitForUrl(AGENTVIEW_URL, 25_000)
+    const apiReady = await waitForUrl(`${AGENTVIEW_API_URL}/api/health`, 10_000)
+    return {
+      ok: ready && apiReady,
+      running: ready && apiReady,
+      starting: false,
+      url: AGENTVIEW_URL,
+      apiUrl: AGENTVIEW_API_URL,
+      repoRoot,
+      error: ready && apiReady ? undefined : 'AgentView did not become ready. Check the startup log.',
+      log: agentViewLog,
+    }
+  })().finally(() => {
+    agentViewStarting = null
+  })
+  return agentViewStarting
+}
+
+function stopAgentViewUpstream() {
+  agentViewInstallProc?.kill('SIGTERM')
+  agentViewApiProc?.kill('SIGTERM')
+  agentViewWebProc?.kill('SIGTERM')
+  agentViewInstallProc = null
+  agentViewApiProc = null
+  agentViewWebProc = null
+}
+
+import {
+  readTranscriptStats,
+  readHarnessTdd,
+  listSessions,
+  findSessionFile,
+  readSessionTasks,
+  lastAssistantTurn,
+  readObservabilitySnapshot,
+  readObservabilitySessionDetail,
+  readObservabilityToolCallPayload,
+  readObservabilityTranscriptWindow,
+} from './data'
+import {
+  observabilityIndexStatus,
+  queryObservabilityIndex,
+  rebuildObservabilityIndex,
+  type ObservabilityIndexQueryId,
+} from './observability-index'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import { emitActivity, readActivity, clearActivity, onActivity, startActivityTail } from './events'
 import { readUsage } from './usage'
 import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
 import { repoRootOf, repoForCwd } from './repo'
-import { getTicket, type NewTicket } from './backlog'
+import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
+import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
+import {
+  getRepoTicket,
+  listLinearTeams,
+  readRepoTicketConfig,
+  saveRepoTicketConfig,
+  testRepoTicketProvider,
+  type RepoTicketsConfig,
+} from './ticket-provider'
 import { mrSummary } from './mrs'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
 import { fetchKnowledgePreview, readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
+import { knowledgeRagAddDocument, knowledgeRagAddUrl, knowledgeRagReindex, knowledgeRagSearch, knowledgeRagStatus } from './knowledge-rag'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
@@ -71,11 +272,14 @@ import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type Templa
 import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce, testTelegram } from './telegram'
 import {
   readAgents,
+  listAgentDefinitions,
   DEFAULT_AGENTS,
+  readAgentRunContexts,
   saveAgent,
   resetAgent,
   runAgent,
   runTicketAgent,
+  runTicketLanes,
   runTicketSpawn,
   runFactorySpawn,
   runDesignerSpawn,
@@ -125,7 +329,16 @@ import {
   runScheduleNow,
 } from './launchd'
 import { registerMcpEverywhere } from './mcp-register'
-import { readCronRuns, readCronRunLog, listAllRuns, sweepStaleCronRuns } from './cron-runs'
+import {
+  appendSessionRunLog,
+  beginSessionRun,
+  finalizeSessionRun,
+  readCronRuns,
+  readCronRunLog,
+  readSessionRunLog,
+  listAllRuns,
+  sweepStaleCronRuns,
+} from './cron-runs'
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import { processListenerInbox, readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
@@ -135,7 +348,6 @@ import { spawnBgTask, listBgTasks, getBgTask, cancelBgTask, readBgTaskLog, start
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
-import { readPersonas } from './personas'
 import { composeSteps, pipelineLabel } from './pipelines'
 import { type WorkspaceSearchKind } from './workspace-search'
 import {
@@ -222,6 +434,7 @@ type StartOpts = {
   cwd?: string
   name?: string
   initialInput?: string
+  ticketSlug?: string
   remote?: RemoteSession
   cols: number
   rows: number
@@ -306,6 +519,9 @@ function startSession(key: string, opts: StartOpts) {
   if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
   if (defaultModel && engine !== 'local') args.push('--model', defaultModel)
   const remoteEnginePath = remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
+  const repoRoot = remote ? '' : repoRootOf(cwd)
+  const repoLabel = repoLabelFor(displayCwd)
+  const startedAt = Date.now()
 
   // Wire Claude sessions to the status-line shim (zero-API usage + context).
   if (engine === 'claude' && !remote) args.push('--settings', statuslineSettingsArg())
@@ -345,17 +561,72 @@ function startSession(key: string, opts: StartOpts) {
           cwd,
           env,
         })
-  proc.onData((d) => send('pty:data', key, d))
+  try {
+    beginSessionRun({
+      id: sessionId,
+      source: 'session',
+      agentId: opts.ticketSlug ? 'ticket-terminal' : 'terminal-session',
+      agentTitle: opts.ticketSlug
+        ? `Ticket terminal · ${opts.ticketSlug}`
+        : opts.name || displaySessionName(displayCwd),
+      engine,
+      status: 'running',
+      startedAt,
+      repoRoot,
+      repoLabel,
+      branch: '',
+      worktree: displayCwd,
+      sessionId,
+      remote: !!remote,
+      ticketSlug: opts.ticketSlug,
+    })
+  } catch {
+    /* session logs are best-effort */
+  }
+  if (opts.ticketSlug && repoRoot) {
+    updateTicket(repoRoot, opts.ticketSlug, {
+      run: {
+        id: sessionId,
+        source: 'session',
+        sessionId,
+        startedAt: new Date(startedAt).toISOString(),
+        status: 'running',
+      },
+    })
+  }
+
+  proc.onData((d) => {
+    send('pty:data', key, d)
+    appendSessionRunLog(sessionId, d)
+  })
   proc.onExit(({ exitCode }) => {
     send('pty:exit', key, exitCode)
+    const status = exitCode === 0 ? 'done' : 'failed'
+    const endedAt = Date.now()
+    finalizeSessionRun(sessionId, {
+      status,
+      endedAt,
+      exitCode: exitCode ?? 0,
+      error: exitCode === 0 ? undefined : `exit ${exitCode ?? 0}`,
+    })
+    if (opts.ticketSlug && repoRoot) {
+      const t = getTicket(repoRoot, opts.ticketSlug)
+      if (t?.run?.id === sessionId) {
+        updateTicket(repoRoot, opts.ticketSlug, {
+          run: { id: sessionId, source: 'session', sessionId, startedAt: t.run.startedAt, status },
+        })
+      }
+    }
     emitActivity(
       {
         kind: exitCode === 0 ? 'session-end' : 'error',
         title: `${opts.name || displaySessionName(displayCwd)} · ${engine} · exited`,
         detail: `exit ${exitCode ?? 0} · ${displayCwd.replace(homedir(), '~')}`,
-        repo: repoLabelFor(displayCwd),
-        repoRoot: remote ? '' : repoRootOf(cwd),
+        repo: repoLabel,
+        repoRoot,
         sessionId,
+        runId: sessionId,
+        runSource: 'session',
       },
       { notify: exitCode !== 0 },
     )
@@ -371,9 +642,11 @@ function startSession(key: string, opts: StartOpts) {
     kind: 'session-start',
     title: `${opts.name || displaySessionName(displayCwd)} · ${remote ? 'remote · ' : ''}${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
     detail: displayCwd.replace(homedir(), '~'),
-    repo: repoLabelFor(displayCwd),
-    repoRoot: remote ? '' : repoRootOf(cwd),
+    repo: repoLabel,
+    repoRoot,
     sessionId,
+    runId: sessionId,
+    runSource: 'session',
   })
   return { sessionId, cwd: displayCwd, remote }
 }
@@ -799,7 +1072,7 @@ async function remoteAgentCatalog(remote: NonNullable<ReturnType<typeof curRemot
 }
 
 function remoteSteps(base: { label: string; prompt: string }, personaId?: string, pipelineId?: string) {
-  const persona = personaId ? readPersonas('').find((p) => p.id === personaId) : null
+  const persona = personaId ? readAgentRunContexts('').find((p) => p.id === personaId) : null
   return {
     steps: composeSteps(base, persona?.prompt ?? null, pipelineId),
     persona: persona?.title,
@@ -816,6 +1089,7 @@ ipcMain.handle('agents:list', async () => {
   if (!remote) return readAgents(repoRootOf(cur().cwd))
   return remoteAgentCatalog(remote)
 })
+ipcMain.handle('agents:definitions', () => listAgentDefinitions(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:save', (_e, agent: { id: string; title: string; prompt: string }) => {
   if (curRemote()) return { error: 'remote agent editing needs the remote daemon writer' }
   const root = repoRootOf(cur().cwd)
@@ -891,7 +1165,7 @@ ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
   curRemote() ? { error: 'remote schedule design needs the remote daemon writer' } : runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
-ipcMain.handle('personas:list', () => readPersonas(repoRootOf(cur().cwd)))
+ipcMain.handle('personas:list', () => readAgentRunContexts(repoRootOf(cur().cwd)))
 ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) =>
   (async () => {
     const remote = requestedRemote(requested) || curRemote()
@@ -922,26 +1196,57 @@ ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: st
     return run
   })(),
 )
-ipcMain.handle('agents:run-ticket', (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) => {
+ipcMain.handle('agents:run-ticket', async (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, lanes?: number) => {
   const remote = requestedRemote(requested) || curRemote()
   if (remote) {
+    // v1: lanes are local-only. Remote runs a single attempt.
     return (async () => {
       const t = await remoteTickets.get(remote, slug)
       if (!t) return { error: 'ticket not found' }
       const base = `Implement backlog ticket #${t.id}: ${t.title}\n\n${t.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${t.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
       const { steps } = remoteSteps({ label: `implement #${t.id}`, prompt: base }, persona, pipeline)
-      return remoteRuns.start(remote, {
+      const run = await remoteRuns.start(remote, {
         agentId: `ticket-${t.id}`,
         agentTitle: `Implement #${t.id}`,
         engine,
         model: remoteEngineModel(remote, engine, model),
         steps,
       })
+      if ('error' in run) return run
+      await remoteTickets
+        .update(remote, slug, {
+          run: {
+            id: run.id,
+            source: 'agent',
+            sessionId: cur().sessionId,
+            startedAt: new Date(run.startedAt).toISOString(),
+            status: run.status,
+          },
+        })
+        .catch(() => false)
+      return run
     })()
   }
   const root = repoRootOf(cur().cwd)
-  const t = getTicket(root, slug)
-  return t ? runTicketAgent(root, { slug: t.slug, id: t.id, title: t.title, body: t.body }, engine, persona, pipeline, model) : { error: 'ticket not found' }
+  const t = await getRepoTicket(root, slug)
+  if (!t) return { error: 'ticket not found' }
+  const ticketInput = { slug: t.slug, id: t.id, title: t.title, body: t.body, externalKey: t.externalKey, url: t.url, agent: t.agent }
+  const res = runTicketLanes(root, ticketInput, engine, persona, pipeline, model, lanes)
+  if ('error' in res) return res
+  // Link the ticket's run pointer to the first lane (solo runs have exactly
+  // one). Lanes deliberately don't each write the ticket — the judge links the
+  // winner — so we record the lead run here for the at-a-glance run badge.
+  const lead = res.runs[0]
+  updateTicket(root, t.slug, {
+    run: {
+      id: lead.id,
+      source: 'agent',
+      sessionId: cur().sessionId,
+      startedAt: new Date(lead.startedAt).toISOString(),
+      status: lead.status,
+    },
+  })
+  return lead
 })
 ipcMain.handle(
   'agents:run-pr',
@@ -955,11 +1260,12 @@ ipcMain.handle(
       const forgeSym = probe?.forgeSym || '!'
       const tag = `${forgeLabel} ${forgeSym}${pr.iid}`
       const ref = pr.webUrl || `${forgeSym}${pr.iid}`
-      const ctx = `This worktree is checked out at the head of ${tag} (${ref}${pr.title ? ` — "${pr.title}"` : ''}) on branch "${pr.sourceBranch}". After committing, push back to the ${forgeLabel} with \`git push origin HEAD:${pr.sourceBranch}\`.`
+      const reviewCtx = `This worktree is checked out at the head of ${tag} (${ref}${pr.title ? ` — "${pr.title}"` : ''}) on branch "${pr.sourceBranch}".`
+      const iterateCtx = `${reviewCtx} After committing, push back to the ${forgeLabel} with \`git push origin HEAD:${pr.sourceBranch}\`.`
       const base =
         kind === 'review'
-          ? `Do a thorough senior code review of ${tag}. ${ctx} Inspect \`git diff\` against the target branch and \`git log\`. Evaluate correctness, security, architecture, conformance, quality, and dependencies. Where you find clear, safe fixes, apply them with tests, commit, and push. End with a concise verdict and the list of findings.`
-          : `Iterate on ${tag} until it is merge-ready. ${ctx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status and a short summary of what changed.`
+          ? `Review ${tag} using the repository's code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by .agents/code-review.md when present. Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`
+          : `Iterate on ${tag} until it is merge-ready. ${iterateCtx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status and a short summary of what changed.`
       const { steps } = remoteSteps({ label: `${kind} ${forgeSym}${pr.iid}`, prompt: base }, persona, pipeline)
       return remoteRuns.start(remote, {
         agentId: `pr-${kind}-${pr.iid}`,
@@ -1207,10 +1513,11 @@ ipcMain.handle('runs:all', () => {
   const remote = curRemote()
   return remote ? remoteRuns.all(remote).catch(() => []) : listAllRuns()
 })
-ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg', runId: string) => {
+ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => {
   const remote = curRemote()
   if (remote) return remoteRuns.log(remote, runId).catch(() => '')
   if (source === 'cron') return readCronRunLog(runId)
+  if (source === 'session') return readSessionRunLog(runId)
   if (source === 'bg') return readBgTaskLog(runId)
   // In-process agent run output lives in memory via listRuns(); look it up by id.
   return listRuns().find((r) => r.id === runId)?.output || ''
@@ -1287,7 +1594,9 @@ ipcMain.handle('schedules:remove-all', () => {
   return { removed: n }
 })
 // ---- PTY IPC (routed by session key) ----
-ipcMain.on('pty:input', (_e, key: string, data: string) => sessions.get(key)?.pty.write(data))
+ipcMain.on('pty:input', (_e, key: string, data: string) => {
+  sessions.get(key)?.pty.write(data)
+})
 ipcMain.on('pty:resize', (_e, key: string, size: { cols: number; rows: number }) => {
   try {
     sessions.get(key)?.pty.resize(size.cols, size.rows)
@@ -1307,14 +1616,28 @@ ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
 ipcMain.handle('data:mr-summary', async () => {
   const r = curRemote()
   if (r) {
-    const mrs = (await remoteMrs.list(r).catch(() => ({ mrs: [] }))).mrs
+    const res = await remoteMrs.list(r).catch((e) => ({ mrs: [], error: (e as Error).message }))
+    const label = (await remoteProbe(r).catch(() => null))?.forgeLabel || 'PR'
+    if ('error' in res && res.error) {
+      return {
+        ok: false,
+        error: res.error,
+        open: 0,
+        approve: 0,
+        changes: 0,
+        needsReview: 0,
+        label,
+      }
+    }
+    const mrs = res.mrs
     const opened = mrs.filter((m) => m.state === 'opened')
     return {
+      ok: true,
       open: opened.length,
       approve: 0,
       changes: 0,
       needsReview: opened.length,
-      label: (await remoteProbe(r).catch(() => null))?.forgeLabel || 'PR',
+      label,
     }
   }
   return mrSummary(repoRootOf(cur().cwd))
@@ -1345,6 +1668,35 @@ ipcMain.handle('tickets:list', () => {
 ipcMain.handle('tickets:get', (_e, slug: string) => {
   return activeDaemon().ticketGet(slug)
 })
+ipcMain.handle('tickets:provider-get', () => {
+  const daemon = activeDaemon()
+  if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
+  return readRepoTicketConfig(daemon.repoRoot())
+})
+ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
+  const daemon = activeDaemon()
+  if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
+  const saved = saveRepoTicketConfig(daemon.repoRoot(), cfg)
+  emitActivity({
+    kind: 'info',
+    title: `Ticket provider · ${saved.provider || 'local'}`,
+    detail: daemon.repoLabel(),
+    repo: daemon.repoLabel(),
+    repoRoot: daemon.repoRoot(),
+    sessionId: cur().sessionId,
+  })
+  return saved
+})
+ipcMain.handle('tickets:provider-test', (_e, cfg: RepoTicketsConfig, smoke?: boolean) => {
+  const daemon = activeDaemon()
+  if (daemon.kind !== 'local') return { ok: false, provider: 'local', message: 'Ticket provider setup is local-only for now.' }
+  return testRepoTicketProvider(daemon.repoRoot(), cfg, { smoke: !!smoke })
+})
+ipcMain.handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
+  const daemon = activeDaemon()
+  if (daemon.kind !== 'local') return []
+  return listLinearTeams(daemon.repoRoot(), cfg)
+})
 ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   const daemon = activeDaemon()
   const t = await daemon.ticketCreate(input)
@@ -1359,6 +1711,7 @@ ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   })
   return t
 })
+ipcMain.handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) => recommendTicketAgent(input))
 ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
   const daemon = daemonForRequest(requested)
   if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
@@ -1374,7 +1727,7 @@ ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: strin
     inPlace: true,
   })
 })
-ipcMain.handle('tickets:update', async (_e, slug: string, patch: { status?: string; priority?: string }) => {
+ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
   const daemon = activeDaemon()
   const before = await daemon.ticketGet(slug)
   const ok = await daemon.ticketUpdate(slug, patch)
@@ -1413,6 +1766,9 @@ ipcMain.handle('mrs:get', (_e, iid: number) => {
 })
 ipcMain.handle('mrs:diff', (_e, iid: number) => {
   return activeDaemon().mrDiff(iid)
+})
+ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
+  return activeDaemon().digestGet(iid, short)
 })
 ipcMain.handle('mrs:ci', (_e, iid: number) => {
   return activeDaemon().mrCi(iid)
@@ -1669,6 +2025,40 @@ ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => (curRemot
 ipcMain.handle('observability:daily', (_e, days: number = 7) => (curRemote() ? [] : dailySpend(days)))
 ipcMain.handle('observability:runs', (_e, limit: number = 100) => (curRemote() ? [] : listAIRuns(limit)))
 ipcMain.handle('observability:models', () => knownModels())
+ipcMain.handle('observability:index-status', () => (curRemote() ? observabilityIndexStatus() : observabilityIndexStatus()))
+ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
+  curRemote()
+    ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.', durationMs: 0, indexedSessions: 0 }
+    : rebuildObservabilityIndex(limit),
+)
+ipcMain.handle('observability:index-query', (_e, query: ObservabilityIndexQueryId) =>
+  curRemote() ? { ...queryObservabilityIndex(query), rows: [], error: 'Remote observability indexing is not wired yet.' } : queryObservabilityIndex(query),
+)
+ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
+  curRemote()
+    ? {
+        ts: Date.now(),
+        sessions: [],
+        totals: { sessions: 0, readySessions: 0, tokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, toolCalls: 0 },
+        byEngine: {},
+        byRepo: {},
+        topTools: [],
+      }
+    : readObservabilitySnapshot(limit),
+)
+ipcMain.handle('agentview:session', (_e, sessionId: string) => (curRemote() ? null : readObservabilitySessionDetail(sessionId)))
+ipcMain.handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
+  curRemote() ? null : readObservabilityToolCallPayload(sessionId, callId),
+)
+ipcMain.handle('agentview:transcript-window', (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
+  curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
+)
+ipcMain.handle('agentview:upstream-status', () => agentViewUpstreamStatus())
+ipcMain.handle('agentview:upstream-start', () => startAgentViewUpstream())
+ipcMain.handle('agentview:upstream-stop', () => {
+  stopAgentViewUpstream()
+  return agentViewUpstreamStatus()
+})
 
 ipcMain.handle('harness:status', () => {
   const cfgDir = join(homedir(), '.config', 'TerMinal')
@@ -1767,6 +2157,21 @@ ipcMain.handle('knowledge:write', (_e, scope: KnowledgeScope, kb: KnowledgeBase)
   return writeKnowledge(scope, activeDaemon().repoRoot(), kb)
 })
 ipcMain.handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(url))
+ipcMain.handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
+  knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
+)
+ipcMain.handle('knowledge:rag-reindex', (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
+  knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
+)
+ipcMain.handle('knowledge:rag-add-document', (_e, scope: KnowledgeScope, item: any, content: string, filepath?: string) =>
+  knowledgeRagAddDocument({ scope, repoRoot: activeDaemon().repoRoot(), item, content, filepath }),
+)
+ipcMain.handle('knowledge:rag-add-url', (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
+  knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),
+)
+ipcMain.handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: string) =>
+  knowledgeRagSearch({ scope, repoRoot: activeDaemon().repoRoot(), item, query }),
+)
 
 // ---- files (Cursor-like editor; scoped to repo root / cwd) ----
 ipcMain.handle('files:list', (_e, rel: string) => {
@@ -1803,6 +2208,10 @@ ipcMain.handle('workflow:write', (_e, rel: string, content: string) => writeWork
 // the whole app.
 process.on('uncaughtException', (e) => console.error('[gt] uncaught:', e))
 
+app.on('before-quit', () => {
+  stopAgentViewUpstream()
+})
+
 app.whenReady().then(() => {
   fixPath() // packaged app has a minimal PATH — recover brew CLIs (glab/gh/…)
   createWindow()
@@ -1832,5 +2241,6 @@ app.on('window-all-closed', () => {
   if (telegramTimer) clearInterval(telegramTimer)
   for (const s of sessions.values()) s.pty.kill()
   sessions.clear()
+  stopAgentViewUpstream()
   if (process.platform !== 'darwin') app.quit()
 })

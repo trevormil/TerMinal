@@ -90,6 +90,194 @@ export type SessionMeta = {
   mtime: number
 }
 
+export type ObservabilitySession = {
+  id: string
+  engine: 'claude' | 'codex' | 'cursor'
+  title: string
+  cwd: string
+  repo: string
+  gitBranch: string
+  model: string
+  turns: number
+  mtime: number
+  telemetry: 'ready' | 'metadata-only'
+  contextTokens: number
+  contextLimit: number
+  contextPct: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  estCostUsd: number
+  toolCounts: Record<string, number>
+  toolTotal: number
+  lastAction: { tool: string; detail: string } | null
+  firstUserText: string
+}
+
+export type ObservabilityEventKind =
+  | 'user_message'
+  | 'assistant_message'
+  | 'reasoning'
+  | 'tool_call'
+  | 'tool_result'
+  | 'token_snapshot'
+  | 'agent_launch'
+  | 'skill_invoke'
+  | 'warning'
+  | 'parse_error'
+
+export type ObservabilityTokenSnapshot = {
+  timestamp: number
+  input: number
+  output: number
+  cachedInput: number
+  total: number
+  contextTokens: number
+  cumulativeInput: number
+  cumulativeOutput: number
+  cumulativeTotal: number
+}
+
+export type ObservabilityTimelineEvent = {
+  id: string
+  sessionId: string
+  timestamp: number
+  line: number
+  kind: ObservabilityEventKind
+  severity: 'info' | 'warning' | 'error'
+  turnId?: string
+  callId?: string
+  toolName?: string
+  previewText: string
+  argumentsPreview?: string
+  argumentsBytes?: number
+  commandPreview?: string
+  outputPreview?: string
+  outputBytes?: number
+  durationMs?: number
+  resultEventId?: string
+  joinedOutputPreview?: string
+  tokenSnapshot?: ObservabilityTokenSnapshot
+  agentRole?: string
+  agentTaskPreview?: string
+  skillName?: string
+}
+
+export type ObservabilityToolCall = {
+  callId: string
+  toolName: string
+  startedAt: number
+  completedAt?: number
+  line: number
+  completedLine?: number
+  turnId?: string
+  status: 'open' | 'ok' | 'error'
+  argumentsPreview?: string
+  argumentsBytes?: number
+  commandPreview?: string
+  outputPreview?: string
+  outputBytes?: number
+  durationMs?: number
+  resultEventId?: string
+  agentRole?: string
+  skillName?: string
+}
+
+export type ObservabilityToolCallPayload = {
+  sessionId: string
+  callId: string
+  toolName: string
+  status: 'open' | 'ok' | 'error'
+  inputText: string
+  outputText: string
+  inputBytes: number
+  outputBytes: number
+  sourceFile: string
+  startedLine: number
+  completedLine?: number
+  commandText?: string
+  skillName?: string
+  agentRole?: string
+  error?: string
+}
+
+export type ObservabilityTranscriptLine = {
+  line: number
+  text: string
+  timestamp?: number
+  role?: string
+  kind?: string
+  callId?: string
+  toolName?: string
+}
+
+export type ObservabilityTranscriptWindow = {
+  sessionId: string
+  sourceFile: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  lines: ObservabilityTranscriptLine[]
+  error?: string
+}
+
+export type ObservabilityTurn = {
+  id: string
+  startedAt: number
+  completedAt: number
+  durationMs: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  toolCalls: number
+  lastMessage: string
+}
+
+export type ObservabilityAgentGraph = {
+  nodes: {
+    id: string
+    label: string
+    role: string
+    depth: number
+    tokens: number
+    status: 'root' | 'open' | 'closed' | 'failed'
+    taskPreview?: string
+  }[]
+  edges: {
+    id: string
+    from: string
+    to: string
+    status: 'open' | 'closed' | 'failed'
+    toolCallId?: string
+  }[]
+}
+
+export type ObservabilitySessionDetail = {
+  session: ObservabilitySession
+  events: ObservabilityTimelineEvent[]
+  toolCalls: ObservabilityToolCall[]
+  tokenSnapshots: ObservabilityTokenSnapshot[]
+  turns: ObservabilityTurn[]
+  graph: ObservabilityAgentGraph
+  warnings: string[]
+}
+
+export type ObservabilitySnapshot = {
+  ts: number
+  sessions: ObservabilitySession[]
+  totals: {
+    sessions: number
+    readySessions: number
+    tokens: number
+    inputTokens: number
+    outputTokens: number
+    costUsd: number
+    toolCalls: number
+  }
+  byEngine: Record<string, { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  byRepo: Record<string, { sessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  topTools: { tool: string; count: number }[]
+}
+
 // opus 4.x blended estimate ($/token). Cache reads are ~10% of input price.
 const PRICE = { input: 15 / 1e6, output: 75 / 1e6, cacheRead: 1.5 / 1e6 }
 
@@ -138,6 +326,67 @@ function textOf(content: unknown): string {
       .join(' ')
   }
   return ''
+}
+
+function compactPreview(value: unknown, max = 900): string {
+  if (value === undefined || value === null) return ''
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  const compacted = text.replace(/\s+/g, ' ').trim()
+  return compacted.length > max ? `${compacted.slice(0, max)}...` : compacted
+}
+
+function resultText(content: unknown, toolUseResult?: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    const parts: string[] = []
+    let nonText = 0
+    for (const block of content) {
+      if (block && typeof block === 'object' && (block as any).type === 'text' && typeof (block as any).text === 'string') {
+        parts.push((block as any).text)
+      } else if (block && typeof block === 'object') {
+        nonText++
+      }
+    }
+    if (nonText > 0) parts.push(`[${nonText} non-text block${nonText === 1 ? '' : 's'}]`)
+    return parts.join('\n')
+  }
+  if (toolUseResult && typeof toolUseResult === 'object' && (toolUseResult as any).success === false) return 'command failed'
+  return ''
+}
+
+function timestampMs(obj: any, line: number): number {
+  if (typeof obj?.timestamp === 'string') {
+    const parsed = Date.parse(obj.timestamp)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return line
+}
+
+function inputRecord(input: unknown): Record<string, unknown> {
+  return input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
+}
+
+function stableJson(value: unknown): string {
+  if (value === undefined) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function stringProp(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return ''
+}
+
+function toolCallKind(toolName: string): ObservabilityEventKind {
+  if (toolName === 'Task' || toolName === 'Agent') return 'agent_launch'
+  if (toolName === 'Skill') return 'skill_invoke'
+  return 'tool_call'
 }
 
 function statMtimeMs(file: string): number {
@@ -275,6 +524,8 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
   let permissionMode = ''
   let lastPrompt = ''
   const toolCounts: Record<string, number> = {}
+  const seenUsage = new Set<string>()
+  const seenToolUses = new Set<string>()
 
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
@@ -304,7 +555,9 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
 
     if (msg.role !== 'assistant') continue
     const u = msg.usage
-    if (u) {
+    const usageKey = String(msg.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`)
+    if (u && !seenUsage.has(usageKey)) {
+      seenUsage.add(usageKey)
       turns++
       if (msg.model) model = msg.model
       const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
@@ -318,6 +571,9 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
         if (block?.type === 'tool_use') {
+          const toolKey = typeof block.id === 'string' ? block.id : `${obj.uuid || ''}:${block.name}:${JSON.stringify(block.input || {})}`
+          if (seenToolUses.has(toolKey)) continue
+          seenToolUses.add(toolKey)
           lastAction = { tool: block.name, detail: summarizeToolInput(block.name, block.input) }
           toolCounts[block.name] = (toolCounts[block.name] || 0) + 1
         }
@@ -349,6 +605,278 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     mtime,
     ts: Date.now(),
   }
+}
+
+export function parseTranscriptDetailFile(
+  file: string,
+  sessionId: string,
+  stats = parseTranscriptFile(file, sessionId),
+): Omit<ObservabilitySessionDetail, 'session'> {
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return { events: [], toolCalls: [], tokenSnapshots: [], turns: [], graph: { nodes: [], edges: [] }, warnings: ['Transcript unreadable'] }
+  }
+
+  const events: ObservabilityTimelineEvent[] = []
+  const warnings: string[] = []
+  const tokenSnapshots: ObservabilityTokenSnapshot[] = []
+  let currentTurn = ''
+  let turnIndex = 0
+  let cumulativeInput = 0
+  let cumulativeOutput = 0
+  let cumulativeTotal = 0
+  const seenUsage = new Set<string>()
+  const seenToolUses = new Set<string>()
+
+  const pushEvent = (event: Omit<ObservabilityTimelineEvent, 'id' | 'sessionId'>) => {
+    events.push({
+      ...event,
+      id: `${sessionId}:${event.line}:${events.length}`,
+      sessionId,
+    })
+  }
+
+  raw.split('\n').forEach((line, index) => {
+    const lineNo = index + 1
+    if (!line.trim()) return
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch (e) {
+      warnings.push(`line ${lineNo}: malformed JSON`)
+      pushEvent({
+        timestamp: lineNo,
+        line: lineNo,
+        kind: 'parse_error',
+        severity: 'error',
+        previewText: (e as Error).message || 'Malformed JSON',
+      })
+      return
+    }
+
+    const timestamp = timestampMs(obj, lineNo)
+    const msg = obj.message
+    const role = msg?.role || obj.role
+    const content = msg?.content ?? obj.content
+
+    if (role === 'user') {
+      const blocks = Array.isArray(content) ? content : []
+      const results = blocks.filter((block) => block && typeof block === 'object' && (block as any).type === 'tool_result')
+      if (results.length > 0) {
+        for (const block of results) {
+          const full = resultText((block as any).content, obj.toolUseResult)
+          const isError = !!((block as any).is_error || obj.toolUseResult?.success === false)
+          pushEvent({
+            timestamp,
+            line: lineNo,
+            kind: 'tool_result',
+            severity: isError ? 'error' : 'info',
+            turnId: currentTurn || undefined,
+            callId: typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : undefined,
+            previewText: compactPreview(full, 1200) || 'tool completed',
+            outputPreview: compactPreview(full, 4000),
+            outputBytes: Buffer.byteLength(full || '', 'utf8'),
+          })
+        }
+        return
+      }
+
+      const text = textOf(content).trim()
+      if (!text || text.startsWith('<')) return
+      turnIndex++
+      currentTurn = `turn-${turnIndex}`
+      pushEvent({
+        timestamp,
+        line: lineNo,
+        kind: 'user_message',
+        severity: 'info',
+        turnId: currentTurn,
+        previewText: compactPreview(text, 2000),
+      })
+      return
+    }
+
+    if (role !== 'assistant') return
+
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== 'object') continue
+        const b: any = block
+        if (b.type === 'thinking') {
+          pushEvent({
+            timestamp,
+            line: lineNo,
+            kind: 'reasoning',
+            severity: 'info',
+            turnId: currentTurn || undefined,
+            previewText: compactPreview(b.thinking || '(reasoning withheld)', 1600),
+          })
+        } else if (b.type === 'text') {
+          pushEvent({
+            timestamp,
+            line: lineNo,
+            kind: 'assistant_message',
+            severity: 'info',
+            turnId: currentTurn || undefined,
+            previewText: compactPreview(b.text || '', 2400),
+          })
+        } else if (b.type === 'tool_use') {
+          const toolName = String(b.name || 'tool')
+          const callId = typeof b.id === 'string' ? b.id : `${sessionId}:${lineNo}:${toolName}:${events.length}`
+          const toolKey = typeof b.id === 'string' ? b.id : `${obj.uuid || ''}:${toolName}:${JSON.stringify(b.input || {})}`
+          if (seenToolUses.has(toolKey)) continue
+          seenToolUses.add(toolKey)
+          const input = inputRecord(b.input)
+          const kind = toolCallKind(toolName)
+          const commandPreview = toolName === 'Bash' ? stringProp(input, 'command') : undefined
+          const agentRole = kind === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent' : undefined
+          const agentTaskPreview = kind === 'agent_launch' ? compactPreview(stringProp(input, 'description', 'prompt', 'task'), 1200) : undefined
+          const skillName = kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : undefined
+          pushEvent({
+            timestamp,
+            line: lineNo,
+            kind,
+            severity: 'info',
+            turnId: currentTurn || undefined,
+            callId,
+            toolName,
+            previewText: `${toolName} ${commandPreview || agentTaskPreview || skillName || summarizeToolInput(toolName, input)}`.trim(),
+            argumentsPreview: compactPreview(input, 1400),
+            argumentsBytes: Buffer.byteLength(stableJson(input), 'utf8'),
+            commandPreview,
+            agentRole,
+            agentTaskPreview,
+            skillName,
+          })
+        }
+      }
+    }
+
+    const u = msg?.usage
+    const usageKey = String(msg?.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`)
+    if (u && !seenUsage.has(usageKey)) {
+      seenUsage.add(usageKey)
+      const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
+      const cachedInput = u.cache_read_input_tokens || 0
+      const output = u.output_tokens || 0
+      const total = input + cachedInput + output
+      if (total > 0) {
+        cumulativeInput += input + cachedInput
+        cumulativeOutput += output
+        cumulativeTotal += total
+        const snapshot: ObservabilityTokenSnapshot = {
+          timestamp,
+          input,
+          output,
+          cachedInput,
+          total,
+          contextTokens: total,
+          cumulativeInput,
+          cumulativeOutput,
+          cumulativeTotal,
+        }
+        tokenSnapshots.push(snapshot)
+        pushEvent({
+          timestamp,
+          line: lineNo,
+          kind: 'token_snapshot',
+          severity: 'info',
+          turnId: currentTurn || undefined,
+          previewText: `in ${input + cachedInput} / out ${output} / total ${total}`,
+          tokenSnapshot: snapshot,
+        })
+      }
+    }
+  })
+
+  const resultByCall = new Map(events.filter((event) => event.kind === 'tool_result' && event.callId).map((event) => [event.callId as string, event]))
+  const callEvents = events.filter((event) => (event.kind === 'tool_call' || event.kind === 'agent_launch' || event.kind === 'skill_invoke') && event.callId)
+  const toolCalls: ObservabilityToolCall[] = callEvents.map((call) => {
+    const result = resultByCall.get(call.callId as string)
+    const durationMs = result ? Math.max(0, result.timestamp - call.timestamp) : undefined
+    if (result) {
+      call.joinedOutputPreview = result.outputPreview
+      call.resultEventId = result.id
+      call.durationMs = durationMs
+      result.toolName = call.toolName
+    }
+    return {
+      callId: call.callId as string,
+      toolName: call.toolName || 'tool',
+      startedAt: call.timestamp,
+      completedAt: result?.timestamp,
+      line: call.line,
+      completedLine: result?.line,
+      turnId: call.turnId,
+      status: !result ? 'open' : result.severity === 'error' ? 'error' : 'ok',
+      argumentsPreview: call.argumentsPreview,
+      argumentsBytes: call.argumentsBytes,
+      commandPreview: call.commandPreview,
+      outputPreview: result?.outputPreview,
+      outputBytes: result?.outputBytes,
+      durationMs,
+      resultEventId: result?.id,
+      agentRole: call.agentRole,
+      skillName: call.skillName,
+    }
+  })
+
+  const turns = [...new Set(events.map((event) => event.turnId).filter((turnId): turnId is string => !!turnId))].map((turnId) => {
+    const rows = events.filter((event) => event.turnId === turnId)
+    const lastToken = [...rows].reverse().find((event) => event.tokenSnapshot)?.tokenSnapshot
+    const startedAt = rows[0]?.timestamp || 0
+    const completedAt = rows.at(-1)?.timestamp || startedAt
+    return {
+      id: turnId,
+      startedAt,
+      completedAt,
+      durationMs: Math.max(0, completedAt - startedAt),
+      inputTokens: lastToken ? lastToken.input + lastToken.cachedInput : 0,
+      outputTokens: lastToken?.output || 0,
+      totalTokens: lastToken?.total || 0,
+      toolCalls: rows.filter((event) => event.kind === 'tool_call' || event.kind === 'agent_launch' || event.kind === 'skill_invoke').length,
+      lastMessage: [...rows].reverse().find((event) => event.kind === 'assistant_message')?.previewText || '',
+    }
+  })
+
+  const graph: ObservabilityAgentGraph = {
+    nodes: [
+      {
+        id: sessionId,
+        label: stats.aiTitle || stats.firstUserText || sessionId.slice(0, 8),
+        role: 'root',
+        depth: 0,
+        tokens: stats.totalInputTokens + stats.totalOutputTokens,
+        status: 'root',
+      },
+    ],
+    edges: [],
+  }
+  for (const call of callEvents.filter((event) => event.kind === 'agent_launch')) {
+    const result = call.callId ? resultByCall.get(call.callId) : undefined
+    const nodeId = `${sessionId}:${call.callId || call.id}`
+    const status = !result ? 'open' : result.severity === 'error' ? 'failed' : 'closed'
+    graph.nodes.push({
+      id: nodeId,
+      label: call.agentRole || call.toolName || 'agent',
+      role: call.agentRole || 'agent',
+      depth: 1,
+      tokens: 0,
+      status,
+      taskPreview: call.agentTaskPreview,
+    })
+    graph.edges.push({
+      id: `${sessionId}->${nodeId}`,
+      from: sessionId,
+      to: nodeId,
+      status,
+      toolCallId: call.callId,
+    })
+  }
+
+  return { events, toolCalls, tokenSnapshots, turns, graph, warnings }
 }
 
 /**
@@ -609,6 +1137,266 @@ export function listSessions(engine?: 'claude' | 'codex' | 'cursor'): SessionMet
           ? listCursorSessions()
           : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)
+}
+
+function repoLabel(cwd: string): string {
+  if (!cwd) return 'unknown'
+  try {
+    const root = repoRootOf(cwd)
+    return root.replace(/\/$/, '').split('/').pop() || root || 'unknown'
+  } catch {
+    return cwd.replace(/\/$/, '').split('/').pop() || cwd || 'unknown'
+  }
+}
+
+function sessionTitle(meta: SessionMeta, stats?: TranscriptStats): string {
+  return (
+    stats?.aiTitle ||
+    stats?.firstUserText ||
+    meta.firstUserText ||
+    meta.id.slice(0, 8) ||
+    `${meta.engine} session`
+  )
+}
+
+function toObservabilitySession(meta: SessionMeta, stats?: TranscriptStats | null): ObservabilitySession {
+  const ready = !!stats?.ok
+  const toolCounts = ready ? stats.toolCounts : {}
+  return {
+    id: meta.id,
+    engine: meta.engine,
+    title: sessionTitle(meta, stats || undefined),
+    cwd: stats?.cwd || meta.cwd,
+    repo: repoLabel(stats?.cwd || meta.cwd),
+    gitBranch: stats?.gitBranch || meta.gitBranch,
+    model: stats?.model || meta.model,
+    turns: stats?.turns || meta.turns,
+    mtime: stats?.mtime || meta.mtime,
+    telemetry: ready ? 'ready' : 'metadata-only',
+    contextTokens: ready ? stats.contextTokens : 0,
+    contextLimit: ready ? stats.contextLimit : 0,
+    contextPct: ready ? stats.contextPct : 0,
+    totalInputTokens: ready ? stats.totalInputTokens : 0,
+    totalOutputTokens: ready ? stats.totalOutputTokens : 0,
+    estCostUsd: ready ? stats.estCostUsd : 0,
+    toolCounts,
+    toolTotal: Object.values(toolCounts).reduce((sum, count) => sum + count, 0),
+    lastAction: ready ? stats.lastAction : null,
+    firstUserText: stats?.firstUserText || meta.firstUserText,
+  }
+}
+
+export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
+  const sessions = listSessions().slice(0, Math.max(1, Math.min(500, limit))).map((meta): ObservabilitySession => {
+    const stats = meta.engine === 'claude' ? readTranscriptStats(meta.id) : null
+    return toObservabilitySession(meta, stats)
+  })
+
+  const totals: ObservabilitySnapshot['totals'] = {
+    sessions: sessions.length,
+    readySessions: 0,
+    tokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costUsd: 0,
+    toolCalls: 0,
+  }
+  const byEngine: ObservabilitySnapshot['byEngine'] = {}
+  const byRepo: ObservabilitySnapshot['byRepo'] = {}
+  const tools = new Map<string, number>()
+  for (const session of sessions) {
+    const tokens = session.totalInputTokens + session.totalOutputTokens
+    totals.readySessions += session.telemetry === 'ready' ? 1 : 0
+    totals.tokens += tokens
+    totals.inputTokens += session.totalInputTokens
+    totals.outputTokens += session.totalOutputTokens
+    totals.costUsd += session.estCostUsd
+    totals.toolCalls += session.toolTotal
+
+    const engine = (byEngine[session.engine] ??= { sessions: 0, readySessions: 0, tokens: 0, costUsd: 0, toolCalls: 0 })
+    engine.sessions++
+    engine.readySessions += session.telemetry === 'ready' ? 1 : 0
+    engine.tokens += tokens
+    engine.costUsd += session.estCostUsd
+    engine.toolCalls += session.toolTotal
+
+    const repo = (byRepo[session.repo] ??= { sessions: 0, tokens: 0, costUsd: 0, toolCalls: 0 })
+    repo.sessions++
+    repo.tokens += tokens
+    repo.costUsd += session.estCostUsd
+    repo.toolCalls += session.toolTotal
+
+    for (const [tool, count] of Object.entries(session.toolCounts)) tools.set(tool, (tools.get(tool) || 0) + count)
+  }
+
+  return {
+    ts: Date.now(),
+    sessions,
+    totals,
+    byEngine,
+    byRepo,
+    topTools: [...tools.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 12)
+      .map(([tool, count]) => ({ tool, count })),
+  }
+}
+
+let observabilityDetailCache: { id: string; mtime: number; detail: ObservabilitySessionDetail } | null = null
+
+export function readObservabilitySessionDetail(sessionId: string): ObservabilitySessionDetail | null {
+  const file = findSessionFile(sessionId)
+  if (!file) return null
+  const mtime = statMtimeMs(file)
+  if (observabilityDetailCache?.id === sessionId && observabilityDetailCache.mtime === mtime) {
+    return observabilityDetailCache.detail
+  }
+
+  const stats = withStatusLineContext(parseTranscriptFile(file, sessionId), sessionId)
+  const meta =
+    listSessions('claude').find((session) => session.id === sessionId) ||
+    ({
+      id: sessionId,
+      engine: 'claude',
+      cwd: stats.cwd,
+      gitBranch: stats.gitBranch,
+      model: stats.model,
+      turns: stats.turns,
+      firstUserText: stats.firstUserText,
+      mtime: stats.mtime,
+    } satisfies SessionMeta)
+  const detail = {
+    session: toObservabilitySession(meta, stats),
+    ...parseTranscriptDetailFile(file, sessionId, stats),
+  }
+  observabilityDetailCache = { id: sessionId, mtime, detail }
+  return detail
+}
+
+export function readObservabilityToolCallPayload(sessionId: string, callId: string): ObservabilityToolCallPayload | null {
+  const file = findSessionFile(sessionId)
+  if (!file || !callId) return null
+
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+
+  let toolName = 'tool'
+  let inputText = ''
+  let outputText = ''
+  let inputBytes = 0
+  let outputBytes = 0
+  let startedLine = 0
+  let completedLine: number | undefined
+  let commandText: string | undefined
+  let skillName: string | undefined
+  let agentRole: string | undefined
+  let status: ObservabilityToolCallPayload['status'] = 'open'
+
+  raw.split('\n').forEach((line, index) => {
+    if (!line.trim()) return
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      return
+    }
+    const content = obj.message?.content ?? obj.content
+    if (obj.message?.role === 'assistant' && Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== 'object' || (block as any).type !== 'tool_use') continue
+        if ((block as any).id !== callId) continue
+        const input = inputRecord((block as any).input)
+        toolName = String((block as any).name || 'tool')
+        inputText = stableJson(input)
+        inputBytes = Buffer.byteLength(inputText, 'utf8')
+        startedLine = index + 1
+        commandText = toolName === 'Bash' ? stringProp(input, 'command') : undefined
+        skillName = toolCallKind(toolName) === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : undefined
+        agentRole = toolCallKind(toolName) === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || undefined : undefined
+      }
+    }
+    if (obj.message?.role === 'user' && Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== 'object' || (block as any).type !== 'tool_result') continue
+        if ((block as any).tool_use_id !== callId) continue
+        outputText = resultText((block as any).content, obj.toolUseResult)
+        outputBytes = Buffer.byteLength(outputText || '', 'utf8')
+        completedLine = index + 1
+        status = (block as any).is_error || obj.toolUseResult?.success === false ? 'error' : 'ok'
+      }
+    }
+  })
+
+  if (!startedLine) return null
+  return {
+    sessionId,
+    callId,
+    toolName,
+    status,
+    inputText,
+    outputText,
+    inputBytes,
+    outputBytes,
+    sourceFile: file,
+    startedLine,
+    completedLine,
+    commandText,
+    skillName,
+    agentRole,
+  }
+}
+
+export function readObservabilityTranscriptWindow(sessionId: string, centerLine = 0, radius = 24): ObservabilityTranscriptWindow | null {
+  const file = findSessionFile(sessionId)
+  if (!file) return null
+
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+
+  const allLines = raw.split('\n')
+  const totalLines = allLines.length
+  const safeRadius = Math.max(4, Math.min(80, Math.floor(radius || 24)))
+  const center = centerLine > 0 ? Math.min(totalLines, Math.floor(centerLine)) : totalLines
+  const startLine = Math.max(1, center - safeRadius)
+  const endLine = Math.min(totalLines, center + safeRadius)
+  const lines: ObservabilityTranscriptLine[] = []
+
+  for (let lineNo = startLine; lineNo <= endLine; lineNo++) {
+    const text = allLines[lineNo - 1] || ''
+    if (!text.trim()) continue
+    const row: ObservabilityTranscriptLine = { line: lineNo, text }
+    try {
+      const obj: any = JSON.parse(text)
+      row.timestamp = timestampMs(obj, lineNo)
+      row.kind = String(obj.type || obj.message?.type || '')
+      row.role = String(obj.message?.role || obj.role || '')
+      const content = obj.message?.content ?? obj.content
+      if (Array.isArray(content)) {
+        const toolUse = content.find((block) => block && typeof block === 'object' && (block as any).type === 'tool_use')
+        const toolResult = content.find((block) => block && typeof block === 'object' && (block as any).type === 'tool_result')
+        if (toolUse) {
+          row.callId = typeof (toolUse as any).id === 'string' ? (toolUse as any).id : undefined
+          row.toolName = typeof (toolUse as any).name === 'string' ? (toolUse as any).name : undefined
+        } else if (toolResult) {
+          row.callId = typeof (toolResult as any).tool_use_id === 'string' ? (toolResult as any).tool_use_id : undefined
+          row.toolName = 'tool_result'
+        }
+      }
+    } catch {
+      row.kind = 'parse_error'
+    }
+    lines.push(row)
+  }
+
+  return { sessionId, sourceFile: file, startLine, endLine, totalLines, lines }
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,14 @@ updated: 2026-05-26
 prs: []
 refs: []
 depends_on: []
+agent_id: 1000x-ai-engineer
+agent_scope: global
+agent_kind: classic
+agent_run_id: ""
+agent_run_source: agent
+agent_session_id: ""
+agent_run_started_at: ""
+agent_run_status: ""
 ---
 
 Canonical schema reference for in-repo tickets. This file is **not** a real
@@ -26,7 +34,7 @@ id makes it inert). Real tickets live at `backlog/NNNN-kebab-slug.md`.
 - `priority` — `critical` | `high` | `medium` | `low`
 - `horizon` — `now` | `next` | `future`. The scope/timeline tag, **orthogonal
   to priority**: `now` = in scope for current work; `next` = committed, do soon;
-  `future` = extension / idea out of current scope. This is where `/code-review`
+  `future` = extension / idea out of current scope. This is where the `code-review` agent
   and `/session-end` park follow-up ideas and extensions. Lets you filter
   "do now" vs "someday" at a glance even when priorities are similar. Default
   `now`.
@@ -51,6 +59,21 @@ id makes it inert). Real tickets live at `backlog/NNNN-kebab-slug.md`.
   `blocked` badge on the list row, and the detail view shows clickable
   dependency chips colored red when the dependency is still open. `/factory`
   treats blocked tickets as out-of-scope until their dependencies close.
+- `agent_id` — exactly one agent assigned to perform this ticket. Use
+  `list_agents({repo})` when the TerMinal MCP tools are available; otherwise
+  choose from the Agents tab or `.agents/`.
+- `agent_scope` — `repo` for repo-local agents/scripts, `global` for TerMinal
+  defaults, global scripts, or persistent agents.
+- `agent_kind` — `classic` for normal TerMinal agents/scripts, `persistent`
+  for global persistent memory agents.
+- `agent_run_id` / `agent_run_source` / `agent_session_id` /
+  `agent_run_started_at` / `agent_run_status` — optional pickup observability
+  fields written when an implementation agent starts. Use `update_ticket_run`
+  when MCP is available; TerMinal one-click process-mode implementation writes
+  them automatically.
+
+If the work naturally needs multiple agents or phases, split it into multiple
+tickets and link them with `depends_on`.
 
 ## Filename convention
 

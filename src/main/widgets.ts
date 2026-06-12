@@ -29,15 +29,22 @@ export type CommandWidget = {
 
 const GLOBAL_CFG = join(homedir(), '.config', 'TerMinal', 'widgets.json')
 
-function loadFile(path: string, source: 'global' | 'repo'): CommandWidget[] {
+function stableKey(value: string): string {
+  let hash = 5381
+  for (let i = 0; i < value.length; i++) hash = ((hash << 5) + hash) ^ value.charCodeAt(i)
+  return (hash >>> 0).toString(36)
+}
+
+function loadFile(path: string, source: 'global' | 'repo', scope = ''): CommandWidget[] {
   if (!existsSync(path)) return []
   try {
     const arr = JSON.parse(readFileSync(path, 'utf8'))
     if (!Array.isArray(arr)) return []
+    const prefix = source === 'repo' && scope ? `${source}:${stableKey(scope)}` : source
     return arr
       .filter((w) => w && typeof w.command === 'string' && typeof w.title === 'string')
       .map((w, i) => ({
-        id: `${source}:${w.id || w.title.toLowerCase().replace(/\s+/g, '-')}-${i}`,
+        id: `${prefix}:${w.id || w.title.toLowerCase().replace(/\s+/g, '-')}-${i}`,
         title: String(w.title),
         icon: typeof w.icon === 'string' ? w.icon : '▸',
         command: String(w.command),
@@ -63,7 +70,7 @@ function repoRoot(cwd: string): string {
 export function listCommandWidgets(cwd: string): CommandWidget[] {
   const global = loadFile(GLOBAL_CFG, 'global')
   const root = cwd ? repoRoot(cwd) : ''
-  const repo = root ? loadFile(join(root, '.TerMinal', 'widgets.json'), 'repo') : []
+  const repo = root ? loadFile(join(root, '.TerMinal', 'widgets.json'), 'repo', root) : []
   return [...global, ...repo]
 }
 

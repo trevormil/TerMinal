@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
@@ -6,6 +6,7 @@ import { listBgTasks, type BgTask } from './bg-tasks'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
+const SESSION_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'session-runs')
 const STALE_MS = 2 * 60 * 60 * 1000 // matches terminal-cron's STALE_MS
 
 export type CronRun = {
@@ -22,6 +23,26 @@ export type CronRun = {
   repoLabel: string
   worktree: string
   error?: string
+}
+
+export type SessionRun = {
+  id: string
+  source: 'session'
+  agentId: string
+  agentTitle: string
+  engine: string
+  status: 'running' | 'done' | 'failed'
+  startedAt: number
+  endedAt?: number
+  exitCode?: number
+  repoRoot: string
+  repoLabel: string
+  branch: string
+  worktree: string
+  error?: string
+  sessionId: string
+  remote?: boolean
+  ticketSlug?: string
 }
 
 export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
@@ -89,6 +110,76 @@ export function readCronRunLog(runId: string): string {
   }
 }
 
+const safeRunId = (runId: string): string => runId.replace(/[^\w-]/g, '')
+
+export function beginSessionRun(run: SessionRun): void {
+  const safe = safeRunId(run.id)
+  if (!safe) return
+  mkdirSync(SESSION_RUNS_DIR, { recursive: true })
+  writeFileSync(join(SESSION_RUNS_DIR, `${safe}.json`), JSON.stringify(run, null, 2))
+  writeFileSync(
+    join(SESSION_RUNS_DIR, `${safe}.log`),
+    [
+      `session: ${run.sessionId}`,
+      `engine: ${run.engine}`,
+      `repo: ${run.repoLabel || run.repoRoot || run.worktree || 'unknown'}`,
+      `cwd: ${run.worktree || run.repoRoot || 'unknown'}`,
+      run.ticketSlug ? `ticket: ${run.ticketSlug}` : '',
+      '',
+    ]
+      .filter(Boolean)
+      .join('\n') + '\n\n',
+  )
+}
+
+export function appendSessionRunLog(runId: string, chunk: string): void {
+  const safe = safeRunId(runId)
+  if (!safe || !chunk) return
+  try {
+    mkdirSync(SESSION_RUNS_DIR, { recursive: true })
+    appendFileSync(join(SESSION_RUNS_DIR, `${safe}.log`), chunk)
+  } catch {
+    /* best-effort observability */
+  }
+}
+
+export function finalizeSessionRun(runId: string, patch: Pick<SessionRun, 'status' | 'endedAt'> & Partial<SessionRun>): void {
+  const safe = safeRunId(runId)
+  if (!safe) return
+  const path = join(SESSION_RUNS_DIR, `${safe}.json`)
+  try {
+    const current = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as SessionRun) : null
+    if (!current) return
+    writeFileSync(path, JSON.stringify({ ...current, ...patch }, null, 2))
+  } catch {
+    /* best-effort observability */
+  }
+}
+
+export function readSessionRuns(limit = 200): SessionRun[] {
+  if (!existsSync(SESSION_RUNS_DIR)) return []
+  const out: SessionRun[] = []
+  for (const f of readdirSync(SESSION_RUNS_DIR)) {
+    if (!f.endsWith('.json')) continue
+    try {
+      out.push(JSON.parse(readFileSync(join(SESSION_RUNS_DIR, f), 'utf8')) as SessionRun)
+    } catch {
+      /* skip */
+    }
+  }
+  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+}
+
+export function readSessionRunLog(runId: string): string {
+  const safe = safeRunId(runId)
+  const f = join(SESSION_RUNS_DIR, `${safe}.log`)
+  try {
+    return existsSync(f) ? readFileSync(f, 'utf8') : ''
+  } catch {
+    return ''
+  }
+}
+
 // ---- unified runs view -----------------------------------------------------
 
 // A single shape for every run regardless of origin — cron-fired vs in-process
@@ -96,7 +187,7 @@ export function readCronRunLog(runId: string): string {
 // global picture instead of jumping between Schedules and Agents.
 export type UnifiedRun = {
   id: string
-  source: 'cron' | 'agent' | 'bg'
+  source: 'cron' | 'agent' | 'bg' | 'session'
   agentId: string
   agentTitle: string
   engine: string
@@ -111,6 +202,8 @@ export type UnifiedRun = {
   scheduleId?: string
   error?: string
   force?: boolean
+  trace?: AgentRun['trace']
+  evaluation?: AgentRun['evaluation']
 }
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {
@@ -129,6 +222,8 @@ function agentRunToUnified(r: AgentRun): UnifiedRun {
     branch: r.branch,
     worktree: r.worktree,
     force: r.force,
+    trace: r.trace,
+    evaluation: r.evaluation,
   }
 }
 
@@ -170,9 +265,29 @@ function bgTaskToUnified(r: BgTask): UnifiedRun {
   }
 }
 
+function sessionRunToUnified(r: SessionRun): UnifiedRun {
+  return {
+    id: r.id,
+    source: 'session',
+    agentId: r.agentId,
+    agentTitle: r.agentTitle,
+    engine: r.engine,
+    status: r.status,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    exitCode: r.exitCode,
+    repoRoot: r.repoRoot,
+    repoLabel: r.repoLabel,
+    branch: r.branch,
+    worktree: r.worktree,
+    error: r.error,
+  }
+}
+
 export function listAllRuns(limit = 400): UnifiedRun[] {
   const cron = readCronRuns(undefined, limit).map(cronRunToUnified)
   const agent = listAgentRuns().map(agentRunToUnified)
   const bg = listBgTasks().map(bgTaskToUnified)
-  return [...cron, ...agent, ...bg].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  const sessions = readSessionRuns(limit).map(sessionRunToUnified)
+  return [...cron, ...agent, ...bg, ...sessions].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
 }

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseCodexSessionFile, parseCursorSessionFile } from './data'
+import { parseCodexSessionFile, parseCursorSessionFile, parseTranscriptDetailFile, parseTranscriptFile } from './data'
 
 describe('parseCodexSessionFile', () => {
   test('extracts picker metadata from Codex JSONL sessions', () => {
@@ -70,5 +70,151 @@ describe('parseCursorSessionFile', () => {
       turns: 1,
       firstUserText: 'ship the cursor feature',
     })
+  })
+})
+
+describe('parseTranscriptFile', () => {
+  test('extracts observability telemetry from Claude JSONL transcripts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'terminal-claude-session-'))
+    const file = join(dir, 'session.jsonl')
+    writeFileSync(
+      file,
+      [
+        JSON.stringify({ type: 'ai-title', aiTitle: 'Prompt enhancement work' }),
+        JSON.stringify({
+          cwd: '/tmp/repo',
+          gitBranch: 'feature/observability',
+          message: { role: 'user', content: 'Add an observability tab' },
+        }),
+        JSON.stringify({
+          cwd: '/tmp/repo',
+          gitBranch: 'feature/observability',
+          message: {
+            role: 'assistant',
+            id: 'msg-1',
+            model: 'claude-opus-4-1-20250805',
+            usage: {
+              input_tokens: 1000,
+              cache_creation_input_tokens: 200,
+              cache_read_input_tokens: 300,
+              output_tokens: 50,
+            },
+            content: [
+              { type: 'tool_use', name: 'Read', input: { file_path: '/tmp/repo/src/main/data.ts' } },
+              { type: 'tool_use', name: 'Bash', input: { command: 'bun test' } },
+              {
+                type: 'tool_use',
+                id: 'task-1',
+                name: 'Task',
+                input: { subagent_type: 'researcher', description: 'Map observability gaps' },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          cwd: '/tmp/repo',
+          gitBranch: 'feature/observability',
+          message: {
+            role: 'assistant',
+            id: 'msg-1',
+            model: 'claude-opus-4-1-20250805',
+            usage: {
+              input_tokens: 1000,
+              cache_creation_input_tokens: 200,
+              cache_read_input_tokens: 300,
+              output_tokens: 50,
+            },
+            content: [
+              { type: 'text', text: 'done' },
+              {
+                type: 'tool_use',
+                id: 'task-1',
+                name: 'Task',
+                input: { subagent_type: 'researcher', description: 'Map observability gaps' },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          cwd: '/tmp/repo',
+          gitBranch: 'feature/observability',
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'task-1', content: 'agent complete' }],
+          },
+        }),
+      ].join('\n'),
+    )
+
+    expect(parseTranscriptFile(file, 'session-1')).toMatchObject({
+      ok: true,
+      sessionId: 'session-1',
+      model: 'claude-opus-4-1-20250805',
+      cwd: '/tmp/repo',
+      gitBranch: 'feature/observability',
+      aiTitle: 'Prompt enhancement work',
+      firstUserText: 'Add an observability tab',
+      contextTokens: 1550,
+      totalInputTokens: 1500,
+      totalOutputTokens: 50,
+      turns: 1,
+      lastAction: { tool: 'Task', detail: 'Map observability gaps' },
+      toolCounts: { Read: 1, Bash: 1, Task: 1 },
+    })
+  })
+
+  test('extracts AgentView-style timeline facts from Claude JSONL transcripts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'terminal-claude-detail-'))
+    const file = join(dir, 'session.jsonl')
+    writeFileSync(
+      file,
+      [
+        JSON.stringify({
+          timestamp: '2026-06-01T10:00:00.000Z',
+          message: { role: 'user', content: 'Run tests' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-06-01T10:00:01.000Z',
+          message: {
+            id: 'msg-detail-1',
+            role: 'assistant',
+            usage: { input_tokens: 10, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 },
+            content: [
+              { type: 'thinking', thinking: 'Need command' },
+              { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'bun test' } },
+              { type: 'tool_use', id: 'task-1', name: 'Task', input: { subagent_type: 'qa', description: 'Inspect failures' } },
+            ],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-06-01T10:00:01.500Z',
+          message: {
+            id: 'msg-detail-1',
+            role: 'assistant',
+            usage: { input_tokens: 10, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 },
+            content: [
+              { type: 'text', text: 'running tests' },
+              { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'bun test' } },
+            ],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-06-01T10:00:02.000Z',
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'bash-1', content: '3 pass' }],
+          },
+        }),
+      ].join('\n'),
+    )
+
+    const detail = parseTranscriptDetailFile(file, 'session-1')
+    expect(detail.events).toContainEqual(expect.objectContaining({ kind: 'tool_call', toolName: 'Bash', commandPreview: 'bun test' }))
+    expect(detail.events).toContainEqual(expect.objectContaining({ kind: 'agent_launch', toolName: 'Task', agentRole: 'qa' }))
+    expect(detail.toolCalls).toContainEqual(expect.objectContaining({ callId: 'bash-1', status: 'ok', outputPreview: '3 pass' }))
+    expect(detail.tokenSnapshots).toEqual([
+      expect.objectContaining({ input: 12, cachedInput: 3, output: 4, total: 19, cumulativeTotal: 19 }),
+    ])
+    expect(detail.graph.nodes).toContainEqual(expect.objectContaining({ role: 'qa', status: 'open', taskPreview: 'Inspect failures' }))
   })
 })

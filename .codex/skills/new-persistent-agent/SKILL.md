@@ -35,6 +35,30 @@ Create exactly one new directory with:
   "description": "One-line purpose",
   "engine": "claude",
   "model": "",
+  "modelPolicy": {
+    "default": "",
+    "cheap": "haiku",
+    "deep": "sonnet",
+    "judge": "gpt-5-mini",
+    "allowOverride": true
+  },
+  "quality": {
+    "acceptanceCriteria": [
+      "Read INSTRUCTIONS.md, MEMORY.md, STATE.md, and recent JOURNAL.md entries before acting.",
+      "Update STATE.md and append JOURNAL.md before ending.",
+      "Write durable human-readable artifacts when the run produces reusable output."
+    ],
+    "requiredArtifacts": ["STATE.md", "JOURNAL.md"],
+    "deterministicChecks": [],
+    "judge": {
+      "enabled": false,
+      "mode": "deterministic",
+      "rubric": [
+        "Persistent memory was read and updated appropriately.",
+        "Artifacts are concise and durable."
+      ]
+    }
+  },
   "tags": [],
   "createdAt": 1760000000000,
   "updatedAt": 1760000000000
@@ -42,6 +66,9 @@ Create exactly one new directory with:
 ```
 
 `engine` may be `claude`, `codex`, or `cursor`.
+Set `modelPolicy.cheap` for routine memory maintenance, `modelPolicy.deep` for
+hard reasoning, and `modelPolicy.judge` only when LLM-as-judge is enabled.
+Prefer deterministic checks and explicit memory/artifact acceptance criteria.
 
 ## File Guidance
 

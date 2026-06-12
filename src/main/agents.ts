@@ -16,20 +16,130 @@ import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
-import { getPersona } from './personas'
+import { getPersona, type Persona } from './personas'
 import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir } from './settings'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
 import { hiddenPresetIds } from './presets'
-import { getTicket } from './backlog'
-import { persistentAgentDesignerPrompt, persistentAgentLaunchPrompt } from './persistent-agents'
+import {
+  getPersistentAgent,
+  listPersistentAgents,
+  persistentAgentDesignerPrompt,
+  persistentAgentLaunchPrompt,
+} from './persistent-agents'
 import { createAgentStreamDecoder } from './agent-stream'
+import { evaluateAgentRun } from './agent-run-evaluation'
 import { withAgentContextPreamble } from './context-preamble'
+import { getRepoTicket, repoTicketProvider, ticketProviderInstructions } from './ticket-provider'
+import { getTicket as getLocalTicket, updateTicket as updateLocalTicket } from './backlog'
+import type { TicketAgent } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
 export type Engine = 'codex' | 'claude' | 'cursor'
+
+export type AgentModelPolicy = {
+  default?: string
+  cheap?: string
+  deep?: string
+  judge?: string
+  allowOverride?: boolean
+}
+
+export type AgentCheck = {
+  id: string
+  title: string
+  command: string
+  cwd?: 'repo' | 'worktree'
+  required?: boolean
+  timeoutMs?: number
+}
+
+export type AgentJudge = {
+  enabled?: boolean
+  mode?: 'deterministic' | 'llm' | 'hybrid'
+  model?: string
+  rubric?: string[]
+  passThreshold?: number
+}
+
+export type AgentQuality = {
+  acceptanceCriteria?: string[]
+  requiredArtifacts?: string[]
+  deterministicChecks?: AgentCheck[]
+  judge?: AgentJudge
+}
+
+export type AgentRunEvaluationCheck = {
+  id: string
+  title: string
+  command?: string
+  status: 'pass' | 'fail' | 'skipped'
+  required?: boolean
+  detail?: string
+}
+
+export type AgentRunEvaluation = {
+  status: 'pass' | 'fail' | 'incomplete'
+  evaluatedAt: number
+  summary: string
+  checks: AgentRunEvaluationCheck[]
+  judge?: {
+    enabled: boolean
+    mode: AgentJudge['mode']
+    status: 'not-run'
+    model?: string
+    detail: string
+  }
+}
+
+export type AgentRunTrace = {
+  ticketSlug?: string
+  ticketId?: number
+  ticketRef?: string
+  prIid?: number
+  prKind?: 'review' | 'iterate'
+  sourceBranch?: string
+  /** Set when this run is one of N parallel variant attempts ("lanes") of a
+   *  ticket. `group` ties the lanes together; index/total are 1-based. */
+  lane?: { group: string; index: number; total: number }
+}
+
+export type AgentDefinition = {
+  id: string
+  ref: { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
+  title: string
+  description?: string
+  icon?: string
+  scope: 'repo' | 'global'
+  kind: 'classic' | 'persistent'
+  source: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global' | 'persistent'
+  runtime: {
+    engine?: Engine
+    model?: string
+    modelPolicy?: AgentModelPolicy
+    mode: 'prompt' | 'script' | 'persistent'
+    scriptPath?: string
+    memoryDir?: string
+    inPlace?: boolean
+    opensPr?: boolean
+    force?: boolean
+  }
+  instructions: {
+    prompt?: string
+    system?: string
+    knowledgePolicy?: 'minimal' | 'standard' | 'deep'
+    outputContract?: string
+  }
+  quality: AgentQuality
+  metadata: {
+    tags?: string[]
+    createdAt?: number
+    updatedAt?: number
+    lastRunAt?: number
+  }
+}
 
 // On-demand Codex agents. Each runs in its own git worktree off the default
 // branch; codex does the work, files tickets, and opens the PR itself. We just
@@ -47,6 +157,10 @@ export type Agent = {
   // like "gpt-5-codex", "gpt-5", "o4-mini"). undefined → engine default. Lets
   // lightweight agents (health, deps audit) avoid burning the biggest model.
   model?: string
+  modelPolicy?: AgentModelPolicy
+  quality?: AgentQuality
+  outputContract?: string
+  acceptanceCriteria?: string[]
   // Computed by readAgents: true when .agents/<id>.sh (or the global script)
   // exists. The runner branches on this — UI uses it for a "sh" badge so
   // operators can see at a glance which agents are script-first.
@@ -65,6 +179,8 @@ export type Agent = {
   // (~/.config/TerMinal/agents/global.json), or a default overridden globally.
   source?: 'default' | 'repo-override' | 'global-override' | 'repo' | 'global'
 }
+
+export type AgentRunContext = Persona
 
 export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
 export type AgentRun = {
@@ -87,6 +203,8 @@ export type AgentRun = {
   /** Snapshot of the agent's force flag at run-time — so historical runs
    *  display FORCE even if the agent is later deleted or rescoped. */
   force?: boolean
+  trace?: AgentRunTrace
+  evaluation?: AgentRunEvaluation
 }
 
 export type RerunSpec =
@@ -136,6 +254,55 @@ export const DEFAULT_AGENTS: Agent[] = [
       "Act as the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with \"tell me when you're ready\" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with .claude/bin/hitl, then continue other work. Skip tickets blocked by depends_on (any dependency whose status is not closed). Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.",
   },
   {
+    id: '1000x-ai-engineer',
+    title: '1000x AI engineer',
+    description: 'General-purpose implementation agent for ordinary coding tickets and code problems.',
+    icon: 'Sparkles',
+    opensPr: true,
+    engine: 'codex',
+    modelPolicy: {
+      default: 'gpt-5-codex',
+      cheap: 'gpt-5-mini',
+      deep: 'gpt-5-codex',
+      judge: 'gpt-5-mini',
+      allowOverride: true,
+    },
+    outputContract:
+      'Focused implementation PR linked to the source ticket, with tests or a clear verification note and follow-up tickets for work outside scope.',
+    quality: {
+      acceptanceCriteria: [
+        'Read the ticket, repo instructions, and relevant existing code before editing.',
+        'Implement the smallest coherent change that fully satisfies the ticket.',
+        'Add or update meaningful tests for changed behavior when the repo has a test surface.',
+        'Run the relevant typecheck, test, lint, or build commands and report exact results.',
+        'Open a PR/MR linked to the ticket, or explain why no code change was needed.',
+        'File follow-up tickets for adjacent work instead of expanding scope.',
+      ],
+      requiredArtifacts: ['implementation diff', 'verification output', 'PR/MR link or no-change rationale'],
+      deterministicChecks: [
+        {
+          id: 'repo-clean-diff-reviewed',
+          title: 'Diff reviewed before handoff',
+          command: 'git diff --check',
+          cwd: 'worktree',
+          required: true,
+        },
+      ],
+      judge: {
+        enabled: true,
+        mode: 'llm',
+        rubric: [
+          'The implementation directly satisfies the ticket without speculative scope.',
+          'The diff matches existing repo style and keeps unrelated files untouched.',
+          'Verification is appropriate for the risk and blast radius.',
+          'Follow-up tickets are filed for cross-agent or out-of-scope work.',
+        ],
+      },
+    },
+    prompt:
+      'Act as a 1000x AI engineer implementation agent for this repository. Own exactly one generic coding ticket or code problem end to end: read the ticket and repo instructions, gather relevant knowledge first, inspect the existing implementation, choose the smallest coherent approach, make the code change, add or update meaningful tests when a test surface exists, run the relevant verification commands, commit, and open a PR/MR linked to the ticket. Prefer existing patterns over new abstractions. Keep changes tightly scoped; do not refactor unrelated code. If the ticket reveals separable work better owned by another specialist agent, file follow-up tickets assigned to those agents instead of expanding this PR. End with the PR/MR URL, verification results, and any follow-up ticket ids.',
+  },
+  {
     id: 'docs',
     title: 'Improve docs',
     description: 'Generate/improve developer-facing documentation, then open a PR.',
@@ -170,6 +337,53 @@ export const DEFAULT_AGENTS: Agent[] = [
     opensPr: true,
     prompt:
       'Act as a test-coverage agent for this repository. Identify the most important under-tested or untested behavior (prioritize core logic, error paths, and recently-changed code) and add meaningful, adversarial tests that would catch real regressions — no tautological or implementation-mirroring assertions. Follow the project test runner and conventions, keep changes surgical, and make sure new tests exercise a real entry point. Commit and open a PR. For larger coverage gaps you cannot finish in one pass, file a backlog ticket each (type: testing). End with a summary of what you covered and the PR URL.',
+  },
+  {
+    id: 'code-review',
+    title: 'Code review',
+    description: 'Review one PR/MR with tests-as-gate, six-axis scoring, findings, and durable artifacts.',
+    icon: 'ScanSearch',
+    opensPr: false,
+    engine: 'codex',
+    modelPolicy: {
+      default: 'gpt-5-codex',
+      cheap: 'gpt-5-mini',
+      deep: 'gpt-5-codex',
+      judge: 'gpt-5-mini',
+      allowOverride: true,
+    },
+    outputContract:
+      'One combined review artifact plus findings/suggestions state in .TerMinal/reviews/<pr>/<sha> or legacy .reviews/<pr>.',
+    quality: {
+      acceptanceCriteria: [
+        'Resolve exactly one PR/MR and review the current head commit.',
+        'Run the detected test suite first and block the verdict when tests fail.',
+        'Score correctness, security, architecture, conformance, quality, and dependencies.',
+        'Write the review artifact and findings/suggestions state in the repo review artifact location.',
+        'File owner-scoped follow-up tickets for out-of-scope work instead of fixing it inside the review.',
+      ],
+      requiredArtifacts: ['review artifact', 'findings.json', 'suggestions.json'],
+      deterministicChecks: [
+        {
+          id: 'review-artifact-written',
+          title: 'Review artifact is written',
+          command: 'test -d .TerMinal/reviews -o -d .reviews',
+          cwd: 'worktree',
+          required: true,
+        },
+      ],
+      judge: {
+        enabled: false,
+        mode: 'deterministic',
+        rubric: [
+          'Tests are treated as a hard gate.',
+          'Findings cite concrete evidence and affected paths.',
+          'Verdict follows the in-repo review contract.',
+        ],
+      },
+    },
+    prompt:
+      'Act as the code-review agent for this repository. Review exactly one PR/MR at its current head commit. Follow the in-repo review contract at .agents/code-review.md when present; otherwise use this fallback contract: run the detected test suite first as a hard gate, inspect the PR/MR diff against its target branch, score correctness/security/architecture/conformance/quality/dependencies, write a durable review artifact under .TerMinal/reviews/<number>/<short-sha>.md (legacy v1 repos may use .reviews/<number>/<short-sha>.md), and update findings.json plus suggestions.json when the project has those helpers. Do not implement fixes during review. If you find out-of-scope work, file owner-scoped follow-up tickets using list_agents before assigning. End with verdict, artifact path, test status, and key findings.',
   },
   {
     id: 'security-sweep',
@@ -445,6 +659,10 @@ function readScriptAgents(dir: string): Agent[] {
       opensPr: meta.opensPr,
       engine: meta.engine,
       model: meta.model,
+      modelPolicy: meta.modelPolicy,
+      quality: meta.quality,
+      outputContract: meta.outputContract,
+      acceptanceCriteria: meta.acceptanceCriteria,
       inPlace: meta.inPlace,
       force: meta.force,
     })
@@ -505,6 +723,10 @@ export function saveAgent(
     icon: agent.icon || undefined,
     engine: agent.engine,
     model: agent.model?.trim() || undefined,
+    modelPolicy: agent.modelPolicy,
+    quality: agent.quality,
+    outputContract: agent.outputContract?.trim() || undefined,
+    acceptanceCriteria: agent.acceptanceCriteria,
     opensPr: agent.opensPr,
     inPlace: agent.inPlace,
     force: agent.force,
@@ -729,14 +951,258 @@ function displayCmd(engine: Engine, worktree: string, model?: string, scriptPath
   return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
 }
 
+function classicAgentContextPrompt(agent: Agent): string {
+  return `Run with the selected TerMinal classic agent context "${agent.title}" (${agent.id}).
+
+Use this agent's operating guidance as the lens for the task below. Do not run a separate generic agent task; apply these instructions to the requested ticket, PR, or run.
+
+Classic agent guidance:
+${agent.prompt}`
+}
+
+function persistentAgentContextPrompt(repoRoot: string, id: string): { title: string; prompt: string } | null {
+  const detail = getPersistentAgent(id)
+  if (!detail) return null
+  return {
+    title: detail.title,
+    prompt: `Run with the selected TerMinal persistent agent context "${detail.title}" (${detail.id}).
+
+Persistent agent memory home:
+${detail.dir}
+
+Active workspace repo:
+${repoRoot || '- Not provided.'}
+
+Use the persistent agent files as memory and operating guidance for the task below:
+- INSTRUCTIONS.md: stable operating instructions.
+- MEMORY.md: durable memories and preferences.
+- STATE.md: current state and open threads.
+- JOURNAL.md: append-only run history.
+
+Required workflow:
+1. Read INSTRUCTIONS.md, MEMORY.md, STATE.md, and recent JOURNAL.md entries before acting.
+2. Do the requested ticket, PR, or run task below.
+3. Before ending, update STATE.md with current status and next actions.
+4. Append a dated JOURNAL.md entry with what you did, decisions made, and files changed.
+5. Update MEMORY.md only for durable facts or lessons that should affect future runs.`,
+  }
+}
+
+function defaultQualityForAgent(agent: Agent): AgentQuality {
+  const criteria = agent.acceptanceCriteria?.length
+    ? agent.acceptanceCriteria
+    : agent.quality?.acceptanceCriteria?.length
+      ? agent.quality.acceptanceCriteria
+    : [
+        'Follow the repository agent process: assign ownership, gather knowledge before edits, and file owner-scoped follow-up tickets.',
+        agent.opensPr ? 'Open and link a PR/MR when concrete changes are made.' : 'Write a durable summary of findings and tickets filed.',
+        'End with checks run, artifacts produced, and follow-up ticket ids or none.',
+      ]
+  const deterministicChecks: AgentCheck[] = agent.quality?.deterministicChecks?.length
+    ? agent.quality.deterministicChecks
+    : agent.opensPr
+      ? [
+          {
+            id: 'linked-pr',
+            title: 'PR/MR is opened and linked when changes are made',
+            command: 'git status --short && git log --oneline -1',
+            cwd: 'worktree',
+            required: false,
+          },
+        ]
+      : []
+  return {
+    acceptanceCriteria: criteria,
+    requiredArtifacts: agent.quality?.requiredArtifacts || [],
+    deterministicChecks,
+    judge: agent.quality?.judge || {
+      enabled: false,
+      mode: 'deterministic',
+      rubric: [
+        'Output matches the agent purpose.',
+        'Findings cite concrete files, artifacts, or tickets.',
+        'No out-of-scope changes were made.',
+      ],
+    },
+  }
+}
+
+function defaultQualityForPersistentAgent(agent: ReturnType<typeof listPersistentAgents>[number]): AgentQuality {
+  return {
+    acceptanceCriteria: agent.quality?.acceptanceCriteria?.length ? agent.quality.acceptanceCriteria : [
+      'Read INSTRUCTIONS.md, MEMORY.md, STATE.md, and recent JOURNAL.md entries before acting.',
+      'Update STATE.md and append JOURNAL.md before ending.',
+      'Write human-readable output under artifacts/<run>/ when the task produces a durable result.',
+    ],
+    requiredArtifacts: agent.quality?.requiredArtifacts || ['STATE.md', 'JOURNAL.md'],
+    deterministicChecks: agent.quality?.deterministicChecks?.length ? agent.quality.deterministicChecks : [
+      {
+        id: 'memory-updated',
+        title: 'Memory state files updated when work is performed',
+        command: `test -f ${shq(join(agent.dir, 'STATE.md'))} && test -f ${shq(join(agent.dir, 'JOURNAL.md'))}`,
+        cwd: 'repo',
+        required: true,
+      },
+    ],
+    judge: agent.quality?.judge || {
+      enabled: false,
+      mode: 'deterministic',
+      rubric: [
+        'Persistent memory was read and updated appropriately.',
+        'Artifacts are concise and durable.',
+        'Repo work follows the assigned ticket owner scope.',
+      ],
+    },
+  }
+}
+
+function modelPolicyFrom(model?: string, policy?: AgentModelPolicy): AgentModelPolicy {
+  return {
+    default: policy?.default || model || undefined,
+    cheap: policy?.cheap,
+    deep: policy?.deep,
+    judge: policy?.judge,
+    allowOverride: policy?.allowOverride ?? true,
+  }
+}
+
+export function listAgentDefinitions(repoRoot: string): AgentDefinition[] {
+  const classic = readAgents(repoRoot).map((agent): AgentDefinition => {
+    const scope = agent.source === 'repo' || agent.source === 'repo-override' ? 'repo' : 'global'
+    const scriptPath = locateScript(repoRoot, agent.id) || undefined
+    return {
+      id: `classic:${scope}:${agent.id}`,
+      ref: { id: agent.id, scope, kind: 'classic' },
+      title: agent.title,
+      description: agent.description,
+      icon: agent.icon,
+      scope,
+      kind: 'classic',
+      source: agent.source || 'default',
+      runtime: {
+        engine: agent.engine,
+        model: agent.model,
+        modelPolicy: modelPolicyFrom(agent.model, agent.modelPolicy),
+        mode: scriptPath ? 'script' : 'prompt',
+        scriptPath,
+        inPlace: agent.inPlace,
+        opensPr: agent.opensPr,
+        force: agent.force,
+      },
+      instructions: {
+        prompt: agent.prompt,
+        knowledgePolicy: 'standard',
+        outputContract: agent.outputContract,
+      },
+      quality: defaultQualityForAgent(agent),
+      metadata: {},
+    }
+  })
+  const persistent = listPersistentAgents().map((agent): AgentDefinition => ({
+    id: `persistent:global:${agent.id}`,
+    ref: { id: agent.id, scope: 'global', kind: 'persistent' },
+    title: agent.title,
+    description: agent.description,
+    icon: 'Brain',
+    scope: 'global',
+    kind: 'persistent',
+    source: 'persistent',
+    runtime: {
+      engine: agent.engine,
+      model: agent.model,
+      modelPolicy: modelPolicyFrom(agent.model, agent.modelPolicy),
+      mode: 'persistent',
+      memoryDir: agent.dir,
+      inPlace: true,
+      opensPr: false,
+      force: false,
+    },
+    instructions: {
+      knowledgePolicy: 'deep',
+      outputContract: 'Update persistent memory files and write artifacts for durable outputs.',
+    },
+    quality: defaultQualityForPersistentAgent(agent),
+    metadata: {
+      tags: agent.tags,
+      createdAt: agent.createdAt,
+      updatedAt: agent.updatedAt,
+      lastRunAt: agent.lastRunAt,
+    },
+  }))
+  return [...classic, ...persistent].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'classic' ? -1 : 1
+    return a.title.localeCompare(b.title)
+  })
+}
+
+export function resolveAgentDefinition(
+  repoRoot: string,
+  ref: { id: string; scope?: 'repo' | 'global'; kind?: 'classic' | 'persistent' },
+): AgentDefinition | null {
+  const defs = listAgentDefinitions(repoRoot)
+  return (
+    defs.find((d) => d.ref.id === ref.id && d.ref.kind === ref.kind && d.ref.scope === ref.scope) ||
+    defs.find((d) => d.ref.id === ref.id && d.ref.kind === ref.kind) ||
+    defs.find((d) => d.ref.id === ref.id) ||
+    null
+  )
+}
+
+function resolveRunContext(repoRoot: string, contextId?: string): { title?: string; prompt?: string } {
+  if (!contextId) return {}
+  if (contextId.startsWith('agent:')) {
+    const id = contextId.slice('agent:'.length)
+    const agent = readAgents(repoRoot).find((a) => a.id === id)
+    return agent ? { title: agent.title, prompt: classicAgentContextPrompt(agent) } : {}
+  }
+  if (contextId.startsWith('persistent:')) {
+    return persistentAgentContextPrompt(repoRoot, contextId.slice('persistent:'.length)) ?? {}
+  }
+  const p = getPersona(repoRoot, contextId)
+  return p ? { title: p.title, prompt: p.prompt } : {}
+}
+
+function ticketAgentContextId(agent?: TicketAgent): string | undefined {
+  if (!agent?.id) return undefined
+  return agent.kind === 'persistent' ? `persistent:${agent.id}` : `agent:${agent.id}`
+}
+
+export function readAgentRunContexts(repoRoot: string): AgentRunContext[] {
+  return listAgentDefinitions(repoRoot).map((agent) => ({
+    id: agent.kind === 'persistent' ? `persistent:${agent.ref.id}` : `agent:${agent.ref.id}`,
+    title: agent.title,
+    description: `${agent.kind === 'persistent' ? 'Persistent' : 'Classic'} agent · ${agent.source}${agent.description ? ` · ${agent.description}` : ''}`,
+    icon: agent.icon,
+    prompt:
+      agent.kind === 'persistent'
+        ? persistentAgentContextPrompt(repoRoot, agent.ref.id)?.prompt ?? ''
+        : classicAgentContextPrompt({
+            id: agent.ref.id,
+            title: agent.title,
+            description: agent.description,
+            icon: agent.icon,
+            prompt: agent.instructions.prompt || '',
+            opensPr: agent.runtime.opensPr,
+            engine: agent.runtime.engine,
+            model: agent.runtime.model,
+            inPlace: agent.runtime.inPlace,
+            force: agent.runtime.force,
+            source: agent.source === 'persistent' ? 'global' : agent.source,
+          }),
+    agentId: agent.ref.id,
+    agentScope: agent.ref.scope,
+    agentKind: agent.ref.kind,
+  }))
+}
+
 // Pipeline definitions + composition are pure (see ./pipelines, unit-tested).
 // All stages share the worktree + branch, so a later stage sees what an earlier
-// one committed. buildSteps just resolves the persona prompt off disk first.
+// one committed. buildSteps just resolves the selected run context first.
 function buildSteps(repoRoot: string, base: Step, personaId?: string, pipelineId?: string) {
-  const p = personaId ? getPersona(repoRoot, personaId) : null
+  const context = resolveRunContext(repoRoot, personaId)
   return {
-    steps: composeSteps(base, p?.prompt ?? null, pipelineId),
-    persona: p?.title,
+    steps: composeSteps(base, context.prompt ?? null, pipelineId),
+    persona: context.title,
     pipeline: pipelineLabel(pipelineId),
   }
 }
@@ -756,6 +1222,8 @@ type RunSpec = {
   force?: boolean
   /** Optional per-engine model alias passed to the CLI as `--model <name>`. */
   model?: string
+  quality?: AgentQuality
+  trace?: AgentRunTrace
   rerun?: RerunSpec
 }
 
@@ -843,6 +1311,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     branch,
     output: header,
     force: spec.force,
+    trace: spec.trace,
   }
   runs.set(run.id, run)
   persistMeta(run)
@@ -868,8 +1337,21 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     run.status = status
     run.endedAt = Date.now()
     run.exitCode = exitCode
+    run.evaluation = evaluateAgentRun(run, spec, status, append)
     procs.delete(run.id)
     persistMeta(run)
+    if (spec.rerun?.kind === 'ticket') {
+      try {
+        const current = getLocalTicket(repoRoot, spec.rerun.slug)
+        if (current?.run?.id === run.id) {
+          updateLocalTicket(repoRoot, spec.rerun.slug, {
+            run: { id: run.id, source: 'agent', status },
+          })
+        }
+      } catch {
+        /* ticket run-link status is observability-only */
+      }
+    }
     emit('agent:status', run)
     // Try to extract claude -p / codex exec usage from the captured output
     // and record an AIRun ledger entry. Best-effort — silent on miss.
@@ -992,9 +1474,14 @@ export function runAgent(
   if (!agent) return { error: 'unknown agent' }
   const resolvedEngine = engine || agent.engine || 'codex'
   const resolvedModel = model ?? agent.model
+  const provider = repoTicketProvider(repoRoot)
+  const ticketContext =
+    provider.kind === 'local'
+      ? ''
+      : `${ticketProviderInstructions(provider)} If this task does not involve filing or updating tickets, ignore this ticketing note.\n\n`
   const { steps, persona, pipeline } = buildSteps(
     repoRoot,
-    { label: agent.title, prompt: agent.prompt },
+    { label: agent.title, prompt: `${ticketContext}${agent.prompt}` },
     personaId,
     pipelineId,
   )
@@ -1008,6 +1495,10 @@ export function runAgent(
     inPlace: agent.inPlace,
     force: agent.force,
     model: resolvedModel,
+    quality: agent.quality || {
+      acceptanceCriteria: agent.acceptanceCriteria,
+      requiredArtifacts: agent.outputContract ? [agent.outputContract] : undefined,
+    },
     rerun: { kind: 'agent', agentId: agent.id, engine: resolvedEngine, personaId, pipelineId, model: resolvedModel },
   })
 }
@@ -1148,6 +1639,7 @@ export function runPersistentAgent(
     engine: resolvedEngine,
     model: resolvedModel,
     inPlace: true,
+    quality: prepared.agent.quality,
     rerun: {
       kind: 'persistent-agent',
       persistentAgentId: prepared.agent.id,
@@ -1256,26 +1748,79 @@ After this completes the app reconciles schedules automatically — your new ent
 }
 
 /** Turn a backlog ticket into an implementation run that opens a PR. */
+/** Hard ceiling on parallel lanes — fan-out spawns one engine process each. */
+export const MAX_LANES = 100
+
+type TicketRunInput = { slug?: string; id: number; title: string; body: string; externalKey?: string; url?: string; agent?: TicketAgent }
+
 export function runTicketAgent(
   repoRoot: string,
-  ticket: { slug?: string; id: number; title: string; body: string },
+  ticket: TicketRunInput,
   engine: Engine,
   personaId?: string,
   pipelineId?: string,
   model?: string,
+  lane?: { group: string; index: number; total: number },
 ): AgentRun | { error: string } {
-  const base = `Implement backlog ticket #${ticket.id}: ${ticket.title}\n\n${ticket.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${ticket.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
-  const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement #${ticket.id}`, prompt: base }, personaId, pipelineId)
+  const provider = repoTicketProvider(repoRoot)
+  const ref = ticket.externalKey || `#${ticket.id}`
+  // Lanes are independent variant attempts: each opens its OWN MR and must NOT
+  // touch the ticket (concurrent frontmatter writes would race). The judge step
+  // compares lanes and links the winner. A solo run links the ticket as before.
+  const ticketWriteInstr = lane
+    ? `Open a PR/MR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''} and report its URL. Do NOT modify the ticket file, its status, or its prs — a separate judging step compares all lanes and links the winner.`
+    : `Commit your work and open a PR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''}. If fully delivered set the ticket status to closed (else in-progress). Link or reference the PR in the ticket provider when supported.`
+  const laneFraming = lane
+    ? `\n\n--- LANE ${lane.index} of ${lane.total} ---\nYou are one of ${lane.total} independent variant attempts at this ticket, each in its own worktree and branch. Pursue a genuinely distinct, high-quality approach — don't converge on the obvious one. Satisfy every acceptance criterion in the ticket.`
+    : ''
+  const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr} End with a short summary of what changed and the PR URL.`
+  const resolvedPersonaId = personaId || ticketAgentContextId(ticket.agent)
+  const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement ${ref}`, prompt: base }, resolvedPersonaId, pipelineId)
+  const ownerQuality = ticket.agent?.kind === 'classic' ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality : undefined
   return runSpec(repoRoot, {
-    id: `ticket-${ticket.id}`,
-    title: `Implement #${ticket.id}`,
+    id: lane ? `ticket-${ticket.id}-L${lane.index}` : `ticket-${ticket.id}`,
+    title: lane ? `Implement ${ref} · lane ${lane.index}/${lane.total}` : `Implement ${ref}`,
     steps,
     engine,
     persona,
     pipeline,
     model,
-    rerun: ticket.slug ? { kind: 'ticket', slug: ticket.slug, engine, personaId, pipelineId, model } : undefined,
+    quality: ownerQuality,
+    trace: { ticketSlug: ticket.slug, ticketId: ticket.id, ticketRef: ref, lane },
+    // Lanes aren't individually rerunnable as the ticket (that would relaunch
+    // the whole group); only solo runs carry a ticket rerun spec.
+    rerun: ticket.slug && !lane ? { kind: 'ticket', slug: ticket.slug, engine, personaId: resolvedPersonaId, pipelineId, model } : undefined,
   })
+}
+
+export type LaneFanout = { group: string | null; runs: AgentRun[]; errors?: string[] }
+
+/** Launch `lanes` parallel variant attempts of a ticket, each in its own
+ *  worktree/branch with its own MR. lanes<=1 is the classic single run. */
+export function runTicketLanes(
+  repoRoot: string,
+  ticket: TicketRunInput,
+  engine: Engine,
+  personaId?: string,
+  pipelineId?: string,
+  model?: string,
+  lanes?: number,
+): LaneFanout | { error: string } {
+  const n = Math.max(1, Math.min(MAX_LANES, Math.floor(lanes || 1)))
+  if (n <= 1) {
+    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model)
+    return 'error' in r ? r : { group: null, runs: [r] }
+  }
+  const group = `lane-${ticket.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
+  const runs: AgentRun[] = []
+  const errors: string[] = []
+  for (let k = 1; k <= n; k++) {
+    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, { group, index: k, total: n })
+    if ('error' in r) errors.push(`lane ${k}: ${r.error}`)
+    else runs.push(r)
+  }
+  if (!runs.length) return { error: errors.join('; ') || 'no lanes started' }
+  return { group, runs, errors: errors.length ? errors : undefined }
 }
 
 /** Spawn an agent that files ONE backlog ticket from a freeform request. Runs
@@ -1288,7 +1833,13 @@ export function runTicketSpawn(
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use .claude/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+  const provider = repoTicketProvider(repoRoot)
+  const prompt =
+    provider.kind === 'github'
+      ? `File exactly ONE new GitHub Issue for the request below using the gh CLI in this repository. Set useful labels for type/priority/status when labels exist or can be safely created. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
+      : provider.kind === 'linear'
+        ? `File exactly ONE new Linear issue for the request below using the configured Linear MCP/CLI. Use the repo/provider conventions for team, status, and priority. Do NOT implement anything or open a PR.\n\nRequest: ${t}`
+        : `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id (use .claude/skills/ticket/bin/next-ticket-id if present, else the next NNNN above the highest active backlog ticket), write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter (id, title, status: open, priority, type, horizon: now) matching the ticket example (legacy v1 repos may use backlog/), put any detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
   return runSpec(repoRoot, {
     id: 'ticket-spawn',
     title: `File ticket · ${t.slice(0, 48)}`,
@@ -1334,18 +1885,20 @@ export function runPrAgent(
   const noteCmd =
     f.kind === 'github' ? `gh pr comment ${pr.iid} -b …` : `glab mr note ${pr.iid} -m …`
   const ref = pr.webUrl || `${f.sym}${pr.iid}`
-  const ctx = `This worktree is checked out at the head of ${tag} (${ref}${pr.title ? ` — "${pr.title}"` : ''}) on branch "${pr.sourceBranch}". After committing, push back to the ${f.label} with \`git push origin HEAD:${pr.sourceBranch}\`.`
+  const reviewCtx = `This worktree is checked out at the head of ${tag} (${ref}${pr.title ? ` — "${pr.title}"` : ''}) on branch "${pr.sourceBranch}".`
+  const iterateCtx = `${reviewCtx} After committing, push back to the ${f.label} with \`git push origin HEAD:${pr.sourceBranch}\`.`
+  const resolvedPersonaId = kind === 'review' ? personaId || 'agent:code-review' : personaId
   const base: Step =
     kind === 'review'
       ? {
           label: `review ${f.sym}${pr.iid}`,
-          prompt: `Do a thorough senior code review of ${tag}. ${ctx} Inspect \`git diff\` against the target branch and \`git log\`. Evaluate correctness, security, architecture, conformance, quality, and dependencies. Post your review on the ${f.label} (\`${noteCmd}\`). Where you find clear, safe fixes, apply them with tests, commit, and push. End with a concise verdict and the list of findings.`,
+          prompt: `Review ${tag} using the selected code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by the agent definition or in-repo .agents/code-review.md contract. Post or summarize the verdict for the ${f.label} when the repo workflow expects it (${noteCmd}). Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`,
         }
       : {
           label: `iterate ${f.sym}${pr.iid}`,
-          prompt: `Iterate on ${tag} until it is merge-ready. ${ctx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status (tests/build green?) and a short summary of what changed.`,
+          prompt: `Iterate on ${tag} until it is merge-ready. ${iterateCtx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status (tests/build green?) and a short summary of what changed.`,
         }
-  const { steps, persona, pipeline } = buildSteps(repoRoot, base, personaId, pipelineId)
+  const { steps, persona, pipeline } = buildSteps(repoRoot, base, resolvedPersonaId, pipelineId)
   return runSpec(repoRoot, {
     id: `pr-${kind}-${pr.iid}`,
     title: `${kind === 'review' ? 'Review' : 'Iterate'} ${f.sym}${pr.iid}`,
@@ -1355,11 +1908,13 @@ export function runPrAgent(
     pipeline,
     prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
     model,
-    rerun: { kind: 'pr', pr, prKind: kind, engine, personaId, pipelineId, model },
+    quality: kind === 'review' ? readAgents(repoRoot).find((a) => a.id === 'code-review')?.quality : undefined,
+    trace: { prIid: pr.iid, prKind: kind, sourceBranch: pr.sourceBranch },
+    rerun: { kind: 'pr', pr, prKind: kind, engine, personaId: resolvedPersonaId, pipelineId, model },
   })
 }
 
-export function rerunAgentRun(runId: string): AgentRun | { error: string } {
+export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: string }> {
   loadPersistedRuns()
   const run = runs.get(runId)
   if (!run) return { error: 'run not found' }
@@ -1371,9 +1926,9 @@ export function rerunAgentRun(runId: string): AgentRun | { error: string } {
   }
   if (spec.kind === 'agent') return runAgent(run.repoRoot, spec.agentId, spec.engine, spec.personaId, spec.pipelineId, spec.model)
   if (spec.kind === 'ticket') {
-    const t = getTicket(run.repoRoot, spec.slug)
+    const t = await getRepoTicket(run.repoRoot, spec.slug)
     return t
-      ? runTicketAgent(run.repoRoot, { slug: t.slug, id: t.id, title: t.title, body: t.body }, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+      ? runTicketAgent(run.repoRoot, { slug: t.slug, id: t.id, title: t.title, body: t.body, externalKey: t.externalKey, url: t.url, agent: t.agent }, spec.engine, spec.personaId, spec.pipelineId, spec.model)
       : { error: 'ticket not found' }
   }
   if (spec.kind === 'pr') return runPrAgent(run.repoRoot, spec.pr, spec.prKind, spec.engine, spec.personaId, spec.pipelineId, spec.model)

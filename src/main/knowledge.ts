@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 
 export type KnowledgeScope = 'repo' | 'global'
-export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file'
+export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
 export type KnowledgeCategory = {
   id: string
   title: string
@@ -24,9 +24,18 @@ export type KnowledgeItem = {
   thumbnailUrl?: string
   faviconUrl?: string
   siteName?: string
+  rag?: KnowledgeRagConfig
   tags: string[]
   createdAt: number
   updatedAt: number
+}
+export type KnowledgeRagConfig = {
+  rootDir?: string
+  command?: string
+  args?: string[]
+  category?: string
+  hybridAlpha?: number
+  maxResults?: number
 }
 export type KnowledgePreview = {
   ok: boolean
@@ -113,7 +122,7 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
         .map((x) => {
           const title = typeof x.title === 'string' && x.title.trim() ? x.title.trim() : 'Untitled'
           const kind: KnowledgeItemKind =
-            x.kind === 'link' || x.kind === 'image' || x.kind === 'video' || x.kind === 'file' || x.kind === 'markdown'
+            x.kind === 'link' || x.kind === 'image' || x.kind === 'video' || x.kind === 'file' || x.kind === 'markdown' || x.kind === 'rag'
               ? x.kind
               : 'markdown'
           const categoryId =
@@ -133,6 +142,7 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
             thumbnailUrl: typeof x.thumbnailUrl === 'string' ? x.thumbnailUrl : '',
             faviconUrl: typeof x.faviconUrl === 'string' ? x.faviconUrl : '',
             siteName: typeof x.siteName === 'string' ? x.siteName : '',
+            rag: normalizeRagConfig(x.rag),
             tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === 'string') : [],
             createdAt: ts,
             updatedAt: typeof x.updatedAt === 'number' ? x.updatedAt : ts,
@@ -144,6 +154,19 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
     categories: categories.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)),
     items: items.sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title)),
   }
+}
+
+function normalizeRagConfig(raw: unknown): KnowledgeRagConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const out: KnowledgeRagConfig = {}
+  if (typeof r.rootDir === 'string') out.rootDir = r.rootDir
+  if (typeof r.command === 'string') out.command = r.command
+  if (Array.isArray(r.args)) out.args = r.args.filter((x): x is string => typeof x === 'string')
+  if (typeof r.category === 'string') out.category = r.category
+  if (typeof r.hybridAlpha === 'number' && Number.isFinite(r.hybridAlpha)) out.hybridAlpha = r.hybridAlpha
+  if (typeof r.maxResults === 'number' && Number.isFinite(r.maxResults)) out.maxResults = Math.max(1, Math.min(20, Math.round(r.maxResults)))
+  return Object.keys(out).length ? out : undefined
 }
 
 export function readKnowledge(scope: KnowledgeScope, repoRoot: string): KnowledgeBase {

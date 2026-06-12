@@ -10,6 +10,9 @@ export type Persona = {
   description: string
   icon?: string
   prompt: string
+  agentId?: string
+  agentScope?: 'repo' | 'global'
+  agentKind?: 'classic' | 'persistent'
 }
 
 const DEFAULT_PERSONAS: Persona[] = [

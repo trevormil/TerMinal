@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { backlogRel, listTickets } from './backlog'
+import { backlogRel } from './backlog'
 import { listMrs } from './mrs'
 import { readActivity } from './events'
 import { listDocs, readDoc } from './docs'
@@ -7,6 +7,7 @@ import { searchRepo } from './files'
 import { listAllRuns } from './cron-runs'
 import { listPromptSnippets } from './snippets'
 import { listPersistentAgentArtifacts, listPersistentAgents } from './persistent-agents'
+import { listRepoTickets, repoTicketProvider } from './ticket-provider'
 
 export type WorkspaceSearchKind =
   | 'file'
@@ -108,15 +109,16 @@ export async function workspaceSearch(
 
   if (selected.has('ticket')) {
     try {
-      for (const t of listTickets(repoRoot)) {
-        if (!matches(q, t.id, t.title, t.status, t.priority, t.type, t.source, t.body, t.prs.join(' '))) continue
+      const provider = repoTicketProvider(repoRoot)
+      for (const t of await listRepoTickets(repoRoot)) {
+        if (!matches(q, t.id, t.externalKey, t.title, t.status, t.priority, t.type, t.source, t.body, t.prs.join(' '), t.url)) continue
         pushLimited(results, counts, {
           id: `ticket:${t.slug}`,
           kind: 'ticket',
-          title: `#${t.id} ${t.title}`,
+          title: `${t.externalKey || `#${t.id}`} ${t.title}`,
           subtitle: `${t.status} - ${t.priority} - ${t.type}`,
           detail: short(t.body),
-          path: `${backlogRel(repoRoot)}/${t.slug}.md`,
+          path: provider.kind === 'local' ? `${backlogRel(repoRoot)}/${t.slug}.md` : t.url,
           payload: { slug: t.slug },
         })
       }

@@ -1,3 +1,6 @@
 [submodule "templates/project-template"]
 	path = templates/project-template
 	url = https://github.com/trevormil/project-template
+[submodule "vendor/agentview"]
+	path = vendor/agentview
+	url = https://github.com/the-real-adammork/agentview

@@ -16,10 +16,22 @@ export type Review = {
   testStatus: string
   stale: boolean
   commitsBehind: number
+  /** Canonical change blast-radius, 0-5, graded by the reviewer
+   *  (artifact frontmatter `risk_score:`). null when the artifact predates
+   *  the field or is tests-only. */
+  riskScore: number | null
   /** Cross-PR triage classification — high/medium/low/unscored.
-   *  Read from the artifact frontmatter `risk_tier:` field that
+   *  Derived from `riskScore` (0-1 low, 2-3 medium, 4-5 high) when present;
+   *  otherwise falls back to the legacy frontmatter `risk_tier:` field that
    *  bin/compute-verdict writes deterministically post-codex. */
   riskTier: 'high' | 'medium' | 'low' | 'unscored'
+}
+
+/** Derive the categorical tier from the canonical 0-5 risk score. */
+export function riskTierFromScore(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 4) return 'high'
+  if (score >= 2) return 'medium'
+  return 'low'
 }
 
 export function fmField(md: string, key: string): string | null {
@@ -140,6 +152,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
         testStatus: 'none',
         stale: false,
         commitsBehind: 0,
+        riskScore: null,
         riskTier: 'unscored',
       }
     }
@@ -147,9 +160,17 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
   }
   const md = readFileSync(a.file, 'utf8')
   const ov = fmField(md, 'overall')
+  // risk_score (0-5) is canonical; derive the tier from it. Fall back to the
+  // legacy risk_tier field for artifacts written before risk_score existed.
+  const rsRaw = fmField(md, 'risk_score')
+  const rs = rsRaw != null && rsRaw !== '' && !isNaN(Number(rsRaw)) ? Number(rsRaw) : null
   const rt = (fmField(md, 'risk_tier') || '').toLowerCase()
   const riskTier: Review['riskTier'] =
-    rt === 'high' || rt === 'medium' || rt === 'low' ? rt : 'unscored'
+    rs != null
+      ? riskTierFromScore(rs)
+      : rt === 'high' || rt === 'medium' || rt === 'low'
+        ? rt
+        : 'unscored'
   return {
     number: a.number,
     overall: ov ? Number(ov) : null,
@@ -157,6 +178,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
     testStatus: fmField(md, 'test_status') || 'none',
     stale: a.stale,
     commitsBehind: a.commitsBehind,
+    riskScore: rs,
     riskTier,
   }
 }

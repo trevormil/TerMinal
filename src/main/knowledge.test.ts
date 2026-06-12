@@ -20,6 +20,37 @@ describe('knowledge base schema', () => {
     expect(kb.items[0].kind).toBe('video')
   })
 
+  test('rag items preserve their local backend configuration', () => {
+    const kb = migrateKnowledge({
+      categories: [{ id: 'research', title: 'Research', order: 0 }],
+      items: [
+        {
+          id: 'research-rag',
+          title: 'Research RAG',
+          kind: 'rag',
+          categoryId: 'research',
+          rag: {
+            rootDir: '/tmp/research-rag',
+            command: 'uvx',
+            args: ['--python', '3.11', 'knowledge-rag==3.9.0'],
+            category: 'research',
+            hybridAlpha: 0.5,
+            maxResults: 8,
+          },
+        },
+      ],
+    })
+    expect(kb.items[0].kind).toBe('rag')
+    expect(kb.items[0].rag).toMatchObject({
+      rootDir: '/tmp/research-rag',
+      command: 'uvx',
+      args: ['--python', '3.11', 'knowledge-rag==3.9.0'],
+      category: 'research',
+      hybridAlpha: 0.5,
+      maxResults: 8,
+    })
+  })
+
   test('duplicate ids are made deterministic enough to stay unique', () => {
     const kb = migrateKnowledge({
       categories: [{ id: 'general', title: 'General' }, { id: 'general', title: 'General' }],

@@ -11,7 +11,7 @@ import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSy
 import { join, basename, dirname, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const SETTINGS_FILE = join(CFG, 'settings.json')
@@ -196,6 +196,7 @@ function listTicketsForRoot(repoRoot, filter, includeBody) {
       }
       const { meta, body } = parseFrontmatter(raw)
       const slug = f.replace(/\.md$/, '')
+      const runId = String(meta.agent_run_id || '').trim()
       const ticket = {
         slug,
         id: typeof meta.id === 'number' ? meta.id : parseInt(slug.slice(0, 4), 10),
@@ -208,6 +209,16 @@ function listTicketsForRoot(repoRoot, filter, includeBody) {
         created: meta.created,
         updated: meta.updated,
         prs: meta.prs || [],
+        agent: ticketAgentFromMeta(meta),
+        run: runId
+          ? {
+              id: runId,
+              source: meta.agent_run_source || 'agent',
+              sessionId: meta.agent_session_id || undefined,
+              startedAt: meta.agent_run_started_at || undefined,
+              status: meta.agent_run_status || undefined,
+            }
+          : undefined,
         repo: basename(repoRoot),
       }
       // Index view by default — body is omitted to keep list responses small;
@@ -441,6 +452,76 @@ const slugify = (s) =>
     .replace(/^-|-$/g, '')
     .slice(0, 50) || 'untitled'
 
+function defaultTicketAgent(type = 'feature') {
+  return recommendTicketAgent({ type }).agent
+}
+
+const TICKET_AGENT_ROUTES = [
+  {
+    agent: { id: 'security-sweep', scope: 'global', kind: 'classic' },
+    type: ['security'],
+    keywords: ['security', 'auth', 'authorization', 'permission', 'xss', 'csrf', 'ssrf', 'injection', 'secret', 'token', 'cve', 'vulnerability'],
+  },
+  {
+    agent: { id: 'test-coverage', scope: 'global', kind: 'classic' },
+    type: ['testing'],
+    keywords: ['test', 'tests', 'testing', 'coverage', 'spec', 'flaky', 'assertion', 'tdd'],
+  },
+  {
+    agent: { id: 'docs', scope: 'global', kind: 'classic' },
+    type: ['docs'],
+    keywords: ['docs', 'documentation', 'readme', 'runbook', 'adr', 'changelog', 'guide'],
+  },
+  {
+    agent: { id: 'perf-pass', scope: 'global', kind: 'classic' },
+    type: ['performance'],
+    keywords: ['performance', 'perf', 'latency', 'slow', 'memory', 'n+1', 'cache', 'optimize', 'profiling'],
+  },
+  {
+    agent: { id: 'ci-improver', scope: 'global', kind: 'classic' },
+    type: ['dx'],
+    keywords: ['ci', 'lint', 'typecheck', 'build failure', 'workflow', 'developer', 'devex', 'tooling', 'script'],
+  },
+]
+
+function recommendTicketAgent(input = {}) {
+  const type = String(input.type || 'feature').toLowerCase()
+  const text = `${input.title || ''}\n${input.body || ''}`.toLowerCase()
+  const scored = TICKET_AGENT_ROUTES.map((route) => {
+    const signals = []
+    if (route.type?.includes(type)) signals.push(`type:${type}`)
+    for (const keyword of route.keywords) {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)) signals.push(keyword)
+    }
+    return { route, signals }
+  }).filter((x) => x.signals.length > 0)
+  if (scored.length) {
+    scored.sort((a, b) => b.signals.length - a.signals.length)
+    return { agent: scored[0].route.agent, signals: scored[0].signals.slice(0, 5) }
+  }
+  return { agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' }, signals: type ? [`type:${type}`] : [] }
+}
+
+function normalizeTicketAgent(args, type = 'feature', recommendation) {
+  const fallback = recommendation?.agent || defaultTicketAgent(type)
+  const id = typeof args?.agentId === 'string' && args.agentId.trim() ? args.agentId.trim() : fallback.id
+  const scope = args?.agentScope === 'repo' || args?.agentScope === 'global' ? args.agentScope : fallback.scope
+  const kind = args?.agentKind === 'persistent' || args?.agentKind === 'classic' ? args.agentKind : fallback.kind
+  return { id, scope, kind }
+}
+
+function ticketAgentFromMeta(meta) {
+  return normalizeTicketAgent(
+    {
+      agentId: meta.agent_id,
+      agentScope: meta.agent_scope,
+      agentKind: meta.agent_kind,
+    },
+    meta.type || 'feature',
+  )
+}
+
 // --- file_ticket ----------------------------------------------------------
 
 function fileTicket(args) {
@@ -465,6 +546,8 @@ function fileTicket(args) {
   const id = String(nextId).padStart(4, '0')
   const slug = `${id}-${slugify(title)}`
   const today = todayStr()
+  const recommendation = recommendTicketAgent({ title, type, body })
+  const agent = normalizeTicketAgent(args, type, recommendation)
   const frontmatter = `---
 id: ${nextId}
 title: ${JSON.stringify(title)}
@@ -479,6 +562,9 @@ updated: ${today}
 prs: []
 refs: []
 depends_on: []
+agent_id: ${agent.id}
+agent_scope: ${agent.scope}
+agent_kind: ${agent.kind}
 ---
 
 ${body}
@@ -496,9 +582,7 @@ ${body}
 
 // --- update_ticket --------------------------------------------------------
 
-function updateTicket(args) {
-  const { slug, status, priority, appendPrUrl, removePrUrl } = args
-  if (!slug) throw new Error('slug is required')
+function locateTicket(slug) {
   let path = null
   let repoRoot = null
   for (const root of knownRepoRoots()) {
@@ -509,7 +593,15 @@ function updateTicket(args) {
       break
     }
   }
-  if (!path) throw new Error(`ticket ${slug} not found in any known repo`)
+  return path ? { path, repoRoot } : null
+}
+
+function updateTicket(args) {
+  const { slug, status, priority, appendPrUrl, removePrUrl } = args
+  if (!slug) throw new Error('slug is required')
+  const located = locateTicket(slug)
+  if (!located) throw new Error(`ticket ${slug} not found in any known repo`)
+  const { path, repoRoot } = located
   let raw = readFileSync(path, 'utf8')
   const m = raw.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/)
   if (!m) throw new Error(`malformed frontmatter in ${path}`)
@@ -524,6 +616,19 @@ function updateTicket(args) {
   }
   if (status) setField('status', status)
   if (priority) setField('priority', priority)
+  if (args.agentId || args.agentScope || args.agentKind) {
+    const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || 'feature').trim())
+    setField('agent_id', agent.id)
+    setField('agent_scope', agent.scope)
+    setField('agent_kind', agent.kind)
+  }
+  if (args.runId) {
+    setField('agent_run_id', args.runId)
+    setField('agent_run_source', args.runSource || 'agent')
+    if (args.sessionId) setField('agent_session_id', args.sessionId)
+    if (args.runStartedAt) setField('agent_run_started_at', args.runStartedAt)
+    if (args.runStatus) setField('agent_run_status', args.runStatus)
+  }
   setField('updated', todayStr())
   // PR URL list manipulation — `prs:` is a YAML inline list
   if (appendPrUrl || removePrUrl) {
@@ -557,6 +662,19 @@ function updateTicket(args) {
     })
   }
   return { ok: true, path }
+}
+
+function updateTicketAgent(args) {
+  const { slug } = args
+  if (!slug) throw new Error('slug is required')
+  if (!args.agentId) throw new Error('agentId is required')
+  return updateTicket(args)
+}
+
+function updateTicketRun(args) {
+  if (!args.slug) throw new Error('slug is required')
+  if (!args.runId) throw new Error('runId is required')
+  return updateTicket(args)
 }
 
 // --- file_hitl ------------------------------------------------------------
@@ -870,11 +988,91 @@ function setRunOutcomeTool(args) {
 // related Claude session by repo/branch).
 // ---------------------------------------------------------------------------
 
+const DEFAULT_AGENT_SUMMARIES = [
+  ['factory', 'Run /factory'],
+  ['docs', 'Improve docs'],
+  ['deep-audit', 'Deep audit'],
+  ['ticket-pr-cleanup', 'Ticket / PR cleanup'],
+  ['test-coverage', 'Strengthen tests'],
+  ['code-review', 'Code review'],
+  ['security-sweep', 'Security sweep'],
+  ['perf-pass', 'Performance pass'],
+  ['dep-upgrade', 'Dependency hygiene'],
+  ['dead-code', 'Dead-code cleanup'],
+  ['comments-inspector', 'Comments inspector'],
+  ['product-audit', 'Product audit'],
+  ['friction-hunter', 'Friction hunter'],
+  ['red-team-audit', 'Red-team audit'],
+  ['intelligence', 'Intelligence sweep'],
+  ['strategy', 'Strategy review'],
+  ['cert-check', 'TLS / cert check'],
+  ['translations-check', 'Translations check'],
+  ['changelog', 'Changelog update'],
+  ['simplification', 'Simplification pass'],
+  ['devils-advocate', "Devil's advocate"],
+  ['bloat-check', 'Bloat check'],
+  ['knowledge-base', 'Knowledge base sweep'],
+  ['ci-improver', 'CI improver'],
+  ['summary', 'Daily summary'],
+  ['beacon', 'Process Beacon feedback'],
+  ['emergency-fix', 'Emergency fix'],
+  ['unblock-ci', 'Unblock CI'],
+  ['revert-main', 'Revert last main commit'],
+]
+
+function pushAgent(out, seen, agent) {
+  const key = `${agent.kind || 'classic'}:${agent.scope || 'global'}:${agent.id}`
+  if (seen.has(key)) return
+  seen.add(key)
+  out.push(agent)
+}
+
+function agentDefinitionHints(meta) {
+  if (!meta || typeof meta !== 'object') return {}
+  const modelPolicy = meta.modelPolicy && typeof meta.modelPolicy === 'object' ? meta.modelPolicy : {}
+  const quality = meta.quality && typeof meta.quality === 'object' ? meta.quality : {}
+  const hints = {}
+  const model = modelPolicy.default || meta.model
+  if (model) hints.model = model
+  if (modelPolicy.cheap) hints.cheapModel = modelPolicy.cheap
+  if (modelPolicy.deep) hints.deepModel = modelPolicy.deep
+  if (modelPolicy.judge || quality?.judge?.model) hints.judgeModel = modelPolicy.judge || quality.judge.model
+  const acceptanceCriteria = Array.isArray(quality.acceptanceCriteria) ? quality.acceptanceCriteria.length : 0
+  const deterministicChecks = Array.isArray(quality.deterministicChecks) ? quality.deterministicChecks.length : 0
+  const requiredArtifacts = Array.isArray(quality.requiredArtifacts) ? quality.requiredArtifacts.length : 0
+  if (acceptanceCriteria || deterministicChecks || requiredArtifacts || quality?.judge?.enabled) {
+    hints.quality = {
+      acceptanceCriteria,
+      deterministicChecks,
+      requiredArtifacts,
+      judge: quality?.judge?.enabled ? quality.judge.mode || 'llm' : 'off',
+    }
+  }
+  if (typeof meta.outputContract === 'string' && meta.outputContract.trim()) {
+    hints.outputContract = meta.outputContract.trim().slice(0, 160)
+  }
+  return hints
+}
+
 // --- list_agents: what agents are available for a repo --------------------
 function listAgentsTool(args) {
   const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
   if (!root) return { error: 'unknown repo; pass repo=<basename> or set TERMINAL_REPO' }
   const out = []
+  const seen = new Set()
+  for (const [id, title] of DEFAULT_AGENT_SUMMARIES) {
+    pushAgent(out, seen, { id, title, scope: 'global', kind: 'classic', source: 'default' })
+  }
+  const globalJson = join(CFG, 'agents', 'global.json')
+  if (existsSync(globalJson)) {
+    try {
+      const list = JSON.parse(readFileSync(globalJson, 'utf8'))
+      const arr = Array.isArray(list) ? list : []
+      for (const a of arr) {
+        if (a?.id && a?.title) pushAgent(out, seen, { id: a.id, title: a.title, scope: 'global', kind: 'classic', source: 'global', description: a.description, ...agentDefinitionHints(a) })
+      }
+    } catch {}
+  }
   // Repo-local: .agents/agents.json + .agents/*.sh
   const localJson = join(root, '.agents', 'agents.json')
   if (existsSync(localJson)) {
@@ -882,7 +1080,7 @@ function listAgentsTool(args) {
       const list = JSON.parse(readFileSync(localJson, 'utf8'))
       const arr = Array.isArray(list) ? list : Array.isArray(list?.agents) ? list.agents : []
       for (const a of arr) {
-        if (a?.id && a?.title) out.push({ id: a.id, title: a.title, source: 'repo', force: !!a.force, opensPr: !!a.opensPr, inPlace: !!a.inPlace, description: a.description })
+        if (a?.id && a?.title) pushAgent(out, seen, { id: a.id, title: a.title, scope: 'repo', kind: 'classic', source: 'repo', force: !!a.force, opensPr: !!a.opensPr, inPlace: !!a.inPlace, description: a.description, ...agentDefinitionHints(a) })
       }
     } catch {}
   }
@@ -891,8 +1089,12 @@ function listAgentsTool(args) {
       for (const f of readdirSync(join(root, '.agents'))) {
         if (!f.endsWith('.sh')) continue
         const id = f.slice(0, -3)
-        if (out.find((a) => a.id === id)) continue
-        out.push({ id, title: id, source: 'repo-script' })
+        let meta = {}
+        try {
+          const p = join(root, '.agents', `${id}.json`)
+          if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
+        } catch {}
+        pushAgent(out, seen, { id, title: meta.title || id, scope: 'repo', kind: 'classic', source: 'repo-script', description: meta.description, ...agentDefinitionHints(meta) })
       }
     } catch {}
   }
@@ -903,12 +1105,129 @@ function listAgentsTool(args) {
       for (const f of readdirSync(globalScripts)) {
         if (!f.endsWith('.sh')) continue
         const id = f.slice(0, -3)
-        if (out.find((a) => a.id === id)) continue
-        out.push({ id, title: id, source: 'global-script' })
+        let meta = {}
+        try {
+          const p = join(globalScripts, `${id}.json`)
+          if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
+        } catch {}
+        pushAgent(out, seen, { id, title: meta.title || id, scope: 'global', kind: 'classic', source: 'global-script', description: meta.description, ...agentDefinitionHints(meta) })
+      }
+    } catch {}
+  }
+  const persistentRoot = join(CFG, 'persistent-agents')
+  if (existsSync(persistentRoot)) {
+    try {
+      for (const id of readdirSync(persistentRoot)) {
+        const metaPath = join(persistentRoot, id, 'agent.json')
+        if (!existsSync(metaPath)) continue
+        try {
+          const meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+          pushAgent(out, seen, {
+            id,
+            title: meta.title || id,
+            scope: 'global',
+            kind: 'persistent',
+            source: 'persistent',
+            description: meta.description,
+            ...agentDefinitionHints(meta),
+          })
+        } catch {}
       }
     } catch {}
   }
   return { repo: basename(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) }
+}
+
+// --- request_agent_artifact: delegate focused research/artifact work -------
+function requestAgentArtifactTool(args) {
+  const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
+  if (!root) throw new Error('unknown repo; pass repo or set TERMINAL_REPO')
+  const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
+  if (!prompt) throw new Error('prompt is required')
+  const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : 'Agent artifact request'
+  const agent = normalizeTicketAgent(
+    { agentId: args.agentId || 'knowledge-base', agentScope: args.agentScope || 'global', agentKind: args.agentKind || 'classic' },
+    'feature',
+  )
+  const timeoutMs = Math.max(30_000, Math.min(Number(args.timeoutMs || 180_000), 600_000))
+  const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : ''
+  const runSlug = `${new Date().toISOString().replace(/[:.]/g, '-')}-${slugify(title)}`
+  const dir = join(root, '.TerMinal', 'agent-requests', runSlug)
+  mkdirSync(dir, { recursive: true })
+  const promptPath = join(dir, 'prompt.md')
+  const reportPath = join(dir, 'report.md')
+  const metaPath = join(dir, 'artifact.json')
+  const fullPrompt = `You are a delegated TerMinal agent request.
+
+Agent: ${agent.kind}:${agent.scope}:${agent.id}
+Repo: ${basename(root)}
+Working directory: ${root}
+
+Task:
+${prompt}
+
+Rules:
+- Stay focused on this request; do not implement code unless explicitly asked.
+- Re-read files from disk instead of asking the parent agent for pasted context.
+- Return a concise markdown artifact with: Summary, Findings, Evidence/Paths, and Recommended next steps.
+- If follow-up implementation is needed, recommend exactly which agent should own it.
+`
+  writeFileSync(promptPath, fullPrompt)
+  const child = spawnSync('claude', ['-p', fullPrompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    maxBuffer: 20 * 1024 * 1024,
+    env: {
+      ...process.env,
+      TERMINAL_DELEGATE_AGENT_ID: agent.id,
+      TERMINAL_DELEGATE_AGENT_SCOPE: agent.scope,
+      TERMINAL_DELEGATE_AGENT_KIND: agent.kind,
+    },
+  })
+  const stdout = child.stdout || ''
+  const stderr = child.stderr || ''
+  const errorMessage = child.error?.message || ''
+  const timedOut = child.error && child.error.code === 'ETIMEDOUT'
+  const ok = !child.error && (child.status === 0 || child.status === null)
+  const body =
+    stdout.trim() ||
+    (stderr.trim()
+      ? `Delegated agent wrote no stdout.\n\n## stderr\n\n\`\`\`\n${stderr.trim().slice(0, 8000)}\n\`\`\``
+      : `Delegated agent wrote no stdout.${errorMessage ? `\n\n## error\n\n\`\`\`\n${errorMessage}\n\`\`\`` : ''}`)
+  writeFileSync(
+    reportPath,
+    `---\ntitle: ${JSON.stringify(title)}\nrepo: ${basename(root)}\nagent_id: ${agent.id}\nagent_scope: ${agent.scope}\nagent_kind: ${agent.kind}\ncreated: ${new Date().toISOString()}\nok: ${ok}\n---\n\n${body}\n`,
+  )
+  const summary = body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .slice(0, 6)
+    .join('\n')
+    .slice(0, 1200)
+  const meta = {
+    title,
+    kind: 'agent-artifact',
+    createdAt: new Date().toISOString(),
+    agent,
+    ok,
+    status: child.status,
+    signal: child.signal,
+    timedOut: !!timedOut,
+    promptPath,
+    primaryPath: reportPath,
+    summary,
+  }
+  writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+  emitActivityRaw({
+    kind: ok ? 'agent-run' : 'error',
+    title: `Agent artifact · ${agent.id}`,
+    detail: title,
+    repo: basename(root),
+    repoRoot: root,
+  })
+  return { ok, repo: basename(root), agent, artifactPath: reportPath, promptPath, metaPath, summary, status: child.status, signal: child.signal, timedOut: !!timedOut }
 }
 
 // --- list_review_patterns: read <harnessDir>/reports/review-patterns.md
@@ -1163,13 +1482,16 @@ const TOOLS = [
           enum: ['open', 'in-progress', 'closed', 'stuck', 'icebox'],
         },
         source: { type: 'string' },
+        agentId: { type: 'string', description: 'Assigned agent id. Defaults by ticket type when omitted.' },
+        agentScope: { type: 'string', enum: ['repo', 'global'] },
+        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
       },
     },
   },
   {
     name: 'update_ticket',
     description:
-      'Mutate a ticket\'s frontmatter (status, priority) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.',
+      'Mutate a ticket\'s frontmatter (status, priority, assigned agent, run link) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.',
     inputSchema: {
       type: 'object',
       required: ['slug'],
@@ -1182,6 +1504,46 @@ const TOOLS = [
         priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
         appendPrUrl: { type: 'string' },
         removePrUrl: { type: 'string' },
+        agentId: { type: 'string' },
+        agentScope: { type: 'string', enum: ['repo', 'global'] },
+        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+        runId: { type: 'string' },
+        runSource: { type: 'string', enum: ['agent', 'cron', 'bg', 'session'] },
+        sessionId: { type: 'string' },
+        runStartedAt: { type: 'string' },
+        runStatus: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'update_ticket_agent',
+    description:
+      'Assign one ticket to exactly one agent. Auto-bumps `updated:`. Use list_agents first when you need valid ids. agentScope distinguishes repo-local from global agents; persistent agents are global.',
+    inputSchema: {
+      type: 'object',
+      required: ['slug', 'agentId'],
+      properties: {
+        slug: { type: 'string' },
+        agentId: { type: 'string' },
+        agentScope: { type: 'string', enum: ['repo', 'global'] },
+        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+      },
+    },
+  },
+  {
+    name: 'update_ticket_run',
+    description:
+      'Link a ticket to the agent run that picked it up. Writes agent_run_* frontmatter fields and auto-bumps `updated:`. Use this at ticket implementation start when TERMINAL_RUN_ID or another run/session id is available.',
+    inputSchema: {
+      type: 'object',
+      required: ['slug', 'runId'],
+      properties: {
+        slug: { type: 'string' },
+        runId: { type: 'string' },
+        runSource: { type: 'string', enum: ['agent', 'cron', 'bg', 'session'] },
+        sessionId: { type: 'string' },
+        runStartedAt: { type: 'string' },
+        runStatus: { type: 'string' },
       },
     },
   },
@@ -1327,8 +1689,27 @@ const TOOLS = [
   {
     name: 'list_agents',
     description:
-      'List CUSTOM agents configured for a repo: repo-local .agents/agents.json + .agents/*.sh + global scripts under ~/.config/TerMinal/scripts. Does NOT include TerMinal\'s built-in default agents (those are well-known: factory, docs, deep-audit, ticket-pr-cleanup, test-coverage, security-sweep, perf-pass, dep-upgrade, dead-code, comments-inspector, product-audit, friction-hunter, red-team-audit, intelligence, strategy, cert-check, translations-check, changelog, simplification, devils-advocate, bloat-check, knowledge-base, ci-improver, summary, beacon, emergency-fix, unblock-ci, revert-main). Defaults to TERMINAL_REPO.',
+      'List assignable agents for a repo, including TerMinal defaults, repo-local agents/scripts, global agents/scripts, and persistent agents. Returns compact id/title/scope/kind records for use with file_ticket or update_ticket_agent. Defaults to TERMINAL_REPO.',
     inputSchema: { type: 'object', properties: { repo: { type: 'string' } } },
+  },
+  {
+    name: 'request_agent_artifact',
+    description:
+      'Delegate a focused knowledge/artifact request to a short-lived Claude subprocess, write the result under .TerMinal/agent-requests/, and return a compact summary plus artifact paths. Use during ticket implementation when you need another agent/domain view without bloating the parent context.',
+    inputSchema: {
+      type: 'object',
+      required: ['prompt'],
+      properties: {
+        repo: { type: 'string' },
+        title: { type: 'string' },
+        prompt: { type: 'string' },
+        agentId: { type: 'string', description: 'Assignable agent id from list_agents. Defaults to knowledge-base.' },
+        agentScope: { type: 'string', enum: ['repo', 'global'] },
+        agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+        model: { type: 'string' },
+        timeoutMs: { type: 'number' },
+      },
+    },
   },
   {
     name: 'list_review_patterns',
@@ -1394,6 +1775,8 @@ const HANDLERS = {
   // writes
   file_ticket: fileTicket,
   update_ticket: updateTicket,
+  update_ticket_agent: updateTicketAgent,
+  update_ticket_run: updateTicketRun,
   file_hitl: fileHitlTool,
   resolve_hitl: resolveHitlTool,
   emit_activity: emitActivityTool,
@@ -1406,6 +1789,7 @@ const HANDLERS = {
   set_run_outcome: setRunOutcomeTool,
   // 2026-05-30: cross-repo + introspection
   list_agents: listAgentsTool,
+  request_agent_artifact: requestAgentArtifactTool,
   list_review_patterns: listReviewPatternsTool,
   factory_health: factoryHealthTool,
   search_decisions: searchDecisionsTool,
@@ -1420,8 +1804,9 @@ const HANDLERS = {
 // comma-separated allowlist of tool names (presets and names may be mixed).
 const TOOL_PRESETS = {
   write: [
-    'file_ticket', 'update_ticket', 'file_hitl', 'resolve_hitl',
+    'file_ticket', 'update_ticket', 'update_ticket_agent', 'update_ticket_run', 'file_hitl', 'resolve_hitl',
     'emit_activity', 'set_agent_state', 'get_agent_state', 'set_run_outcome',
+    'request_agent_artifact',
   ],
   read: [
     'list_tickets', 'get_ticket', 'list_prs', 'get_pr_artifact',

@@ -35,4 +35,22 @@ describe('renderer knowledge helpers', () => {
     expect(second.items.map((i) => i.id)).toEqual(['same-title-2', 'same-title'])
     expect(second.items[0].categoryId).toBe('team-notes')
   })
+
+  test('appendKnowledgeItem supports rag-backed items', () => {
+    const next = appendKnowledgeItem(
+      base(),
+      {
+        kind: 'rag',
+        title: 'Research RAG',
+        rag: { command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], category: 'research' },
+        tags: [],
+      },
+      { id: 'Research', title: 'Research', description: '' },
+    )
+    expect(next.items[0]).toMatchObject({
+      kind: 'rag',
+      title: 'Research RAG',
+      rag: { command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], category: 'research' },
+    })
+  })
 })

@@ -1,9 +1,13 @@
 ---
 name: code-review
-description: "Delegate a GitHub PR review to Codex via codex exec. Codex runs the test suite first (the gate), scores six axes, and writes ONE combined artifact IN THIS REPO under .reviews/<pr>/<sha>.md plus findings.json/suggestions.json. Use when the user runs /code-review, asks to review a PR, or is preparing a PR for human merge."
+description: "Compatibility launcher for the code-review agent. Delegate a GitHub PR review to Codex via codex exec. Codex runs the test suite first (the gate), scores six axes, and writes ONE combined artifact IN THIS REPO under .reviews/<pr>/<sha>.md plus findings.json/suggestions.json. Use when the user runs /code-review, asks to review a PR, or is preparing a PR for human merge."
 ---
 
 # /code-review — PR review with six-axis scoring + embedded tests
+
+This skill is a compatibility command for the `code-review` agent. Workflow
+docs should refer to the agent; this command exists so `/code-review` still
+launches the same reviewer contract.
 
 Produces **one combined artifact** in this repo at
 `.reviews/<pr-number>/<short_sha>.md`. The schema, scoring rubric,

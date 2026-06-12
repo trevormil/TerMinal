@@ -1,13 +1,13 @@
 ---
 name: security-scan
-description: "Run deterministic local security checks on a repo or diff: dependency CVE audit (bun audit / npm audit) by default, optional SAST (semgrep if installed). Secret scanning (gitleaks) is OPT-IN via --with-gitleaks because it can be slow on forks with deep history. Outputs a structured summary the /code-review skill can ingest for the Security axis. Use when the user runs /security-scan, asks for a security check, or as a pre-push gate before opening an MR/PR."
+description: "Run deterministic local security checks on a repo or diff: dependency CVE audit (bun audit / npm audit) by default, optional SAST (semgrep if installed). Secret scanning (gitleaks) is OPT-IN via --with-gitleaks because it can be slow on forks with deep history. Outputs a structured summary the code-review agent can ingest for the Security axis. Use when the user runs /security-scan, asks for a security check, or as a pre-push gate before opening an MR/PR."
 ---
 
 # /security-scan — Deterministic security checks
 
 Three layered checks, run in order. Each one is *deterministic* — same code, same result. Fills the gap that human-applied security checklists leave (which is "I forgot to look at X").
 
-The Security axis in `/code-review` is only as good as what gets checked. This skill makes the floor reproducible.
+The Security axis in the `code-review` agent is only as good as what gets checked. This skill makes the floor reproducible.
 
 ## Inputs
 
@@ -44,7 +44,7 @@ Capture:
 **Skipped by default.** Gitleaks is fast on a clean repo (12 commits → 70ms)
 but slow on forks with deep upstream history (14k commits → 3+ minutes,
 mostly upstream noise that isn't actionable). Running it on every
-`/code-review` adds minutes for low marginal value.
+the `code-review` agent adds minutes for low marginal value.
 
 Run only when `--with-gitleaks` is passed, or out-of-band:
 
@@ -105,7 +105,7 @@ If semgrep is NOT installed, emit a one-liner noting it and continue. Don't sugg
 - Errors: N · Warnings: N · Info: N
 <Top 5 ERROR-level findings, one bullet each: rule_id · file:line · short description>
 
-### Score recommendation for /code-review
+### Score recommendation for the code-review agent
 
 Security axis suggested score: NN/100
 
@@ -117,7 +117,7 @@ If the user wants to override, they can. This is the floor — manual review can
 
 ## Score recommendation rubric
 
-The skill suggests a Security axis score so /code-review can incorporate it:
+The skill suggests a Security axis score so the `code-review` agent can incorporate it:
 
 - **Critical CVE in new/changed dep**: -40
 - **High CVE in new/changed dep**: -20
@@ -129,7 +129,7 @@ The skill suggests a Security axis score so /code-review can incorporate it:
 - **Semgrep ERROR finding in changed files**: -10 each
 - **Semgrep WARNING finding in changed files**: -3 each
 
-Floor at 0; cap at 100. The /code-review skill is free to override based on manual reading (e.g., auth bypass that no automated tool would catch).
+Floor at 0; cap at 100. The `code-review` agent is free to override based on manual reading (e.g., auth bypass that no automated tool would catch).
 
 ## What this skill is NOT
 

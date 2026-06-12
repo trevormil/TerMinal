@@ -27,7 +27,46 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[] // ticket ids this one is blocked by (parsed from frontmatter)
+  /** Strict, checkable criteria defining a correct/best implementation.
+   *  Optional in general; REQUIRED when the implementer runs >1 lane, since
+   *  lanes are gated and ranked against these. See docs: lanes workflow. */
+  acceptance: string[]
+  agent: TicketAgent
+  run?: TicketRunLink
   body: string
+  provider?: 'local' | 'github' | 'linear'
+  providerLabel?: string
+  externalId?: string
+  externalKey?: string
+  url?: string
+}
+
+export type TicketAgent = {
+  id: string
+  scope: 'repo' | 'global'
+  kind: 'classic' | 'persistent'
+}
+
+export type TicketAgentRecommendation = {
+  agent: TicketAgent
+  reason: string
+  signals: string[]
+}
+
+export type TicketRunLink = {
+  id: string
+  source: 'agent' | 'cron' | 'bg' | 'session'
+  sessionId?: string
+  startedAt?: string
+  status?: string
+}
+
+export type TicketPatch = {
+  status?: string
+  priority?: string
+  acceptance?: string[]
+  agent?: Partial<TicketAgent>
+  run?: Partial<TicketRunLink>
 }
 
 export type NewTicket = {
@@ -36,6 +75,13 @@ export type NewTicket = {
   priority: string
   status: string
   body: string
+  agent?: Partial<TicketAgent>
+}
+
+export type TicketAgentRecommendationInput = {
+  title?: string
+  type?: string
+  body?: string
 }
 
 export function backlogDir(repoRoot: string): string {
@@ -50,6 +96,7 @@ function toTicket(slug: string, md: string): Ticket {
   const { fm, body } = parseFrontmatter(md)
   const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : [])
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const type = str(fm.type) || 'feature'
   return {
     slug,
     id: Number(fm.id) || 0,
@@ -58,14 +105,19 @@ function toTicket(slug: string, md: string): Ticket {
     priority: str(fm.priority) || 'medium',
     horizon: str(fm.horizon) || 'now',
     hitl: fm.hitl === 'true' || fm.hitl === true,
-    type: str(fm.type) || 'feature',
+    type,
     source: str(fm.source),
     created: str(fm.created),
     updated: str(fm.updated),
     prs: arr(fm.prs),
     refs: arr(fm.refs),
     depends_on: depsArr(fm.depends_on),
+    acceptance: arr(fm.acceptance),
+    agent: ticketAgentFromFrontmatter(fm, type),
+    run: ticketRunFromFrontmatter(fm),
     body: body.trim(),
+    provider: 'local',
+    providerLabel: 'Local backlog',
   }
 }
 
@@ -80,6 +132,117 @@ function depsArr(v: unknown): number[] {
     if (Number.isFinite(n) && n > 0) out.push(n)
   }
   return out
+}
+
+export function defaultTicketAgent(type = 'feature'): TicketAgent {
+  return recommendTicketAgent({ type }).agent
+}
+
+const ROUTES: {
+  agent: TicketAgent
+  reason: string
+  type?: string[]
+  keywords: string[]
+}[] = [
+  {
+    agent: { id: 'security-sweep', scope: 'global', kind: 'classic' },
+    reason: 'Security-sensitive wording or ticket type should go to the security sweep specialist.',
+    type: ['security'],
+    keywords: ['security', 'auth', 'authorization', 'permission', 'xss', 'csrf', 'ssrf', 'injection', 'secret', 'token', 'cve', 'vulnerability'],
+  },
+  {
+    agent: { id: 'test-coverage', scope: 'global', kind: 'classic' },
+    reason: 'Testing and coverage work should go to the test-coverage specialist.',
+    type: ['testing'],
+    keywords: ['test', 'tests', 'testing', 'coverage', 'spec', 'flaky', 'assertion', 'tdd'],
+  },
+  {
+    agent: { id: 'docs', scope: 'global', kind: 'classic' },
+    reason: 'Documentation work should go to the docs specialist.',
+    type: ['docs'],
+    keywords: ['docs', 'documentation', 'readme', 'runbook', 'adr', 'changelog', 'guide'],
+  },
+  {
+    agent: { id: 'perf-pass', scope: 'global', kind: 'classic' },
+    reason: 'Performance-sensitive work should go to the performance specialist.',
+    type: ['performance'],
+    keywords: ['performance', 'perf', 'latency', 'slow', 'memory', 'n+1', 'cache', 'optimize', 'profiling'],
+  },
+  {
+    agent: { id: 'ci-improver', scope: 'global', kind: 'classic' },
+    reason: 'Developer workflow, CI, and tooling work should go to the CI/DX specialist.',
+    type: ['dx'],
+    keywords: ['ci', 'lint', 'typecheck', 'build failure', 'workflow', 'developer', 'devex', 'tooling', 'script'],
+  },
+]
+
+export function recommendTicketAgent(input: TicketAgentRecommendationInput = {}): TicketAgentRecommendation {
+  const type = (input.type || 'feature').toLowerCase()
+  const text = `${input.title || ''}\n${input.body || ''}`.toLowerCase()
+  const scored = ROUTES.map((route) => {
+    const signals: string[] = []
+    if (route.type?.includes(type)) signals.push(`type:${type}`)
+    for (const keyword of route.keywords) {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)) signals.push(keyword)
+    }
+    return { route, signals }
+  }).filter((x) => x.signals.length > 0)
+
+  if (scored.length > 0) {
+    scored.sort((a, b) => b.signals.length - a.signals.length)
+    const top = scored[0]
+    return { agent: top.route.agent, reason: top.route.reason, signals: top.signals.slice(0, 5) }
+  }
+  return {
+    agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' },
+    reason: 'General feature, bug, UX, or implementation work defaults to the 1000x AI engineer implementer.',
+    signals: type ? [`type:${type}`] : [],
+  }
+}
+
+function explicitAgent(input: Partial<TicketAgent> | undefined): TicketAgent | null {
+  if (!input?.id?.trim()) return null
+  const scope = input.scope === 'repo' || input.scope === 'global' ? input.scope : 'global'
+  const kind = input.kind === 'persistent' || input.kind === 'classic' ? input.kind : 'classic'
+  return { id: input.id.trim(), scope, kind }
+}
+
+function normalizeTicketAgent(input: Partial<TicketAgent> | undefined, type: string, recommendation?: TicketAgentRecommendation): TicketAgent {
+  const explicit = explicitAgent(input)
+  if (explicit) return explicit
+  const fallback = recommendation?.agent || recommendTicketAgent({ type }).agent
+  return { id: fallback.id, scope: fallback.scope, kind: fallback.kind }
+}
+
+function ticketAgentFromFrontmatter(fm: Record<string, unknown>, type: string): TicketAgent {
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  return normalizeTicketAgent(
+    {
+      id: str(fm.agent_id),
+      scope: str(fm.agent_scope) as TicketAgent['scope'],
+      kind: str(fm.agent_kind) as TicketAgent['kind'],
+    },
+    type,
+  )
+}
+
+function ticketRunFromFrontmatter(fm: Record<string, unknown>): TicketRunLink | undefined {
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+  const id = str(fm.agent_run_id)
+  if (!id) return undefined
+  const sourceRaw = str(fm.agent_run_source)
+  const source =
+    sourceRaw === 'cron' || sourceRaw === 'bg' || sourceRaw === 'session' || sourceRaw === 'agent'
+      ? sourceRaw
+      : 'agent'
+  return {
+    id,
+    source,
+    sessionId: str(fm.agent_session_id) || undefined,
+    startedAt: str(fm.agent_run_started_at) || undefined,
+    status: str(fm.agent_run_status) || undefined,
+  }
 }
 
 export function listTickets(repoRoot: string): Ticket[] {
@@ -124,7 +287,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 export function updateTicket(
   repoRoot: string,
   slug: string,
-  patch: { status?: string; priority?: string },
+  patch: TicketPatch,
 ): boolean {
   const safe = slug.replace(/[^\w-]/g, '')
   const p = existingProjectAreaPaths(repoRoot, 'backlog')
@@ -145,8 +308,33 @@ export function updateTicket(
     if (re.test(fm)) fm = fm.replace(re, `$1${val}`)
     else fm = fm.replace(/\n---$/, `\n${key}: ${val}\n---`)
   }
+  // Replace a key plus any indented `- ` block-sequence lines that follow it
+  // with a fresh block list (or inline `[]` when empty).
+  const setListField = (key: string, items: string[]) => {
+    const block = items.length
+      ? `${key}:\n${items.map((c) => `  - "${c.replace(/"/g, "'")}"`).join('\n')}`
+      : `${key}: []`
+    const re = new RegExp(`^${key}:[^\\n]*(?:\\n[ \\t]+-[^\\n]*)*`, 'm')
+    if (re.test(fm)) fm = fm.replace(re, block)
+    else fm = fm.replace(/\n---$/, `\n${block}\n---`)
+  }
   if (patch.status) setField('status', patch.status)
   if (patch.priority) setField('priority', patch.priority)
+  if (patch.acceptance) setListField('acceptance', patch.acceptance)
+  if (patch.agent) {
+    const current = toTicket(safe, md)
+    const agent = normalizeTicketAgent(patch.agent, current.type)
+    setField('agent_id', agent.id)
+    setField('agent_scope', agent.scope)
+    setField('agent_kind', agent.kind)
+  }
+  if (patch.run?.id) {
+    setField('agent_run_id', patch.run.id)
+    setField('agent_run_source', patch.run.source || 'agent')
+    if (patch.run.sessionId) setField('agent_session_id', patch.run.sessionId)
+    if (patch.run.startedAt) setField('agent_run_started_at', patch.run.startedAt)
+    if (patch.run.status) setField('agent_run_status', patch.run.status)
+  }
   setField('updated', today())
   try {
     writeFileSync(p, fm + m[2])
@@ -163,6 +351,7 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
   const nextId = listTickets(repoRoot).reduce((max, t) => Math.max(max, t.id), 0) + 1
   const num = String(nextId).padStart(4, '0')
   const slug = `${num}-${slugify(input.title)}`
+  const recommendation = recommendTicketAgent({ title: input.title, type: input.type || 'feature', body: input.body || '' })
   const t: Ticket = {
     slug,
     id: nextId,
@@ -178,7 +367,12 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     prs: [],
     refs: [],
     depends_on: [],
+    acceptance: [],
+    agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
+    run: undefined,
     body: input.body || '',
+    provider: 'local',
+    providerLabel: 'Local backlog',
   }
   const fm = [
     '---',
@@ -193,6 +387,11 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     `updated: ${t.updated}`,
     `prs: []`,
     `refs: []`,
+    `depends_on: []`,
+    `acceptance: []`,
+    `agent_id: ${t.agent.id}`,
+    `agent_scope: ${t.agent.scope}`,
+    `agent_kind: ${t.agent.kind}`,
     '---',
     '',
     t.body.trim(),

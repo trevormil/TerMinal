@@ -1,11 +1,32 @@
 ---
 name: check
-description: "Run a scheduled cadence agent defined by an .agents/<kind>.md spec — runs in its own worktree, persists last-scanned SHA so re-runs can no-op early, and (depending on the spec's mode) either reports findings to reports/<kind>/<sha>.md OR proposes changes via a ticket + MR. Use when the user runs /check <kind>, asks for a scheduled-agent run, or wires up a launchd schedule."
+description: "Run a scheduled cadence agent from an .agents/<kind>.md spec — isolated worktree, SHA-gated no-op on re-runs, then reports findings or proposes a ticket+MR. Use on /check <kind>, a scheduled-agent run, or wiring a launchd schedule."
 ---
 
 # /check — Scheduled cadence agents
 
-Where `/code-review` gates a single PR, `/check` runs a **repo-level agent** on
+## Fast path: TerMinal MCP tools for state + activity
+
+When the `terminal-harness` MCP server is registered, use these at the head +
+tail of any `/check <kind>` run instead of `terminal-cli state` shell calls:
+
+- **`get_agent_state({repo, agent: '<kind>'})`** at the start — read
+  `lastScannedSha` for the early-exit branch (no work if HEAD === last).
+- **`set_agent_state({repo, agent: '<kind>', key: 'lastScannedSha', value: '<sha>'})`**
+  at the end — record where we scanned through.
+- **`emit_activity({kind: 'check', title: '<kind> · N findings', repo})`** when
+  the run finishes (clean or findings).
+- **`list_agents({repo})`** before filing escalations that need an owner.
+- **`file_ticket(...)`** for any escalations from the run; include exactly one
+  `agentId`, `agentScope`, and `agentKind`.
+- **`file_hitl(...)`** for true blockers.
+
+These replace the equivalent shell calls; the per-kind `.agents/<kind>.md`
+delegation pattern below is unchanged.
+
+---
+
+Where the `code-review` agent gates a single PR, `/check` runs a **repo-level agent** on
 the whole tree at `main` HEAD — the cadence work (drift audit, coverage
 backfill, dependency hygiene, changelog maintenance, auto-docs, perf
 benchmarks, dead-code) that's noise if run per-commit. Each agent is defined
@@ -36,12 +57,35 @@ Available kinds = the `.agents/*.md` specs that describe cadence agents (i.e.
 everything except the per-PR contracts `code-review.md`, `testing.md`, and the
 forge adapter `forge.md`).
 
-## Delegate to Codex
+## Prefer script-first execution
 
-Consistent with `/code-review`, delegate the run to Codex from the repo root:
+If `.agents/<kind>.sh` exists and is executable, run it directly first. The
+script owns deterministic prechecks, early exits, capped prompts, and any
+engine escalation. This is the cheapest path and should be the default for
+scheduled agents.
 
 ```bash
-codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following .agents/<kind>.md in this repo exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to reports/<kind>/<short-sha>.md per the contract. Never push directly to main."
+kind="<kind>"
+TERMINAL_REPO="$PWD" \
+TERMINAL_AGENT_ID="$kind" \
+TERMINAL_WORKTREE="$PWD" \
+TERMINAL_BRANCH="$(git branch --show-current 2>/dev/null || echo main)" \
+TERMINAL_ENGINE="${TERMINAL_ENGINE:-claude}" \
+TERMINAL_MODEL="${TERMINAL_MODEL:-haiku}" \
+PATH="$HOME/.config/TerMinal/bin:$PATH" \
+  ".agents/$kind.sh"
+```
+
+Do not also paste `.agents/<kind>.md` into an LLM prompt when the script
+succeeds or intentionally no-ops.
+
+## Fallback: delegate to Codex
+
+If no executable script exists for the kind, delegate the run to Codex from the
+repo root:
+
+```bash
+codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following .agents/<kind>.md in this repo exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to .TerMinal/reports/<kind>/<short-sha>.md in v2 repos (legacy v1: reports/<kind>/<short-sha>.md) per the contract. Never push directly to main."
 ```
 
 `-s danger-full-access` is required for the worktree + push steps.
@@ -99,7 +143,8 @@ Per the spec's decision rules, choose for each finding:
 
 ### 5. Write the artifact
 
-`reports/<kind>/<short_sha>.md` per the kind's frontmatter schema. Always
+`.TerMinal/reports/<kind>/<short_sha>.md` per the kind's frontmatter schema
+(legacy v1: `reports/<kind>/<short_sha>.md`). Always
 write the artifact, even on `status: ok` with no findings — the artifact is
 the run record.
 
@@ -157,7 +202,7 @@ touch "$lock"
 
 ## What this is NOT
 
-- **Not a per-PR review.** Use `/code-review` for that.
+- **Not a per-PR review.** Use the `code-review` agent for that.
 - **Not a scheduler.** TerMinal's Schedules tab + launchd own scheduling; this
   skill just runs the agent and writes the artifact.
 - **Not a writer for arbitrary paths.** Writer-mode agents are scoped to their

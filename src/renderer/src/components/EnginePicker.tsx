@@ -18,6 +18,7 @@ import {
   Layers,
   Cpu,
   SquareTerminal,
+  Brain,
   type LucideIcon,
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
@@ -27,9 +28,9 @@ import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
 import { engineLabel } from '../lib/engines'
 
-// Three-step launch picker: engine → persona (none + built-ins)
+// Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
-// engine + persona id ('' = none) + pipeline id ('single' = just the task).
+// engine + context id ('' = none) + pipeline id ('single' = just the task).
 const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent' }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
@@ -40,6 +41,7 @@ const PERSONA_ICON: Record<string, LucideIcon> = {
   FlaskConical,
   Accessibility,
   Server,
+  Brain,
 }
 const PIPELINE_ICON: Record<string, LucideIcon> = {
   single: Zap,
@@ -52,6 +54,8 @@ export function EnginePicker({
   hint,
   showPersona = true,
   showPipeline = true,
+  showLanes = false,
+  initialPersona,
   onPick,
   onClose,
 }: {
@@ -59,23 +63,45 @@ export function EnginePicker({
   hint?: ReactNode
   showPersona?: boolean
   showPipeline?: boolean
-  onPick: (engine: Engine, persona: string, pipeline: string, model?: string, launchMode?: LaunchMode) => void
+  /** Show the lane-count stepper on the launch step (process mode only).
+   *  N>1 fans out N parallel variant attempts, each its own worktree + MR. */
+  showLanes?: boolean
+  initialPersona?: string
+  onPick: (
+    engine: Engine,
+    persona: string,
+    pipeline: string,
+    model?: string,
+    launchMode?: LaunchMode,
+    runContext?: Persona,
+    lanes?: number,
+  ) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
   const [persona, setPersona] = useState<string | null>(showPersona ? null : '') // null = not chosen, '' = none
+  const [personaConfirmed, setPersonaConfirmed] = useState(!showPersona)
   const [pipeline, setPipeline] = useState<string | null>(showPipeline ? null : 'single')
+  const [lanes, setLanes] = useState(1)
   const [personas, setPersonas] = useState<Persona[]>([])
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [defaultEngine, setDefaultEngine] = useState<Engine>('claude')
   useEffect(() => {
-    if (showPersona) window.gt.agents.personas().then(setPersonas)
+    if (showPersona) {
+      window.gt.agents.personas().then((next) => {
+        setPersonas(next)
+        if (initialPersona && next.some((p) => p.id === initialPersona)) {
+          setPersona(initialPersona)
+          setPersonaConfirmed(false)
+        }
+      })
+    }
     if (showPipeline) window.gt.agents.pipelines().then(setPipelines)
     window.gt.detectEnv().then(setEnv)
     window.gt.settings.get().then((s) => setDefaultEngine(s.defaultEngine))
-  }, [showPersona, showPipeline])
+  }, [showPersona, showPipeline, initialPersona])
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
@@ -86,19 +112,27 @@ export function EnginePicker({
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor'] as Engine[]).filter((e) => e !== defaultEngine)]
+  const selectedContext = persona ? personas.find((p) => p.id === persona) : undefined
 
-  const step = engine === null ? 'engine' : showPersona && persona === null ? 'persona' : showPipeline && pipeline === null ? 'pipeline' : 'launch'
+  const step =
+    engine === null
+      ? 'engine'
+      : showPersona && !personaConfirmed
+        ? 'persona'
+        : showPipeline && pipeline === null
+          ? 'pipeline'
+          : 'launch'
   const totalSteps = 2 + (showPersona ? 1 : 0) + (showPipeline ? 1 : 0)
   const stepNum = step === 'engine' ? 1 : step === 'persona' ? 2 : step === 'pipeline' ? 2 + (showPersona ? 1 : 0) : totalSteps
   const back = () => {
     if (step === 'launch') {
       if (showPipeline) setPipeline(null)
-      else if (showPersona) setPersona(null)
+      else if (showPersona) setPersonaConfirmed(false)
       else setEngine(null)
       return
     }
     if (step === 'pipeline') {
-      if (showPersona) setPersona(null)
+      if (showPersona) setPersonaConfirmed(false)
       else setEngine(null)
       return
     }
@@ -171,7 +205,7 @@ export function EnginePicker({
           <>
             <div className="mb-3 flex items-center gap-2">
               <p className="text-[11.5px] text-zinc-500">
-                {stepNum} · Run as a persona? <span className="text-zinc-600">(via {engineLabel(engine || '')})</span>
+                {stepNum} · Run with an agent context? <span className="text-zinc-600">(via {engineLabel(engine || '')})</span>
               </p>
               <div className="ml-auto">
                 <EngineModelPicker
@@ -188,8 +222,15 @@ export function EnginePicker({
             </div>
             <div className="max-h-[320px] space-y-1.5 overflow-y-auto">
               <button
-                onClick={() => setPersona('')}
-                className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+                onClick={() => {
+                  setPersona('')
+                  setPersonaConfirmed(true)
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-xl border p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 ${
+                  persona === ''
+                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/10'
+                    : 'border-[var(--gt-border)] bg-black/20'
+                }`}
               >
                 <Ban size={17} strokeWidth={1.75} className="shrink-0 text-zinc-500" />
                 <div className="min-w-0 flex-1">
@@ -199,11 +240,19 @@ export function EnginePicker({
               </button>
               {personas.map((p) => {
                 const Icon = PERSONA_ICON[p.icon || ''] || UserRound
+                const selected = persona === p.id
                 return (
                   <button
                     key={p.id}
-                    onClick={() => setPersona(p.id)}
-                    className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+                    onClick={() => {
+                      setPersona(p.id)
+                      setPersonaConfirmed(true)
+                    }}
+                    className={`flex w-full items-center gap-2.5 rounded-xl border p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 ${
+                      selected
+                        ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/10'
+                        : 'border-[var(--gt-border)] bg-black/20'
+                    }`}
                   >
                     <Icon size={17} strokeWidth={1.75} className="shrink-0 text-[var(--gt-accent-light)]" />
                     <div className="min-w-0 flex-1">
@@ -214,6 +263,14 @@ export function EnginePicker({
                 )
               })}
             </div>
+            {persona !== null && (
+              <button
+                onClick={() => setPersonaConfirmed(true)}
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+              >
+                Continue with {persona ? selectedContext?.title || persona : 'no agent context'}
+              </button>
+            )}
           </>
         )}
 
@@ -223,7 +280,7 @@ export function EnginePicker({
               {stepNum} · Pipeline?{' '}
               <span className="text-zinc-600">
                 ({engineLabel(engine || '')}
-                {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''})
+                {persona ? ` · ${selectedContext?.title || persona}` : ''})
               </span>
             </p>
             <div className="max-h-[320px] space-y-1.5 overflow-y-auto">
@@ -254,8 +311,9 @@ export function EnginePicker({
                 {stepNum} · Launch as{' '}
                 <span className="text-zinc-600">
                   ({engineLabel(engine || '')}
-                  {persona ? ` · ${personas.find((p) => p.id === persona)?.title || persona}` : ''}
-                  {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''})
+                  {persona ? ` · ${selectedContext?.title || persona}` : ''}
+                  {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''}
+                  {showLanes && lanes > 1 ? ` · ${lanes} lanes` : ''})
                 </span>
               </p>
               {!showPersona && (
@@ -273,9 +331,51 @@ export function EnginePicker({
                 </div>
               )}
             </div>
+            {showLanes && (
+              <div className="mb-3 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-zinc-300">Lanes</span>
+                  <span className="text-[10px] text-zinc-600">parallel variant attempts · process mode</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setLanes(n)}
+                      className={`min-w-[34px] rounded-lg border px-2 py-1 text-[12px] font-semibold transition-colors ${
+                        lanes === n
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                          : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={lanes}
+                    onChange={(e) => {
+                      const v = Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1)))
+                      setLanes(v)
+                    }}
+                    className="ml-1 w-[58px] rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 py-1 text-[12px] text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
+                    title="Custom lane count (1–100)"
+                  />
+                </div>
+                {lanes > 1 && (
+                  <p className="mt-2 text-[10px] leading-snug text-zinc-600">
+                    {lanes} independent worktrees/branches, each opening its own {' '}
+                    {/* judge is v2; v1 opens all + you compare */}MR. Compare and pick the winner;
+                    requires the ticket to have acceptance criteria.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal')}
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
@@ -283,17 +383,19 @@ export function EnginePicker({
                   {engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'} instance
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  Open Terminal with the prompt prefilled.
+                  {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
                 </span>
               </button>
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process')}
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
-                <span className="text-[13px] font-semibold text-zinc-100">Process</span>
+                <span className="text-[13px] font-semibold text-zinc-100">
+                  {showLanes && lanes > 1 ? `Process · ${lanes} lanes` : 'Process'}
+                </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  Fire-and-forget background run.
+                  {showLanes && lanes > 1 ? `Fan out ${lanes} parallel variant runs.` : 'Fire-and-forget background run.'}
                 </span>
               </button>
             </div>

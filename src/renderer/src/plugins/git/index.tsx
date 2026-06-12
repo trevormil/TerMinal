@@ -35,10 +35,14 @@ const plugin: Plugin<GitStatus> = {
         <Row
           label="vs upstream"
           value={
-            <span className="tabular-nums">
-              <span className="text-[var(--gt-green)]">↑{d.ahead}</span>{' '}
-              <span className="text-[var(--gt-red)]">↓{d.behind}</span>
-            </span>
+            d.upstream ? (
+              <span className="tabular-nums">
+                <span className="text-[var(--gt-green)]">↑{d.ahead}</span>{' '}
+                <span className="text-[var(--gt-red)]">↓{d.behind}</span>
+              </span>
+            ) : (
+              <span className="text-zinc-600">none</span>
+            )
           }
         />
       </Card>

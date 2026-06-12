@@ -3,7 +3,7 @@ import { CheckCircle2, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X 
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 
-type RunSource = 'cron' | 'agent' | 'bg'
+type RunSource = 'cron' | 'agent' | 'bg' | 'session'
 
 export function RunLogPane({
   source,

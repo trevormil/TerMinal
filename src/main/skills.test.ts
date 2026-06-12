@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -50,5 +50,15 @@ describe('listSkills', () => {
     expect(ticket?.platforms).toEqual(['claude', 'codex'])
     expect(newAgent?.platforms).toEqual(['claude', 'codex'])
     expect(newSchedule?.platforms).toEqual(['claude', 'codex'])
+  })
+
+  test('keeps this repo Claude and Codex skill mirrors in lockstep', () => {
+    const skillNames = (platform: '.claude' | '.codex') =>
+      readdirSync(join(process.cwd(), platform, 'skills'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort()
+
+    expect(skillNames('.claude')).toEqual(skillNames('.codex'))
   })
 })

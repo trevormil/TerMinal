@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import {
   Bot,
+  Brain,
   FileText,
   Play,
   BookText,
@@ -16,8 +17,6 @@ import {
   Square,
   Trash2,
   FolderOpen,
-  ChevronDown,
-  ChevronRight,
   Pencil,
   RotateCcw,
   EyeOff,
@@ -42,6 +41,9 @@ import {
   RadioTower,
   AlertOctagon,
   Undo2,
+  CheckCircle2,
+  Cpu,
+  Database,
   type LucideIcon,
 } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
@@ -57,7 +59,7 @@ import { navigateTo } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../../lib/launch'
 import { agentPrompt } from '../../lib/agentPrompts'
-import type { Tab, TabContext, Agent, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactRead } from '../../lib/types'
+import type { Tab, TabContext, Agent, AgentDefinition, AgentModelPolicy, AgentQuality, AgentRun, Engine, FileEntry, PersistentAgent, PersistentAgentDetail, PersistentAgentFiles, PersistentArtifact, PersistentArtifactRead } from '../../lib/types'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 
 function fmtRelative(ts: number): string {
@@ -104,6 +106,7 @@ const AGENT_ICON: Record<string, LucideIcon> = {
   RadioTower,
   AlertOctagon,
   Undo2,
+  Brain,
   Bot,
 }
 const statusTone = (s: string): BadgeTone =>
@@ -117,7 +120,6 @@ const statusTone = (s: string): BadgeTone =>
           ? 'mute'
           : 'blue'
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
-const AGENT_RUN_REPO_FILTER_KEY = 'gt.agents.runRepoFilter'
 
 function reltime(ts: number): string {
   const s = (Date.now() - ts) / 1000
@@ -132,6 +134,17 @@ const SOURCE: Record<string, { label: string; tone: BadgeTone }> = {
   'global-override': { label: 'global override', tone: 'blue' },
   repo: { label: 'custom', tone: 'accent' },
   global: { label: 'global', tone: 'blue' },
+  persistent: { label: 'persistent', tone: 'accent' },
+}
+
+function SectionKicker({ icon: Icon, title, meta }: { icon?: LucideIcon; title: string; meta?: ReactNode }) {
+  return (
+    <div className="mb-3 flex min-w-0 items-center gap-2">
+      {Icon && <Icon size={13} strokeWidth={2.5} className="shrink-0 text-[var(--gt-accent-light)]" />}
+      <h3 className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-wider text-zinc-500">{title}</h3>
+      {meta}
+    </div>
+  )
 }
 // How the engine wraps the prompt at run time (worktree filled in per run).
 const runsAs = (engine: Engine): string =>
@@ -166,6 +179,163 @@ function langForAgentFile(path: string): Extension[] {
   } catch {
     return []
   }
+}
+
+function modelPolicyRows(definition: AgentDefinition): { label: string; value: string; tone: BadgeTone }[] {
+  const policy = definition.runtime.modelPolicy || {}
+  return [
+    { label: 'Default', value: policy.default || definition.runtime.model || 'engine default', tone: 'blue' },
+    { label: 'Cheap', value: policy.cheap || 'not set', tone: 'mute' },
+    { label: 'Deep', value: policy.deep || 'not set', tone: 'accent' },
+    { label: 'Judge', value: policy.judge || definition.quality.judge?.model || 'not set', tone: 'yellow' },
+  ]
+}
+
+function QualityPanel({ quality }: { quality: AgentQuality }) {
+  const criteria = quality.acceptanceCriteria || []
+  const artifacts = quality.requiredArtifacts || []
+  const checks = quality.deterministicChecks || []
+  const judge = quality.judge
+  return (
+    <section className="border-b border-[var(--gt-border)]/60 p-4">
+      <SectionKicker icon={CheckCircle2} title="Quality contract" />
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+        <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">Acceptance criteria</div>
+          {criteria.length === 0 ? (
+            <div className="text-[11px] text-zinc-600">No explicit criteria yet.</div>
+          ) : (
+            <ul className="space-y-1.5">
+              {criteria.map((item, i) => (
+                <li key={`${i}-${item}`} className="flex gap-2 text-[11.5px] leading-snug text-zinc-300">
+                  <CheckCircle2 size={12} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-green)]" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="space-y-3">
+          <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">Deterministic checks</div>
+            {checks.length === 0 ? (
+              <div className="text-[11px] text-zinc-600">No shell checks configured.</div>
+            ) : (
+              <div className="space-y-2">
+                {checks.map((check) => (
+                  <div key={check.id} className="rounded-md border border-[var(--gt-border)]/70 bg-black/20 p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-zinc-200">{check.title}</span>
+                      <Badge tone={check.required ? 'red' : 'mute'}>{check.required ? 'required' : 'optional'}</Badge>
+                    </div>
+                    <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-500">{check.command}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">Output judge</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone={judge?.enabled ? 'accent' : 'mute'}>{judge?.enabled ? 'enabled' : 'off'}</Badge>
+              <Badge tone="blue">{judge?.mode || 'deterministic'}</Badge>
+              {judge?.passThreshold !== undefined && <Badge tone="yellow">{judge.passThreshold}% pass</Badge>}
+            </div>
+            {judge?.rubric?.length ? (
+              <ul className="mt-2 space-y-1">
+                {judge.rubric.map((item, i) => (
+                  <li key={`${i}-${item}`} className="text-[11px] leading-snug text-zinc-500">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="mt-2 text-[11px] text-zinc-600">No rubric configured.</div>
+            )}
+          </div>
+          {artifacts.length > 0 && (
+            <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">Required artifacts</div>
+              <div className="flex flex-wrap gap-1">
+                {artifacts.map((artifact) => (
+                  <Badge key={artifact} tone="accent">{artifact}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function DefinitionSummary({ definition }: { definition: AgentDefinition }) {
+  const Icon = definition.kind === 'persistent' ? Brain : AGENT_ICON[definition.icon || ''] || Bot
+  return (
+    <section className="border-b border-[var(--gt-border)]/60 p-4">
+      <SectionKicker icon={Icon} title="Agent profile" />
+      <div className="grid gap-3 xl:grid-cols-[220px_minmax(0,1fr)_220px]">
+        <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">Runtime</div>
+          <div className="space-y-1.5 text-[11px] text-zinc-400">
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">kind</span>
+              <span className="capitalize">{definition.kind}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">mode</span>
+              <span>{definition.runtime.mode}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">scope</span>
+              <span>{definition.scope}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">engine</span>
+              <span className="inline-flex items-center gap-1">
+                <EngineLogo engine={definition.runtime.engine || 'codex'} size={10} />
+                {engineLabel(definition.runtime.engine || 'codex')}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+            <Cpu size={12} strokeWidth={2.5} />
+            Model policy
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {modelPolicyRows(definition).map((row) => (
+              <div key={row.label} className="flex min-w-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)]/60 px-2 py-1">
+                <Badge tone={row.tone}>{row.label}</Badge>
+                <span className="min-w-0 truncate font-mono text-[10.5px] text-zinc-400">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+            <Database size={12} strokeWidth={2.5} />
+            Knowledge
+          </div>
+          <div className="space-y-1.5 text-[11px] text-zinc-400">
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">policy</span>
+              <span>{definition.instructions.knowledgePolicy || 'standard'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">memory</span>
+              <span>{definition.runtime.memoryDir ? 'persistent' : 'run-local'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-zinc-600">override</span>
+              <span>{definition.runtime.modelPolicy?.allowOverride === false ? 'locked' : 'allowed'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 // Add / edit an agent. Saving writes <repo>/.agents/agents.json (overriding a
@@ -389,10 +559,49 @@ function AgentEditor({
   const [model, setModel] = useState(a?.model || '')
   const [opensPr, setOpensPr] = useState(!!a?.opensPr)
   const [prompt, setPrompt] = useState(a?.prompt || '')
+  const [outputContract, setOutputContract] = useState(a?.outputContract || '')
+  const [modelPolicyJson, setModelPolicyJson] = useState(
+    JSON.stringify(
+      a?.modelPolicy || {
+        default: a?.model || '',
+        cheap: '',
+        deep: '',
+        judge: '',
+        allowOverride: true,
+      },
+      null,
+      2,
+    ),
+  )
+  const [qualityJson, setQualityJson] = useState(
+    JSON.stringify(
+      a?.quality || {
+        acceptanceCriteria: a?.acceptanceCriteria || [],
+        requiredArtifacts: [],
+        deterministicChecks: [],
+        judge: {
+          enabled: false,
+          mode: 'deterministic',
+          rubric: [],
+        },
+      },
+      null,
+      2,
+    ),
+  )
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
   const save = async () => {
+    let modelPolicy: AgentModelPolicy | undefined
+    let quality: AgentQuality | undefined
+    try {
+      modelPolicy = modelPolicyJson.trim() ? (JSON.parse(modelPolicyJson) as AgentModelPolicy) : undefined
+      quality = qualityJson.trim() ? (JSON.parse(qualityJson) as AgentQuality) : undefined
+    } catch (e) {
+      setErr((e as Error).message)
+      return
+    }
     setBusy(true)
     setErr('')
     const r = await window.gt.agents.save({
@@ -401,6 +610,9 @@ function AgentEditor({
       description: description.trim(),
       engine,
       model: model.trim() || undefined,
+      modelPolicy,
+      quality,
+      outputContract: outputContract.trim() || undefined,
       opensPr,
       prompt,
     })
@@ -472,6 +684,33 @@ function AgentEditor({
           placeholder="The full prompt the agent runs (what it should do, what to file/open, how to finish)…"
           className={`${FIELD} resize-y font-mono leading-relaxed`}
         />
+        <textarea
+          value={outputContract}
+          onChange={(e) => setOutputContract(e.target.value)}
+          rows={2}
+          placeholder="Output contract: what this agent should leave behind on a successful run"
+          className={`${FIELD} resize-none leading-relaxed`}
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="flex min-w-0 flex-col gap-1">
+            <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Model policy JSON</span>
+            <textarea
+              value={modelPolicyJson}
+              onChange={(e) => setModelPolicyJson(e.target.value)}
+              rows={8}
+              className={`${FIELD} resize-y font-mono leading-relaxed`}
+            />
+          </label>
+          <label className="flex min-w-0 flex-col gap-1">
+            <span className="text-[10.5px] uppercase tracking-wider text-zinc-500">Quality JSON</span>
+            <textarea
+              value={qualityJson}
+              onChange={(e) => setQualityJson(e.target.value)}
+              rows={8}
+              className={`${FIELD} resize-y font-mono leading-relaxed`}
+            />
+          </label>
+        </div>
         {err && <p className="text-[11px] text-[var(--gt-red)]">{err}</p>}
         <button
           onClick={save}
@@ -1248,20 +1487,27 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
 }
 
 function AgentsTab({ ctx }: { ctx: TabContext }) {
-  const [agentMode, setAgentMode] = useState<'classic' | 'persistent'>(
-    () => (localStorage.getItem('gt.agents.mode') as 'classic' | 'persistent') || 'classic',
+  const [agentMode, setAgentMode] = useState<'all' | 'classic' | 'persistent'>(() => {
+    const saved = localStorage.getItem('gt.agents.mode')
+    return saved === 'classic' || saved === 'persistent' || saved === 'all' ? saved : 'all'
+  })
+  const [definitions, setDefinitions] = useState<AgentDefinition[] | null>(null)
+  const [selDefinitionId, setSelDefinitionId] = useState<string | null>(
+    () => localStorage.getItem('gt.agents.definitionSel') || null,
   )
   const [agents, setAgents] = useState<Agent[] | null>(null)
   const [runs, setRuns] = useState<AgentRun[]>([])
   const [outputs, setOutputs] = useState<Record<string, string>>({})
   const [sel, setSel] = useState<string | null>(null)
   const [picking, setPicking] = useState<{ id: string; title: string } | null>(null)
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [editing, setEditing] = useState<Agent | 'new' | null>(null)
   // Persist UI position across reloads so coming back to the tab lands on the
   // same agent/filter/search. Cheap localStorage; the values are tiny strings.
   const [agentFilter, setAgentFilter] = useState<'all' | 'generic' | 'per-repo'>(
     () => (localStorage.getItem('gt.agents.filter') as 'all' | 'generic' | 'per-repo') || 'all',
+  )
+  const [definitionFilter, setDefinitionFilter] = useState<'all' | 'classic' | 'persistent'>(
+    () => (localStorage.getItem('gt.agents.definitionFilter') as 'all' | 'classic' | 'persistent') || 'all',
   )
   const [agentSearch, setAgentSearch] = useState<string>(
     () => localStorage.getItem('gt.agents.search') || '',
@@ -1273,8 +1519,15 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     localStorage.setItem('gt.agents.filter', agentFilter)
   }, [agentFilter])
   useEffect(() => {
+    localStorage.setItem('gt.agents.definitionFilter', definitionFilter)
+  }, [definitionFilter])
+  useEffect(() => {
     localStorage.setItem('gt.agents.mode', agentMode)
   }, [agentMode])
+  useEffect(() => {
+    if (selDefinitionId) localStorage.setItem('gt.agents.definitionSel', selDefinitionId)
+    else localStorage.removeItem('gt.agents.definitionSel')
+  }, [selDefinitionId])
   useEffect(() => {
     localStorage.setItem('gt.agents.search', agentSearch)
   }, [agentSearch])
@@ -1286,7 +1539,15 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [scripts, setScripts] = useState<Record<string, { path: string; body: string } | null>>({})
   const logRef = useRef<HTMLPreElement>(null)
 
-  const reloadAgents = () => window.gt.agents.list().then(setAgents)
+  const reloadDefinitions = () =>
+    window.gt.agents.definitions().then((defs) => {
+      setDefinitions(defs)
+      setSelDefinitionId((prev) => (prev && defs.some((d) => d.id === prev) ? prev : defs[0]?.id || null))
+    })
+  const reloadAgents = () => {
+    window.gt.agents.list().then(setAgents)
+    reloadDefinitions()
+  }
   // Lazy-load the bash script body the first time we need it; cache the
   // result (including null when definitively no script exists) so we don't
   // re-hit IPC. Triggered on agent select (new master-detail layout) and on
@@ -1384,17 +1645,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
       offAct()
     }
   }, [selAgentId])
-  const toggleExpand = (id: string) => {
-    loadScript(id)
-    setExpanded((s) => {
-      const n = new Set(s)
-      n.has(id) ? n.delete(id) : n.add(id)
-      return n
-    })
-  }
-
   useEffect(() => {
-    window.gt.agents.list().then(setAgents)
+    reloadAgents()
     window.gt.agents.runs().then((rs) => {
       setRuns(rs)
       setOutputs((o) => {
@@ -1425,9 +1677,12 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
         const priorIds = new Set((agents || []).map((a) => a.id))
         window.gt.agents.list().then((next) => {
           setAgents(next)
+          reloadDefinitions()
           const fresh = next.find((a) => !priorIds.has(a.id))
           if (!fresh) return
-          setExpanded((s) => new Set([...s, fresh.id]))
+          setAgentMode('all')
+          setSelAgentId(fresh.id)
+          setSelDefinitionId(`classic:${fresh.source === 'global' || fresh.source === 'global-override' ? 'global' : 'repo'}:${fresh.id}`)
           window.gt.agents
             .script(fresh.id)
             .then((r) => setScripts((m) => ({ ...m, [fresh.id]: r })))
@@ -1443,28 +1698,24 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [ctx.sessionId])
 
-  const [repoFilter, setRepoFilterState] = useState(() => localStorage.getItem(AGENT_RUN_REPO_FILTER_KEY) ?? '__auto__')
   const selectedRun = runs.find((r) => r.id === sel) || null
   const runningByAgent = useMemo(
     () => new Set(runs.filter((r) => r.status === 'running').map((r) => r.agentId)),
     [runs],
   )
-  // Runs are global across every repo; the filter just narrows the list.
-  const repoOptions = useMemo(() => [...new Set(runs.map((r) => repoOf(r.repoRoot)))].sort(), [runs])
-  const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || '')
-  useEffect(() => {
-    if (repoFilter !== '__auto__' || !activeRepoLabel || !repoOptions.includes(activeRepoLabel)) return
-    setRepoFilterState(activeRepoLabel)
-  }, [activeRepoLabel, repoFilter, repoOptions])
-  const setRepoFilter = (value: string) => {
-    localStorage.setItem(AGENT_RUN_REPO_FILTER_KEY, value)
-    setRepoFilterState(value)
-  }
-  const shownRuns = repoFilter !== '__auto__' && repoFilter ? runs.filter((r) => repoOf(r.repoRoot) === repoFilter) : runs
   useEffect(() => {
     const el = logRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [sel, selectedRun && outputs[selectedRun.id]])
+  const selectedDefinition = useMemo(
+    () => (definitions || []).find((d) => d.id === selDefinitionId) || null,
+    [definitions, selDefinitionId],
+  )
+  useEffect(() => {
+    if (agentMode === 'all' && selectedDefinition?.kind === 'classic' && selectedDefinition.ref.id !== selAgentId) {
+      setSelAgentId(selectedDefinition.ref.id)
+    }
+  }, [agentMode, selectedDefinition, selAgentId])
 
   const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string) => {
     const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx))
@@ -1476,17 +1727,26 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     setSel(r.id)
   }
 
+  const activeRunCount = runs.filter((r) => r.status === 'running').length
+  const repoLabel = ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')
+
   const header = (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-      <Bot size={14} strokeWidth={2} className="text-zinc-400" />
-      <span className="text-[12px] font-semibold text-zinc-200">Agents</span>
-      <span className="text-[11px] text-zinc-600">
-        {agentMode === 'persistent'
-          ? 'global memory-aware agents'
-          : `own worktree · opens a PR · ${ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}`}
-      </span>
-      <div className="ml-auto flex items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-0.5">
-        {(['classic', 'persistent'] as const).map((mode) => (
+    <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/25 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25">
+          <Bot size={15} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-zinc-100">Agents</span>
+            <span className="truncate font-mono text-[10.5px] text-zinc-600">{repoLabel}</span>
+          </div>
+          <div className="text-[10.5px] text-zinc-600">Run definitions, memory agents, model policy, and quality gates</div>
+        </div>
+      </div>
+      {activeRunCount > 0 && <Badge tone="green">{activeRunCount} running</Badge>}
+      <div className="ml-auto flex items-center rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
+        {(['all', 'classic', 'persistent'] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setAgentMode(mode)}
@@ -1518,13 +1778,13 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
 
       <div className="flex min-h-0 flex-1">
         {/* ━━ LEFT RAIL: narrow agents list (search + filter + click-to-select) ━━ */}
-        <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
-          <div className="shrink-0 space-y-1.5 border-b border-[var(--gt-border)] p-2">
+        <aside className="flex w-80 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
+          <div className="shrink-0 space-y-2 border-b border-[var(--gt-border)] p-2.5">
             <div className="flex items-center gap-1.5">
               <input
                 value={agentSearch}
                 onChange={(e) => setAgentSearch(e.target.value)}
-                placeholder="Search agents…"
+                placeholder={agentMode === 'all' ? 'Search all agents…' : 'Search classic agents…'}
                 className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
               />
               <button
@@ -1536,24 +1796,124 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 New
               </button>
             </div>
-            <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-              {(['all', 'generic', 'per-repo'] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setAgentFilter(f)}
-                  className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
-                    agentFilter === f
-                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  {f === 'per-repo' ? 'per-repo' : f}
-                </button>
-              ))}
+            <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] bg-black/15 p-0.5">
+              {agentMode === 'all'
+                ? (['all', 'classic', 'persistent'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setDefinitionFilter(f)}
+                      className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
+                        definitionFilter === f
+                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))
+                : (['all', 'generic', 'per-repo'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setAgentFilter(f)}
+                      className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
+                        agentFilter === f
+                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {f === 'per-repo' ? 'per-repo' : f}
+                    </button>
+                  ))}
             </div>
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto">
-            {agents === null ? (
+            {agentMode === 'all' ? (
+              definitions === null ? (
+                <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
+              ) : (
+                (() => {
+                  const q = agentSearch.trim().toLowerCase()
+                  const list = definitions
+                    .filter((d) => definitionFilter === 'all' || d.kind === definitionFilter)
+                    .filter(
+                      (d) =>
+                        !q ||
+                        d.ref.id.toLowerCase().includes(q) ||
+                        d.title.toLowerCase().includes(q) ||
+                        (d.description || '').toLowerCase().includes(q) ||
+                        (d.metadata.tags || []).join(' ').toLowerCase().includes(q),
+                    )
+                  if (list.length === 0)
+                    return <div className="p-3 text-[11px] text-zinc-600">No agents match.</div>
+                  return list.map((d) => {
+                    const Icon = d.kind === 'persistent' ? Brain : AGENT_ICON[d.icon || ''] || Bot
+                    const on = selDefinitionId === d.id
+                    const busy = d.kind === 'classic' && runningByAgent.has(d.ref.id)
+                    const last = busy || d.kind !== 'classic' ? null : lastRunByAgent.get(d.ref.id) || null
+                    const dot = busy
+                      ? 'bg-[var(--gt-green)] gt-pulse'
+                      : last?.status === 'done'
+                        ? 'bg-[var(--gt-green)]'
+                        : last?.status === 'failed'
+                          ? 'bg-[var(--gt-red)]'
+                          : d.metadata.lastRunAt
+                            ? 'bg-[var(--gt-accent-light)]'
+                            : ''
+                    const dotTitle = busy
+                      ? 'run in progress'
+                      : last
+                        ? `last run: ${last.status} · ${fmtRelative(last.startedAt)}`
+                        : d.metadata.lastRunAt
+                          ? `last persistent run: ${fmtRelative(d.metadata.lastRunAt)}`
+                          : ''
+                    return (
+                      <button
+                        key={d.id}
+                        onClick={() => {
+                          setSelDefinitionId(d.id)
+                          if (d.kind === 'classic') setSelAgentId(d.ref.id)
+                          if (d.kind === 'persistent') localStorage.setItem('gt.persistentAgents.sel', d.ref.id)
+                        }}
+                        title={d.description || d.title}
+                        className={`flex w-full items-start gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                          on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                        }`}
+                      >
+                        <Icon
+                          size={13}
+                          strokeWidth={2}
+                          className={`shrink-0 ${
+                            on ? 'text-[var(--gt-accent-light)]' : d.kind === 'persistent' ? 'text-[var(--gt-accent-light)]/60' : 'text-zinc-500'
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span className="block truncate text-[12px] font-medium text-zinc-100">{d.title}</span>
+                          <span className="flex min-w-0 flex-wrap items-center gap-1">
+                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
+                              {d.kind}
+                            </span>
+                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
+                              {d.runtime.mode}
+                            </span>
+                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
+                              {d.scope}
+                            </span>
+                          </span>
+                          {d.description && <span className="block truncate text-[10px] text-zinc-600">{d.description}</span>}
+                        </span>
+                        {d.runtime.force && <ForceChip />}
+                        {d.runtime.mode === 'script' && (
+                          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-[var(--gt-accent-light)]/70">
+                            sh
+                          </span>
+                        )}
+                        {dot && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} title={dotTitle} />}
+                      </button>
+                    )
+                  })
+                })()
+              )
+            ) : agents === null ? (
               <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
             ) : (
               (() => {
@@ -1597,7 +1957,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       key={a.id}
                       onClick={() => setSelAgentId(a.id)}
                       title={a.description || a.title}
-                      className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-2.5 py-1 text-left ${
+                      className={`flex w-full items-start gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
                         on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                       }`}
                     >
@@ -1608,8 +1968,17 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           on ? 'text-[var(--gt-accent-light)]' : 'text-zinc-500'
                         }`}
                       />
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-zinc-100">
-                        {a.title}
+                      <span className="min-w-0 flex-1 space-y-0.5">
+                        <span className="block truncate text-[12px] font-medium text-zinc-100">{a.title}</span>
+                        <span className="flex min-w-0 flex-wrap items-center gap-1">
+                          <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
+                            {a.source === 'repo' || a.source === 'repo-override' ? 'repo' : 'global'}
+                          </span>
+                          <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
+                            {a.hasScript ? 'script' : 'prompt'}
+                          </span>
+                        </span>
+                        {a.description && <span className="block truncate text-[10px] text-zinc-600">{a.description}</span>}
                       </span>
                       {a.force && <ForceChip />}
                       {a.hasScript && (
@@ -1634,7 +2003,84 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
         {/* ━━ RIGHT PANE: selected-agent detail (header + script + runs + log) ━━ */}
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {(() => {
-            const selectedAgent = (agents || []).find((a) => a.id === selAgentId)
+            if (agentMode === 'all' && !selectedDefinition) {
+              return (
+                <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
+                  Pick an agent on the left, or click <span className="mx-1 font-semibold text-zinc-400">New</span>{' '}
+                  to design one.
+                </div>
+              )
+            }
+            if (agentMode === 'all' && selectedDefinition?.kind === 'persistent') {
+              return (
+                <>
+                  <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-3">
+                    <Brain size={18} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+                    <h2 className="text-[14px] font-bold text-zinc-100">{selectedDefinition.title}</h2>
+                    <Badge tone="accent">persistent</Badge>
+                    <Badge tone="blue">{selectedDefinition.scope}</Badge>
+                    <span className="font-mono text-[10px] text-zinc-600">{selectedDefinition.ref.id}</span>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => {
+                        localStorage.setItem('gt.persistentAgents.sel', selectedDefinition.ref.id)
+                        setAgentMode('persistent')
+                      }}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 text-[12px] font-semibold text-white hover:opacity-90"
+                    >
+                      <Database size={13} strokeWidth={2.5} />
+                      Open memory workspace
+                    </button>
+                  </header>
+                  {selectedDefinition.description && (
+                    <div className="shrink-0 border-b border-[var(--gt-border)]/60 px-5 py-2 text-[12px] text-zinc-400">
+                      {selectedDefinition.description}
+                    </div>
+                  )}
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <DefinitionSummary definition={selectedDefinition} />
+                    <section className="border-b border-[var(--gt-border)]/60 p-4">
+                      <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                        <Brain size={12} strokeWidth={2.5} className="text-[var(--gt-accent-light)]" />
+                        Memory surface
+                      </h3>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {[
+                          ['INSTRUCTIONS.md', 'Stable role and operating contract.'],
+                          ['MEMORY.md', 'Durable preferences, facts, and lessons.'],
+                          ['STATE.md', 'Current open thread, status, and next actions.'],
+                          ['JOURNAL.md', 'Append-only history of runs and decisions.'],
+                        ].map(([title, body]) => (
+                          <div key={title} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                            <div className="font-mono text-[11px] font-semibold text-zinc-200">{title}</div>
+                            <div className="mt-1 text-[11px] leading-snug text-zinc-500">{body}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedDefinition.runtime.memoryDir && (
+                        <div className="mt-3 truncate rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 font-mono text-[10.5px] text-zinc-500">
+                          {selectedDefinition.runtime.memoryDir}
+                        </div>
+                      )}
+                    </section>
+                    <QualityPanel quality={selectedDefinition.quality} />
+                    <section className="p-4">
+                      <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                        <ClipboardList size={12} strokeWidth={2.5} className="text-[var(--gt-accent-light)]" />
+                        Artifact contract
+                      </h3>
+                      <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11.5px] leading-relaxed text-zinc-400">
+                        Persistent agents should write durable outputs under{' '}
+                        <code className="font-mono text-zinc-300">artifacts/&lt;run&gt;/</code> and keep memory files current before ending.
+                        The memory workspace view exposes the full file browser, artifact previewer, and run controls for this agent.
+                      </div>
+                    </section>
+                  </div>
+                </>
+              )
+            }
+            const selectedAgent =
+              (agents || []).find((a) => a.id === (agentMode === 'all' ? selectedDefinition?.ref.id : selAgentId)) || null
             if (!selectedAgent)
               return (
                 <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
@@ -1646,121 +2092,142 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
             const busy = runningByAgent.has(selectedAgent.id)
             const script = scripts[selectedAgent.id]
             const agentRuns = runs.filter((r) => r.agentId === selectedAgent.id)
+            const activeDefinition =
+              selectedDefinition?.kind === 'classic' && selectedDefinition.ref.id === selectedAgent.id
+                ? selectedDefinition
+                : (definitions || []).find((d) => d.kind === 'classic' && d.ref.id === selectedAgent.id) || null
             return (
               <>
                 {/* Agent header — title + actions */}
-                <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-3">
-                  <Icon size={18} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-                  <h2 className="text-[14px] font-bold text-zinc-100">{selectedAgent.title}</h2>
-                  {selectedAgent.force && <ForceChip size="md" />}
-                  {selectedAgent.source && (
-                    <Badge tone={SOURCE[selectedAgent.source].tone}>{SOURCE[selectedAgent.source].label}</Badge>
-                  )}
-                  {selectedAgent.hasScript && <Badge tone="blue">sh</Badge>}
-                  <span className="font-mono text-[10px] text-zinc-600">{selectedAgent.id}</span>
-                  <div className="flex-1" />
-                  <button
-                    onClick={() => setPicking({ id: selectedAgent.id, title: selectedAgent.title })}
-                    disabled={busy}
-                    className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                  >
-                    {busy ? (
-                      <>
-                        <span className="h-1.5 w-1.5 rounded-full bg-white gt-pulse" />
-                        Running
-                      </>
-                    ) : (
-                      <>
-                        <Play size={13} strokeWidth={2.5} />
-                        Run
-                      </>
-                    )}
-                  </button>
-                  {script && (
-                    <button
-                      onClick={() => window.gt.openInEditor(script.path)}
-                      title="Edit the .sh in your configured editor"
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                    >
-                      <Pencil size={11} strokeWidth={2} />
-                      Edit script
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setEditing(selectedAgent)}
-                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-accent)]/60"
-                    title="Edit the metadata sidecar (title/icon/engine/etc.)"
-                  >
-                    <Pencil size={11} strokeWidth={2} />
-                    Metadata
-                  </button>
-                  {selectedAgent.source === 'repo-override' && (
-                    <button
-                      onClick={async () => {
-                        await window.gt.agents.reset(selectedAgent.id)
-                        reloadAgents()
-                      }}
-                      title="Revert to the built-in default"
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
-                    >
-                      <RotateCcw size={11} strokeWidth={2} />
-                      Reset
-                    </button>
-                  )}
-                  {selectedAgent.source === 'default' && (
-                    <button
-                      onClick={async () => {
-                        await window.gt.presets.hide('agents', selectedAgent.id)
-                        reloadAgents()
-                      }}
-                      title="Hide this built-in preset"
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
-                    >
-                      <EyeOff size={11} strokeWidth={2} />
-                      Hide
-                    </button>
-                  )}
+                <header className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/20 px-5 py-4">
+                  <div className="flex min-w-0 flex-wrap items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25">
+                      <Icon size={19} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h2 className="min-w-0 truncate text-[15px] font-bold text-zinc-100">{selectedAgent.title}</h2>
+                        {selectedAgent.force && <ForceChip size="md" />}
+                        {selectedAgent.source && (
+                          <Badge tone={SOURCE[selectedAgent.source].tone}>{SOURCE[selectedAgent.source].label}</Badge>
+                        )}
+                        {selectedAgent.hasScript && <Badge tone="blue">script</Badge>}
+                        <span className="font-mono text-[10px] text-zinc-600">{selectedAgent.id}</span>
+                      </div>
+                      {selectedAgent.description && (
+                        <div className="mt-1 max-w-4xl text-[12px] leading-relaxed text-zinc-400">{selectedAgent.description}</div>
+                      )}
+                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px] text-zinc-600">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)]/70 bg-black/20 px-2 py-1">
+                          <EngineLogo engine={selectedAgent.engine || 'codex'} size={10} />
+                          {runsAs(selectedAgent.engine || 'codex')}
+                        </span>
+                        {selectedAgent.model && (
+                          <span className="rounded-md border border-[var(--gt-border)]/70 bg-black/20 px-2 py-1 font-mono">
+                            model: {selectedAgent.model}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setPicking({ id: selectedAgent.id, title: selectedAgent.title })}
+                        disabled={busy}
+                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                      >
+                        {busy ? (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-white gt-pulse" />
+                            Running
+                          </>
+                        ) : (
+                          <>
+                            <Play size={13} strokeWidth={2.5} />
+                            Run
+                          </>
+                        )}
+                      </button>
+                      {script && (
+                        <button
+                          onClick={() => window.gt.openInEditor(script.path)}
+                          title="Edit the .sh in your configured editor"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                        >
+                          <Pencil size={11} strokeWidth={2} />
+                          Script
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setEditing(selectedAgent)}
+                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-accent)]/60"
+                        title="Edit the metadata sidecar (title/icon/engine/etc.)"
+                      >
+                        <Pencil size={11} strokeWidth={2} />
+                        Metadata
+                      </button>
+                      {selectedAgent.source === 'repo-override' && (
+                        <button
+                          onClick={async () => {
+                            await window.gt.agents.reset(selectedAgent.id)
+                            reloadAgents()
+                          }}
+                          title="Revert to the built-in default"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
+                        >
+                          <RotateCcw size={11} strokeWidth={2} />
+                          Reset
+                        </button>
+                      )}
+                      {selectedAgent.source === 'default' && (
+                        <button
+                          onClick={async () => {
+                            await window.gt.presets.hide('agents', selectedAgent.id)
+                            reloadAgents()
+                          }}
+                          title="Hide this built-in preset"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--gt-border)] px-2.5 text-[12px] text-zinc-400 hover:border-[var(--gt-yellow)]/60 hover:text-[var(--gt-yellow)]"
+                        >
+                          <EyeOff size={11} strokeWidth={2} />
+                          Hide
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </header>
-
-                {selectedAgent.description && (
-                  <div className="shrink-0 px-5 py-2 text-[12px] text-zinc-400">{selectedAgent.description}</div>
-                )}
-                <div className="shrink-0 border-b border-[var(--gt-border)]/60 px-5 pb-2 text-[10.5px] text-zinc-600">
-                  runs as:{' '}
-                  <EngineLogo
-                    engine={selectedAgent.engine || 'codex'}
-                    size={10}
-                    className="mx-0.5 -mb-0.5"
-                  />
-                  {runsAs(selectedAgent.engine || 'codex')}
-                  {selectedAgent.model && (
-                    <>
-                      <span className="mx-1 text-zinc-700">·</span>model: {selectedAgent.model}
-                    </>
-                  )}
-                </div>
 
                 {/* Scrollable body: script preview, runs, output */}
                 <div className="min-h-0 flex-1 overflow-y-auto">
+                  {activeDefinition && (
+                    <>
+                      <DefinitionSummary definition={activeDefinition} />
+                      <QualityPanel quality={activeDefinition.quality} />
+                    </>
+                  )}
                   {/* Script preview — script can be undefined (loading), null
                       (definitively no .sh), or {path,body} (script loaded). */}
                   <section className="border-b border-[var(--gt-border)]/60 p-4">
-                    <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      {script ? (
-                        <Badge tone="blue">bash script</Badge>
-                      ) : script === null ? (
-                        <Badge tone="mute">prompt</Badge>
-                      ) : (
-                        <Badge tone="mute">loading…</Badge>
-                      )}
-                      <span className="ml-1 min-w-0 flex-1 truncate font-normal normal-case tracking-normal">
+                    <SectionKicker
+                      icon={FileText}
+                      title="Execution source"
+                      meta={
+                        <>
+                          {script ? (
+                            <Badge tone="blue">bash script</Badge>
+                          ) : script === null ? (
+                            <Badge tone="mute">prompt</Badge>
+                          ) : (
+                            <Badge tone="mute">loading...</Badge>
+                          )}
+                        </>
+                      }
+                    />
+                    <div className="mb-2 min-w-0 truncate text-[10.5px] text-zinc-600">
                         {script
                           ? script.path
                           : script === null
                             ? `no .agents/${selectedAgent.id}.sh — runs as a single agent prompt`
                             : `reading .agents/${selectedAgent.id}.sh…`}
-                      </span>
-                    </h3>
+                    </div>
                     {script ? (
                       <BashHighlight code={script.body} className="max-h-96" />
                     ) : script === null ? (
@@ -1779,24 +2246,28 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       mark-main`'d. Reset wipes the file so the next run does a
                       cold scan. */}
                   <section className="border-b border-[var(--gt-border)]/60 p-4">
-                    <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      <Badge tone={state?.exists ? 'accent' : 'mute'}>state</Badge>
-                      <span className="ml-1 min-w-0 flex-1 truncate font-mono text-[9.5px] font-normal normal-case tracking-normal text-zinc-600">
-                        {state?.path || '…'}
-                      </span>
-                      {state?.exists && (
-                        <button
-                          onClick={async () => {
-                            if (!confirm('Reset state? Next run will scan from cold.')) return
-                            await window.gt.agents.stateReset(selectedAgent.id)
-                            reloadState(selectedAgent.id)
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-400 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                        >
-                          reset
-                        </button>
-                      )}
-                    </h3>
+                    <SectionKicker
+                      icon={Database}
+                      title="State sidecar"
+                      meta={
+                        <>
+                          <Badge tone={state?.exists ? 'accent' : 'mute'}>{state?.exists ? 'active' : 'empty'}</Badge>
+                          {state?.exists && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Reset state? Next run will scan from cold.')) return
+                                await window.gt.agents.stateReset(selectedAgent.id)
+                                reloadState(selectedAgent.id)
+                              }}
+                              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-400 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                            >
+                              reset
+                            </button>
+                          )}
+                        </>
+                      }
+                    />
+                    <div className="mb-2 truncate font-mono text-[9.5px] text-zinc-600">{state?.path || '...'}</div>
                     {!state ? (
                       <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-center text-[11px] text-zinc-600">
                         loading…
@@ -1882,29 +2353,32 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
 
                   {/* Recent runs for THIS agent */}
                   <section className="border-b border-[var(--gt-border)]/60 p-4">
-                    <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      Recent runs
-                      <span className="text-zinc-700">·</span>
-                      <span className="tabular-nums text-zinc-600">{agentRuns.length}</span>
-                      {(() => {
+                    <SectionKicker
+                      icon={ListChecks}
+                      title="Recent runs"
+                      meta={
+                        <div className="flex items-center gap-1.5">
+                          <Badge tone="mute">{agentRuns.length}</Badge>
+                          {(() => {
                         const s = agentSpendWeek[selectedAgent.id]
                         if (!s || s.usd <= 0) return null
                         return (
                           <>
-                            <span className="text-zinc-700">·</span>
                             <span
-                              className="font-mono tabular-nums normal-case text-[var(--gt-accent-light)]"
+                              className="font-mono tabular-nums text-[10.5px] normal-case text-[var(--gt-accent-light)]"
                               title="Total spend across this agent's runs in the last 7 days"
                             >
                               ${s.usd.toFixed(2)} / 7d
                             </span>
-                            <span className="font-mono tabular-nums normal-case text-zinc-600">
+                            <span className="font-mono tabular-nums text-[10.5px] normal-case text-zinc-600">
                               · avg ${(s.usd / Math.max(s.runs, 1)).toFixed(3)}/run
                             </span>
                           </>
                         )
-                      })()}
-                    </h3>
+                          })()}
+                        </div>
+                      }
+                    />
                     {/* Sparkline: last 20 runs across cron + in-process, newest
                         on the right. Each bar is a tiny color-coded square
                         sized by duration (longer run = taller bar, capped).
@@ -1995,40 +2469,41 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   {/* Selected run output */}
                   {selectedRun && selectedRun.agentId === selectedAgent.id && (
                     <section className="p-4">
-                      <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                        Run output
-                        <span className="text-zinc-700">·</span>
-                        <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
-                        <span className="font-mono normal-case tracking-normal text-zinc-600">
-                          {selectedRun.branch}
-                        </span>
-                        <div className="flex-1" />
-                        {selectedRun.status === 'running' && (
-                          <button
-                            onClick={() => window.gt.agents.cancel(selectedRun.id)}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-300 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                          >
-                            <Square size={9} strokeWidth={2} />
-                            Cancel
-                          </button>
-                        )}
-                        <button
-                          onClick={() => window.gt.openExternal(`file://${selectedRun.worktree}`)}
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                        >
-                          <FolderOpen size={9} strokeWidth={2} />
-                          Worktree
-                        </button>
-                        {selectedRun.status !== 'running' && (
-                          <button
-                            onClick={() => window.gt.agents.removeWorktree(selectedRun.id)}
-                            title="Remove the worktree (branch/PR stay)"
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                          >
-                            <Trash2 size={9} strokeWidth={2} />
-                          </button>
-                        )}
-                      </h3>
+                      <SectionKicker
+                        icon={Square}
+                        title="Run output"
+                        meta={
+                          <div className="flex items-center gap-1.5">
+                            <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
+                            <span className="max-w-[220px] truncate font-mono text-[10px] text-zinc-600">{selectedRun.branch}</span>
+                            {selectedRun.status === 'running' && (
+                              <button
+                                onClick={() => window.gt.agents.cancel(selectedRun.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-300 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                              >
+                                <Square size={9} strokeWidth={2} />
+                                Cancel
+                              </button>
+                            )}
+                            <button
+                              onClick={() => window.gt.openExternal(`file://${selectedRun.worktree}`)}
+                              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                            >
+                              <FolderOpen size={9} strokeWidth={2} />
+                              Worktree
+                            </button>
+                            {selectedRun.status !== 'running' && (
+                              <button
+                                onClick={() => window.gt.agents.removeWorktree(selectedRun.id)}
+                                title="Remove the worktree (branch/PR stay)"
+                                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                              >
+                                <Trash2 size={9} strokeWidth={2} />
+                              </button>
+                            )}
+                          </div>
+                        }
+                      />
                       <pre
                         ref={logRef}
                         className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--gt-text-soft)]"
@@ -2042,273 +2517,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
             )
           })()}
         </section>
-      </div>
-      {/* Legacy hidden container — kept so the old left-rail JSX below is dead but valid. */}
-      <div style={{ display: 'none' }}>
-        <div className="flex w-[44%] min-w-[340px] flex-col border-r border-[var(--gt-border)]">
-          <div className="shrink-0 space-y-2 overflow-y-auto p-3" style={{ maxHeight: '58%' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Agents</span>
-                <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-                  {(['all', 'generic', 'per-repo'] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setAgentFilter(f)}
-                      className={`rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
-                        agentFilter === f
-                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      {f === 'per-repo' ? 'per-repo' : f}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button
-                onClick={() => setDesignerOpen(true)}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                title="Design a new agent — describe what it does, the selected engine writes the prompt"
-              >
-                <Plus size={12} strokeWidth={2.5} />
-                New agent
-              </button>
-            </div>
-            {agents === null ? (
-              <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
-            ) : (
-              agents
-                .filter((a) => {
-                  if (agentFilter === 'all') return true
-                  // "generic" = unmodified defaults; "per-repo" = repo overrides + custom repo agents.
-                  if (agentFilter === 'generic') return a.source === 'default'
-                  return a.source === 'repo-override' || a.source === 'repo'
-                })
-                .map((a) => {
-                const Icon = AGENT_ICON[a.icon || ''] || Bot
-                const busy = runningByAgent.has(a.id)
-                return (
-                  <div
-                    key={a.id}
-                    className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <Icon size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[13px] font-semibold text-zinc-100">{a.title}</span>
-                          {a.force && <ForceChip />}
-                          {a.source && <Badge tone={SOURCE[a.source].tone}>{SOURCE[a.source].label}</Badge>}
-                          {a.hasScript && <Badge tone="blue">sh</Badge>}
-                        </div>
-                        {a.description && (
-                          <div className="text-[11.5px] leading-snug text-zinc-500">{a.description}</div>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setPicking({ id: a.id, title: a.title })}
-                        disabled={busy}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                      >
-                        {busy ? (
-                          <>
-                            <span className="h-1.5 w-1.5 rounded-full bg-white gt-pulse" />
-                            Running
-                          </>
-                        ) : (
-                          <>
-                            <Play size={13} strokeWidth={2.5} />
-                            Run
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <div className="mt-2 flex items-center gap-3 text-[11px]">
-                      <button
-                        onClick={() => toggleExpand(a.id)}
-                        className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300"
-                      >
-                        {expanded.has(a.id) ? (
-                          <ChevronDown size={12} strokeWidth={2} />
-                        ) : (
-                          <ChevronRight size={12} strokeWidth={2} />
-                        )}
-                        prompt
-                      </button>
-                      <button
-                        onClick={() => setEditing(a)}
-                        className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300"
-                      >
-                        <Pencil size={11} strokeWidth={2} />
-                        edit
-                      </button>
-                      {a.source === 'repo-override' && (
-                        <button
-                          onClick={async () => {
-                            await window.gt.agents.reset(a.id)
-                            reloadAgents()
-                          }}
-                          title="Revert to the built-in default"
-                          className="inline-flex items-center gap-1 text-zinc-500 hover:text-[var(--gt-yellow)]"
-                        >
-                          <RotateCcw size={11} strokeWidth={2} />
-                          reset
-                        </button>
-                      )}
-                    </div>
-                    {expanded.has(a.id) && (
-                      <div className="mt-2 space-y-1.5">
-                        {scripts[a.id] ? (
-                          <>
-                            <div className="flex items-center gap-1.5 text-[10px]">
-                              <Badge tone="blue">bash script</Badge>
-                              <span className="min-w-0 flex-1 truncate font-mono text-zinc-600">
-                                {scripts[a.id]!.path}
-                              </span>
-                              <button
-                                onClick={() => window.gt.openInEditor(scripts[a.id]!.path)}
-                                className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
-                                title="Open in your configured editor (Settings → Apps)"
-                              >
-                                <Pencil size={9} strokeWidth={2} />
-                                edit
-                              </button>
-                            </div>
-                            <BashHighlight code={scripts[a.id]!.body} className="max-h-72" />
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-1.5 text-[10px]">
-                              <Badge tone="mute">prompt</Badge>
-                              <span className="min-w-0 flex-1 truncate text-zinc-700">
-                                {scripts[a.id] === null
-                                  ? `no .agents/${a.id}.sh — runs as a single agent prompt`
-                                  : 'loading…'}
-                              </span>
-                            </div>
-                            <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--gt-border)] bg-black/30 p-2 font-mono text-[10.5px] leading-relaxed text-zinc-400">
-                              {a.prompt}
-                            </pre>
-                          </>
-                        )}
-                        <div className="break-all font-mono text-[9.5px] text-zinc-600">
-                          runs as: <EngineLogo engine={a.engine || 'codex'} size={9} className="mx-0.5 -mb-0.5" />
-                          {runsAs(a.engine || 'codex')}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--gt-border)]">
-            <div className="flex items-center gap-2 px-3 py-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Runs</span>
-              <span className="text-[10px] text-zinc-700">{repoFilter ? 'scoped runs' : 'all repos'}</span>
-              <div className="flex-1" />
-              {repoOptions.length > 1 && (
-                <select
-                  value={repoFilter === '__auto__' ? '' : repoFilter}
-                  onChange={(e) => setRepoFilter(e.target.value)}
-                  title="Filter by repo"
-                  className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none"
-                >
-                  <option value="">All repos</option>
-                  {repoOptions.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {runs.length === 0 ? (
-              <div className="px-3 pb-3 text-[12px] text-zinc-600">No runs yet.</div>
-            ) : shownRuns.length === 0 ? (
-              <div className="px-3 pb-3 text-[12px] text-zinc-600">No runs for {repoFilter === '__auto__' ? 'this repo' : repoFilter}.</div>
-            ) : (
-              shownRuns.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setSel(r.id)}
-                  className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/50 px-3 py-2 text-left hover:bg-white/5 ${
-                    sel === r.id ? 'bg-white/5' : ''
-                  }`}
-                >
-                  <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">{r.agentTitle}</span>
-                  <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{repoOf(r.repoRoot)}</span>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
-                    <EngineLogo engine={r.engine} size={10} />
-                    {engineLabel(r.engine)}
-                  </span>
-                  <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{reltime(r.startedAt)}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          {!selectedRun ? (
-            <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
-              Run an agent to see its output.
-            </div>
-          ) : (
-            <>
-              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-                <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
-                <span className="text-[12px] font-semibold text-zinc-100">{selectedRun.agentTitle}</span>
-                <span className="inline-flex items-center gap-1 text-[9.5px] uppercase text-zinc-600">
-                  <EngineLogo engine={selectedRun.engine} size={11} />
-                  {engineLabel(selectedRun.engine)}
-                </span>
-                {selectedRun.persona && (
-                  <span className="text-[10px] text-[var(--gt-accent-light)]">as {selectedRun.persona}</span>
-                )}
-                {selectedRun.pipeline && (
-                  <span className="text-[10px] text-[var(--gt-accent-light)]">· {selectedRun.pipeline}</span>
-                )}
-                <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
-                <div className="flex-1" />
-                {selectedRun.status === 'running' && (
-                  <button
-                    onClick={() => window.gt.agents.cancel(selectedRun.id)}
-                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                  >
-                    <Square size={11} strokeWidth={2} />
-                    Cancel
-                  </button>
-                )}
-                <button
-                  onClick={() => window.gt.openExternal(`file://${selectedRun.worktree}`)}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
-                >
-                  <FolderOpen size={11} strokeWidth={2} />
-                  Worktree
-                </button>
-                {selectedRun.status !== 'running' && (
-                  <button
-                    onClick={() => window.gt.agents.removeWorktree(selectedRun.id)}
-                    title="Remove the worktree (branch/PR stay)"
-                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                  >
-                    <Trash2 size={11} strokeWidth={2} />
-                  </button>
-                )}
-              </div>
-              <pre
-                ref={logRef}
-                className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-[var(--gt-code-bg)] p-4 font-mono text-[11.5px] leading-relaxed text-[var(--gt-text-soft)]"
-              >
-                {stripAnsi(outputs[selectedRun.id] || '') || '…'}
-              </pre>
-            </>
-          )}
-        </div>
       </div>
 
       {picking && (
