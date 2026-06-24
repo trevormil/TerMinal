@@ -1,10 +1,13 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   ArrowDownWideNarrow,
   BarChart3,
+  Braces,
   ChevronRight,
   Clipboard,
+  Coins,
   Cpu,
   Database,
   FileText,
@@ -190,11 +193,13 @@ function TokenCurve({ snapshots }: { snapshots: ObservabilityTokenSnapshot[] }) 
 }
 
 function SummaryView({ session, detail }: { session: ObservabilitySession; detail: ObservabilitySessionDetail | null }) {
+  const cachedInput = detail?.tokenSnapshots.reduce((sum, snap) => sum + (snap.cachedInput || 0), 0) ?? 0
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <EnginePill engine={session.engine} />
         <Badge tone={session.telemetry === 'ready' ? 'green' : 'yellow'}>{session.telemetry}</Badge>
+        {session.model && <Badge tone="mute">{session.model}</Badge>}
         <span className="text-[11px] text-zinc-600">{session.cwd || 'unknown cwd'}</span>
       </div>
       <h2 className="text-lg font-semibold leading-snug text-zinc-100">{session.title}</h2>
@@ -203,16 +208,22 @@ function SummaryView({ session, detail }: { session: ObservabilitySession; detai
           {session.firstUserText}
         </div>
       )}
-      <div className="grid gap-2 md:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Context</div>
           <div className="mt-1 text-[18px] font-semibold tabular-nums text-zinc-100">{session.contextLimit ? `${Math.round(session.contextPct)}%` : 'n/a'}</div>
           <div className="mt-1"><Gauge pct={session.contextPct} /></div>
+          <div className="mt-1 text-[10px] tabular-nums text-zinc-600">{compact.format(session.contextTokens)} / {compact.format(session.contextLimit)}</div>
         </div>
         <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Tokens</div>
           <div className="mt-1 text-[18px] font-semibold tabular-nums text-zinc-100">{compact.format(session.totalInputTokens + session.totalOutputTokens)}</div>
           <div className="text-[10.5px] text-zinc-600">{compact.format(session.totalInputTokens)} in · {compact.format(session.totalOutputTokens)} out</div>
+        </div>
+        <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Cost</div>
+          <div className="mt-1 text-[18px] font-semibold tabular-nums text-zinc-100">{usd.format(session.estCostUsd)}</div>
+          <div className="text-[10.5px] text-zinc-600">{cachedInput ? `${compact.format(cachedInput)} cached in` : 'estimated'}</div>
         </div>
         <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Tool Calls</div>
@@ -225,6 +236,18 @@ function SummaryView({ session, detail }: { session: ObservabilitySession; detai
           <div className="text-[10.5px] text-zinc-600">{detail?.events.length ?? 0} timeline events</div>
         </div>
       </div>
+      {detail && detail.warnings.length > 0 && (
+        <div className="rounded-md border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/5 p-2">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--gt-yellow)]">
+            <AlertTriangle size={12} /> {nf.format(detail.warnings.length)} parse warning{detail.warnings.length === 1 ? '' : 's'}
+          </div>
+          <div className="max-h-32 space-y-0.5 overflow-y-auto font-mono text-[10.5px] leading-5 text-zinc-500">
+            {detail.warnings.slice(0, 40).map((warning, index) => (
+              <div key={index} className="truncate" title={warning}>{warning}</div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -318,7 +341,7 @@ function bytes(n?: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`
 }
 
-const PAYLOAD_LINE_CAP = 60
+const PAYLOAD_LINE_CAP = 200
 
 function ExactPayloadBox({
   title,
@@ -600,9 +623,10 @@ function TokensView({ detail }: { detail: ObservabilitySessionDetail }) {
   return (
     <div className="space-y-3">
       <TokenCurve snapshots={detail.tokenSnapshots} />
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-4">
         <Metric icon={GaugeCircle} label="Snapshots" value={nf.format(detail.tokenSnapshots.length)} sub="assistant usage rows" />
         <Metric icon={Layers3} label="Cumulative" value={compact.format(detail.tokenSnapshots.at(-1)?.cumulativeTotal ?? 0)} sub="input + cache + output" />
+        <Metric icon={Database} label="Cached in" value={compact.format(detail.tokenSnapshots.reduce((sum, snap) => sum + (snap.cachedInput || 0), 0))} sub="prompt cache reads" />
         <Metric icon={Cpu} label="Turns" value={nf.format(detail.turns.length)} sub="token-bearing exchanges" />
       </div>
       <div className="rounded-md border border-[var(--gt-border)] bg-black/15">
@@ -711,6 +735,7 @@ const QUERY_GROUPS: { group: string; items: QueryEntry[] }[] = [
     group: 'Where did tokens go?',
     items: [
       { id: 'turn_hotspots', label: 'Heaviest turns', icon: MessageSquare },
+      { id: 'costliest_turns', label: 'Costliest turns', icon: Coins },
       { id: 'sessions_by_tokens', label: 'Biggest sessions', icon: Database },
       { id: 'low_yield_sessions', label: 'Low-yield sessions', icon: Search },
     ],
@@ -719,6 +744,8 @@ const QUERY_GROUPS: { group: string; items: QueryEntry[] }[] = [
     group: 'What did tools do?',
     items: [
       { id: 'tool_calls', label: 'All tool calls', icon: Wrench },
+      { id: 'tool_payloads', label: 'Full payloads', icon: Braces },
+      { id: 'tool_errors', label: 'Failed calls', icon: AlertTriangle },
       { id: 'tool_call_bloat', label: 'Noisiest tools', icon: Layers3 },
     ],
   },
@@ -735,7 +762,7 @@ const QUERY_GROUPS: { group: string; items: QueryEntry[] }[] = [
   },
 ]
 
-type InspectorMode = 'overview' | 'timeline' | 'tools' | 'tokens' | 'raw'
+type InspectorMode = 'overview' | 'timeline' | 'tools' | 'tokens' | 'raw' | 'payload'
 
 const MODE_LABELS: Record<InspectorMode, string> = {
   overview: 'Overview',
@@ -743,6 +770,7 @@ const MODE_LABELS: Record<InspectorMode, string> = {
   tokens: 'Tokens',
   timeline: 'Activity',
   raw: 'Raw',
+  payload: 'Payload',
 }
 
 function displayCell(value: unknown): string {
@@ -776,8 +804,23 @@ const COLUMN_LABELS: Record<string, string> = {
   max_output_bytes: 'Max output',
   duration_ms: 'Duration',
   command_preview: 'Exact operation',
+  command_text: 'Command',
   cost_usd: 'Cost',
   tool_calls: 'Calls',
+  input_json: 'Request JSON',
+  output_json: 'Response',
+  error_text: 'Error',
+  truncated: 'Truncated',
+  output_per_input: 'Out / in',
+  open_calls: 'Open',
+  error_calls: 'Errors',
+  sessions: 'Sessions',
+  seq: 'Seq',
+  kind: 'Kind',
+  severity: 'Severity',
+  role: 'Role',
+  bytes: 'Bytes',
+  text: 'Content',
 }
 
 function columnLabel(column: string): string {
@@ -804,6 +847,19 @@ function visibleColumns(query: ObservabilityIndexQueryResult | null): string[] {
   if (query.query === 'turn_hotspots') {
     return ['repo', 'model', 'turn_id', 'input_tokens', 'output_tokens', 'total_tokens', 'tool_calls'].filter((column) => query.columns.includes(column))
   }
+  if (query.query === 'costliest_turns') {
+    return ['repo', 'model', 'turn_id', 'cost_usd', 'total_tokens', 'input_tokens', 'output_tokens', 'tool_calls', 'duration_ms'].filter((column) => query.columns.includes(column))
+  }
+  if (query.query === 'tool_payloads') {
+    // The full JSON blobs live in the inspector's Payload view, not the grid cell.
+    return ['tool_name', 'repo', 'status', 'input_bytes', 'output_bytes', 'duration_ms', 'truncated'].filter((column) => query.columns.includes(column))
+  }
+  if (query.query === 'tool_errors') {
+    return ['tool_name', 'repo', 'turn_id', 'line', 'output_bytes', 'duration_ms', 'command_text'].filter((column) => query.columns.includes(column))
+  }
+  if (query.query === 'session_events') {
+    return ['seq', 'kind', 'severity', 'turn_id', 'tool_name', 'role', 'bytes', 'text'].filter((column) => query.columns.includes(column))
+  }
   if (query.query === 'sessions_by_tokens' || query.query === 'low_yield_sessions') {
     return query.columns.filter((column) => column !== 'session_id')
   }
@@ -826,10 +882,13 @@ function numericCell(value: unknown): number | null {
 
 function defaultSortColumn(query?: ObservabilityIndexQueryId): string {
   if (query === 'tool_calls') return 'turn_total_tokens'
+  if (query === 'tool_payloads') return 'output_bytes'
   if (query === 'turn_hotspots') return 'total_tokens'
+  if (query === 'costliest_turns') return 'cost_usd'
   if (query === 'sessions_by_tokens' || query === 'repo_rollup' || query === 'model_rollup') return 'total_tokens'
   if (query === 'low_yield_sessions') return 'input_tokens'
   if (query === 'tool_call_bloat') return 'total_output_bytes'
+  // tool_errors + session_events keep the SQL ordering (recency / chronological).
   return ''
 }
 
@@ -1127,8 +1186,20 @@ function ResultGrid({
                     }`}
                   >
                     {columns.map((col) => (
-                      <td key={col} className={`truncate px-2 py-2 tabular-nums text-zinc-400 ${col === 'command_preview' ? 'max-w-[360px] font-mono text-zinc-500' : 'max-w-[220px]'}`} title={displayCell(row[col])}>
-                        {displayCell(row[col])}
+                      <td
+                        key={col}
+                        className={`truncate px-2 py-2 tabular-nums ${
+                          col === 'command_preview' || col === 'command_text' || col === 'text'
+                            ? 'max-w-[360px] font-mono text-zinc-500'
+                            : 'max-w-[220px] text-zinc-400'
+                        }`}
+                        title={displayCell(row[col])}
+                      >
+                        {col === 'truncated'
+                          ? displayCell(row[col]) === '1' ? <span className="text-[var(--gt-yellow)]">truncated</span> : '—'
+                          : col === 'cost_usd'
+                            ? usd.format(numericCell(row[col]) ?? 0)
+                            : displayCell(row[col])}
                       </td>
                     ))}
                   </tr>
@@ -1259,6 +1330,78 @@ function RawTranscriptView({ transcript, busy }: { transcript: ObservabilityTran
   )
 }
 
+// Renders the FULL request/response JSON (and error / event text) captured in the
+// SQLite index, read straight from the selected query row — no transcript re-read.
+function PayloadInspect({ row }: { row: Record<string, unknown> | null }) {
+  const fields = useMemo(() => {
+    if (!row) return [] as { id: string; title: string; text: string; bytes: number }[]
+    const out: { id: string; title: string; text: string; bytes: number }[] = []
+    const command = rowString(row, 'command_text')
+    const input = rowString(row, 'input_json')
+    const output = rowString(row, 'output_json')
+    const error = rowString(row, 'error_text')
+    const text = rowString(row, 'text')
+    const inBytes = numericCell(row['input_bytes'])
+    const outBytes = numericCell(row['output_bytes'])
+    if (command) out.push({ id: 'command', title: 'Command', text: command, bytes: command.length })
+    if (input) out.push({ id: 'input', title: 'Request JSON', text: input, bytes: inBytes ?? input.length })
+    if (output) out.push({ id: 'output', title: 'Response', text: output, bytes: outBytes ?? output.length })
+    if (error) out.push({ id: 'error', title: 'Error output', text: error, bytes: outBytes ?? error.length })
+    if (text) out.push({ id: 'text', title: 'Event content', text, bytes: numericCell(row['bytes']) ?? text.length })
+    return out
+  }, [row])
+  const [tab, setTab] = useState(0)
+  useEffect(() => setTab(0), [row])
+
+  if (!row) {
+    return <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-4 text-[12px] text-zinc-600">Select a row to inspect its stored payload.</div>
+  }
+  if (fields.length === 0) {
+    return (
+      <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-4 text-[12px] leading-5 text-zinc-500">
+        No full payload stored for this row. Reindex to capture exact request/response JSON for tool calls.
+      </div>
+    )
+  }
+  const active = fields[Math.min(tab, fields.length - 1)]
+  const truncated = rowString(row, 'truncated') === '1'
+  const callId = rowString(row, 'call_id')
+  const tool = rowString(row, 'tool_name')
+  const status = rowString(row, 'status')
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="shrink-0 rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {status && <Badge tone={statusTone(status)}>{status}</Badge>}
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">{tool || 'Stored payload'}</span>
+          {truncated && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--gt-yellow)]">
+              <AlertTriangle size={11} /> capped at 1 MB
+            </span>
+          )}
+        </div>
+        {callId && <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{callId}</div>}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {fields.map((field, index) => (
+            <button
+              key={field.id}
+              onClick={() => setTab(index)}
+              className={`h-7 rounded-md border px-2 text-[10.5px] font-semibold ${
+                index === Math.min(tab, fields.length - 1)
+                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                  : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {field.title} <span className="text-zinc-600">{bytes(field.bytes)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <ExactPayloadBox title={active.title} text={active.text} bytesValue={active.bytes} empty="Empty payload." />
+    </div>
+  )
+}
+
 function InspectorPane({
   selection,
   selected,
@@ -1272,6 +1415,7 @@ function InspectorPane({
   transcriptBusy,
   onMode,
   onRelatedCalls,
+  onSessionEvents,
 }: {
   selection: IndexedRowSelection | null
   selected: ObservabilitySession | null
@@ -1285,6 +1429,7 @@ function InspectorPane({
   transcriptBusy: boolean
   onMode: (mode: InspectorMode) => void
   onRelatedCalls: (row: Record<string, unknown>) => void
+  onSessionEvents: (sessionId: string) => void
 }) {
   const row = selection?.row || null
   const callId = focusedCallId || rowString(row || {}, 'call_id')
@@ -1313,6 +1458,7 @@ function InspectorPane({
             ['tools', Wrench, 'Calls'],
             ['tokens', GaugeCircle, 'Tokens'],
             ['timeline', MessageSquare, 'Activity'],
+            ['payload', Braces, 'Payload'],
             ['raw', FileText, 'Raw'],
           ].map(([id, Icon, label]) => (
             <button
@@ -1328,7 +1474,17 @@ function InspectorPane({
               {label as string}
             </button>
           ))}
-          {detailBusy && <RefreshCw size={12} className="ml-auto animate-spin text-zinc-600" />}
+          {selected && (
+            <button
+              onClick={() => onSessionEvents(selected.id)}
+              className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 text-[10.5px] font-semibold text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+              title="Load the full chronological event stream for this session from the index"
+            >
+              <ListTree size={12} strokeWidth={2.2} />
+              Event stream
+            </button>
+          )}
+          {detailBusy && <RefreshCw size={12} className="animate-spin text-zinc-600" />}
         </div>
       </div>
 
@@ -1361,7 +1517,9 @@ function InspectorPane({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {!selected ? (
+        {mode === 'payload' ? (
+          <PayloadInspect row={row} />
+        ) : !selected ? (
           <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-4 text-[12px] text-zinc-600">Select a row or session.</div>
         ) : selected.engine !== 'claude' ? (
           <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-4 text-[12px] leading-5 text-zinc-500">
@@ -1492,11 +1650,16 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
     }
   }
 
+  // session_events needs a session arg; fall back to tool_calls for the no-arg
+  // status/rebuild refreshes so we never re-fire it without scope.
+  const reloadableQuery = (): ObservabilityIndexQueryId =>
+    indexQuery?.query && indexQuery.query !== 'session_events' ? indexQuery.query : 'tool_calls'
+
   const loadIndexStatus = async () => {
     const status = await window.gt.observability.indexStatus()
     setIndexStatus(status)
     if (status.exists) {
-      const query = await window.gt.observability.indexQuery(indexQuery?.query || 'tool_calls')
+      const query = await window.gt.observability.indexQuery(reloadableQuery())
       setIndexQuery(query)
     }
   }
@@ -1516,7 +1679,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
     try {
       const status = await window.gt.observability.rebuildIndex(100000)
       setIndexStatus(status)
-      setIndexQuery(await window.gt.observability.indexQuery(indexQuery?.query || 'tool_calls'))
+      setIndexQuery(await window.gt.observability.indexQuery(reloadableQuery()))
     } catch (e) {
       setErr((e as Error).message || 'Could not rebuild observability index.')
     } finally {
@@ -1527,6 +1690,13 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
   const selectIndexedRow = (query: ObservabilityIndexQueryId, row: Record<string, unknown>) => {
     setSelection({ query, row })
     if (query === 'tool_call_bloat') return
+    // session_events rows are scoped to the already-selected session and carry no
+    // session_id of their own — keep the current session and show the stored text.
+    if (query === 'session_events') {
+      setFocusedCallId('')
+      setMode('payload')
+      return
+    }
 
     const sessionId = rowString(row, 'session_id')
     if (sessionId) {
@@ -1537,12 +1707,28 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
     if (query === 'tool_calls') {
       setFocusedCallId(rowString(row, 'call_id'))
       setMode('tools')
-    } else if (query === 'turn_hotspots' || query === 'low_yield_sessions' || query === 'sessions_by_tokens') {
+    } else if (query === 'tool_payloads' || query === 'tool_errors') {
+      setFocusedCallId(rowString(row, 'call_id'))
+      setMode('payload')
+    } else if (query === 'turn_hotspots' || query === 'costliest_turns' || query === 'low_yield_sessions' || query === 'sessions_by_tokens') {
       setFocusedCallId('')
       setMode('tokens')
     } else if (sessionId) {
       setFocusedCallId('')
       setMode('overview')
+    }
+  }
+
+  const runSessionEvents = async (sessionId: string) => {
+    if (!sessionId) return
+    setIndexBusy(true)
+    setGridFilter('')
+    try {
+      setIndexQuery(await window.gt.observability.indexQuery('session_events', sessionId))
+    } catch (e) {
+      setErr((e as Error).message || 'Could not load the session event stream.')
+    } finally {
+      setIndexBusy(false)
     }
   }
 
@@ -1712,6 +1898,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
             transcriptBusy={transcriptBusy}
             onMode={setMode}
             onRelatedCalls={showRelatedCalls}
+            onSessionEvents={runSessionEvents}
           />
         </div>
         </>

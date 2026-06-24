@@ -2039,8 +2039,8 @@ ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
     ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.', durationMs: 0, indexedSessions: 0 }
     : rebuildObservabilityIndex(limit),
 )
-ipcMain.handle('observability:index-query', (_e, query: ObservabilityIndexQueryId) =>
-  curRemote() ? { ...queryObservabilityIndex(query), rows: [], error: 'Remote observability indexing is not wired yet.' } : queryObservabilityIndex(query),
+ipcMain.handle('observability:index-query', (_e, query: ObservabilityIndexQueryId, arg?: string) =>
+  curRemote() ? { ...queryObservabilityIndex(query, arg), rows: [], error: 'Remote observability indexing is not wired yet.' } : queryObservabilityIndex(query, arg),
 )
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()

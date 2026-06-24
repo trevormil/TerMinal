@@ -224,6 +224,7 @@ export type ObservabilityIndexStatus = {
   turns: number
   toolCalls: number
   tokenSnapshots: number
+  events: number
   error?: string
 }
 
@@ -236,10 +237,14 @@ export type ObservabilityIndexQueryId =
   | 'sessions_by_tokens'
   | 'low_yield_sessions'
   | 'tool_calls'
+  | 'tool_payloads'
+  | 'tool_errors'
   | 'tool_call_bloat'
   | 'turn_hotspots'
+  | 'costliest_turns'
   | 'model_rollup'
   | 'repo_rollup'
+  | 'session_events'
   | 'audit'
 
 export type ObservabilityIndexQueryResult = {
@@ -250,6 +255,7 @@ export type ObservabilityIndexQueryResult = {
   rows: Record<string, unknown>[]
   indexedAt: number | null
   dbPath: string
+  needsArg?: 'session_id'
   error?: string
 }
 
@@ -1601,7 +1607,7 @@ export type GtApi = {
     models: () => Promise<string[]>
     indexStatus: () => Promise<ObservabilityIndexStatus>
     rebuildIndex: (limit?: number) => Promise<ObservabilityIndexBuildResult>
-    indexQuery: (query: ObservabilityIndexQueryId) => Promise<ObservabilityIndexQueryResult>
+    indexQuery: (query: ObservabilityIndexQueryId, arg?: string) => Promise<ObservabilityIndexQueryResult>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>

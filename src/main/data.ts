@@ -210,6 +210,46 @@ export type ObservabilityTranscriptLine = {
   toolName?: string
 }
 
+// Full (untruncated) records used by the SQLite indexer so the index becomes the
+// complete record of a session — every tool call's exact request/response JSON and
+// every transcript event, not just the previews the live detail views carry.
+export type ObservabilityFullToolPayload = {
+  callId: string
+  turnId: string
+  toolName: string
+  status: 'open' | 'ok' | 'error'
+  inputText: string
+  outputText: string
+  errorText: string
+  commandText: string
+  skillName: string
+  agentRole: string
+  inputBytes: number
+  outputBytes: number
+  startedLine: number
+  completedLine: number | null
+  truncated: boolean
+}
+
+export type ObservabilityIndexEvent = {
+  seq: number
+  line: number
+  timestamp: number
+  kind: ObservabilityEventKind
+  severity: 'info' | 'warning' | 'error'
+  turnId: string
+  callId: string
+  toolName: string
+  role: string
+  text: string
+  bytes: number
+}
+
+export type ObservabilityIndexRecords = {
+  toolPayloads: ObservabilityFullToolPayload[]
+  events: ObservabilityIndexEvent[]
+}
+
 export type ObservabilityTranscriptWindow = {
   sessionId: string
   sourceFile: string
@@ -1348,6 +1388,176 @@ export function readObservabilityToolCallPayload(sessionId: string, callId: stri
     skillName,
     agentRole,
   }
+}
+
+// Per-field hard cap so a single pathological tool result (a giant file dump) can't
+// bloat the SQLite row. 1 MB of UTF-8 text is far beyond any payload worth reading
+// inline; anything larger is marked `truncated` so the UX can say so.
+const FULL_PAYLOAD_CAP = 1_000_000
+
+function capText(text: string): { text: string; truncated: boolean } {
+  if (text.length <= FULL_PAYLOAD_CAP) return { text, truncated: false }
+  return { text: `${text.slice(0, FULL_PAYLOAD_CAP)}\n…[truncated ${text.length - FULL_PAYLOAD_CAP} chars]`, truncated: true }
+}
+
+/**
+ * Single-pass extraction of the FULL session record for the SQLite index: every
+ * tool call's exact request JSON + response text (untruncated, save the 1 MB cap)
+ * and the complete chronological event stream with full message/reasoning text.
+ * The live detail parser (`parseTranscriptDetailFile`) keeps only previews to stay
+ * cheap for polling widgets; this is the lossless counterpart the indexer persists.
+ */
+export function readObservabilityIndexRecords(sessionId: string): ObservabilityIndexRecords | null {
+  const file = findSessionFile(sessionId)
+  if (!file) return null
+  return parseObservabilityIndexRecordsFile(file, sessionId)
+}
+
+export function parseObservabilityIndexRecordsFile(file: string, sessionId: string): ObservabilityIndexRecords {
+  let raw = ''
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return { toolPayloads: [], events: [] }
+  }
+
+  type CallAccum = {
+    callId: string
+    turnId: string
+    toolName: string
+    inputText: string
+    inputBytes: number
+    commandText: string
+    skillName: string
+    agentRole: string
+    startedLine: number
+    outputText: string
+    outputBytes: number
+    completedLine: number | null
+    status: 'open' | 'ok' | 'error'
+    isError: boolean
+  }
+  const calls = new Map<string, CallAccum>()
+  const events: ObservabilityIndexEvent[] = []
+  let currentTurn = ''
+  let turnIndex = 0
+  let seq = 0
+
+  const pushEvent = (e: Omit<ObservabilityIndexEvent, 'seq' | 'bytes'> & { bytes?: number }) => {
+    events.push({ ...e, seq: seq++, bytes: e.bytes ?? Buffer.byteLength(e.text || '', 'utf8') })
+  }
+
+  raw.split('\n').forEach((line, index) => {
+    const lineNo = index + 1
+    if (!line.trim()) return
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch (e) {
+      pushEvent({ line: lineNo, timestamp: lineNo, kind: 'parse_error', severity: 'error', turnId: currentTurn, callId: '', toolName: '', role: '', text: (e as Error).message || 'Malformed JSON' })
+      return
+    }
+    const timestamp = timestampMs(obj, lineNo)
+    const msg = obj.message
+    const role = msg?.role || obj.role
+    const content = msg?.content ?? obj.content
+
+    if (role === 'user') {
+      const blocks = Array.isArray(content) ? content : []
+      const results = blocks.filter((b) => b && typeof b === 'object' && (b as any).type === 'tool_result')
+      if (results.length > 0) {
+        for (const block of results) {
+          const callId = typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : ''
+          const full = resultText((block as any).content, obj.toolUseResult)
+          const isError = !!((block as any).is_error || obj.toolUseResult?.success === false)
+          pushEvent({ line: lineNo, timestamp, kind: 'tool_result', severity: isError ? 'error' : 'info', turnId: currentTurn, callId, toolName: '', role: 'user', text: full })
+          if (callId) {
+            const call = calls.get(callId)
+            if (call) {
+              call.outputText = full
+              call.outputBytes = Buffer.byteLength(full || '', 'utf8')
+              call.completedLine = lineNo
+              call.status = isError ? 'error' : 'ok'
+              call.isError = isError
+            }
+          }
+        }
+        return
+      }
+      const text = textOf(content).trim()
+      if (!text || text.startsWith('<')) return
+      turnIndex++
+      currentTurn = `turn-${turnIndex}`
+      pushEvent({ line: lineNo, timestamp, kind: 'user_message', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'user', text })
+      return
+    }
+
+    if (role !== 'assistant' || !Array.isArray(content)) return
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue
+      const b: any = block
+      if (b.type === 'thinking') {
+        pushEvent({ line: lineNo, timestamp, kind: 'reasoning', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'assistant', text: String(b.thinking || '') })
+      } else if (b.type === 'text') {
+        pushEvent({ line: lineNo, timestamp, kind: 'assistant_message', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'assistant', text: String(b.text || '') })
+      } else if (b.type === 'tool_use') {
+        const toolName = String(b.name || 'tool')
+        const callId = typeof b.id === 'string' ? b.id : `${sessionId}:${lineNo}:${toolName}:${seq}`
+        if (calls.has(callId)) continue
+        const input = inputRecord(b.input)
+        const inputText = stableJson(input)
+        const kind = toolCallKind(toolName)
+        const commandText = toolName === 'Bash' ? stringProp(input, 'command') : ''
+        const agentRole = kind === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent' : ''
+        const skillName = kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : ''
+        calls.set(callId, {
+          callId,
+          turnId: currentTurn,
+          toolName,
+          inputText,
+          inputBytes: Buffer.byteLength(inputText, 'utf8'),
+          commandText,
+          skillName,
+          agentRole,
+          startedLine: lineNo,
+          outputText: '',
+          outputBytes: 0,
+          completedLine: null,
+          status: 'open',
+          isError: false,
+        })
+        pushEvent({ line: lineNo, timestamp, kind, severity: 'info', turnId: currentTurn, callId, toolName, role: 'assistant', text: inputText })
+      }
+    }
+  })
+
+  const toolPayloads: ObservabilityFullToolPayload[] = [...calls.values()].map((c) => {
+    const inp = capText(c.inputText)
+    const out = capText(c.outputText)
+    return {
+      callId: c.callId,
+      turnId: c.turnId,
+      toolName: c.toolName,
+      status: c.status,
+      inputText: inp.text,
+      outputText: out.text,
+      errorText: c.isError ? out.text : '',
+      commandText: c.commandText,
+      skillName: c.skillName,
+      agentRole: c.agentRole,
+      inputBytes: c.inputBytes,
+      outputBytes: c.outputBytes,
+      startedLine: c.startedLine,
+      completedLine: c.completedLine,
+      truncated: inp.truncated || out.truncated,
+    }
+  })
+
+  for (const e of events) {
+    if (e.text.length > FULL_PAYLOAD_CAP) e.text = capText(e.text).text
+  }
+
+  return { toolPayloads, events }
 }
 
 export function readObservabilityTranscriptWindow(sessionId: string, centerLine = 0, radius = 24): ObservabilityTranscriptWindow | null {
