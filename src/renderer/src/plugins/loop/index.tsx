@@ -16,6 +16,13 @@ async function act(fn: 'step' | 'restart' | 'stop', id: string): Promise<void> {
   }
 }
 
+async function newLoop(): Promise<void> {
+  const goal = window.prompt('New loop — what should it converge on?')?.trim()
+  if (!goal) return
+  const r = await window.gt.loops.create({ goal })
+  if (r && 'error' in r) window.alert(`Loop: ${r.error}`)
+}
+
 const btn: CSSProperties = {
   flex: 1,
   display: 'inline-flex',
@@ -51,7 +58,10 @@ const plugin: Plugin<LoopData> = {
     if (!d?.loop)
       return (
         <Card icon={Repeat} title="Loop">
-          <Empty>No active loop · run /loop &lt;task&gt;</Empty>
+          <Empty>No active loop</Empty>
+          <button onClick={() => void newLoop()} style={{ ...btn, marginTop: 8, width: '100%' }}>
+            <Play size={11} /> New loop
+          </button>
         </Card>
       )
     const { loop, state } = d

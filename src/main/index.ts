@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
-import { spawn as cpSpawn, type ChildProcess } from 'node:child_process'
+import { spawn as cpSpawn, execFileSync, type ChildProcess } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -1997,9 +1997,23 @@ ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgT
 ipcMain.handle('loops:list', () => (curRemote() ? [] : listLoops()))
 ipcMain.handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
 ipcMain.handle('loops:state', (_e, id: string) => (curRemote() ? null : readLoopState(id)))
-ipcMain.handle('loops:create', (_e, input: CreateLoopInput) =>
-  curRemote() ? { error: 'remote' } : createLoop(input),
-)
+ipcMain.handle('loops:create', (_e, input: CreateLoopInput) => {
+  if (curRemote()) return { error: 'remote' }
+  let repoRoot = input.repoRoot
+  if (!repoRoot) {
+    // default to the git top-level of the focused session's cwd
+    const cwd = cur().cwd
+    if (!cwd) return { error: 'no active session — open a repo first' }
+    try {
+      repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, stdio: 'pipe' })
+        .toString()
+        .trim()
+    } catch {
+      return { error: `not a git repo: ${cwd}` }
+    }
+  }
+  return createLoop({ ...input, repoRoot })
+})
 ipcMain.handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
 ipcMain.handle('loops:restart', (_e, id: string) =>
   curRemote() ? { error: 'remote' } : restartLoop(id),

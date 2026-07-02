@@ -180,7 +180,7 @@ export function readLoopState(id: string): LoopState | { error: string } {
 // ---------------------------------------------------------------------------
 
 export type CreateLoopInput = {
-  repoRoot: string
+  repoRoot?: string
   goal: string
   engine?: LoopEngine
   model?: string
@@ -237,7 +237,13 @@ export function createLoop(input: CreateLoopInput): LoopRecord | { error: string
   }
   initState(rec)
   saveLoop(rec)
-  emitActivity('info', `Loop created: ${id}`, input.goal)
+  emitActivity({
+    kind: 'info',
+    title: `Loop created: ${id}`,
+    detail: input.goal,
+    repo: rec.repo,
+    repoRoot: rec.repoRoot,
+  })
   return rec
 }
 
@@ -278,7 +284,13 @@ export function restartLoop(id: string): LoopRecord | { error: string } {
   rec.activeRole = undefined
   logLine(rec, `restart | worktree reset, contract kept`)
   saveLoop(rec)
-  emitActivity('warn', `Loop restarted: ${id}`, 'worktree reset, contract kept')
+  emitActivity({
+    kind: 'info',
+    title: `Loop restarted: ${id}`,
+    detail: 'worktree reset, contract kept',
+    repo: rec.repo,
+    repoRoot: rec.repoRoot,
+  })
   return rec
 }
 
@@ -387,7 +399,7 @@ export function stepLoop(id: string): LoopRecord | { error: string } {
   }
 
   const gate = gateSpawn('loop')
-  if (!gate.allowed) return { error: gate.reason || 'blocked by budget' }
+  if (gate.decision === 'refuse') return { error: gate.reason || 'blocked by budget' }
 
   const role = rec.nextRole
   const runId = randomUUID().slice(0, 8)
@@ -420,7 +432,13 @@ export function stepLoop(id: string): LoopRecord | { error: string } {
   rec.activeRole = role
   ;(rec as LoopRecord & { activeLog?: string }).activeLog = logFile
   saveLoop(rec)
-  emitActivity('info', `Loop ${rec.id}: ${role} turn`, `iteration ${rec.iteration}`)
+  emitActivity({
+    kind: 'agent-run',
+    title: `Loop ${rec.id}: ${role} turn`,
+    detail: `iteration ${rec.iteration}`,
+    repo: rec.repo,
+    repoRoot: rec.repoRoot,
+  })
   return rec
 }
 
@@ -456,7 +474,13 @@ function decide(rec: LoopRecord): void {
     rec.phase = 'done'
     rec.status = 'done'
     logLine(rec, `done | ${allPass ? 'contract met' : 'iteration cap'}${plateau ? ', taste plateaued' : ''}`)
-    emitActivity('info', `Loop done: ${rec.id}`, allPass ? 'contract met' : 'iteration cap')
+    emitActivity({
+      kind: allPass ? 'task-complete' : 'info',
+      title: `Loop done: ${rec.id}`,
+      detail: allPass ? 'contract met' : 'iteration cap',
+      repo: rec.repo,
+      repoRoot: rec.repoRoot,
+    })
   } else {
     rec.phase = 'generate'
     rec.nextRole = 'generator'

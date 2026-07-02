@@ -1683,7 +1683,7 @@ export type GtApi = {
     get: (id: string) => Promise<LoopRecord | null>
     state: (id: string) => Promise<LoopState | { error: string }>
     create: (input: {
-      repoRoot: string
+      repoRoot?: string
       goal: string
       engine?: Engine
       model?: string
