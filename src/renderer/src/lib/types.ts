@@ -900,6 +900,36 @@ export type BgTask = {
   label: string
 }
 
+export type LoopRecord = {
+  id: string
+  repo: string
+  repoRoot: string
+  goal: string
+  engine: Engine
+  model?: string
+  worktree: string
+  branch: string
+  status: 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
+  phase: 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
+  nextRole: 'planner' | 'generator' | 'evaluator'
+  iteration: number
+  activeRunId?: string
+  activeRole?: 'planner' | 'generator' | 'evaluator'
+  maxIterations: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type LoopState = {
+  phase: LoopRecord['phase']
+  iteration: number
+  bottleneck: string
+  lastScore: string
+  next: string
+  assertions: { total: number; pass: number; fail: number; todo: number }
+  tail: string[]
+}
+
 export type UnifiedRun = {
   id: string
   source: 'cron' | 'agent' | 'bg' | 'session'
@@ -1647,6 +1677,21 @@ export type GtApi = {
       model?: string
     }) => Promise<BgTask | { error: string }>
     cancel: (id: string) => Promise<{ ok: boolean; error?: string }>
+  }
+  loops: {
+    list: () => Promise<LoopRecord[]>
+    get: (id: string) => Promise<LoopRecord | null>
+    state: (id: string) => Promise<LoopState | { error: string }>
+    create: (input: {
+      repoRoot: string
+      goal: string
+      engine?: Engine
+      model?: string
+      maxIterations?: number
+    }) => Promise<LoopRecord | { error: string }>
+    step: (id: string) => Promise<LoopRecord | { error: string }>
+    restart: (id: string) => Promise<LoopRecord | { error: string }>
+    stop: (id: string) => Promise<LoopRecord | { error: string }>
   }
   harnessStatus: () => Promise<{
     cronRunFiles: number

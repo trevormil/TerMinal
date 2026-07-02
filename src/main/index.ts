@@ -346,6 +346,17 @@ import { processListenerInbox, readListenerStatus, setListenerEnabled, startList
 import { knownModels } from './ai-pricing'
 import { readBudgets, setDailyCap, setAgentCap, setOverride, gateSpawn, startBudgetWatcher } from './budgets'
 import { spawnBgTask, listBgTasks, getBgTask, cancelBgTask, readBgTaskLog, startBgWatcher, type BgTask } from './bg-tasks'
+import {
+  listLoops,
+  getLoop,
+  readLoopState,
+  createLoop,
+  stepLoop,
+  restartLoop,
+  stopLoop,
+  startLoopWatcher,
+  type CreateLoopInput,
+} from './loops'
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
@@ -1982,6 +1993,19 @@ ipcMain.handle('bg:spawn', (_e, input: { repoRoot: string; prompt: string; engin
 })
 ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
 
+// Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
+ipcMain.handle('loops:list', () => (curRemote() ? [] : listLoops()))
+ipcMain.handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
+ipcMain.handle('loops:state', (_e, id: string) => (curRemote() ? null : readLoopState(id)))
+ipcMain.handle('loops:create', (_e, input: CreateLoopInput) =>
+  curRemote() ? { error: 'remote' } : createLoop(input),
+)
+ipcMain.handle('loops:step', (_e, id: string) => (curRemote() ? { error: 'remote' } : stepLoop(id)))
+ipcMain.handle('loops:restart', (_e, id: string) =>
+  curRemote() ? { error: 'remote' } : restartLoop(id),
+)
+ipcMain.handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
+
 // Cheap one-shot LLM call — routes through local coding-agent subscriptions.
 ipcMain.handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
   const { cheapCall } = await import('./cheap-llm')
@@ -2233,6 +2257,8 @@ app.whenReady().then(() => {
   // Background-task watcher (#0004) — reconciles bg-tasks.json state with
   // actual PIDs, sweeps completed tasks, fires Telegram pings on MR ready.
   startBgWatcher()
+  // Loop watcher — reconciles in-flight role turns and advances the phase.
+  startLoopWatcher()
   // Budget watcher — fires HITL pings at warnAt thresholds.
   startBudgetWatcher()
   // Local automation listener inbox — processes JSON files dropped into

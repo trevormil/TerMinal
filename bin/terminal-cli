@@ -832,8 +832,68 @@ function listenerCommand(sub, args) {
   console.log(path)
 }
 
+// loop — the roles' durable transport (protocol.md option 2) + a read surface.
+// Reads/writes the loop's on-disk state; the heavy lifting (create/step/spawn)
+// stays in the app. Loop state lives in the cwd repo: .TerMinal/loops/<id>/.
+function loopCommand(sub, rest) {
+  const LOOPS_FILE = join(CFG, 'loops.json')
+  const loopDir = (id) => join(process.cwd(), '.TerMinal', 'loops', id)
+  const usage = () => {
+    console.error('usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>')
+    process.exit(2)
+  }
+  if (sub === 'list') {
+    let loops = []
+    if (existsSync(LOOPS_FILE)) {
+      try {
+        loops = JSON.parse(readFileSync(LOOPS_FILE, 'utf8'))
+      } catch {
+        /* empty */
+      }
+    }
+    if (!loops.length) return console.log('(no loops)')
+    for (const l of loops) console.log(`${l.id}  [${l.phase}]  iter ${l.iteration}  ${l.goal}`)
+    return
+  }
+  const id = rest[0]
+  if (!id) usage()
+  const dir = loopDir(id)
+  if (sub === 'event') {
+    const [, role, kind, summary, detail] = rest
+    if (!role || !kind) usage()
+    mkdirSync(dir, { recursive: true })
+    const ev = {
+      loopId: id,
+      role,
+      kind,
+      summary: summary || '',
+      ...(detail ? { detail } : {}),
+      createdAt: new Date().toISOString(),
+    }
+    appendFileSync(join(dir, 'events.jsonl'), JSON.stringify(ev) + '\n')
+    console.log(join(dir, 'events.jsonl'))
+    return
+  }
+  if (sub === 'log') {
+    const line = rest.slice(1).join(' ')
+    if (!line) usage()
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'log.md'), `## [${new Date().toISOString().slice(0, 10)}] ${line}\n`)
+    return
+  }
+  if (sub === 'state') {
+    const p = join(dir, 'progress.md')
+    console.log(existsSync(p) ? readFileSync(p, 'utf8') : '(no progress.md)')
+    return
+  }
+  usage()
+}
+
 const [, , cmd, ...args] = process.argv
 switch (cmd) {
+  case 'loop':
+    loopCommand(args[0], args.slice(1))
+    break
   case 'ticket':
     fileTicket(args[0], args[1])
     break

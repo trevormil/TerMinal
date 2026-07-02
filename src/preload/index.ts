@@ -292,6 +292,16 @@ const gt = {
       ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },
+  loops: {
+    list: () => ipcRenderer.invoke('loops:list'),
+    get: (id: string) => ipcRenderer.invoke('loops:get', id),
+    state: (id: string) => ipcRenderer.invoke('loops:state', id),
+    create: (input: { repoRoot: string; goal: string; engine?: 'claude' | 'codex' | 'cursor'; model?: string; maxIterations?: number }) =>
+      ipcRenderer.invoke('loops:create', input),
+    step: (id: string) => ipcRenderer.invoke('loops:step', id),
+    restart: (id: string) => ipcRenderer.invoke('loops:restart', id),
+    stop: (id: string) => ipcRenderer.invoke('loops:stop', id),
+  },
   observability: {
     summary: (range: string = 'today') => ipcRenderer.invoke('observability:summary', range),
     byAgent: (range: string = 'week') => ipcRenderer.invoke('observability:byAgent', range),
