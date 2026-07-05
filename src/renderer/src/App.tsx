@@ -21,6 +21,7 @@ const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 type Sess = { key: string; choice: Choice; info: Info }
 type Attention = { reason: 'ready' | 'done' | 'exited'; at: number; exitCode?: number }
 export type TerminalLayout = 'single' | 'split' | 'grid4'
+export type SessionRail = 'top' | 'left'
 
 const cwdOf = (s: Sess) => s.info.cwd || s.choice.cwd || ''
 const repoLabelOf = (cwd: string) => {
@@ -40,6 +41,15 @@ const loadTerminalLayout = (): TerminalLayout => {
     /* ignore */
   }
   return 'single'
+}
+const loadSessionRail = (): SessionRail => {
+  try {
+    const raw = localStorage.getItem('gt.sessionRail')
+    if (raw === 'top' || raw === 'left') return raw
+  } catch {
+    /* ignore */
+  }
+  return 'top'
 }
 const loadTerminalSessionOrder = (): Record<string, string[]> => {
   try {
@@ -159,6 +169,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
+  const [sessionRail, setSessionRail] = useState<SessionRail>(loadSessionRail)
   const [terminalSessionOrder, setTerminalSessionOrder] = useState<Record<string, string[]>>(loadTerminalSessionOrder)
   const [draggingSessionKey, setDraggingSessionKey] = useState<string | null>(null)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
@@ -243,6 +254,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gt.terminalLayout', terminalLayout)
   }, [terminalLayout])
+  useEffect(() => {
+    localStorage.setItem('gt.sessionRail', sessionRail)
+  }, [sessionRail])
   useEffect(() => {
     localStorage.setItem('gt.terminalSessionOrder', JSON.stringify(terminalSessionOrder))
   }, [terminalSessionOrder])
@@ -1040,6 +1054,8 @@ export default function App() {
                     terminalLayout={terminalLayout}
                     tabLayout={appearance.tabLayout}
                     onTerminalLayoutChange={setTerminalLayout}
+                    sessionRail={sessionRail}
+                    onSessionRailChange={setSessionRail}
                     canSplitTerminal={activeWorkspaceSessions.length >= 2}
                     focusTerminal={s.key === activeKey}
                     needsAttention={attentionByKey.has(s.key)}

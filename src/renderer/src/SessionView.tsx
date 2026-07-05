@@ -5,8 +5,10 @@ import {
   GitBranch,
   Grid2x2,
   LayoutGrid,
+  PanelLeft,
   PanelRightClose,
   PanelRightOpen,
+  PanelTop,
   Plus,
   Server,
   Square,
@@ -26,7 +28,7 @@ import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
-import type { TerminalLayout } from './App'
+import type { SessionRail, TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
@@ -202,6 +204,8 @@ export function SessionView({
   terminalLayout = 'single',
   tabLayout = 'horizontal',
   onTerminalLayoutChange,
+  sessionRail = 'top',
+  onSessionRailChange,
   canSplitTerminal = false,
   focusTerminal = false,
   needsAttention = false,
@@ -225,6 +229,10 @@ export function SessionView({
   terminalLayout?: TerminalLayout
   tabLayout?: AppearanceTabLayout
   onTerminalLayoutChange?: (layout: TerminalLayout) => void
+  /** Position of the peer-session sub-bar: a horizontal row on top, or a
+   *  vertical rail on the left of the terminal pane. */
+  sessionRail?: SessionRail
+  onSessionRailChange?: (rail: SessionRail) => void
   canSplitTerminal?: boolean
   focusTerminal?: boolean
   needsAttention?: boolean
@@ -507,6 +515,160 @@ export function SessionView({
       {tabs.map((t) => tabPill(t.id, t.icon, tabLabel(t.id, t.title), variant))}
     </>
   )
+  const railButton = (mode: SessionRail, title: string, Icon: LucideIcon) => (
+    <button
+      key={mode}
+      style={noDrag}
+      onClick={() => onSessionRailChange?.(mode)}
+      title={title}
+      className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
+        sessionRail === mode
+          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+      }`}
+    >
+      <Icon size={13} strokeWidth={2} />
+    </button>
+  )
+  // One peer-session pill, shared by the top row and the left rail. `side`
+  // stretches it full-width and pushes the close affordance to the end.
+  const renderSessionPill = (p: (typeof peerSessions)[number], variant: 'top' | 'side' = 'top') => {
+    const on = p.key === sessionKey
+    const isEditing = editingKey === p.key
+    return (
+      <div
+        key={p.key}
+        draggable={!isEditing && !!onReorderSession}
+        onDragStart={(e) => {
+          if (isEditing) return
+          setDraggingKey(p.key)
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('application/x-terminal-session', p.key)
+        }}
+        onDragOver={(e) => {
+          if (draggingKey && draggingKey !== p.key) {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+          }
+        }}
+        onDrop={(e) => handleSessionDrop(e, p.key)}
+        onDragEnd={() => setDraggingKey(null)}
+        onClick={() => {
+          if (isEditing) return
+          navigateTo('terminal')
+          setActiveTab('terminal')
+          if (p.key !== sessionKey) onSwitchSession?.(p.key)
+        }}
+        onDoubleClick={() => {
+          if (!onRenameSession) return
+          setEditingKey(p.key)
+          setEditingValue(p.label)
+        }}
+        title="Double-click to rename"
+        className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
+          variant === 'side' ? 'w-full ' : ''
+        }${
+          on
+            ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+            : p.needsAttention
+              ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
+              : draggingKey === p.key
+                ? 'text-zinc-500 opacity-60'
+                : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+        }`}
+      >
+        <span
+          title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            p.status === 'working'
+              ? 'bg-[var(--gt-green)] gt-pulse'
+              : p.needsAttention
+                ? 'bg-[var(--gt-yellow)]'
+                : p.mode === 'new'
+                  ? 'bg-[var(--gt-accent)]'
+                  : 'bg-[var(--gt-accent-2)]'
+          }`}
+        />
+        <EngineLogo engine={p.engine} size={10} className="opacity-80" />
+        {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
+        {isEditing ? (
+          <input
+            autoFocus
+            value={editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
+            onBlur={() => {
+              onRenameSession?.(p.key, editingValue.trim())
+              setEditingKey(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onRenameSession?.(p.key, editingValue.trim())
+                setEditingKey(null)
+              } else if (e.key === 'Escape') {
+                setEditingKey(null)
+              }
+              e.stopPropagation()
+            }}
+            onClick={(e) => e.stopPropagation()}
+            spellCheck={false}
+            className="w-24 rounded-sm border border-[var(--gt-accent)]/60 bg-black/40 px-1 py-px text-[11px] text-zinc-100 outline-none"
+          />
+        ) : (
+          <span className={`${variant === 'side' ? 'flex-1 ' : 'max-w-[140px] '}truncate`}>{p.label}</span>
+        )}
+        {peerSessions.length > 1 && onCloseSession && !isEditing && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation()
+              onCloseSession(p.key)
+            }}
+            title="Close this session"
+            className={`${variant === 'side' ? 'ml-auto ' : 'ml-0.5 '}flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200`}
+          >
+            <X size={10} strokeWidth={2.5} />
+          </span>
+        )}
+      </div>
+    )
+  }
+  const renderAddSessionButton = (variant: 'top' | 'side' = 'top') =>
+    onAddSession ? (
+      <button
+        onClick={onAddSession}
+        title="New session in this workspace"
+        className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200 ${
+          variant === 'side' ? 'w-full justify-start' : ''
+        }`}
+      >
+        <Plus size={11} strokeWidth={2.5} />
+        {variant === 'side' && <span className="text-[11px]">New session</span>}
+      </button>
+    ) : null
+  // single / split / grid selector, plus the top-vs-left rail toggle. Shared by
+  // the top sub-bar and the left-rail control strip.
+  const layoutControls =
+    onTerminal && onTerminalLayoutChange ? (
+      <div
+        style={noDrag}
+        className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5"
+      >
+        {layoutButton('single', 'Single terminal', Square)}
+        {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
+        {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canSplitTerminal)}
+        {onSessionRailChange && (
+          <>
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-[var(--gt-border)]" />
+            {railButton('top', 'Session tabs on top', PanelTop)}
+            {railButton('left', 'Session tabs on left', PanelLeft)}
+          </>
+        )}
+      </div>
+    ) : null
+  // The peer-session sub-bar shows whenever there's a session choice or the
+  // layout controls are available. `railLeft` moves those pills into a vertical
+  // rail beside the terminal instead of a row above it.
+  const showSessionBar = !terminalTile && (peerSessions.length > 1 || !!onAddSession || !!onTerminalLayoutChange)
+  const railLeft = showSessionBar && sessionRail === 'left'
 
   return (
     <div className="flex h-full flex-col">
@@ -611,149 +773,55 @@ export function SessionView({
         >
           <main className="flex min-w-0 flex-col overflow-hidden bg-[var(--gt-bg)]">
             {/* Session sub-bar — peer terminal instances inside this workspace.
-                Top-level bar shows projects; this row shows pty instances.
-                Hidden when there's only one session (no choice to make). */}
-            <div
-              className={`h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px] ${
-                terminalTile || (peerSessions.length <= 1 && !onAddSession && !onTerminalLayoutChange)
-                  ? 'hidden'
-                  : 'flex'
-              }`}
-            >
-              {!terminalTile && (peerSessions.length > 1 || onAddSession || onTerminalLayoutChange) ? (
-                <>
-                  <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
-                    terminal
-                  </span>
-                  {peerSessions.map((p) => {
-                    const on = p.key === sessionKey
-                    const isEditing = editingKey === p.key
-                    return (
-                      <div
-                        key={p.key}
-                        draggable={!isEditing && !!onReorderSession}
-                        onDragStart={(e) => {
-                          if (isEditing) return
-                          setDraggingKey(p.key)
-                          e.dataTransfer.effectAllowed = 'move'
-                          e.dataTransfer.setData('application/x-terminal-session', p.key)
-                        }}
-                        onDragOver={(e) => {
-                          if (draggingKey && draggingKey !== p.key) {
-                            e.preventDefault()
-                            e.dataTransfer.dropEffect = 'move'
-                          }
-                        }}
-                        onDrop={(e) => handleSessionDrop(e, p.key)}
-                        onDragEnd={() => setDraggingKey(null)}
-                        onClick={() => {
-                          if (isEditing) return
-                          navigateTo('terminal')
-                          setActiveTab('terminal')
-                          if (p.key !== sessionKey) onSwitchSession?.(p.key)
-                        }}
-                        onDoubleClick={() => {
-                          if (!onRenameSession) return
-                          setEditingKey(p.key)
-                          setEditingValue(p.label)
-                        }}
-                        title="Double-click to rename"
-                        className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
-                          on
-                            ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
-                            : p.needsAttention
-                              ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
-                            : draggingKey === p.key
-                              ? 'text-zinc-500 opacity-60'
-                            : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                        }`}
-                      >
-                        <span
-                          title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                            p.status === 'working'
-                              ? 'bg-[var(--gt-green)] gt-pulse'
-                              : p.needsAttention
-                                ? 'bg-[var(--gt-yellow)]'
-                              : p.mode === 'new'
-                                ? 'bg-[var(--gt-accent)]'
-                                : 'bg-[var(--gt-accent-2)]'
-                          }`}
-                        />
-                        <EngineLogo engine={p.engine} size={10} className="opacity-80" />
-                        {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
-                        {isEditing ? (
-                          <input
-                            autoFocus
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={() => {
-                              onRenameSession?.(p.key, editingValue.trim())
-                              setEditingKey(null)
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                onRenameSession?.(p.key, editingValue.trim())
-                                setEditingKey(null)
-                              } else if (e.key === 'Escape') {
-                                setEditingKey(null)
-                              }
-                              e.stopPropagation()
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            spellCheck={false}
-                            className="w-24 rounded-sm border border-[var(--gt-accent)]/60 bg-black/40 px-1 py-px text-[11px] text-zinc-100 outline-none"
-                          />
-                        ) : (
-                          <span className="max-w-[140px] truncate">{p.label}</span>
-                        )}
-                        {peerSessions.length > 1 && onCloseSession && !isEditing && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onCloseSession(p.key)
-                            }}
-                            title="Close this session"
-                            className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
-                          >
-                            <X size={10} strokeWidth={2.5} />
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
-                  {onAddSession && (
-                    <button
-                      onClick={onAddSession}
-                      title="New session in this workspace"
-                      className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
-                    >
-                      <Plus size={11} strokeWidth={2.5} />
-                    </button>
-                  )}
-                  <div className="flex-1" />
-                  {onTerminal && onTerminalLayoutChange && (
-                    <div
-                      style={noDrag}
-                      className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5"
-                    >
-                      {layoutButton('single', 'Single terminal', Square)}
-                      {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
-                      {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canSplitTerminal)}
-                    </div>
-                  )}
-                </>
-              ) : null}
-            </div>
-            <div className="min-h-0 flex-1">
-              <TerminalPane
-                sessionKey={sessionKey}
-                choice={choice}
-                onStarted={handleStarted}
-                active={focusTerminal}
-                needsAttention={needsAttention}
-                onClearAttention={onClearAttention}
-              />
+                Top-level bar shows projects; this shows pty instances, either as
+                a row on top (default) or a rail on the left (sessionRail). The
+                terminal pane keeps a stable tree position across the toggle so
+                xterm never unmounts. */}
+            {sessionRail === 'top' && (
+              <div
+                className={`h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px] ${
+                  showSessionBar ? 'flex' : 'hidden'
+                }`}
+              >
+                {showSessionBar ? (
+                  <>
+                    <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                      terminal
+                    </span>
+                    {peerSessions.map((p) => renderSessionPill(p, 'top'))}
+                    {renderAddSessionButton('top')}
+                    <div className="flex-1" />
+                    {layoutControls}
+                  </>
+                ) : null}
+              </div>
+            )}
+            {railLeft && (
+              <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px]">
+                <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                  terminal
+                </span>
+                <div className="flex-1" />
+                {layoutControls}
+              </div>
+            )}
+            <div className="flex min-h-0 flex-1">
+              {railLeft && (
+                <aside className="flex w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-1.5">
+                  {peerSessions.map((p) => renderSessionPill(p, 'side'))}
+                  {renderAddSessionButton('side')}
+                </aside>
+              )}
+              <div className="min-h-0 min-w-0 flex-1">
+                <TerminalPane
+                  sessionKey={sessionKey}
+                  choice={choice}
+                  onStarted={handleStarted}
+                  active={focusTerminal}
+                  needsAttention={needsAttention}
+                  onClearAttention={onClearAttention}
+                />
+              </div>
             </div>
           </main>
           {cockpitVisible && (
