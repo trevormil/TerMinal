@@ -24,6 +24,7 @@ import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
+import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
@@ -284,12 +285,16 @@ export function SessionView({
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
   }, [])
+  const customTabs = useCustomTabs(ctx?.cwd || '')
   const tabs = useMemo(
     () =>
       ctx
-        ? ALL_TABS.filter((t) => ctx.capabilities?.[t.id] !== false && t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id))
+        ? [
+            ...ALL_TABS.filter((t) => ctx.capabilities?.[t.id] !== false && t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id)),
+            ...customTabs.filter((t) => !hiddenTabs.has(t.id)),
+          ].sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
         : [],
-    [ctx, hiddenTabs],
+    [ctx, hiddenTabs, customTabs],
   )
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])

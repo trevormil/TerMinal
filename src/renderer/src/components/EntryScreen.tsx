@@ -11,6 +11,7 @@ import {
   Home,
   Check,
   Search,
+  Zap,
 } from 'lucide-react'
 import type {
   Engine,
@@ -201,6 +202,12 @@ export function EntryScreen({
     setVisibleSessionCount(SESSION_PAGE_SIZE)
   }, [engine, filterDir, sessionSearch])
 
+  // One-click throwaway session: spin up an engine in the app-owned scratch dir
+  // (no repo, no folder-picking). For a quick chat you don't want to file away.
+  const startScratch = async (e: SessionEngine) => {
+    const dir = await window.gt.scratchDir()
+    onChoose({ mode: 'new', engine: e, cwd: dir, name: 'scratch' })
+  }
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
     setCwd(path)
@@ -367,6 +374,34 @@ export function EntryScreen({
             </>
           )}
         </p>
+
+        {!lockedCwd && (
+          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] px-4 py-3">
+            <Zap size={15} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold text-zinc-100">Scratch session</div>
+              <div className="truncate text-[10.5px] text-zinc-600">
+                Throwaway — spins up in <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
+              </div>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {(['claude', 'local', 'codex'] as SessionEngine[]).map((e) => (
+                <button
+                  key={e}
+                  onClick={() => startScratch(e)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                >
+                  {e === 'local' ? (
+                    <SquareTerminal size={13} strokeWidth={2} className="shrink-0" />
+                  ) : (
+                    <EngineLogo engine={e} size={13} />
+                  )}
+                  {sessionEngineLabel(e)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]">
           <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-4 py-3">

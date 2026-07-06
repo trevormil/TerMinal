@@ -332,6 +332,20 @@ export type CommandWidget = {
 
 export type CommandResult = { ok: boolean; stdout: string; code: number }
 
+// A declarative full-screen tab, the tab analogue of CommandWidget. Either a
+// `url` (embedded) or a `command` (stdout HTML, re-polled every intervalMs).
+export type CustomTab = {
+  id: string
+  title: string
+  icon?: string
+  source: 'global' | 'repo'
+  url?: string
+  command?: string
+  intervalMs?: number
+}
+
+export type TabRunResult = { ok: boolean; html: string; code: number }
+
 export type Ticket = {
   slug: string
   id: number
@@ -1551,6 +1565,9 @@ export type GtApi = {
   meta: () => Promise<SessionInfo>
   listCommandWidgets: () => Promise<CommandWidget[]>
   runCommand: (command: string) => Promise<CommandResult>
+  listCustomTabs: (cwd?: string) => Promise<CustomTab[]>
+  runTabView: (command: string, cwd?: string) => Promise<TabRunResult>
+  scratchDir: () => Promise<string>
   onTick: (cb: () => void) => () => void
   tabContext: () => Promise<TabContext>
   tickets: {

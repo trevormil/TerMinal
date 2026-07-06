@@ -230,6 +230,7 @@ import { emitActivity, readActivity, clearActivity, onActivity, startActivityTai
 import { readUsage } from './usage'
 import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
+import { listCustomTabs, runTabCommand } from './tabs'
 import { repoRootOf, repoForCwd } from './repo'
 import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
 import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
@@ -1660,6 +1661,25 @@ ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 // ---- command widgets (declarative, per-repo extensible) ----
 ipcMain.handle('widgets:list', () => listCommandWidgets(cur().cwd))
 ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, cur().cwd))
+
+// ---- custom tabs (declarative full-screen views, per-repo extensible) ----
+ipcMain.handle('tabs:list', (_e, cwd?: string) => listCustomTabs(cwd || cur().cwd))
+ipcMain.handle('tabs:run', (_e, command: string, cwd?: string) => runTabCommand(command, cwd || cur().cwd))
+
+// ---- scratch workspace (throwaway, repo-less sessions) ----
+// One app-owned dir under the existing TerMinal config root — persistent
+// (unlike /tmp), out of the way (unlike ~), and not a git repo so repo-scoped
+// tabs/widgets stay off. All scratch sessions share it → one "scratch"
+// workspace grouping.
+ipcMain.handle('scratch:dir', () => {
+  const dir = join(homedir(), '.config', 'TerMinal', 'scratch')
+  try {
+    mkdirSync(dir, { recursive: true })
+  } catch {
+    /* already exists / race */
+  }
+  return dir
+})
 
 // ---- tabs: repo context + tickets/MRs (scoped to the session's repo) ----
 ipcMain.handle('tab:context', async () => {

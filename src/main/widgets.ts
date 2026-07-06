@@ -58,7 +58,7 @@ function loadFile(path: string, source: 'global' | 'repo', scope = ''): CommandW
 }
 
 /** Walk up from cwd to the repo root (dir containing .git), else cwd. */
-function repoRoot(cwd: string): string {
+export function repoRoot(cwd: string): string {
   let dir = cwd
   for (let i = 0; i < 30 && dir && dir !== '/'; i++) {
     if (existsSync(join(dir, '.git'))) return dir

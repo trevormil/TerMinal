@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
-import { Bell, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import { Bell, ChevronDown, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -10,6 +10,7 @@ import { InboxDrawer } from './tabs/hitl'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
 import { ALL_TABS } from './tabs/registry'
+import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
 import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 import { applyTheme } from './lib/themes'
@@ -50,6 +51,21 @@ const loadSessionRail = (): SessionRail => {
     /* ignore */
   }
   return 'top'
+}
+// Explicit membership of the multi-view grid, as an ordered list of session
+// keys. Unlike the old model this is NOT scoped to one workspace — the grid can
+// tile sessions from different repos side by side. Session keys are stable
+// across restarts (persisted in gt.openSessions), so this survives reloads;
+// stale keys are pruned against the live session list at render time.
+const loadTerminalGridKeys = (): string[] => {
+  try {
+    const raw = localStorage.getItem('gt.terminalGridKeys')
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
 }
 const loadTerminalSessionOrder = (): Record<string, string[]> => {
   try {
@@ -171,6 +187,8 @@ export default function App() {
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
   const [sessionRail, setSessionRail] = useState<SessionRail>(loadSessionRail)
   const [terminalSessionOrder, setTerminalSessionOrder] = useState<Record<string, string[]>>(loadTerminalSessionOrder)
+  const [gridKeys, setGridKeys] = useState<string[]>(loadTerminalGridKeys)
+  const [gridPickerOpen, setGridPickerOpen] = useState(false)
   const [draggingSessionKey, setDraggingSessionKey] = useState<string | null>(null)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
   const [attentionByKey, setAttentionByKey] = useState<Map<string, Attention>>(() => new Map())
@@ -261,6 +279,9 @@ export default function App() {
     localStorage.setItem('gt.terminalSessionOrder', JSON.stringify(terminalSessionOrder))
   }, [terminalSessionOrder])
   useEffect(() => {
+    localStorage.setItem('gt.terminalGridKeys', JSON.stringify(gridKeys))
+  }, [gridKeys])
+  useEffect(() => {
     const onChange = () => setHiddenTabs(new Set(loadHiddenTabs()))
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
@@ -298,6 +319,10 @@ export default function App() {
       const next = new Map<string, Attention>()
       for (const [key, attention] of prev) if (liveKeys.has(key)) next.set(key, attention)
       return next.size === prev.size ? prev : next
+    })
+    setGridKeys((prev) => {
+      const next = prev.filter((k) => liveKeys.has(k))
+      return next.length === prev.length ? prev : next
     })
   }, [sessions])
 
@@ -544,6 +569,14 @@ export default function App() {
   const visibleSessionOrder = useMemo(() => {
     if (!activeKey) return []
     if (terminalLayout === 'single') return [activeKey]
+    // grid4 with an explicit membership list tiles those sessions across repos
+    // (the picker's selection). Empty list falls back to the workspace-scoped
+    // grid below. Stale keys are dropped against the live session list.
+    if (terminalLayout === 'grid4' && gridKeys.length > 0) {
+      const live = new Set(sessions.map((s) => s.key))
+      const chosen = gridKeys.filter((k) => live.has(k)).slice(0, 4)
+      if (chosen.length > 0) return chosen
+    }
     const limit = terminalLayout === 'split' ? 2 : 4
     const keys = activeWorkspaceSessions.map((s) => s.key)
     const visible = keys.slice(0, limit)
@@ -551,7 +584,7 @@ export default function App() {
       visible[visible.length - 1] = activeKey
     }
     return visible
-  }, [activeKey, activeWorkspaceSessions, terminalLayout])
+  }, [activeKey, activeWorkspaceSessions, terminalLayout, gridKeys, sessions])
   const visibleSessionKeys = useMemo(() => new Set(visibleSessionOrder), [visibleSessionOrder])
   const visibleSessionRank = useMemo(() => new Map(visibleSessionOrder.map((key, i) => [key, i])), [visibleSessionOrder])
   const openInboxTerminals = useMemo(
@@ -673,9 +706,16 @@ export default function App() {
           transform: `scale(${uiScale})`,
           transformOrigin: 'top left',
         }
+  const customTabs = useCustomTabs(activeCtx?.cwd || '')
   const activeTabs = useMemo(
-    () => (activeCtx ? ALL_TABS.filter((t) => activeCtx.capabilities?.[t.id] !== false && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id)) : []),
-    [activeCtx, hiddenTabs],
+    () =>
+      activeCtx
+        ? [
+            ...ALL_TABS.filter((t) => activeCtx.capabilities?.[t.id] !== false && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id)),
+            ...customTabs.filter((t) => !hiddenTabs.has(t.id)),
+          ].sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
+        : [],
+    [activeCtx, hiddenTabs, customTabs],
   )
   const layoutButton = (mode: TerminalLayout, title: string, Icon: LucideIcon, disabled = false) => (
     <button
@@ -691,6 +731,13 @@ export default function App() {
       <Icon size={13} strokeWidth={2} />
     </button>
   )
+  // Toggle a session into/out of the cross-repo grid (max 4 tiles). Selecting a
+  // second member auto-switches to grid layout so the effect is visible.
+  const toggleGridKey = (key: string) => {
+    const next = gridKeys.includes(key) ? gridKeys.filter((k) => k !== key) : gridKeys.length >= 4 ? gridKeys : [...gridKeys, key]
+    setGridKeys(next)
+    if (next.length >= 2 && terminalLayout !== 'grid4') setTerminalLayout('grid4')
+  }
   // hold the UI until we know onboarding state (avoids the entry screen flashing
   // before first-run setup)
   if (onboarded === null)
@@ -992,7 +1039,60 @@ export default function App() {
               <div style={noDrag} className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5">
                 {layoutButton('single', 'Single terminal', Square)}
                 {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
-                {layoutButton('grid4', 'Four-terminal grid', Grid2x2, activeWorkspaceSessions.length < 2)}
+                {layoutButton('grid4', 'Four-terminal grid', Grid2x2, sessions.length < 2)}
+                <div className="relative">
+                  <button
+                    style={noDrag}
+                    onClick={() => setGridPickerOpen((v) => !v)}
+                    disabled={sessions.length < 2}
+                    title="Choose sessions to tile in the grid (across repos)"
+                    className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+                      sessions.length < 2
+                        ? 'cursor-not-allowed text-zinc-700'
+                        : gridPickerOpen || gridKeys.length > 0
+                          ? 'text-zinc-100'
+                          : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+                    }`}
+                  >
+                    <ChevronDown size={13} strokeWidth={2} />
+                  </button>
+                  {gridPickerOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setGridPickerOpen(false)} />
+                      <div className="absolute right-0 top-7 z-50 max-h-80 w-56 overflow-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-1 shadow-xl">
+                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Grid sessions · {gridKeys.length}/4</div>
+                        {workspaces.map((ws) => (
+                          <div key={ws.repoRoot}>
+                            <div className="truncate px-2 pb-0.5 pt-1.5 text-[10px] font-medium text-zinc-400">{ws.label}</div>
+                            {ws.sessions.map((s, i) => {
+                              const checked = gridKeys.includes(s.key)
+                              const atCap = !checked && gridKeys.length >= 4
+                              return (
+                                <button
+                                  key={s.key}
+                                  disabled={atCap}
+                                  onClick={() => toggleGridKey(s.key)}
+                                  className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${
+                                    atCap ? 'cursor-not-allowed text-zinc-600' : 'text-zinc-200 hover:bg-white/5'
+                                  }`}
+                                >
+                                  <span
+                                    className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                                      checked ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/30' : 'border-zinc-600'
+                                    }`}
+                                  >
+                                    {checked && <span className="h-1.5 w-1.5 rounded-[1px] bg-[var(--gt-accent)]" />}
+                                  </span>
+                                  <span className="truncate">{labelForSession(s, i, autoNamesByKey)}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}

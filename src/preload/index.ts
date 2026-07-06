@@ -220,6 +220,13 @@ const gt = {
   listCommandWidgets: () => ipcRenderer.invoke('widgets:list'),
   runCommand: (command: string) => ipcRenderer.invoke('widgets:run', command),
 
+  // custom tabs (declarative full-screen views / per-repo)
+  listCustomTabs: (cwd?: string) => ipcRenderer.invoke('tabs:list', cwd),
+  runTabView: (command: string, cwd?: string) => ipcRenderer.invoke('tabs:run', command, cwd),
+
+  // scratch workspace dir (throwaway, repo-less sessions)
+  scratchDir: () => ipcRenderer.invoke('scratch:dir'),
+
   // tabs: repo context + tickets / MRs
   tabContext: () => ipcRenderer.invoke('tab:context'),
   tickets: {
