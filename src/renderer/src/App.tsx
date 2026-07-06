@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Bell, ChevronDown, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
 import { EntryScreen, type Choice } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
@@ -189,7 +189,6 @@ export default function App() {
   const [terminalSessionOrder, setTerminalSessionOrder] = useState<Record<string, string[]>>(loadTerminalSessionOrder)
   const [gridKeys, setGridKeys] = useState<string[]>(loadTerminalGridKeys)
   const [gridPickerOpen, setGridPickerOpen] = useState(false)
-  const [draggingSessionKey, setDraggingSessionKey] = useState<string | null>(null)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
   const [attentionByKey, setAttentionByKey] = useState<Map<string, Attention>>(() => new Map())
   const [attentionOpen, setAttentionOpen] = useState(false)
@@ -566,18 +565,23 @@ export default function App() {
     return s ? cwdOf(s) : ''
   }, [sessions, activeKey])
   const activeWorkspaceSessions = useMemo(() => workspaces.find((w) => w.repoRoot === activeWorkspaceRoot)?.sessions ?? [], [workspaces, activeWorkspaceRoot])
+  // Active workspace first — the picker and the tile rail list the current
+  // project's sessions before any other repo's ("first options = current
+  // workspace"), while still exposing every open session for cross-repo tiling.
+  const orderedWorkspaces = useMemo(
+    () => [...workspaces].sort((a, b) => (b.repoRoot === activeWorkspaceRoot ? 1 : 0) - (a.repoRoot === activeWorkspaceRoot ? 1 : 0)),
+    [workspaces, activeWorkspaceRoot],
+  )
   const visibleSessionOrder = useMemo(() => {
     if (!activeKey) return []
     if (terminalLayout === 'single') return [activeKey]
-    // grid4 with an explicit membership list tiles those sessions across repos
-    // (the picker's selection). Empty list falls back to the workspace-scoped
-    // grid below. Stale keys are dropped against the live session list.
-    if (terminalLayout === 'grid4' && gridKeys.length > 0) {
-      const live = new Set(sessions.map((s) => s.key))
-      const chosen = gridKeys.filter((k) => live.has(k)).slice(0, 4)
-      if (chosen.length > 0) return chosen
-    }
+    // split (2) and grid4 (4) both tile ONE explicit, cross-repo membership list
+    // (gridKeys). Stale keys are dropped against the live session list. Before
+    // any membership exists we fall back to the current workspace's sessions.
     const limit = terminalLayout === 'split' ? 2 : 4
+    const live = new Set(sessions.map((s) => s.key))
+    const chosen = gridKeys.filter((k) => live.has(k)).slice(0, limit)
+    if (chosen.length > 1) return chosen
     const keys = activeWorkspaceSessions.map((s) => s.key)
     const visible = keys.slice(0, limit)
     if (activeKey && !visible.includes(activeKey) && visible.length > 0) {
@@ -688,13 +692,6 @@ export default function App() {
     setTerminalSessionOrder((prev) => ({ ...prev, [ws.repoRoot]: keys }))
   }
 
-  const handleSessionChipDrop = (e: DragEvent, toKey: string) => {
-    e.preventDefault()
-    const fromKey = e.dataTransfer.getData('application/x-terminal-session') || draggingSessionKey
-    if (fromKey) reorderSession(fromKey, toKey)
-    setDraggingSessionKey(null)
-  }
-
   const showEntry = adding !== false || sessions.length === 0
   const uiScale = Math.min(1.35, Math.max(0.85, appearance.uiScale || 1))
   const scaledShellStyle: CSSProperties =
@@ -717,11 +714,30 @@ export default function App() {
         : [],
     [activeCtx, hiddenTabs, customTabs],
   )
+  // Multi-view membership (gridKeys) is a single, cross-repo, explicit list that
+  // BOTH split (2 tiles) and grid4 (4 tiles) read from. Entering a multi-view
+  // with no membership yet seeds it from the CURRENT workspace first, then fills
+  // any remaining tiles from other open sessions — so the grid always renders
+  // something and the current project leads. From there the picker adds any open
+  // session in any workspace. Once curated (≥2) the membership persists across
+  // layout switches (grid→split shows the first 2; split→grid restores 4).
+  const seedTiles = (cap: number) => {
+    const active = activeWorkspaceSessions.map((s) => s.key)
+    const others = orderedWorkspaces.flatMap((w) => w.sessions.map((s) => s.key)).filter((k) => !active.includes(k))
+    return [...active, ...others].slice(0, cap)
+  }
+  const switchLayout = (mode: TerminalLayout) => {
+    if (mode !== 'single' && gridKeys.length < 2) {
+      const seed = seedTiles(mode === 'split' ? 2 : 4)
+      if (seed.length >= 2) setGridKeys(seed)
+    }
+    setTerminalLayout(mode)
+  }
   const layoutButton = (mode: TerminalLayout, title: string, Icon: LucideIcon, disabled = false) => (
     <button
       key={mode}
       style={noDrag}
-      onClick={() => !disabled && setTerminalLayout(mode)}
+      onClick={() => !disabled && switchLayout(mode)}
       disabled={disabled}
       title={title}
       className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
@@ -731,12 +747,13 @@ export default function App() {
       <Icon size={13} strokeWidth={2} />
     </button>
   )
-  // Toggle a session into/out of the cross-repo grid (max 4 tiles). Selecting a
-  // second member auto-switches to grid layout so the effect is visible.
+  // Toggle a session into/out of the cross-repo tile membership (max 4). From a
+  // single view, adding a second member jumps to grid4 so the effect is visible;
+  // if the user is already in split/grid we leave their chosen layout alone.
   const toggleGridKey = (key: string) => {
     const next = gridKeys.includes(key) ? gridKeys.filter((k) => k !== key) : gridKeys.length >= 4 ? gridKeys : [...gridKeys, key]
     setGridKeys(next)
-    if (next.length >= 2 && terminalLayout !== 'grid4') setTerminalLayout('grid4')
+    if (next.length >= 2 && terminalLayout === 'single') setTerminalLayout('grid4')
   }
   // hold the UI until we know onboarding state (avoids the entry screen flashing
   // before first-run setup)
@@ -777,7 +794,15 @@ export default function App() {
                   key={ws.repoRoot}
                   style={noDrag}
                   title={ws.repoRoot}
-                  onClick={() => activate(ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key)}
+                  onClick={() => {
+                    const target = ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key
+                    // In a cross-repo multi-view, clicking a workspace whose
+                    // session isn't one of the tiles drops to a focused single
+                    // view of it — so the pill is never "dead" while the tiles
+                    // are locked to their membership.
+                    if (terminalLayout !== 'single' && !gridKeys.includes(target)) setTerminalLayout('single')
+                    activate(target)
+                  }}
                   className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] ${
                     workspaceActive
                       ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-zinc-100'
@@ -980,51 +1005,67 @@ export default function App() {
           )}
           {multiTerminal && !showEntry && (
             <div className="absolute inset-x-0 top-8 z-10 flex h-7 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-2 text-[11px]">
-              <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">terminal</span>
-              {(peersByKey.get(activeKey || '') || []).map((p) => {
-                const visible = visibleSessionKeys.has(p.key)
-                return (
-                  <button
-                    key={p.key}
-                    draggable
-                    onDragStart={(e) => {
-                      setDraggingSessionKey(p.key)
-                      e.dataTransfer.effectAllowed = 'move'
-                      e.dataTransfer.setData('application/x-terminal-session', p.key)
-                    }}
-                    onDragOver={(e) => {
-                      if (draggingSessionKey && draggingSessionKey !== p.key) {
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = 'move'
-                      }
-                    }}
-                    onDrop={(e) => handleSessionChipDrop(e, p.key)}
-                    onDragEnd={() => setDraggingSessionKey(null)}
-                    onClick={() => {
-                      navigateTo('terminal')
-                      activate(p.key)
-                    }}
-                    className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
-                      p.key === activeKey
-                        ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
-                        : p.needsAttention
-                          ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
-                        : draggingSessionKey === p.key
-                          ? 'text-zinc-500 opacity-60'
-                          : visible
-                            ? 'text-zinc-300 hover:bg-white/5 hover:text-zinc-100'
-                            : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
-                    }`}
+              <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">tiles</span>
+              {/* Tile membership grouped by repo — the tiles can span workspaces,
+                so each group is boxed under its repo label (current workspace
+                first) and every pill can focus its tile or drop out. */}
+              {orderedWorkspaces
+                .map((ws) => ({ ws, members: ws.sessions.filter((s) => gridKeys.includes(s.key)) }))
+                .filter((g) => g.members.length > 0)
+                .map(({ ws, members }) => (
+                  <div
+                    key={ws.repoRoot}
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/20 py-0.5 pl-1.5 pr-1"
                   >
-                    <span
-                      title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : p.needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
-                    />
-                    {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
-                    <span className="max-w-[120px] truncate">{p.label}</span>
-                  </button>
-                )
-              })}
+                    {ws.remote && <Server size={10} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
+                    <span title={ws.repoRoot} className="max-w-[90px] truncate text-[9.5px] font-medium text-zinc-500">
+                      {ws.label}
+                    </span>
+                    {members.map((s) => {
+                      const idx = ws.sessions.findIndex((x) => x.key === s.key)
+                      const label = labelForSession(s, idx, autoNamesByKey)
+                      const status = statusByKey[s.key] || 'idle'
+                      const needsAttention = attentionByKey.has(s.key)
+                      const isActive = s.key === activeKey
+                      return (
+                        <span
+                          key={s.key}
+                          className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${
+                            isActive
+                              ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                              : needsAttention
+                                ? 'bg-[var(--gt-yellow)]/10 text-zinc-200'
+                                : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                          }`}
+                        >
+                          <button
+                            onClick={() => {
+                              navigateTo('terminal')
+                              activate(s.key)
+                            }}
+                            className="flex items-center gap-1"
+                          >
+                            <span
+                              title={status === 'working' ? 'working' : needsAttention ? 'needs attention' : 'idle'}
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
+                            />
+                            <span className="max-w-[110px] truncate">{label}</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleGridKey(s.key)
+                            }}
+                            title="Remove from grid"
+                            className="shrink-0 rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                          >
+                            <X size={10} strokeWidth={2.5} />
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                ))}
               <button
                 onClick={() => {
                   const active = sessions.find((x) => x.key === activeKey)
@@ -1038,7 +1079,7 @@ export default function App() {
               <div className="flex-1" />
               <div style={noDrag} className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5">
                 {layoutButton('single', 'Single terminal', Square)}
-                {layoutButton('split', 'Split terminal columns', Columns2, activeWorkspaceSessions.length < 2)}
+                {layoutButton('split', 'Split terminal columns', Columns2, sessions.length < 2)}
                 {layoutButton('grid4', 'Four-terminal grid', Grid2x2, sessions.length < 2)}
                 <div className="relative">
                   <button
@@ -1060,8 +1101,8 @@ export default function App() {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setGridPickerOpen(false)} />
                       <div className="absolute right-0 top-7 z-50 max-h-80 w-56 overflow-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-1 shadow-xl">
-                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Grid sessions · {gridKeys.length}/4</div>
-                        {workspaces.map((ws) => (
+                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Tiled sessions · {gridKeys.length}/4</div>
+                        {orderedWorkspaces.map((ws) => (
                           <div key={ws.repoRoot}>
                             <div className="truncate px-2 pb-0.5 pt-1.5 text-[10px] font-medium text-zinc-400">{ws.label}</div>
                             {ws.sessions.map((s, i) => {
@@ -1139,6 +1180,12 @@ export default function App() {
                     order: multiTerminal ? visibleSessionRank.get(s.key) : undefined,
                   }}
                 >
+                  {visible && multiTerminal && (
+                    <div className="pointer-events-none absolute left-1 top-1 z-20 flex max-w-[75%] items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-zinc-300 backdrop-blur-sm">
+                      {s.choice.remote && <Server size={9} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
+                      <span className="truncate">{repoLabelOf(cwdOf(s))}</span>
+                    </div>
+                  )}
                   <SessionView
                     sessionKey={s.key}
                     choice={s.choice}
@@ -1153,10 +1200,11 @@ export default function App() {
                     terminalTile={multiTerminal}
                     terminalLayout={terminalLayout}
                     tabLayout={appearance.tabLayout}
-                    onTerminalLayoutChange={setTerminalLayout}
+                    onTerminalLayoutChange={switchLayout}
                     sessionRail={sessionRail}
                     onSessionRailChange={setSessionRail}
-                    canSplitTerminal={activeWorkspaceSessions.length >= 2}
+                    canSplitTerminal={sessions.length >= 2}
+                    canGridTerminal={sessions.length >= 2}
                     focusTerminal={s.key === activeKey}
                     needsAttention={attentionByKey.has(s.key)}
                     onClearAttention={() => clearAttention(s.key)}

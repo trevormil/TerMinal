@@ -12,6 +12,7 @@ import {
   Check,
   Search,
   Zap,
+  Pin,
 } from 'lucide-react'
 import type {
   Engine,
@@ -63,6 +64,14 @@ const remoteDisplayPath = (p: string) =>
 const isAiEngine = (value: SessionEngine): value is Engine => value !== 'local'
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 const SESSION_PAGE_SIZE = 50
+const readWorkspaceList = (key: string): string[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(parsed) ? [...new Set(parsed.filter((x): x is string => typeof x === 'string'))] : []
+  } catch {
+    return []
+  }
+}
 
 export function EntryScreen({
   onChoose,
@@ -101,7 +110,18 @@ export function EntryScreen({
   const [remoteListing, setRemoteListing] = useState<RemoteDirList | null>(null)
   const [remoteListingLoading, setRemoteListingLoading] = useState(false)
   const [remoteListingErr, setRemoteListingErr] = useState('')
+  const [pinnedWorkspaces, setPinnedWorkspaces] = useState<string[]>(() =>
+    readWorkspaceList('gt.pinnedWorkspaces'),
+  )
   const parentLabel = defaultParent ? tilde(defaultParent) : '~'
+
+  const togglePin = (path: string) => {
+    setPinnedWorkspaces((prev) => {
+      const next = prev.includes(path) ? prev.filter((x) => x !== path) : [path, ...prev]
+      localStorage.setItem('gt.pinnedWorkspaces', JSON.stringify(next))
+      return next
+    })
+  }
 
   const pickParent = async () => {
     if (location === 'remote') {
@@ -419,47 +439,74 @@ export function EntryScreen({
           <div className="space-y-4 p-4">
             {!lockedCwd &&
               (() => {
-                let recents: string[] = []
-                try {
-                  recents = JSON.parse(localStorage.getItem('gt.recentWorkspaces') || '[]')
-                } catch {
-                  /* ignore */
-                }
-                recents = [...new Set(recents.filter((x) => typeof x === 'string'))].slice(0, 8)
-                if (!recents.length) return null
-                return (
-                  <div>
-                    <div className={`${sectionTitle} mb-2`}>Recent workspaces</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {recents.map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => onChoose(choiceFromRecent(r))}
-                          title={r}
-                          className="inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
-                        >
-                          {isRemotePath(r) ? (
-                            <Server
-                              size={12}
-                              strokeWidth={2}
-                              className="shrink-0 text-[var(--gt-accent-2)]"
-                            />
-                          ) : (
-                            <FolderOpen
-                              size={12}
-                              strokeWidth={2}
-                              className="shrink-0 text-zinc-500"
-                            />
-                          )}
-                          <span className="truncate">{pathLabel(r)}</span>
-                          {isRemotePath(r) && (
-                            <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
-                              ssh
-                            </span>
-                          )}
-                        </button>
-                      ))}
+                const pins = pinnedWorkspaces
+                const recents = readWorkspaceList('gt.recentWorkspaces')
+                  .filter((r) => !pins.includes(r))
+                  .slice(0, 8)
+                if (!pins.length && !recents.length) return null
+                const chip = (r: string) => {
+                  const isPinned = pins.includes(r)
+                  return (
+                    <div
+                      key={r}
+                      title={r}
+                      className="group inline-flex max-w-[240px] items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 py-1.5 pl-2.5 pr-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
+                    >
+                      <button
+                        onClick={() => onChoose(choiceFromRecent(r))}
+                        className="inline-flex min-w-0 items-center gap-1.5 text-left"
+                      >
+                        {isRemotePath(r) ? (
+                          <Server
+                            size={12}
+                            strokeWidth={2}
+                            className="shrink-0 text-[var(--gt-accent-2)]"
+                          />
+                        ) : (
+                          <FolderOpen size={12} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                        )}
+                        <span className="truncate">{pathLabel(r)}</span>
+                        {isRemotePath(r) && (
+                          <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
+                            ssh
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          togglePin(r)
+                        }}
+                        title={isPinned ? 'Unpin workspace' : 'Pin workspace'}
+                        className={`shrink-0 rounded p-0.5 transition-colors ${
+                          isPinned
+                            ? 'text-[var(--gt-accent-2)]'
+                            : 'text-zinc-600 hover:text-zinc-300'
+                        }`}
+                      >
+                        <Pin
+                          size={12}
+                          strokeWidth={2}
+                          fill={isPinned ? 'currentColor' : 'none'}
+                        />
+                      </button>
                     </div>
+                  )
+                }
+                return (
+                  <div className="space-y-3">
+                    {pins.length > 0 && (
+                      <div>
+                        <div className={`${sectionTitle} mb-2`}>Pinned</div>
+                        <div className="flex flex-wrap gap-1.5">{pins.map(chip)}</div>
+                      </div>
+                    )}
+                    {recents.length > 0 && (
+                      <div>
+                        <div className={`${sectionTitle} mb-2`}>Recent workspaces</div>
+                        <div className="flex flex-wrap gap-1.5">{recents.map(chip)}</div>
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -533,7 +580,7 @@ export function EntryScreen({
             )}
 
             <div>
-              <div className={`${sectionTitle} mb-2`}>3 · Workspace</div>
+              <div className={`${sectionTitle} mb-2`}>{lockedCwd ? '2' : '3'} · Workspace</div>
               {location === 'remote' && (
                 <div className="space-y-2">
                   <div className="flex min-w-0 items-center gap-2 text-[11px] text-zinc-500">

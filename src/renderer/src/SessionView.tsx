@@ -208,6 +208,7 @@ export function SessionView({
   sessionRail = 'top',
   onSessionRailChange,
   canSplitTerminal = false,
+  canGridTerminal = false,
   focusTerminal = false,
   needsAttention = false,
   onClearAttention,
@@ -234,7 +235,10 @@ export function SessionView({
    *  vertical rail on the left of the terminal pane. */
   sessionRail?: SessionRail
   onSessionRailChange?: (rail: SessionRail) => void
+  /** Both split (2 tiles) and grid (4 tiles) tile sessions across repos, so each
+   *  is enabled whenever ≥2 sessions exist app-wide. */
   canSplitTerminal?: boolean
+  canGridTerminal?: boolean
   focusTerminal?: boolean
   needsAttention?: boolean
   onClearAttention?: () => void
@@ -659,7 +663,7 @@ export function SessionView({
       >
         {layoutButton('single', 'Single terminal', Square)}
         {layoutButton('split', 'Split terminal columns', Columns2, !canSplitTerminal)}
-        {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canSplitTerminal)}
+        {layoutButton('grid4', 'Four-terminal grid', Grid2x2, !canGridTerminal)}
         {onSessionRailChange && (
           <>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-[var(--gt-border)]" />
