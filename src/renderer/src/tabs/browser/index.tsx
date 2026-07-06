@@ -37,6 +37,8 @@ const SIDEBAR_KEY = 'gt.browser.aiToolsExpanded'
 const CUSTOM_KEY = 'gt.browser.customBookmarks'
 const HIDDEN_PRESETS_KEY = 'gt.browser.hiddenPresetBookmarks'
 const AI_TOOLS = [
+  { id: 'skills', title: 'Skills', url: 'https://skills.sh/' },
+  { id: 'integrations', title: 'Integrations', url: 'https://integrations.sh/' },
   { id: 'chatgpt', title: 'ChatGPT', url: 'https://chatgpt.com/', logo: chatgptLogo },
   { id: 'claude', title: 'Claude', url: 'https://claude.ai/new', logo: claudeLogo },
   { id: 'gemini', title: 'Gemini', url: 'https://gemini.google.com/app', logo: geminiLogo },
