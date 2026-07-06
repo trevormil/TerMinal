@@ -550,6 +550,18 @@ function startSession(key: string, opts: StartOpts) {
     GT_TERMINAL_CWD: displayCwd,
   } as Record<string, string>
   delete env.NO_COLOR
+  // Strip inherited Claude Code session-context markers. If TerMinal itself was
+  // launched from inside a Claude Code session (e.g. `claude` in the terminal
+  // that ran it), its env carries CLAUDE_CODE_CHILD_SESSION=1 + the parent's
+  // CLAUDE_CODE_SESSION_ID. Leaking those into a session we spawn makes the new
+  // `claude` believe it's a nested child — the native binary then does NOT
+  // persist a top-level transcript to ~/.claude/projects or append to
+  // history.jsonl, so the session never shows up in the Resume picker (and
+  // can't be --resumed). Each spawned session must be a fresh top-level session.
+  for (const k of Object.keys(env)) {
+    if (k.startsWith('CLAUDE_CODE_')) delete env[k]
+  }
+  delete env.CLAUDECODE
 
   const proc = remote
     ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)], {

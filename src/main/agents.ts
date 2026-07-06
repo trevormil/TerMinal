@@ -1416,6 +1416,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       // parent process (a normal launch of TerMinal never has this var set).
       ...(spec.force ? { TERMINAL_FORCE_MAIN: '1' } : {}),
     }
+    // Don't leak an inherited Claude Code session identity into spawned agents —
+    // it marks them as nested child sessions. See the same strip in
+    // src/main/index.ts (interactive spawn) for the full rationale.
+    for (const k of Object.keys(env)) {
+      if (k.startsWith('CLAUDE_CODE_')) delete env[k]
+    }
+    delete env.CLAUDECODE
     // For prompt-style (non-script) FORCE agents, prepend the preamble so the
     // spawned model knows it has main-push authority; script-first agents read
     // the env var directly.
