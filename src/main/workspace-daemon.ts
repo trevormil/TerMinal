@@ -114,6 +114,7 @@ function remoteCapabilities(): Record<string, boolean> {
     tickets: true,
     mrs: true,
     agents: true,
+    admin: true,
     runs: true,
     schedules: true,
     ci: true,

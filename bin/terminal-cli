@@ -32,7 +32,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, rea
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
-import { execSync, execFile, spawn } from 'node:child_process'
+import { execSync, execFile, execFileSync, spawn } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
@@ -889,8 +889,62 @@ function loopCommand(sub, rest) {
   usage()
 }
 
+// ---- capability modules: seed scaffolding into a repo (copy engine + template.json
+// record). Schedules are seeded by the TerMinal app (Admin tab), not the CLI.
+function templateModulesDir() {
+  // terminal-cli lives at <TerMinal>/bin/terminal-cli → ../templates/project-template/modules
+  return join(import.meta.dir, '..', 'templates', 'project-template', 'modules')
+}
+function recordSeededModules(repo, ids, profile) {
+  const p = join(repo, '.TerMinal', 'template.json')
+  let j = { schema: 'terminal.project-template', version: 2 }
+  try {
+    j = JSON.parse(readFileSync(p, 'utf8'))
+  } catch {}
+  if (profile) j.profile = profile
+  j.modules = j.modules || {}
+  for (const id of ids) j.modules[id] = { seeded: true, enabled: j.modules[id]?.enabled ?? false }
+  mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+  writeFileSync(p, JSON.stringify(j, null, 2) + '\n')
+}
+function seedModuleCli(repo, id) {
+  if (!repo || !id) {
+    console.error('usage: terminal-cli seed-module <repo> <module-id>')
+    process.exit(2)
+  }
+  const script = join(templateModulesDir(), 'seed-module.sh')
+  if (!existsSync(script)) {
+    console.error('seed engine not found: ' + script)
+    process.exit(1)
+  }
+  execFileSync('bash', [script, repo, id], { stdio: 'inherit' })
+  recordSeededModules(repo, [id])
+}
+function applyProfileCli(repo, profile) {
+  if (!repo || !profile) {
+    console.error('usage: terminal-cli apply-profile <repo> <web-service|library|cli|worker>')
+    process.exit(2)
+  }
+  const dir = templateModulesDir()
+  const reg = JSON.parse(readFileSync(join(dir, 'modules.json'), 'utf8'))
+  const ids = (reg.profiles || {})[profile]
+  if (!ids) {
+    console.error('unknown profile: ' + profile)
+    process.exit(2)
+  }
+  for (const id of ids) execFileSync('bash', [join(dir, 'seed-module.sh'), repo, id], { stdio: 'inherit' })
+  recordSeededModules(repo, ids, profile)
+  console.log('seeded [' + profile + ']: ' + ids.join(', '))
+}
+
 const [, , cmd, ...args] = process.argv
 switch (cmd) {
+  case 'seed-module':
+    seedModuleCli(args[0], args[1])
+    break
+  case 'apply-profile':
+    applyProfileCli(args[0], args[1])
+    break
   case 'loop':
     loopCommand(args[0], args.slice(1))
     break

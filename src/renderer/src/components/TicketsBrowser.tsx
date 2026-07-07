@@ -9,7 +9,7 @@ import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
 import { RunEvaluationPanel } from './RunEvaluationPanel'
 import { RunLogPane } from '../tabs/runs/RunLogPane'
-import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone } from '../lib/badges'
+import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone, modelTierTone } from '../lib/badges'
 import { navigateTo, onNavigate } from '../lib/nav'
 import { engineLabel } from '../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
@@ -568,6 +568,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             </Badge>
                           )}
                           {t.horizon !== 'now' && <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>}
+                          {t.modelTier !== 'auto' && (
+                            <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
+                          )}
                           <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
                           {t.depends_on.length > 0 &&
                             t.depends_on.some((id) => {
@@ -604,6 +607,11 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             })}
                           </div>
                         )}
+                        {t.workedBy.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 font-mono text-[10px] text-zinc-600">
+                            <span className="text-zinc-500">✍ {t.workedBy.join(', ')}</span>
+                          </div>
+                        )}
                       </button>
                     ))}
                 </div>
@@ -636,6 +644,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   }}
                 />
                 <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+                <Badge tone={modelTierTone(selected.modelTier)}>{selected.modelTier}</Badge>
                 <select
                   value={ticketAgentContextId(selected.agent)}
                   onChange={async (e) => {
@@ -747,7 +756,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   })}
                 </div>
               )}
-              {selected.prs.length > 0 && (
+              {(selected.prs.length > 0 || selected.workedBy.length > 0) && (
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   {selected.prs.map((p) => {
                     const iid = prIidFromUrl(p)
@@ -782,6 +791,14 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       </button>
                     )
                   })}
+                  {selected.workedBy.length > 0 && (
+                    <span
+                      className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500"
+                      title="model(s) that wrote this MR"
+                    >
+                      ✍ written by {selected.workedBy.join(', ')}
+                    </span>
+                  )}
                 </div>
               )}
               <AcceptanceSection

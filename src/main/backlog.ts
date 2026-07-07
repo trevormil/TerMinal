@@ -31,6 +31,10 @@ export type Ticket = {
    *  Optional in general; REQUIRED when the implementer runs >1 lane, since
    *  lanes are gated and ranked against these. See docs: lanes workflow. */
   acceptance: string[]
+  /** Recommended model tier (downgrade gate): auto | top | cheap-agentic | cheap-raw. */
+  modelTier: string
+  /** Model(s) that authored the implementation, stamped when the MR opens. */
+  workedBy: string[]
   agent: TicketAgent
   run?: TicketRunLink
   body: string
@@ -113,6 +117,10 @@ function toTicket(slug: string, md: string): Ticket {
     refs: arr(fm.refs),
     depends_on: depsArr(fm.depends_on),
     acceptance: arr(fm.acceptance),
+    modelTier: str(fm.model_tier) || 'auto',
+    workedBy: Array.isArray(fm.worked_by)
+      ? (fm.worked_by as unknown[]).map(String)
+      : str(fm.worked_by) ? [str(fm.worked_by)] : [],
     agent: ticketAgentFromFrontmatter(fm, type),
     run: ticketRunFromFrontmatter(fm),
     body: body.trim(),
@@ -368,6 +376,8 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     refs: [],
     depends_on: [],
     acceptance: [],
+    modelTier: 'auto',
+    workedBy: [],
     agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
     run: undefined,
     body: input.body || '',
@@ -389,6 +399,8 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     `refs: []`,
     `depends_on: []`,
     `acceptance: []`,
+    `model_tier: ${t.modelTier}`,
+    `worked_by: []`,
     `agent_id: ${t.agent.id}`,
     `agent_scope: ${t.agent.scope}`,
     `agent_kind: ${t.agent.kind}`,

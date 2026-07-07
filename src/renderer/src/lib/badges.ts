@@ -24,6 +24,13 @@ export const typeTone = (t: string): BadgeTone =>
     performance: 'yellow',
   }) as Record<string, BadgeTone>)[t] || 'mute'
 
+// Recommended model tier (downgrade gate) → badge tone.
+export const modelTierTone = (t: string): BadgeTone =>
+  (({ top: 'accent', 'cheap-agentic': 'green', 'cheap-raw': 'green', auto: 'mute' }) as Record<
+    string,
+    BadgeTone
+  >)[t] || 'mute'
+
 export const verdictTone = (v: string): BadgeTone =>
   v === 'approve' ? 'green' : v === 'request-changes' || v === 'blocked' ? 'red' : 'mute'
 

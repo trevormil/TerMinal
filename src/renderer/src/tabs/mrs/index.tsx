@@ -109,6 +109,11 @@ function MrRow({
               {m.sourceBranch}
             </span>
             {m.author && <span>@{m.author}</span>}
+            {m.workedBy.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-zinc-500" title="model(s) that wrote this MR">
+                ✍ {m.workedBy.join(', ')}
+              </span>
+            )}
           </div>
         </div>
         {r && (

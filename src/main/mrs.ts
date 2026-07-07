@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { repoForCwd } from './repo'
 import { emitActivity } from './events'
 import * as forge from './forge'
+import { listTickets } from './backlog'
 import {
   resolveReviewDir,
   reviewForPrDir,
@@ -60,6 +61,8 @@ export type Mr = {
   draft: boolean
   review: Review | null
   labels: string[]
+  /** Model(s) that wrote this MR, cross-referenced from the linked ticket's worked_by. */
+  workedBy: string[]
 }
 
 // `error` distinguishes a genuinely-empty list from a CLI failure, so the UI
@@ -71,6 +74,20 @@ export async function listMrs(repoRoot: string): Promise<MrListResult> {
   const { items, error } = await forge.listRaw(repoRoot)
   if (error) return { mrs: [], error }
   const repo = repoForCwd(repoRoot)
+  // Cross-reference each MR (by iid) to the ticket that links it → that ticket's
+  // worked_by, so the MRs tab can show which model authored the work.
+  const workedByByIid = new Map<number, string[]>()
+  try {
+    for (const t of listTickets(repoRoot)) {
+      if (!t.workedBy.length) continue
+      for (const url of t.prs) {
+        const match = url.match(/(?:\/pull\/|\/-\/merge_requests\/)(\d+)/)
+        if (match) workedByByIid.set(Number(match[1]), t.workedBy)
+      }
+    }
+  } catch {
+    // tickets are optional context; never block the MR list on them
+  }
   const mrs = items.map((m): Mr => {
     const dir = repo ? resolveReviewDir(repoRoot, repo.host, repo.path, m.iid) : null
     return {
@@ -83,6 +100,7 @@ export async function listMrs(repoRoot: string): Promise<MrListResult> {
       draft: m.draft,
       review: dir ? reviewForPrDir(dir, m.headShort) : null,
       labels: m.labels,
+      workedBy: workedByByIid.get(m.iid) ?? [],
     }
   })
   return { mrs }

@@ -161,6 +161,15 @@ const gt = {
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
     design: (text: string, engine: string) => ipcRenderer.invoke('schedules:design', text, engine),
   },
+  modules: {
+    status: (repoRoot: string) => ipcRenderer.invoke('modules:status', repoRoot),
+    seed: (repoRoot: string, id: string) => ipcRenderer.invoke('modules:seed', repoRoot, id),
+    applyProfile: (repoRoot: string, profile: string) =>
+      ipcRenderer.invoke('modules:apply-profile', repoRoot, profile),
+    applySelection: (repoRoot: string, ids: string[], profile?: string) =>
+      ipcRenderer.invoke('modules:apply-selection', repoRoot, ids, profile),
+    query: (repoRoot: string, source: unknown) => ipcRenderer.invoke('modules:query', repoRoot, source),
+  },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
     process: () => ipcRenderer.invoke('listeners:process'),
