@@ -234,10 +234,6 @@ import { listCustomTabs, runTabCommand } from './tabs'
 import { repoRootOf, repoForCwd } from './repo'
 import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
 import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
-import { loadRegistry, type ModuleRegistry, type ProfileId, type DataSource } from './modules'
-import { moduleStatus } from './modules-detect'
-import { seedModules, applyProfile } from './modules-seed'
-import { runModuleQuery } from './modules-query'
 import {
   getRepoTicket,
   listLinearTeams,
@@ -1936,75 +1932,6 @@ ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
       resolve({ error: e.message })
     })
   })
-})
-
-// ---- capability modules (Admin tab: seed / detect / query) ----
-function resolveModuleRegistry(): { reg: ModuleRegistry; dir: string; cleanup?: () => void } | { error: string } {
-  const src = projectTemplateSource('modules/modules.json')
-  if ('error' in src) return { error: src.error }
-  try {
-    return { reg: loadRegistry(src.dir), dir: src.dir, cleanup: src.cleanup }
-  } catch (e) {
-    src.cleanup?.()
-    return { error: `module registry unreadable: ${(e as Error).message}` }
-  }
-}
-
-ipcMain.handle('modules:status', (_e, repoRoot: string) => {
-  if (!repoRoot) return { error: 'no repoRoot' }
-  const r = resolveModuleRegistry()
-  if ('error' in r) return r
-  try {
-    const byId = new Map(moduleStatus(repoRoot, r.reg).map((s) => [s.id, s]))
-    const modules = r.reg.modules.map((m) => ({ ...m, ...(byId.get(m.id) as object) }))
-    let profile: string | undefined
-    try {
-      profile = JSON.parse(readFileSync(join(repoRoot, '.TerMinal', 'template.json'), 'utf-8')).profile
-    } catch {
-      /* no template.json */
-    }
-    return { modules, profiles: r.reg.profiles, profile }
-  } finally {
-    r.cleanup?.()
-  }
-})
-
-ipcMain.handle('modules:seed', (_e, repoRoot: string, id: string) => {
-  if (!repoRoot || !id) return { error: 'repoRoot + id required' }
-  const r = resolveModuleRegistry()
-  if ('error' in r) return r
-  try {
-    return seedModules(repoRoot, [id], r.reg, r.dir)
-  } finally {
-    r.cleanup?.()
-  }
-})
-
-ipcMain.handle('modules:apply-profile', (_e, repoRoot: string, profile: ProfileId) => {
-  if (!repoRoot || !profile) return { error: 'repoRoot + profile required' }
-  const r = resolveModuleRegistry()
-  if ('error' in r) return r
-  try {
-    return applyProfile(repoRoot, profile, r.reg, r.dir)
-  } finally {
-    r.cleanup?.()
-  }
-})
-
-ipcMain.handle('modules:apply-selection', (_e, repoRoot: string, ids: string[], profile?: ProfileId) => {
-  if (!repoRoot || !Array.isArray(ids)) return { error: 'repoRoot + ids required' }
-  const r = resolveModuleRegistry()
-  if ('error' in r) return r
-  try {
-    return seedModules(repoRoot, ids, r.reg, r.dir, profile)
-  } finally {
-    r.cleanup?.()
-  }
-})
-
-ipcMain.handle('modules:query', (_e, repoRoot: string, source: DataSource) => {
-  if (!repoRoot || !source) return { error: 'repoRoot + source required' }
-  return runModuleQuery(repoRoot, source)
 })
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to

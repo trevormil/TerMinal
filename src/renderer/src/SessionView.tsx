@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react'
-import { BootstrapModal } from './components/BootstrapModal'
 import {
   Bell,
   Columns2,
@@ -65,7 +64,6 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [showModules, setShowModules] = useState(false)
   const dismissedKey = `gt.bootstrapDismissed.${repoRoot}`
   const dismissed = (() => {
     try {
@@ -96,19 +94,10 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
       setState('error')
     } else {
       setState('done')
-      setShowModules(true) // offer capability-module selection after workflow bootstrap
     }
   }
   return (
     <>
-      {showModules && (
-        <BootstrapModal
-          repoRoot={repoRoot}
-          heading="Add capability modules"
-          onDone={() => setShowModules(false)}
-          onClose={() => setShowModules(false)}
-        />
-      )}
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-1.5 text-[11px] text-zinc-200">
         <span className="text-[14px]">🛠</span>
         {state === 'done' ? (

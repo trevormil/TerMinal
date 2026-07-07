@@ -1348,47 +1348,7 @@ export type TddInfo = {
   ts: number
 }
 
-export type AdminDataSource =
-  | { kind: 'file'; path: string }
-  | { kind: 'cli'; cmd: string }
-  | { kind: 'http'; url: string }
-  | { kind: 'db'; conn: string; query: string }
-export type AdminWidget = { kind: string; source: number; title: string }
-export type AdminModuleLink = { label: string; url: string }
-export type AdminModuleAction = { id: string; label: string; kind: string; cmd?: string; agentId?: string }
-export type AdminModuleMarker = { path: string; present: boolean }
-export type AdminModule = {
-  id: string
-  title: string
-  summary: string
-  scope: 'repo' | 'platform'
-  surface: {
-    adminLabel: string
-    group: string
-    docPath?: string
-    data?: AdminDataSource[]
-    widgets?: AdminWidget[]
-    links?: AdminModuleLink[]
-    actions?: AdminModuleAction[]
-  }
-  automate?: { schedules?: { agentId: string }[]; filesTickets?: boolean }
-  state: 'present' | 'partial' | 'absent'
-  seeded: boolean
-  enabled: boolean
-  markers: AdminModuleMarker[]
-}
-export type ModulesStatus = { modules: AdminModule[]; profiles: Record<string, string[]>; profile?: string }
-export type SeedResult = { seeded: string[]; errors: Record<string, string> }
-export type ModuleQueryResult = { rows?: unknown[]; text?: string; error?: string }
-
 export type GtApi = {
-  modules: {
-    status: (repoRoot: string) => Promise<ModulesStatus | { error: string }>
-    seed: (repoRoot: string, id: string) => Promise<SeedResult | { error: string }>
-    applyProfile: (repoRoot: string, profile: string) => Promise<SeedResult | { error: string }>
-    applySelection: (repoRoot: string, ids: string[], profile?: string) => Promise<SeedResult | { error: string }>
-    query: (repoRoot: string, source: AdminDataSource) => Promise<ModuleQueryResult>
-  }
   listSessions: (engine?: Engine) => Promise<SessionMeta[]>
   startSession: (key: string, opts: StartOpts) => Promise<{ sessionId: string; cwd: string }>
   setActiveSession: (key: string) => Promise<void>
