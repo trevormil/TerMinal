@@ -553,6 +553,7 @@ export type RemoteHost = {
   platform: RemotePlatform
   daemon: DaemonCfg
 }
+export type PinnedPanel = { label: string; url: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -569,6 +570,7 @@ export type Settings = {
   remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
+  pinnedPanels: PinnedPanel[]
 }
 export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>

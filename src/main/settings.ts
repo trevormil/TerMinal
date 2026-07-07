@@ -67,6 +67,7 @@ export type RemoteHost = {
   platform: RemotePlatform
   daemon: DaemonCfg
 }
+export type PinnedPanel = { label: string; url: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string // '' → resolved to your home dir
@@ -83,7 +84,7 @@ export type Settings = {
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
-  fleetAdminUrl: string // '' → Admin tab hidden; set to embed the fleet meta-dashboard (personal)
+  pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -158,7 +159,7 @@ export function defaultSettings(): Settings {
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
     templateRepo: daemon.templateRepo,
-    fleetAdminUrl: '',
+    pinnedPanels: [],
   }
 }
 
@@ -270,8 +271,15 @@ export function migrate(raw: unknown): Settings {
   }
 
   if (typeof r.onboarded === 'boolean') s.onboarded = r.onboarded
-  for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo', 'fleetAdminUrl'] as const) {
+  for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
     if (typeof r[k] === 'string') s[k] = r[k]
+  }
+  if (Array.isArray(r.pinnedPanels)) {
+    s.pinnedPanels = r.pinnedPanels
+      .filter((p: unknown): p is PinnedPanel => !!p && typeof (p as PinnedPanel).url === 'string')
+      .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
+  } else if (typeof r.fleetAdminUrl === 'string' && r.fleetAdminUrl.trim()) {
+    s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') s.defaultEngine = r.defaultEngine
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
