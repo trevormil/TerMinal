@@ -9,7 +9,8 @@ type: feature
 source: manual
 created: 2026-07-07
 updated: 2026-07-07
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/2
 refs: []
 depends_on: []
 agent_id: 1000x-ai-engineer
