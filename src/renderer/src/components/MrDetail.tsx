@@ -25,6 +25,7 @@ import { MrMergeButton } from './MrMergeButton'
 import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
+import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
 import type { MrDetail, Finding, CiInfo, StructuralDiffResult } from '../lib/types'
 
@@ -329,6 +330,11 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
     const el = hostRef.current
     if (!el || !path) return
     let disposed = false
+    // Each run bumps this; a resolved fetch writes only if its id is still
+    // current, so a slow old-width result can't land after a newer re-run.
+    let runId = 0
+    let lastCols = 0
+    let debounce: ReturnType<typeof setTimeout> | undefined
     const term = new Xterm({
       fontFamily: "'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
       fontSize: 12,
@@ -342,32 +348,67 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(el)
+
+    // Run difft at a given width and (re)write the terminal. difft bakes its
+    // side-by-side layout to --width=cols, so widening/narrowing the pane needs
+    // a re-run at the new column count — a pure xterm reflow would leave the
+    // old wrapping. Width is in the structural cache key, so previously-seen
+    // widths are cheap. isInitial shows the loading overlay; re-runs keep the
+    // current content visible until the new output resolves (no flash).
+    const run = (cols: number, isInitial: boolean) => {
+      lastCols = cols
+      const myId = ++runId
+      if (isInitial) setState('loading')
+      window.gt
+        .getStructuralDiff(iid, path, cols)
+        .then((res) => {
+          if (disposed || myId !== runId) return
+          if (res.ok) {
+            // xterm auto-scrolls to the bottom as output streams in; clear the
+            // prior render, then once the write is flushed snap back to the top.
+            term.reset()
+            term.write(res.output, () => {
+              if (!disposed) term.scrollToTop()
+            })
+            setState('ready')
+          } else {
+            setState({ error: structuralMessage(res) })
+          }
+        })
+        .catch((e) => {
+          if (!disposed && myId === runId)
+            setState({ error: e instanceof Error ? e.message : String(e) })
+        })
+    }
+
     try {
       fit.fit()
     } catch {
       /* container not measured yet — difft falls back to its default width */
     }
-    const cols = term.cols || 160
-    window.gt
-      .getStructuralDiff(iid, path, cols)
-      .then((res) => {
+    run(term.cols || 160, true)
+
+    // Re-run difft when the pane is resized past the column threshold. Debounced
+    // so a drag settles to one run; threshold skips sub-column jitter.
+    const ro = new ResizeObserver(() => {
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => {
         if (disposed) return
-        if (res.ok) {
-          // xterm auto-scrolls to the bottom as output streams in; once the
-          // write is flushed, snap back to the top of the file.
-          term.write(res.output, () => {
-            if (!disposed) term.scrollToTop()
-          })
-          setState('ready')
-        } else {
-          setState({ error: structuralMessage(res) })
+        try {
+          fit.fit()
+        } catch {
+          return
         }
-      })
-      .catch((e) => {
-        if (!disposed) setState({ error: e instanceof Error ? e.message : String(e) })
-      })
+        const cols = term.cols || 160
+        if (shouldRerun(lastCols, cols, COL_THRESHOLD)) run(cols, false)
+      }, RESIZE_DEBOUNCE_MS)
+    })
+    ro.observe(el)
+
     return () => {
       disposed = true
+      if (debounce) clearTimeout(debounce)
+      ro.disconnect()
       term.dispose()
     }
   }, [iid, path])
