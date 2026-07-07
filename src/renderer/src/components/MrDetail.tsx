@@ -16,14 +16,17 @@ import {
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
+import { Terminal as Xterm } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
 import { Badge } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
 import { DigestView } from './DigestView'
+import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
-import type { MrDetail, Finding, CiInfo } from '../lib/types'
+import type { MrDetail, Finding, CiInfo, StructuralDiffResult } from '../lib/types'
 
 const HLJS_LANG: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript',
@@ -300,13 +303,105 @@ export function FileDiff({
   )
 }
 
-function DiffView({ diff, scope }: { diff: string; scope: string }) {
+// Human-readable copy for the non-ok structural-diff outcomes.
+function structuralMessage(res: Extract<StructuralDiffResult, { ok: false }>): string {
+  switch (res.reason) {
+    case 'difft-missing':
+      return 'difft not found. Install difftastic (brew install difftastic) to enable structural diffs.'
+    case 'binary':
+      return 'Binary file — structural diff is unavailable. Use Unified or Split instead.'
+    case 'fetch-failed':
+      return "Couldn't fetch file contents from the forge (rate limit or auth). Switch away and back to retry."
+    default:
+      return res.message || 'Structural diff failed.'
+  }
+}
+
+// Renders difft's ANSI output for one file in a read-only xterm instance —
+// reusing the app's terminal renderer means correct color + column alignment
+// for free, matching difft's real terminal look. Remounted per (iid, path)
+// via a key so switching files re-runs cleanly.
+function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [state, setState] = useState<'loading' | 'ready' | { error: string }>('loading')
+
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el || !path) return
+    let disposed = false
+    const term = new Xterm({
+      fontFamily: "'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
+      fontSize: 12,
+      lineHeight: 1.2,
+      disableStdin: true,
+      cursorInactiveStyle: 'none',
+      convertEol: true,
+      scrollback: 20000,
+      theme: xtermThemeFromCss(),
+    })
+    const fit = new FitAddon()
+    term.loadAddon(fit)
+    term.open(el)
+    try {
+      fit.fit()
+    } catch {
+      /* container not measured yet — difft falls back to its default width */
+    }
+    const cols = term.cols || 160
+    window.gt
+      .getStructuralDiff(iid, path, cols)
+      .then((res) => {
+        if (disposed) return
+        if (res.ok) {
+          term.write(res.output)
+          setState('ready')
+        } else {
+          setState({ error: structuralMessage(res) })
+        }
+      })
+      .catch((e) => {
+        if (!disposed) setState({ error: e instanceof Error ? e.message : String(e) })
+      })
+    return () => {
+      disposed = true
+      term.dispose()
+    }
+  }, [iid, path])
+
+  return (
+    <div className="relative h-full min-h-0">
+      <div ref={hostRef} className="h-full min-h-0 p-2" />
+      {state === 'loading' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--gt-terminal-bg)] text-[12px] text-zinc-600">
+          Running difft…
+        </div>
+      )}
+      {typeof state === 'object' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--gt-terminal-bg)] p-6 text-center text-[12px] text-zinc-500">
+          {state.error}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: number }) {
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
   const [selected, setSelected] = useState<string>('')
-  const [mode, setMode] = useState<'unified' | 'split'>('unified')
+  const [mode, setMode] = useState<'unified' | 'split' | 'structural'>('unified')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [viewed, setViewed, setAll] = useViewed(scope)
+  // Probe difft once so the Structural toggle can disable itself (with an
+  // install hint) rather than fail on click when the binary is absent.
+  const [difftOk, setDifftOk] = useState<boolean | null>(null)
+  useEffect(() => {
+    let live = true
+    window.gt.difftAvailable().then((ok) => live && setDifftOk(ok))
+    return () => {
+      live = false
+    }
+  }, [])
   useEffect(() => {
     if (!selected && files[0]) setSelected(files[0].to || files[0].from || '')
   }, [files, selected])
@@ -422,9 +517,31 @@ function DiffView({ diff, scope }: { diff: string; scope: string }) {
           >
             Split
           </button>
+          <button
+            onClick={() => difftOk !== false && setMode('structural')}
+            disabled={difftOk === false}
+            title={
+              difftOk === false
+                ? 'Structural diff needs difftastic. Install with: brew install difftastic'
+                : 'Tree-sitter structural diff via difftastic'
+            }
+            className={`rounded px-2 py-0.5 text-[11px] ${
+              difftOk === false
+                ? 'cursor-not-allowed text-zinc-700'
+                : mode === 'structural'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
+            }`}
+          >
+            Structural
+          </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
-          <FileDiff file={file} mode={mode} />
+          {mode === 'structural' ? (
+            <StructuralFileDiff key={`${iid}:${selected}`} iid={iid} path={selected} />
+          ) : (
+            <FileDiff file={file} mode={mode} />
+          )}
         </div>
       </div>
     </div>
@@ -732,7 +849,7 @@ export function MrDetailView({
         {view === 'suggestions' && (
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
         )}
-        {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} />}
+        {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} iid={iid} />}
         {view === 'digest' && <DigestView iid={iid} headShort={mr.headShort} diff={diff} />}
       </div>
     </div>

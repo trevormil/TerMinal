@@ -8,6 +8,8 @@ import {
   parseList,
   ghBucketToStatus,
   overallStatus,
+  parseGhFileContent,
+  parseGlabFileContent,
 } from './forge'
 
 describe('forgeKindForHost', () => {
@@ -139,6 +141,37 @@ describe('ghBucketToStatus', () => {
     expect(ghBucketToStatus('', 'SUCCESS')).toBe('success')
     expect(ghBucketToStatus('', 'FAILURE')).toBe('failed')
     expect(ghBucketToStatus('', '')).toBe('pending')
+  })
+})
+
+describe('parseGhFileContent', () => {
+  test('decodes a base64 file-contents response', () => {
+    const b64 = Buffer.from('hello world\n', 'utf8').toString('base64')
+    const out = parseGhFileContent(JSON.stringify({ content: b64, encoding: 'base64' }))
+    expect(out).toBe('hello world\n')
+  })
+  test('non-base64 encoding → null', () => {
+    expect(parseGhFileContent(JSON.stringify({ content: 'x', encoding: 'utf-8' }))).toBeNull()
+  })
+  test('directory listing (array) → null', () => {
+    expect(parseGhFileContent(JSON.stringify([{ name: 'a' }]))).toBeNull()
+  })
+  test('garbage → null', () => {
+    expect(parseGhFileContent('not json')).toBeNull()
+  })
+})
+
+describe('parseGlabFileContent', () => {
+  test('decodes a base64 file-contents response', () => {
+    const b64 = Buffer.from('fn main() {}\n', 'utf8').toString('base64')
+    const out = parseGlabFileContent(JSON.stringify({ content: b64, encoding: 'base64' }))
+    expect(out).toBe('fn main() {}\n')
+  })
+  test('missing content field → null', () => {
+    expect(parseGlabFileContent(JSON.stringify({ encoding: 'base64' }))).toBeNull()
+  })
+  test('garbage → null', () => {
+    expect(parseGlabFileContent('{bad')).toBeNull()
   })
 })
 

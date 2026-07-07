@@ -5,7 +5,19 @@ import { listCiJobs, listCiRuns, fetchCiLog, type CiJobsResult, type CiListResul
 import { listDocs, readDoc, type DocsTree } from './docs'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry, type Entry, type ReadResult, type SearchHit } from './files'
 import { forgeFor, type CiInfo } from './forge'
-import { listMrs, getMr, getMrDiff, getDigest, getMrCi, mergeMr, type MrDetail, type MrListResult, type DigestArtifact } from './mrs'
+import {
+  listMrs,
+  getMr,
+  getMrDiff,
+  getStructuralDiff,
+  getDigest,
+  getMrCi,
+  mergeMr,
+  type MrDetail,
+  type MrListResult,
+  type DigestArtifact,
+  type StructuralDiffResult,
+} from './mrs'
 import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { repoForCwd, repoRootOf, gitStatus, type GitStatus } from './repo'
@@ -77,6 +89,7 @@ export type WorkspaceDaemon = {
   mrsList(): Promise<MrListResult> | MrListResult
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
   mrDiff(iid: number): Promise<string> | string
+  mrStructuralDiff(iid: number, path: string, width?: number): Promise<StructuralDiffResult> | StructuralDiffResult
   digestGet(iid: number, short?: string): Promise<DigestArtifact | null> | DigestArtifact | null
   digestRun(iid: number): Promise<{ ok: boolean; error?: string }>
   digestRunStatus(iid: number): DigestRunState | null
@@ -173,6 +186,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     mrsList: () => listMrs(root()),
     mrGet: (iid: number) => getMr(root(), iid),
     mrDiff: (iid: number) => getMrDiff(root(), iid),
+    mrStructuralDiff: (iid: number, path: string, width?: number) => getStructuralDiff(root(), iid, path, width),
     digestGet: (iid: number, short?: string) => getDigest(root(), iid, short),
     digestRun: (iid: number) => startDigest(root(), iid),
     digestRunStatus: (iid: number) => readDigestStatus(root(), iid),
@@ -243,6 +257,11 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
     mrsList: () => remoteMrs.list(remote),
     mrGet: (iid: number) => remoteMrs.get(remote, iid),
     mrDiff: (iid: number) => remoteMrs.diff(remote, iid),
+    mrStructuralDiff: (): StructuralDiffResult => ({
+      ok: false,
+      reason: 'error',
+      message: 'structural diff not supported on remote workspaces yet',
+    }),
     digestGet: () => null, // digest reads local artifact files; not wired over ssh yet
     digestRun: () => Promise.resolve({ ok: false, error: 'digest not supported on remote workspaces yet' }),
     digestRunStatus: () => null,

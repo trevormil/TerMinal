@@ -137,7 +137,7 @@ function parseAiReplies(text: string): SuggestedReply[] {
     .slice(0, 5)
 }
 
-function xtermThemeFromCss(): ITheme {
+export function xtermThemeFromCss(): ITheme {
   const accent = cssVar('--gt-accent', '#7c6ef6')
   const lightMode = document.documentElement.dataset.gtMode === 'light'
   if (lightMode) {

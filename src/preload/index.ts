@@ -262,6 +262,9 @@ const gt = {
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
+  getStructuralDiff: (iid: number, path: string, width?: number) =>
+    ipcRenderer.invoke('mrs:structural-diff', iid, path, width),
+  difftAvailable: () => ipcRenderer.invoke('difft:available'),
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
   digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),

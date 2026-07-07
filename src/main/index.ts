@@ -247,6 +247,7 @@ import {
   type RepoTicketsConfig,
 } from './ticket-provider'
 import { mrSummary } from './mrs'
+import { difftOnPath } from './forge'
 import { onDigestEvent } from './digest-run'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
 import { fetchKnowledgePreview, readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
@@ -1816,6 +1817,10 @@ ipcMain.handle('mrs:get', (_e, iid: number) => {
 ipcMain.handle('mrs:diff', (_e, iid: number) => {
   return activeDaemon().mrDiff(iid)
 })
+ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
+  return activeDaemon().mrStructuralDiff(iid, path, width)
+})
+ipcMain.handle('difft:available', () => difftOnPath())
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
