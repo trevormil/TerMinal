@@ -353,7 +353,11 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
       .then((res) => {
         if (disposed) return
         if (res.ok) {
-          term.write(res.output)
+          // xterm auto-scrolls to the bottom as output streams in; once the
+          // write is flushed, snap back to the top of the file.
+          term.write(res.output, () => {
+            if (!disposed) term.scrollToTop()
+          })
           setState('ready')
         } else {
           setState({ error: structuralMessage(res) })
