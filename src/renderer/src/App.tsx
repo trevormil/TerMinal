@@ -730,6 +730,9 @@ export default function App() {
     if (mode !== 'single' && gridKeys.length < 2) {
       const seed = seedTiles(mode === 'split' ? 2 : 4)
       if (seed.length >= 2) setGridKeys(seed)
+    } else if (mode === 'split' && gridKeys.length > 2) {
+      // split is 2-up — trim any extra tiles carried over from grid4
+      setGridKeys(gridKeys.slice(0, 2))
     }
     setTerminalLayout(mode)
   }
@@ -747,11 +750,14 @@ export default function App() {
       <Icon size={13} strokeWidth={2} />
     </button>
   )
-  // Toggle a session into/out of the cross-repo tile membership (max 4). From a
-  // single view, adding a second member jumps to grid4 so the effect is visible;
-  // if the user is already in split/grid we leave their chosen layout alone.
+  // Max tiles for the current layout: split is 2-up, grid4 (and single, which
+  // jumps to grid4 on the second pick) allow 4.
+  const tileCap = terminalLayout === 'split' ? 2 : 4
+  // Toggle a session into/out of the cross-repo tile membership. From a single
+  // view, adding a second member jumps to grid4 so the effect is visible; if the
+  // user is already in split/grid we leave their chosen layout alone.
   const toggleGridKey = (key: string) => {
-    const next = gridKeys.includes(key) ? gridKeys.filter((k) => k !== key) : gridKeys.length >= 4 ? gridKeys : [...gridKeys, key]
+    const next = gridKeys.includes(key) ? gridKeys.filter((k) => k !== key) : gridKeys.length >= tileCap ? gridKeys : [...gridKeys, key]
     setGridKeys(next)
     if (next.length >= 2 && terminalLayout === 'single') setTerminalLayout('grid4')
   }
@@ -1004,7 +1010,7 @@ export default function App() {
             </div>
           )}
           {multiTerminal && !showEntry && (
-            <div className="absolute inset-x-0 top-8 z-10 flex h-7 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-2 text-[11px]">
+            <div className="absolute inset-x-0 top-8 z-30 flex h-7 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-2 text-[11px]">
               <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">tiles</span>
               {/* Tile membership grouped by repo — the tiles can span workspaces,
                 so each group is boxed under its repo label (current workspace
@@ -1101,13 +1107,13 @@ export default function App() {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setGridPickerOpen(false)} />
                       <div className="absolute right-0 top-7 z-50 max-h-80 w-56 overflow-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-1 shadow-xl">
-                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Tiled sessions · {gridKeys.length}/4</div>
+                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Tiled sessions · {gridKeys.length}/{tileCap}</div>
                         {orderedWorkspaces.map((ws) => (
                           <div key={ws.repoRoot}>
                             <div className="truncate px-2 pb-0.5 pt-1.5 text-[10px] font-medium text-zinc-400">{ws.label}</div>
                             {ws.sessions.map((s, i) => {
                               const checked = gridKeys.includes(s.key)
-                              const atCap = !checked && gridKeys.length >= 4
+                              const atCap = !checked && gridKeys.length >= tileCap
                               return (
                                 <button
                                   key={s.key}
