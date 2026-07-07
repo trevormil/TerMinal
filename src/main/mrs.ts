@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { repoForCwd } from './repo'
 import { emitActivity } from './events'
 import * as forge from './forge'
@@ -230,6 +231,83 @@ export function getMrDiff(repoRoot: string, iid: number): Promise<string> {
     }
   }
   return forge.diff(repoRoot, iid)
+}
+
+// ── Structural diff (difft) ──────────────────────────────────────────────────
+// Per-file tree-sitter structural diff, as an alternative to the line-based
+// unified/split views above. Requires `difft` on PATH; content comes from the
+// forge API (not local git — the PR's commits may not be fetched locally).
+
+export type StructuralDiffResult =
+  | { ok: true; output: string }
+  | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
+
+const structuralDiffCache = new Map<string, StructuralDiffResult>()
+
+function looksBinary(content: string | null): boolean {
+  // A NUL byte is the classic "this isn't text" signal — difft would
+  // choke on binary content decoded through UTF-8, so bail to the
+  // line-diff fallback instead.
+  return content !== null && content.includes('\u0000')
+}
+
+export async function getStructuralDiff(
+  repoRoot: string,
+  iid: number,
+  path: string,
+  width?: number,
+): Promise<StructuralDiffResult> {
+  const available = await forge.difftOnPath()
+  if (!available) return { ok: false, reason: 'difft-missing' }
+
+  const detail = await forge.detailRaw(repoRoot, iid)
+  if (!detail) return { ok: false, reason: 'error', message: 'could not load MR detail' }
+
+  // Width participates in the cache key: difft output is laid out for a
+  // specific column count, so a re-render at a new pane width must re-run.
+  const cacheKey = `${iid}:${path}:${detail.headShort}:${Math.round(width || 160)}`
+  const cached = structuralDiffCache.get(cacheKey)
+  if (cached) return cached
+
+  const [oldContent, newContent] = await Promise.all([
+    forge.fileContent(repoRoot, path, detail.baseShort),
+    forge.fileContent(repoRoot, path, detail.headShort),
+  ])
+
+  // Only definitive outcomes (a real diff, or "this is binary") are cached.
+  // Transient failures — a rate-limited/auth-failed fetch, a difft hiccup —
+  // are returned uncached so a later re-toggle retries instead of being stuck
+  // on the error until the app restarts.
+  const cacheAndReturn = (result: StructuralDiffResult): StructuralDiffResult => {
+    structuralDiffCache.set(cacheKey, result)
+    return result
+  }
+
+  if (oldContent === null && newContent === null) return { ok: false, reason: 'fetch-failed' }
+  if (looksBinary(oldContent) || looksBinary(newContent)) return cacheAndReturn({ ok: false, reason: 'binary' })
+
+  const stamp = `${process.pid}-${Math.random().toString(36).slice(2)}`
+  const base = path.replace(/[\\/]/g, '_')
+  const oldFile = join(tmpdir(), `difft-${iid}-old-${stamp}-${base}`)
+  const newFile = join(tmpdir(), `difft-${iid}-new-${stamp}-${base}`)
+  writeFileSync(oldFile, oldContent ?? '')
+  writeFileSync(newFile, newContent ?? '')
+  try {
+    const r = await forge.runDifft(oldFile, newFile, width)
+    if (!r.ok) return { ok: false, reason: 'error', message: r.error }
+    return cacheAndReturn({ ok: true, output: r.output })
+  } finally {
+    try {
+      unlinkSync(oldFile)
+    } catch {
+      /* best-effort cleanup */
+    }
+    try {
+      unlinkSync(newFile)
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
 }
 
 // ── Digest (/digest) ─────────────────────────────────────────────────────────

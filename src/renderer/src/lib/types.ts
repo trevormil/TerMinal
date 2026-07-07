@@ -1113,6 +1113,12 @@ export type DigestChunk = {
   decision_signals: string[]
   hunks: { header: string; old_start: number; new_start: number; mechanical: boolean; label: string }[]
 }
+// Result of a per-file structural (difft) diff. `output` is raw ANSI meant to
+// be written straight into an xterm instance in the renderer.
+export type StructuralDiffResult =
+  | { ok: true; output: string }
+  | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
+
 export type DigestArtifact = {
   pr: string | null
   short_sha: string | null
@@ -1638,6 +1644,8 @@ export type GtApi = {
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
+  getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
+  difftAvailable: () => Promise<boolean>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>
   runDigest: (iid: number) => Promise<{ ok: boolean; error?: string }>
   digestStatus: (iid: number) => Promise<DigestRunState | null>

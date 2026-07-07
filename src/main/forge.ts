@@ -21,7 +21,7 @@ export type RawMr = {
   headShort: string // 7-char head sha, for review-artifact staleness
   labels: string[] // forge labels (gh + glab). The 'auto-mergeable' label is the project-template convention for low-risk PRs (docs/tickets/reports only).
 }
-export type RawMrDetail = RawMr & { description: string; targetBranch: string }
+export type RawMrDetail = RawMr & { description: string; targetBranch: string; baseShort: string }
 export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }
 export type CiInfo = { status: string; webUrl: string; jobs: CiJob[] }
 export type ListResult = { items: RawMr[]; error?: string }
@@ -163,7 +163,7 @@ function normLabels(raw: unknown): string[] {
   }
   return out
 }
-const GH_VIEW_FIELDS = `${GH_LIST_FIELDS},baseRefName,body`
+const GH_VIEW_FIELDS = `${GH_LIST_FIELDS},baseRefName,baseRefOid,body`
 
 // Fetch all lifecycle states (open + merged + closed) so the UI can browse past
 // MRs and their review artifacts, not just open ones. The renderer filters by
@@ -191,7 +191,12 @@ export async function detailRaw(repoRoot: string, iid: number): Promise<RawMrDet
     } catch {
       return null
     }
-    return { ...ghToRaw(m), description: m.body || '', targetBranch: m.baseRefName || '' }
+    return {
+      ...ghToRaw(m),
+      description: m.body || '',
+      targetBranch: m.baseRefName || '',
+      baseShort: String(m.baseRefOid || '').slice(0, 7),
+    }
   }
   const r = await run('glab', ['mr', 'view', String(iid), '-F', 'json'], repoRoot)
   if (r.err || !r.stdout) return null
@@ -203,7 +208,111 @@ export async function detailRaw(repoRoot: string, iid: number): Promise<RawMrDet
   }
   const raw = glabToRaw(m)
   if (!raw.iid) raw.iid = iid
-  return { ...raw, description: m.description || '', targetBranch: m.target_branch || '' }
+  return {
+    ...raw,
+    description: m.description || '',
+    targetBranch: m.target_branch || '',
+    baseShort: String(m.diff_refs?.base_sha || '').slice(0, 7),
+  }
+}
+
+// --- file content + structural diff (difft) ---------------------------------
+// Fetch a single file's content at a given ref via the forge API (not local
+// git — the PR's commits may not be fetched into the local clone). Both gh and
+// glab return { content, encoding: "base64" } for text files under the size
+// cap; anything else (binary, too-large, missing) resolves to null.
+
+export function parseGhFileContent(stdout: string): string | null {
+  let j: any
+  try {
+    j = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return null
+  if (j.encoding !== 'base64' || typeof j.content !== 'string') return null
+  try {
+    return Buffer.from(j.content, 'base64').toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+export function parseGlabFileContent(stdout: string): string | null {
+  let j: any
+  try {
+    j = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return null
+  if (j.encoding !== 'base64' || typeof j.content !== 'string') return null
+  try {
+    return Buffer.from(j.content, 'base64').toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+export async function fileContent(repoRoot: string, path: string, ref: string): Promise<string | null> {
+  if (!ref) return null
+  const repo = repoForCwd(repoRoot)
+  if (!repo) return null
+  const f = forgeFor(repoRoot)
+  if (f.kind === 'github') {
+    // ref goes in the query string (not `-f`, whose GET handling varies across
+    // gh versions). The file path is embedded in the endpoint path — encode
+    // each segment but keep the slashes.
+    const encPath = path.split('/').map(encodeURIComponent).join('/')
+    const r = await run(
+      'gh',
+      ['api', `repos/${repo.path}/contents/${encPath}?ref=${encodeURIComponent(ref)}`],
+      repoRoot,
+      { maxBuffer: 8 * 1024 * 1024 },
+    )
+    if (r.err || !r.stdout) return null
+    return parseGhFileContent(r.stdout)
+  }
+  const proj = encodeURIComponent(repo.path)
+  const filePath = encodeURIComponent(path)
+  const r = await run('glab', ['api', `projects/${proj}/repository/files/${filePath}?ref=${encodeURIComponent(ref)}`], repoRoot, {
+    maxBuffer: 8 * 1024 * 1024,
+  })
+  if (r.err || !r.stdout) return null
+  return parseGlabFileContent(r.stdout)
+}
+
+// Cached PATH probe — checked once per process lifetime, same pattern as the
+// gh/glab availability checks surfaced via forgeErrorReason.
+let difftAvailable: boolean | null = null
+export async function difftOnPath(): Promise<boolean> {
+  if (difftAvailable !== null) return difftAvailable
+  const r = await run('difft', ['--version'], process.cwd(), { timeout: 5_000 })
+  difftAvailable = !r.err
+  return difftAvailable
+}
+
+export async function runDifft(
+  oldPath: string,
+  newPath: string,
+  width?: number,
+): Promise<{ ok: boolean; output: string; error?: string }> {
+  // difft sizes its side-by-side columns to the terminal width; spawned
+  // without a TTY it falls back to 80, which is cramped in a wide pane, so
+  // pass an explicit --width (clamped to a sane range) sourced from the
+  // renderer's xterm column count.
+  const cols = Math.max(80, Math.min(400, Math.round(width || 160)))
+  // difft, like `diff`, exits non-zero when it finds differences — its
+  // stdout is still the real structural diff, so treat "has stdout" as
+  // success regardless of exit code (same trick as ghCi's `pr checks`).
+  const r = await run(
+    'difft',
+    ['--color=always', '--display=side-by-side', '--width', String(cols), oldPath, newPath],
+    process.cwd(),
+    { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 },
+  )
+  if (r.err && !r.stdout) return { ok: false, output: '', error: forgeErrorReason('difft', r.err, r.stderr) }
+  return { ok: true, output: r.stdout }
 }
 
 /** Pick a non-interactive merge method GitHub actually allows for this repo. */
