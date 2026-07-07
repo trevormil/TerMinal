@@ -10,7 +10,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-APP="dist/mac-arm64/TerMinal.app"
+# electron-builder emits the .app under dist/mac-arm64 (Apple Silicon),
+# dist/mac (Intel), or dist/mac-universal — no arch is pinned. Glob for
+# whichever the build actually produced (newest first) instead of guessing by
+# host arch, which is wrong under Rosetta and misses universal builds.
+APP="$(ls -dt dist/mac*/TerMinal.app 2>/dev/null | head -n1 || true)"
+if [[ -z "$APP" ]]; then
+  echo "release: no built app under dist/mac*/TerMinal.app — run the build first" >&2
+  exit 1
+fi
 DEST="${TERMINAL_APP_DEST:-/Applications/TerMinal.app}"
 
 sync_latest() {
