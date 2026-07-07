@@ -24,6 +24,7 @@ import type {
 } from '../lib/types'
 import { engineLabel, sessionEngineLabel } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
+import { BootstrapModal } from './BootstrapModal'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
 
@@ -106,6 +107,8 @@ export function EntryScreen({
   const [projParent, setProjParent] = useState('')
   const [scaffoldBusy, setScaffoldBusy] = useState(false)
   const [scaffoldErr, setScaffoldErr] = useState('')
+  // After a local scaffold, show the module selection modal before opening the project.
+  const [pendingProject, setPendingProject] = useState<{ path: string; engine: SessionEngine } | null>(null)
   const [defaultParent, setDefaultParent] = useState('') // configured projects dir ('' → ~)
   const [remoteListing, setRemoteListing] = useState<RemoteDirList | null>(null)
   const [remoteListingLoading, setRemoteListingLoading] = useState(false)
@@ -159,11 +162,17 @@ export function EntryScreen({
           },
         })
       } else {
-        onChoose({ mode: 'new', engine, cwd: r.path })
+        // Local: let the user pick capability modules before opening the project.
+        setPendingProject({ path: r.path, engine })
       }
     } else {
       setScaffoldErr(r.error || 'scaffold failed')
     }
+  }
+  const openPending = () => {
+    const p = pendingProject
+    setPendingProject(null)
+    if (p) onChoose({ mode: 'new', engine: p.engine, cwd: p.path })
   }
 
   useEffect(() => {
@@ -365,6 +374,14 @@ export function EntryScreen({
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[var(--gt-bg)]">
+      {pendingProject && (
+        <BootstrapModal
+          repoRoot={pendingProject.path}
+          heading={`New project — choose modules`}
+          onDone={openPending}
+          onClose={openPending}
+        />
+      )}
       <div className="mx-auto max-w-[860px] px-8 py-9">
         <div className="mb-1 flex items-center gap-2.5">
           <img src={logo} alt="" draggable={false} className="h-9 w-9 rounded-lg" />

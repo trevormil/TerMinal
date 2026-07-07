@@ -55,7 +55,14 @@ export function scaffoldProject(name: string, parentDir?: string): ScaffoldResul
   }
   try {
     mkdirSync(dest, { recursive: true })
-    cpSync(src.dir, dest, { recursive: true, filter: (s) => !SKIP.has(basename(s)) })
+    // Exclude the top-level modules/ registry — that's factory-only, not something
+    // every app repo should carry. Modules seed into a repo via the module system,
+    // not by copying the catalog. (Matches only the top-level dir, not nested ones.)
+    const modulesDir = join(src.dir, 'modules')
+    cpSync(src.dir, dest, {
+      recursive: true,
+      filter: (s) => !SKIP.has(basename(s)) && s !== modulesDir,
+    })
     const git = (...args: string[]) =>
       execFileSync('git', ['-C', dest, ...args], {
         stdio: 'ignore',
