@@ -83,6 +83,7 @@ export type Settings = {
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
+  fleetAdminUrl: string // '' → Admin tab hidden; set to embed the fleet meta-dashboard (personal)
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -157,6 +158,7 @@ export function defaultSettings(): Settings {
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
     templateRepo: daemon.templateRepo,
+    fleetAdminUrl: '',
   }
 }
 
@@ -268,7 +270,7 @@ export function migrate(raw: unknown): Settings {
   }
 
   if (typeof r.onboarded === 'boolean') s.onboarded = r.onboarded
-  for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
+  for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo', 'fleetAdminUrl'] as const) {
     if (typeof r[k] === 'string') s[k] = r[k]
   }
   if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') s.defaultEngine = r.defaultEngine
