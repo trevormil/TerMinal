@@ -1121,6 +1121,10 @@ export type StructuralDiffResult =
   | { ok: true; output: string }
   | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
 
+// Local (pre-PR) diff source: 'branch' = committed changes vs the base branch
+// (what a PR would contain); 'working' = uncommitted changes vs HEAD.
+export type LocalDiffMode = 'branch' | 'working'
+
 export type DigestArtifact = {
   pr: string | null
   short_sha: string | null
@@ -1608,6 +1612,13 @@ export type GtApi = {
   getMrDiff: (iid: number) => Promise<string>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
+  getLocalDiff: (mode: LocalDiffMode, baseBranch?: string) => Promise<string>
+  getLocalStructuralDiff: (
+    mode: LocalDiffMode,
+    path: string,
+    baseBranch?: string,
+    width?: number,
+  ) => Promise<StructuralDiffResult>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>
   runDigest: (iid: number) => Promise<{ ok: boolean; error?: string }>
   digestStatus: (iid: number) => Promise<DigestRunState | null>

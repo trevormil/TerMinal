@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   FileText,
   ScanSearch,
@@ -319,15 +319,20 @@ function structuralMessage(res: Extract<StructuralDiffResult, { ok: false }>): s
 
 // Renders difft's ANSI output for one file in a read-only xterm instance —
 // reusing the app's terminal renderer means correct color + column alignment
-// for free, matching difft's real terminal look. Remounted per (iid, path)
-// via a key so switching files re-runs cleanly.
-function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
+// for free, matching difft's real terminal look. The per-file fetch is injected
+// (`fetchStructural`) so the same component serves both the forge MR diff and
+// the local-changes diff; a change in that (memoized) fetcher re-runs cleanly.
+function StructuralFileDiff({
+  fetchStructural,
+}: {
+  fetchStructural: (width: number) => Promise<StructuralDiffResult>
+}) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<'loading' | 'ready' | { error: string }>('loading')
 
   useEffect(() => {
     const el = hostRef.current
-    if (!el || !path) return
+    if (!el) return
     let disposed = false
     const term = new Xterm({
       fontFamily: "'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
@@ -348,8 +353,7 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
       /* container not measured yet — difft falls back to its default width */
     }
     const cols = term.cols || 160
-    window.gt
-      .getStructuralDiff(iid, path, cols)
+    fetchStructural(cols)
       .then((res) => {
         if (disposed) return
         if (res.ok) {
@@ -370,7 +374,7 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
       disposed = true
       term.dispose()
     }
-  }, [iid, path])
+  }, [fetchStructural])
 
   return (
     <div className="relative h-full min-h-0">
@@ -389,7 +393,15 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
   )
 }
 
-function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: number }) {
+export function DiffView({
+  diff,
+  scope,
+  fetchStructural,
+}: {
+  diff: string
+  scope: string
+  fetchStructural: (path: string, width: number) => Promise<StructuralDiffResult>
+}) {
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
   const [selected, setSelected] = useState<string>('')
@@ -412,6 +424,12 @@ function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: numb
   useEffect(() => {
     setExpanded(new Set(collectDirPaths(tree)))
   }, [tree])
+  // Per-file structural fetch for the currently-selected file, memoized so
+  // StructuralFileDiff only re-runs difft when the file (or fetcher) changes.
+  const structuralFetch = useCallback(
+    (width: number) => fetchStructural(selected, width),
+    [fetchStructural, selected],
+  )
 
   if (!diff) return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
   if (files.length === 0)
@@ -542,7 +560,7 @@ function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: numb
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'structural' ? (
-            <StructuralFileDiff key={`${iid}:${selected}`} iid={iid} path={selected} />
+            <StructuralFileDiff key={`struct:${selected}`} fetchStructural={structuralFetch} />
           ) : (
             <FileDiff file={file} mode={mode} />
           )}
@@ -743,6 +761,11 @@ export function MrDetailView({
       window.gt.getMrDiff(iid).then(setDiff)
     }
   }, [view, iid]) // eslint-disable-line react-hooks/exhaustive-deps
+  // MR-scoped structural fetch, injected into DiffView (which is source-agnostic).
+  const fetchStructural = useCallback(
+    (path: string, width: number) => window.gt.getStructuralDiff(iid, path, width),
+    [iid],
+  )
 
   if (mr === undefined)
     return <div className="p-6 text-[12px] text-zinc-600">Loading {sym}{iid}…</div>
@@ -853,7 +876,9 @@ export function MrDetailView({
         {view === 'suggestions' && (
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
         )}
-        {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} iid={iid} />}
+        {view === 'diff' && (
+          <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} fetchStructural={fetchStructural} />
+        )}
         {view === 'digest' && <DigestView iid={iid} headShort={mr.headShort} diff={diff} />}
       </div>
     </div>

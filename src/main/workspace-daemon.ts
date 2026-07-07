@@ -18,6 +18,7 @@ import {
   type DigestArtifact,
   type StructuralDiffResult,
 } from './mrs'
+import { localDiff, localStructuralDiff, type LocalDiffMode } from './local-diff'
 import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { repoForCwd, repoRootOf, gitStatus, type GitStatus } from './repo'
@@ -90,6 +91,13 @@ export type WorkspaceDaemon = {
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
   mrDiff(iid: number): Promise<string> | string
   mrStructuralDiff(iid: number, path: string, width?: number): Promise<StructuralDiffResult> | StructuralDiffResult
+  localDiff(mode: LocalDiffMode, baseBranch?: string): Promise<string> | string
+  localStructuralDiff(
+    mode: LocalDiffMode,
+    path: string,
+    baseBranch?: string,
+    width?: number,
+  ): Promise<StructuralDiffResult> | StructuralDiffResult
   digestGet(iid: number, short?: string): Promise<DigestArtifact | null> | DigestArtifact | null
   digestRun(iid: number): Promise<{ ok: boolean; error?: string }>
   digestRunStatus(iid: number): DigestRunState | null
@@ -187,6 +195,9 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     mrGet: (iid: number) => getMr(root(), iid),
     mrDiff: (iid: number) => getMrDiff(root(), iid),
     mrStructuralDiff: (iid: number, path: string, width?: number) => getStructuralDiff(root(), iid, path, width),
+    localDiff: (mode: LocalDiffMode, baseBranch?: string) => localDiff(root(), mode, baseBranch),
+    localStructuralDiff: (mode: LocalDiffMode, path: string, baseBranch?: string, width?: number) =>
+      localStructuralDiff(root(), mode, path, baseBranch, width),
     digestGet: (iid: number, short?: string) => getDigest(root(), iid, short),
     digestRun: (iid: number) => startDigest(root(), iid),
     digestRunStatus: (iid: number) => readDigestStatus(root(), iid),
@@ -261,6 +272,12 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
       ok: false,
       reason: 'error',
       message: 'structural diff not supported on remote workspaces yet',
+    }),
+    localDiff: () => '', // local-changes diff reads the local working tree; not wired over ssh
+    localStructuralDiff: (): StructuralDiffResult => ({
+      ok: false,
+      reason: 'error',
+      message: 'local structural diff not supported on remote workspaces yet',
     }),
     digestGet: () => null, // digest reads local artifact files; not wired over ssh yet
     digestRun: () => Promise.resolve({ ok: false, error: 'digest not supported on remote workspaces yet' }),

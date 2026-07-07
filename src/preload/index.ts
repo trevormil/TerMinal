@@ -256,6 +256,10 @@ const gt = {
   getStructuralDiff: (iid: number, path: string, width?: number) =>
     ipcRenderer.invoke('mrs:structural-diff', iid, path, width),
   difftAvailable: () => ipcRenderer.invoke('difft:available'),
+  getLocalDiff: (mode: 'branch' | 'working', baseBranch?: string) =>
+    ipcRenderer.invoke('local:diff', mode, baseBranch),
+  getLocalStructuralDiff: (mode: 'branch' | 'working', path: string, baseBranch?: string, width?: number) =>
+    ipcRenderer.invoke('local:structural-diff', mode, path, baseBranch, width),
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
   digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),

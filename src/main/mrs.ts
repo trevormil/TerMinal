@@ -1,9 +1,9 @@
-import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { repoForCwd } from './repo'
 import { emitActivity } from './events'
 import * as forge from './forge'
+import { structuralDiffFromContent, type StructuralDiffResult } from './structural'
 import { listTickets } from './backlog'
 import {
   resolveReviewDir,
@@ -238,18 +238,11 @@ export function getMrDiff(repoRoot: string, iid: number): Promise<string> {
 // unified/split views above. Requires `difft` on PATH; content comes from the
 // forge API (not local git — the PR's commits may not be fetched locally).
 
-export type StructuralDiffResult =
-  | { ok: true; output: string }
-  | { ok: false; reason: 'difft-missing' | 'binary' | 'fetch-failed' | 'error'; message?: string }
+// Re-exported so existing importers (workspace-daemon) keep resolving it here.
+export type { StructuralDiffResult }
 
 const structuralDiffCache = new Map<string, StructuralDiffResult>()
 
-function looksBinary(content: string | null): boolean {
-  // A NUL byte is the classic "this isn't text" signal — difft would
-  // choke on binary content decoded through UTF-8, so bail to the
-  // line-diff fallback instead.
-  return content !== null && content.includes('\u0000')
-}
 
 export async function getStructuralDiff(
   repoRoot: string,
@@ -283,31 +276,10 @@ export async function getStructuralDiff(
     return result
   }
 
-  if (oldContent === null && newContent === null) return { ok: false, reason: 'fetch-failed' }
-  if (looksBinary(oldContent) || looksBinary(newContent)) return cacheAndReturn({ ok: false, reason: 'binary' })
-
-  const stamp = `${process.pid}-${Math.random().toString(36).slice(2)}`
-  const base = path.replace(/[\\/]/g, '_')
-  const oldFile = join(tmpdir(), `difft-${iid}-old-${stamp}-${base}`)
-  const newFile = join(tmpdir(), `difft-${iid}-new-${stamp}-${base}`)
-  writeFileSync(oldFile, oldContent ?? '')
-  writeFileSync(newFile, newContent ?? '')
-  try {
-    const r = await forge.runDifft(oldFile, newFile, width)
-    if (!r.ok) return { ok: false, reason: 'error', message: r.error }
-    return cacheAndReturn({ ok: true, output: r.output })
-  } finally {
-    try {
-      unlinkSync(oldFile)
-    } catch {
-      /* best-effort cleanup */
-    }
-    try {
-      unlinkSync(newFile)
-    } catch {
-      /* best-effort cleanup */
-    }
-  }
+  const result = await structuralDiffFromContent(oldContent, newContent, width, `${iid}-${path}`)
+  // Cache only definitive outcomes (a real diff, or "this is binary"); leave
+  // transient failures uncached so a re-toggle retries.
+  return result.ok || result.reason === 'binary' ? cacheAndReturn(result) : result
 }
 
 // ── Digest (/digest) ─────────────────────────────────────────────────────────

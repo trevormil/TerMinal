@@ -1815,6 +1815,12 @@ ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: nu
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })
 ipcMain.handle('difft:available', () => difftOnPath())
+ipcMain.handle('local:diff', (_e, mode: 'branch' | 'working', baseBranch?: string) => {
+  return activeDaemon().localDiff(mode, baseBranch)
+})
+ipcMain.handle('local:structural-diff', (_e, mode: 'branch' | 'working', path: string, baseBranch?: string, width?: number) => {
+  return activeDaemon().localStructuralDiff(mode, path, baseBranch, width)
+})
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
