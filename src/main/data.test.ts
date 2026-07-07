@@ -47,7 +47,7 @@ describe('parseCursorSessionFile', () => {
   test('extracts picker metadata from Cursor agent transcripts', () => {
     const root = join(mkdtempSync(join(tmpdir(), 'terminal-cursor-home-')), 'projects')
     const id = '11111111-2222-3333-4444-555555555555'
-    const dir = join(root, 'Users-trevormiller-CompSci-gauntlet-demo', 'agent-transcripts', id)
+    const dir = join(root, 'Users-example-projects-demo', 'agent-transcripts', id)
     mkdirSync(dir, { recursive: true })
     const file = join(dir, `${id}.jsonl`)
     writeFileSync(
@@ -71,7 +71,7 @@ describe('parseCursorSessionFile', () => {
     expect(parseCursorSessionFile(file)).toMatchObject({
       id,
       engine: 'cursor',
-      cwd: '/Users/trevormiller/CompSci/gauntlet/demo',
+      cwd: '/Users/example/projects/demo',
       model: 'cursor',
       turns: 1,
       firstUserText: 'ship the cursor feature',

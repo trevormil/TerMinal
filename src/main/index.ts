@@ -65,11 +65,9 @@ function appendAgentViewLog(label: string, chunk: unknown) {
 function agentViewRepoRoot(): string {
   const terminalRoot = sourceCheckoutRoot(join('src', 'main', 'index.ts')) || join(moduleDir, '..', '..')
   const candidates = [
-    process.env.AGENTVIEW_REPO || '',
-    join(terminalRoot, 'vendor', 'agentview'),
-    join(homedir(), 'CompSci', 'gauntlet', 'TerMinal', 'vendor', 'agentview'),
-    join(homedir(), 'CompSci', 'gauntlet', 'agentview'),
-    join(homedir(), 'CompSci', 'gauntlet', '.scratch', 'agentview-fresh'),
+    process.env.AGENTVIEW_REPO || '', // explicit override
+    join(terminalRoot, 'vendor', 'agentview'), // bundled/vendored checkout
+    join(terminalRoot, '..', 'agentview'), // sibling checkout next to TerMinal
   ].filter(Boolean)
   for (const candidate of candidates) {
     if (existsSync(join(candidate, 'package.json')) && existsSync(join(candidate, 'src', 'frontend', 'App.tsx'))) return candidate

@@ -69,7 +69,7 @@ describe('linearIssueToTicket', () => {
       priority: { value: 2, name: 'High' },
       status: 'Done',
       statusType: 'completed',
-      url: 'https://linear.app/trevormil/issue/TRE-5/terminal-smoke-test',
+      url: 'https://linear.app/acme/issue/TRE-5/terminal-smoke-test',
       createdAt: '2026-06-07T20:41:17.329Z',
       updatedAt: '2026-06-07T20:41:21.609Z',
     })
@@ -82,7 +82,7 @@ describe('linearIssueToTicket', () => {
       status: 'closed',
       priority: 'high',
       body: 'Smoke body',
-      url: 'https://linear.app/trevormil/issue/TRE-5/terminal-smoke-test',
+      url: 'https://linear.app/acme/issue/TRE-5/terminal-smoke-test',
     })
   })
 })

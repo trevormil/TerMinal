@@ -561,15 +561,6 @@ export const DEFAULT_AGENTS: Agent[] = [
     prompt:
       "Act as a daily-summary agent for this repository. Produce a concise digest of TODAY's activity: merged commits + closed PRs, opened tickets, closed tickets, code-review verdicts, check artifacts, agent runs. Pull from git log, gh/glab, .TerMinal/backlog/, .TerMinal/reviews/, .TerMinal/checks/, plus legacy v1 paths if present. Write it to .TerMinal/reports/YYYY-MM-DD-daily-summary.md (create .TerMinal/reports/ if missing; legacy v1 repos may use reports/). Keep it scannable — one section per category, short bullets, links to underlying artifacts. Don't edit code. Don't open a PR (the report is committed directly to main? — actually no, follow the project's branching rule; if main is protected, drop the file uncommitted and report the path). End with the path to the digest.",
   },
-  {
-    id: 'beacon',
-    title: 'Process Beacon feedback',
-    description: 'Drain end-user feedback from the Beacon widget into backlog tickets.',
-    icon: 'RadioTower',
-    opensPr: false,
-    prompt:
-      "Act as the Beacon-feedback agent for THIS repository. Beacon (github.com/trevormil/beacon) is the embeddable feedback widget shipped on the project's app; this agent drains the widget queue into backlog tickets so /factory can pick them up. Resolve the Beacon connection in this order: env vars BEACON_ENDPOINT + BEACON_PROJECT + BEACON_SECRET → ~/.config/beacon/config.json (global default) → .beacon/config.json in the repo root. If none resolve, exit with a one-line note telling the user to run `bunx @trevormil/beacon@latest admin create-project --slug <repo-slug> --origins <urls> -e <endpoint>` and save the printed secret to one of those locations. With config resolved, fetch new feedback via `bunx --bun @trevormil/beacon@latest poll --project $BEACON_PROJECT --secret $BEACON_SECRET --endpoint $BEACON_ENDPOINT --status new --limit 50`. For EACH item: read message/url/userAgent/email; file ONE backlog ticket via the project's /ticket skill with an accurate title summarizing the feedback, a type (bug for things-broken, feature for missing-functionality, ux for friction, dx for tooling, performance for slowness), priority (critical/high/medium/low based on severity heuristics), and a description that includes the raw message, the captured URL, the user agent, and (when provided) the user's email for follow-up. If several items rhyme into the same underlying ticket, file ONE merged ticket grouping their IDs in the description. Mark each processed feedback item via `bunx @trevormil/beacon@latest mark <id> --project ... --secret ... --endpoint ...` after the ticket lands. Do NOT edit production code — leave the build to /factory. End with a list of ticket IDs filed and any items left unprocessed (e.g. couldn't classify).",
-  },
   // ── FORCE agents ─────────────────────────────────────────────────────────
   // These bypass the main-branch gate via TERMINAL_FORCE_MAIN=1. Reserved
   // for production emergencies. Marked `force: true` so the runner injects
