@@ -18,6 +18,7 @@ import {
   Send,
   Sparkles,
   SquareDashedMousePointer,
+  TerminalSquare,
   X,
   Search,
   Settings2,
@@ -1347,6 +1348,18 @@ export function TerminalPane({
           >
             <Play size={13} strokeWidth={2} />
             Paste and run
+          </button>
+          <button
+            disabled={!contextMenu.hasSelection}
+            onClick={() => {
+              const text = selectedText()
+              if (text) writeInputRef.current(`!${text}\r`)
+              closeContextMenu()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <TerminalSquare size={13} strokeWidth={2} />
+            Run as ! command
           </button>
           <div className="my-1 border-t border-[var(--gt-border)]/60" />
           <button
