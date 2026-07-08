@@ -69,6 +69,9 @@ export type TicketPatch = {
   status?: string
   priority?: string
   acceptance?: string[]
+  /** Replaces the `prs:` list wholesale. Callers that mean "add a PR" must
+   *  read the ticket and merge first — see `linkTicketPr`. */
+  prs?: string[]
   agent?: Partial<TicketAgent>
   run?: Partial<TicketRunLink>
 }
@@ -79,6 +82,7 @@ export type NewTicket = {
   priority: string
   status: string
   body: string
+  acceptance?: string[]
   agent?: Partial<TicketAgent>
 }
 
@@ -329,6 +333,7 @@ export function updateTicket(
   if (patch.status) setField('status', patch.status)
   if (patch.priority) setField('priority', patch.priority)
   if (patch.acceptance) setListField('acceptance', patch.acceptance)
+  if (patch.prs) setListField('prs', patch.prs)
   if (patch.agent) {
     const current = toTicket(safe, md)
     const agent = normalizeTicketAgent(patch.agent, current.type)
@@ -350,6 +355,27 @@ export function updateTicket(
   } catch {
     return false
   }
+}
+
+/** Append a PR/MR url to a ticket's `prs:` list (idempotent) and, when the
+ *  ticket is still untouched, flip it to in-progress. Used by the background-
+ *  task watcher to close the loop between a spawned run and its ticket. */
+export function linkTicketPr(repoRoot: string, slug: string, url: string): boolean {
+  const t = getTicket(repoRoot, slug)
+  if (!t) return false
+  if (t.prs.includes(url)) return true
+  return updateTicket(repoRoot, slug, {
+    prs: [...t.prs, url],
+    ...(t.status === 'open' ? { status: 'in-progress' } : {}),
+  })
+}
+
+/** Emit a frontmatter list in the same shape `updateTicket`'s setListField
+ *  writes, so a create → update round-trip doesn't reformat the file. */
+function fmList(key: string, items: string[]): string {
+  return items.length
+    ? `${key}:\n${items.map((c) => `  - "${c.replace(/"/g, "'")}"`).join('\n')}`
+    : `${key}: []`
 }
 
 export function createTicket(repoRoot: string, input: NewTicket): Ticket {
@@ -375,7 +401,7 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     prs: [],
     refs: [],
     depends_on: [],
-    acceptance: [],
+    acceptance: input.acceptance || [],
     modelTier: 'auto',
     workedBy: [],
     agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
@@ -398,7 +424,7 @@ export function createTicket(repoRoot: string, input: NewTicket): Ticket {
     `prs: []`,
     `refs: []`,
     `depends_on: []`,
-    `acceptance: []`,
+    fmList('acceptance', t.acceptance),
     `model_tier: ${t.modelTier}`,
     `worked_by: []`,
     `agent_id: ${t.agent.id}`,

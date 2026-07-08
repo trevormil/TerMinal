@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createTicket, listTickets, recommendTicketAgent, updateTicket } from './backlog'
+import { createTicket, getTicket, linkTicketPr, listTickets, recommendTicketAgent, updateTicket } from './backlog'
 
 const ticketMd = (id: number, title: string) =>
   `---\nid: ${id}\ntitle: "${title}"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n`
@@ -175,5 +175,72 @@ describe('listTickets', () => {
     } finally {
       rmSync(v2, { recursive: true, force: true })
     }
+  })
+})
+
+describe('acceptance criteria + PR linking', () => {
+  let root: string
+  const New = { type: 'feature', priority: 'medium', status: 'open', body: 'b' }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gt-backlog-pr-'))
+    mkdirSync(join(root, 'backlog'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  test('createTicket persists acceptance criteria and reads them back', () => {
+    const t = createTicket(root, {
+      ...New,
+      title: 'Dark mode',
+      acceptance: ['Persists across restarts', 'Respects the system default, always'],
+    })
+    expect(getTicket(root, t.slug)?.acceptance).toEqual([
+      'Persists across restarts',
+      // The comma must survive: block sequences exist so prose can contain them.
+      'Respects the system default, always',
+    ])
+  })
+
+  test('createTicket defaults acceptance to an empty list', () => {
+    const t = createTicket(root, { ...New, title: 'No criteria' })
+    expect(getTicket(root, t.slug)?.acceptance).toEqual([])
+  })
+
+  test('a created ticket round-trips through updateTicket without reformatting', () => {
+    const t = createTicket(root, { ...New, title: 'Round trip', acceptance: ['one', 'two'] })
+    expect(updateTicket(root, t.slug, { priority: 'high' })).toBe(true)
+    const after = getTicket(root, t.slug)
+    expect(after?.acceptance).toEqual(['one', 'two'])
+    expect(after?.priority).toBe('high')
+  })
+
+  test('linkTicketPr appends the url and moves an open ticket to in-progress', () => {
+    const t = createTicket(root, { ...New, title: 'Link me' })
+    expect(linkTicketPr(root, t.slug, 'https://gl/x/-/merge_requests/7')).toBe(true)
+    const after = getTicket(root, t.slug)
+    expect(after?.prs).toEqual(['https://gl/x/-/merge_requests/7'])
+    expect(after?.status).toBe('in-progress')
+  })
+
+  test('linkTicketPr is idempotent and does not duplicate a known url', () => {
+    const t = createTicket(root, { ...New, title: 'Twice' })
+    const url = 'https://gl/x/-/merge_requests/7'
+    linkTicketPr(root, t.slug, url)
+    expect(linkTicketPr(root, t.slug, url)).toBe(true)
+    expect(getTicket(root, t.slug)?.prs).toEqual([url])
+  })
+
+  test('linkTicketPr appends a second PR and leaves a non-open status alone', () => {
+    const t = createTicket(root, { ...New, title: 'Stack' })
+    linkTicketPr(root, t.slug, 'https://gl/x/-/merge_requests/1')
+    updateTicket(root, t.slug, { status: 'closed' })
+    linkTicketPr(root, t.slug, 'https://gl/x/-/merge_requests/2')
+    const after = getTicket(root, t.slug)
+    expect(after?.prs).toEqual(['https://gl/x/-/merge_requests/1', 'https://gl/x/-/merge_requests/2'])
+    expect(after?.status).toBe('closed')
+  })
+
+  test('linkTicketPr reports failure for an unknown slug', () => {
+    expect(linkTicketPr(root, '9999-nope', 'https://gl/x/-/merge_requests/1')).toBe(false)
   })
 })
