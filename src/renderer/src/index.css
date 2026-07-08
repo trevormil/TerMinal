@@ -23,6 +23,7 @@
   --gt-text: #e7e7ee;
   --gt-text-soft: #d4d4dd;
   --gt-text-muted: #8a8a99;
+  --gt-text-muted-bright: #a1a1aa; /* zinc-400 — lifted muted text for dark UI chrome */
   --gt-text-faint: #6b6b7b;
   --gt-inverse: #ffffff;
   --gt-accent: #7c6ef6;
@@ -116,6 +117,15 @@ body,
   background: var(--gt-scrollbar-strong);
   border: 2px solid var(--gt-terminal-bg);
   border-radius: 999px;
+}
+
+/* Dark mode: lift muted body text one step brighter
+   (Tailwind zinc-500/600 → --gt-text-muted-bright ≈ zinc-400). Scoped to the
+   default dark theme so it never touches the light-mode remap below, and driven
+   by a theme token so renderer settings can retune it. */
+:root:not([data-gt-mode='light']) .text-zinc-500,
+:root:not([data-gt-mode='light']) .text-zinc-600 {
+  color: var(--gt-text-muted-bright) !important;
 }
 
 :root[data-gt-mode='light'] .text-white,
