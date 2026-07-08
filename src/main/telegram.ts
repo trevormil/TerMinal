@@ -7,7 +7,14 @@ import { telegramControlEnabled, readSettings, resolvedTemplateRepo } from './se
 import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 import { readAgents, runAgent, listRuns, cancelRun, readAgentState, resetAgentState } from './agents'
 import { readPersonas } from './personas'
-import { parseCommand, classifyRunArgs, parsePollLine, parseFeatureDraft, type FeatureDraft } from './telegram-parse'
+import {
+  parseCommand,
+  classifyRunArgs,
+  parsePollLine,
+  parseFeatureDraft,
+  splitRepoToken,
+  type FeatureDraft,
+} from './telegram-parse'
 import { sendUrl, getUpdatesUrl, parseUpdates, answerCallbackUrl, type TgInlineKeyboard } from './telegram-api'
 import { listTickets, createTicket, updateTicket, getTicket } from './backlog'
 import { readHitl, resolveHitl } from './hitl'
@@ -195,9 +202,35 @@ function resolveRepo(token?: string): RepoCtx | null {
   const repos = knownRepos()
   if (token) {
     const t = token.replace(/^@/, '').toLowerCase()
-    return repos.find((r) => r.label.toLowerCase().includes(t)) || null
+    // Exact label wins over substring: with repos "term" and "terminal",
+    // "@term" must mean "term", not whichever sorts first.
+    return (
+      repos.find((r) => r.label.toLowerCase() === t) ||
+      repos.find((r) => r.label.toLowerCase().includes(t)) ||
+      null
+    )
   }
   return stickyRepo || getActive() || repos[0] || null
+}
+
+/** Repo resolution for commands that WRITE (file a ticket, spawn an agent).
+ *  Unlike `resolveRepo`, never falls back to "the first repo we happen to know
+ *  about" — an arbitrary alphabetical default is fine for listing tickets and
+ *  dangerous for creating them. Requires an explicit @repo, a sticky /cd, or a
+ *  focused session. */
+function resolveWriteRepo(token?: string): RepoCtx | { error: string } {
+  if (token) {
+    const r = resolveRepo(token)
+    if (r) return r
+    return {
+      error:
+        `No repo matches "${token}". /repos to list.\n` +
+        `(If "${token}" was part of the description, move it out of the first/last word.)`,
+    }
+  }
+  const r = stickyRepo || getActive()
+  if (r) return r
+  return { error: 'No repo selected. Pass @repo, or /cd <repo> first. /repos to list.' }
 }
 
 const short = (root: string) => root.split('/').pop() || root
@@ -470,21 +503,14 @@ async function draftFeature(description: string): Promise<{ draft: FeatureDraft;
 
 async function cmdFeature(args: string[]) {
   if (!args.length) return reply('Usage: /feature <what you want built> [@repo]')
-  // Pull an @repo token out of anywhere in the sentence; the rest is prose.
-  let repoToken: string | undefined
-  const words = args.filter((t) => {
-    if (!repoToken && t.startsWith('@')) {
-      repoToken = t
-      return false
-    }
-    return true
-  })
-  const description = words.join(' ').trim()
+  const { repoToken, rest } = splitRepoToken(args)
+  const description = rest.join(' ').trim()
   if (!description) return reply('Usage: /feature <what you want built> [@repo]')
-  const repo = resolveRepo(repoToken)
-  if (!repo) return reply('No repo — /repos to list.')
+  const resolved = resolveWriteRepo(repoToken)
+  if ('error' in resolved) return reply(`⛔ ${resolved.error}`)
+  const repo = resolved
 
-  reply('✍️ Drafting a ticket…')
+  reply(`✍️ Drafting a ticket · ${repo.label}…`)
   const { draft, drafted } = await draftFeature(description)
   let t: ReturnType<typeof createTicket>
   try {

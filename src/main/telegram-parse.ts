@@ -37,6 +37,20 @@ export function classifyRunArgs(args: string[]): RunArgs {
   return { agentId: args[0] || '', engine, pipeline, repoToken, personaCandidates }
 }
 
+/** Split a leading or trailing `@repo` token off a free-text command.
+ *
+ *  Only those two positions count. An `@` mid-sentence is prose — `/feature add
+ *  an @media query` must not read "@media" as a repo and silently drop the word.
+ *  Callers decide what to do when the token matches no known repo; this is
+ *  purely positional. */
+export function splitRepoToken(args: string[]): { repoToken?: string; rest: string[] } {
+  const isToken = (s?: string) => !!s && /^@[\w.-]+$/.test(s)
+  if (args.length > 1 && isToken(args[0])) return { repoToken: args[0], rest: args.slice(1) }
+  if (args.length > 1 && isToken(args[args.length - 1]))
+    return { repoToken: args[args.length - 1], rest: args.slice(0, -1) }
+  return { rest: args }
+}
+
 export type FeatureDraft = {
   title: string
   type: string

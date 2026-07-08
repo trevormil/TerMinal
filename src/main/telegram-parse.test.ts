@@ -1,5 +1,11 @@
 import { test, expect, describe } from 'bun:test'
-import { parseCommand, classifyRunArgs, parsePollLine, parseFeatureDraft } from './telegram-parse'
+import {
+  parseCommand,
+  classifyRunArgs,
+  parsePollLine,
+  parseFeatureDraft,
+  splitRepoToken,
+} from './telegram-parse'
 
 describe('parseCommand', () => {
   test('lowercases the command, preserves arg case', () => {
@@ -46,6 +52,49 @@ describe('classifyRunArgs', () => {
 
   test('unrecognized tokens become persona candidates', () => {
     expect(classifyRunArgs(['docs', 'wizard', 'ninja']).personaCandidates).toEqual(['wizard', 'ninja'])
+  })
+})
+
+describe('splitRepoToken', () => {
+  test('takes a leading @repo token', () => {
+    expect(splitRepoToken(['@vellum', 'add', 'CSV', 'export'])).toEqual({
+      repoToken: '@vellum',
+      rest: ['add', 'CSV', 'export'],
+    })
+  })
+
+  test('takes a trailing @repo token', () => {
+    expect(splitRepoToken(['add', 'CSV', 'export', '@vellum-project'])).toEqual({
+      repoToken: '@vellum-project',
+      rest: ['add', 'CSV', 'export'],
+    })
+  })
+
+  test('leaves a mid-sentence @ as prose', () => {
+    // The bug this exists to prevent: "@media" is CSS, not a repo.
+    expect(splitRepoToken(['add', 'an', '@media', 'query', 'for', 'dark', 'mode'])).toEqual({
+      rest: ['add', 'an', '@media', 'query', 'for', 'dark', 'mode'],
+    })
+  })
+
+  test('ignores an @ token that is the entire message', () => {
+    expect(splitRepoToken(['@vellum'])).toEqual({ rest: ['@vellum'] })
+  })
+
+  test('does not treat a bare @ or an email-ish token as a repo', () => {
+    expect(splitRepoToken(['@', 'do', 'thing'])).toEqual({ rest: ['@', 'do', 'thing'] })
+    expect(splitRepoToken(['ping', 'me@example.com'])).toEqual({ rest: ['ping', 'me@example.com'] })
+  })
+
+  test('takes only the leading token when both ends look like repos', () => {
+    expect(splitRepoToken(['@a', 'do', 'thing', '@b'])).toEqual({
+      repoToken: '@a',
+      rest: ['do', 'thing', '@b'],
+    })
+  })
+
+  test('passes through an empty arg list', () => {
+    expect(splitRepoToken([])).toEqual({ rest: [] })
   })
 })
 
