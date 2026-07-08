@@ -293,6 +293,13 @@ export default function App() {
         e.preventDefault()
         setPalette((p) => !p)
       }
+      // ⌘⇧T (Brave-style New Tab) → spin up a fresh base local shell, not an
+      // AI engine. Reuses the terminal:new nav path so it inherits the active
+      // workspace cwd and single-pane focus behaviour.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        navigateTo('terminal:new', { engine: 'local' })
+      }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -409,7 +416,10 @@ export default function App() {
         }
         if (ev.tabId === 'terminal:new') {
           const payload = ev.payload || {}
-          const engine = payload.engine === 'codex' || payload.engine === 'claude' || payload.engine === 'cursor' ? payload.engine : 'claude'
+          const engine =
+            payload.engine === 'codex' || payload.engine === 'claude' || payload.engine === 'cursor' || payload.engine === 'local'
+              ? payload.engine
+              : 'claude'
           const remotePayload = payload.remote as unknown
           const remote =
             remotePayload && typeof remotePayload === 'object' && 'sshTarget' in remotePayload && typeof remotePayload.sshTarget === 'string'
