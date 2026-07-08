@@ -13,6 +13,7 @@ import {
   Folder,
   File,
   Rows3,
+  Image as ImageIcon,
 } from 'lucide-react'
 import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
@@ -26,7 +27,7 @@ import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
-import type { MrDetail, Finding, CiInfo, StructuralDiffResult } from '../lib/types'
+import type { MrDetail, Finding, CiInfo, StructuralDiffResult, Screenshot } from '../lib/types'
 
 const HLJS_LANG: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript',
@@ -727,6 +728,37 @@ function FindingCards({ items, muted, empty }: { items: Finding[]; muted?: boole
   )
 }
 
+const KIND_TONE: Record<NonNullable<Screenshot['kind']>, 'ok' | 'warn' | 'blue' | 'mute'> = {
+  after: 'ok',
+  before: 'warn',
+  diff: 'blue',
+  state: 'mute',
+}
+
+function Screenshots({ items }: { items: Screenshot[] }) {
+  if (items.length === 0) return <div className="p-6 text-[12px] text-zinc-600">No screenshots for this review.</div>
+  return (
+    <div className="h-full space-y-4 overflow-y-auto p-4">
+      {items.map((s) => (
+        <figure key={s.id} className="m-0 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+          <figcaption className="mb-2 flex flex-wrap items-center gap-1.5">
+            {s.kind && <Badge tone={KIND_TONE[s.kind]}>{s.kind}</Badge>}
+            <span className="text-[13px] font-medium text-zinc-200">{s.caption}</span>
+            {s.findingId && (
+              <span className="ml-auto font-mono text-[10.5px] text-zinc-500">finding {s.findingId}</span>
+            )}
+          </figcaption>
+          <img
+            src={s.dataUrl}
+            alt={s.caption}
+            className="max-h-[70vh] w-auto max-w-full rounded-lg border border-[var(--gt-border)] bg-black/20"
+          />
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 export function MrDetailView({
   iid,
   repoLabel,
@@ -745,7 +777,7 @@ export function MrDetailView({
   const [mr, setMr] = useState<MrDetail | null | undefined>(undefined)
   const [ci, setCi] = useState<CiInfo | null | undefined>(undefined)
   const [view, setView] = useState<
-    'overview' | 'review' | 'findings' | 'suggestions' | 'diff' | 'digest'
+    'overview' | 'review' | 'findings' | 'suggestions' | 'diff' | 'digest' | 'screenshots'
   >('overview')
   const [diff, setDiff] = useState<string | null>(null)
 
@@ -859,6 +891,15 @@ export function MrDetailView({
           </>,
           mr.suggestions.length,
         )}
+        {(mr.screenshots?.length ?? 0) > 0 &&
+          sub(
+            'screenshots',
+            <>
+              <ImageIcon size={13} strokeWidth={2} />
+              Screenshots
+            </>,
+            mr.screenshots.length,
+          )}
         <span className="ml-2 inline-flex items-center gap-0.5 truncate text-[10px] text-zinc-700">
           <GitBranch size={11} strokeWidth={2} />
           {mr.sourceBranch} → {mr.targetBranch}
@@ -873,6 +914,7 @@ export function MrDetailView({
         {view === 'suggestions' && (
           <FindingCards items={mr.suggestions} muted empty="No suggestions for this MR." />
         )}
+        {view === 'screenshots' && <Screenshots items={mr.screenshots ?? []} />}
         {view === 'diff' && <DiffView diff={diff || ''} scope={`${repoLabel}.${iid}`} iid={iid} />}
         {view === 'digest' && <DigestView iid={iid} headShort={mr.headShort} diff={diff} />}
       </div>

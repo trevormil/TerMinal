@@ -12,7 +12,9 @@ import {
   newestArtifactShortSha,
   readJsonSafe,
   readDigest,
+  readScreenshots,
   type Review,
+  type Screenshot,
 } from './review'
 
 // Forge-agnostic MR/PR layer: raw fetching is delegated to ./forge (gh|glab);
@@ -48,6 +50,8 @@ export type MrDetail = {
   reviewMeta: Review | null
   findings: Finding[]
   suggestions: Finding[]
+  /** Reviewer-captured screenshots (empty for the common non-visual review). */
+  screenshots: Screenshot[]
   artifactShortSha: string
   headShort: string
 }
@@ -165,6 +169,7 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
   let reviewMeta: Review | null = null
   let findings: Finding[] = []
   let suggestions: Finding[] = []
+  let screenshots: Screenshot[] = []
   let artifactShortSha = ''
   const dir = repo ? resolveReviewDir(repoRoot, repo.host, repo.path, iid) : null
   if (dir) {
@@ -176,6 +181,7 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
     findings = Array.isArray(fRaw) ? fRaw : Array.isArray(fRaw?.findings) ? fRaw.findings : []
     const sRaw = readJsonSafe<any>(join(dir, 'suggestions.json'), [])
     suggestions = Array.isArray(sRaw) ? sRaw : Array.isArray(sRaw?.suggestions) ? sRaw.suggestions : []
+    screenshots = readScreenshots(dir)
   }
   return {
     iid: d.iid,
@@ -191,6 +197,7 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
     reviewMeta,
     findings,
     suggestions,
+    screenshots,
     artifactShortSha,
     headShort: d.headShort,
   }

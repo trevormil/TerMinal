@@ -145,6 +145,38 @@ here — those are findings.
 }
 ```
 
+## Screenshots (`screenshots.json`) — optional, visual changes only
+
+**Not for most reviews.** Capture screenshots only when the change is
+visual/UX-affecting AND an image would materially help the reviewer or the human
+merger decide — a new or changed screen, a layout/state prose can't convey, a
+visual regression, or a before/after worth seeing. For non-visual changes, omit
+this file entirely (no empty manifest).
+
+When warranted: drive the running UI (`.claude/skills/design-review` or the
+browse tooling), save frames under `.reviews/<pr-number>/screenshots/`, and write
+`.reviews/<pr-number>/screenshots.json`:
+
+```json
+{
+  "screenshots": [
+    {
+      "id": "<8-char hex, stable>",
+      "caption": "<what this frame shows — required>",
+      "path": "screenshots/<file>.png",
+      "kind": "before | after | diff | state",
+      "findingId": "<findings.json id this frame backs>"
+    }
+  ]
+}
+```
+
+`caption` + `path` are required; `kind` + `findingId` are optional. Paths are
+relative to the review dir and must stay inside it (no `..`). Supported
+extensions: png, jpg, jpeg, gif, webp. TerMinal renders these inline in the MR
+view's **Screenshots** tab, which appears only when this file is present.
+Reflect the count in frontmatter `screenshots_count`.
+
 ## Artifact frontmatter (required)
 
 ```yaml
@@ -179,6 +211,7 @@ scores:
   overall: <0-100>              # MIN of the six — weakest-link
 findings_count: <int>
 suggestions_count: <int>
+screenshots_count: <int>          # 0 unless the review captured screenshots
 avg_confidence: <float, one decimal>
 ---
 ```

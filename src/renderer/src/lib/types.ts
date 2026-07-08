@@ -1075,8 +1075,20 @@ export type MrDetail = {
   reviewMeta: Review | null
   findings: Finding[]
   suggestions: Finding[]
+  screenshots: Screenshot[]
   artifactShortSha: string
   headShort: string
+}
+
+/** Reviewer-captured screenshot embedded in a code-review artifact. Present
+ *  only when a visual/UX change made an image worth showing; image bytes ride
+ *  along as a data URL so the renderer needs no filesystem access. */
+export type Screenshot = {
+  id: string
+  caption: string
+  kind?: 'before' | 'after' | 'diff' | 'state'
+  findingId?: string
+  dataUrl: string
 }
 
 export type DigestRunState = {

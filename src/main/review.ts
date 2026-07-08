@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, extname, sep } from 'node:path'
 import { existingProjectAreaPaths, projectAreaPathForRead } from './project-layout'
 import { resolvedHarnessDir } from './settings'
 
@@ -48,6 +48,68 @@ export function readJsonSafe<T = unknown>(file: string, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+/** One reviewer-captured screenshot. Optional per review — the reviewer only
+ *  records these when a visual/UX change makes an image materially help the
+ *  reviewer or the human merger decide. Image bytes are embedded as a data URL
+ *  so the renderer never needs filesystem access. */
+export type Screenshot = {
+  id: string
+  caption: string
+  /** before | after | diff | state — the role of this frame, when given. */
+  kind?: 'before' | 'after' | 'diff' | 'state'
+  /** Optional findings.json id this screenshot backs. */
+  findingId?: string
+  dataUrl: string
+}
+
+const SCREENSHOT_KINDS = new Set(['before', 'after', 'diff', 'state'])
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+}
+
+/** Read `<dir>/screenshots.json` (bare array or `{ screenshots: [...] }`) and
+ *  return each entry with its image embedded as a data URL. Entries are dropped
+ *  when the path escapes the review dir, the file is missing, or the extension
+ *  isn't a known image type. Returns [] when the manifest is absent. */
+export function readScreenshots(dir: string): Screenshot[] {
+  const raw = readJsonSafe<unknown>(join(dir, 'screenshots.json'), [])
+  const arr: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { screenshots?: unknown[] })?.screenshots)
+      ? (raw as { screenshots: unknown[] }).screenshots
+      : []
+  const base = resolve(dir)
+  const out: Screenshot[] = []
+  for (const item of arr) {
+    const s = item as Record<string, unknown>
+    if (!s || typeof s.path !== 'string' || typeof s.caption !== 'string') continue
+    // Path guard: the resolved image must stay inside the review dir.
+    const abs = resolve(base, s.path)
+    if (abs !== base && !abs.startsWith(base + sep)) continue
+    if (!existsSync(abs)) continue
+    const mime = MIME_BY_EXT[extname(abs).slice(1).toLowerCase()]
+    if (!mime) continue
+    let buf: Buffer
+    try {
+      buf = readFileSync(abs)
+    } catch {
+      continue
+    }
+    out.push({
+      id: typeof s.id === 'string' && s.id ? s.id : `sc-${out.length}`,
+      caption: s.caption,
+      kind: typeof s.kind === 'string' && SCREENSHOT_KINDS.has(s.kind) ? (s.kind as Screenshot['kind']) : undefined,
+      findingId: typeof s.findingId === 'string' ? s.findingId : undefined,
+      dataUrl: `data:${mime};base64,${buf.toString('base64')}`,
+    })
+  }
+  return out
 }
 
 const safeReaddir = (d: string): string[] => {
