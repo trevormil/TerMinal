@@ -253,6 +253,7 @@ const gt = {
   listMrs: () => ipcRenderer.invoke('mrs:list'),
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
+  getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
   getStructuralDiff: (iid: number, path: string, width?: number) =>
     ipcRenderer.invoke('mrs:structural-diff', iid, path, width),
   difftAvailable: () => ipcRenderer.invoke('difft:available'),

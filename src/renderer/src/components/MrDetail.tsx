@@ -389,7 +389,21 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
   )
 }
 
-function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: number }) {
+export function DiffView({
+  diff,
+  scope,
+  iid,
+  showViewed = true,
+  allowStructural = true,
+}: {
+  diff: string
+  scope: string
+  iid: number
+  // Off for the local "working diff" view: no per-file "viewed" checkboxes and
+  // no Structural mode (difft is wired to the forge API, which a local diff lacks).
+  showViewed?: boolean
+  allowStructural?: boolean
+}) {
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
   const [selected, setSelected] = useState<string>('')
@@ -471,16 +485,18 @@ function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: numb
           }`}
           style={{ paddingLeft: pad + 18 }}
         >
-          <input
-            type="checkbox"
-            checked={isV}
-            onChange={(e) => setViewed(path, e.target.checked)}
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0 accent-[var(--gt-accent)]"
-          />
+          {showViewed && (
+            <input
+              type="checkbox"
+              checked={isV}
+              onChange={(e) => setViewed(path, e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 accent-[var(--gt-accent)]"
+            />
+          )}
           <File size={11} strokeWidth={2} className="shrink-0 text-zinc-600" />
           <span
-            className={`min-w-0 flex-1 truncate font-mono ${isV ? 'text-zinc-600 line-through' : 'text-zinc-300'}`}
+            className={`min-w-0 flex-1 truncate font-mono ${showViewed && isV ? 'text-zinc-600 line-through' : 'text-zinc-300'}`}
             title={path}
           >
             {node.name}
@@ -496,14 +512,16 @@ function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: numb
       <div className="w-80 shrink-0 overflow-y-auto border-r border-[var(--gt-border)]">
         <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-600">
           <span>
-            {files.length} files · {viewedCount} viewed
+            {files.length} files{showViewed ? ` · ${viewedCount} viewed` : ''}
           </span>
-          <button
-            onClick={() => setAll(paths, !allViewed)}
-            className="rounded px-1.5 py-0.5 text-[10px] normal-case text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
-          >
-            {allViewed ? 'clear' : 'mark all'}
-          </button>
+          {showViewed && (
+            <button
+              onClick={() => setAll(paths, !allViewed)}
+              className="rounded px-1.5 py-0.5 text-[10px] normal-case text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
+            >
+              {allViewed ? 'clear' : 'mark all'}
+            </button>
+          )}
         </div>
         {renderTree(tree.children)}
       </div>
@@ -521,24 +539,26 @@ function DiffView({ diff, scope, iid }: { diff: string; scope: string; iid: numb
           >
             Split
           </button>
-          <button
-            onClick={() => difftOk !== false && setMode('structural')}
-            disabled={difftOk === false}
-            title={
-              difftOk === false
-                ? 'Structural diff needs difftastic. Install with: brew install difftastic'
-                : 'Tree-sitter structural diff via difftastic'
-            }
-            className={`rounded px-2 py-0.5 text-[11px] ${
-              difftOk === false
-                ? 'cursor-not-allowed text-zinc-700'
-                : mode === 'structural'
-                  ? 'bg-white/10 text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-200'
-            }`}
-          >
-            Structural
-          </button>
+          {allowStructural && (
+            <button
+              onClick={() => difftOk !== false && setMode('structural')}
+              disabled={difftOk === false}
+              title={
+                difftOk === false
+                  ? 'Structural diff needs difftastic. Install with: brew install difftastic'
+                  : 'Tree-sitter structural diff via difftastic'
+              }
+              className={`rounded px-2 py-0.5 text-[11px] ${
+                difftOk === false
+                  ? 'cursor-not-allowed text-zinc-700'
+                  : mode === 'structural'
+                    ? 'bg-white/10 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              Structural
+            </button>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'structural' ? (

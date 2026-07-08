@@ -1811,6 +1811,9 @@ ipcMain.handle('mrs:get', (_e, iid: number) => {
 ipcMain.handle('mrs:diff', (_e, iid: number) => {
   return activeDaemon().mrDiff(iid)
 })
+ipcMain.handle('git:working-diff', () => {
+  return activeDaemon().workingDiff()
+})
 ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: number) => {
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })

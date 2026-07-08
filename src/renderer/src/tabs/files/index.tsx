@@ -9,12 +9,14 @@ import {
   FilePlus,
   FolderPlus,
   ExternalLink,
+  GitCompare,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
+import { WorkingDiffView } from '../../components/WorkingDiffView'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
@@ -144,7 +146,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [open, setOpen] = useState<OpenFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
-  const [sidebar, setSidebar] = useState<'files' | 'search'>('files')
+  const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -344,9 +346,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* editor (left) */}
+        {/* editor (left) — replaced by the working diff when Changes is active */}
         <div className="min-w-0 flex-1 overflow-hidden">
-          {!activeFile ? (
+          {sidebar === 'changes' ? (
+            <WorkingDiffView />
+          ) : !activeFile ? (
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
               Select a file to edit.
             </div>
@@ -389,9 +393,23 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               <Search size={13} strokeWidth={2} />
               Search
             </button>
+            <button
+              onClick={() => setSidebar('changes')}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
+                sidebar === 'changes' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+            >
+              <GitCompare size={13} strokeWidth={2} />
+              Changes
+            </button>
           </div>
 
-          {sidebar === 'files' ? (
+          {sidebar === 'changes' ? (
+            <div className="flex min-h-0 flex-1 flex-col p-3 text-[11px] leading-relaxed text-zinc-600">
+              Showing your pre-PR working-tree diff in the editor pane — everything since the base branch, plus
+              uncommitted and untracked changes.
+            </div>
+          ) : sidebar === 'files' ? (
             <div className="flex min-h-0 flex-1 flex-col">
               {/* file-op toolbar */}
               <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500">

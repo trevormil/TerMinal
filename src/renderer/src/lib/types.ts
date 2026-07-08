@@ -554,6 +554,7 @@ export type RemoteHost = {
   daemon: DaemonCfg
 }
 export type PinnedPanel = { label: string; url: string }
+export type WorkingDiff = { ok: boolean; diff: string; base: string; branch: string; error?: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -1606,6 +1607,7 @@ export type GtApi = {
   listMrs: () => Promise<MrListResult>
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
+  getWorkingDiff: () => Promise<WorkingDiff>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>

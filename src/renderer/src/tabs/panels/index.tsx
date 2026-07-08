@@ -8,14 +8,20 @@ import type { Tab, TabContext, PinnedPanel } from '../../lib/types'
 // DEFAULT for cloners — the tab only appears once at least one panel is configured. At module
 // load we mirror the setting into localStorage so the synchronous `appliesTo` gate can read it.
 const LS_KEY = 'gt.pinnedPanels'
+function mirror(list: PinnedPanel[] | undefined) {
+  if (list?.length) localStorage.setItem(LS_KEY, JSON.stringify(list))
+  else localStorage.removeItem(LS_KEY)
+}
 void window.gt?.settings
   ?.get?.()
-  .then((s: unknown) => {
-    const list = (s as { pinnedPanels?: PinnedPanel[] })?.pinnedPanels ?? []
-    if (list.length) localStorage.setItem(LS_KEY, JSON.stringify(list))
-    else localStorage.removeItem(LS_KEY)
-  })
+  .then((s: unknown) => mirror((s as { pinnedPanels?: PinnedPanel[] })?.pinnedPanels))
   .catch(() => {})
+// Keep the localStorage mirror (and thus the tab's visibility) live when the
+// Settings → Panels editor saves. Nudge App to recompute the visible tab list.
+window.addEventListener?.('gt.settings.changed', (e) => {
+  mirror((e as CustomEvent).detail?.pinnedPanels)
+  window.dispatchEvent(new Event('gt.tabs.hidden.changed'))
+})
 
 function panels(): PinnedPanel[] {
   try {

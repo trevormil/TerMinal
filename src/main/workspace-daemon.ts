@@ -20,7 +20,7 @@ import {
 } from './mrs'
 import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
-import { repoForCwd, repoRootOf, gitStatus, type GitStatus } from './repo'
+import { repoForCwd, repoRootOf, gitStatus, getWorkingDiff, type GitStatus, type WorkingDiff } from './repo'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions, type ProjectSession } from './sessions'
 import { listSkills, type SkillInfo } from './skills'
 import { workspaceSearch, type WorkspaceSearchKind, type WorkspaceSearchResponse } from './workspace-search'
@@ -77,6 +77,7 @@ export type WorkspaceDaemon = {
   repoLabel(): string
   context(sessionId: string): Promise<DaemonContext> | DaemonContext
   gitStatus(): Promise<GitStatus> | GitStatus
+  workingDiff(): Promise<WorkingDiff> | WorkingDiff
   docsList(): Promise<DocsTree> | DocsTree
   docsGet(relPath: string): Promise<string> | string
   sessionsList(): Promise<ProjectSession[]> | ProjectSession[]
@@ -174,6 +175,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
       } as DaemonContext
     },
     gitStatus: () => gitStatus(currentCwd),
+    workingDiff: () => getWorkingDiff(root()),
     docsList: () => listDocs(root() || ''),
     docsGet: (relPath: string) => readDoc(root() || '', relPath),
     sessionsList: () => listProjectSessions(root()),
@@ -245,6 +247,13 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
       }
     },
     gitStatus: () => remoteGitStatus(remote),
+    workingDiff: (): WorkingDiff => ({
+      ok: false,
+      diff: '',
+      base: '',
+      branch: '',
+      error: 'Working diff is not supported on remote workspaces yet.',
+    }),
     docsList: () => remoteDocs.list(remote),
     docsGet: (relPath: string) => remoteDocs.get(remote, relPath),
     sessionsList: () => remoteSessions.list(remote).catch(() => []),
