@@ -71,6 +71,7 @@ const emptyDaemon = (): DaemonCfg => ({
     codex: { path: '', defaultModel: '' },
     claude: { path: '', defaultModel: '' },
     cursor: { path: '', defaultModel: '' },
+    openrouter: { path: '', defaultModel: '' },
   },
   defaultEngine: 'claude',
   forge: 'auto',
@@ -91,6 +92,7 @@ const mergeDaemon = (base: DaemonCfg, patch: Partial<Omit<DaemonCfg, 'engines'>>
     codex: { ...base.engines.codex, ...(patch.engines?.codex || {}) },
     claude: { ...base.engines.claude, ...(patch.engines?.claude || {}) },
     cursor: { ...base.engines.cursor, ...(patch.engines?.cursor || {}) },
+    openrouter: { ...base.engines.openrouter, ...(patch.engines?.openrouter || {}) },
   },
 })
 
@@ -966,8 +968,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   )
 
   const MODEL_OPTIONS: Record<Engine, string[]> = {
-    claude: ['', 'haiku', 'sonnet', 'opus'],
-    codex: ['', 'gpt-5', 'gpt-5-codex', 'o4-mini'],
+    claude: ['', 'haiku', 'sonnet', 'opus', 'fable'],
+    codex: ['', 'gpt-5', 'gpt-5-codex', 'gpt-5.1-codex', 'o4-mini'],
     cursor: [
       '',
       'auto',
@@ -984,16 +986,29 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       'grok-4.3',
       'kimi-k2.5',
     ],
+    openrouter: [
+      '',
+      'deepseek/deepseek-v3.2',
+      'deepseek/deepseek-chat',
+      'qwen/qwen3-coder-next',
+      'z-ai/glm-4.7-flash',
+      'minimax/minimax-m2.5',
+      'moonshotai/kimi-k2.5',
+      'mistralai/codestral-2508',
+      'google/gemini-3.1-flash-lite',
+      'openai/gpt-5.1-codex-mini',
+    ],
   }
   const engineRow = (e: Engine, vendor: string) => {
     const remoteDetected =
       selectedProbe && !('loading' in selectedProbe) && selectedProbe.ok ? selectedProbe.engines[e] || '' : ''
-    const localFound = env ? (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
+    // OpenRouter (or-agent) rides on Codex being present, so track codex detection.
+    const localFound = env ? (e === 'codex' || e === 'openrouter' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
     const found = selectedIsRemote ? !!remoteDetected : localFound
     const detPath = selectedIsRemote
       ? remoteDetected
       : env
-        ? e === 'codex'
+        ? e === 'codex' || e === 'openrouter'
           ? env.codex.path
           : e === 'cursor'
             ? env.cursor.path
@@ -1443,7 +1458,26 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               {engineRow('codex', 'OpenAI Codex')}
               {engineRow('claude', 'Anthropic Claude')}
               {engineRow('cursor', 'Cursor Agent')}
+              {!selectedIsRemote && engineRow('openrouter', 'OpenRouter · via Codex (or-agent)')}
             </div>
+            {!selectedIsRemote && (
+              <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                <label className="block text-[11px] font-medium text-zinc-300">OpenRouter API key</label>
+                <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                  Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty → falls back to the shell&apos;s OPENROUTER_API_KEY.
+                </div>
+                <input
+                  key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
+                  type="password"
+                  defaultValue={s?.openrouterApiKey || ''}
+                  onBlur={(ev) => ev.target.value !== (s?.openrouterApiKey || '') && save({ openrouterApiKey: ev.target.value.trim() })}
+                  placeholder="sk-or-v1-…"
+                  spellCheck={false}
+                  autoComplete="off"
+                  className={`${inp} mt-1.5 font-mono`}
+                />
+              </div>
+            )}
             <div className="mt-2 flex items-center gap-2">
               <span className="text-[11px] text-zinc-500">Default:</span>
               {(['codex', 'claude', 'cursor'] as Engine[]).map((e) => (

@@ -31,4 +31,20 @@ describe('createAgentStreamDecoder', () => {
     expect(decoder.write('plain output\n')).toBe('plain output\n')
     expect(decoder.end()).toBe('')
   })
+
+  it('strips codex/or-agent harness noise but keeps the transcript', () => {
+    const decoder = createAgentStreamDecoder('openrouter', false)
+    const out = decoder.write(
+      [
+        'hook: PreToolUse',
+        'deprecated: `[features].codex_hooks` is deprecated.',
+        'ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed',
+        'Reading additional input from stdin...',
+        'codex',
+        'I edited add.ts and ran the tests.',
+        '',
+      ].join('\n'),
+    )
+    expect(out).toBe('codex\nI edited add.ts and ran the tests.\n')
+  })
 })

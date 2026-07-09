@@ -48,11 +48,38 @@ function textFromEvent(obj: JsonRecord): string {
   return ''
 }
 
+// codex exec (used directly by the codex engine and under the hood by or-agent
+// for OpenRouter) interleaves its human output with harness noise — hook status
+// lines, a deprecation notice, an MCP auth error, and the stdin prompt. Drop
+// those so the Runs/Agents log reads as the actual transcript.
+const CODEX_NOISE = [
+  /^hook: /,
+  /^deprecated: /,
+  /\bERROR rmcp::transport/,
+  /^Reading additional input from stdin/,
+]
+
 export function createAgentStreamDecoder(engine: Engine, decodeJson: boolean): Decoder {
   if (!decodeJson || (engine !== 'claude' && engine !== 'cursor')) {
+    // Raw engines (codex / openrouter): line-buffer only to strip known noise;
+    // everything else passes through verbatim.
+    let raw = ''
+    const flush = (text: string) => {
+      raw += text
+      const lines = raw.split(/\r?\n/)
+      raw = lines.pop() || ''
+      return lines
+        .filter((l) => !CODEX_NOISE.some((re) => re.test(l)))
+        .map((l) => `${l}\n`)
+        .join('')
+    }
     return {
-      write: (chunk) => chunk,
-      end: () => '',
+      write: (chunk) => flush(chunk),
+      end: () => {
+        const tail = raw
+        raw = ''
+        return tail && !CODEX_NOISE.some((re) => re.test(tail)) ? tail : ''
+      },
     }
   }
 

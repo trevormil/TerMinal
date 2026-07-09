@@ -187,6 +187,14 @@ describe('settings secrets', () => {
     expect(opened.projectsDir).toBe('/projects')
   })
 
+  test('openrouter api key is sealed on disk and opens back', () => {
+    const settings = migrate({ openrouterApiKey: 'sk-or-v1-supersecret', projectsDir: '/p' })
+    const sealed = sealSettingsForDisk(settings, adapter)
+    expect(JSON.stringify(sealed)).not.toContain('sk-or-v1-supersecret')
+    const opened = migrate(openSettingsFromDisk(sealed, adapter))
+    expect(opened.openrouterApiKey).toBe('sk-or-v1-supersecret')
+  })
+
   test('legacy plaintext and empty secrets pass through', () => {
     const opened = migrate(openSettingsFromDisk({
       telegram: { botToken: 'plain-token', chatId: '' },

@@ -24,12 +24,15 @@ import type {
 } from '../lib/types'
 import { engineLabel, sessionEngineLabel } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
+import { ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
 
 export type Choice = {
   mode: 'new' | 'resume'
   engine: SessionEngine
+  /** Model to launch the engine with (--model). Undefined = engine/global default. */
+  model?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -97,6 +100,7 @@ export function EntryScreen({
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
+  const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
   const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([])
   const [remoteHostId, setRemoteHostId] = useState(lockedRemote?.hostId || '')
@@ -194,6 +198,7 @@ export function EntryScreen({
 
   const selectEngine = (next: SessionEngine) => {
     setEngine(next)
+    setModel(undefined) // model is engine-specific — reset to the new engine's default
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (isAiEngine(next)) loadEngineSessions(next)
   }
@@ -288,6 +293,7 @@ export function EntryScreen({
     const base = {
       mode: 'new' as const,
       engine,
+      model: isAiEngine(engine) ? model : undefined,
       cwd: location === 'remote' ? remoteCwd : cwd.trim() || undefined,
       name: name.trim() || undefined,
     }
@@ -535,6 +541,28 @@ export function EntryScreen({
                   </button>
                 ))}
               </div>
+              {/* OpenRouter runs on the one-shot or-agent harness — no interactive
+                  REPL — so it's disabled here; use it for agents & schedules. */}
+              <button
+                type="button"
+                disabled
+                title="OpenRouter runs on the one-shot or-agent harness — available for agents & schedules, not interactive terminal sessions."
+                className={`${pickButton(false, true)} mt-2 w-full`}
+              >
+                <EngineLogo engine="openrouter" size={16} />
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px] font-semibold">OpenRouter</span>
+                  <span className="block truncate text-[9.5px] font-normal text-zinc-700">agents &amp; schedules only</span>
+                </span>
+              </button>
+              {isAiEngine(engine) && (
+                <div className="mt-3">
+                  <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Model</div>
+                  <div className="max-h-[240px] overflow-y-auto pr-0.5">
+                    <ModelSelect engine={engine} model={model} onChange={setModel} />
+                  </div>
+                </div>
+              )}
             </div>
 
             {!lockedCwd && (

@@ -67,6 +67,36 @@ export function installCli(srcPath: string): void {
   }
 }
 
+// The OpenRouter tier (or-exec/or-agent/or-spend + model-routing/lib.ts) ships
+// with TerMinal so a fresh install can run OpenRouter agents without depending
+// on any global ~/.claude dotfiles. Scripts land on the same PATH-prepended
+// bin dir; the registry is seeded once (never overwritten, so user edits + the
+// spend log persist) while lib.ts is always refreshed to match the scripts.
+export function installOrTier(binSrcDir: string, mrSrcDir: string): void {
+  try {
+    if (!existsSync(binSrcDir)) return
+    const binDir = join(CFG, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    for (const name of ['or-exec', 'or-agent', 'or-spend']) {
+      const src = join(binSrcDir, name)
+      if (!existsSync(src)) continue
+      const dest = join(binDir, name)
+      copyFileSync(src, dest)
+      chmodSync(dest, 0o755)
+    }
+    const mrDir = join(CFG, 'model-routing')
+    mkdirSync(mrDir, { recursive: true })
+    const libSrc = join(mrSrcDir, 'lib.ts')
+    if (existsSync(libSrc)) copyFileSync(libSrc, join(mrDir, 'lib.ts'))
+    // Seed the registry only if absent — preserve the user's edits + spend log.
+    const modelsSrc = join(mrSrcDir, 'models.json')
+    const modelsDest = join(mrDir, 'models.json')
+    if (existsSync(modelsSrc) && !existsSync(modelsDest)) copyFileSync(modelsSrc, modelsDest)
+  } catch {
+    /* best effort — OpenRouter runs surface a clear error if the tier is missing */
+  }
+}
+
 // MCP server for cross-session views (ticket #0003). Same path scheme so
 // agents can launch it via stdio.
 export function installMcpServer(srcPath: string): void {

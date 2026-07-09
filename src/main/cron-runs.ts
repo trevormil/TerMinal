@@ -31,7 +31,7 @@ export type SessionRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: 'running' | 'done' | 'failed'
+  status: 'running' | 'done' | 'failed' | 'interrupted'
   startedAt: number
   endedAt?: number
   exitCode?: number
@@ -170,6 +170,33 @@ export function readSessionRuns(limit = 200): SessionRun[] {
   return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
 }
 
+// Session runs are IN-PROCESS — their PTY lives and dies with this app. So after
+// a restart (or a crash/force-quit that skipped pty:exit → finalizeSessionRun),
+// ANY record still at status:running is a zombie: nothing is actually running.
+// Call once at startup, BEFORE the user can open new sessions, to finalize them
+// as 'interrupted' — otherwise they pile up and inflate the Runs "running" count.
+export function sweepStaleSessionRuns(): { swept: number } {
+  if (!existsSync(SESSION_RUNS_DIR)) return { swept: 0 }
+  const now = Date.now()
+  let swept = 0
+  for (const f of readdirSync(SESSION_RUNS_DIR)) {
+    if (!f.endsWith('.json')) continue
+    const path = join(SESSION_RUNS_DIR, f)
+    try {
+      const r = JSON.parse(readFileSync(path, 'utf8')) as SessionRun
+      if (r.status !== 'running') continue
+      writeFileSync(
+        path,
+        JSON.stringify({ ...r, status: 'interrupted', endedAt: r.endedAt ?? now, error: r.error ?? 'interrupted: app restarted' }, null, 2),
+      )
+      swept++
+    } catch {
+      /* skip unreadable record */
+    }
+  }
+  return { swept }
+}
+
 export function readSessionRunLog(runId: string): string {
   const safe = safeRunId(runId)
   const f = join(SESSION_RUNS_DIR, `${safe}.log`)
@@ -202,6 +229,8 @@ export type UnifiedRun = {
   scheduleId?: string
   error?: string
   force?: boolean
+  /** USD cost when the harness reports it (OpenRouter/or-agent runs). */
+  costUsd?: number
   trace?: AgentRun['trace']
   evaluation?: AgentRun['evaluation']
 }
@@ -222,6 +251,7 @@ function agentRunToUnified(r: AgentRun): UnifiedRun {
     branch: r.branch,
     worktree: r.worktree,
     force: r.force,
+    costUsd: r.costUsd,
     trace: r.trace,
     evaluation: r.evaluation,
   }

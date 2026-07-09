@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -7,7 +7,8 @@ import { homedir } from 'node:os'
 // read time" (e.g. projectsDir → your home dir). Legacy files in the old
 // { telegram, telegramControl } shape are migrated on read.
 
-export type EngineId = 'codex' | 'claude' | 'cursor'
+export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter'
+export const ENGINE_IDS: EngineId[] = ['codex', 'claude', 'cursor', 'openrouter']
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
@@ -85,6 +86,7 @@ export type Settings = {
   harnessDir: string // optional cross-repo review-artifact store
   templateRepo: string // scaffold source
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
+  openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -106,6 +108,7 @@ const SECRET_MARKER = 'terminal-secret:v1'
 const SECRET_PATHS = [
   ['telegram', 'botToken'],
   ['telegram', 'chatId'],
+  ['openrouterApiKey'],
 ] as const
 
 export type SettingsSecretStorage = {
@@ -130,6 +133,7 @@ export function defaultDaemonSettings(): DaemonCfg {
       codex: { path: '', defaultModel: '' },
       claude: { path: '', defaultModel: '' },
       cursor: { path: '', defaultModel: '' },
+      openrouter: { path: '', defaultModel: '' },
     },
     defaultEngine: 'claude',
     forge: 'auto',
@@ -160,6 +164,7 @@ export function defaultSettings(): Settings {
     harnessDir: daemon.harnessDir,
     templateRepo: daemon.templateRepo,
     pinnedPanels: [],
+    openrouterApiKey: '',
   }
 }
 
@@ -179,11 +184,11 @@ function daemonCfg(raw: unknown): DaemonCfg {
   for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
     if (typeof r[k] === 'string') out[k] = r[k]
   }
-  if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') out.defaultEngine = r.defaultEngine
+  if (ENGINE_IDS.includes(r.defaultEngine as EngineId)) out.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') out.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
     const engines = r.engines as Record<string, unknown>
-    for (const e of ['codex', 'claude', 'cursor'] as EngineId[]) out.engines[e] = engineCfg(engines[e])
+    for (const e of ENGINE_IDS) out.engines[e] = engineCfg(engines[e])
   }
   return out
 }
@@ -281,10 +286,11 @@ export function migrate(raw: unknown): Settings {
   } else if (typeof r.fleetAdminUrl === 'string' && r.fleetAdminUrl.trim()) {
     s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
-  if (r.defaultEngine === 'codex' || r.defaultEngine === 'claude' || r.defaultEngine === 'cursor') s.defaultEngine = r.defaultEngine
+  if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
+  if (ENGINE_IDS.includes(r.defaultEngine as EngineId)) s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
-    for (const e of ['codex', 'claude', 'cursor'] as EngineId[]) {
+    for (const e of ENGINE_IDS) {
       s.engines[e] = engineCfg(r.engines[e])
     }
   }
@@ -332,10 +338,15 @@ function clonePlain<T>(value: T): T {
 function transformSecretPaths(raw: unknown, visit: (value: unknown) => unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   const out = clonePlain(raw)
-  for (const [section, key] of SECRET_PATHS) {
-    const parent = (out as Record<string, any>)[section]
-    if (parent && typeof parent === 'object' && key in parent) {
-      parent[key] = visit(parent[key])
+  for (const path of SECRET_PATHS) {
+    let parent: any = out
+    for (let i = 0; i < path.length - 1; i++) {
+      parent = parent?.[path[i]]
+      if (!parent || typeof parent !== 'object') break
+    }
+    const leaf = path[path.length - 1]
+    if (parent && typeof parent === 'object' && leaf in parent) {
+      parent[leaf] = visit(parent[leaf])
     }
   }
   return out
@@ -397,6 +408,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       codex: { ...cur.engines.codex, ...(engines?.codex || {}) },
       claude: { ...cur.engines.claude, ...(engines?.claude || {}) },
       cursor: { ...cur.engines.cursor, ...(engines?.cursor || {}) },
+      openrouter: { ...cur.engines.openrouter, ...(engines?.openrouter || {}) },
     },
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
     noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
@@ -469,6 +481,16 @@ export function enginePath(engine: EngineId): string {
   if (engine === 'claude' && process.env.GT_CLAUDE_BIN) return process.env.GT_CLAUDE_BIN
   if (engine === 'cursor' && process.env.GT_CURSOR_BIN) return process.env.GT_CURSOR_BIN
   if (engine === 'cursor') return 'cursor-agent'
+  // OpenRouter is driven by the or-agent harness (Codex on an OR model). Prefer
+  // TerMinal's bundled copy, then a globally-installed one (~/.claude/bin), else
+  // bare 'or-agent' (resolved on PATH).
+  if (engine === 'openrouter') {
+    const candidates = [
+      join(homedir(), '.config', 'TerMinal', 'bin', 'or-agent'),
+      join(homedir(), '.claude', 'bin', 'or-agent'),
+    ]
+    return candidates.find((p) => existsSync(p)) || 'or-agent'
+  }
   return engine
 }
 
@@ -476,6 +498,12 @@ export function enginePath(engine: EngineId): string {
  *  case callers should let the engine pick its own default. */
 export function engineDefaultModel(engine: EngineId): string {
   return readSettings().engines[engine]?.defaultModel || ''
+}
+
+/** The OpenRouter key for or-agent/or-exec runs: the sealed Setting first, then
+ *  a shell-inherited env var. '' → not configured (OpenRouter runs will fail). */
+export function resolvedOpenRouterKey(): string {
+  return readSettings().openrouterApiKey || process.env.OPENROUTER_API_KEY || ''
 }
 
 export function resolveEngineModel(engine: EngineId, model?: string, daemon?: DaemonCfg): string {

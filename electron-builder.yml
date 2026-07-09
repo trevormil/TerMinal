@@ -16,6 +16,15 @@ extraResources:
     to: terminal-cli
   - from: bin/terminal-mcp-server
     to: terminal-mcp-server
+  # OpenRouter (or-agent) tier — installed to ~/.config/TerMinal/{bin,model-routing}
+  - from: bin/or-exec
+    to: or-exec
+  - from: bin/or-agent
+    to: or-agent
+  - from: bin/or-spend
+    to: or-spend
+  - from: bin/model-routing
+    to: model-routing
 # node-pty and better-sqlite3 ship native .node binaries that can't live inside
 # the asar archive — unpack them so they load at runtime.
 asarUnpack:

@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import type { Engine, Persona, PipelineInfo, EnvDetect } from '../lib/types'
 import type { LaunchMode } from '../lib/launch'
-import { EngineModelPicker } from './EngineModelPicker'
+import { ModelSelect } from './ModelSelect'
 import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
 import { engineLabel } from '../lib/engines'
@@ -31,7 +31,7 @@ import { engineLabel } from '../lib/engines'
 // Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + context id ('' = none) + pipeline id ('single' = just the task).
-const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent' }
+const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent', openrouter: 'OpenRouter · via Codex' }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
   Gauge,
@@ -80,6 +80,7 @@ export function EnginePicker({
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
+  const [modelConfirmed, setModelConfirmed] = useState(false)
   const [persona, setPersona] = useState<string | null>(showPersona ? null : '') // null = not chosen, '' = none
   const [personaConfirmed, setPersonaConfirmed] = useState(!showPersona)
   const [pipeline, setPipeline] = useState<string | null>(showPipeline ? null : 'single')
@@ -105,38 +106,53 @@ export function EnginePicker({
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
-  const avail = (e: Engine) => !env || (e === 'codex' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found)
+  // OpenRouter is driven by or-agent (Codex on an OR model), so its readiness
+  // tracks Codex being installed; the key is validated at run time.
+  const avail = (e: Engine) =>
+    !env || (e === 'codex' || e === 'openrouter' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found)
   useEffect(() => {
     if (!env || engine !== null) return
     const ok = (['codex', 'claude', 'cursor'] as Engine[]).filter(avail)
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
-  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor'] as Engine[]).filter((e) => e !== defaultEngine)]
+  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor', 'openrouter'] as Engine[]).filter((e) => e !== defaultEngine)]
   const selectedContext = persona ? personas.find((p) => p.id === persona) : undefined
 
   const step =
     engine === null
       ? 'engine'
-      : showPersona && !personaConfirmed
-        ? 'persona'
-        : showPipeline && pipeline === null
-          ? 'pipeline'
-          : 'launch'
-  const totalSteps = 2 + (showPersona ? 1 : 0) + (showPipeline ? 1 : 0)
-  const stepNum = step === 'engine' ? 1 : step === 'persona' ? 2 : step === 'pipeline' ? 2 + (showPersona ? 1 : 0) : totalSteps
+      : !modelConfirmed
+        ? 'model'
+        : showPersona && !personaConfirmed
+          ? 'persona'
+          : showPipeline && pipeline === null
+            ? 'pipeline'
+            : 'launch'
+  const totalSteps = 3 + (showPersona ? 1 : 0) + (showPipeline ? 1 : 0)
+  const stepNum =
+    step === 'engine'
+      ? 1
+      : step === 'model'
+        ? 2
+        : step === 'persona'
+          ? 3
+          : step === 'pipeline'
+            ? 3 + (showPersona ? 1 : 0)
+            : totalSteps
   const back = () => {
     if (step === 'launch') {
       if (showPipeline) setPipeline(null)
       else if (showPersona) setPersonaConfirmed(false)
-      else setEngine(null)
+      else setModelConfirmed(false)
       return
     }
     if (step === 'pipeline') {
       if (showPersona) setPersonaConfirmed(false)
-      else setEngine(null)
+      else setModelConfirmed(false)
       return
     }
-    if (step === 'persona') setEngine(null)
+    if (step === 'persona') setModelConfirmed(false)
+    if (step === 'model') setEngine(null)
   }
 
   return (
@@ -171,13 +187,18 @@ export function EnginePicker({
         {step === 'engine' && (
           <>
             <p className="mb-3 text-[11.5px] text-zinc-500">{stepNum} · Launch with which engine?</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {engineOrder.map((e) => {
                 const ok = avail(e)
                 return (
                   <button
                     key={e}
-                    onClick={() => ok && setEngine(e)}
+                    onClick={() => {
+                      if (!ok) return
+                      setEngine(e)
+                      setModel(undefined)
+                      setModelConfirmed(false)
+                    }}
                     disabled={!ok}
                     title={ok ? '' : `${engineLabel(e)} is not installed or not on PATH`}
                     className={`flex flex-col items-center gap-2 rounded-xl border bg-black/20 px-3 py-4 transition-colors ${
@@ -201,24 +222,35 @@ export function EnginePicker({
           </>
         )}
 
+        {step === 'model' && (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <EngineLogo engine={engine as Engine} size={16} />
+              <p className="text-[11.5px] text-zinc-500">
+                {stepNum} · Model <span className="text-zinc-600">for {engineLabel(engine || '')}</span>
+              </p>
+            </div>
+            <div className="max-h-[340px] overflow-y-auto pr-0.5">
+              <ModelSelect engine={engine as Engine} model={model} onChange={setModel} />
+            </div>
+            <button
+              onClick={() => setModelConfirmed(true)}
+              className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+            >
+              Continue with {model || 'the default model'}
+            </button>
+          </>
+        )}
+
         {step === 'persona' && (
           <>
             <div className="mb-3 flex items-center gap-2">
               <p className="text-[11.5px] text-zinc-500">
-                {stepNum} · Run with an agent context? <span className="text-zinc-600">(via {engineLabel(engine || '')})</span>
+                {stepNum} · Run with an agent context?{' '}
+                <span className="text-zinc-600">
+                  (via {engineLabel(engine || '')} · {model || 'default'})
+                </span>
               </p>
-              <div className="ml-auto">
-                <EngineModelPicker
-                  engine={engine as Engine}
-                  model={model}
-                  onChange={(e, m) => {
-                    setEngine(e)
-                    setModel(m)
-                  }}
-                  size="sm"
-                  align="right"
-                />
-              </div>
             </div>
             <div className="max-h-[320px] space-y-1.5 overflow-y-auto">
               <button
@@ -310,26 +342,12 @@ export function EnginePicker({
               <p className="text-[11.5px] text-zinc-500">
                 {stepNum} · Launch as{' '}
                 <span className="text-zinc-600">
-                  ({engineLabel(engine || '')}
+                  ({engineLabel(engine || '')} · {model || 'default'}
                   {persona ? ` · ${selectedContext?.title || persona}` : ''}
                   {pipeline && pipeline !== 'single' ? ` · ${pipeline}` : ''}
                   {showLanes && lanes > 1 ? ` · ${lanes} lanes` : ''})
                 </span>
               </p>
-              {!showPersona && (
-                <div className="ml-auto">
-                  <EngineModelPicker
-                    engine={engine as Engine}
-                    model={model}
-                    onChange={(e, m) => {
-                      setEngine(e)
-                      setModel(m)
-                    }}
-                    size="sm"
-                    align="right"
-                  />
-                </div>
-              )}
             </div>
             {showLanes && (
               <div className="mb-3 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">

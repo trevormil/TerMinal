@@ -372,9 +372,9 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">{dur}</span>
                   <span
                     className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
-                    title="Cost from the AI fleet ledger (joined by runId)"
+                    title={r.costUsd != null ? 'Cost reported by or-agent (OpenRouter)' : 'Cost from the AI fleet ledger (joined by runId)'}
                   >
-                    {fmtUsd(costByRunId.get(r.id) || 0)}
+                    {fmtUsd(r.costUsd ?? costByRunId.get(r.id) ?? 0)}
                   </span>
                   <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{fmtWhen(r.startedAt)}</span>
                 </button>
@@ -403,6 +403,15 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
               <div className="flex-1" />
+              {(selectedRun.costUsd ?? costByRunId.get(selectedRun.id)) != null &&
+                (selectedRun.costUsd ?? costByRunId.get(selectedRun.id) ?? 0) > 0 && (
+                  <span
+                    className="font-mono text-[10.5px] text-[var(--gt-accent-light)]"
+                    title={selectedRun.costUsd != null ? 'Cost reported by or-agent (OpenRouter)' : 'Cost from the AI fleet ledger'}
+                  >
+                    {fmtUsd(selectedRun.costUsd ?? costByRunId.get(selectedRun.id) ?? 0)}
+                  </span>
+                )}
               <span className="text-[10.5px] text-zinc-500">
                 started {fmtWhen(selectedRun.startedAt)}
                 {selectedRun.endedAt && (

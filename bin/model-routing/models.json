@@ -1,0 +1,24 @@
+{
+  "_doc": "Near-free paid model registry for the OpenRouter (or-agent) tier. Seeded by TerMinal into ~/.config/TerMinal/model-routing/ on first launch; edit freely, the app won't overwrite it. Prices are USD per 1M tokens and drift — re-check periodically. A global ~/.claude/model-routing/models.json, if present, takes precedence (unified spend).",
+  "budget": {
+    "dailyPoolUSD": 3.0,
+    "perSessionCapUSD": 0.5,
+    "perCallMaxTokens": 8000
+  },
+  "defaults": {
+    "agentic": "deepseek/deepseek-chat",
+    "raw": "google/gemini-2.5-flash-lite"
+  },
+  "models": {
+    "google/gemini-2.5-flash-lite": { "inPerM": 0.10, "outPerM": 0.40, "ctx": 1048576, "agentic": true, "note": "cheapest; good raw default" },
+    "deepseek/deepseek-chat":       { "inPerM": 0.20, "outPerM": 0.80, "ctx": 131072,  "agentic": true, "note": "proven agentic default" },
+    "deepseek/deepseek-v3.2":       { "inPerM": 0.23, "outPerM": 0.34, "ctx": 163840,  "agentic": true, "note": "cheap output, strong" },
+    "qwen/qwen3-coder-next":        { "inPerM": 0.11, "outPerM": 0.80, "ctx": 1048576, "agentic": true, "note": "coding-tuned, huge ctx" },
+    "z-ai/glm-4.7-flash":           { "inPerM": 0.06, "outPerM": 0.40, "ctx": 202752,  "agentic": true, "note": "very cheap" },
+    "minimax/minimax-m2.5":         { "inPerM": 0.12, "outPerM": 0.48, "ctx": 204800,  "agentic": true, "note": "agentic-tuned" },
+    "moonshotai/kimi-k2.5":         { "inPerM": 0.38, "outPerM": 2.02, "ctx": 262144,  "agentic": true, "note": "strong generalist" },
+    "mistralai/codestral-2508":     { "inPerM": 0.30, "outPerM": 0.90, "ctx": 256000,  "agentic": true, "note": "coding" },
+    "google/gemini-3.1-flash-lite": { "inPerM": 0.25, "outPerM": 1.50, "ctx": 1048576, "agentic": true, "note": "latest flash-lite" },
+    "openai/gpt-5.1-codex-mini":    { "inPerM": 0.25, "outPerM": 2.00, "ctx": 400000,  "agentic": true, "note": "OpenAI codex-mini" }
+  }
+}

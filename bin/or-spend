@@ -1,0 +1,58 @@
+#!/usr/bin/env bun
+// or-spend — spend readout over ~/.claude/model-routing/spend.jsonl.
+// Shows today's spend vs the daily pool, a per-model breakdown, and (if
+// OR_SESSION is set or --session given) the current session's spend vs its cap.
+//
+//   or-spend                 # today
+//   or-spend --all           # all-time totals
+//   or-spend --session <id>  # focus a session
+//   or-spend --json          # machine-readable
+
+import { loadRegistry, readSpend, summarize, todayISO } from "../model-routing/lib.ts"
+
+const args = process.argv.slice(2)
+const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
+const all = args.includes("--all")
+const asJson = args.includes("--json")
+const session = flag("--session") ?? process.env.OR_SESSION ?? null
+
+const reg = await loadRegistry()
+const entries = await readSpend()
+const today = todayISO()
+const scope = all ? entries : entries.filter((r) => (r.ts ?? "").startsWith(today))
+
+const byModel: Record<string, { cost: number; n: number }> = {}
+let total = 0
+for (const r of scope) {
+  const m = r.model ?? "?"
+  byModel[m] ??= { cost: 0, n: 0 }
+  byModel[m].cost += r.cost ?? 0
+  byModel[m].n += 1
+  total += r.cost ?? 0
+}
+
+const dailyPool = Number(reg.budget?.dailyPoolUSD ?? Infinity)
+const sums = summarize(entries, { session })
+
+if (asJson) {
+  console.log(JSON.stringify({ scope: all ? "all-time" : today, total, calls: scope.length, byModel, dailyPool, spentToday: sums.spentToday, session, spentSession: session ? sums.spentSession : null }, null, 2))
+  process.exit(0)
+}
+
+const bar = (frac: number, w = 20) => "█".repeat(Math.min(w, Math.round(frac * w))).padEnd(w, "░")
+console.log(`\n  spend — ${all ? "all-time" : today}   (${scope.length} calls)\n`)
+const rows = Object.entries(byModel).sort((a, b) => b[1].cost - a[1].cost)
+for (const [m, v] of rows) {
+  console.log(`  ${m.padEnd(34)} $${v.cost.toFixed(5).padStart(9)}  (${v.n})`)
+}
+console.log(`  ${"".padEnd(34)} ${"─".repeat(11)}`)
+console.log(`  ${"total".padEnd(34)} $${total.toFixed(5).padStart(9)}\n`)
+
+const dayFrac = dailyPool === Infinity ? 0 : sums.spentToday / dailyPool
+console.log(`  today   ${bar(dayFrac)}  $${sums.spentToday.toFixed(4)} / $${dailyPool}   (${((dayFrac) * 100).toFixed(0)}%)`)
+if (session) {
+  const cap = Number(reg.budget?.perSessionCapUSD ?? Infinity)
+  const sFrac = cap === Infinity ? 0 : sums.spentSession / cap
+  console.log(`  session ${bar(sFrac)}  $${sums.spentSession.toFixed(4)} / $${cap}   [${session}]`)
+}
+console.log()

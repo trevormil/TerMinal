@@ -152,7 +152,9 @@ const runsAs = (engine: Engine): string =>
     ? "claude -p '<prompt>' --permission-mode auto"
     : engine === 'cursor'
       ? "cursor-agent -p --force --trust --workspace <worktree> '<prompt>'"
-      : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
+      : engine === 'openrouter'
+        ? "or-agent --dir <worktree> --model <slug> '<prompt>'"
+        : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
 
 const FIELD =
   'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'

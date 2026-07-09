@@ -322,6 +322,7 @@ import {
   installRunner,
   installCli,
   installMcpServer,
+  installOrTier,
   // mcp-register pulled separately below; not part of launchd helpers.
   reconcileSchedules,
   syncSchedule,
@@ -339,6 +340,7 @@ import {
   readSessionRunLog,
   listAllRuns,
   sweepStaleCronRuns,
+  sweepStaleSessionRuns,
 } from './cron-runs'
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
@@ -442,6 +444,8 @@ const repoLabelFor = (cwdOrRoot: string) =>
 type StartOpts = {
   mode: 'new' | 'resume'
   engine?: SessionEngine
+  /** Per-session model override → passed as --model. Falls back to the engine's default. */
+  model?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -501,7 +505,11 @@ function startSession(key: string, opts: StartOpts) {
   const engine = opts.engine || 'claude'
   const args: string[] = []
   let sessionId: string
-  const defaultModel = engine !== 'local' ? remote?.daemon?.engines?.[engine]?.defaultModel || (!remote ? engineDefaultModel(engine) : '') : ''
+  // Per-session pick (opts.model) wins; else the engine's configured default.
+  const defaultModel =
+    engine !== 'local'
+      ? opts.model || remote?.daemon?.engines?.[engine]?.defaultModel || (!remote ? engineDefaultModel(engine) : '')
+      : ''
 
   if (engine === 'local') {
     sessionId = opts.sessionId || randomUUID()
@@ -836,6 +844,11 @@ function createWindow() {
   installCli(cliSrc)
   const mcpSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-mcp-server') : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // Bundle the OpenRouter (or-agent) tier so a fresh install runs OpenRouter
+  // agents without any global ~/.claude dotfiles.
+  const orBinDir = app.isPackaged ? process.resourcesPath : join(moduleDir, '../../bin')
+  const orMrDir = app.isPackaged ? join(process.resourcesPath, 'model-routing') : join(moduleDir, '../../bin/model-routing')
+  installOrTier(orBinDir, orMrDir)
   // Status-line shim: lets the Plan Usage + Context widgets read rate_limits /
   // context_window_size from a per-session cache instead of the throttled API.
   installStatuslineShim()
@@ -1105,6 +1118,12 @@ function remoteSteps(base: { label: string; prompt: string }, personaId?: string
   }
 }
 
+// OpenRouter is driven by the local-only or-agent harness — a remote host has no
+// or-agent, so coerce it to a universally-present engine for remote dispatch.
+function localOnlyToRemote(engine: Engine): Engine {
+  return engine === 'openrouter' ? 'claude' : engine
+}
+
 function remoteEngineModel(remote: NonNullable<ReturnType<typeof curRemote>>, engine: Engine, model?: string) {
   return resolveEngineModel(engine, model, remote.daemon) || undefined
 }
@@ -1197,7 +1216,9 @@ ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: st
     if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model)
     const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
     if (!agent) return { error: 'unknown agent' }
-    const resolvedEngine = engine || agent.engine || remote.daemon?.defaultEngine || 'claude'
+    // OpenRouter runs on the bundled local or-agent harness — never dispatch it
+    // to a remote host (no or-agent there); fall back to the remote's engine.
+    const resolvedEngine = localOnlyToRemote(engine || agent.engine || remote.daemon?.defaultEngine || 'claude')
     const { steps, persona: personaLabel, pipeline: pipelineLabelText } = remoteSteps({ label: agent.title, prompt: agent.prompt }, persona, pipeline)
     const run = await remoteRuns.start(remote, {
       agentId: agent.id,
@@ -2014,7 +2035,7 @@ ipcMain.handle('bg:spawn', (_e, input: { repoRoot: string; prompt: string; engin
   if (!remote) return spawnBgTask(input)
   const prompt = input.prompt?.trim()
   if (!prompt) return { error: 'empty prompt' }
-  const engine = input.engine || remote.daemon?.defaultEngine || 'claude'
+  const engine = localOnlyToRemote(input.engine || remote.daemon?.defaultEngine || 'claude')
   const enrichedPrompt =
     prompt +
     `\n\n---\n` +
@@ -2304,6 +2325,9 @@ app.whenReady().then(() => {
   // sweep in bin/terminal-cron can't reach when no schedules are firing.
   sweepStaleCronRuns()
   setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
+  // In-process session runs die with the app — finalize any left at status:running
+  // by a prior crash/quit so the Runs tab's "running" count reflects reality.
+  sweepStaleSessionRuns()
   // AI fleet observability — periodic transcript scans for cost/token rollups.
   startAICollectionLoop()
   // Background-task watcher (#0004) — reconciles bg-tasks.json state with

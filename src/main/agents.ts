@@ -17,7 +17,7 @@ import { emitActivity } from './events'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
-import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir } from './settings'
+import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir, resolvedOpenRouterKey } from './settings'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
@@ -37,7 +37,7 @@ import type { TicketAgent } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
-export type Engine = 'codex' | 'claude' | 'cursor'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter'
 
 export type AgentModelPolicy = {
   default?: string
@@ -200,6 +200,8 @@ export type AgentRun = {
   worktree: string
   branch: string
   output: string
+  /** USD cost of the run when the harness reports it (OpenRouter/or-agent). */
+  costUsd?: number
   /** Snapshot of the agent's force flag at run-time — so historical runs
    *  display FORCE even if the agent is later deleted or rescoped. */
   force?: boolean
@@ -914,8 +916,26 @@ export function resetAgentState(repoRoot: string, agentId: string): { ok: true }
 }
 
 export function engineLabel(engine: Engine): string {
-  return engine === 'claude' ? 'Claude Code' : engine === 'codex' ? 'Codex' : 'Cursor Agent'
+  return engine === 'claude'
+    ? 'Claude Code'
+    : engine === 'codex'
+      ? 'Codex'
+      : engine === 'openrouter'
+        ? 'OpenRouter'
+        : 'Cursor Agent'
 }
+
+// Prepended to OpenRouter (or-agent) task prompts. codex exec is a
+// non-interactive one-shot, but weaker OR models don't realise it and end their
+// turn with a clarifying question instead of doing the work. Say so plainly.
+const OR_AUTONOMY_PREAMBLE = [
+  'You are running FULLY AUTONOMOUSLY in a non-interactive one-shot process (codex exec).',
+  'There is NO human reading your output and no follow-up turn — you cannot ask questions.',
+  'Do NOT ask for confirmation, permission, or which part to start with, and do NOT end your',
+  'turn with a question or a plan. Execute the ENTIRE task now: inspect the code, make all the',
+  'edits, run the project checks, commit, and open the PR. Keep calling tools until the work is',
+  'actually done. Only stop early if you are genuinely blocked — and then state the blocker explicitly.',
+].join(' ')
 
 function buildCmd(engine: Engine, worktree: string, prompt: string, model?: string): string {
   const bin = enginePath(engine)
@@ -925,6 +945,14 @@ function buildCmd(engine: Engine, worktree: string, prompt: string, model?: stri
   }
   if (engine === 'cursor') {
     return `${shq(bin)} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
+  }
+  if (engine === 'openrouter') {
+    // or-agent = Codex driven by an OpenRouter model. --model is the OR slug
+    // (falls back to the registry agentic default when omitted). Reads
+    // OPENROUTER_API_KEY from the spawn env (injected by the runner).
+    // Weaker OR models tend to treat `codex exec` as a chat and stop to ask
+    // "shall I proceed?" — a blunt non-interactive preamble keeps them working.
+    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
   }
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
@@ -938,6 +966,9 @@ function displayCmd(engine: Engine, worktree: string, model?: string, scriptPath
   }
   if (engine === 'cursor') {
     return `${bin} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${worktree}${modelFlag} <prompt>`
+  }
+  if (engine === 'openrouter') {
+    return `${bin} --dir ${worktree}${modelFlag} <prompt>`
   }
   return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
 }
@@ -1328,6 +1359,12 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     run.status = status
     run.endedAt = Date.now()
     run.exitCode = exitCode
+    // OpenRouter runs report their own cost via or-agent's final line
+    // ("or-agent: done — cost $0.00548, exit 0"). Capture it for the Runs UI.
+    if (spec.engine === 'openrouter') {
+      const m = run.output.match(/or-agent: done[^$]*\$([0-9]+(?:\.[0-9]+)?)/)
+      if (m) run.costUsd = Number(m[1])
+    }
     run.evaluation = evaluateAgentRun(run, spec, status, append)
     procs.delete(run.id)
     persistMeta(run)
@@ -1349,7 +1386,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     try {
       // Lazy-require to keep agents.ts decoupled from the observability layer.
       const { recordRunnerInvocation } = require('./ai-collectors') as typeof import('./ai-collectors')
-      if (spec.engine !== 'cursor') {
+      // cursor has no parseable usage; openrouter reports its own cost via
+      // run.costUsd (or-agent), so it must NOT be mis-parsed as a claude-p run.
+      if (spec.engine !== 'cursor' && spec.engine !== 'openrouter') {
         recordRunnerInvocation({
           source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
           output: run.output,
@@ -1402,6 +1441,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       TERMINAL_WORKTREE: worktree,
       TERMINAL_ENGINE: spec.engine,
       ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
+      // OpenRouter (or-agent) reads this; sealed Setting first, else inherited env.
+      ...(resolvedOpenRouterKey() ? { OPENROUTER_API_KEY: resolvedOpenRouterKey() } : {}),
       // FORCE-MODE: passes the block-main-merge hook's env-var carve-out.
       // Only set when the agent has `force: true`; never inherited from the
       // parent process (a normal launch of TerMinal never has this var set).
@@ -1919,7 +1960,10 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
   if (run.status === 'running') return { error: 'run is already running' }
   const spec = run.rerun
   if (!spec) {
-    const engine = run.engine === 'claude' || run.engine === 'codex' || run.engine === 'cursor' ? run.engine : undefined
+    const engine =
+      run.engine === 'claude' || run.engine === 'codex' || run.engine === 'cursor' || run.engine === 'openrouter'
+        ? run.engine
+        : undefined
     return runAgent(run.repoRoot, run.agentId, engine, undefined, undefined, run.model)
   }
   if (spec.kind === 'agent') return runAgent(run.repoRoot, spec.agentId, spec.engine, spec.personaId, spec.pipelineId, spec.model)

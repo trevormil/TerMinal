@@ -36,7 +36,7 @@ export type BgTask = {
   repo: string // basename for display
   repoRoot: string // absolute path
   prompt: string
-  engine: 'claude' | 'codex' | 'cursor'
+  engine: 'claude' | 'codex' | 'cursor' | 'openrouter'
   model?: string
   worktree: string
   branch: string
@@ -101,7 +101,7 @@ export function readBgTaskLog(id: string): string {
 export type SpawnBgInput = {
   repoRoot: string
   prompt: string
-  engine?: 'claude' | 'codex' | 'cursor'
+  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter'
   model?: string
 }
 

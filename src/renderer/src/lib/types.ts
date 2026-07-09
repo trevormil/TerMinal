@@ -444,7 +444,7 @@ export type DocsTree = {
   categories: { id: DocCategory; label: string; items: DocEntry[] }[]
 }
 
-export type Engine = 'codex' | 'claude' | 'cursor'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter'
 export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
@@ -572,6 +572,7 @@ export type Settings = {
   harnessDir: string
   templateRepo: string
   pinnedPanels: PinnedPanel[]
+  openrouterApiKey: string
 }
 export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
   telegram?: Partial<TelegramCfg>
@@ -969,6 +970,8 @@ export type UnifiedRun = {
   error?: string
   /** Snapshot at run-time of the agent's force flag. */
   force?: boolean
+  /** USD cost when the harness reports it (OpenRouter/or-agent runs). */
+  costUsd?: number
   trace?: AgentRunTrace
   evaluation?: AgentRunEvaluation
 }

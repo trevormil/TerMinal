@@ -81,7 +81,7 @@ export type TaskItem = { id: string; subject: string; status: string; activeForm
 
 export type SessionMeta = {
   id: string
-  engine: 'claude' | 'codex' | 'cursor'
+  engine: 'claude' | 'codex' | 'cursor' | 'openrouter'
   cwd: string
   gitBranch: string
   model: string
@@ -92,7 +92,7 @@ export type SessionMeta = {
 
 export type ObservabilitySession = {
   id: string
-  engine: 'claude' | 'codex' | 'cursor'
+  engine: 'claude' | 'codex' | 'cursor' | 'openrouter'
   title: string
   cwd: string
   repo: string
@@ -1167,7 +1167,7 @@ function listCursorSessions(): SessionMeta[] {
 }
 
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
-export function listSessions(engine?: 'claude' | 'codex' | 'cursor'): SessionMeta[] {
+export function listSessions(engine?: 'claude' | 'codex' | 'cursor' | 'openrouter'): SessionMeta[] {
   const out =
     engine === 'claude'
       ? listClaudeSessions()

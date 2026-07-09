@@ -2,48 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import type { Engine } from '../lib/types'
-import { engineLabel } from '../lib/engines'
+import { engineLabel, ENGINE_MODELS as MODELS, ENGINE_VENDOR as VENDOR } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 
 // One DRY surface for the "pick engine + model" UX everywhere a run is
 // configured (Agents tab, Schedules form, designer modals, ticket spawn).
 // A click pops a small panel with both engines + their model chips so the
 // operator can pick "claude · haiku" in one go instead of cascading through
-// two separate selects.
-
-const MODELS: Record<Engine, { id: string; label: string }[]> = {
-  claude: [
-    { id: 'haiku', label: 'haiku' },
-    { id: 'sonnet', label: 'sonnet' },
-    { id: 'opus', label: 'opus' },
-  ],
-  codex: [
-    { id: 'gpt-5-codex', label: 'gpt-5-codex' },
-    { id: 'gpt-5', label: 'gpt-5' },
-    { id: 'o4-mini', label: 'o4-mini' },
-  ],
-  cursor: [
-    { id: 'auto', label: 'auto' },
-    { id: 'composer-2.5-fast', label: 'composer-2.5-fast' },
-    { id: 'composer-2.5', label: 'composer-2.5' },
-    { id: 'gpt-5.3-codex', label: 'gpt-5.3-codex' },
-    { id: 'gpt-5.3-codex-high', label: 'gpt-5.3-codex-high' },
-    { id: 'gpt-5.2', label: 'gpt-5.2' },
-    { id: 'gpt-5.5-medium', label: 'gpt-5.5-medium' },
-    { id: 'claude-opus-4-8-high', label: 'opus-4.8' },
-    { id: 'claude-opus-4-8-thinking-high', label: 'opus-4.8-thinking' },
-    { id: 'claude-4.6-sonnet-medium', label: 'sonnet-4.6' },
-    { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro' },
-    { id: 'grok-4.3', label: 'grok-4.3' },
-    { id: 'kimi-k2.5', label: 'kimi-k2.5' },
-  ],
-}
-
-const VENDOR: Record<Engine, string> = {
-  claude: 'Anthropic Claude',
-  codex: 'OpenAI Codex',
-  cursor: 'Cursor Agent',
-}
+// two separate selects. The catalog itself lives in lib/engines.
 
 type MenuPos = { top: number; left: number; maxHeight: number }
 
@@ -53,13 +19,18 @@ export function EngineModelPicker({
   onChange,
   size = 'md',
   align = 'left',
+  engines,
 }: {
   engine: Engine
   model: string | undefined
   onChange: (engine: Engine, model: string | undefined) => void
   size?: 'sm' | 'md'
   align?: 'left' | 'right'
+  /** Restrict which engines are offered (e.g. exclude 'openrouter' for
+   *  interactive sessions). Defaults to every engine with a model catalog. */
+  engines?: Engine[]
 }) {
+  const engineList = engines ?? (Object.keys(MODELS) as Engine[])
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<MenuPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
@@ -147,7 +118,7 @@ export function EngineModelPicker({
           className="fixed z-[10000] w-[300px] overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-2xl"
           style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
         >
-          {(Object.keys(MODELS) as Engine[]).map((e) => {
+          {engineList.map((e) => {
             const isActive = e === engine
             return (
               <div key={e} className="mb-2 last:mb-0">

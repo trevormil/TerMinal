@@ -127,6 +127,42 @@ carry `trace` metadata (`ticketSlug`, `ticketRef`, `prIid`, source branch) and
 an `evaluation` summary. The Runs tab renders both ahead of the raw log; the
 Tickets tab uses the same run id to embed the linked log and evaluation.
 
+## Engines & models
+
+Four engines, in one `Engine` union (`src/renderer/src/lib/types.ts`,
+mirrored in `src/main/agents.ts` + `settings.ts`):
+
+- **claude / codex / cursor** — interactive sessions *and* agent runs. The
+  launcher (`EnginePicker` for agents, `EntryScreen` for sessions) picks the
+  model in a dedicated **model step/screen** (`ModelSelect`, catalog in
+  `lib/engines.ts` `ENGINE_MODELS`). The chosen model threads through
+  `Choice.model` → `StartOpts.model` → `startSession` (`--model` on the
+  interactive PTY) and through `RunSpec.model` → `buildCmd` for standalone
+  `-p`/`exec` runs.
+- **openrouter** — agent/schedule runs only (not interactive: it's a one-shot
+  harness). Runs via the bundled **`or-agent`** (Codex driven by an OpenRouter
+  model: `codex exec -c model_provider=openrouter -m <slug>`). The model field
+  is free-text (any OpenRouter slug) plus a curated menu. Disabled (shown, not
+  selectable) in the session launcher.
+
+**OpenRouter key.** `settings.openrouterApiKey` is sealed via `safeStorage`
+(same as the Telegram token) and injected as `OPENROUTER_API_KEY` into the
+agent spawn env; falls back to the shell's env var when unset
+(`resolvedOpenRouterKey`).
+
+**Bundled tier (self-contained).** `or-exec`/`or-agent`/`or-spend` +
+`model-routing/{lib.ts,models.json}` are vendored in `bin/`, packaged as
+`extraResources`, and installed to `~/.config/TerMinal/{bin,model-routing}` on
+launch (`installOrTier`) — so a fresh install runs OpenRouter agents with no
+global `~/.claude` dotfiles. `lib.ts` prefers a global `~/.claude/model-routing`
+registry when present (unified spend) else TerMinal's own seeded copy. A blunt
+non-interactive **autonomy preamble** is prepended to OpenRouter prompts so
+weaker models don't stop to ask "shall I proceed?".
+
+**Cost.** or-agent reports per-run cost; it's parsed on finalize into
+`AgentRun.costUsd` and shown in the Runs tab (row + detail). OpenRouter runs are
+excluded from the claude/codex AI-usage ledger (they'd be mis-priced).
+
 ## Product hierarchy
 
 Tabs are still auto-discovered, but default visibility is curated in
