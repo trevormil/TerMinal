@@ -201,7 +201,7 @@ export function EnginePicker({
         {step === 'engine' && (
           <>
             <p className="mb-3 text-[11.5px] text-zinc-500">{stepNum} · Launch with which engine?</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {engineOrder.map((e) => {
                 const ok = avail(e)
                 return (

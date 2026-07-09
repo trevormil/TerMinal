@@ -660,7 +660,7 @@ export function EntryScreen({
             {mode === 'single' && (
             <div>
               <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <div className="grid grid-cols-3 gap-2">
                 {engineOptions.map((e) => (
                   <button
                     key={e}
