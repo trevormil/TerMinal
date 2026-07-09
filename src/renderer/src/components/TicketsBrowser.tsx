@@ -692,36 +692,34 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   </button>
                 )}
               </div>
-              {agentRecommendation && (
-                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/45 px-3 py-2 text-[11px] text-zinc-400">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Recommended owner</span>
-                  <Badge tone={selected.agent.id === agentRecommendation.agent.id ? 'green' : 'accent'}>
-                    {agentContexts.find((a) => a.agentId === agentRecommendation.agent.id && a.agentKind === agentRecommendation.agent.kind)?.title ||
-                      agentRecommendation.agent.id}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate" title={agentRecommendation.reason}>
-                    {agentRecommendation.reason}
-                    {agentRecommendation.signals.length > 0 && (
-                      <span className="ml-1 font-mono text-zinc-600">
-                        {agentRecommendation.signals.join(', ')}
-                      </span>
-                    )}
-                  </span>
-                  {(selected.agent.id !== agentRecommendation.agent.id ||
-                    selected.agent.scope !== agentRecommendation.agent.scope ||
-                    selected.agent.kind !== agentRecommendation.agent.kind) && (
+              {/* Only surface the recommendation when it DIFFERS from the current
+                  owner — recommending the owner you already have is pure noise.
+                  When it differs, keep it to one quiet, borderless line; the
+                  rationale + signals live in the hover title. */}
+              {agentRecommendation &&
+                (selected.agent.id !== agentRecommendation.agent.id ||
+                  selected.agent.scope !== agentRecommendation.agent.scope ||
+                  selected.agent.kind !== agentRecommendation.agent.kind) && (
+                  <div
+                    className="mb-3 flex items-center gap-1.5 text-[11px] text-zinc-500"
+                    title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')].filter(Boolean).join(' · ')}
+                  >
+                    <span className="text-zinc-600">Suggested owner:</span>
+                    <Badge tone="accent">
+                      {agentContexts.find((a) => a.agentId === agentRecommendation.agent.id && a.agentKind === agentRecommendation.agent.kind)?.title ||
+                        agentRecommendation.agent.id}
+                    </Badge>
                     <button
                       onClick={async () => {
                         await window.gt.tickets.update(selected.slug, { agent: agentRecommendation.agent })
                         loadTickets()
                       }}
-                      className="rounded-md border border-[var(--gt-accent)]/45 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/10"
+                      className="text-[10.5px] font-semibold text-[var(--gt-accent-light)] hover:underline"
                     >
                       Apply
                     </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
               <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
                 {selected.created && <span>created {selected.created}</span>}
