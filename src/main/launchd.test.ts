@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { darkSchedules } from './launchd'
+import { darkSchedules, needsReload } from './launchd'
 import type { Schedule } from './schedules'
 
 // Minimal Schedule factory — only the fields darkSchedules reads matter.
@@ -34,5 +34,27 @@ describe('darkSchedules', () => {
   test('all healthy → empty', () => {
     const list = [sched('a', true), sched('b', true)]
     expect(darkSchedules(list, () => true)).toEqual([])
+  })
+})
+
+describe('needsReload', () => {
+  const xml = '<plist>same</plist>'
+
+  test('loaded + identical plist → no reload (preserve running interval timer)', () => {
+    // The whole point: relaunching TerMinal must NOT bootout/bootstrap a
+    // healthy job, or launchd resets its StartInterval countdown every launch.
+    expect(needsReload(xml, xml, true)).toBe(false)
+  })
+
+  test('loaded but plist content changed → reload', () => {
+    expect(needsReload('<plist>old</plist>', xml, true)).toBe(true)
+  })
+
+  test('not loaded → always reload, even if plist on disk matches', () => {
+    expect(needsReload(xml, xml, false)).toBe(true)
+  })
+
+  test('no plist on disk (null) → reload', () => {
+    expect(needsReload(null, xml, true)).toBe(true)
   })
 })
