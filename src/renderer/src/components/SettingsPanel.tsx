@@ -1141,6 +1141,13 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               Configure engines, workflow surfaces, notifications, and local infrastructure.
             </div>
           </div>
+          <div
+            className="mr-2 shrink-0 text-right font-mono text-[9.5px] leading-tight text-zinc-600"
+            title={`Installed build — commit ${__BUILD_SHA__} on ${__BUILD_BRANCH__}, built ${__BUILD_TIME__}`}
+          >
+            <div className="text-zinc-400">build {__BUILD_SHA__}</div>
+            <div>{__BUILD_TIME__.slice(0, 16).replace('T', ' ')}</div>
+          </div>
           <button onClick={onClose} className="rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
             <X size={15} strokeWidth={2} />
           </button>
