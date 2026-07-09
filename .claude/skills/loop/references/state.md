@@ -12,7 +12,7 @@ the state is too complicated.
   feature_list.json   # structured status of each contract assertion
   progress.md         # human-readable: current phase, bottleneck, next step
   log.md              # APPEND-ONLY event journal
-  events.jsonl        # role-to-role channel (see loop-supervisor/protocol.md)
+  events.jsonl        # role-to-role channel (see references/transport.md)
   scores/NNNN.md      # one taste score per evaluated iteration
 ```
 
@@ -87,6 +87,6 @@ One line per operation. Never rewrite prior entries.
 
 ## events.jsonl
 
-The role-to-role channel. Reuse the existing message shape from
-`loop-supervisor/references/protocol.md` (JSONL: `loopId, role, kind, sessionId,
-summary, detail, createdAt`). Bounded `detail` only; pointers over payloads.
+The role-to-role channel. Reuse the message shape from
+[transport.md](transport.md) (JSONL: `loopId, role, kind, sessionId, summary,
+detail, createdAt`). Bounded `detail` only; pointers over payloads.

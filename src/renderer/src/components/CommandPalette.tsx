@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
+import { Repeat, Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
 import type { Tab, Mr, Ticket } from '../lib/types'
 import { navigateTo } from '../lib/nav'
 import { sessionEngineLabel } from '../lib/engines'
@@ -119,6 +119,14 @@ export function CommandPalette({
         navigateTo('search', payload)
         setTimeout(() => navigateTo('search', payload), 50)
       }),
+    })
+    out.push({
+      id: 'command:paired-loop',
+      group: 'Command',
+      label: 'Start paired loop',
+      hint: 'two linked sessions — a worker + a driver, contract-first',
+      icon: Repeat,
+      run: close(() => navigateTo('paired-loop:new')),
     })
     for (const t of tabs)
       out.push({

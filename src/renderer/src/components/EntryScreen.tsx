@@ -13,7 +13,9 @@ import {
   Search,
   Zap,
   Pin,
+  Repeat,
 } from 'lucide-react'
+import { navigateTo } from '../lib/nav'
 import type {
   Engine,
   RemoteDirList,
@@ -39,6 +41,9 @@ export type Choice = {
   initialInput?: string
   ticketSlug?: string
   remote?: RemoteSession
+  /** Set on the two sessions of a live-paired loop, linking them to a loop id. */
+  loopId?: string
+  loopRole?: 'driver' | 'worker'
 }
 
 function rel(ms: number): string {
@@ -823,6 +828,15 @@ export function EntryScreen({
                 placeholder="session name (optional)"
                 className={`${sel} min-w-0 flex-1`}
               />
+              <button
+                onClick={() => navigateTo('paired-loop:new', { repoRoot: lockedCwd || cwd.trim() || undefined })}
+                disabled={location === 'remote'}
+                title="Two linked sessions — a worker + a driver — in a contract-first loop"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gt-border)] px-3 py-2 text-[12px] font-semibold text-zinc-300 hover:bg-white/5 hover:text-zinc-100 disabled:opacity-40"
+              >
+                <Repeat size={14} strokeWidth={2.5} />
+                Paired loop
+              </button>
               <button
                 onClick={() => onChoose(buildChoice())}
                 disabled={location === 'remote' && !remoteHost}

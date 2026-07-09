@@ -927,6 +927,7 @@ export type LoopRecord = {
   repo: string
   repoRoot: string
   goal: string
+  mode: 'headless' | 'paired'
   engine: Engine
   model?: string
   worktree: string
@@ -1736,6 +1737,7 @@ export type GtApi = {
     create: (input: {
       repoRoot?: string
       goal: string
+      mode?: 'headless' | 'paired'
       engine?: Engine
       model?: string
       maxIterations?: number

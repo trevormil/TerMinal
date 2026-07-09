@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
-import { Repeat, Play, RefreshCw, Square } from 'lucide-react'
+import { Repeat, Play, RefreshCw, Square, Users } from 'lucide-react'
 import { Card, Row, Badge, Empty } from '../../components/ui'
+import { navigateTo } from '../../lib/nav'
 import type { Plugin, LoopRecord, LoopState } from '../../lib/types'
 
 type LoopData = { loop: LoopRecord | null; state: LoopState | null }
@@ -59,22 +60,31 @@ const plugin: Plugin<LoopData> = {
       return (
         <Card icon={Repeat} title="Loop">
           <Empty>No active loop</Empty>
-          <button onClick={() => void newLoop()} style={{ ...btn, marginTop: 8, width: '100%' }}>
-            <Play size={11} /> New loop
-          </button>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button onClick={() => void newLoop()} style={btn}>
+              <Play size={11} /> New loop
+            </button>
+            <button onClick={() => navigateTo('paired-loop:new')} style={btn}>
+              <Users size={11} /> New paired loop
+            </button>
+          </div>
         </Card>
       )
     const { loop, state } = d
     const a = state?.assertions
     const running = loop.status === 'running'
+    const paired = loop.mode === 'paired'
     return (
       <Card
         icon={Repeat}
         title="Loop"
         right={
-          <Badge tone={phaseTone(loop.phase)}>
-            {running ? `${loop.activeRole ?? 'run'}…` : loop.phase}
-          </Badge>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {paired && <Badge tone="mute">paired</Badge>}
+            <Badge tone={phaseTone(loop.phase)}>
+              {running ? `${loop.activeRole ?? 'run'}…` : loop.phase}
+            </Badge>
+          </span>
         }
       >
         <div
@@ -98,9 +108,11 @@ const plugin: Plugin<LoopData> = {
         <Row label="bottleneck" value={state?.bottleneck || '—'} />
         <Row label="taste" value={state?.lastScore || '—'} />
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-          <button onClick={() => act('step', loop.id)} disabled={running} style={btn}>
-            <Play size={11} /> Step
-          </button>
+          {!paired && (
+            <button onClick={() => act('step', loop.id)} disabled={running} style={btn}>
+              <Play size={11} /> Step
+            </button>
+          )}
           <button onClick={() => act('restart', loop.id)} style={btn}>
             <RefreshCw size={11} /> Restart
           </button>

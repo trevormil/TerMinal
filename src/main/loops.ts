@@ -32,12 +32,18 @@ export type LoopEngine = 'claude' | 'codex' | 'cursor'
 export type LoopRole = 'planner' | 'generator' | 'evaluator'
 export type LoopPhase = 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
 export type LoopStatus = 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
+// Two execution modes over the SAME loop state (contract.md, events.jsonl, …):
+//   headless — TerMinal auto-steps one-shot role turns (stepLoop + watcher).
+//   paired   — two live interactive sessions (a driver + a worker) drive the
+//              roles themselves; the auto-stepper stays out of their way.
+export type LoopMode = 'headless' | 'paired'
 
 export type LoopRecord = {
   id: string
   repo: string // basename for display
   repoRoot: string
   goal: string
+  mode: LoopMode
   engine: LoopEngine
   model?: string
   worktree: string
@@ -182,6 +188,7 @@ export function readLoopState(id: string): LoopState | { error: string } {
 export type CreateLoopInput = {
   repoRoot?: string
   goal: string
+  mode?: LoopMode
   engine?: LoopEngine
   model?: string
   maxIterations?: number
@@ -223,6 +230,7 @@ export function createLoop(input: CreateLoopInput): LoopRecord | { error: string
     repo: basename(input.repoRoot),
     repoRoot: input.repoRoot,
     goal: input.goal,
+    mode: input.mode || 'headless',
     engine: input.engine || 'claude',
     model: input.model,
     worktree: wt.worktree,
@@ -388,6 +396,7 @@ function turnPrompt(rec: LoopRecord, role: LoopRole): string {
 export function stepLoop(id: string): LoopRecord | { error: string } {
   const rec = getLoop(id)
   if (!rec) return { error: 'unknown loop' }
+  if (rec.mode === 'paired') return { error: 'paired loops are driven by their live sessions' }
   if (rec.status === 'stopped' || rec.phase === 'done')
     return { error: `loop is ${rec.phase}` }
   if (rec.activeRunId) return { error: 'a turn is already running' }

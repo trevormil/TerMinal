@@ -9,6 +9,7 @@ import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
+import { PairedLoopLauncher, type PairedLoopConfig } from './components/PairedLoopLauncher'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
@@ -122,6 +123,8 @@ type Saved = {
   engine?: SessionEngine
   mode?: 'new' | 'resume'
   remote?: Choice['remote']
+  loopId?: string
+  loopRole?: 'driver' | 'worker'
 }
 const restored: Saved[] = (() => {
   try {
@@ -152,6 +155,8 @@ export default function App() {
           cwd: s.cwd,
           name: s.name,
           remote: s.remote,
+          loopId: s.loopId,
+          loopRole: s.loopRole,
         },
         info: { sessionId: s.sessionId, cwd: s.cwd },
       }
@@ -174,6 +179,8 @@ export default function App() {
         engine: s.choice.engine || 'claude',
         mode: s.choice.mode,
         remote: s.choice.remote,
+        loopId: s.choice.loopId,
+        loopRole: s.choice.loopRole,
       }))
       .filter((s) => s.sessionId && (s.engine !== 'local' || s.remote))
     localStorage.setItem('gt.openSessions', JSON.stringify(data))
@@ -196,6 +203,8 @@ export default function App() {
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [palette, setPalette] = useState(false)
+  // Live-paired loop launcher: false | { repoRoot } (the repo the loop runs in).
+  const [pairedLauncher, setPairedLauncher] = useState<false | { repoRoot: string }>(false)
   const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
   const [appearance, setAppearance] = useState<AppearanceCfg>(defaultAppearance)
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
@@ -445,6 +454,18 @@ export default function App() {
           setSearchOpen(false)
           return
         }
+        if (ev.tabId === 'paired-loop:new') {
+          const payload = ev.payload || {}
+          const repoRoot =
+            (typeof payload.repoRoot === 'string' && payload.repoRoot) || activeWorkspaceRoot || ''
+          setPairedLauncher({ repoRoot })
+          setFleet(false)
+          setInbox(false)
+          setSearchOpen(false)
+          setPalette(false)
+          if (sessions.length) setAdding(false)
+          return
+        }
         if (ev.tabId !== 'terminal') return
         const payload = ev.payload || {}
         const targetKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : ''
@@ -473,6 +494,47 @@ export default function App() {
     setSessions((s) => [...s, { key, choice, info: { sessionId: '', cwd: '' } }])
     activate(key)
     setAdding(false)
+  }
+
+  // Live-paired loop: create the loop (worktree + contract state) then open its
+  // two linked sessions — a worker in the worktree, a driver in the main repo —
+  // side by side. Both are seeded contract-first. See .claude/skills/loop.
+  const startPairedLoop = async (cfg: PairedLoopConfig): Promise<{ ok: boolean; error?: string }> => {
+    const rec = await window.gt.loops.create({
+      repoRoot: cfg.repoRoot,
+      goal: cfg.goal,
+      mode: 'paired',
+      engine: cfg.driver.engine,
+      model: cfg.driver.model,
+    })
+    if (!rec || 'error' in rec) return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
+    const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
+    const tag = rec.id.slice(-4)
+    const workerSeed = `/loop-generator  (paired WORKER, loop ${rec.id}) — state dir: ${stateDir}; your worktree is the cwd. Contract-first: watch events.jsonl and wait for the driver's "contract agreed" before writing code; mark assertions done (never pass); keep listening until the loop stops. Goal: ${cfg.goal}`
+    const driverSeed = `/loop  (paired DRIVER, loop ${rec.id}) — state dir: ${stateDir}; the worker runs loop-generator in ${rec.worktree}. You are the operator: FIRST as planner negotiate contract.md into 10–30 testable assertions, THEN as evaluator grade adversarially; talk to the worker via events.jsonl and do not let it write code until the contract is agreed. Goal: ${cfg.goal}`
+    const workerKey = crypto.randomUUID()
+    const driverKey = crypto.randomUUID()
+    setSessions((s) => [
+      ...s,
+      {
+        key: driverKey,
+        choice: { mode: 'new', engine: cfg.driver.engine, model: cfg.driver.model, cwd: rec.repoRoot, name: `loop·driver ${tag}`, initialInput: driverSeed, loopId: rec.id, loopRole: 'driver' },
+        info: { sessionId: '', cwd: rec.repoRoot },
+      },
+      {
+        key: workerKey,
+        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.worktree, name: `loop·worker ${tag}`, initialInput: workerSeed, loopId: rec.id, loopRole: 'worker' },
+        info: { sessionId: '', cwd: rec.worktree },
+      },
+    ])
+    setGridKeys([driverKey, workerKey])
+    setTerminalLayout('split')
+    activate(driverKey)
+    setFleet(false)
+    setInbox(false)
+    setSearchOpen(false)
+    setAdding(false)
+    return { ok: true }
   }
   const closeSession = (key: string) => {
     window.gt.stopSession(key)
@@ -648,6 +710,7 @@ export default function App() {
         mode: 'new' | 'resume'
         engine: SessionEngine
         needsAttention: boolean
+        loopRole?: 'driver' | 'worker'
       }[]
     >()
     for (const ws of workspaces) {
@@ -658,6 +721,7 @@ export default function App() {
         mode: x.choice.mode,
         engine: x.choice.engine,
         needsAttention: attentionByKey.has(x.key),
+        loopRole: x.choice.loopRole,
       }))
       for (const s of ws.sessions) m.set(s.key, peers)
     }
@@ -1306,6 +1370,13 @@ export default function App() {
             mrSym={activeCtx?.forgeSym}
             onActivateSession={activate}
             onClose={() => setPalette(false)}
+          />
+        )}
+        {pairedLauncher && (
+          <PairedLoopLauncher
+            repoRoot={pairedLauncher.repoRoot}
+            onLaunch={startPairedLoop}
+            onClose={() => setPairedLauncher(false)}
           />
         )}
       </div>

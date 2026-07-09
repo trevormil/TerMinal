@@ -50,6 +50,6 @@ The planner's spec is the **boundary**; the agreed contract is what gets
   fixes code; the planner never writes code. A role that does another's job is
   the failure mode this whole structure exists to prevent.
 - **Keep listening.** In live-paired mode, no role stops listening until the
-  user stops the loop (see `loop-supervisor/references/protocol.md`).
+  user stops the loop (see `transport.md`).
 - **Escalate the contract, not the build.** A failing iteration is normal; a
   wrong contract is a human gate.

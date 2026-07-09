@@ -10,6 +10,7 @@ import {
   PanelRightOpen,
   PanelTop,
   Plus,
+  Repeat,
   Server,
   Square,
   SquareTerminal,
@@ -222,7 +223,7 @@ export function SessionView({
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
-  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine; needsAttention?: boolean }[]
+  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine; needsAttention?: boolean; loopRole?: 'driver' | 'worker' }[]
   onSwitchSession?: (key: string) => void
   onAddSession?: () => void
   onCloseSession?: (key: string) => void
@@ -599,6 +600,15 @@ export function SessionView({
           }`}
         />
         <EngineLogo engine={p.engine} size={10} className="opacity-80" />
+        {p.loopRole && (
+          <span
+            title={`Linked loop — ${p.loopRole}`}
+            className="flex shrink-0 items-center gap-0.5 rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent)]"
+          >
+            <Repeat size={8} strokeWidth={2.5} />
+            {p.loopRole}
+          </span>
+        )}
         {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
         {isEditing ? (
           <input

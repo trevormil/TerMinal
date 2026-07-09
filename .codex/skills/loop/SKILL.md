@@ -22,6 +22,28 @@ it once — the prompts here encode those nine rules.
 Do **not** loop a one-shot task, a task with no verification, or anything whose
 "done" you cannot describe in a contract.
 
+## Two execution modes (same loop, same disk state)
+
+A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of two
+ways. The roles, contract, and taste rubric are identical either way — only
+*who runs the turns* differs.
+
+- **Headless** (default) — TerMinal's loop engine (`src/main/loops.ts`)
+  auto-steps one-shot role turns: it spawns a fresh `planner`, then
+  `generator`, then `evaluator` process, reconciles each on a `LOOP-DONE:`
+  marker, and advances the phase. You watch it from the loop cockpit widget
+  (Step / Restart / Stop). Best for unattended, converge-while-you-sleep runs.
+- **Live-paired** — two interactive TerMinal sessions play the roles
+  themselves: a **worker** session (`/loop-generator`, in the worktree) and a
+  **driver** session (`/loop` operator wearing the planner then evaluator hat,
+  in the main repo), talking over `events.jsonl`. Best when you want to watch,
+  steer, and cross-check two models against each other in real time. Start one
+  from TerMinal's "paired loop" launcher; the two sessions open side-by-side,
+  tagged `loop · worker` / `loop · driver`. The transport, message shape, and
+  listener invariant are in [references/transport.md](references/transport.md).
+
+The rest of this skill is mode-agnostic. Everything below applies to both.
+
 ## The three roles (never blur them)
 
 One task, three context windows, three system prompts. Mixing roles is the most
@@ -108,7 +130,7 @@ they are the loop doing its job.
 
 - **Bounded reads.** Never feed a whole transcript, scrollback, test log, or diff
   into the model. Default 80 lines / 12k chars; prefer file refs, commit ids, test
-  names. Use `scripts/bounded_context.py` from the `loop-supervisor` skill.
+  names. Use `scripts/bounded_context.py` from this skill.
 - **Read the traces.** Every debugging insight comes from the raw transcript, not
   another experiment. Grep for the moment judgment diverged; fix the prompt for
   that exact moment.

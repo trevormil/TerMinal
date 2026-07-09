@@ -29,7 +29,7 @@ agree the calibration references with the planner.
 
 1. Read the **diff and the raw traces**, not the generator's summary of itself
    (rule VII: every real insight comes from the transcript; grep for where its
-   judgment diverged). Use `../loop-supervisor/scripts/bounded_context.py` and
+   judgment diverged). Use `../loop/scripts/bounded_context.py` and
    bounded `git diff --stat` / `rg` — never ingest a full log.
 2. **Run it.** Launch the app (Playwright / curl / CLI), exercise the real path,
    not the happy demo. Try to break each assertion.

@@ -36,6 +36,26 @@ and converges on slop. Shared context:
 4. Wait for the evaluator / operator. Treat their prompt as user input. Then
    continue. Keep listening (live-paired mode) until the user stops the loop.
 
+## Live-paired mode (you are the "worker")
+
+When the loop runs live-paired, you are one of two interactive sessions: **you
+are the worker**, and a **driver** session (running `/loop`) plays planner +
+evaluator. You two communicate over `events.jsonl` in the loop state dir. Full
+contract: [../loop/references/transport.md](../loop/references/transport.md).
+
+- **Contract-first.** Do not write code until the driver has signed off
+  `contract.md`. Watch `events.jsonl` for the driver's `contract agreed`
+  handshake; until then, help sharpen the contract if asked, but do not
+  implement.
+- Emit `ready-for-review` (kind on `events.jsonl`) when a batch is ready; then
+  **keep listening**. Treat the driver's `prompt` as user input. A completed
+  action is never permission to stop listening — only the user stopping the loop
+  is.
+- Bounded events (40 lines / 8k chars default). Pointers over payloads. If the
+  driver needs more, send a targeted excerpt, not the transcript.
+- The driver is a human stand-in, not blanket authority: you still follow repo
+  rules, tests, branch/merge safeguards, and destructive-command safety.
+
 ## Discipline
 
 - Do not mark an assertion `pass` — you may mark `done` (implemented); only the
