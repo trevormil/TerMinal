@@ -18,6 +18,7 @@ import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
 import { WorkingDiffView } from '../../components/WorkingDiffView'
 import { onNavigate } from '../../lib/nav'
+import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
 // Values must be valid @uiw/codemirror-extensions-langs keys — which are the
@@ -147,6 +148,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
+  const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, { min: 200, max: 640, edge: 'left' })
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -372,8 +374,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           )}
         </div>
 
-        {/* sidebar (right) */}
-        <aside className="flex w-72 shrink-0 flex-col border-l border-[var(--gt-border)]">
+        {/* sidebar (right) — drag the divider to resize */}
+        <ResizeHandle onMouseDown={filesSidebar.onResizeStart} />
+        <aside className="flex shrink-0 flex-col border-l border-[var(--gt-border)]" style={{ width: filesSidebar.width }}>
           <div className="flex shrink-0 border-b border-[var(--gt-border)] p-1.5">
             <button
               onClick={() => setSidebar('files')}

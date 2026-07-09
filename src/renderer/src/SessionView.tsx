@@ -23,6 +23,7 @@ import { PluginDrawer } from './components/PluginDrawer'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
+import { useResizableWidth, ResizeHandle } from './components/ResizeHandle'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
@@ -265,6 +266,8 @@ export function SessionView({
     }
   })
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
+  const sessionRailW = useResizableWidth('gt.sessionRailWidth', 160, { min: 120, max: 360, edge: 'right' })
+  const cockpitW = useResizableWidth('gt.cockpitWidth', 320, { min: 240, max: 640, edge: 'left' })
   const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
@@ -781,7 +784,7 @@ export function SessionView({
         <div
           className="absolute inset-0 grid"
           style={{
-            gridTemplateColumns: cockpitVisible ? 'minmax(0,1fr) 320px' : 'minmax(0,1fr)',
+            gridTemplateColumns: cockpitVisible ? `minmax(0,1fr) ${cockpitW.width}px` : 'minmax(0,1fr)',
             // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
             // that would override the App-level wrapper's `visibility: hidden`
             // for inactive sessions, leaking the inactive session's terminal
@@ -826,10 +829,16 @@ export function SessionView({
             )}
             <div className="flex min-h-0 flex-1">
               {railLeft && (
-                <aside className="flex w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-1.5">
-                  {peerSessions.map((p) => renderSessionPill(p, 'side'))}
-                  {renderAddSessionButton('side')}
-                </aside>
+                <>
+                  <aside
+                    className="flex shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-1.5"
+                    style={{ width: sessionRailW.width }}
+                  >
+                    {peerSessions.map((p) => renderSessionPill(p, 'side'))}
+                    {renderAddSessionButton('side')}
+                  </aside>
+                  <ResizeHandle onMouseDown={sessionRailW.onResizeStart} />
+                </>
               )}
               <div className="min-h-0 min-w-0 flex-1">
                 <TerminalPane
@@ -843,6 +852,13 @@ export function SessionView({
               </div>
             </div>
           </main>
+          {cockpitVisible && (
+          <ResizeHandle
+            onMouseDown={cockpitW.onResizeStart}
+            style={{ right: cockpitW.width }}
+            className="absolute inset-y-0 -translate-x-1/2"
+          />
+          )}
           {cockpitVisible && (
           <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
             <div className="mb-2 flex items-center justify-between px-0.5">

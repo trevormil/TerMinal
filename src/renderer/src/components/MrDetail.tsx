@@ -27,6 +27,7 @@ import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
+import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
 import type { MrDetail, Finding, CiInfo, StructuralDiffResult, Screenshot } from '../lib/types'
 
@@ -462,6 +463,7 @@ export function DiffView({
   )
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
+  const fileList = useResizableWidth('gt.diffFileListWidth', 320, { min: 200, max: 560, edge: 'right' })
   const [selected, setSelected] = useState<string>('')
   const [mode, setMode] = useState<'unified' | 'split' | 'structural'>('unified')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -565,7 +567,7 @@ export function DiffView({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="w-80 shrink-0 overflow-y-auto border-r border-[var(--gt-border)]">
+      <div className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]" style={{ width: fileList.width }}>
         <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-600">
           <span>
             {files.length} files{showViewed ? ` · ${viewedCount} viewed` : ''}
@@ -581,6 +583,7 @@ export function DiffView({
         </div>
         {renderTree(tree.children)}
       </div>
+      <ResizeHandle onMouseDown={fileList.onResizeStart} />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1">
           <button
