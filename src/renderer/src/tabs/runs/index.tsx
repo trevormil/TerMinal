@@ -61,7 +61,9 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   const [rerunBusy, setRerunBusy] = useState(false)
   const [rerunError, setRerunError] = useState('')
 
-  const reload = () => window.gt.agents.allRuns().then(setRuns)
+  // Runs are fire-and-forget processes only (cron/agent/bg) — interactive
+  // terminal sessions belong to the Terminal tab, not here.
+  const reload = () => window.gt.agents.allRuns().then((rs) => setRuns(rs.filter((r) => r.source !== 'session')))
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
@@ -294,7 +296,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               className="min-w-[140px] flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60 focus:outline-none"
             />
             <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
-              {(['all', 'cron', 'agent', 'bg', 'session'] as const).map((s) => (
+              {(['all', 'cron', 'agent', 'bg'] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setSource(s)}
@@ -544,7 +546,8 @@ const tab: Tab = {
   badge: async (gt) => {
     try {
       const rs = await gt.agents.allRuns()
-      return rs.filter((r) => r.status === 'running').length
+      // Runs = fire-and-forget processes only; interactive sessions live in Terminal.
+      return rs.filter((r) => r.source !== 'session' && r.status === 'running').length
     } catch {
       return 0
     }
