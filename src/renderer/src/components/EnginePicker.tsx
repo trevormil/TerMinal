@@ -31,7 +31,7 @@ import { engineLabel } from '../lib/engines'
 // Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + context id ('' = none) + pipeline id ('single' = just the task).
-const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent', openrouter: 'OpenRouter · via Codex' }
+const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent', openrouter: 'OpenRouter · Codex or Hermes', hermes: 'Nous Hermes' }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
   Gauge,
@@ -75,11 +75,13 @@ export function EnginePicker({
     launchMode?: LaunchMode,
     runContext?: Persona,
     lanes?: number,
+    openrouterHarness?: 'codex' | 'hermes',
   ) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
+  const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [modelConfirmed, setModelConfirmed] = useState(false)
   const [persona, setPersona] = useState<string | null>(showPersona ? null : '') // null = not chosen, '' = none
   const [personaConfirmed, setPersonaConfirmed] = useState(!showPersona)
@@ -109,13 +111,20 @@ export function EnginePicker({
   // OpenRouter is driven by or-agent (Codex on an OR model), so its readiness
   // tracks Codex being installed; the key is validated at run time.
   const avail = (e: Engine) =>
-    !env || (e === 'codex' || e === 'openrouter' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found)
+    !env ||
+    (e === 'hermes'
+      ? true // resolved via PATH; validated at run time
+      : e === 'codex' || e === 'openrouter'
+        ? env.codex.found
+        : e === 'cursor'
+          ? env.cursor.found
+          : env.claude.found)
   useEffect(() => {
     if (!env || engine !== null) return
     const ok = (['codex', 'claude', 'cursor'] as Engine[]).filter(avail)
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
-  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor', 'openrouter'] as Engine[]).filter((e) => e !== defaultEngine)]
+  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as Engine[]).filter((e) => e !== defaultEngine)]
   const selectedContext = persona ? personas.find((p) => p.id === persona) : undefined
 
   const step =
@@ -230,6 +239,27 @@ export function EnginePicker({
                 {stepNum} · Model <span className="text-zinc-600">for {engineLabel(engine || '')}</span>
               </p>
             </div>
+            {engine === 'openrouter' && (
+              <div className="mb-3">
+                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Harness</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['codex', 'hermes'] as const).map((h) => (
+                    <button
+                      key={h}
+                      onClick={() => setOpenrouterHarness(h)}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors ${
+                        openrouterHarness === h
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                          : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <EngineLogo engine={h} size={15} />
+                      <span className="text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="max-h-[340px] overflow-y-auto pr-0.5">
               <ModelSelect engine={engine as Engine} model={model} onChange={setModel} />
             </div>
@@ -391,26 +421,30 @@ export function EnginePicker({
                 )}
               </div>
             )}
-            {/* OpenRouter is a one-shot harness (or-agent) with no interactive
-                REPL, so it's Process-only — the "instance" mode would fall
-                through to a broken interactive spawn. */}
-            <div className={engine === 'openrouter' ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-2 gap-2'}>
-              {engine !== 'openrouter' && (
-                <button
-                  onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1)}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
-                >
-                  <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
-                  <span className="text-[13px] font-semibold text-zinc-100">
-                    {engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'} instance
-                  </span>
-                  <span className="text-center text-[10px] leading-snug text-zinc-500">
-                    {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
-                  </span>
-                </button>
-              )}
+            <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1)}
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1, openrouterHarness)}
+                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+              >
+                <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                <span className="text-[13px] font-semibold text-zinc-100">
+                  {engine === 'claude'
+                    ? 'Claude Code'
+                    : engine === 'cursor'
+                      ? 'Cursor Agent'
+                      : engine === 'hermes'
+                        ? 'Hermes'
+                        : engine === 'openrouter'
+                          ? `${openrouterHarness === 'hermes' ? 'Hermes' : 'Codex'} · OpenRouter`
+                          : 'Codex'}{' '}
+                  instance
+                </span>
+                <span className="text-center text-[10px] leading-snug text-zinc-500">
+                  {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
+                </span>
+              </button>
+              <button
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1, openrouterHarness)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
@@ -418,11 +452,7 @@ export function EnginePicker({
                   {showLanes && lanes > 1 ? `Process · ${lanes} lanes` : 'Process'}
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {engine === 'openrouter'
-                    ? 'One-shot or-agent run (OpenRouter has no interactive instance).'
-                    : showLanes && lanes > 1
-                      ? `Fan out ${lanes} parallel variant runs.`
-                      : 'Fire-and-forget background run.'}
+                  {showLanes && lanes > 1 ? `Fan out ${lanes} parallel variant runs.` : 'Fire-and-forget background run.'}
                 </span>
               </button>
             </div>

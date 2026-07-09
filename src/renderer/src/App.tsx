@@ -124,6 +124,7 @@ type Saved = {
   remote?: Choice['remote']
   loopId?: string
   loopRole?: 'driver' | 'worker'
+  openrouterHarness?: 'codex' | 'hermes'
 }
 const restored: Saved[] = (() => {
   try {
@@ -156,6 +157,7 @@ export default function App() {
           remote: s.remote,
           loopId: s.loopId,
           loopRole: s.loopRole,
+          openrouterHarness: s.openrouterHarness,
         },
         info: { sessionId: s.sessionId, cwd: s.cwd },
       }
@@ -180,6 +182,7 @@ export default function App() {
         remote: s.choice.remote,
         loopId: s.choice.loopId,
         loopRole: s.choice.loopRole,
+        openrouterHarness: s.choice.openrouterHarness,
       }))
       .filter((s) => s.sessionId && (s.engine !== 'local' || s.remote))
     localStorage.setItem('gt.openSessions', JSON.stringify(data))
@@ -429,9 +432,10 @@ export default function App() {
         }
         if (ev.tabId === 'terminal:new') {
           const payload = ev.payload || {}
-          const engine =
-            payload.engine === 'codex' || payload.engine === 'claude' || payload.engine === 'cursor' || payload.engine === 'local'
-              ? payload.engine
+          const eng = payload.engine
+          const engine: SessionEngine =
+            eng === 'codex' || eng === 'claude' || eng === 'cursor' || eng === 'local' || eng === 'openrouter' || eng === 'hermes'
+              ? eng
               : 'claude'
           const remotePayload = payload.remote as unknown
           const remote =
@@ -442,12 +446,14 @@ export default function App() {
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
+          const model = typeof payload.model === 'string' ? payload.model : undefined
+          const openrouterHarness = payload.openrouterHarness === 'hermes' || payload.openrouterHarness === 'codex' ? payload.openrouterHarness : undefined
           const key = crypto.randomUUID()
           setSessions((s) => [
             ...s,
             {
               key,
-              choice: { mode: 'new', engine, cwd, name, initialInput, ticketSlug, remote },
+              choice: { mode: 'new', engine, cwd, name, initialInput, ticketSlug, remote, model, openrouterHarness },
               info: { sessionId: '', cwd },
             },
           ])

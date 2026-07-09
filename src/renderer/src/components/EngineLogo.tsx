@@ -1,16 +1,17 @@
-import { Waypoints } from 'lucide-react'
+import { Waypoints, Feather } from 'lucide-react'
 import type { Engine } from '../lib/types'
 import openaiLogo from '../assets/openai.svg'
 import claudeLogo from '../assets/claude.svg'
 import cursorLogo from '../assets/cursor.png'
 import { engineLabel } from '../lib/engines'
 
-// OpenRouter ships no wordmark asset — render a lucide glyph for it instead.
+// OpenRouter and Hermes ship no wordmark asset — render a lucide glyph instead.
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
   claude: claudeLogo,
   cursor: cursorLogo,
   openrouter: '',
+  hermes: '',
 }
 
 // Single source for the engine wordmark — anywhere we show an engine
@@ -27,6 +28,9 @@ export function EngineLogo({
 }) {
   if (engine === 'openrouter') {
     return <Waypoints size={size} strokeWidth={2} className={`inline-block shrink-0 ${className}`} aria-label="OpenRouter" />
+  }
+  if (engine === 'hermes') {
+    return <Feather size={size} strokeWidth={2} className={`inline-block shrink-0 ${className}`} aria-label="Hermes" />
   }
   const src = LOGO[engine as Engine]
   if (!src) return null

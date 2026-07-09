@@ -444,7 +444,7 @@ export type DocsTree = {
   categories: { id: DocCategory; label: string; items: DocEntry[] }[]
 }
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
 export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
@@ -1464,6 +1464,7 @@ export type GtApi = {
       pipeline?: string,
       model?: string,
       remote?: RemoteSession,
+      openrouterHarness?: 'codex' | 'hermes',
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,

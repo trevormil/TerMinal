@@ -356,11 +356,6 @@ function AgentDesigner({
   useEffect(() => {
     window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
   }, [])
-  // OpenRouter is a one-shot harness (or-agent) with no interactive instance —
-  // force the designer to run as a Process when it's the chosen engine.
-  useEffect(() => {
-    if (engine === 'openrouter') setLaunchMode('process')
-  }, [engine])
 
   const submit = async () => {
     const t = text.trim()
@@ -495,11 +490,9 @@ function AgentDesigner({
             <select
               value={launchMode}
               onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
-              disabled={engine === 'openrouter'}
-              title={engine === 'openrouter' ? 'OpenRouter runs as a one-shot Process (no interactive instance)' : undefined}
               className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60 disabled:opacity-50"
             >
-              {engine !== 'openrouter' && <option value="terminal">{engineInstanceLabel(engine)} instance</option>}
+              <option value="terminal">{engineInstanceLabel(engine)} instance</option>
               <option value="process">Process</option>
             </select>
           </label>
@@ -908,8 +901,6 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
 
   const launch = async (engine: Engine, model?: string, launchMode: LaunchMode = 'terminal') => {
     if (!detail) return
-    // OpenRouter has no interactive instance — always run it as a process.
-    if (engine === 'openrouter') launchMode = 'process'
     if (launchMode === 'process') {
       const r = await window.gt.persistentAgents.run(detail.id, task, engine, model)
       if ('error' in r) {
@@ -1722,8 +1713,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [agentMode, selectedDefinition, selAgentId])
 
-  const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string) => {
-    const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx))
+  const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string, openrouterHarness?: 'codex' | 'hermes') => {
+    const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx), openrouterHarness)
     if ('error' in r) {
       setOutputs((o) => ({ ...o, __err: r.error }))
       return
@@ -2530,19 +2521,19 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           showPersona={false}
           showPipeline={false}
           onClose={() => setPicking(null)}
-          onPick={(e, persona, pipeline, model, launchMode) => {
+          onPick={(e, persona, pipeline, model, launchMode, _ctx, _lanes, openrouterHarness) => {
             const selectedAgent = (agents || []).find((a) => a.id === picking.id)
-            // OpenRouter has no interactive instance — always run as a process.
-            if (launchMode === 'terminal' && e !== 'openrouter' && selectedAgent) {
+            if (launchMode === 'terminal' && selectedAgent) {
               openPromptInTerminal({
                 engine: e,
                 cwd: ctx.repoRoot,
                 name: selectedAgent.title,
                 prompt: agentPrompt(selectedAgent, { persona, pipeline, model }),
                 remote: remoteForTabContext(ctx),
+                openrouterHarness,
               })
             } else {
-              run(picking.id, e, persona, pipeline, model)
+              run(picking.id, e, persona, pipeline, model, openrouterHarness)
             }
             setPicking(null)
           }}

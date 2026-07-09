@@ -43,12 +43,14 @@ export type Choice = {
   /** Set on the two sessions of a live-paired loop, linking them to a loop id. */
   loopId?: string
   loopRole?: 'driver' | 'worker'
+  /** Which harness runs an `openrouter` session (default 'codex'). */
+  openrouterHarness?: 'codex' | 'hermes'
 }
 
-// Loop roles run interactive skill-driven agents, so only the three skill-capable
-// engines are offered (openrouter is Process-only; local is not an agent).
-export type LoopEngine = 'claude' | 'codex' | 'cursor'
-export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor']
+// Loop roles run interactive skill-driven agents (openrouter is a harness
+// dimension, not a role engine; local is not an agent).
+export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
+export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor', 'hermes']
 export type PairedLoopConfig = {
   goal: string
   repoRoot: string
@@ -189,6 +191,7 @@ export function EntryScreen({
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
   const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
+  const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([])
   const [remoteHostId, setRemoteHostId] = useState(lockedRemote?.hostId || '')
@@ -408,6 +411,7 @@ export function EntryScreen({
       model: isAiEngine(engine) ? model : undefined,
       cwd: location === 'remote' ? remoteCwd : cwd.trim() || undefined,
       name: name.trim() || undefined,
+      openrouterHarness: engine === 'openrouter' ? openrouterHarness : undefined,
     }
     if (location !== 'remote' || !remoteHost) return base
     return {
@@ -458,7 +462,7 @@ export function EntryScreen({
       : projParent
         ? tilde(projParent)
         : parentLabel
-  const engineOptions = ['local', 'claude', 'codex', 'cursor'] as SessionEngine[]
+  const engineOptions = ['local', 'claude', 'codex', 'cursor', 'openrouter', 'hermes'] as SessionEngine[]
   const daemonLabel =
     location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'
   const daemonSubLabel =
@@ -656,7 +660,7 @@ export function EntryScreen({
             {mode === 'single' && (
             <div>
               <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                 {engineOptions.map((e) => (
                   <button
                     key={e}
@@ -671,15 +675,28 @@ export function EntryScreen({
                     <span className="min-w-0">
                       <span className="block truncate text-[12.5px] font-semibold">{sessionEngineLabel(e)}</span>
                       <span className="block truncate text-[9.5px] font-normal text-zinc-600">
-                        {e === 'local' ? 'shell' : e === 'cursor' ? 'agent' : 'code'}
+                        {e === 'local' ? 'shell' : e === 'cursor' ? 'agent' : e === 'openrouter' ? 'via harness' : e === 'hermes' ? 'Nous' : 'code'}
                       </span>
                     </span>
                   </button>
                 ))}
               </div>
-              {/* OpenRouter is intentionally absent: it runs on the one-shot
-                  or-agent harness (no interactive REPL), so it's only offered for
-                  agents & schedules, never interactive terminal sessions. */}
+              {engine === 'openrouter' && (
+                <div className="mt-3">
+                  <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Harness</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['codex', 'hermes'] as const).map((h) => (
+                      <button key={h} onClick={() => setOpenrouterHarness(h)} className={pickButton(openrouterHarness === h)}>
+                        <EngineLogo engine={h} size={15} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
+                          <span className="block truncate text-[9.5px] font-normal text-zinc-600">runs the OpenRouter model</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {isAiEngine(engine) && (
                 <div className="mt-3">
                   <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Model</div>

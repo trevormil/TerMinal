@@ -16,7 +16,7 @@
 // with an enforced machine-checkable acceptance criterion (or an explicit user
 // request), and re-run that check afterward — escalate to your own model on fail.
 
-import { loadRegistry, readSpend, logSpend, summarize, budgetBlock } from "../model-routing/lib.ts"
+import { loadRegistry, logSpend } from "../model-routing/lib.ts"
 
 const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
@@ -33,11 +33,6 @@ const reg = await loadRegistry()
 const slug = model ?? reg.defaults?.agentic
 if (!slug) { console.error("or-agent: no --model and no registry agentic default"); process.exit(2) }
 
-// Budget guard (daily pool + per-session cap).
-const sums = summarize(await readSpend(), { session })
-const over = budgetBlock(reg, sums, session)
-if (over) { console.error(`or-agent: ${over}`); process.exit(3) }
-
 async function usage(): Promise<number> {
   try {
     const r = await fetch("https://openrouter.ai/api/v1/key", { headers: { Authorization: `Bearer ${key}` } })
@@ -46,8 +41,7 @@ async function usage(): Promise<number> {
 }
 
 const before = await usage()
-const cap = session ? ` session=$${sums.spentSession.toFixed(4)}/$${reg.budget?.perSessionCapUSD}` : ""
-console.error(`or-agent: running codex on ${slug} (dir=${dir}, today=$${sums.spentToday.toFixed(4)}/$${reg.budget?.dailyPoolUSD}${cap})`)
+console.error(`or-agent: running codex on ${slug} (dir=${dir})`)
 
 const proc = Bun.spawn(
   ["codex", "exec", "-c", "model_provider=openrouter", "-m", slug, "-C", dir,

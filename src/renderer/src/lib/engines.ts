@@ -5,6 +5,7 @@ export const ENGINE_LABEL: Record<Engine, string> = {
   codex: 'Codex',
   cursor: 'Cursor',
   openrouter: 'OpenRouter',
+  hermes: 'Hermes',
 }
 
 export const SESSION_ENGINE_LABEL: Record<SessionEngine, string> = {
@@ -61,17 +62,28 @@ export const ENGINE_MODELS: Record<Engine, ModelOption[]> = {
     { id: 'google/gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite' },
     { id: 'openai/gpt-5.1-codex-mini', label: 'gpt-5.1-codex-mini' },
   ],
+  // Hermes targets many providers; the model step is free-text. A short list of
+  // common slugs seeds it (OpenRouter-style: any provider/model slug works).
+  hermes: [
+    { id: 'anthropic/claude-sonnet-4.6', label: 'claude-sonnet-4.6' },
+    { id: 'openai/gpt-5.1', label: 'gpt-5.1' },
+    { id: 'deepseek/deepseek-v3.2', label: 'deepseek-v3.2' },
+    { id: 'moonshotai/kimi-k2.5', label: 'kimi-k2.5' },
+  ],
 }
 
 export const ENGINE_VENDOR: Record<Engine, string> = {
   claude: 'Anthropic Claude',
   codex: 'OpenAI Codex',
   cursor: 'Cursor Agent',
-  openrouter: 'OpenRouter · via Codex (or-agent)',
+  openrouter: 'OpenRouter · Codex or Hermes harness',
+  hermes: 'Nous Hermes',
 }
 
-/** OpenRouter takes an arbitrary model slug — its step shows a free-text field. */
-export const engineAllowsCustomModel = (engine: Engine): boolean => engine === 'openrouter'
+/** Engines that take an arbitrary model slug — their step shows a free-text field.
+ *  OpenRouter (any OR slug) and Hermes (any provider/model slug). */
+export const engineAllowsCustomModel = (engine: Engine): boolean =>
+  engine === 'openrouter' || engine === 'hermes'
 
 export function sessionEngineLabel(engine: SessionEngine | string): string {
   return SESSION_ENGINE_LABEL[engine as SessionEngine] || engine

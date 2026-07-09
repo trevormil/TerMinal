@@ -4,23 +4,35 @@ import type { Engine, Persona, RemoteSession, TabContext } from './types'
 export type LaunchMode = 'process' | 'terminal'
 
 export const engineInstanceLabel = (engine: Engine): string =>
-  engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'
+  engine === 'claude'
+    ? 'Claude Code'
+    : engine === 'cursor'
+      ? 'Cursor Agent'
+      : engine === 'hermes'
+        ? 'Hermes'
+        : engine === 'openrouter'
+          ? 'OpenRouter'
+          : 'Codex'
 
 export function openPromptInTerminal(input: {
   engine: Engine
   cwd: string
   name: string
   prompt: string
+  model?: string
   ticketSlug?: string
   remote?: RemoteSession
+  openrouterHarness?: 'codex' | 'hermes'
 }): void {
   navigateTo('terminal:new', {
     engine: input.engine,
     cwd: input.cwd,
     name: input.name,
     initialInput: input.prompt,
+    model: input.model,
     ticketSlug: input.ticketSlug,
     remote: input.remote,
+    openrouterHarness: input.openrouterHarness,
   })
 }
 

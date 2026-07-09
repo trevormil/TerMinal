@@ -72,6 +72,7 @@ const emptyDaemon = (): DaemonCfg => ({
     claude: { path: '', defaultModel: '' },
     cursor: { path: '', defaultModel: '' },
     openrouter: { path: '', defaultModel: '' },
+    hermes: { path: '', defaultModel: '' },
   },
   defaultEngine: 'claude',
   forge: 'auto',
@@ -93,6 +94,7 @@ const mergeDaemon = (base: DaemonCfg, patch: Partial<Omit<DaemonCfg, 'engines'>>
     claude: { ...base.engines.claude, ...(patch.engines?.claude || {}) },
     cursor: { ...base.engines.cursor, ...(patch.engines?.cursor || {}) },
     openrouter: { ...base.engines.openrouter, ...(patch.engines?.openrouter || {}) },
+    hermes: { ...base.engines.hermes, ...(patch.engines?.hermes || {}) },
   },
 })
 
@@ -998,6 +1000,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       'google/gemini-3.1-flash-lite',
       'openai/gpt-5.1-codex-mini',
     ],
+    hermes: ['', 'anthropic/claude-sonnet-4.6', 'openai/gpt-5.1', 'deepseek/deepseek-v3.2', 'moonshotai/kimi-k2.5'],
   }
   const engineRow = (e: Engine, vendor: string) => {
     const remoteDetected =
@@ -1458,7 +1461,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               {engineRow('codex', 'OpenAI Codex')}
               {engineRow('claude', 'Anthropic Claude')}
               {engineRow('cursor', 'Cursor Agent')}
-              {!selectedIsRemote && engineRow('openrouter', 'OpenRouter · via Codex (or-agent)')}
+              {!selectedIsRemote && engineRow('openrouter', 'OpenRouter · Codex or Hermes harness')}
+              {!selectedIsRemote && engineRow('hermes', 'Nous Hermes')}
             </div>
             {!selectedIsRemote && (
               <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">

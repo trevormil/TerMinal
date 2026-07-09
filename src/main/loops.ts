@@ -28,7 +28,7 @@ import { gateSpawn } from './budgets'
 const CFG = join(homedir(), '.config', 'TerMinal')
 const LOOPS_FILE = join(CFG, 'loops.json')
 
-export type LoopEngine = 'claude' | 'codex' | 'cursor'
+export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
 export type LoopRole = 'planner' | 'generator' | 'evaluator'
 export type LoopPhase = 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
 export type LoopStatus = 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
@@ -360,6 +360,13 @@ function buildTurnCommand(
         ...(model ? ['--model', model] : []),
         prompt,
       ],
+    }
+  if (rec.engine === 'hermes')
+    return {
+      // Hermes one-shot; runs in `dir` via the spawn cwd. --yolo --accept-hooks
+      // keep it headless. -m is the model/provider slug.
+      bin: enginePath('hermes'),
+      args: ['-z', prompt, ...(model ? ['-m', model] : []), '--yolo', '--accept-hooks'],
     }
   return {
     bin: enginePath('codex'),

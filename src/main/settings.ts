@@ -7,8 +7,8 @@ import { homedir } from 'node:os'
 // read time" (e.g. projectsDir → your home dir). Legacy files in the old
 // { telegram, telegramControl } shape are migrated on read.
 
-export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter'
-export const ENGINE_IDS: EngineId[] = ['codex', 'claude', 'cursor', 'openrouter']
+export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
+export const ENGINE_IDS: EngineId[] = ['codex', 'claude', 'cursor', 'openrouter', 'hermes']
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
@@ -134,6 +134,7 @@ export function defaultDaemonSettings(): DaemonCfg {
       claude: { path: '', defaultModel: '' },
       cursor: { path: '', defaultModel: '' },
       openrouter: { path: '', defaultModel: '' },
+      hermes: { path: '', defaultModel: '' },
     },
     defaultEngine: 'claude',
     forge: 'auto',
@@ -409,6 +410,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       claude: { ...cur.engines.claude, ...(engines?.claude || {}) },
       cursor: { ...cur.engines.cursor, ...(engines?.cursor || {}) },
       openrouter: { ...cur.engines.openrouter, ...(engines?.openrouter || {}) },
+      hermes: { ...cur.engines.hermes, ...(engines?.hermes || {}) },
     },
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
     noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,

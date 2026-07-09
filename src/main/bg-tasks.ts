@@ -41,7 +41,7 @@ export type BgTask = {
   repo: string // basename for display
   repoRoot: string // absolute path
   prompt: string
-  engine: 'claude' | 'codex' | 'cursor' | 'openrouter'
+  engine: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes'
   model?: string
   worktree: string
   branch: string
@@ -110,7 +110,7 @@ export function readBgTaskLog(id: string): string {
 export type SpawnBgInput = {
   repoRoot: string
   prompt: string
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter'
+  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes'
   model?: string
   /** Backlog ticket this task is working, if any. */
   ticketSlug?: string
@@ -196,18 +196,29 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
               enrichedPrompt,
             ],
           }
-        : {
-            bin: enginePath('codex'),
-            args: [
-              'exec',
-              '-s',
-              'danger-full-access',
-              '-C',
-              worktree,
-              ...(effectiveModel ? ['--model', effectiveModel] : []),
-              enrichedPrompt,
-            ],
-          }
+        : engine === 'hermes'
+          ? {
+              bin: enginePath('hermes'),
+              args: ['-z', enrichedPrompt, ...(effectiveModel ? ['-m', effectiveModel] : []), '--yolo', '--accept-hooks'],
+            }
+          : engine === 'openrouter'
+            ? {
+                // or-agent = Codex driven by an OpenRouter model (default harness).
+                bin: enginePath('openrouter'),
+                args: ['--dir', worktree, ...(effectiveModel ? ['--model', effectiveModel] : []), enrichedPrompt],
+              }
+            : {
+                bin: enginePath('codex'),
+                args: [
+                  'exec',
+                  '-s',
+                  'danger-full-access',
+                  '-C',
+                  worktree,
+                  ...(effectiveModel ? ['--model', effectiveModel] : []),
+                  enrichedPrompt,
+                ],
+              }
 
   // Spawn the engine directly. Avoid login shells and `script(1)` here: both
   // can make macOS attribute broad home-folder probes to TerMinal and can leak

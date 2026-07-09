@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 type StartOpts = {
   mode: 'new' | 'resume'
-  engine?: 'claude' | 'codex' | 'cursor' | 'local'
+  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
+  model?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -16,6 +17,9 @@ type StartOpts = {
     platform?: 'auto' | 'linux' | 'macos'
     daemon?: unknown
   }
+  loopId?: string
+  loopRole?: 'driver' | 'worker'
+  openrouterHarness?: 'codex' | 'hermes'
   cols: number
   rows: number
 }
@@ -86,8 +90,8 @@ const gt = {
       ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
-    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown) =>
-      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote),
+    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, openrouterHarness?: 'codex' | 'hermes') =>
+      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote, openrouterHarness),
     runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, lanes?: number) =>
       ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote, lanes),
     runPr: (

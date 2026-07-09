@@ -264,6 +264,7 @@ import {
   enginePath,
   engineDefaultModel,
   resolveEngineModel,
+  resolvedOpenRouterKey,
   classifyProjectsDir,
   type SettingsPatch,
   type RemotePlatform,
@@ -478,6 +479,8 @@ type StartOpts = {
   /** Live-paired loop linkage — set on the two sessions of a paired loop. */
   loopId?: string
   loopRole?: 'driver' | 'worker'
+  /** Which harness runs an `openrouter` session (default 'codex'). */
+  openrouterHarness?: 'codex' | 'hermes'
   cols: number
   rows: number
 }
@@ -554,6 +557,23 @@ function startSession(key: string, opts: StartOpts) {
     } else {
       sessionId = opts.sessionId || randomUUID()
     }
+  } else if (engine === 'hermes') {
+    // Interactive Hermes TUI. -m applies to --tui per hermes(1). No resume wiring.
+    sessionId = opts.sessionId || randomUUID()
+    args.push('--tui')
+    if (defaultModel) args.push('-m', defaultModel)
+  } else if (engine === 'openrouter') {
+    // Interactive OpenRouter via the chosen harness (default codex). enginePath
+    // ('openrouter') is the one-shot or-agent — NOT usable interactively — so the
+    // spawn binary is resolved from the harness below (openrouterLaunchBin).
+    sessionId = opts.sessionId || randomUUID()
+    if ((opts.openrouterHarness || 'codex') === 'hermes') {
+      args.push('--tui', '--provider', 'openrouter')
+      if (defaultModel) args.push('-m', defaultModel)
+    } else {
+      args.push('-c', 'model_provider=openrouter', '-s', 'danger-full-access', '-a', 'never')
+      if (defaultModel) args.push('-m', defaultModel)
+    }
   } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
@@ -563,7 +583,14 @@ function startSession(key: string, opts: StartOpts) {
     if (opts.name) args.push('--name', opts.name)
   }
   if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
-  if (defaultModel && engine !== 'local') args.push('--model', defaultModel)
+  // hermes/openrouter push their own `-m` above; everyone else takes --model.
+  if (defaultModel && engine !== 'local' && engine !== 'hermes' && engine !== 'openrouter')
+    args.push('--model', defaultModel)
+  // For interactive OpenRouter the binary is the harness (codex/hermes), not or-agent.
+  const openrouterLaunchBin =
+    engine === 'openrouter'
+      ? enginePath((opts.openrouterHarness || 'codex') === 'hermes' ? 'hermes' : 'codex')
+      : undefined
   const remoteEnginePath = remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
   const repoRoot = remote ? '' : repoRootOf(cwd)
   const repoLabel = repoLabelFor(displayCwd)
@@ -583,6 +610,12 @@ function startSession(key: string, opts: StartOpts) {
     GT_TERMINAL_CWD: displayCwd,
   } as Record<string, string>
   delete env.NO_COLOR
+  // OpenRouter (either harness) and Hermes bill through OpenRouter — inject the
+  // sealed key so the interactive session authenticates (mirrors the agent runner).
+  if (engine === 'openrouter' || engine === 'hermes') {
+    const orKey = resolvedOpenRouterKey()
+    if (orKey) env.OPENROUTER_API_KEY = orKey
+  }
   // Strip inherited Claude Code session-context markers. If TerMinal itself was
   // launched from inside a Claude Code session (e.g. `claude` in the terminal
   // that ran it), its env carries CLAUDE_CODE_CHILD_SESSION=1 + the parent's
@@ -612,7 +645,7 @@ function startSession(key: string, opts: StartOpts) {
           cwd,
           env,
         })
-      : pty.spawn(LOGIN_SHELL, ['-l', '-c', [enginePath(engine), ...args].map(shq).join(' ')], {
+      : pty.spawn(LOGIN_SHELL, ['-l', '-c', [openrouterLaunchBin || enginePath(engine), ...args].map(shq).join(' ')], {
           name: 'xterm-256color',
           cols: opts.cols || 80,
           rows: opts.rows || 30,
@@ -1242,10 +1275,10 @@ ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readAgentRunContexts(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) =>
+ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, openrouterHarness?: 'codex' | 'hermes') =>
   (async () => {
     const remote = requestedRemote(requested) || curRemote()
-    if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model)
+    if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model, openrouterHarness)
     const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
     if (!agent) return { error: 'unknown agent' }
     // OpenRouter runs on the bundled local or-agent harness — never dispatch it

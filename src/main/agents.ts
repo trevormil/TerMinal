@@ -38,7 +38,7 @@ import type { TicketAgent } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
 
 export type AgentModelPolicy = {
   default?: string
@@ -938,7 +938,44 @@ const OR_AUTONOMY_PREAMBLE = [
   'actually done. Only stop early if you are genuinely blocked — and then state the blocker explicitly.',
 ].join(' ')
 
-function buildCmd(engine: Engine, worktree: string, prompt: string, model?: string): string {
+// Hermes writes its run cost here (JSON, via --usage-file) — read back in
+// finalize(). Per-worktree path so it's unique per run and cleaned with the tree.
+export const HERMES_USAGE_FILE = '.terminal-hermes-usage.json'
+
+// Hermes one-shot (`-z`): prints only the final response to stdout, auto-bypasses
+// approvals (--yolo --accept-hooks), writes cost JSON to --usage-file. `provider`
+// forces OpenRouter when Hermes is used as the OpenRouter harness; omitted for the
+// standalone Hermes engine (uses Hermes' own configured provider).
+function hermesOneShot(bin: string, worktree: string, prompt: string, model?: string, provider?: string): string {
+  const usage = join(worktree, HERMES_USAGE_FILE)
+  const mFlag = model ? ` -m ${shq(model)}` : ''
+  const pFlag = provider ? ` --provider ${shq(provider)}` : ''
+  return `${shq(bin)} -z ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}${pFlag}${mFlag} --usage-file ${shq(usage)} --yolo --accept-hooks`
+}
+
+// Read the USD cost from a Hermes --usage-file JSON report. The key varies by
+// Hermes version, so try the common ones; undefined if unreadable/absent.
+function readHermesUsageCost(path: string): number | undefined {
+  try {
+    if (!existsSync(path)) return undefined
+    const j = JSON.parse(readFileSync(path, 'utf8'))
+    for (const k of ['cost', 'estimated_cost', 'cost_usd', 'total_cost', 'estimatedCost']) {
+      const v = j?.[k]
+      if (typeof v === 'number' && isFinite(v)) return v
+    }
+  } catch {
+    /* no/!json usage file — leave cost undefined */
+  }
+  return undefined
+}
+
+export function buildCmd(
+  engine: Engine,
+  worktree: string,
+  prompt: string,
+  model?: string,
+  harness?: 'codex' | 'hermes',
+): string {
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${shq(model)}` : ''
   if (engine === 'claude') {
@@ -947,18 +984,28 @@ function buildCmd(engine: Engine, worktree: string, prompt: string, model?: stri
   if (engine === 'cursor') {
     return `${shq(bin)} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
   }
+  if (engine === 'hermes') {
+    return hermesOneShot(bin, worktree, prompt, model)
+  }
   if (engine === 'openrouter') {
-    // or-agent = Codex driven by an OpenRouter model. --model is the OR slug
-    // (falls back to the registry agentic default when omitted). Reads
-    // OPENROUTER_API_KEY from the spawn env (injected by the runner).
-    // Weaker OR models tend to treat `codex exec` as a chat and stop to ask
-    // "shall I proceed?" — a blunt non-interactive preamble keeps them working.
+    // Hermes harness: `hermes -z --provider openrouter -m <slug>`.
+    if (harness === 'hermes') return hermesOneShot(enginePath('hermes'), worktree, prompt, model, 'openrouter')
+    // Codex harness (default): or-agent = Codex driven by an OpenRouter model.
+    // --model is the OR slug (falls back to the registry agentic default when
+    // omitted). Reads OPENROUTER_API_KEY from the spawn env. The blunt
+    // non-interactive preamble keeps weaker OR models from stopping to ask.
     return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
   }
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
 
-function displayCmd(engine: Engine, worktree: string, model?: string, scriptPath?: string | null): string {
+function displayCmd(
+  engine: Engine,
+  worktree: string,
+  model?: string,
+  scriptPath?: string | null,
+  harness?: 'codex' | 'hermes',
+): string {
   if (scriptPath) return `${scriptPath} # script-first agent`
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${model}` : ''
@@ -968,7 +1015,13 @@ function displayCmd(engine: Engine, worktree: string, model?: string, scriptPath
   if (engine === 'cursor') {
     return `${bin} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${worktree}${modelFlag} <prompt>`
   }
+  if (engine === 'hermes') {
+    return `${bin} -z <prompt>${model ? ` -m ${model}` : ''} --usage-file … --yolo --accept-hooks`
+  }
   if (engine === 'openrouter') {
+    if (harness === 'hermes') {
+      return `${enginePath('hermes')} -z <prompt> --provider openrouter${model ? ` -m ${model}` : ''} --usage-file … --yolo`
+    }
     return `${bin} --dir ${worktree}${modelFlag} <prompt>`
   }
   return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
@@ -1245,6 +1298,8 @@ type RunSpec = {
   force?: boolean
   /** Optional per-engine model alias passed to the CLI as `--model <name>`. */
   model?: string
+  /** For engine 'openrouter': which harness runs the slug (default 'codex'). */
+  openrouterHarness?: 'codex' | 'hermes'
   quality?: AgentQuality
   trace?: AgentRunTrace
   rerun?: RerunSpec
@@ -1317,7 +1372,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   const header =
     `▸ ${spec.title} · ${spec.engine}${spec.persona ? ` · as ${spec.persona}` : ''}` +
     `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n` +
-    `▸ command ${displayCmd(spec.engine, worktree, launchModel || undefined, launchScriptPath)}\n${forceLine}\n`
+    `▸ command ${displayCmd(spec.engine, worktree, launchModel || undefined, launchScriptPath, spec.openrouterHarness)}\n${forceLine}\n`
   const run: AgentRun = {
     id: randomUUID(),
     agentId: spec.id,
@@ -1360,9 +1415,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     run.status = status
     run.endedAt = Date.now()
     run.exitCode = exitCode
-    // OpenRouter runs report their own cost via or-agent's final line
-    // ("or-agent: done — cost $0.00548, exit 0"). Capture it for the Runs UI.
-    if (spec.engine === 'openrouter') {
+    // Cost capture for the Runs UI. Hermes (engine, or the OpenRouter Hermes
+    // harness) writes a JSON usage report to <worktree>/.terminal-hermes-usage.json;
+    // the OpenRouter Codex harness prints "or-agent: done — cost $X" instead.
+    const viaHermes = spec.engine === 'hermes' || (spec.engine === 'openrouter' && spec.openrouterHarness === 'hermes')
+    if (viaHermes) {
+      run.costUsd = readHermesUsageCost(join(run.worktree, HERMES_USAGE_FILE))
+    } else if (spec.engine === 'openrouter') {
       const m = run.output.match(/or-agent: done[^$]*\$([0-9]+(?:\.[0-9]+)?)/)
       if (m) run.costUsd = Number(m[1])
     }
@@ -1385,9 +1444,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // Try to extract claude -p / codex exec usage from the captured output
     // and record an AIRun ledger entry. Best-effort — silent on miss.
     try {
-      // cursor has no parseable usage; openrouter reports its own cost via
-      // run.costUsd (or-agent), so it must NOT be mis-parsed as a claude-p run.
-      if (spec.engine !== 'cursor' && spec.engine !== 'openrouter') {
+      // cursor has no parseable usage; openrouter + hermes report their own cost
+      // via run.costUsd, so they must NOT be mis-parsed as a claude-p run.
+      if (spec.engine !== 'cursor' && spec.engine !== 'openrouter' && spec.engine !== 'hermes') {
         recordRunnerInvocation({
           source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
           output: run.output,
@@ -1462,7 +1521,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     const promptForStep = spec.force && !scriptPath ? FORCE_PREAMBLE + contextPrompt : contextPrompt
     const cmd = scriptPath
       ? shq(scriptPath)
-      : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined)
+      : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined, spec.openrouterHarness)
     // Wrap the spawn in `script -q /dev/null` so engines think they're on
     // a TTY and stream output as it's generated. Without this, `claude -p`
     // buffers everything until exit and the run log shows nothing mid-run
@@ -1507,6 +1566,7 @@ export function runAgent(
   personaId?: string,
   pipelineId?: string,
   model?: string,
+  openrouterHarness?: 'codex' | 'hermes',
 ): AgentRun | { error: string } {
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
@@ -1533,6 +1593,7 @@ export function runAgent(
     inPlace: agent.inPlace,
     force: agent.force,
     model: resolvedModel,
+    openrouterHarness,
     quality: agent.quality || {
       acceptanceCriteria: agent.acceptanceCriteria,
       requiredArtifacts: agent.outputContract ? [agent.outputContract] : undefined,
