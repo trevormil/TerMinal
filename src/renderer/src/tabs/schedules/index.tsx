@@ -10,6 +10,7 @@ import {
   ChevronDown,
   FileText,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
@@ -556,7 +557,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
         <button
           onClick={async () => {
             const r = await window.gt.schedules.reconcile()
-            flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans removed`)
+            if ('error' in r) flash(`reconcile failed · ${r.error}`)
+            else if (r.failed.length)
+              flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans · ${r.failed.length} FAILED to load`)
+            else flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans removed`)
             reload()
           }}
           title="Re-sync launchd with the schedule list (removes orphans)"
@@ -614,6 +618,25 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                         className="inline-flex items-center gap-1 rounded-full border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20"
                       >
                         kill-switch · re-enable
+                      </button>
+                    )}
+                    {/* Enabled but not loaded in launchd → dark, will never fire.
+                        Surface it with a one-click reconcile. Suppressed for
+                        kill-switched schedules (their own badge explains it). */}
+                    {s.enabled && s.loaded === false && !disabled.has(s.id) && (
+                      <button
+                        onClick={async () => {
+                          const r = await window.gt.schedules.reconcile()
+                          if ('error' in r) flash(`reconcile failed · ${r.error}`)
+                          else if (r.failed.length) flash(`${r.failed.length} schedule(s) still failed to load`)
+                          else flash(`${s.agentTitle} · scheduled in launchd`)
+                          reload()
+                        }}
+                        title="This schedule is enabled but has no loaded launchd job — it will NOT fire. Click to reconcile (register it with launchd)."
+                        className="inline-flex items-center gap-1 rounded-full border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20"
+                      >
+                        <AlertTriangle size={10} strokeWidth={2.5} />
+                        not scheduled · reconcile
                       </button>
                     )}
                   </div>

@@ -331,6 +331,7 @@ import {
   unscheduleJob,
   removeAllJobs,
   runScheduleNow,
+  isJobLoaded,
 } from './launchd'
 import { registerMcpEverywhere } from './mcp-register'
 import {
@@ -930,7 +931,17 @@ function createWindow() {
     console.warn(`mcp register failed: ${(e as Error).message}`)
   }
   try {
-    reconcileSchedules()
+    const rec = reconcileSchedules()
+    if (rec.failed.length) {
+      // A schedule that didn't load into launchd never fires. Don't swallow it:
+      // log every failure and surface one Activity event so it's visible.
+      for (const f of rec.failed) console.warn(`schedule ${f.id} failed to load into launchd: ${f.error}`)
+      emitActivity({
+        kind: 'check',
+        title: `${rec.failed.length} schedule${rec.failed.length > 1 ? 's' : ''} failed to load into launchd`,
+        detail: `Won't fire until reconciled · ${rec.failed.map((f) => f.id).join(', ')}`,
+      })
+    }
   } catch {
     /* launchd unavailable — schedules still listable */
   }
@@ -1449,6 +1460,10 @@ ipcMain.handle('schedules:list', () => {
     ...s,
     describe: describeSpec(s.spec),
     nextRun: nextRun(s.spec, now, s.lastRun),
+    // Real "will it fire?" signal: an enabled schedule with no loaded launchd
+    // job is dark and never fires. Only probe enabled ones (disabled are
+    // intentionally not loaded). launchctl print is a few ms; counts are tiny.
+    loaded: s.enabled ? isJobLoaded(s.id) : undefined,
   }))
 })
 ipcMain.handle(

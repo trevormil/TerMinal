@@ -196,6 +196,29 @@ function bootout(id: string): void {
     /* not loaded */
   }
 }
+
+// Is a schedule's launchd job actually loaded? True only when the plist exists
+// AND launchd knows the label. This is the real "will it fire?" signal — a
+// schedule can be enabled in schedules.json yet have no loaded job (never
+// bootstrapped, or a bootstrap that failed silently), in which case it never
+// fires. Used to surface that state instead of pretending everything is fine.
+export function isJobLoaded(id: string): boolean {
+  if (!existsSync(plistPath(id))) return false
+  try {
+    execFileSync('launchctl', ['print', `${domain}/${label(id)}`], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Pure classifier (injectable probe): enabled schedules whose job isn't loaded
+// in launchd — i.e. "dark" schedules that will never fire. Disabled schedules
+// are never dark (they're intentionally not loaded).
+export function darkSchedules(schedules: Schedule[], isLoaded: (id: string) => boolean = isJobLoaded): Schedule[] {
+  return schedules.filter((s) => s.enabled && !isLoaded(s.id))
+}
+
 // Returns whether the job is actually loaded afterward (verified via print), so
 // callers can surface a silent launchd bind/load failure instead of swallowing it.
 function bootstrap(id: string): boolean {
@@ -208,12 +231,7 @@ function bootstrap(id: string): boolean {
       /* best effort — verified below */
     }
   }
-  try {
-    execFileSync('launchctl', ['print', `${domain}/${label(id)}`], { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
+  return isJobLoaded(id)
 }
 
 // Write + (re)load the plist for an enabled schedule; unload + delete if disabled.
@@ -258,12 +276,19 @@ function listCronPlists(): string[] {
 const idFromPlist = (f: string) => f.slice(PREFIX.length, -'.plist'.length)
 
 // Diff loaded jobs ↔ schedules.json: delete orphans, (re)load enabled schedules.
-// This is the no-orphans guarantee — run on launch and on demand.
-export function reconcileSchedules(): { loaded: number; removed: number } {
+// This is the no-orphans guarantee — run on launch and on demand. `loaded`
+// counts only jobs launchd ACTUALLY loaded; every syncSchedule failure lands in
+// `failed` so callers can surface it instead of silently reporting success.
+export function reconcileSchedules(): {
+  loaded: number
+  removed: number
+  failed: { id: string; error: string }[]
+} {
   const schedules = readSchedules()
   const byId = new Map(schedules.map((s) => [s.id, s]))
   let removed = 0
   let loaded = 0
+  const failed: { id: string; error: string }[] = []
   for (const f of listCronPlists()) {
     const id = idFromPlist(f)
     const s = byId.get(id)
@@ -274,10 +299,11 @@ export function reconcileSchedules(): { loaded: number; removed: number } {
   }
   for (const s of schedules)
     if (s.enabled) {
-      syncSchedule(s)
-      loaded++
+      const r = syncSchedule(s)
+      if (r.ok) loaded++
+      else failed.push({ id: s.id, error: r.error || 'unknown launchd error' })
     }
-  return { loaded, removed }
+  return { loaded, removed, failed }
 }
 
 export function removeAllJobs(): number {

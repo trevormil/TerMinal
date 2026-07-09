@@ -838,6 +838,9 @@ export type Schedule = {
   // added by schedules:list
   describe?: string
   nextRun?: number | null
+  // Whether launchd has the job loaded. undefined for disabled schedules /
+  // remote lists; false = enabled but dark (won't fire until reconciled).
+  loaded?: boolean
 }
 export type WindowStats = {
   events: number
@@ -1555,7 +1558,9 @@ export type GtApi = {
     runNow: (id: string) => Promise<{ ok: true }>
     runs: (id?: string) => Promise<CronRun[]>
     runLog: (runId: string) => Promise<string>
-    reconcile: () => Promise<{ loaded: number; removed: number }>
+    reconcile: () => Promise<
+      { loaded: number; removed: number; failed: { id: string; error: string }[] } | { ok: false; error: string }
+    >
     removeAll: () => Promise<{ removed: number }>
     disabledList: () => Promise<string[]>
     disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
