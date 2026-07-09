@@ -1,9 +1,9 @@
 ---
-name: loop
-description: "Run a long-running, self-driving agent loop (the 'let the model drive' pattern) with separated planner/generator/evaluator roles, an on-disk contract, and taste scoring. Use when the user runs /loop, says 'loop on this', 'let it run for a while', 'set up a generator/evaluator loop', or wants one agent to keep building-and-grading against a rubric until it converges. This is the operator entry point that sets up state and drives the cycle; the loop-planner, loop-generator, and loop-evaluator skills are the three roles it coordinates."
+name: loop-driver
+description: "Run a long-running, self-driving agent loop (the 'let the model drive' pattern) with separated planner/generator/evaluator roles, an on-disk contract, and taste scoring. Use when the user runs /loop-driver, says 'loop on this', 'let it run for a while', 'set up a generator/evaluator loop', or wants one agent to keep building-and-grading against a rubric until it converges. This is the operator entry point that sets up state and drives the cycle; the loop-planner, loop-implementer, and loop-evaluator skills are the three roles it coordinates."
 ---
 
-# /loop — the loop is the unit of work
+# /loop-driver — the loop is the unit of work
 
 Run a task as a **loop**, not a prompt. A prompt is typed once and forgotten; a
 loop runs while you sleep. The five verbs are `gather · reason · act · verify ·
@@ -24,18 +24,18 @@ Do **not** loop a one-shot task, a task with no verification, or anything whose
 
 ## Two execution modes (same loop, same disk state)
 
-A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of two
+A loop is one state directory (`.TerMinal/loop-drivers/<loop-id>/`) driven one of two
 ways. The roles, contract, and taste rubric are identical either way — only
 *who runs the turns* differs.
 
-- **Headless** (default) — TerMinal's loop engine (`src/main/loops.ts`)
+- **Headless** (default) — TerMinal's loop engine (`src/main/loop-drivers.ts`)
   auto-steps one-shot role turns: it spawns a fresh `planner`, then
   `generator`, then `evaluator` process, reconciles each on a `LOOP-DONE:`
   marker, and advances the phase. You watch it from the loop cockpit widget
   (Step / Restart / Stop). Best for unattended, converge-while-you-sleep runs.
 - **Live-paired** — two interactive TerMinal sessions play the roles
-  themselves: a **worker** session (`/loop-generator`, in the worktree) and a
-  **driver** session (`/loop` operator wearing the planner then evaluator hat,
+  themselves: a **worker** session (`/loop-implementer`, in the worktree) and a
+  **driver** session (`/loop-driver` operator wearing the planner then evaluator hat,
   in the main repo), talking over `events.jsonl`. Best when you want to watch,
   steer, and cross-check two models against each other in real time. Start one
   from TerMinal's "paired loop" launcher; the two sessions open side-by-side,
@@ -51,7 +51,7 @@ common failure: the model turns sycophantic the moment it grades its own work
 and the loop converges on slop.
 
 - **Planner** — turns the vague human sentence into a sprint spec. Never touches code. → `/loop-planner`
-- **Generator** — writes everything. Forbidden from grading its own output. → `/loop-generator`
+- **Generator** — writes everything. Forbidden from grading its own output. → `/loop-implementer`
 - **Evaluator** — reads diffs, runs the app, and is told from message one that the code is broken and its job is to prove it. → `/loop-evaluator`
 
 You (this skill) are the **operator**: you set up state, kick off each role,
@@ -62,7 +62,7 @@ as separate sessions (live-paired) or as separate headless invocations
 ## Setup
 
 1. Pick a `loop-id`: `<repo-name>-<short-slug>` (e.g. `bestie-onboarding-polish`).
-2. Create the loop directory `.TerMinal/loops/<loop-id>/` and initialize state per
+2. Create the loop directory `.TerMinal/loop-drivers/<loop-id>/` and initialize state per
    [references/state.md](references/state.md): `contract.md`, `feature_list.json`,
    `progress.md`, append-only `log.md`, `events.jsonl`, `scores/`.
 3. Create an isolated worktree for the generator so a restart is a clean delete:

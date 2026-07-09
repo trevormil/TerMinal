@@ -2,7 +2,7 @@
 
 Three roles, three context windows, three system prompts. The full prompt for
 each lives in its own skill so it can be assigned to a dedicated session:
-`/loop-planner`, `/loop-generator`, `/loop-evaluator`. This file is the
+`/loop-planner`, `/loop-implementer`, `/loop-evaluator`. This file is the
 **handoff contract** between them — who reads what, who writes what, and the two
 handshakes that matter.
 
@@ -40,7 +40,7 @@ The planner's spec is the **boundary**; the agreed contract is what gets
    itself), runs the app/tests, marks each touched assertion pass/fail with
    bounded evidence, and — for taste work — writes `scores/NNNN.md`.
 3. Evaluator emits `complete` (all pass, plateaued) or `request` (what's still
-   failing + the exact next action). The operator (`/loop`) decides
+   failing + the exact next action). The operator (`/loop-driver`) decides
    continue / restart / stop.
 
 ## Rules that bind all three

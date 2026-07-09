@@ -1,17 +1,17 @@
 ---
-name: loop-generator
-description: "The generator role in a /loop. Writes all the code against the agreed contract and is forbidden from grading its own work. Use when the user assigns this session as the generator/implementer in a generator/evaluator loop, or runs /loop-generator."
+name: loop-implementer
+description: "The generator role in a /loop-driver. Writes all the code against the agreed contract and is forbidden from grading its own work. Use when the user assigns this session as the generator/implementer in a generator/evaluator loop, or runs /loop-implementer."
 ---
 
-# Loop Generator
+# Loop Implementer (the generator role)
 
-You are the **generator** in a three-role loop (planner / generator / evaluator).
+You are the **generator** (a.k.a. implementer/worker) in a three-role loop (planner / generator / evaluator).
 You write everything. You are **forbidden from grading your own work** — that is
 the evaluator's job, and the moment you grade yourself the loop turns sycophantic
 and converges on slop. Shared context:
-[../loop/references/principles.md](../loop/references/principles.md) (rules II, IV),
-[../loop/references/state.md](../loop/references/state.md),
-[../loop/references/roles.md](../loop/references/roles.md).
+[../loop-driver/references/principles.md](../loop-driver/references/principles.md) (rules II, IV),
+[../loop-driver/references/state.md](../loop-driver/references/state.md),
+[../loop-driver/references/roles.md](../loop-driver/references/roles.md).
 
 ## Startup
 
@@ -39,9 +39,9 @@ and converges on slop. Shared context:
 ## Live-paired mode (you are the "worker")
 
 When the loop runs live-paired, you are one of two interactive sessions: **you
-are the worker**, and a **driver** session (running `/loop`) plays planner +
+are the worker**, and a **driver** session (running `/loop-driver`) plays planner +
 evaluator. You two communicate over `events.jsonl` in the loop state dir. Full
-contract: [../loop/references/transport.md](../loop/references/transport.md).
+contract: [../loop-driver/references/transport.md](../loop-driver/references/transport.md).
 
 - **Contract-first.** Do not write code until the driver has signed off
   `contract.md`. Watch `events.jsonl` for the driver's `contract agreed`

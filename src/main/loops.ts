@@ -367,10 +367,18 @@ function buildTurnCommand(
   }
 }
 
+// Skill that carries each role's full prompt. The worker/generator role lives in
+// the `loop-implementer` skill; shared references live under the `loop-driver` hub.
+const ROLE_SKILL: Record<LoopRole, string> = {
+  planner: 'loop-planner',
+  generator: 'loop-implementer',
+  evaluator: 'loop-evaluator',
+}
+
 function turnPrompt(rec: LoopRecord, role: LoopRole): string {
   const d = loopDir(rec)
   return [
-    `You are the ${role.toUpperCase()} in a TerMinal loop. Read and follow the /loop-${role} skill and its shared references under .claude/skills/loop/references/ (principles.md, state.md, roles.md, taste.md).`,
+    `You are the ${role.toUpperCase()} in a TerMinal loop. Read and follow the /${ROLE_SKILL[role]} skill and its shared references under .claude/skills/loop-driver/references/ (principles.md, state.md, roles.md, taste.md).`,
     ``,
     `Loop id: ${rec.id}`,
     `Goal: ${rec.goal}`,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Bell, ChevronDown, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
-import { EntryScreen, type Choice } from './components/EntryScreen'
+import { EntryScreen, type Choice, type PairedLoopConfig } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Onboarding } from './components/Onboarding'
@@ -9,7 +9,6 @@ import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
-import { PairedLoopLauncher, type PairedLoopConfig } from './components/PairedLoopLauncher'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
@@ -203,8 +202,13 @@ export default function App() {
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [palette, setPalette] = useState(false)
-  // Live-paired loop launcher: false | { repoRoot } (the repo the loop runs in).
-  const [pairedLauncher, setPairedLauncher] = useState<false | { repoRoot: string }>(false)
+  // Which mode the EntryScreen (New workspace screen) opens in: a normal single
+  // session, or a live-paired loop. Set by the paired-loop:new nav trigger;
+  // reset to 'single' whenever the screen closes so the next open defaults right.
+  const [entryMode, setEntryMode] = useState<'single' | 'loop'>('single')
+  useEffect(() => {
+    if (adding === false) setEntryMode('single')
+  }, [adding])
   const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
   const [appearance, setAppearance] = useState<AppearanceCfg>(defaultAppearance)
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
@@ -456,14 +460,15 @@ export default function App() {
         }
         if (ev.tabId === 'paired-loop:new') {
           const payload = ev.payload || {}
-          const repoRoot =
-            (typeof payload.repoRoot === 'string' && payload.repoRoot) || activeWorkspaceRoot || ''
-          setPairedLauncher({ repoRoot })
+          const repoRoot = (typeof payload.repoRoot === 'string' && payload.repoRoot) || activeWorkspaceRoot || ''
+          // Open the New workspace screen in loop mode. Lock it to a known repo
+          // root when we have one so the loop targets that workspace.
+          setEntryMode('loop')
+          setAdding(repoRoot ? { repoRoot } : 'workspace')
           setFleet(false)
           setInbox(false)
           setSearchOpen(false)
           setPalette(false)
-          if (sessions.length) setAdding(false)
           return
         }
         if (ev.tabId !== 'terminal') return
@@ -510,8 +515,10 @@ export default function App() {
     if (!rec || 'error' in rec) return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
     const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
     const tag = rec.id.slice(-4)
-    const workerSeed = `/loop-generator  (paired WORKER, loop ${rec.id}) — state dir: ${stateDir}; your worktree is the cwd. Contract-first: watch events.jsonl and wait for the driver's "contract agreed" before writing code; mark assertions done (never pass); keep listening until the loop stops. Goal: ${cfg.goal}`
-    const driverSeed = `/loop  (paired DRIVER, loop ${rec.id}) — state dir: ${stateDir}; the worker runs loop-generator in ${rec.worktree}. You are the operator: FIRST as planner negotiate contract.md into 10–30 testable assertions, THEN as evaluator grade adversarially; talk to the worker via events.jsonl and do not let it write code until the contract is agreed. Goal: ${cfg.goal}`
+    // Both sessions START in the main repo (so they group into one workspace and
+    // persist); the worker is told to do all its file work in the loop worktree.
+    const workerSeed = `/loop-implementer  (paired WORKER, loop ${rec.id}) — state dir: ${stateDir}. This session started in the main repo; do ALL file/code work in the loop worktree ${rec.worktree} (branch ${rec.branch}) — cd into it first. Contract-first: watch events.jsonl and wait for the driver's "contract agreed" before writing code; mark assertions done (never pass); keep listening until the loop stops. Goal: ${cfg.goal}`
+    const driverSeed = `/loop-driver  (paired DRIVER, loop ${rec.id}) — state dir: ${stateDir}; the worker works in the worktree ${rec.worktree}. You are the operator: FIRST as planner negotiate contract.md into 10–30 testable assertions, THEN as evaluator grade adversarially; talk to the worker via events.jsonl and do not let it write code until the contract is agreed. Goal: ${cfg.goal}`
     const workerKey = crypto.randomUUID()
     const driverKey = crypto.randomUUID()
     setSessions((s) => [
@@ -523,8 +530,8 @@ export default function App() {
       },
       {
         key: workerKey,
-        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.worktree, name: `loop·worker ${tag}`, initialInput: workerSeed, loopId: rec.id, loopRole: 'worker' },
-        info: { sessionId: '', cwd: rec.worktree },
+        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.repoRoot, name: `loop·worker ${tag}`, initialInput: workerSeed, loopId: rec.id, loopRole: 'worker' },
+        info: { sessionId: '', cwd: rec.repoRoot },
       },
     ])
     setGridKeys([driverKey, workerKey])
@@ -1343,6 +1350,8 @@ export default function App() {
                 onCancel={sessions.length ? () => setAdding(false) : undefined}
                 lockedCwd={adding && typeof adding === 'object' ? adding.repoRoot : undefined}
                 lockedRemote={adding && typeof adding === 'object' ? adding.remote : undefined}
+                initialMode={entryMode}
+                onStartLoop={startPairedLoop}
               />
             </div>
           )}
@@ -1370,13 +1379,6 @@ export default function App() {
             mrSym={activeCtx?.forgeSym}
             onActivateSession={activate}
             onClose={() => setPalette(false)}
-          />
-        )}
-        {pairedLauncher && (
-          <PairedLoopLauncher
-            repoRoot={pairedLauncher.repoRoot}
-            onLaunch={startPairedLoop}
-            onClose={() => setPairedLauncher(false)}
           />
         )}
       </div>

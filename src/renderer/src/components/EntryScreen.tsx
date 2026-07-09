@@ -15,7 +15,6 @@ import {
   Pin,
   Repeat,
 } from 'lucide-react'
-import { navigateTo } from '../lib/nav'
 import type {
   Engine,
   RemoteDirList,
@@ -24,7 +23,7 @@ import type {
   SessionEngine,
   SessionMeta,
 } from '../lib/types'
-import { engineLabel, sessionEngineLabel } from '../lib/engines'
+import { engineLabel, sessionEngineLabel, ENGINE_MODELS } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 import { ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
@@ -44,6 +43,73 @@ export type Choice = {
   /** Set on the two sessions of a live-paired loop, linking them to a loop id. */
   loopId?: string
   loopRole?: 'driver' | 'worker'
+}
+
+// Loop roles run interactive skill-driven agents, so only the three skill-capable
+// engines are offered (openrouter is Process-only; local is not an agent).
+export type LoopEngine = 'claude' | 'codex' | 'cursor'
+export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor']
+export type PairedLoopConfig = {
+  goal: string
+  repoRoot: string
+  driver: { engine: LoopEngine; model?: string }
+  worker: { engine: LoopEngine; model?: string }
+}
+
+// One loop role's engine + model, compact enough to sit two-up in the New
+// workspace screen (no separate modal).
+function RoleCard({
+  label,
+  hint,
+  engine,
+  model,
+  onEngine,
+  onModel,
+}: {
+  label: string
+  hint: string
+  engine: LoopEngine
+  model: string
+  onEngine: (e: LoopEngine) => void
+  onModel: (m: string) => void
+}) {
+  return (
+    <div className="flex-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">
+      <div className="text-[12px] font-semibold text-zinc-200">{label}</div>
+      <div className="mb-2 text-[10px] text-zinc-600">{hint}</div>
+      <div className="mb-2 grid grid-cols-3 gap-1">
+        {LOOP_ENGINES.map((e) => (
+          <button
+            key={e}
+            onClick={() => {
+              onEngine(e)
+              onModel('') // model is engine-specific — reset to the new engine's default
+            }}
+            className={`flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-[11px] transition-colors ${
+              engine === e
+                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <EngineLogo engine={e} size={12} />
+            {engineLabel(e)}
+          </button>
+        ))}
+      </div>
+      <select
+        value={model}
+        onChange={(e) => onModel(e.target.value)}
+        className="w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+      >
+        <option value="">Default model</option>
+        {ENGINE_MODELS[engine].map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
 }
 
 function rel(ms: number): string {
@@ -86,6 +152,8 @@ export function EntryScreen({
   onCancel,
   lockedCwd,
   lockedRemote,
+  initialMode = 'single',
+  onStartLoop,
 }: {
   onChoose: (c: Choice) => void
   onCancel?: () => void
@@ -95,7 +163,22 @@ export function EntryScreen({
    *  this repo. */
   lockedCwd?: string
   lockedRemote?: RemoteSession
+  /** 'loop' opens the screen in live-paired loop mode (goal + two role agents). */
+  initialMode?: 'single' | 'loop'
+  /** Launches a live-paired loop; resolves to an error string on failure. */
+  onStartLoop?: (cfg: PairedLoopConfig) => Promise<{ ok: boolean; error?: string }>
 }) {
+  // 'single' → one session (default). 'loop' → two linked role agents.
+  const [mode, setMode] = useState<'single' | 'loop'>(initialMode)
+  useEffect(() => setMode(initialMode), [initialMode])
+  // Live-paired loop fields (mode === 'loop').
+  const [goal, setGoal] = useState('')
+  const [workerEngine, setWorkerEngine] = useState<LoopEngine>('claude')
+  const [workerModel, setWorkerModel] = useState('')
+  const [driverEngine, setDriverEngine] = useState<LoopEngine>('claude')
+  const [driverModel, setDriverModel] = useState('')
+  const [loopBusy, setLoopBusy] = useState(false)
+  const [loopErr, setLoopErr] = useState('')
   const [sessionsByEngine, setSessionsByEngine] = useState<Partial<Record<Engine, SessionMeta[]>>>(
     {},
   )
@@ -207,6 +290,12 @@ export function EntryScreen({
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (isAiEngine(next)) loadEngineSessions(next)
   }
+  const switchMode = (next: 'single' | 'loop') => {
+    setMode(next)
+    setLoopErr('')
+    // Loops run in a local git worktree — remote daemons aren't supported.
+    if (next === 'loop' && location === 'remote') switchLocation('local')
+  }
   const switchLocation = (next: 'local' | 'remote') => {
     setLocation(next)
     setFilterDir('')
@@ -238,6 +327,24 @@ export function EntryScreen({
   const startScratch = async (e: SessionEngine) => {
     const dir = await window.gt.scratchDir()
     onChoose({ mode: 'new', engine: e, cwd: dir, name: 'scratch' })
+  }
+  const loopRepoRoot = (lockedCwd || cwd).trim()
+  const launchLoop = async () => {
+    const g = goal.trim()
+    if (!g || !loopRepoRoot || loopBusy || !onStartLoop) return
+    setLoopBusy(true)
+    setLoopErr('')
+    const res = await onStartLoop({
+      goal: g,
+      repoRoot: loopRepoRoot,
+      driver: { engine: driverEngine, model: driverModel || undefined },
+      worker: { engine: workerEngine, model: workerModel || undefined },
+    })
+    // On success, App closes this screen and splits the two sessions.
+    if (!res.ok) {
+      setLoopErr(res.error || 'Could not start the paired loop.')
+      setLoopBusy(false)
+    }
   }
   // selecting a folder targets the new session there AND filters resume to it
   const selectDir = (path: string) => {
@@ -449,6 +556,29 @@ export function EntryScreen({
           </div>
 
           <div className="space-y-4 p-4">
+            <div className="flex gap-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-1">
+              {(['single', 'loop'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => switchMode(m)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
+                    mode === m
+                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-200'
+                  }`}
+                >
+                  {m === 'single' ? <SquareTerminal size={13} strokeWidth={2} /> : <Repeat size={13} strokeWidth={2} />}
+                  {m === 'single' ? 'Single session' : 'Paired loop'}
+                </button>
+              ))}
+            </div>
+            {mode === 'loop' && (
+              <div className="text-[10.5px] leading-relaxed text-zinc-600">
+                Two linked agents in one worktree — a <span className="text-zinc-400">worker</span> writes code, a{' '}
+                <span className="text-zinc-400">driver</span> negotiates the contract and grades it. Opened side by
+                side, contract-first.
+              </div>
+            )}
             {!lockedCwd &&
               (() => {
                 const pins = pinnedWorkspaces
@@ -465,7 +595,7 @@ export function EntryScreen({
                       className="group inline-flex max-w-[240px] items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 py-1.5 pl-2.5 pr-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
                     >
                       <button
-                        onClick={() => onChoose(choiceFromRecent(r))}
+                        onClick={() => (mode === 'loop' ? selectDir(r) : onChoose(choiceFromRecent(r)))}
                         className="inline-flex min-w-0 items-center gap-1.5 text-left"
                       >
                         {isRemotePath(r) ? (
@@ -523,6 +653,7 @@ export function EntryScreen({
                 )
               })()}
 
+            {mode === 'single' && (
             <div>
               <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
               <div className="grid grid-cols-4 gap-2">
@@ -546,20 +677,9 @@ export function EntryScreen({
                   </button>
                 ))}
               </div>
-              {/* OpenRouter runs on the one-shot or-agent harness — no interactive
-                  REPL — so it's disabled here; use it for agents & schedules. */}
-              <button
-                type="button"
-                disabled
-                title="OpenRouter runs on the one-shot or-agent harness — available for agents & schedules, not interactive terminal sessions."
-                className={`${pickButton(false, true)} mt-2 w-full`}
-              >
-                <EngineLogo engine="openrouter" size={16} />
-                <span className="min-w-0">
-                  <span className="block truncate text-[12.5px] font-semibold">OpenRouter</span>
-                  <span className="block truncate text-[9.5px] font-normal text-zinc-700">agents &amp; schedules only</span>
-                </span>
-              </button>
+              {/* OpenRouter is intentionally absent: it runs on the one-shot
+                  or-agent harness (no interactive REPL), so it's only offered for
+                  agents & schedules, never interactive terminal sessions. */}
               {isAiEngine(engine) && (
                 <div className="mt-3">
                   <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Model</div>
@@ -569,8 +689,45 @@ export function EntryScreen({
                 </div>
               )}
             </div>
+            )}
 
-            {!lockedCwd && (
+            {mode === 'loop' && (
+              <>
+                <div>
+                  <div className={`${sectionTitle} mb-2`}>1 · Goal</div>
+                  <textarea
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value)}
+                    placeholder="What should this loop converge on? (the driver turns this into a gradable contract)"
+                    rows={3}
+                    className="w-full resize-none rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60"
+                  />
+                </div>
+                <div>
+                  <div className={`${sectionTitle} mb-2`}>2 · Role agents</div>
+                  <div className="flex gap-3">
+                    <RoleCard
+                      label="Worker"
+                      hint="writes code in the worktree"
+                      engine={workerEngine}
+                      model={workerModel}
+                      onEngine={setWorkerEngine}
+                      onModel={setWorkerModel}
+                    />
+                    <RoleCard
+                      label="Driver"
+                      hint="plans + grades, in the main repo"
+                      engine={driverEngine}
+                      model={driverModel}
+                      onEngine={setDriverEngine}
+                      onModel={setDriverModel}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {mode === 'single' && !lockedCwd && (
               <div>
                 <div className={`${sectionTitle} mb-2`}>2 · Daemon profile</div>
                 <div className="grid grid-cols-2 gap-2">
@@ -779,7 +936,7 @@ export function EntryScreen({
               )}
             </div>
 
-            {!lockedCwd && (
+            {mode === 'single' && !lockedCwd && (
               <div>
                 <div className={`${sectionTitle} mb-2`}>Optional · Create from template</div>
                 <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
@@ -821,35 +978,41 @@ export function EntryScreen({
               </div>
             )}
 
-            <div className="flex items-center gap-2 border-t border-[var(--gt-border)] pt-4">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="session name (optional)"
-                className={`${sel} min-w-0 flex-1`}
-              />
-              <button
-                onClick={() => navigateTo('paired-loop:new', { repoRoot: lockedCwd || cwd.trim() || undefined })}
-                disabled={location === 'remote'}
-                title="Two linked sessions — a worker + a driver — in a contract-first loop"
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gt-border)] px-3 py-2 text-[12px] font-semibold text-zinc-300 hover:bg-white/5 hover:text-zinc-100 disabled:opacity-40"
-              >
-                <Repeat size={14} strokeWidth={2.5} />
-                Paired loop
-              </button>
-              <button
-                onClick={() => onChoose(buildChoice())}
-                disabled={location === 'remote' && !remoteHost}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-              >
-                <Plus size={14} strokeWidth={2.5} />
-                New session
-              </button>
-            </div>
+            {mode === 'single' ? (
+              <div className="flex items-center gap-2 border-t border-[var(--gt-border)] pt-4">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="session name (optional)"
+                  className={`${sel} min-w-0 flex-1`}
+                />
+                <button
+                  onClick={() => onChoose(buildChoice())}
+                  disabled={location === 'remote' && !remoteHost}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  New session
+                </button>
+              </div>
+            ) : (
+              <div className="border-t border-[var(--gt-border)] pt-4">
+                {loopErr && <div className="mb-2 text-[11px] text-[var(--gt-red)]">{loopErr}</div>}
+                <button
+                  onClick={() => void launchLoop()}
+                  disabled={!goal.trim() || !loopRepoRoot || loopBusy}
+                  title={!loopRepoRoot ? 'Pick a workspace first' : undefined}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  <Repeat size={14} strokeWidth={2.5} />
+                  {loopBusy ? 'Starting…' : 'Start paired loop'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {canResume && (
+        {mode === 'single' && canResume && (
           <>
             <div className="mb-2 flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">

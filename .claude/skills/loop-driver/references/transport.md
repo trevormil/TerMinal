@@ -12,10 +12,10 @@ websocket router.
 In live-paired mode one loop is played by exactly two sessions, mapped onto the
 three canonical roles (planner / generator / evaluator):
 
-- **Worker** — runs `/loop-generator` in the loop worktree. Writes all the code.
+- **Worker** — runs `/loop-implementer` in the loop worktree. Writes all the code.
   Emits `ready-for-review`; waits for the driver; treats driver prompts as user
   input. Never grades itself.
-- **Driver** — runs `/loop` (the operator) in the main repo. Wears the
+- **Driver** — runs `/loop-driver` (the operator) in the main repo. Wears the
   **planner** hat first (negotiate `contract.md`), then the **evaluator** hat
   (read diffs + traces, run the app, grade each assertion, score taste), then
   decides continue / restart / stop and sends the worker its next prompt.
@@ -32,7 +32,7 @@ Use the first available transport:
 2. TerMinal MCP/CLI loop command if available.
 3. Activity/HITL events for coarse requests plus explicit session log lookup.
 4. Shared file fallback: **`events.jsonl` in the loop state dir**
-   (`<repoRoot>/.TerMinal/loops/<loop-id>/events.jsonl`).
+   (`<repoRoot>/.TerMinal/loop-drivers/<loop-id>/events.jsonl`).
 
 If no transport exists, report the exact missing transport and continue manually
 in chat.
