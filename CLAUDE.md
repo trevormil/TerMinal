@@ -11,32 +11,48 @@ agents, runs, HITL, docs, and per-session plugin widgets. See
 **Status:** Shipped, actively iterating. Daily-driver tool — Trevor uses it as
 the primary terminal across every other project in `~/CompSci/gauntlet/`.
 
-## TerMinal is direct-to-main (override of global §8)
+## TerMinal follows the full PR + human-merge flow (global §8)
 
-Global §8 forbids agent merges to main. **TerMinal is a vibe-coded personal
-project listed in the `feedback_gauntlet_repos_direct_main` exception** — agents
-may commit and push directly to `main` here. The `block-main-merge.sh` hook is
-intentionally NOT wired in `.claude/settings.json` (the hook file is kept under
-`.claude/hooks/` in case the policy ever flips).
+TerMinal has graduated from its old direct-to-main exception. It is now a mature
+daily-driver, so **agents follow global §8 in full**: work on a feature branch
+(prefer a `git worktree` under `~/CompSci/gauntlet/.worktrees/TerMinal/<branch>/`),
+push the branch, open a PR (`gh pr create`), and **stop for a human merge**.
+Never commit or push directly to `main`.
 
-This applies ONLY to TerMinal (and `project-template`). Work that targets sibling
-managed repos from inside a TerMinal session still follows the full PR + human-
-merge flow per global §8.
+This is enforced: the `block-main-merge.sh` PreToolUse hook IS wired in
+`.claude/settings.json` — it blocks `gh pr merge`, `git push … main`, and bare
+`git push` while on `main`. (The `TERMINAL_FORCE_MAIN=1` inline override still
+exists for human-approved emergency direct-main work, per global §8's FORCE
+exception — use it only when explicitly approved.)
+
+**Merge-ready bar** (global §8): code-review verdict `approve` + tests pass +
+zero findings at severity ≥ medium. The human runs the merge.
+
+## Release + version discipline (important now that we're PR-first)
+
+Because we no longer release on every commit, the installed
+`/Applications/TerMinal.app` can lag `main`. Keep them reconciled:
+
+- **Release from `main`, after a PR merges** — not from feature branches. Pull
+  `main`, then `bun run release`, so the installed app reflects merged code.
+- **Know what's installed:** the build stamp (commit sha + build time) is baked
+  in at build (`electron.vite.config.ts`) and shown in **Settings** (top-right).
+  Compare it against `git log` on `main` to see if the installed app is current.
+  A `-dirty` suffix means it was built from an uncommitted working tree.
+- While iterating on a branch, `bun run release` builds *that branch* — the stamp
+  will show the branch name; re-release from `main` once merged.
+
+Runbook: [`docs/runbooks/build-and-release.md`](./docs/runbooks/build-and-release.md).
 
 ## Commands
 
 ```bash
 bun install               # at repo root
 bun run dev               # dev server with HMR
-bun run release           # FULL rebuild → sign → reinstall /Applications/TerMinal.app
-bun test                  # 97 tests, ~30ms
+bun run release           # FULL rebuild → sign → reinstall /Applications/TerMinal.app (from main, post-merge)
+bun run test              # test suite
 bunx tsc --noEmit         # typecheck
 ```
-
-**Rule: after any substantive change, run `bun run release`.** Dev HMR is
-secondary — the installed `/Applications/TerMinal.app` is what the user
-actually uses; an out-of-date binary silently produces stale behavior. (See
-`feedback_gauntlet_terminal_restart_dev`.)
 
 ## Architecture pointers
 

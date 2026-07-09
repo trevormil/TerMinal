@@ -9,6 +9,26 @@ Produce a branded, double-clickable `TerMinal.app` you can drop in
 `/Applications` and pin to the Dock. Set `TERMINAL_APP_DEST` if you want to
 install somewhere else, such as a per-user `~/Applications/TerMinal.app`.
 
+## Release discipline (PR-first) + build stamp
+
+TerMinal follows the full PR + human-merge flow (CLAUDE.md / global §8). We no
+longer release on every commit, so the installed `/Applications/TerMinal.app`
+can lag `main`. To keep them honest:
+
+1. **Release from `main`, after the PR merges.** `git checkout main && git pull`,
+   then `bun run release`. Don't ship the installed app from a feature branch
+   (except for local testing — see below).
+2. **Check what's installed** in the app: **Settings → top-right build stamp**
+   (commit sha + build time). It's baked in at build time by
+   `electron.vite.config.ts` (`__BUILD_SHA__` / `__BUILD_BRANCH__` /
+   `__BUILD_TIME__`). Compare the sha to `git log --oneline -1 main`:
+   - matching sha (no `-dirty`) → installed app == merged main. ✅
+   - a branch name / `-dirty` suffix → you're running unmerged or uncommitted
+     code; re-release from clean `main` once the work has landed.
+3. **Testing a branch locally** is fine — `bun run release` builds the current
+   checkout and the stamp will show the branch, so it's obvious the installed
+   app is a preview, not `main`.
+
 ## One shot
 
 ```bash

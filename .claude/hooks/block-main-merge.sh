@@ -19,6 +19,10 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // ""')
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
 
+# FORCE exception (global CLAUDE.md §8): an explicit inline `TERMINAL_FORCE_MAIN=1`
+# prefix marks human-approved emergency direct-main work — allow it through.
+echo "$cmd" | grep -q 'TERMINAL_FORCE_MAIN=1' && exit 0
+
 block() {
   echo "BLOCKED: $1" >&2
   echo "Rule: no merges or pushes to main/master without human approval (global CLAUDE.md §8)." >&2
