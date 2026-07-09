@@ -1,7 +1,7 @@
 ---
 id: 14
 title: "Structural (difftastic) diff mode in MR Diff viewer"
-status: in-progress
+status: closed
 priority: medium
 horizon: now
 hitl: false

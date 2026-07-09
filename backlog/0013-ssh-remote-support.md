@@ -1,7 +1,7 @@
 ---
 id: 13
 title: "Daemon-first remote support — attach TerMinal to local or SSH hosts"
-status: in-progress
+status: closed
 priority: high
 horizon: next
 hitl: false
