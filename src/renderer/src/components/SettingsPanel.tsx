@@ -1806,6 +1806,11 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                   {tg.ok ? '✓ Sent — check your chat.' : tg.error}
                 </div>
               )}
+              {!!s.telegram.chatId && s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
+                <div className="text-[11px] text-amber-400">
+                  ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message @userinfobot to get it.
+                </div>
+              )}
               {s.telegram.control && (
                 <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
                   <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">
