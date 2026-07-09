@@ -391,19 +391,24 @@ export function EnginePicker({
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1)}
-                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
-              >
-                <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
-                <span className="text-[13px] font-semibold text-zinc-100">
-                  {engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'} instance
-                </span>
-                <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
-                </span>
-              </button>
+            {/* OpenRouter is a one-shot harness (or-agent) with no interactive
+                REPL, so it's Process-only — the "instance" mode would fall
+                through to a broken interactive spawn. */}
+            <div className={engine === 'openrouter' ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-2 gap-2'}>
+              {engine !== 'openrouter' && (
+                <button
+                  onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1)}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+                >
+                  <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                  <span className="text-[13px] font-semibold text-zinc-100">
+                    {engine === 'claude' ? 'Claude Code' : engine === 'cursor' ? 'Cursor Agent' : 'Codex'} instance
+                  </span>
+                  <span className="text-center text-[10px] leading-snug text-zinc-500">
+                    {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
+                  </span>
+                </button>
+              )}
               <button
                 onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
@@ -413,7 +418,11 @@ export function EnginePicker({
                   {showLanes && lanes > 1 ? `Process · ${lanes} lanes` : 'Process'}
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1 ? `Fan out ${lanes} parallel variant runs.` : 'Fire-and-forget background run.'}
+                  {engine === 'openrouter'
+                    ? 'One-shot or-agent run (OpenRouter has no interactive instance).'
+                    : showLanes && lanes > 1
+                      ? `Fan out ${lanes} parallel variant runs.`
+                      : 'Fire-and-forget background run.'}
                 </span>
               </button>
             </div>
