@@ -9,6 +9,8 @@ import {
   mergeSettingsPatch,
   classifyProjectsDir,
   resolveEngineModel,
+  resolveTelegramCreds,
+  telegramSidecarPayload,
 } from './settings'
 
 describe('migrate', () => {
@@ -219,6 +221,45 @@ describe('settings secrets', () => {
     expect((cur as any)[removedKey]).toBeUndefined()
     const next = mergeSettingsPatch(cur, { [removedKey]: { apiKey: 'still-nope' } } as any)
     expect((next as any)[removedKey]).toBeUndefined()
+  })
+})
+
+describe('telegram creds sidecar (out-of-process delivery)', () => {
+  const creds = { botToken: 'bot:123', chatId: '999' }
+
+  test('sidecar wins over settings.json', () => {
+    expect(
+      resolveTelegramCreds(creds, { botToken: 'stale', chatId: 'stale' }),
+    ).toEqual(creds)
+  })
+
+  test('falls back to a plaintext settings.json telegram block', () => {
+    expect(resolveTelegramCreds(null, creds)).toEqual(creds)
+  })
+
+  test('a sealed {__terminalSecret} object is NOT a usable token', () => {
+    // This is the core bug: out-of-process filers must skip the sealed object
+    // rather than send it as a broken request. Both sources sealed → null.
+    const sealed = { __terminalSecret: 'terminal-secret:v1', payload: 'abc' }
+    expect(
+      resolveTelegramCreds(null, { botToken: sealed, chatId: sealed }),
+    ).toBeNull()
+  })
+
+  test('missing / partial creds resolve to null', () => {
+    expect(resolveTelegramCreds(null, null)).toBeNull()
+    expect(resolveTelegramCreds(undefined, undefined)).toBeNull()
+    expect(resolveTelegramCreds({ botToken: 'x', chatId: '' }, null)).toBeNull()
+    expect(resolveTelegramCreds({ botToken: '', chatId: 'y' }, null)).toBeNull()
+    // a half-filled sidecar does NOT block the fully-configured settings source
+    expect(resolveTelegramCreds({ botToken: 'x', chatId: '' }, creds)).toEqual(creds)
+  })
+
+  test('telegramSidecarPayload mirrors only when both fields are set', () => {
+    const both = migrate({ telegram: { botToken: 'bot:1', chatId: '2' } })
+    expect(telegramSidecarPayload(both)).toEqual({ botToken: 'bot:1', chatId: '2' })
+    expect(telegramSidecarPayload(migrate({ telegram: { botToken: 'bot:1' } }))).toBeNull()
+    expect(telegramSidecarPayload(defaultSettings())).toBeNull()
   })
 })
 

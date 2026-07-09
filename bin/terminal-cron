@@ -50,6 +50,32 @@ const ACTIVITY = join(CFG, 'activity.jsonl')
 const CRON_LOG = join(CFG, 'cron.log')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
+const TG_SIDECAR = join(CFG, 'telegram.local.json')
+const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+
+// Resolve usable Telegram creds: the app seals its token in settings.json via
+// Electron safeStorage, which this launchd-spawned Bun process can't decrypt —
+// so the app mirrors decrypted creds to a 0600 sidecar we read here. A sealed
+// {__terminalSecret} object is skipped (not a usable string token). Canonical
+// impl + tests: src/main/settings.ts:resolveTelegramCreds — keep in sync.
+function tgCreds() {
+  const pick = (o) => {
+    const bt = o?.botToken
+    const ci = o?.chatId
+    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
+      ? { botToken: bt, chatId: ci }
+      : null
+  }
+  let sc = null
+  let st = null
+  try {
+    sc = JSON.parse(readFileSync(TG_SIDECAR, 'utf8'))
+  } catch {}
+  try {
+    st = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
+  } catch {}
+  return pick(sc) ?? pick(st)
+}
 
 function areaCandidates(area) {
   return {
@@ -287,8 +313,9 @@ function fileHitl(item) {
     // [Resolve] / [Tail run] buttons so the chat ping is one-tap actionable;
     // the in-app poll loop dispatches callback_query taps back to
     // resolveHitl + tailRun.
-    const t = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.telegram
-    if (t?.botToken && t?.chatId) {
+    const text = `⛔ HITL · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`
+    const t = tgCreds()
+    if (t) {
       const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${rec.id}` }]
       if (rec.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${rec.runId}` })
       fetch(`https://api.telegram.org/bot${t.botToken}/sendMessage`, {
@@ -296,11 +323,19 @@ function fileHitl(item) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           chat_id: t.chatId,
-          text: `⛔ HITL · ${rec.title}${rec.action ? ` — ${rec.action}` : ''}`,
+          text,
           reply_markup: { inline_keyboard: [row] },
         }),
         signal: AbortSignal.timeout(8000),
       }).catch(() => {})
+    } else if (existsSync(LEGACY_TG_SCRIPT)) {
+      // No native creds — fall back to the legacy script like the other filers
+      // do, so a cron-filed HITL is never silently undelivered.
+      try {
+        const child = spawn(LEGACY_TG_SCRIPT, ['--kind=blocked', text], { stdio: 'ignore' })
+        child.on('error', () => {})
+        child.unref()
+      } catch {}
     }
   } catch {}
 }

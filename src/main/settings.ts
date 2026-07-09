@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -419,7 +419,69 @@ export function patchSettings(patch: SettingsPatch): Settings {
   } catch {
     /* best effort */
   }
+  syncTelegramSidecar(next)
   return next
+}
+
+// --- telegram creds sidecar (out-of-process delivery) ------------------------
+//
+// The bin filers (terminal-cron / terminal-cli / terminal-mcp-server) file HITL
+// items and ping Telegram from plain Bun processes that CANNOT call Electron
+// safeStorage — so they can't decrypt the sealed token in settings.json. The
+// app therefore mirrors the DECRYPTED creds to a 0600 sidecar those processes
+// read. See resolveTelegramCreds for the read side (inlined identically in each
+// bin script). Deleted when creds are cleared so stale creds never linger.
+const TELEGRAM_SIDECAR = join(homedir(), '.config', 'TerMinal', 'telegram.local.json')
+
+/** The creds worth mirroring (both fields present), or null to clear. */
+export function telegramSidecarPayload(s: Settings): { botToken: string; chatId: string } | null {
+  const { botToken, chatId } = s.telegram
+  return botToken && chatId ? { botToken, chatId } : null
+}
+
+/**
+ * Resolve usable Telegram creds for an out-of-process filer: prefer the 0600
+ * sidecar, else a *plaintext* settings.json `telegram` block. A sealed
+ * `{__terminalSecret}` object is NOT a usable token (can't be opened without
+ * safeStorage), so it is skipped rather than sent as a broken request.
+ *
+ * Canonical impl + test target. bin/terminal-cron, bin/terminal-cli and
+ * bin/terminal-mcp-server inline a byte-identical copy (they are self-contained,
+ * no app-bundle imports) — keep them in sync with this.
+ */
+export function resolveTelegramCreds(
+  sidecar: unknown,
+  settingsTelegram: unknown,
+): { botToken: string; chatId: string } | null {
+  const pick = (o: unknown): { botToken: string; chatId: string } | null => {
+    if (!o || typeof o !== 'object') return null
+    const bt = (o as Record<string, unknown>).botToken
+    const ci = (o as Record<string, unknown>).chatId
+    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
+      ? { botToken: bt, chatId: ci }
+      : null
+  }
+  return pick(sidecar) ?? pick(settingsTelegram)
+}
+
+/** Mirror decrypted telegram creds to the 0600 sidecar, or remove it when cleared. */
+export function syncTelegramSidecar(s: Settings = readSettings()): void {
+  try {
+    const creds = telegramSidecarPayload(s)
+    if (creds) {
+      writeFileSync(TELEGRAM_SIDECAR, JSON.stringify(creds), { mode: 0o600 })
+      // writeFileSync only applies mode on create; force-tighten a pre-existing file.
+      try {
+        chmodSync(TELEGRAM_SIDECAR, 0o600)
+      } catch {
+        /* best effort */
+      }
+    } else if (existsSync(TELEGRAM_SIDECAR)) {
+      unlinkSync(TELEGRAM_SIDECAR)
+    }
+  } catch {
+    /* best effort — telegram is a non-critical side channel */
+  }
 }
 
 // --- resolution: turn '' defaults into concrete paths ------------------------
