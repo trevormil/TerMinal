@@ -15,7 +15,28 @@ import { spawn, spawnSync } from 'node:child_process'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const SETTINGS_FILE = join(CFG, 'settings.json')
+const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+
+// Resolve usable Telegram creds: the app seals its token in settings.json via
+// Electron safeStorage, which this plain Bun process can't decrypt — so the app
+// mirrors decrypted creds to a 0600 sidecar we read here. A sealed
+// {__terminalSecret} object is skipped (not a usable string token). Canonical
+// impl + tests: src/main/settings.ts:resolveTelegramCreds — keep in sync.
+function tgCreds() {
+  const pick = (o) => {
+    const bt = o?.botToken
+    const ci = o?.chatId
+    return typeof bt === 'string' && bt && typeof ci === 'string' && ci
+      ? { botToken: bt, chatId: ci }
+      : null
+  }
+  let sc = null
+  try {
+    sc = JSON.parse(readFileSync(TG_SIDECAR, 'utf8'))
+  } catch {}
+  return pick(sc) ?? pick(readSettings()?.telegram)
+}
 
 function readSettings() {
   try {
@@ -68,8 +89,8 @@ function areaPath(root, area) {
 }
 
 function pingTelegram(text, inlineKeyboard) {
-  const telegram = readSettings()?.telegram
-  if (telegram?.botToken && telegram?.chatId) {
+  const telegram = tgCreds()
+  if (telegram) {
     fetch(`https://api.telegram.org/bot${telegram.botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

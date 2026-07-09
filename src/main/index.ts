@@ -256,6 +256,7 @@ import {
   readSettings,
   patchSettings,
   setSettingsSecretStorage,
+  syncTelegramSidecar,
   telegramControlEnabled,
   resolvedProjectsDir,
   resolvedEditorApp,
@@ -396,6 +397,11 @@ setSettingsSecretStorage({
   seal: (value) => safeStorage.encryptString(value).toString('base64'),
   open: (payload) => safeStorage.decryptString(Buffer.from(payload, 'base64')),
 })
+
+// Mirror decrypted telegram creds to the 0600 sidecar on startup so out-of-process
+// filers (cron/CLI/MCP) can deliver HITL pings even for already-configured users
+// who won't re-save settings. Subsequent saves refresh it via patchSettings.
+syncTelegramSidecar()
 
 let win: BrowserWindow | null = null
 
