@@ -1213,7 +1213,12 @@ export function listSessions(engine?: 'claude' | 'codex' | 'cursor' | 'openroute
         ? listCodexSessions()
         : engine === 'cursor'
           ? listCursorSessions()
-          : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
+          : // hermes/openrouter keep their transcripts elsewhere (or one-shot) — no
+            // TerMinal-resumable sessions, so an explicit request returns none rather
+            // than leaking the Claude/Codex/Cursor list.
+            engine === 'hermes' || engine === 'openrouter'
+            ? []
+            : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)
 }
 

@@ -359,7 +359,9 @@ export function EntryScreen({
     if (dir) selectDir(dir)
   }
 
-  const canResume = isAiEngine(engine) && location === 'local' && !lockedRemote
+  // hermes/openrouter have no TerMinal-resumable transcripts — hide the resume list.
+  const canResume =
+    isAiEngine(engine) && engine !== 'hermes' && engine !== 'openrouter' && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const scopedSessionCount = sessions ? filterSessionMetas(sessions, { filterDir }).length : 0
   const shown = sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []
