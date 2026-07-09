@@ -146,16 +146,6 @@ function SectionKicker({ icon: Icon, title, meta }: { icon?: LucideIcon; title: 
     </div>
   )
 }
-// How the engine wraps the prompt at run time (worktree filled in per run).
-const runsAs = (engine: Engine): string =>
-  engine === 'claude'
-    ? "claude -p '<prompt>' --permission-mode auto"
-    : engine === 'cursor'
-      ? "cursor-agent -p --force --trust --workspace <worktree> '<prompt>'"
-      : engine === 'openrouter'
-        ? "or-agent --dir <worktree> --model <slug> '<prompt>'"
-        : "codex exec -s danger-full-access -C <worktree> '<prompt>'"
-
 const FIELD =
   'w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
 const AGENT_FILE_EXT: Record<string, string> = {
@@ -366,6 +356,11 @@ function AgentDesigner({
   useEffect(() => {
     window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
   }, [])
+  // OpenRouter is a one-shot harness (or-agent) with no interactive instance —
+  // force the designer to run as a Process when it's the chosen engine.
+  useEffect(() => {
+    if (engine === 'openrouter') setLaunchMode('process')
+  }, [engine])
 
   const submit = async () => {
     const t = text.trim()
@@ -500,9 +495,11 @@ function AgentDesigner({
             <select
               value={launchMode}
               onChange={(e) => setLaunchMode(e.target.value as LaunchMode)}
-              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+              disabled={engine === 'openrouter'}
+              title={engine === 'openrouter' ? 'OpenRouter runs as a one-shot Process (no interactive instance)' : undefined}
+              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60 disabled:opacity-50"
             >
-              <option value="terminal">{engineInstanceLabel(engine)} instance</option>
+              {engine !== 'openrouter' && <option value="terminal">{engineInstanceLabel(engine)} instance</option>}
               <option value="process">Process</option>
             </select>
           </label>
@@ -911,6 +908,8 @@ function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
 
   const launch = async (engine: Engine, model?: string, launchMode: LaunchMode = 'terminal') => {
     if (!detail) return
+    // OpenRouter has no interactive instance — always run it as a process.
+    if (engine === 'openrouter') launchMode = 'process'
     if (launchMode === 'process') {
       const r = await window.gt.persistentAgents.run(detail.id, task, engine, model)
       if ('error' in r) {
@@ -1517,6 +1516,10 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [selAgentId, setSelAgentId] = useState<string | null>(
     () => localStorage.getItem('gt.agents.sel') || null,
   )
+  // Detail view is split into horizontal tabs (contract first). Reset to the
+  // default tab whenever the selected agent changes.
+  const [detailTab, setDetailTab] = useState<'overview' | 'profile' | 'source' | 'runs'>('overview')
+  useEffect(() => setDetailTab('overview'), [selAgentId])
   useEffect(() => {
     localStorage.setItem('gt.agents.filter', agentFilter)
   }, [agentFilter])
@@ -1877,7 +1880,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           if (d.kind === 'persistent') localStorage.setItem('gt.persistentAgents.sel', d.ref.id)
                         }}
                         title={d.description || d.title}
-                        className={`flex w-full items-start gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                        className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-1.5 text-left ${
                           on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                         }`}
                       >
@@ -1888,27 +1891,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                             on ? 'text-[var(--gt-accent-light)]' : d.kind === 'persistent' ? 'text-[var(--gt-accent-light)]/60' : 'text-zinc-500'
                           }`}
                         />
-                        <span className="min-w-0 flex-1 space-y-0.5">
-                          <span className="block truncate text-[12px] font-medium text-zinc-100">{d.title}</span>
-                          <span className="flex min-w-0 flex-wrap items-center gap-1">
-                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
-                              {d.kind}
-                            </span>
-                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
-                              {d.runtime.mode}
-                            </span>
-                            <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
-                              {d.scope}
-                            </span>
-                          </span>
-                          {d.description && <span className="block truncate text-[10px] text-zinc-600">{d.description}</span>}
-                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-zinc-100">{d.title}</span>
                         {d.runtime.force && <ForceChip />}
-                        {d.runtime.mode === 'script' && (
-                          <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-[var(--gt-accent-light)]/70">
-                            sh
-                          </span>
-                        )}
                         {dot && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} title={dotTitle} />}
                       </button>
                     )
@@ -1959,7 +1943,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       key={a.id}
                       onClick={() => setSelAgentId(a.id)}
                       title={a.description || a.title}
-                      className={`flex w-full items-start gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                      className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-1.5 text-left ${
                         on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                       }`}
                     >
@@ -1970,24 +1954,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           on ? 'text-[var(--gt-accent-light)]' : 'text-zinc-500'
                         }`}
                       />
-                      <span className="min-w-0 flex-1 space-y-0.5">
-                        <span className="block truncate text-[12px] font-medium text-zinc-100">{a.title}</span>
-                        <span className="flex min-w-0 flex-wrap items-center gap-1">
-                          <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
-                            {a.source === 'repo' || a.source === 'repo-override' ? 'repo' : 'global'}
-                          </span>
-                          <span className="rounded border border-[var(--gt-border)]/60 px-1 py-px text-[9px] uppercase tracking-wide text-zinc-500">
-                            {a.hasScript ? 'script' : 'prompt'}
-                          </span>
-                        </span>
-                        {a.description && <span className="block truncate text-[10px] text-zinc-600">{a.description}</span>}
-                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-zinc-100">{a.title}</span>
                       {a.force && <ForceChip />}
-                      {a.hasScript && (
-                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-[var(--gt-accent-light)]/70">
-                          sh
-                        </span>
-                      )}
                       {dot && (
                         <span
                           className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`}
@@ -2119,15 +2087,13 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       {selectedAgent.description && (
                         <div className="mt-1 max-w-4xl text-[12px] leading-relaxed text-zinc-400">{selectedAgent.description}</div>
                       )}
-                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px] text-zinc-600">
-                        <span className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)]/70 bg-black/20 px-2 py-1">
-                          <EngineLogo engine={selectedAgent.engine || 'codex'} size={10} />
-                          {runsAs(selectedAgent.engine || 'codex')}
+                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px] text-zinc-500">
+                        <span className="inline-flex items-center gap-1">
+                          <EngineLogo engine={selectedAgent.engine || 'codex'} size={11} />
+                          {engineLabel(selectedAgent.engine || 'codex')}
                         </span>
                         {selectedAgent.model && (
-                          <span className="rounded-md border border-[var(--gt-border)]/70 bg-black/20 px-2 py-1 font-mono">
-                            model: {selectedAgent.model}
-                          </span>
+                          <span className="font-mono text-zinc-600">· {selectedAgent.model}</span>
                         )}
                       </div>
                     </div>
@@ -2197,14 +2163,46 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   </div>
                 </header>
 
-                {/* Scrollable body: script preview, runs, output */}
+                {/* Detail tabs — contract first (the substance), then config,
+                    execution source, and run history. */}
+                <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/20 px-4 py-1.5">
+                  {(
+                    [
+                      ['overview', 'Overview'],
+                      ['profile', 'Profile'],
+                      ['source', 'Source'],
+                      ['runs', 'Runs'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setDetailTab(id)}
+                      className={`inline-flex items-center rounded-md px-3 py-1 text-[12px] font-medium ${
+                        detailTab === id ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+                      }`}
+                    >
+                      {label}
+                      {id === 'runs' && agentRuns.length > 0 && <span className="ml-1 text-zinc-600">· {agentRuns.length}</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Scrollable body — one tab's sections at a time */}
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                  {activeDefinition && (
-                    <>
-                      <DefinitionSummary definition={activeDefinition} />
+                  {detailTab === 'overview' &&
+                    (activeDefinition ? (
                       <QualityPanel quality={activeDefinition.quality} />
-                    </>
-                  )}
+                    ) : (
+                      <div className="p-6 text-[12px] text-zinc-600">No structured quality contract for this agent.</div>
+                    ))}
+                  {detailTab === 'profile' &&
+                    (activeDefinition ? (
+                      <DefinitionSummary definition={activeDefinition} />
+                    ) : (
+                      <div className="p-6 text-[12px] text-zinc-600">No structured profile for this agent.</div>
+                    ))}
+                  {detailTab === 'source' && (
+                    <>
                   {/* Script preview — script can be undefined (loading), null
                       (definitively no .sh), or {path,body} (script loaded). */}
                   <section className="border-b border-[var(--gt-border)]/60 p-4">
@@ -2352,7 +2350,10 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       })()
                     )}
                   </section>
-
+                    </>
+                  )}
+                  {detailTab === 'runs' && (
+                    <>
                   {/* Recent runs for THIS agent */}
                   <section className="border-b border-[var(--gt-border)]/60 p-4">
                     <SectionKicker
@@ -2514,6 +2515,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       </pre>
                     </section>
                   )}
+                    </>
+                  )}
                 </div>
               </>
             )
@@ -2529,7 +2532,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           onClose={() => setPicking(null)}
           onPick={(e, persona, pipeline, model, launchMode) => {
             const selectedAgent = (agents || []).find((a) => a.id === picking.id)
-            if (launchMode === 'terminal' && selectedAgent) {
+            // OpenRouter has no interactive instance — always run as a process.
+            if (launchMode === 'terminal' && e !== 'openrouter' && selectedAgent) {
               openPromptInTerminal({
                 engine: e,
                 cwd: ctx.repoRoot,
