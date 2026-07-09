@@ -390,16 +390,16 @@ async function sweep(): Promise<void> {
     const failure = extractFailure(tail)
     const done = extractDone(tail)
     t.endedAt = Date.now()
+    let prLinked = false // whether a PR got attached to the ticket this sweep
     if (mrUrl) {
       t.status = 'done'
       t.mrUrl = mrUrl
       // Close the ticket → PR loop. The agent is *asked* to link the PR itself,
       // but it often forgets or opens the PR as its last act; linking here makes
       // it deterministic. linkTicketPr is idempotent, so doing both is safe.
-      let linked = false
       if (t.ticketSlug) {
         try {
-          linked = linkTicketPr(t.repoRoot, t.ticketSlug, mrUrl)
+          prLinked = linkTicketPr(t.repoRoot, t.ticketSlug, mrUrl)
         } catch {
           /* backlog unreadable — the ping below still tells the user */
         }
@@ -413,7 +413,7 @@ async function sweep(): Promise<void> {
         runId: t.id,
         runSource: 'bg',
       })
-      const ticketTag = t.ticketId ? ` (#${t.ticketId}${linked ? '' : ' — link failed'})` : ''
+      const ticketTag = t.ticketId ? ` (#${t.ticketId}${prLinked ? '' : ' — link failed'})` : ''
       telegramPing(`✅ ${t.repo}: ${t.label}${ticketTag} → ${mrUrl}`)
     } else if (done) {
       t.status = 'done'
@@ -473,14 +473,17 @@ async function sweep(): Promise<void> {
         runSource: 'bg',
       })
     }
-    // A failed run must not leave its ticket stuck in-progress — nothing is
-    // working it any more, and a HITL item now carries the failure. Hand the
-    // ticket back to the backlog so it can be picked up again.
-    if (t.ticketSlug && t.status === 'failed') {
+    // A run that produced NO PR must not leave its ticket stuck in-progress with
+    // a stale "running" link — nothing is working it any more (a failure filed a
+    // HITL; a DONE-with-no-PR just finished without a change to review). Hand the
+    // ticket back to the backlog, recording the run's real terminal status. (When
+    // an mrUrl exists but linking failed, a PR still exists — don't reset; the
+    // "link failed" tag tells the user to attach it.)
+    if (t.ticketSlug && !mrUrl) {
       try {
         updateTicket(t.repoRoot, t.ticketSlug, {
           status: 'open',
-          run: { id: t.id, source: 'bg', status: 'failed' },
+          run: { id: t.id, source: 'bg', status: t.status },
         })
       } catch {
         /* backlog unreadable — HITL still records the failure */
