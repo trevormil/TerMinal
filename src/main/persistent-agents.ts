@@ -165,7 +165,13 @@ function readMeta(id: string): PersistentAgent | null {
     const raw = JSON.parse(readFileSync(join(dir, 'agent.json'), 'utf8')) as Record<string, unknown>
     const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : id
     const engine =
-      raw.engine === 'codex' || raw.engine === 'cursor' || raw.engine === 'claude' ? raw.engine : 'claude'
+      raw.engine === 'codex' ||
+      raw.engine === 'cursor' ||
+      raw.engine === 'claude' ||
+      raw.engine === 'openrouter' ||
+      raw.engine === 'hermes'
+        ? raw.engine
+        : 'claude'
     const tags = Array.isArray(raw.tags) ? raw.tags.filter((x): x is string => typeof x === 'string') : []
     return {
       id,

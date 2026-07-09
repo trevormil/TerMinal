@@ -528,7 +528,7 @@ export function EntryScreen({
               </div>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              {(['claude', 'local', 'codex'] as SessionEngine[]).map((e) => (
+              {(['claude', 'codex', 'cursor', 'hermes', 'local'] as SessionEngine[]).map((e) => (
                 <button
                   key={e}
                   onClick={() => startScratch(e)}

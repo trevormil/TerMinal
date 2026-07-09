@@ -2031,7 +2031,11 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
   const spec = run.rerun
   if (!spec) {
     const engine =
-      run.engine === 'claude' || run.engine === 'codex' || run.engine === 'cursor' || run.engine === 'openrouter'
+      run.engine === 'claude' ||
+      run.engine === 'codex' ||
+      run.engine === 'cursor' ||
+      run.engine === 'openrouter' ||
+      run.engine === 'hermes'
         ? run.engine
         : undefined
     return runAgent(run.repoRoot, run.agentId, engine, undefined, undefined, run.model)

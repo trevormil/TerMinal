@@ -1183,10 +1183,10 @@ function remoteSteps(base: { label: string; prompt: string }, personaId?: string
   }
 }
 
-// OpenRouter is driven by the local-only or-agent harness — a remote host has no
-// or-agent, so coerce it to a universally-present engine for remote dispatch.
+// OpenRouter (or-agent) and Hermes are local-only harnesses — a remote host has
+// neither, so coerce them to a universally-present engine for remote dispatch.
 function localOnlyToRemote(engine: Engine): Engine {
-  return engine === 'openrouter' ? 'claude' : engine
+  return engine === 'openrouter' || engine === 'hermes' ? 'claude' : engine
 }
 
 function remoteEngineModel(remote: NonNullable<ReturnType<typeof curRemote>>, engine: Engine, model?: string) {

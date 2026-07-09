@@ -300,22 +300,14 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.apps.browser === 'string') s.apps.browser = r.apps.browser
   }
   if (r.suggestions && typeof r.suggestions === 'object') {
-    if (
-      r.suggestions.aiEngine === 'codex' ||
-      r.suggestions.aiEngine === 'claude' ||
-      r.suggestions.aiEngine === 'cursor'
-    ) {
-      s.suggestions.aiEngine = r.suggestions.aiEngine
+    if (ENGINE_IDS.includes(r.suggestions.aiEngine as EngineId)) {
+      s.suggestions.aiEngine = r.suggestions.aiEngine as EngineId
     }
     if (typeof r.suggestions.aiModel === 'string') {
       s.suggestions.aiModel = r.suggestions.aiModel.trim()
     }
-    if (
-      r.suggestions.autoEngine === 'codex' ||
-      r.suggestions.autoEngine === 'claude' ||
-      r.suggestions.autoEngine === 'cursor'
-    ) {
-      s.suggestions.autoEngine = r.suggestions.autoEngine
+    if (ENGINE_IDS.includes(r.suggestions.autoEngine as EngineId)) {
+      s.suggestions.autoEngine = r.suggestions.autoEngine as EngineId
     }
     if (typeof r.suggestions.autoModel === 'string') {
       s.suggestions.autoModel = r.suggestions.autoModel.trim()

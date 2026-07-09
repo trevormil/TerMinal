@@ -949,13 +949,13 @@ function cmdBg(args: string[]) {
   if (args[0] === 'cancel') return cmdBgCancel(args.slice(1))
 
   // Parse repo / engine / model leading args
-  let engine: 'claude' | 'codex' | 'cursor' = 'claude'
+  let engine: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' = 'claude'
   let model: string | undefined
   let repo: RepoCtx | null = null
   let promptStart = 0
   for (let i = 0; i < args.length; i++) {
     const tok = args[i].toLowerCase()
-    if (tok === 'claude' || tok === 'codex' || tok === 'cursor') {
+    if (tok === 'claude' || tok === 'codex' || tok === 'cursor' || tok === 'openrouter' || tok === 'hermes') {
       engine = tok
       promptStart = i + 1
       continue

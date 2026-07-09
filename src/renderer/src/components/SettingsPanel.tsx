@@ -1484,7 +1484,7 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             )}
             <div className="mt-2 flex items-center gap-2">
               <span className="text-[11px] text-zinc-500">Default:</span>
-              {(['codex', 'claude', 'cursor'] as Engine[]).map((e) => (
+              {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => (
                 <button
                   key={e}
                   onClick={() => saveDaemon({ defaultEngine: e })}
