@@ -332,6 +332,7 @@ import {
   removeAllJobs,
   runScheduleNow,
   isJobLoaded,
+  jobLoadedAt,
 } from './launchd'
 import { registerMcpEverywhere } from './mcp-register'
 import {
@@ -1456,15 +1457,21 @@ ipcMain.handle('schedules:list', () => {
       )
       .catch(() => [])
   }
-  return readSchedules(now).map((s) => ({
-    ...s,
-    describe: describeSpec(s.spec),
-    nextRun: nextRun(s.spec, now, s.lastRun),
+  return readSchedules(now).map((s) => {
+    // launchd's StartInterval fires relative to when the job was loaded, not to
+    // the last run. Anchor the countdown to whichever is later so it matches the
+    // real next fire (e.g. right after a relaunch reloaded the job).
+    const anchor = Math.max(s.lastRun ?? 0, jobLoadedAt(s.id) ?? 0) || undefined
+    return {
+      ...s,
+      describe: describeSpec(s.spec),
+      nextRun: nextRun(s.spec, now, anchor),
     // Real "will it fire?" signal: an enabled schedule with no loaded launchd
     // job is dark and never fires. Only probe enabled ones (disabled are
     // intentionally not loaded). launchctl print is a few ms; counts are tiny.
-    loaded: s.enabled ? isJobLoaded(s.id) : undefined,
-  }))
+      loaded: s.enabled ? isJobLoaded(s.id) : undefined,
+    }
+  })
 })
 ipcMain.handle(
   'schedules:save',
