@@ -1275,10 +1275,10 @@ ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readAgentRunContexts(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, openrouterHarness?: 'codex' | 'hermes') =>
+ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, openrouterHarness?: 'codex' | 'hermes', extraContext?: string) =>
   (async () => {
     const remote = requestedRemote(requested) || curRemote()
-    if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model, openrouterHarness)
+    if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model, openrouterHarness, extraContext)
     const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
     if (!agent) return { error: 'unknown agent' }
     // OpenRouter runs on the bundled local or-agent harness — never dispatch it
@@ -1307,7 +1307,7 @@ ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: st
     return run
   })(),
 )
-ipcMain.handle('agents:run-ticket', async (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, lanes?: number) => {
+ipcMain.handle('agents:run-ticket', async (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, lanes?: number, extraContext?: string) => {
   const remote = requestedRemote(requested) || curRemote()
   if (remote) {
     // v1: lanes are local-only. Remote runs a single attempt.
@@ -1342,7 +1342,7 @@ ipcMain.handle('agents:run-ticket', async (_e, slug: string, engine: Engine, per
   const t = await getRepoTicket(root, slug)
   if (!t) return { error: 'ticket not found' }
   const ticketInput = { slug: t.slug, id: t.id, title: t.title, body: t.body, externalKey: t.externalKey, url: t.url, agent: t.agent }
-  const res = runTicketLanes(root, ticketInput, engine, persona, pipeline, model, lanes)
+  const res = runTicketLanes(root, ticketInput, engine, persona, pipeline, model, lanes, extraContext)
   if ('error' in res) return res
   // Link the ticket's run pointer to the first lane (solo runs have exactly
   // one). Lanes deliberately don't each write the ticket — the judge links the

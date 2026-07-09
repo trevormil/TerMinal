@@ -953,6 +953,13 @@ function hermesOneShot(bin: string, worktree: string, prompt: string, model?: st
   return `${shq(bin)} -z ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}${pFlag}${mFlag} --usage-file ${shq(usage)} --yolo --accept-hooks`
 }
 
+// Per-run extra context — appended to the base prompt for a single launch
+// (Agents-tab run or ticket run). Never persisted to the agent/ticket itself.
+export function extraContextBlock(extra?: string): string {
+  const t = (extra || '').trim()
+  return t ? `\n\n--- Additional context for THIS run ---\n${t}` : ''
+}
+
 // Read the USD cost from a Hermes --usage-file JSON report. The key varies by
 // Hermes version, so try the common ones; undefined if unreadable/absent.
 function readHermesUsageCost(path: string): number | undefined {
@@ -1567,6 +1574,7 @@ export function runAgent(
   pipelineId?: string,
   model?: string,
   openrouterHarness?: 'codex' | 'hermes',
+  extraContext?: string,
 ): AgentRun | { error: string } {
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
@@ -1579,7 +1587,7 @@ export function runAgent(
       : `${ticketProviderInstructions(provider)} If this task does not involve filing or updating tickets, ignore this ticketing note.\n\n`
   const { steps, persona, pipeline } = buildSteps(
     repoRoot,
-    { label: agent.title, prompt: `${ticketContext}${agent.prompt}` },
+    { label: agent.title, prompt: `${ticketContext}${agent.prompt}${extraContextBlock(extraContext)}` },
     personaId,
     pipelineId,
   )
@@ -1860,6 +1868,7 @@ export function runTicketAgent(
   pipelineId?: string,
   model?: string,
   lane?: { group: string; index: number; total: number },
+  extraContext?: string,
 ): AgentRun | { error: string } {
   const provider = repoTicketProvider(repoRoot)
   const ref = ticket.externalKey || `#${ticket.id}`
@@ -1872,7 +1881,7 @@ export function runTicketAgent(
   const laneFraming = lane
     ? `\n\n--- LANE ${lane.index} of ${lane.total} ---\nYou are one of ${lane.total} independent variant attempts at this ticket, each in its own worktree and branch. Pursue a genuinely distinct, high-quality approach — don't converge on the obvious one. Satisfy every acceptance criterion in the ticket.`
     : ''
-  const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr} End with a short summary of what changed and the PR URL.`
+  const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr} End with a short summary of what changed and the PR URL.${extraContextBlock(extraContext)}`
   const resolvedPersonaId = personaId || ticketAgentContextId(ticket.agent)
   const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement ${ref}`, prompt: base }, resolvedPersonaId, pipelineId)
   const ownerQuality = ticket.agent?.kind === 'classic' ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality : undefined
@@ -1904,17 +1913,18 @@ export function runTicketLanes(
   pipelineId?: string,
   model?: string,
   lanes?: number,
+  extraContext?: string,
 ): LaneFanout | { error: string } {
   const n = Math.max(1, Math.min(MAX_LANES, Math.floor(lanes || 1)))
   if (n <= 1) {
-    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model)
+    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, undefined, extraContext)
     return 'error' in r ? r : { group: null, runs: [r] }
   }
   const group = `lane-${ticket.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
   const runs: AgentRun[] = []
   const errors: string[] = []
   for (let k = 1; k <= n; k++) {
-    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, { group, index: k, total: n })
+    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, { group, index: k, total: n }, extraContext)
     if ('error' in r) errors.push(`lane ${k}: ${r.error}`)
     else runs.push(r)
   }

@@ -872,6 +872,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                 <EnginePicker
                   title={`Implement ${selected.externalKey || `#${selected.id}`} → PR`}
                   showLanes
+                  showExtraContext
                   initialPersona={ticketAgentContextId(selected.agent)}
                   hint={
                     <>
@@ -881,27 +882,28 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     </>
                   }
                   onClose={() => setPickImpl(false)}
-                  onPick={async (e, persona, pipeline, model, launchMode, runContext, lanes) => {
+                  onPick={async (e, persona, pipeline, model, launchMode, runContext, lanes, _harness, extraContext) => {
                     setPickImpl(false)
                     if (launchMode === 'terminal') {
+                      const prompt = ticketImplementationPrompt(selected, {
+                        persona,
+                        pipeline,
+                        model,
+                        runContext,
+                        ticketProvider: ctx.ticketProvider,
+                        ticketProviderLabel: ctx.ticketProviderLabel,
+                      })
                       openPromptInTerminal({
                         engine: e,
                         cwd: ctx.repoRoot,
                         name: `Implement ${selected.externalKey || `#${selected.id}`}`,
                         ticketSlug: selected.slug,
-                        prompt: ticketImplementationPrompt(selected, {
-                          persona,
-                          pipeline,
-                          model,
-                          runContext,
-                          ticketProvider: ctx.ticketProvider,
-                          ticketProviderLabel: ctx.ticketProviderLabel,
-                        }),
+                        prompt: extraContext ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}` : prompt,
                         remote: remoteForTabContext(ctx),
                       })
                       return
                     }
-                    const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model, remoteForTabContext(ctx), lanes)
+                    const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model, remoteForTabContext(ctx), lanes, extraContext)
                     if (!('error' in r)) {
                       setStarted(true)
                       loadTickets()

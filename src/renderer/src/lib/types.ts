@@ -1465,6 +1465,7 @@ export type GtApi = {
       model?: string,
       remote?: RemoteSession,
       openrouterHarness?: 'codex' | 'hermes',
+      extraContext?: string,
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,
@@ -1474,6 +1475,7 @@ export type GtApi = {
       model?: string,
       remote?: RemoteSession,
       lanes?: number,
+      extraContext?: string,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },

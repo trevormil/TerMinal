@@ -1713,8 +1713,8 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [agentMode, selectedDefinition, selAgentId])
 
-  const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string, openrouterHarness?: 'codex' | 'hermes') => {
-    const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx), openrouterHarness)
+  const run = async (id: string, engine: Engine, persona: string, pipeline: string, model?: string, openrouterHarness?: 'codex' | 'hermes', extraContext?: string) => {
+    const r = await window.gt.agents.run(id, engine, persona, pipeline, model, remoteForTabContext(ctx), openrouterHarness, extraContext)
     if ('error' in r) {
       setOutputs((o) => ({ ...o, __err: r.error }))
       return
@@ -2520,20 +2520,22 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           title={`Run · ${picking.title}`}
           showPersona={false}
           showPipeline={false}
+          showExtraContext
           onClose={() => setPicking(null)}
-          onPick={(e, persona, pipeline, model, launchMode, _ctx, _lanes, openrouterHarness) => {
+          onPick={(e, persona, pipeline, model, launchMode, _ctx, _lanes, openrouterHarness, extraContext) => {
             const selectedAgent = (agents || []).find((a) => a.id === picking.id)
             if (launchMode === 'terminal' && selectedAgent) {
+              const prompt = agentPrompt(selectedAgent, { persona, pipeline, model })
               openPromptInTerminal({
                 engine: e,
                 cwd: ctx.repoRoot,
                 name: selectedAgent.title,
-                prompt: agentPrompt(selectedAgent, { persona, pipeline, model }),
+                prompt: extraContext ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}` : prompt,
                 remote: remoteForTabContext(ctx),
                 openrouterHarness,
               })
             } else {
-              run(picking.id, e, persona, pipeline, model, openrouterHarness)
+              run(picking.id, e, persona, pipeline, model, openrouterHarness, extraContext)
             }
             setPicking(null)
           }}

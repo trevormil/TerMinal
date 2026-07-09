@@ -90,10 +90,10 @@ const gt = {
       ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
-    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, openrouterHarness?: 'codex' | 'hermes') =>
-      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote, openrouterHarness),
-    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, lanes?: number) =>
-      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote, lanes),
+    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, openrouterHarness?: 'codex' | 'hermes', extraContext?: string) =>
+      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote, openrouterHarness, extraContext),
+    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, lanes?: number, extraContext?: string) =>
+      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote, lanes, extraContext),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
       kind: 'review' | 'iterate',

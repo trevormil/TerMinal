@@ -55,6 +55,7 @@ export function EnginePicker({
   showPersona = true,
   showPipeline = true,
   showLanes = false,
+  showExtraContext = false,
   initialPersona,
   onPick,
   onClose,
@@ -66,6 +67,8 @@ export function EnginePicker({
   /** Show the lane-count stepper on the launch step (process mode only).
    *  N>1 fans out N parallel variant attempts, each its own worktree + MR. */
   showLanes?: boolean
+  /** Show a free-text "additional context for this run" box on the launch step. */
+  showExtraContext?: boolean
   initialPersona?: string
   onPick: (
     engine: Engine,
@@ -76,12 +79,14 @@ export function EnginePicker({
     runContext?: Persona,
     lanes?: number,
     openrouterHarness?: 'codex' | 'hermes',
+    extraContext?: string,
   ) => void
   onClose: () => void
 }) {
   const [engine, setEngine] = useState<Engine | null>(null)
   const [model, setModel] = useState<string | undefined>(undefined)
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
+  const [extraContext, setExtraContext] = useState('')
   const [modelConfirmed, setModelConfirmed] = useState(false)
   const [persona, setPersona] = useState<string | null>(showPersona ? null : '') // null = not chosen, '' = none
   const [personaConfirmed, setPersonaConfirmed] = useState(!showPersona)
@@ -379,6 +384,18 @@ export function EnginePicker({
                 </span>
               </p>
             </div>
+            {showExtraContext && (
+              <div className="mb-3">
+                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Additional context (this run only)</div>
+                <textarea
+                  value={extraContext}
+                  onChange={(e) => setExtraContext(e.target.value)}
+                  rows={3}
+                  placeholder="Optional — extra instructions/context appended to this run's prompt (not saved to the agent)."
+                  className="w-full resize-none rounded-xl border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[var(--gt-accent)]/60"
+                />
+              </div>
+            )}
             {showLanes && (
               <div className="mb-3 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">
                 <div className="mb-1.5 flex items-center justify-between">
@@ -423,7 +440,7 @@ export function EnginePicker({
             )}
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1, openrouterHarness)}
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1, openrouterHarness, extraContext.trim() || undefined)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
@@ -444,7 +461,7 @@ export function EnginePicker({
                 </span>
               </button>
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1, openrouterHarness)}
+                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1, openrouterHarness, extraContext.trim() || undefined)}
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
