@@ -7,15 +7,13 @@ import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
-import { RunEvaluationPanel } from './RunEvaluationPanel'
-import { RunLogPane } from '../tabs/runs/RunLogPane'
 import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone, modelTierTone } from '../lib/badges'
 import { navigateTo, onNavigate } from '../lib/nav'
 import { engineLabel } from '../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
-import type { Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink, TabContext, Mr, Engine, Persona, UnifiedRun } from '../lib/types'
+import type { Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink, TabContext, Mr, Engine, Persona } from '../lib/types'
 
 // A ticket's `prs:` entries are forge URLs (…/-/merge_requests/N or …/pull/N).
 // Parse the change number so we can link to the in-app MR view instead of
@@ -341,7 +339,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [pickImpl, setPickImpl] = useState(false)
   const [started, setStarted] = useState(false)
   const [mrByIid, setMrByIid] = useState<Map<number, Mr>>(() => new Map())
-  const [runsById, setRunsById] = useState<Map<string, UnifiedRun>>(() => new Map())
   const [viewMrIid, setViewMrIid] = useState<number | null>(null)
   const [agentContexts, setAgentContexts] = useState<Persona[]>([])
   const [agentRecommendation, setAgentRecommendation] = useState<TicketAgentRecommendation | null>(null)
@@ -359,7 +356,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   useEffect(() => {
     loadTickets()
     window.gt.agents.personas().then(setAgentContexts)
-    window.gt.agents.allRuns().then((runs) => setRunsById(new Map(runs.map((run) => [run.id, run]))))
     // Enrich ticket MR links with live state/verdict badges. All-states list, so
     // merged/closed MRs (the common case for a closed ticket) resolve too.
     window.gt
@@ -387,7 +383,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
 
   useEffect(() => {
     return window.gt.agents.onStatus((run) => {
-      window.gt.agents.allRuns().then((runs) => setRunsById(new Map(runs.map((r) => [r.id, r]))))
       if (run.status !== 'running') loadTickets()
     })
   }, [])
@@ -414,7 +409,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     return true
   })
   const selected = tickets?.find((t) => t.slug === sel) || null
-  const selectedRun = selected?.run ? runsById.get(selected.run.id) || null : null
   useEffect(() => {
     let alive = true
     if (!selected) {
@@ -872,29 +866,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   </button>
                 )}
               </div>
-              {selected.run && (
-                <div className="mb-4 overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
-                  <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/60 px-3 py-2">
-                    <Badge tone={runSourceTone(selected.run.source)}>{selected.run.source}</Badge>
-                    {selected.run.status && <Badge tone={statusTone(selected.run.status)}>{selected.run.status}</Badge>}
-                    <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-zinc-500">
-                      {selected.run.id}
-                    </span>
-                    {selected.run.startedAt && (
-                      <span className="text-[10.5px] text-zinc-600">
-                        started {new Date(selected.run.startedAt).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  {selectedRun?.evaluation && <RunEvaluationPanel evaluation={selectedRun.evaluation} compact />}
-                  <RunLogPane
-                    source={selected.run.source}
-                    runId={selected.run.id}
-                    status={selected.run.status}
-                    className="h-[320px]"
-                  />
-                </div>
-              )}
+              {/* Run detail lives in the Runs view (via "View run" above) — the
+                  ticket view stays purely ticket content. */}
               <Markdown>{selected.body}</Markdown>
               {pickImpl && (
                 <EnginePicker
