@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { cronToTrigger, specToTrigger, describeSpec } from './cron'
+import { cronToTrigger, specToTrigger, describeSpec, nextRun } from './cron'
 
 describe('cronToTrigger', () => {
   test('*/N * * * * → interval', () => {
@@ -77,5 +77,38 @@ describe('describeSpec', () => {
       'Mon,Tue,Wed,Thu,Fri at 17:00',
     )
     expect(describeSpec({ kind: 'cron', expr: '30 9 * * 1-5' })).toBe('cron: 30 9 * * 1-5')
+  })
+})
+
+describe('nextRun', () => {
+  const MIN = 60_000
+
+  test('interval anchors to lastRun, not now', () => {
+    // launchd StartInterval fires every N min relative to the last fire. The
+    // next fire is lastRun + interval — NOT now + interval. Anchoring to now
+    // was the bug: the countdown never counted down and the absolute "next"
+    // time drifted forward on every reload.
+    const now = 100 * MIN
+    const lastRun = now - 36 * MIN // ran 36m ago (a 60m interval)
+    const spec = { kind: 'interval', everyMinutes: 60 } as const
+    // Real next fire is lastRun + 60m = 24m from now, not 60m from now.
+    expect(nextRun(spec, now, lastRun)).toBe(lastRun + 60 * MIN)
+    expect(nextRun(spec, now, lastRun)).toBe(now + 24 * MIN)
+  })
+
+  test('interval with no lastRun falls back to now + interval', () => {
+    const now = 100 * MIN
+    const spec = { kind: 'interval', everyMinutes: 30 } as const
+    expect(nextRun(spec, now)).toBe(now + 30 * MIN)
+    expect(nextRun(spec, now, undefined)).toBe(now + 30 * MIN)
+  })
+
+  test('overdue interval (missed fires) reads as due now-or-past, not a full interval out', () => {
+    const now = 100 * MIN
+    const lastRun = now - 90 * MIN // last fire was 90m ago on a 60m interval
+    const spec = { kind: 'interval', everyMinutes: 60 } as const
+    // Anchored to lastRun → 30m in the past (overdue), so the UI shows "now".
+    // The bug returned now + 60m, hiding that the job is overdue.
+    expect(nextRun(spec, now, lastRun)).toBeLessThanOrEqual(now)
   })
 })

@@ -128,9 +128,18 @@ export function describeSpec(spec: ScheduleSpec): string {
 // Next fire time (ms) for display. Interval is anchored to `from` (launchd's
 // StartInterval is load-relative, so this is approximate); calendar/cron are
 // computed exactly by scanning minute-by-minute up to a year out.
-export function nextRun(spec: ScheduleSpec, from = Date.now()): number | null {
+export function nextRun(spec: ScheduleSpec, from = Date.now(), lastRun?: number): number | null {
   const trig = specToTrigger(spec)
-  if (trig.kind === 'interval') return from + trig.seconds * 1000
+  if (trig.kind === 'interval') {
+    // launchd StartInterval fires every N seconds relative to the LAST fire, so
+    // the real next fire is lastRun + interval — not from + interval. Anchoring
+    // to `from` was the bug: every reload recomputed now+interval, so the
+    // countdown never ticked down and the absolute "next" time drifted forward.
+    // Before the first run we have no anchor and fall back to from + interval.
+    // When lastRun + interval is already past (missed/coalesced fires while
+    // asleep), the result is in the past and the UI honestly reads "now".
+    return (lastRun ?? from) + trig.seconds * 1000
+  }
   const matches = (d: Date): boolean =>
     trig.entries.some(
       (e) =>
