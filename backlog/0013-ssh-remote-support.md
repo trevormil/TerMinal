@@ -8,9 +8,12 @@ hitl: false
 type: feature
 source: brainstorm
 created: 2026-05-30
-updated: 2026-06-05
+updated: 2026-07-09
 prs: []
 refs: []
+agent_id: security-sweep
+agent_scope: global
+agent_kind: classic
 ---
 
 ## Why
