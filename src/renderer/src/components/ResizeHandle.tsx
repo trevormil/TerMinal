@@ -72,9 +72,11 @@ export function ResizeHandle({
       onMouseDown={onMouseDown}
       title="Drag to resize"
       style={style}
-      className={`group z-10 flex w-1 shrink-0 cursor-col-resize items-stretch ${className}`}
+      className={`group z-10 -mx-0.5 flex w-1 shrink-0 cursor-col-resize items-stretch ${className}`}
     >
-      <div className="mx-auto w-px bg-[var(--gt-border)] transition-colors group-hover:bg-[var(--gt-accent)]" />
+      {/* Invisible at rest (the panel's own border is the divider); shows the
+          accent only while hovering/dragging so there's no doubled-up line. */}
+      <div className="mx-auto w-px bg-transparent transition-colors group-hover:bg-[var(--gt-accent)]" />
     </div>
   )
 }

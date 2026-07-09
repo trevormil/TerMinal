@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import { EnginePicker } from '../../components/EnginePicker'
+import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -727,6 +728,7 @@ function fmtBytes(n: number): string {
 }
 
 function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
+  const railW = useResizableWidth('gt.agentsRailWidth', 288, { min: 220, max: 520, edge: 'right' })
   const [agents, setAgents] = useState<PersistentAgent[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(() => localStorage.getItem('gt.persistentAgents.sel'))
   const [detail, setDetail] = useState<PersistentAgentDetail | null>(null)
@@ -1012,7 +1014,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
 
   return (
     <div className="flex min-h-0 flex-1">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
+      <aside className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30" style={{ width: railW.width }}>
         <div className="space-y-1.5 border-b border-[var(--gt-border)] p-2">
           <div className="flex items-center gap-1.5">
             <input
@@ -1058,6 +1060,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
           )}
         </nav>
       </aside>
+      <ResizeHandle onMouseDown={railW.onResizeStart} />
 
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {!detail ? (
@@ -1479,6 +1482,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
 }
 
 function AgentsTab({ ctx }: { ctx: TabContext }) {
+  const railW = useResizableWidth('gt.agentsRailWidth', 320, { min: 240, max: 560, edge: 'right' })
   const [agentMode, setAgentMode] = useState<'all' | 'classic' | 'persistent'>(() => {
     const saved = localStorage.getItem('gt.agents.mode')
     return saved === 'classic' || saved === 'persistent' || saved === 'all' ? saved : 'all'
@@ -1774,7 +1778,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
 
       <div className="flex min-h-0 flex-1">
         {/* ━━ LEFT RAIL: narrow agents list (search + filter + click-to-select) ━━ */}
-        <aside className="flex w-80 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
+        <aside className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30" style={{ width: railW.width }}>
           <div className="shrink-0 space-y-2 border-b border-[var(--gt-border)] p-2.5">
             <div className="flex items-center gap-1.5">
               <input
@@ -1960,6 +1964,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
             )}
           </nav>
         </aside>
+        <ResizeHandle onMouseDown={railW.onResizeStart} />
 
         {/* ━━ RIGHT PANE: selected-agent detail (header + script + runs + log) ━━ */}
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden">

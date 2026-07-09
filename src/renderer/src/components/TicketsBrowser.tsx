@@ -11,6 +11,7 @@ import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone
 import { navigateTo, onNavigate } from '../lib/nav'
 import { engineLabel } from '../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
+import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
 import type { Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink, TabContext, Mr, Engine, Persona } from '../lib/types'
@@ -327,6 +328,7 @@ function NewTicketModal({
  * flagged `hitl: true` and trims the chrome (no type/horizon filters, no create).
  */
 export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hitlOnly?: boolean }) {
+  const listW = useResizableWidth('gt.ticketsListWidth', 460, { min: 280, max: 760, edge: 'right' })
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [ticketError, setTicketError] = useState('')
   const [sel, setSel] = useState<string | null>(null)
@@ -515,7 +517,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
 
       {/* master-detail */}
       <div className="flex min-h-0 flex-1">
-        <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
+        <div className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]" style={{ width: listW.width }}>
           {tickets === null ? (
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : ticketError ? (
@@ -613,6 +615,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             })
           )}
         </div>
+        <ResizeHandle onMouseDown={listW.onResizeStart} />
         <div className="min-w-0 flex-1 overflow-y-auto">
           {selected ? (
             <div className="p-5">
