@@ -10,11 +10,9 @@ import {
   ChevronDown,
   FileText,
   X,
-  ListChecks,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
-import { navigateTo } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, withLaunchContext, type LaunchMode } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
@@ -499,14 +497,6 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <CalendarClock size={14} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Schedules</span>
-        <button
-          onClick={() => navigateTo('runs')}
-          title="See every run (cron + in-process) in the Runs tab"
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
-        >
-          <ListChecks size={10} strokeWidth={2} />
-          All runs → Runs tab
-        </button>
         <span className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-0.5 text-[11px] text-zinc-500">
           {(schedules || []).length} schedules
         </span>

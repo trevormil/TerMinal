@@ -46,9 +46,13 @@ export function ModelSelect({
         </label>
       )}
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => onChange(undefined)} className={card(!model)}>
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className={card(!model)}
+          title="Uses the model configured for this engine in Settings (or the CLI's own default if none is set)."
+        >
           <div className="text-[13px] font-semibold">Default</div>
-          <div className="text-[10.5px] text-zinc-500">Let the engine pick</div>
         </button>
         {models.map((m) => (
           <button key={m.id} type="button" onClick={() => onChange(m.id)} className={card(model === m.id)}>

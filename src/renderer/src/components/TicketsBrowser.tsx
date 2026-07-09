@@ -638,7 +638,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   }}
                 />
                 <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
-                <Badge tone={modelTierTone(selected.modelTier)}>{selected.modelTier}</Badge>
                 <select
                   value={ticketAgentContextId(selected.agent)}
                   onChange={async (e) => {
