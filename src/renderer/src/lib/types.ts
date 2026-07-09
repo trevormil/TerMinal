@@ -1623,6 +1623,7 @@ export type GtApi = {
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
   getWorkingDiff: () => Promise<WorkingDiff>
+  getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
   getDigest: (iid: number, short?: string) => Promise<DigestArtifact | null>

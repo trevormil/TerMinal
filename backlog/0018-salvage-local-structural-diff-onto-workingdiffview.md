@@ -1,7 +1,7 @@
 ---
 id: 18
 title: "Salvage local structural (difft) diff onto the existing WorkingDiffView"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false

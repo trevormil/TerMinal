@@ -3,9 +3,14 @@ import { GitCompare, RefreshCw, ChevronLeft } from 'lucide-react'
 import { DiffView } from './MrDetail'
 import type { WorkingDiff } from '../lib/types'
 
+// Structural (difft) fetch for local working-tree changes (file at HEAD vs the
+// working tree). Stable identity so DiffView's per-file effect doesn't re-run.
+const fetchWorkingStructural = (path: string, cols: number) => window.gt.getWorkingStructuralDiff(path, cols)
+
 // The local "pre-PR" diff: everything from the merge-base with the default
 // branch to the working tree (committed branch work + uncommitted + untracked).
-// Reuses the MR DiffView, minus the "viewed" checkboxes and Structural mode.
+// Reuses the MR DiffView (minus the "viewed" checkboxes); Structural mode runs
+// difft locally (file at HEAD vs the working tree).
 // Shared by the PRs tab (working-diff button) and the Files tab (Changes pane).
 export function WorkingDiffView({ onBack }: { onBack?: () => void }) {
   const [res, setRes] = useState<WorkingDiff | null>(null)
@@ -57,7 +62,14 @@ export function WorkingDiffView({ onBack }: { onBack?: () => void }) {
             diff.
           </div>
         ) : (
-          <DiffView diff={res.diff} scope="working" iid={0} showViewed={false} allowStructural={false} />
+          <DiffView
+            diff={res.diff}
+            scope="working"
+            iid={0}
+            showViewed={false}
+            allowStructural
+            fetchStructural={fetchWorkingStructural}
+          />
         )}
       </div>
     </div>

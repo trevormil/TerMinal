@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   FileText,
   ScanSearch,
@@ -323,7 +323,13 @@ function structuralMessage(res: Extract<StructuralDiffResult, { ok: false }>): s
 // reusing the app's terminal renderer means correct color + column alignment
 // for free, matching difft's real terminal look. Remounted per (iid, path)
 // via a key so switching files re-runs cleanly.
-function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
+function StructuralFileDiff({
+  path,
+  fetch,
+}: {
+  path: string
+  fetch: (path: string, cols: number) => Promise<StructuralDiffResult>
+}) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<'loading' | 'ready' | { error: string }>('loading')
 
@@ -360,8 +366,7 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
       lastCols = cols
       const myId = ++runId
       if (isInitial) setState('loading')
-      window.gt
-        .getStructuralDiff(iid, path, cols)
+      fetch(path, cols)
         .then((res) => {
           if (disposed || myId !== runId) return
           if (res.ok) {
@@ -413,7 +418,7 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
       ro.disconnect()
       term.dispose()
     }
-  }, [iid, path])
+  }, [fetch, path])
 
   return (
     <div className="relative h-full min-h-0">
@@ -438,15 +443,23 @@ export function DiffView({
   iid,
   showViewed = true,
   allowStructural = true,
+  fetchStructural,
 }: {
   diff: string
   scope: string
   iid: number
-  // Off for the local "working diff" view: no per-file "viewed" checkboxes and
-  // no Structural mode (difft is wired to the forge API, which a local diff lacks).
   showViewed?: boolean
   allowStructural?: boolean
+  // Per-file structural (difft) fetch. Defaults to the forge MR path
+  // (getStructuralDiff by iid); the local working-diff view injects its own
+  // (getWorkingStructuralDiff over the working tree) so the same viewer serves both.
+  fetchStructural?: (path: string, cols: number) => Promise<StructuralDiffResult>
 }) {
+  const structuralFetch = useCallback(
+    (p: string, cols: number) =>
+      fetchStructural ? fetchStructural(p, cols) : window.gt.getStructuralDiff(iid, p, cols),
+    [fetchStructural, iid],
+  )
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
   const [selected, setSelected] = useState<string>('')
@@ -605,7 +618,7 @@ export function DiffView({
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'structural' ? (
-            <StructuralFileDiff key={`${iid}:${selected}`} iid={iid} path={selected} />
+            <StructuralFileDiff key={`${iid}:${selected}`} path={selected} fetch={structuralFetch} />
           ) : (
             <FileDiff file={file} mode={mode} />
           )}

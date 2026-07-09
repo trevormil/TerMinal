@@ -21,6 +21,7 @@ import {
 import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
 import { repoForCwd, repoRootOf, gitStatus, getWorkingDiff, type GitStatus, type WorkingDiff } from './repo'
+import { getWorkingStructuralDiff } from './local-structural'
 import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions, type ProjectSession } from './sessions'
 import { listSkills, type SkillInfo } from './skills'
 import { workspaceSearch, type WorkspaceSearchKind, type WorkspaceSearchResponse } from './workspace-search'
@@ -78,6 +79,7 @@ export type WorkspaceDaemon = {
   context(sessionId: string): Promise<DaemonContext> | DaemonContext
   gitStatus(): Promise<GitStatus> | GitStatus
   workingDiff(): Promise<WorkingDiff> | WorkingDiff
+  workingStructuralDiff(path: string, width?: number): Promise<StructuralDiffResult> | StructuralDiffResult
   docsList(): Promise<DocsTree> | DocsTree
   docsGet(relPath: string): Promise<string> | string
   sessionsList(): Promise<ProjectSession[]> | ProjectSession[]
@@ -176,6 +178,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     },
     gitStatus: () => gitStatus(currentCwd),
     workingDiff: () => getWorkingDiff(root()),
+    workingStructuralDiff: (path: string, width?: number) => getWorkingStructuralDiff(root(), path, width),
     docsList: () => listDocs(root() || ''),
     docsGet: (relPath: string) => readDoc(root() || '', relPath),
     sessionsList: () => listProjectSessions(root()),
@@ -253,6 +256,11 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
       base: '',
       branch: '',
       error: 'Working diff is not supported on remote workspaces yet.',
+    }),
+    workingStructuralDiff: (): StructuralDiffResult => ({
+      ok: false,
+      reason: 'error',
+      message: 'structural diff not supported on remote workspaces yet',
     }),
     docsList: () => remoteDocs.list(remote),
     docsGet: (relPath: string) => remoteDocs.get(remote, relPath),
