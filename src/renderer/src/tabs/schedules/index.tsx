@@ -27,6 +27,9 @@ const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
   'rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
 
+const SCHED_REPO_FILTER_KEY = 'gt.schedules.repoFilter'
+const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
+
 function fmtWhen(ts?: number | null): string {
   if (!ts) return '—'
   const d = new Date(ts)
@@ -397,7 +400,19 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const [runs, setRuns] = useState<CronRun[]>([])
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
   const [msg, setMsg] = useState('')
-  const [repo, setRepo] = useState('') // '' = all repos
+  // '__auto__' = follow the current repo (resolved below); '' = all repos.
+  const [repo, setRepo] = useState(() => localStorage.getItem(SCHED_REPO_FILTER_KEY) ?? '__auto__')
+  const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
+  // Default the filter to the current repo whenever we're in one. Manual picks
+  // (incl. "All repos") persist and win over this.
+  useEffect(() => {
+    if (repo !== '__auto__' || !ctx.repoRoot || !activeRepoLabel) return
+    setRepo(activeRepoLabel)
+  }, [activeRepoLabel, repo, ctx.repoRoot])
+  const setRepoFilter = (value: string) => {
+    localStorage.setItem(SCHED_REPO_FILTER_KEY, value)
+    setRepo(value)
+  }
   // Tick the relative "fires in 12m" labels every minute. The Schedule.nextRun
   // value is already on each record (computed by readSchedules); this just
   // forces the count-down strings to refresh in place.
@@ -455,9 +470,12 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   const repoOptions = useMemo(() => {
     const set = new Set<string>()
     for (const s of schedules || []) if (s.repoLabel) set.add(s.repoLabel)
+    if (activeRepoLabel) set.add(activeRepoLabel) // always offer the current repo
     return [...set].sort()
-  }, [schedules])
-  const shownSchedules = (schedules || []).filter((s) => !repo || s.repoLabel === repo)
+  }, [schedules, activeRepoLabel])
+  const shownSchedules = (schedules || []).filter(
+    (s) => repo === '__auto__' || !repo || s.repoLabel === repo,
+  )
 
   const openRuns = async (id: string) => {
     if (expanded === id) {
@@ -502,8 +520,8 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           {(schedules || []).length} schedules
         </span>
         <select
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
+          value={repo === '__auto__' ? '' : repo}
+          onChange={(e) => setRepoFilter(e.target.value)}
           title="Filter by repo"
           className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none"
         >

@@ -108,16 +108,21 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     [],
   )
 
-  // Filter chip options derived from loaded data.
-  const repoOptions = useMemo(() => {
-    if (!runs) return []
-    return [...new Set(runs.map((r) => r.repoLabel).filter(Boolean))].sort()
-  }, [runs])
   const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
+  // Filter chip options derived from loaded data — always include the current
+  // repo so the auto-scoped default has a matching dropdown entry even with 0 runs.
+  const repoOptions = useMemo(() => {
+    const set = new Set((runs || []).map((r) => r.repoLabel).filter(Boolean))
+    if (activeRepoLabel) set.add(activeRepoLabel)
+    return [...set].sort()
+  }, [runs, activeRepoLabel])
+  // Default to the current repo whenever we're in one — even before it has any
+  // runs — instead of falling back to "all repos". Manual picks (incl. "all
+  // repos") persist via setRepoFilter and win over this.
   useEffect(() => {
-    if (repo !== '__auto__' || !activeRepoLabel || !repoOptions.includes(activeRepoLabel)) return
+    if (repo !== '__auto__' || !ctx.repoRoot || !activeRepoLabel) return
     setRepo(activeRepoLabel)
-  }, [activeRepoLabel, repo, repoOptions])
+  }, [activeRepoLabel, repo, ctx.repoRoot])
   const setRepoFilter = (value: string) => {
     localStorage.setItem(RUNS_REPO_FILTER_KEY, value)
     setRepo(value)
