@@ -514,6 +514,44 @@ export function lastAssistantTurn(file: string): { id: string; endTurn: boolean 
   return null
 }
 
+/** The text of the most recent assistant turn (concatenated text blocks), tail-
+ *  only. Used by the paired-loop listener's Claude fallback to forward a turn to
+ *  the peer when the agent didn't write an events.jsonl handoff. '' if none. */
+export function lastAssistantText(file: string): string {
+  try {
+    const size = statSync(file).size
+    if (!size) return ''
+    const len = Math.min(size, 65536)
+    const fd = openSync(file, 'r')
+    const buf = Buffer.alloc(len)
+    readSync(fd, buf, 0, len, size - len)
+    closeSync(fd)
+    const lines = buf.toString('utf8').split('\n').filter(Boolean)
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let o: any
+      try {
+        o = JSON.parse(lines[i])
+      } catch {
+        continue
+      }
+      if (o?.type === 'assistant') {
+        const c = o.message?.content
+        if (Array.isArray(c))
+          return c
+            .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+            .map((b: any) => b.text)
+            .join('\n')
+            .trim()
+        if (typeof c === 'string') return c.trim()
+        return ''
+      }
+    }
+  } catch {
+    /* unreadable */
+  }
+  return ''
+}
+
 function emptyStats(sessionId = ''): TranscriptStats {
   return {
     ok: false,

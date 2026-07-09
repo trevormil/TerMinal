@@ -24,18 +24,26 @@ The non-negotiable invariant survives: the **generator (worker) and evaluator
 (driver) are separate context windows**, so the code is never graded by the
 context that wrote it.
 
-## Transport order
+## Transport — delivery is automatic (you do not poll)
 
-Use the first available transport:
+In TerMinal the channel is **code, not discretion**: a watcher in TerMinal's
+main process tails `events.jsonl` and delivers each new handoff straight into
+the **other** session as a prompt (it types it in and submits). So your job is
+asymmetric:
 
-1. Websocket loop channel if TerMinal provides a loop URL in env or prompt context.
-2. TerMinal MCP/CLI loop command if available.
-3. Activity/HITL events for coarse requests plus explicit session log lookup.
-4. Shared file fallback: **`events.jsonl` in the loop state dir**
-   (`<repoRoot>/.TerMinal/loop-drivers/<loop-id>/events.jsonl`).
+- **Sending** — when you finish a turn, append ONE JSONL line to
+  **`events.jsonl` in the loop state dir**
+  (`<repoRoot>/.TerMinal/loops/<loop-id>/events.jsonl`). That is the whole
+  handoff; TerMinal delivers it to your peer. Bounded summary + pointer, never a
+  pasted log.
+- **Receiving** — do **nothing**. Never poll or watch the file. When your peer
+  hands off, TerMinal injects their message as your next prompt; treat it as user
+  input and act. (Fallback: if a Claude session finishes a turn without writing
+  an event, TerMinal forwards its final message anyway — but always write the
+  event; it's the clean, provider-neutral handoff.)
 
-If no transport exists, report the exact missing transport and continue manually
-in chat.
+If you are running this loop **outside** TerMinal (no main-process delivery),
+fall back to polling `events.jsonl` yourself.
 
 ## Message shape
 
@@ -75,13 +83,12 @@ file reads.
 
 ## Listener invariant
 
-Both sessions must keep listening until the user explicitly stops the loop:
-
-1. Start a listener during startup before doing non-trivial work.
-2. After sending or handling any message, immediately return to listening.
-3. Completion, review, error, and timeout events do not end the listener.
-4. On disconnect, reconnect or switch to the next transport and emit a compact `status`.
-5. Use heartbeat/status events so the paired session can detect a stalled listener.
+You do **not** run a listener — TerMinal's main process is the always-on channel
+and delivers your peer's handoffs to you as prompts. Your only obligation is the
+send side: **finish every turn by appending your handoff to `events.jsonl`** (or,
+if you have nothing to hand off, a `status`/`complete` line), so the peer is
+never left waiting on a turn you closed silently. The channel survives your turn
+ending — you don't re-arm anything. It stops only when the user stops the loop.
 
 ## Session logs (driver reads worker before responding)
 

@@ -7,7 +7,7 @@ the state is too complicated.
 ## Layout
 
 ```
-.TerMinal/loop-drivers/<loop-id>/
+.TerMinal/loops/<loop-id>/
   contract.md         # the agreed, gradable definition of done  (the thing that gets graded)
   feature_list.json   # structured status of each contract assertion
   progress.md         # human-readable: current phase, bottleneck, next step

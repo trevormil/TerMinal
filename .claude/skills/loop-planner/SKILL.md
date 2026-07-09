@@ -15,7 +15,7 @@ You turn a vague human sentence into a sprint spec and a gradable contract. You
 ## Your job
 
 1. Read the human goal and the repo enough to be concrete (read-only).
-2. Draft `.TerMinal/loop-drivers/<loop-id>/contract.md`:
+2. Draft `.TerMinal/loops/<loop-id>/contract.md`:
    - One-sentence **Goal** and an explicit **Boundary** (what's out of scope —
      the boundary is yours; the assertions get graded).
    - A checklist of **testable assertions** (10–30 for a small app; ten is too

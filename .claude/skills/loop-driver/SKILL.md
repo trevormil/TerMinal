@@ -24,11 +24,11 @@ Do **not** loop a one-shot task, a task with no verification, or anything whose
 
 ## Two execution modes (same loop, same disk state)
 
-A loop is one state directory (`.TerMinal/loop-drivers/<loop-id>/`) driven one of two
+A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of two
 ways. The roles, contract, and taste rubric are identical either way — only
 *who runs the turns* differs.
 
-- **Headless** (default) — TerMinal's loop engine (`src/main/loop-drivers.ts`)
+- **Headless** (default) — TerMinal's loop engine (`src/main/loops.ts`)
   auto-steps one-shot role turns: it spawns a fresh `planner`, then
   `generator`, then `evaluator` process, reconciles each on a `LOOP-DONE:`
   marker, and advances the phase. You watch it from the loop cockpit widget
@@ -62,7 +62,7 @@ as separate sessions (live-paired) or as separate headless invocations
 ## Setup
 
 1. Pick a `loop-id`: `<repo-name>-<short-slug>` (e.g. `bestie-onboarding-polish`).
-2. Create the loop directory `.TerMinal/loop-drivers/<loop-id>/` and initialize state per
+2. Create the loop directory `.TerMinal/loops/<loop-id>/` and initialize state per
    [references/state.md](references/state.md): `contract.md`, `feature_list.json`,
    `progress.md`, append-only `log.md`, `events.jsonl`, `scores/`.
 3. Create an isolated worktree for the generator so a restart is a clean delete:

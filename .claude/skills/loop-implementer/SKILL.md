@@ -40,19 +40,18 @@ and converges on slop. Shared context:
 
 When the loop runs live-paired, you are one of two interactive sessions: **you
 are the worker**, and a **driver** session (running `/loop-driver`) plays planner +
-evaluator. You two communicate over `events.jsonl` in the loop state dir. Full
-contract: [../loop-driver/references/transport.md](../loop-driver/references/transport.md).
+evaluator. Delivery between you is automatic — TerMinal's main process injects
+the driver's handoffs to you as prompts; you never poll. Full contract:
+[../loop-driver/references/transport.md](../loop-driver/references/transport.md).
 
 - **Contract-first.** Do not write code until the driver has signed off
-  `contract.md`. Watch `events.jsonl` for the driver's `contract agreed`
-  handshake; until then, help sharpen the contract if asked, but do not
-  implement.
-- Emit `ready-for-review` (kind on `events.jsonl`) when a batch is ready; then
-  **keep listening**. Treat the driver's `prompt` as user input. A completed
-  action is never permission to stop listening — only the user stopping the loop
-  is.
-- Bounded events (40 lines / 8k chars default). Pointers over payloads. If the
-  driver needs more, send a targeted excerpt, not the transcript.
+  `contract.md` (a `contract agreed` handoff will arrive as a prompt). Until
+  then, help sharpen the contract if asked, but do not implement.
+- **End every turn with a handoff:** append one bounded JSONL line to
+  `events.jsonl` (`ready-for-review` when a batch is ready, else `status` /
+  `blocked`). That line is delivered to the driver automatically — do not run a
+  listener or wait-loop yourself. Treat the driver's replies as user input.
+- Bounded events (40 lines / 8k chars default). Pointers over payloads.
 - The driver is a human stand-in, not blanket authority: you still follow repo
   rules, tests, branch/merge safeguards, and destructive-command safety.
 

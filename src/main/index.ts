@@ -212,6 +212,7 @@ import {
   findSessionFile,
   readSessionTasks,
   lastAssistantTurn,
+  lastAssistantText,
   readObservabilitySnapshot,
   readObservabilitySessionDetail,
   readObservabilityToolCallPayload,
@@ -359,6 +360,12 @@ import {
   startLoopWatcher,
   type CreateLoopInput,
 } from './loops'
+import {
+  startLoopListener,
+  registerLoopSession,
+  unregisterLoopSession,
+  noteLoopTurnComplete,
+} from './loop-listener'
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
@@ -419,6 +426,22 @@ type Pinned = {
 }
 const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
 let activeKey = ''
+
+// Deps for the paired-loop listener (always-on channel between a loop's two live
+// sessions). Kept here where the pty registry + transcript lookup live.
+const loopListenerDeps = {
+  writeToSession: (k: string, d: string): boolean => {
+    const s = sessions.get(k)
+    if (!s) return false
+    s.pty.write(d)
+    return true
+  },
+  sessionIdOf: (k: string): string | undefined => sessions.get(k)?.pinned.sessionId,
+  lastAssistantText: (sid: string): string => {
+    const f = findSessionFile(sid)
+    return f ? lastAssistantText(f) : ''
+  },
+}
 const cur = (): Pinned =>
   sessions.get(activeKey)?.pinned ?? {
     sessionId: '',
@@ -452,6 +475,9 @@ type StartOpts = {
   initialInput?: string
   ticketSlug?: string
   remote?: RemoteSession
+  /** Live-paired loop linkage — set on the two sessions of a paired loop. */
+  loopId?: string
+  loopRole?: 'driver' | 'worker'
   cols: number
   rows: number
 }
@@ -633,6 +659,7 @@ function startSession(key: string, opts: StartOpts) {
   })
   proc.onExit(({ exitCode }) => {
     send('pty:exit', key, exitCode)
+    unregisterLoopSession(key)
     const status = exitCode === 0 ? 'done' : 'failed'
     const endedAt = Date.now()
     finalizeSessionRun(sessionId, {
@@ -668,6 +695,8 @@ function startSession(key: string, opts: StartOpts) {
     pty: proc,
     pinned: { sessionId, cwd: displayCwd, mode: opts.mode, name: opts.name || '', engine, remote },
   })
+  if (opts.loopId && (opts.loopRole === 'driver' || opts.loopRole === 'worker'))
+    registerLoopSession(key, opts.loopId, opts.loopRole)
   activeKey = key
   watchSession()
   emitActivity({
@@ -776,6 +805,9 @@ function pollActivity() {
     const t = lastAssistantTurn(w.file)
     if (!t || !t.endTurn || t.id === w.lastTurnId) continue
     w.lastTurnId = t.id
+    // Paired-loop Claude fallback: forward this turn to the peer if the agent
+    // didn't already hand off via events.jsonl. No-ops for non-paired sessions.
+    noteLoopTurnComplete(key, loopListenerDeps)
     const focusedHere = key === activeKey && (win?.isFocused() ?? false)
     const label = s.pinned.name || basename(s.pinned.cwd) || 'session'
     const st = readTranscriptStats(sid)
@@ -2338,6 +2370,8 @@ app.whenReady().then(() => {
   startBgWatcher()
   // Loop watcher — reconciles in-flight role turns and advances the phase.
   startLoopWatcher()
+  // Paired-loop listener — always-on channel between a loop's two live sessions.
+  startLoopListener(loopListenerDeps)
   // Budget watcher — fires HITL pings at warnAt thresholds.
   startBudgetWatcher()
   // Local automation listener inbox — processes JSON files dropped into
