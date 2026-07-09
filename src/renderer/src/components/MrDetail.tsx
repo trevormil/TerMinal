@@ -372,12 +372,13 @@ function StructuralFileDiff({ iid, path }: { iid: number; path: string }) {
               if (!disposed) term.scrollToTop()
             })
             setState('ready')
-          } else {
+          } else if (isInitial) {
             setState({ error: structuralMessage(res) })
           }
+          // Re-run (resize) failure: keep the last good render — no error flash.
         })
         .catch((e) => {
-          if (!disposed && myId === runId)
+          if (!disposed && myId === runId && isInitial)
             setState({ error: e instanceof Error ? e.message : String(e) })
         })
     }
