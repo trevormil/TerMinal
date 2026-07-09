@@ -7,7 +7,14 @@ import { telegramControlEnabled, readSettings, resolvedTemplateRepo } from './se
 import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 import { readAgents, runAgent, listRuns, cancelRun, readAgentState, resetAgentState } from './agents'
 import { readPersonas } from './personas'
-import { parseCommand, classifyRunArgs, parsePollLine } from './telegram-parse'
+import {
+  parseCommand,
+  classifyRunArgs,
+  parsePollLine,
+  parseFeatureDraft,
+  splitRepoToken,
+  type FeatureDraft,
+} from './telegram-parse'
 import { sendUrl, getUpdatesUrl, parseUpdates, answerCallbackUrl, type TgInlineKeyboard } from './telegram-api'
 import { listTickets, createTicket, updateTicket, getTicket } from './backlog'
 import { readHitl, resolveHitl } from './hitl'
@@ -16,6 +23,12 @@ import { listDisabled, setDisabled, setAllDisabled } from './agents-disabled'
 import { listMrs, getMr } from './mrs'
 import { readCronRuns } from './cron-runs'
 import { readActivity } from './events'
+// Static, not lazy `require`: main bundles to ESM, where the createRequire shim
+// resolves relative to the emitted bundle and `require('./bg-tasks')` throws
+// MODULE_NOT_FOUND. See learnings_gauntlet_terminal_esm_main_dirname.
+import { spawnBgTask, listBgTasks, cancelBgTask } from './bg-tasks'
+import { readBudgets, setDailyCap, setAgentCap, setOverride } from './budgets'
+import { summaryFor } from './ai-runs'
 
 // Two-way AFK control over Telegram: the user texts the bot from their phone to
 // launch/cancel/inspect agent runs. The single authorized chat_id is the auth
@@ -189,9 +202,35 @@ function resolveRepo(token?: string): RepoCtx | null {
   const repos = knownRepos()
   if (token) {
     const t = token.replace(/^@/, '').toLowerCase()
-    return repos.find((r) => r.label.toLowerCase().includes(t)) || null
+    // Exact label wins over substring: with repos "term" and "terminal",
+    // "@term" must mean "term", not whichever sorts first.
+    return (
+      repos.find((r) => r.label.toLowerCase() === t) ||
+      repos.find((r) => r.label.toLowerCase().includes(t)) ||
+      null
+    )
   }
   return stickyRepo || getActive() || repos[0] || null
+}
+
+/** Repo resolution for commands that WRITE (file a ticket, spawn an agent).
+ *  Unlike `resolveRepo`, never falls back to "the first repo we happen to know
+ *  about" — an arbitrary alphabetical default is fine for listing tickets and
+ *  dangerous for creating them. Requires an explicit @repo, a sticky /cd, or a
+ *  focused session. */
+function resolveWriteRepo(token?: string): RepoCtx | { error: string } {
+  if (token) {
+    const r = resolveRepo(token)
+    if (r) return r
+    return {
+      error:
+        `No repo matches "${token}". /repos to list.\n` +
+        `(If "${token}" was part of the description, move it out of the first/last word.)`,
+    }
+  }
+  const r = stickyRepo || getActive()
+  if (r) return r
+  return { error: 'No repo selected. Pass @repo, or /cd <repo> first. /repos to list.' }
 }
 
 const short = (root: string) => root.split('/').pop() || root
@@ -209,6 +248,7 @@ function cmdHelp() {
       '/agents [@repo] · /state <agent> [@repo] · /reset-state <agent> [@repo]',
       '',
       'TICKETS',
+      '/feature <what you want built> [@repo]   draft a ticket, tap to build it',
       '/tickets [@repo] · /ticket <slug> · /ticket new <title>',
       '/close <slug>',
       '',
@@ -372,6 +412,158 @@ function cmdTicket(args: string[]) {
       .filter(Boolean)
       .join('\n'),
   )
+}
+
+// --- /feature: idea → ticket → PR ------------------------------------------
+//
+// The composite `/ticket new` and `/bg` never were. `/ticket new` files a
+// title-only stub that nothing picks up; `/bg` does the work but leaves no
+// trace in the backlog. `/feature` drafts a real ticket from free text, shows
+// it for confirmation, and (on a tap) hands it to a background agent whose PR
+// gets linked back onto the ticket by the bg watcher.
+
+const FEATURE_SYSTEM = `You turn a short feature request into a backlog ticket. Reply with ONE JSON object and nothing else — no prose, no code fence.
+
+{
+  "title": "imperative, at most 70 chars, no trailing period",
+  "type": "feature | bug | chore | refactor | docs",
+  "priority": "low | medium | high",
+  "body": "2-5 sentences: what to build, where it likely lives, and any constraint the requester implied.",
+  "acceptance": ["a checkable criterion", "another"]
+}
+
+Rules:
+- 2 to 4 acceptance criteria. Each must be verifiable by a test or a specific manual check.
+- Do NOT invent requirements the requester did not state or clearly imply.
+- Use type "bug" when the request describes something already broken.
+- Never ask a question. Output the JSON object only.`
+
+type FeatureCtx = { repoRoot: string; repoLabel: string; slug: string; id: number; title: string }
+
+// Inline-button callback_data is capped at 64 bytes, so we hand out a short
+// integer key instead of the slug and hold the context here. Drafts are lost on
+// restart — the same tradeoff as lastRunIds/lastHitlIds above. The ticket is
+// already filed by then, so the only thing lost is the button.
+const featureDrafts = new Map<string, FeatureCtx>()
+let featureSeq = 0
+
+function rememberDraft(ctx: FeatureCtx): string {
+  const key = String(++featureSeq)
+  featureDrafts.set(key, ctx)
+  if (featureDrafts.size > 20) featureDrafts.delete(featureDrafts.keys().next().value as string)
+  return key
+}
+
+/** The work prompt. Mirrors runTicketAgent's convention: the ticket's content
+ *  is embedded rather than read from disk, because the bg worktree is branched
+ *  off main and the ticket file is still untracked there. TerMinal links the PR
+ *  onto the ticket itself (see bg-tasks sweep), so the agent must not. */
+function featureWorkPrompt(t: { id: number; title: string; body: string; acceptance: string[] }): string {
+  return [
+    `Implement backlog ticket #${t.id}: ${t.title}`,
+    '',
+    t.body,
+    '',
+    ...(t.acceptance.length
+      ? ['Acceptance criteria — every one must hold:', ...t.acceptance.map((c) => `- ${c}`), '']
+      : []),
+    'Work in this worktree on its branch. Follow the repo\'s /pr-creation skill if it has one.',
+    'Implement the ticket end to end — keep changes surgical, add or adjust tests, run the checks.',
+    `Commit your work and open a PR that references ticket #${t.id}.`,
+    'Do NOT edit the ticket file — TerMinal links the PR onto the ticket for you.',
+  ].join('\n')
+}
+
+async function draftFeature(description: string): Promise<{ draft: FeatureDraft; drafted: boolean }> {
+  try {
+    const { cheapCall } = (await import('./cheap-llm')) as typeof import('./cheap-llm')
+    const res = await cheapCall({
+      messages: [
+        { role: 'system', content: FEATURE_SYSTEM },
+        { role: 'user', content: description },
+      ],
+      model: 'haiku',
+      maxTokens: 700,
+      temperature: 0,
+      timeoutMs: 20_000,
+    })
+    if (res.ok && res.text) {
+      const draft = parseFeatureDraft(res.text)
+      if (draft) return { draft, drafted: true }
+    }
+  } catch {
+    /* fall through — never lose the request to a flaky LLM call */
+  }
+  const title = description.replace(/\s+/g, ' ').trim().slice(0, 120)
+  return {
+    draft: { title, type: 'feature', priority: 'medium', body: description.trim(), acceptance: [] },
+    drafted: false,
+  }
+}
+
+async function cmdFeature(args: string[]) {
+  if (!args.length) return reply('Usage: /feature <what you want built> [@repo]')
+  const { repoToken, rest } = splitRepoToken(args)
+  const description = rest.join(' ').trim()
+  if (!description) return reply('Usage: /feature <what you want built> [@repo]')
+  const resolved = resolveWriteRepo(repoToken)
+  if ('error' in resolved) return reply(`⛔ ${resolved.error}`)
+  const repo = resolved
+
+  reply(`✍️ Drafting a ticket · ${repo.label}…`)
+  const { draft, drafted } = await draftFeature(description)
+  let t: ReturnType<typeof createTicket>
+  try {
+    t = createTicket(repo.repoRoot, {
+      title: draft.title,
+      type: draft.type,
+      priority: draft.priority,
+      status: 'open',
+      body: draft.body,
+      acceptance: draft.acceptance,
+    })
+  } catch (e) {
+    return reply(`⛔ could not file the ticket: ${(e as Error).message}`)
+  }
+  const key = rememberDraft({
+    repoRoot: repo.repoRoot,
+    repoLabel: repo.label,
+    slug: t.slug,
+    id: t.id,
+    title: t.title,
+  })
+  reply(
+    [
+      `📋 #${t.id} · ${t.title}`,
+      `${t.type} · ${t.priority} · owner: ${t.agent.id} · ${repo.label}`,
+      ...(t.body ? ['', t.body.slice(0, 500)] : []),
+      ...(t.acceptance.length ? ['', 'Acceptance:', ...t.acceptance.map((c) => `• ${c}`)] : []),
+      ...(drafted ? [] : ['', '⚠️ Drafted offline (no LLM) — title is your raw text.']),
+    ].join('\n'),
+    [
+      [
+        { text: '🚀 Start work', callback_data: `feat:work:${key}` },
+        { text: '☑️ File only', callback_data: `feat:file:${key}` },
+      ],
+    ],
+  )
+}
+
+function startFeatureWork(d: FeatureCtx): { ok: true; text: string } | { ok: false; text: string } {
+  const t = getTicket(d.repoRoot, d.slug)
+  if (!t) return { ok: false, text: `Ticket ${d.slug} is gone.` }
+  const r = spawnBgTask({
+    repoRoot: d.repoRoot,
+    prompt: featureWorkPrompt(t),
+    engine: 'claude',
+    ticketSlug: t.slug,
+    ticketId: t.id,
+  })
+  if ('error' in r) return { ok: false, text: r.error }
+  return {
+    ok: true,
+    text: `🚀 Working #${t.id} · ${t.title}\n${d.repoLabel} · ${r.branch}\n\nI'll ping when the PR is up.`,
+  }
 }
 
 function cmdClose(args: string[]) {
@@ -689,11 +881,9 @@ function cmdInstall(args: string[]) {
 // --- /budget cap + override ------------------------------------------------
 
 function cmdBudget(args: string[]) {
-  const { readBudgets, setDailyCap, setAgentCap, setOverride } = require('./budgets') as typeof import('./budgets')
   const sub = args[0]?.toLowerCase()
   if (!sub) {
     const b = readBudgets()
-    const { summaryFor } = require('./ai-runs') as typeof import('./ai-runs')
     const s = summaryFor('today')
     const lines = [
       `💰 Budget`,
@@ -791,6 +981,8 @@ function cmdBg(args: string[]) {
         'claude-4.6-sonnet-medium',
         'gemini-3.1-pro',
         'grok-4.3',
+        'grok-4.5-xhigh',
+        'grok-4.5-fast-xhigh',
         'kimi-k2.5',
       ].includes(tok)
     ) {
@@ -816,8 +1008,6 @@ function cmdBg(args: string[]) {
   const prompt = args.slice(promptStart).join(' ').trim()
   if (!prompt) return reply('Empty prompt.')
 
-  // Lazy require to avoid pulling bg-tasks into telegram-parse tests.
-  const { spawnBgTask } = require('./bg-tasks') as typeof import('./bg-tasks')
   const r = spawnBgTask({ repoRoot: repo.repoRoot, prompt, engine, model })
   if ('error' in r) return reply(`⛔ ${r.error}`)
   reply(
@@ -827,7 +1017,6 @@ function cmdBg(args: string[]) {
 
 let lastBgIds: string[] = []
 function cmdBgList() {
-  const { listBgTasks } = require('./bg-tasks') as typeof import('./bg-tasks')
   const tasks = listBgTasks().slice(0, 10)
   if (!tasks.length) return reply('No background tasks.')
   lastBgIds = tasks.map((t) => t.id)
@@ -855,7 +1044,6 @@ function cmdBgCancel(args: string[]) {
   if (!tok) return reply('Usage: /bg cancel <n|id>')
   const n = parseInt(tok, 10)
   const id = n && lastBgIds[n - 1] ? lastBgIds[n - 1] : tok
-  const { cancelBgTask } = require('./bg-tasks') as typeof import('./bg-tasks')
   const r = cancelBgTask(id)
   reply(r.ok ? `⏹ canceled ${id.slice(0, 8)}` : `cannot cancel: ${r.error}`)
 }
@@ -926,6 +1114,7 @@ async function translateNaturalLanguage(text: string): Promise<string | null> {
   const SYSTEM = `You translate the user's natural-language request into a TerMinal slash command. Output EXACTLY one command line starting with /, or "NONE" if the request doesn't match.
 
 Available commands (with example syntax):
+  /feature [@repo] <description>
   /bg [@repo] [claude|codex|cursor] [haiku|sonnet|opus] <prompt>
   /run <agentId> [@repo] [engine] [persona] [pipeline]
   /tickets [@repo]
@@ -952,8 +1141,16 @@ Available commands (with example syntax):
   /repos
   /cd <repo>
 
+/feature vs /bg — the one distinction that matters:
+  /feature  new capability or behavior change worth tracking. Files a ticket first, then builds it.
+  /bg       one-off fix, chore, or investigation not worth a backlog entry.
+When in doubt between the two, prefer /feature.
+
 Examples:
+  "add a dark mode toggle to settings" → /feature add a dark mode toggle to settings
+  "we should support CSV export in vellum" → /feature @vellum-project support CSV export
   "fix the flaky test in vellum" → /bg @vellum-project fix the flaky test
+  "bump the eslint version" → /bg bump the eslint version
   "show me what's blocked" → /hitl
   "kill run 3" → /cancel 3
   "what's running" → /runs
@@ -1017,6 +1214,8 @@ async function handle(text: string) {
       return cmdTickets(args[0])
     case '/ticket':
       return cmdTicket(args)
+    case '/feature':
+      return cmdFeature(args)
     case '/close':
       return cmdClose(args)
     case '/schedules':
@@ -1097,6 +1296,28 @@ async function dispatchCallback(data: string, queryId: string) {
       ack(queryId, ok ? 'Reopened' : 'Not found')
       reply(ok ? `↺ Reopened HITL ${id.slice(0, 8)}` : `Could not reopen ${id.slice(0, 8)}`)
       return
+    }
+    if (domain === 'feat') {
+      const d = featureDrafts.get(id)
+      if (!d) {
+        ack(queryId, 'Draft expired')
+        reply('That draft is gone (app restarted). The ticket was filed — /tickets to find it.')
+        return
+      }
+      if (action === 'file') {
+        featureDrafts.delete(id)
+        ack(queryId, 'Filed')
+        reply(`☑️ #${d.id} left in the backlog · ${d.repoLabel}`)
+        return
+      }
+      if (action === 'work') {
+        const r = startFeatureWork(d)
+        featureDrafts.delete(id)
+        // Callback toasts are capped at 200 chars by the Bot API.
+        ack(queryId, r.ok ? 'Started' : r.text.slice(0, 190))
+        reply(r.ok ? r.text : `⛔ ${r.text}`)
+        return
+      }
     }
     if (domain === 'run' && action === 'tail') {
       ack(queryId)

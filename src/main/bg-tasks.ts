@@ -11,7 +11,12 @@ import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
+import { linkTicketPr, updateTicket } from './backlog'
 import { emitActivity } from './events'
+// Static, not lazy `require` — see the note in telegram.ts. Under the ESM
+// bundle the old `require('./budgets')` threw and was swallowed by its own
+// catch, so the daily budget cap never actually gated a background task.
+import { gateSpawn } from './budgets'
 import { enginePath, readSettings, resolvedWorktreesDir, resolveEngineModel } from './settings'
 import { sendUrl } from './telegram-api'
 
@@ -47,6 +52,10 @@ export type BgTask = {
   exitCode?: number
   logFile: string
   mrUrl?: string
+  /** Set when the task was spawned to work a backlog ticket (`/feature`). The
+   *  watcher links the resulting PR back onto the ticket. */
+  ticketSlug?: string
+  ticketId?: number
   /** First few lines of the prompt for tab badges + listings */
   label: string
 }
@@ -103,6 +112,9 @@ export type SpawnBgInput = {
   prompt: string
   engine?: 'claude' | 'codex' | 'cursor' | 'openrouter'
   model?: string
+  /** Backlog ticket this task is working, if any. */
+  ticketSlug?: string
+  ticketId?: number
 }
 
 export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
@@ -110,16 +122,11 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   if (!input.prompt?.trim()) return { error: 'empty prompt' }
   // Budget gate — refuse new spawns when daily cap is reached. Mid-turn
   // runs continue normally; only NEW background tasks are gated.
-  try {
-    const { gateSpawn } = require('./budgets') as typeof import('./budgets')
-    const gate = gateSpawn('bg-task')
-    if (gate.decision === 'refuse') {
-      return {
-        error: `budget gate refused: ${gate.reason}. Set /budget override or raise the cap.`,
-      }
+  const gate = gateSpawn('bg-task')
+  if (gate.decision === 'refuse') {
+    return {
+      error: `budget gate refused: ${gate.reason}. Set /budget override or raise the cap.`,
     }
-  } catch {
-    /* budget module unavailable — fall through and allow */
   }
 
   ensure()
@@ -246,10 +253,24 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     status: 'running',
     startedAt,
     logFile,
+    ticketSlug: input.ticketSlug,
+    ticketId: input.ticketId,
     label: labelFor(input.prompt),
   }
 
   writeTasks([task, ...readTasks()])
+  // Stamp the run onto the ticket so the Tickets tab shows work in flight
+  // rather than a ticket that silently sits "open" while an agent builds it.
+  if (input.ticketSlug) {
+    try {
+      updateTicket(input.repoRoot, input.ticketSlug, {
+        status: 'in-progress',
+        run: { id, source: 'bg', startedAt: new Date(startedAt).toISOString(), status: 'running' },
+      })
+    } catch {
+      /* ticket vanished — the task still runs */
+    }
+  }
   emitActivity(
     {
       kind: 'agent-run',
@@ -372,6 +393,17 @@ async function sweep(): Promise<void> {
     if (mrUrl) {
       t.status = 'done'
       t.mrUrl = mrUrl
+      // Close the ticket → PR loop. The agent is *asked* to link the PR itself,
+      // but it often forgets or opens the PR as its last act; linking here makes
+      // it deterministic. linkTicketPr is idempotent, so doing both is safe.
+      let linked = false
+      if (t.ticketSlug) {
+        try {
+          linked = linkTicketPr(t.repoRoot, t.ticketSlug, mrUrl)
+        } catch {
+          /* backlog unreadable — the ping below still tells the user */
+        }
+      }
       emitActivity({
         kind: 'pr-opened',
         title: `Background task ready · ${t.repo}`,
@@ -381,7 +413,8 @@ async function sweep(): Promise<void> {
         runId: t.id,
         runSource: 'bg',
       })
-      telegramPing(`✅ ${t.repo}: ${t.label} → ${mrUrl}`)
+      const ticketTag = t.ticketId ? ` (#${t.ticketId}${linked ? '' : ' — link failed'})` : ''
+      telegramPing(`✅ ${t.repo}: ${t.label}${ticketTag} → ${mrUrl}`)
     } else if (done) {
       t.status = 'done'
       emitActivity({
@@ -412,7 +445,7 @@ async function sweep(): Promise<void> {
       t.status = 'failed'
       const fullLog = (() => {
         try {
-          return require('node:fs').readFileSync(t.logFile, 'utf8')
+          return readFileSync(t.logFile, 'utf8')
         } catch {
           return tail
         }
@@ -439,6 +472,19 @@ async function sweep(): Promise<void> {
         runId: t.id,
         runSource: 'bg',
       })
+    }
+    // A failed run must not leave its ticket stuck in-progress — nothing is
+    // working it any more, and a HITL item now carries the failure. Hand the
+    // ticket back to the backlog so it can be picked up again.
+    if (t.ticketSlug && t.status === 'failed') {
+      try {
+        updateTicket(t.repoRoot, t.ticketSlug, {
+          status: 'open',
+          run: { id: t.id, source: 'bg', status: 'failed' },
+        })
+      } catch {
+        /* backlog unreadable — HITL still records the failure */
+      }
     }
     changed = true
   }
