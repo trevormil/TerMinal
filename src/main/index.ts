@@ -1440,13 +1440,15 @@ ipcMain.handle('schedules:list', () => {
   if (remote) {
     return remoteSchedules
       .list(remote)
-      .then((rows) => rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) })))
+      .then((rows) =>
+        rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now, s.lastRun) })),
+      )
       .catch(() => [])
   }
   return readSchedules(now).map((s) => ({
     ...s,
     describe: describeSpec(s.spec),
-    nextRun: nextRun(s.spec, now),
+    nextRun: nextRun(s.spec, now, s.lastRun),
   }))
 })
 ipcMain.handle(
