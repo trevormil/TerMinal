@@ -41,6 +41,9 @@ ways. The roles, contract, and taste rubric are identical either way — only
   from TerMinal's "paired loop" launcher; the two sessions open side-by-side,
   tagged `loop · worker` / `loop · driver`. The transport, message shape, and
   listener invariant are in [references/transport.md](references/transport.md).
+  As the driver, your invocation carries the runtime params — the **loop id**,
+  the worker's **worktree**, the **state dir**, and the **goal**; read them from
+  the prompt. Work in the main repo; only the state dir is yours to write.
 
 The rest of this skill is mode-agnostic. Everything below applies to both.
 

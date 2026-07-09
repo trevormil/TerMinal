@@ -44,6 +44,13 @@ evaluator. Delivery between you is automatic — TerMinal's main process injects
 the driver's handoffs to you as prompts; you never poll. Full contract:
 [../loop-driver/references/transport.md](../loop-driver/references/transport.md).
 
+Your invocation carries the runtime params: the **loop id**, your **worktree**
+path (+ branch), the **state dir**, and the **goal**. Read them from the prompt.
+
+- **Work in the worktree.** In TerMinal paired mode your session starts in the
+  **main repo** (so it groups + persists) — `cd` into the worktree path from your
+  invocation and do ALL file/code work there. A restart deletes it; keep nothing
+  precious in it.
 - **Contract-first.** Do not write code until the driver has signed off
   `contract.md` (a `contract agreed` handoff will arrive as a prompt). Until
   then, help sharpen the contract if asked, but do not implement.
