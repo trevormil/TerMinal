@@ -15,7 +15,7 @@ import {
   splitRepoToken,
   type FeatureDraft,
 } from './telegram-parse'
-import { sendUrl, getUpdatesUrl, parseUpdates, answerCallbackUrl, type TgInlineKeyboard } from './telegram-api'
+import { sendUrl, getUpdatesUrl, parseUpdates, answerCallbackUrl, telegramChatIdError, type TgInlineKeyboard } from './telegram-api'
 import { listTickets, createTicket, updateTicket, getTicket } from './backlog'
 import { readHitl, resolveHitl } from './hitl'
 import { readSchedules } from './schedules'
@@ -1396,6 +1396,8 @@ export async function pollTelegramOnce() {
 export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
   const t = readSettings().telegram
   if (!t.botToken || !t.chatId) return { ok: false, error: 'Set both the bot token and chat id first.' }
+  const idErr = telegramChatIdError(t.botToken, t.chatId)
+  if (idErr) return { ok: false, error: idErr }
   try {
     const res = await fetch(sendUrl(t.botToken), {
       method: 'POST',
@@ -1405,6 +1407,11 @@ export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
+      // Map the specific "send to self" 403 to the same friendly hint, in case
+      // creds were set outside the Settings UI and skipped the preflight.
+      if (res.status === 403 && /can't send messages to the bot/i.test(body)) {
+        return { ok: false, error: telegramChatIdError(t.botToken, t.botToken.split(':')[0] || '') || `Telegram API 403: ${body.slice(0, 200)}` }
+      }
       return { ok: false, error: `Telegram API ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}` }
     }
     const j = (await res.json().catch(() => null)) as { ok?: boolean; description?: string } | null

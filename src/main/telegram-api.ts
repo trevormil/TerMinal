@@ -7,6 +7,21 @@ export function sendUrl(token: string): string {
   return `${API}/bot${token}/sendMessage`
 }
 
+/**
+ * Catch the most common Telegram setup mistake before hitting the API: pasting
+ * the bot's OWN id (the digits before ':' in the token) into the chat-id field.
+ * The API rejects that with a cryptic 403 "the bot can't send messages to the
+ * bot". Returns a human-friendly error string, or null if the pair looks sane.
+ */
+export function telegramChatIdError(botToken: string, chatId: string): string | null {
+  const botId = botToken.split(':')[0]?.trim()
+  const chat = chatId.trim()
+  if (botId && chat && chat === botId) {
+    return "That Chat id is the bot's own id (the number before ':' in the token). Use YOUR chat id instead — message @userinfobot to get it."
+  }
+  return null
+}
+
 /** Acknowledge a tapped inline-button so Telegram dismisses the loading
  *  spinner on the user's keyboard. Required by the Bot API. */
 export function answerCallbackUrl(token: string): string {

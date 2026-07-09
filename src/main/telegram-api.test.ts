@@ -1,5 +1,25 @@
 import { test, expect, describe } from 'bun:test'
-import { sendUrl, getUpdatesUrl, parseUpdates } from './telegram-api'
+import { sendUrl, getUpdatesUrl, parseUpdates, telegramChatIdError } from './telegram-api'
+
+describe('telegramChatIdError', () => {
+  const token = '8357874929:AAGUQrMzOTFV6HVNJJSx71G'
+
+  test('flags the bot id pasted as chat id (the 403 footgun)', () => {
+    expect(telegramChatIdError(token, '8357874929')).toMatch(/bot's own id/)
+    expect(telegramChatIdError(token, '  8357874929  ')).toMatch(/bot's own id/) // trims
+  })
+
+  test('passes a real chat id', () => {
+    expect(telegramChatIdError(token, '6371624447')).toBeNull()
+    expect(telegramChatIdError(token, '-1001234567890')).toBeNull() // group chat
+  })
+
+  test('empty inputs are not flagged', () => {
+    expect(telegramChatIdError(token, '')).toBeNull()
+    expect(telegramChatIdError('', '')).toBeNull()
+    expect(telegramChatIdError('', '123')).toBeNull()
+  })
+})
 
 describe('url builders', () => {
   test('sendUrl', () => {
