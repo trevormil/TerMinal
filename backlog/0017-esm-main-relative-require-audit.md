@@ -1,14 +1,14 @@
 ---
 id: 17
 title: "Kill the last two require('./x') calls in ESM main + add a lint guard"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: bug
 source: manual
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-09
 prs: []
 refs: []
 depends_on: []

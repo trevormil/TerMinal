@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { telegramNotifyEnabled, readSettings } from './settings'
 import { sendUrl } from './telegram-api'
+import { inferActivityKind } from './event-classifier'
 
 // Telegram notify: native Bot API when a token+chat are configured; otherwise
 // fall back to the project-template /notify script if it's present.
@@ -184,7 +185,6 @@ function maybeInferKind(passed: ActivityKind, title: string): ActivityKind {
   // Only run inference when the caller didn't pick a specific kind.
   if (passed !== 'info') return passed
   try {
-    const { inferActivityKind } = require('./event-classifier') as typeof import('./event-classifier')
     return inferActivityKind(title, 'info')
   } catch {
     return passed

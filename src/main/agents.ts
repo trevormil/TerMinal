@@ -18,6 +18,7 @@ import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
 import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir, resolvedOpenRouterKey } from './settings'
+import { recordRunnerInvocation } from './ai-collectors'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
@@ -1384,8 +1385,6 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // Try to extract claude -p / codex exec usage from the captured output
     // and record an AIRun ledger entry. Best-effort — silent on miss.
     try {
-      // Lazy-require to keep agents.ts decoupled from the observability layer.
-      const { recordRunnerInvocation } = require('./ai-collectors') as typeof import('./ai-collectors')
       // cursor has no parseable usage; openrouter reports its own cost via
       // run.costUsd (or-agent), so it must NOT be mis-parsed as a claude-p run.
       if (spec.engine !== 'cursor' && spec.engine !== 'openrouter') {
