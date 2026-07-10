@@ -11,6 +11,7 @@ import {
   Eraser,
   EyeOff,
   FileText,
+  Image as ImageIcon,
   Loader2,
   MessageSquareText,
   Play,
@@ -30,6 +31,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import type { Choice } from './EntryScreen'
 import type { Engine, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
+import { formatDroppedPaths } from '../lib/terminalInput'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
@@ -63,6 +65,18 @@ const DEFAULT_SUGGESTION_SETTINGS: SuggestionSettings = {
 }
 const DEFAULT_AUTO_INSTRUCTIONS = 'Act as a 1000x AI engineer'
 const LAST_ENHANCER_LINES = 80
+
+// Terminal font zoom (Cmd +/-/0). Shared across every terminal via localStorage
+// and a window event, so zoom feels global like a native terminal.
+const FONT_DEFAULT = 13
+const FONT_MIN = 9
+const FONT_MAX = 26
+const FONT_KEY = 'gt:terminal-font-size'
+const FONT_EVENT = 'gt.terminal.fontsize.changed'
+const readFontSize = (): number => {
+  const raw = Number(window.localStorage.getItem(FONT_KEY))
+  return Number.isFinite(raw) && raw >= FONT_MIN && raw <= FONT_MAX ? raw : FONT_DEFAULT
+}
 
 const cssVar = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -217,6 +231,8 @@ export function TerminalPane({
   const interceptEnhanceSubmitRef = useRef<(draft: string) => void>(() => {})
   const inputLineBufferRef = useRef('')
   const skipNextEnhanceSubmitRef = useRef(false)
+  const applyFontSizeRef = useRef<(size: number) => void>(() => {})
+  const [dragActive, setDragActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
   const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('off')
@@ -304,7 +320,7 @@ export function TerminalPane({
 
     const term = new Xterm({
       fontFamily: "'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace",
-      fontSize: 13,
+      fontSize: readFontSize(),
       lineHeight: 1.25,
       cursorBlink: true,
       allowProposedApi: true,
@@ -393,6 +409,47 @@ export function TerminalPane({
       setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: term.hasSelection() })
     }
     el.addEventListener('contextmenu', onContext)
+
+    // Drag files from Finder → insert their (shell-escaped) absolute paths.
+    // Electron 32+ dropped File.path, so paths come from webUtils via the bridge.
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault()
+      setDragActive(true)
+    }
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget && el.contains(e.relatedTarget as Node)) return
+      setDragActive(false)
+    }
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault()
+      setDragActive(false)
+      const dt = e.dataTransfer
+      if (!dt) return
+      const files = Array.from(dt.files || [])
+      if (files.length) {
+        const paths = files.map((f) => gt.pathForFile(f)).filter(Boolean)
+        const text = formatDroppedPaths(paths)
+        if (text) {
+          writeInput(text)
+          requestAnimationFrame(() => term.focus())
+          return
+        }
+      }
+      const dropped = (dt.getData('text/uri-list') || dt.getData('text/plain')).split('\n')[0].trim()
+      if (dropped) {
+        writeInput(dropped)
+        requestAnimationFrame(() => term.focus())
+      }
+    }
+    el.addEventListener('dragover', onDragOver)
+    el.addEventListener('dragenter', onDragEnter)
+    el.addEventListener('dragleave', onDragLeave)
+    el.addEventListener('drop', onDrop)
+
     // attach listeners BEFORE starting the pty so no early output is missed.
     // Filter by sessionKey: every session's pty streams to all listeners.
     const offData = gt.pty.onData((key, d) => key === sessionKey && term.write(d))
@@ -452,12 +509,33 @@ export function TerminalPane({
     ro.observe(el)
     window.addEventListener('gt.settings.changed', onSettingsChanged)
 
+    // Font zoom: apply a new size to this terminal and re-fit the grid. Driven
+    // by the active terminal's keydown handler and mirrored to every other
+    // terminal through FONT_EVENT so zoom stays consistent app-wide.
+    applyFontSizeRef.current = (size: number) => {
+      const next = Math.min(FONT_MAX, Math.max(FONT_MIN, size))
+      if (term.options.fontSize === next) return
+      term.options.fontSize = next
+      refit(true)
+    }
+    const onFontSize = (e: Event) => {
+      const size = (e as CustomEvent).detail
+      if (typeof size === 'number') applyFontSizeRef.current(size)
+    }
+    window.addEventListener(FONT_EVENT, onFontSize)
+
     return () => {
       cancelAnimationFrame(raf)
       if (fitTimer) window.clearTimeout(fitTimer)
       el.removeEventListener('contextmenu', onContext)
+      el.removeEventListener('dragover', onDragOver)
+      el.removeEventListener('dragenter', onDragEnter)
+      el.removeEventListener('dragleave', onDragLeave)
+      el.removeEventListener('drop', onDrop)
       window.removeEventListener('gt.theme.changed', onTheme)
       window.removeEventListener('gt.settings.changed', onSettingsChanged)
+      window.removeEventListener(FONT_EVENT, onFontSize)
+      applyFontSizeRef.current = () => {}
       offData()
       offExit()
       onInput.dispose()
@@ -700,6 +778,18 @@ export function TerminalPane({
       ? choice.engine
       : newEngine
   const focusTerminalSoon = () => requestAnimationFrame(() => termRef.current?.focus())
+  const setTerminalFontSize = (size: number) => {
+    const next = Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(size)))
+    try {
+      window.localStorage.setItem(FONT_KEY, String(next))
+    } catch {
+      /* best effort */
+    }
+    // Every mounted terminal (this one included) applies via the FONT_EVENT
+    // listener, so zoom stays a single source of truth.
+    window.dispatchEvent(new CustomEvent(FONT_EVENT, { detail: next }))
+  }
+  const bumpFontSize = (delta: number) => setTerminalFontSize(readFontSize() + delta)
   const flashTerminalToast = (message: string) => {
     setTerminalToast(message)
     window.setTimeout(() => setTerminalToast((cur) => (cur === message ? '' : cur)), 2200)
@@ -878,6 +968,29 @@ export function TerminalPane({
         openSearch()
         return
       }
+      if ((e.metaKey || e.ctrlKey) && !editing) {
+        const k = e.key
+        if (k === 'k' || k === 'K') {
+          e.preventDefault()
+          termRef.current?.clear()
+          return
+        }
+        if (k === '=' || k === '+') {
+          e.preventDefault()
+          bumpFontSize(1)
+          return
+        }
+        if (k === '-' || k === '_') {
+          e.preventDefault()
+          bumpFontSize(-1)
+          return
+        }
+        if (k === '0') {
+          e.preventDefault()
+          setTerminalFontSize(FONT_DEFAULT)
+          return
+        }
+      }
       if (!searchOpen) return
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -975,6 +1088,14 @@ export function TerminalPane({
       >
         <div ref={ref} className="h-full w-full overflow-hidden" />
       </div>
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-3 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/10 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/90 px-3 py-1.5 text-[12px] font-semibold text-zinc-200 shadow-xl">
+            <FileText size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+            Drop to insert file path
+          </div>
+        </div>
+      )}
       <div className={`absolute top-4 z-20 ${isRemote ? 'right-14' : 'right-24'}`}>
         <button
           onClick={openSearch}
@@ -1327,8 +1448,11 @@ export function TerminalPane({
           </button>
           <button
             onClick={() => {
+              // Route through xterm.paste so multi-line pastes respect the
+              // app's bracketed-paste mode (stay one block) instead of
+              // auto-submitting each line, matching native Cmd+V.
               window.gt.clipboardRead().then((text) => {
-                if (text) writeInputRef.current(text)
+                if (text) termRef.current?.paste(text)
               })
               closeContextMenu()
             }}
@@ -1340,7 +1464,9 @@ export function TerminalPane({
           <button
             onClick={() => {
               window.gt.clipboardRead().then((text) => {
-                if (text) writeInputRef.current(`${text}\r`)
+                if (!text) return
+                termRef.current?.paste(text)
+                writeInputRef.current('\r')
               })
               closeContextMenu()
             }}
@@ -1348,6 +1474,19 @@ export function TerminalPane({
           >
             <Play size={13} strokeWidth={2} />
             Paste and run
+          </button>
+          <button
+            onClick={() => {
+              window.gt.clipboardImageToFile().then((path) => {
+                if (path) writeInputRef.current(formatDroppedPaths([path]))
+                else flashTerminalToast('No image in clipboard')
+              })
+              closeContextMenu()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            <ImageIcon size={13} strokeWidth={2} />
+            Paste image as file
           </button>
           <button
             disabled={!contextMenu.hasSelection}

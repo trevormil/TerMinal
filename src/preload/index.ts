@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 type StartOpts = {
   mode: 'new' | 'resume'
@@ -334,6 +334,18 @@ const gt = {
   },
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   clipboardRead: (): Promise<string> => ipcRenderer.invoke('clipboard:read'),
+  // Electron 32+ removed File.path — resolve a dropped file's absolute path
+  // from the bridge, where webUtils is available. Empty string if unavailable.
+  pathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
+  // Write the current clipboard image (if any) to a temp PNG and return its
+  // absolute path, or null when the clipboard holds no image.
+  clipboardImageToFile: (): Promise<string | null> => ipcRenderer.invoke('clipboard:imageToFile'),
 
   notes: {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('notes:read', scope),

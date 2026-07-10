@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Tray, Menu, nativeImage, safeStorage } from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
 import { spawn as cpSpawn, execFileSync, type ChildProcess } from 'node:child_process'
@@ -2321,6 +2321,15 @@ ipcMain.handle('open:in-editor', (_e, path?: string) => {
 })
 ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
 ipcMain.handle('clipboard:read', () => clipboard.readText())
+ipcMain.handle('clipboard:imageToFile', () => {
+  const img = clipboard.readImage()
+  if (img.isEmpty()) return null
+  const dir = join(tmpdir(), 'terminal-pastes')
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, `paste-${randomUUID().slice(0, 8)}.png`)
+  writeFileSync(file, img.toPNG())
+  return file
+})
 
 // ---- notes (repo-bound + global, persisted) ----
 ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
@@ -2406,8 +2415,35 @@ app.on('before-quit', () => {
   stopAgentViewUpstream()
 })
 
+// Standard role-based menu, minus the View → Zoom items. Electron's default
+// menu binds Cmd +/-/0 to webContents zoom, which shadows the terminal's own
+// font-zoom keys and fights the app's uiScale. Dropping just those three items
+// frees the keys for the terminal; every other default role (Edit copy/paste,
+// Window, app menu) is preserved verbatim.
+function installAppMenu() {
+  const isMac = process.platform === 'darwin'
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    { role: 'windowMenu' },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 app.whenReady().then(() => {
   fixPath() // packaged app has a minimal PATH — recover brew CLIs (glab/gh/…)
+  installAppMenu()
   createWindow()
   // App-side watchdog. Catches phantom cron runs (schedule deleted before
   // runner finalized, terminal closed mid-run, OOM) that the per-schedule
