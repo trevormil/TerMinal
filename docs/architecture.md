@@ -142,6 +142,61 @@ carry `trace` metadata (`ticketSlug`, `ticketRef`, `prIid`, source branch) and
 an `evaluation` summary. The Runs tab renders both ahead of the raw log; the
 Tickets tab uses the same run id to embed the linked log and evaluation.
 
+## Loop engine (paired / headless)
+
+A goal-convergence loop that lets the model drive: a **planner** drafts a
+gradable contract, a **generator** implements against it (and may not grade
+itself), and an **evaluator** adversarially scores pass/fail with evidence,
+cycling `negotiate → generate → evaluate → decide` until the contract is met or
+`maxIterations` is hit. It runs in its own git worktree/branch (`loop/<id>`).
+`src/main/loops.ts` is the engine.
+
+**Store:** an index at `~/.config/TerMinal/loops.json` (capped) plus per-loop
+state under `<repoRoot>/.TerMinal/loops/<id>/` — `contract.md`,
+`feature_list.json`, `progress.md`, `log.md`, and an append-only `events.jsonl`.
+`readLoopState(id)` derives a bounded read-model (phase, iteration, last score,
+assertion tallies, log tail) for the cockpit widget.
+
+**Two modes over the same loop state** (`LoopMode = 'headless' | 'paired'`):
+
+- **Headless** — the engine spawns one agent turn per phase itself.
+  `stepLoop(id)` builds the per-role command (`buildTurnCommand`) and spawns the
+  chosen engine detached (generator runs in the worktree, other roles in the
+  repo root; `--model` threaded when set), writing to `turns/<iter>-<role>.log`.
+  A 5 s `startLoopWatcher()` interval tails the active turn's log and, on the
+  agent's final `LOOP-DONE:` line, advances the phase (`advanceAfterTurn`).
+  `decide` is deterministic — no agent turn — checking all-assertions-pass and a
+  taste plateau.
+
+- **Paired** — the mode the **Paired loop** picker launches. The engine only
+  creates the loop record + worktree; the two roles are **live interactive
+  sessions** the user watches side by side: a **driver** (`/loop-driver` skill,
+  planner+evaluator, in the main repo) and a **worker** (`/loop-implementer`
+  skill, generator, in the worktree). `stepLoop` refuses paired loops — they are
+  advanced entirely by the two sessions plus the relay below. The renderer
+  (`App.tsx` `startPairedLoop`) calls `loops.create({ mode: 'paired', … })`, then
+  opens two sessions in a `split` grid tied together by a shared `loopId` +
+  distinct `loopRole`. Each session's seed carries **only runtime params** — the
+  skill invocation, loop id, worktree, state dir, and goal — because all role
+  behavior lives in the slash-command skills, not the seed.
+
+**Always-on listener** (`src/main/loop-listener.ts`) is the code-driven channel
+between a paired loop's two sessions. Because it lives in the persistent Electron
+main process — not in an agent's prompt — it never needs re-arming: a 1.5 s
+timer (`startLoopListener`) tails each loop's `events.jsonl` (the
+provider-neutral base channel any engine can append to), and when one role emits
+a handoff event it writes a single bounded line into the **peer** session's PTY
+and submits it. This is deliberately unlike the earlier prompt/plugin-driven
+relay and the CLI notify bridge, which depend on the model choosing to "keep
+listening." Sessions register via `registerLoopSession(key, loopId, role)` on
+start (from `StartOpts.loopId`/`loopRole`) and unregister on stop. First sighting
+seeds the read offset at EOF, so prior events don't replay. A Claude-only
+fallback (`noteLoopTurnComplete`) forwards the last assistant turn to the peer
+when a turn completes without an `events.jsonl` handoff.
+
+**Entry points:** `loops:create|list|get|state|step|restart|stop` IPC (local
+only); `startLoopWatcher()` + `startLoopListener()` boot at app startup.
+
 ## Engines & models
 
 Four engines, in one `Engine` union (`src/renderer/src/lib/types.ts`,

@@ -1,7 +1,7 @@
 ---
 id: 23
 title: "Document the live-paired / loop session launcher mode"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
