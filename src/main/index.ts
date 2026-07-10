@@ -393,9 +393,15 @@ function startSession(key: string, opts: StartOpts) {
       sessionId = opts.sessionId || randomUUID()
     }
   } else if (engine === 'hermes') {
-    // Interactive Hermes TUI. -m applies to --tui per hermes(1). No resume wiring.
-    sessionId = opts.sessionId || randomUUID()
+    // Interactive Hermes TUI. Resume attaches to an existing ~/.hermes session
+    // (`hermes --resume <id> --tui`); -m applies to --tui per hermes(1).
     args.push('--tui')
+    if (opts.mode === 'resume' && opts.sessionId) {
+      sessionId = opts.sessionId
+      args.push('--resume', sessionId)
+    } else {
+      sessionId = opts.sessionId || randomUUID()
+    }
     if (defaultModel) args.push('-m', defaultModel)
   } else if (engine === 'openrouter') {
     // Interactive OpenRouter via the chosen harness (default codex). enginePath
