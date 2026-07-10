@@ -96,6 +96,10 @@ Native Bot API, no scripts required:
 If you leave the token blank but have the legacy `~/.claude/bin/telegram-*.sh`
 scripts, the app falls back to those.
 
+> Common mistake: pasting the **bot's own id** (the digits before `:` in the
+> token) into the chat-id field. The app catches this and tells you to use
+> *your* chat id instead — message @userinfobot to get it.
+
 ## 5. Activity feed hook (`gt-notify`)
 
 Anything can surface in the **Activity** tab + notifications by appending one
