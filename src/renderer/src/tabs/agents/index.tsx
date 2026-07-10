@@ -727,7 +727,7 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
-function PersistentAgentsPanel({ ctx }: { ctx: TabContext }) {
+function PersistentAgentsPanel({ ctx, headerSlot }: { ctx: TabContext; headerSlot?: ReactNode }) {
   const railW = useResizableWidth('gt.agentsRailWidth', 288, { min: 220, max: 520, edge: 'right' })
   const [agents, setAgents] = useState<PersistentAgent[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(() => localStorage.getItem('gt.persistentAgents.sel'))
@@ -1016,6 +1016,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
     <div className="flex min-h-0 flex-1">
       <aside className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30" style={{ width: railW.width }}>
         <div className="space-y-1.5 border-b border-[var(--gt-border)] p-2">
+          {headerSlot}
           <div className="flex items-center gap-1.5">
             <input
               value={query}
@@ -1728,29 +1729,17 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   }
 
   const activeRunCount = runs.filter((r) => r.status === 'running').length
-  const repoLabel = ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')
 
-  const header = (
-    <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/25 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25">
-          <Bot size={15} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-zinc-100">Agents</span>
-            <span className="truncate font-mono text-[10.5px] text-zinc-600">{repoLabel}</span>
-          </div>
-          <div className="text-[10.5px] text-zinc-600">Run definitions, memory agents, model policy, and quality gates</div>
-        </div>
-      </div>
-      {activeRunCount > 0 && <Badge tone="green">{activeRunCount} running</Badge>}
-      <div className="ml-auto flex items-center rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
+  // Mode switch lives at the top of the rail (each layout has one) rather than a
+  // dedicated header bar — the tab chrome already names the tab.
+  const modeToggle = (
+    <div className="flex items-center gap-1.5">
+      <div className="flex flex-1 items-center rounded-md border border-[var(--gt-border)] bg-black/20 p-0.5">
         {(['all', 'classic', 'persistent'] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setAgentMode(mode)}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-medium capitalize ${
+            className={`flex-1 rounded-sm px-2 py-1 text-[11px] font-medium capitalize ${
               agentMode === mode
                 ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                 : 'text-zinc-500 hover:text-zinc-300'
@@ -1760,26 +1749,25 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
           </button>
         ))}
       </div>
+      {activeRunCount > 0 && <Badge tone="green">{activeRunCount}</Badge>}
     </div>
   )
 
   if (agentMode === 'persistent') {
     return (
       <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-        {header}
-        <PersistentAgentsPanel ctx={ctx} />
+        <PersistentAgentsPanel ctx={ctx} headerSlot={modeToggle} />
       </div>
     )
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      {header}
-
       <div className="flex min-h-0 flex-1">
         {/* ━━ LEFT RAIL: narrow agents list (search + filter + click-to-select) ━━ */}
         <aside className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30" style={{ width: railW.width }}>
           <div className="shrink-0 space-y-2 border-b border-[var(--gt-border)] p-2.5">
+            {modeToggle}
             <div className="flex items-center gap-1.5">
               <input
                 value={agentSearch}
