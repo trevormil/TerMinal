@@ -6,7 +6,6 @@ import type { Entry, ReadResult, SearchHit } from './files'
 import type { DocsTree } from './docs'
 import type { GitStatus } from './repo'
 import type { CiInfo } from './forge'
-import type { CiListResult, CiJobsResult, CiLogResult } from './ci'
 import type { WorkspaceSearchKind, WorkspaceSearchResponse } from './workspace-search'
 import type { Agent, AgentRun } from './agents'
 import type { Schedule } from './schedules'
@@ -113,8 +112,6 @@ function glabRaw(m){const iid=m.iid??m.IID??m.number;return {iid:Number(iid),tit
 function parseJson(s,f){try{return JSON.parse(s||'')}catch{return f}}
 function listMrs(root){const f=forge(root);if(f.kind==='github'){const r=runObj('gh',['pr','list','--state','all','--limit','100','--json','number,title,state,author,headRefName,isDraft,url,labels'],{cwd:root});if(r.error&&!r.stdout)return {mrs:[],error:r.error};return {mrs:parseJson(r.stdout,[]).map(ghRaw)}}const r=runObj('glab',['mr','list','--all','-F','json','-P','100'],{cwd:root});if(r.error&&!r.stdout)return {mrs:[],error:r.error};return {mrs:parseJson(r.stdout,[]).map(glabRaw)}}
 function mrDetail(root,iid){const f=forge(root);if(f.kind==='github'){const r=runObj('gh',['pr','view',String(iid),'--json','number,title,state,author,headRefName,isDraft,url,labels,baseRefName,body'],{cwd:root});const m=parseJson(r.stdout,null);return m?{...ghRaw(m),description:m.body||'',targetBranch:m.baseRefName||'',reviewMd:'',reviewMeta:null,findings:[],suggestions:[],screenshots:[],artifactShortSha:''}:null}const r=runObj('glab',['mr','view',String(iid),'-F','json'],{cwd:root});const m=parseJson(r.stdout,null);return m?{...glabRaw(m),iid:Number(m.iid||m.IID||iid),description:m.description||'',targetBranch:m.target_branch||'',reviewMd:'',reviewMeta:null,findings:[],suggestions:[],screenshots:[],artifactShortSha:''}:null}
-function ciStatus(s,c){if(s==='completed')return c==='success'?'success':c==='cancelled'?'canceled':c==='skipped'?'skipped':'failed';if(s==='in_progress')return 'in_progress';if(['queued','waiting','requested'].includes(s))return 'queued';return s||'pending'}
-function ciList(root,limit){const f=forge(root);if(f.kind!=='github')return {runs:[],error:'remote GitLab CI not implemented yet'};const r=runObj('gh',['run','list','--limit',String(limit||40),'--json','databaseId,status,conclusion,workflowName,headBranch,headSha,event,url,createdAt,updatedAt'],{cwd:root});if(r.error&&!r.stdout)return {runs:[],error:r.error};return {runs:parseJson(r.stdout,[]).map(x=>{const created=Date.parse(x.createdAt||'')||0,updated=Date.parse(x.updatedAt||'')||created,status=ciStatus(x.status||'',x.conclusion);return {id:String(x.databaseId||''),name:x.workflowName||'',status,branch:x.headBranch||'',shortSha:String(x.headSha||'').slice(0,7),event:x.event||'',webUrl:x.url||'',createdAt:created,updatedAt:updated,durationMs:status==='in_progress'||status==='queued'?null:Math.max(0,updated-created)}})}}
 function home(){return process.env.HOME||''}
 function cfg(){return path.join(home(),'.config','TerMinal')}
 function readJson(p,f){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return f}}
@@ -254,7 +251,6 @@ else if(op==='tickets.update'){const safe=String(input.slug||'').replace(/[^\w-]
 else if(op==='tickets.create'){const dir=ensureArea(root,'backlog');const inputT=input.ticket||{};const next=listTickets(root).reduce((m,t)=>Math.max(m,t.id),0)+1;const slug=String(next).padStart(4,'0')+'-'+slugify(inputT.title);const agent=normalizeTicketAgent(inputT,inputT.type||'feature');const md=['---','id: '+next,'title: "'+String(inputT.title||'Untitled').replace(/"/g,"'")+'"','status: '+(inputT.status||'open'),'priority: '+(inputT.priority||'medium'),'horizon: now','type: '+(inputT.type||'feature'),'source: TerMinal','created: '+today(),'updated: '+today(),'prs: []','refs: []','depends_on: []','acceptance: []','agent_id: '+agent.id,'agent_scope: '+agent.scope,'agent_kind: '+agent.kind,'---','',String(inputT.body||'').trim(),''].join('\n');fs.writeFileSync(path.join(dir,slug+'.md'),md);out(ticket(slug,md))}
 else if(op==='mrs.list')out(listMrs(root));else if(op==='mrs.get')out(mrDetail(root,input.iid));else if(op==='mrs.diff'){const f=forge(root);out(runObj(f.cli,f.kind==='github'?['pr','diff',String(input.iid)]:['mr','diff',String(input.iid)],{cwd:root,maxBuffer:16*1024*1024}).stdout||'')}
 else if(op==='mrs.ci')out(null);else if(op==='mrs.merge'){const f=forge(root);const r=runObj(f.cli,f.kind==='github'?['pr','merge',String(input.iid),'--merge']:['mr','merge',String(input.iid),'--yes'],{cwd:root,timeout:60000});out(r.error?{ok:false,error:r.error}:{ok:true})}
-else if(op==='ci.list')out(ciList(root,input.limit||40));else if(op==='ci.jobs')out({jobs:[],error:'remote job detail not implemented yet'});else if(op==='ci.log')out({log:'',error:'remote CI log not implemented yet'});
 else if(op==='files.list')out(listDir(root,input.rel||''));else if(op==='files.read')out(readFile(root,input.rel||''));else if(op==='files.write')out(writeFile(root,input.rel||'',input.content||''));else if(op==='files.search')out(search(root,input.q||''));else if(op==='files.create'){const p=safe(root,input.rel||'');if(!p||exists(p))out(false);else{if(input.dir)fs.mkdirSync(p,{recursive:true});else{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,'')}out(true)}}else if(op==='files.rename'){const a=safe(root,input.from||''),b=safe(root,input.to||'');if(!a||!b||!exists(a)||exists(b))out(false);else{fs.mkdirSync(path.dirname(b),{recursive:true});fs.renameSync(a,b);out(true)}}else if(op==='files.delete'){const p=safe(root,input.rel||'');if(!p||p===path.resolve(root)||!exists(p))out(false);else{fs.rmSync(p,{recursive:true,force:true});out(true)}}
 else if(op==='docs.list')out(docs(root));else if(op==='docs.get')out(readFile(root,input.relPath||'').content||'');
 else if(op==='agents.list')out(readRepoAgents(root));else if(op==='agents.script')out(readAgentScript(root,input.id));
@@ -322,11 +318,6 @@ export const remoteMrs = {
   diff: (remote: RemoteSessionRef, iid: number) => remoteJson<string>(remote, { op: 'mrs.diff', iid }),
   ci: (remote: RemoteSessionRef, iid: number) => remoteJson<CiInfo | null>(remote, { op: 'mrs.ci', iid }),
   merge: (remote: RemoteSessionRef, iid: number) => remoteJson<{ ok: boolean; error?: string }>(remote, { op: 'mrs.merge', iid }),
-}
-export const remoteCi = {
-  list: (remote: RemoteSessionRef, limit?: number) => remoteJson<CiListResult>(remote, { op: 'ci.list', limit }),
-  jobs: (remote: RemoteSessionRef, runId: string) => remoteJson<CiJobsResult>(remote, { op: 'ci.jobs', runId }),
-  log: (remote: RemoteSessionRef, jobId: string) => remoteJson<CiLogResult>(remote, { op: 'ci.log', jobId }),
 }
 export const remoteFiles = {
   list: (remote: RemoteSessionRef, rel: string) => remoteJson<Entry[]>(remote, { op: 'files.list', rel }),

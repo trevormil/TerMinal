@@ -1,7 +1,6 @@
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import type { NewTicket, Ticket, TicketPatch } from './backlog'
-import { listCiJobs, listCiRuns, fetchCiLog, type CiJobsResult, type CiListResult, type CiLogResult } from './ci'
 import { listDocs, readDoc, type DocsTree } from './docs'
 import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry, type Entry, type ReadResult, type SearchHit } from './files'
 import { forgeFor, type CiInfo } from './forge'
@@ -29,7 +28,6 @@ import { hasAgents as repoHasAgents } from './agents'
 import { hasProjectArea } from './project-layout'
 import { createRepoTicket, getRepoTicket, listRepoTickets, repoTicketProvider, updateRepoTicket, type TicketProviderKind } from './ticket-provider'
 import {
-  remoteCi,
   remoteDocs,
   remoteFiles,
   remoteGitStatus,
@@ -98,9 +96,6 @@ export type WorkspaceDaemon = {
   digestRunStatus(iid: number): DigestRunState | null
   mrCi(iid: number): Promise<CiInfo | null> | CiInfo | null
   mrMerge(iid: number): Promise<{ ok: boolean; error?: string }> | { ok: boolean; error?: string }
-  ciList(limit?: number): Promise<CiListResult>
-  ciJobs(runId: string): Promise<CiJobsResult>
-  ciLog(jobId: string): Promise<CiLogResult>
   notesRead(scope: NotesScope): Promise<string> | string
   notesWrite(scope: NotesScope, content: string): Promise<boolean> | boolean
   filesList(rel: string): Promise<Entry[]> | Entry[]
@@ -133,7 +128,6 @@ function remoteCapabilities(): Record<string, boolean> {
     admin: true,
     runs: true,
     schedules: true,
-    ci: true,
     files: true,
     docs: true,
     sessions: true,
@@ -197,9 +191,6 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     digestRunStatus: (iid: number) => readDigestStatus(root(), iid),
     mrCi: (iid: number) => getMrCi(root(), iid),
     mrMerge: (iid: number) => mergeMr(root(), iid),
-    ciList: (limit?: number) => listCiRuns(root(), limit),
-    ciJobs: (runId: string) => listCiJobs(root(), runId),
-    ciLog: (jobId: string) => fetchCiLog(root(), jobId),
     notesRead: (scope: NotesScope) => readNotes(scope, root()),
     notesWrite: (scope: NotesScope, content: string) => writeNotes(scope, content, root()),
     filesList: (rel: string) => listDir(fileRoot(), rel || ''),
@@ -285,9 +276,6 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
 
     mrCi: (iid: number) => remoteMrs.ci(remote, iid),
     mrMerge: (iid: number) => remoteMrs.merge(remote, iid),
-    ciList: (limit?: number) => remoteCi.list(remote, limit),
-    ciJobs: (runId: string) => remoteCi.jobs(remote, runId),
-    ciLog: (jobId: string) => remoteCi.log(remote, jobId),
     notesRead: (scope: NotesScope) => remoteNotes.read(remote, scope).catch(() => ''),
     notesWrite: (scope: NotesScope, content: string) => remoteNotes.write(remote, scope, content).catch(() => false),
     filesList: (rel: string) => remoteFiles.list(remote, rel || ''),
