@@ -244,3 +244,52 @@ describe('acceptance criteria + PR linking', () => {
     expect(linkTicketPr(root, '9999-nope', 'https://gl/x/-/merge_requests/1')).toBe(false)
   })
 })
+
+// The Obsidian provider reuses the local store pointed at an external vault
+// folder via the optional baseDir arg — verify tickets land in the vault (never
+// the repo), that create auto-creates the folder, and that repo/vault stores
+// stay isolated.
+describe('baseDir override (Obsidian vault)', () => {
+  let root: string
+  let vault: string
+  let dir: string
+  const New = { title: '', type: 'feature', priority: 'medium', status: 'open', body: 'x' }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gt-obs-repo-'))
+    mkdirSync(join(root, 'backlog')) // a repo-local store that must stay untouched
+    vault = mkdtempSync(join(tmpdir(), 'gt-obs-vault-'))
+    dir = join(vault, 'tickets') // NOT pre-created — createTicket must mkdir it
+  })
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(vault, { recursive: true, force: true })
+  })
+
+  test('createTicket writes into the vault folder (auto-created), not the repo', () => {
+    const t = createTicket(root, { ...New, title: 'Vault ticket' }, dir)
+    expect(existsSync(join(dir, `${t.slug}.md`))).toBe(true)
+    expect(existsSync(join(root, 'backlog', `${t.slug}.md`))).toBe(false)
+    // identical frontmatter format to a local ticket
+    expect(t.id).toBe(1)
+    expect(t.slug).toBe('0001-vault-ticket')
+  })
+
+  test('list/get/update all honor baseDir and stay isolated from the repo store', () => {
+    createTicket(root, { ...New, title: 'A' }, dir)
+    createTicket(root, { ...New, title: 'B' }, dir)
+    // vault sees both; repo store sees none
+    expect(listTickets(root, dir).map((t) => t.id).sort()).toEqual([1, 2])
+    expect(listTickets(root)).toEqual([])
+    // id allocation counts within the vault, not the repo
+    createTicket(root, { title: 'repo-only', type: 'feature', priority: 'medium', status: 'open', body: 'x' })
+    expect(listTickets(root).map((t) => t.id)).toEqual([1]) // repo store restarts at 1
+    expect(createTicket(root, { ...New, title: 'C' }, dir).id).toBe(3) // vault continues at 3
+
+    const b = listTickets(root, dir).find((t) => t.title === 'B')!
+    expect(updateTicket(root, b.slug, { status: 'closed' }, dir)).toBe(true)
+    expect(getTicket(root, b.slug, dir)?.status).toBe('closed')
+    // updating without baseDir must NOT find the vault ticket
+    expect(updateTicket(root, b.slug, { status: 'open' })).toBe(false)
+  })
+})

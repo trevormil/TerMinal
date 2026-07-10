@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import { createTicket as createLocalTicket, defaultTicketAgent, getTicket as getLocalTicket, listTickets as listLocalTickets, updateTicket as updateLocalTicket, type NewTicket, type Ticket, type TicketAgent, type TicketPatch } from './backlog'
 import { run as runCli } from './forge'
 
-export type TicketProviderKind = 'local' | 'github' | 'linear'
+export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
+
+const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian']
+// Normalize an unknown stored value to a known provider kind — anything
+// unrecognized falls back to local (never silently misroute reads/writes).
+function normProvider(p: unknown): TicketProviderKind {
+  return PROVIDER_KINDS.includes(p as TicketProviderKind) ? (p as TicketProviderKind) : 'local'
+}
 
 export type RepoTicketProvider = {
   kind: TicketProviderKind
@@ -26,10 +33,22 @@ export type LinearTicketConfig = {
   listArgs?: Record<string, unknown>
 }
 
+// Obsidian: a per-repo dedicated vault (a filesystem folder). Tickets are the
+// same NNNN-slug.md markdown as the local provider, stored in the vault's
+// `ticketsSubdir` (default `tickets/`). `vaultName` is only for obsidian:// deep
+// links (defaults to the vault folder's basename). The path is a local
+// filesystem path — no secret, stored plainly in the gitignored tickets.json.
+export type ObsidianTicketConfig = {
+  vaultPath: string
+  ticketsSubdir?: string
+  vaultName?: string
+}
+
 export type RepoTicketsConfig = {
   provider?: TicketProviderKind
   github?: GithubConfig
   linear?: LinearTicketConfig
+  obsidian?: ObsidianTicketConfig
 }
 
 export type TicketProviderTestResult = {
@@ -69,7 +88,18 @@ const PROVIDER_LABEL: Record<TicketProviderKind, string> = {
   local: 'Local backlog',
   github: 'GitHub Issues',
   linear: 'Linear',
+  obsidian: 'Obsidian',
 }
+
+// Resolve the on-disk ticket folder for an Obsidian vault: <vaultPath>/<subdir>.
+// Returns null when no vault is configured (callers degrade gracefully).
+function obsidianBaseDir(cfg: ObsidianTicketConfig | undefined): string | null {
+  const vault = cfg?.vaultPath?.trim()
+  if (!vault) return null
+  const sub = (cfg?.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
+  return sub ? join(vault, sub) : vault
+}
+const stampObsidian = (t: Ticket): Ticket => ({ ...t, provider: 'obsidian', providerLabel: PROVIDER_LABEL.obsidian })
 
 function configPath(repoRoot: string): string {
   return join(repoRoot, '.TerMinal', 'tickets.json')
@@ -89,20 +119,29 @@ function readConfig(repoRoot: string): RepoTicketsConfig {
 
 export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
   const cfg = readConfig(repoRoot)
-  const provider: TicketProviderKind = cfg.provider === 'github' || cfg.provider === 'linear' ? cfg.provider : 'local'
   return {
-    provider,
+    provider: normProvider(cfg.provider),
     ...(cfg.github ? { github: cfg.github } : {}),
     ...(cfg.linear ? { linear: cfg.linear } : {}),
+    ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
   }
 }
 
 export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): RepoTicketsConfig {
   if (!repoRoot) throw new Error('not a git repo')
-  const provider: TicketProviderKind = cfg.provider === 'github' || cfg.provider === 'linear' ? cfg.provider : 'local'
+  const provider = normProvider(cfg.provider)
   const next: RepoTicketsConfig = {
     provider,
     ...(provider === 'github' && cfg.github ? { github: cfg.github } : {}),
+    ...(provider === 'obsidian' && cfg.obsidian?.vaultPath
+      ? {
+          obsidian: {
+            vaultPath: cfg.obsidian.vaultPath.trim(),
+            ...(cfg.obsidian.ticketsSubdir?.trim() ? { ticketsSubdir: cfg.obsidian.ticketsSubdir.trim() } : {}),
+            ...(cfg.obsidian.vaultName?.trim() ? { vaultName: cfg.obsidian.vaultName.trim() } : {}),
+          },
+        }
+      : {}),
     ...(provider === 'linear'
       ? {
           linear: {
@@ -129,7 +168,7 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
 
 export function repoTicketProvider(repoRoot: string): RepoTicketProvider {
   const cfg = readConfig(repoRoot)
-  const kind: TicketProviderKind = cfg.provider === 'github' || cfg.provider === 'linear' ? cfg.provider : 'local'
+  const kind = normProvider(cfg.provider)
   return {
     kind,
     label: PROVIDER_LABEL[kind],
@@ -480,6 +519,10 @@ export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
   const cfg = readConfig(repoRoot)
   if (cfg.provider === 'github') return listGithubTickets(repoRoot, cfg.github || {})
   if (cfg.provider === 'linear') return listLinearTickets(cfg.linear || {})
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    return dir ? listLocalTickets(repoRoot, dir).map(stampObsidian) : []
+  }
   return listLocalTickets(repoRoot)
 }
 
@@ -487,6 +530,12 @@ export async function getRepoTicket(repoRoot: string, slug: string): Promise<Tic
   const cfg = readConfig(repoRoot)
   if (cfg.provider === 'github') return getGithubTicket(repoRoot, cfg.github || {}, parseExternalNumber(slug))
   if (cfg.provider === 'linear') return getLinearTicket(cfg.linear || {}, slug)
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    if (!dir) return null
+    const t = getLocalTicket(repoRoot, slug, dir)
+    return t ? stampObsidian(t) : null
+  }
   return getLocalTicket(repoRoot, slug)
 }
 
@@ -494,6 +543,11 @@ export async function createRepoTicket(repoRoot: string, input: NewTicket): Prom
   const cfg = readConfig(repoRoot)
   if (cfg.provider === 'github') return createGithubTicket(repoRoot, cfg.github || {}, input)
   if (cfg.provider === 'linear') return createLinearTicket(cfg.linear || {}, input)
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    if (!dir) throw new Error('Obsidian vault path is not configured for this repo.')
+    return stampObsidian(createLocalTicket(repoRoot, input, dir))
+  }
   return createLocalTicket(repoRoot, input)
 }
 
@@ -501,6 +555,10 @@ export async function updateRepoTicket(repoRoot: string, slug: string, patch: Ti
   const cfg = readConfig(repoRoot)
   if (cfg.provider === 'github') return updateGithubTicket(repoRoot, cfg.github || {}, slug, patch)
   if (cfg.provider === 'linear') return updateLinearTicket(cfg.linear || {}, slug, patch)
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    return dir ? updateLocalTicket(repoRoot, slug, patch, dir) : false
+  }
   return updateLocalTicket(repoRoot, slug, patch)
 }
 
@@ -510,6 +568,9 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
   }
   if (provider.kind === 'linear') {
     return 'Ticket provider: Linear. Use the configured Linear MCP/CLI for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
+  }
+  if (provider.kind === 'obsidian') {
+    return "Ticket provider: Obsidian. Tickets are NNNN-slug.md markdown files in this repo's configured Obsidian vault (tickets/ subfolder), NOT in the repo. Use the TerMinal ticket tools / terminal-cli ticket commands; do not create ticket files inside the repo working tree."
   }
   return "Ticket provider: local backlog. Use this repo's .TerMinal/backlog markdown tickets (legacy repos may use backlog/)."
 }
@@ -532,8 +593,30 @@ export async function testRepoTicketProvider(
   cfg: RepoTicketsConfig = readConfig(repoRoot),
   opts: { smoke?: boolean } = {},
 ): Promise<TicketProviderTestResult> {
-  const provider = cfg.provider === 'github' || cfg.provider === 'linear' ? cfg.provider : 'local'
+  const provider = normProvider(cfg.provider)
   try {
+    if (provider === 'obsidian') {
+      const dir = obsidianBaseDir(cfg.obsidian)
+      if (!dir) return { ok: false, provider, message: 'Pick an Obsidian vault folder before saving.' }
+      const vault = cfg.obsidian!.vaultPath.trim()
+      if (!existsSync(vault)) return { ok: false, provider, message: `Vault folder not found: ${vault}` }
+      try {
+        mkdirSync(dir, { recursive: true }) // ensure tickets/ exists + is writable
+      } catch (e) {
+        return { ok: false, provider, message: `Vault tickets folder not writable: ${(e as Error).message}` }
+      }
+      const count = listLocalTickets(repoRoot, dir).length
+      if (!opts.smoke) return { ok: true, provider, message: `Obsidian vault ready (${dir}).`, count }
+      const smoke = createLocalTicket(
+        repoRoot,
+        { title: 'TerMinal smoke test - safe to delete', type: 'testing', priority: 'low', status: 'open', body: `Created by TerMinal ticket-provider smoke test at ${new Date().toISOString()}.` },
+        dir,
+      )
+      updateLocalTicket(repoRoot, smoke.slug, { priority: 'high' }, dir)
+      updateLocalTicket(repoRoot, smoke.slug, { status: 'closed' }, dir)
+      const after = getLocalTicket(repoRoot, smoke.slug, dir)
+      return { ok: true, provider, message: `Obsidian smoke ticket ${smoke.slug}.md created, updated, and closed in ${dir}.`, count, smoke: { key: after?.slug, status: after?.status, priority: after?.priority } }
+    }
     if (provider === 'github') {
       const auth = await runCli('gh', ['auth', 'status'], repoRoot, { timeout: 10_000 })
       if (auth.err) return { ok: false, provider, message: (auth.stderr || auth.err.message || 'gh auth failed').trim() }

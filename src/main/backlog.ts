@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
 import {
@@ -38,7 +38,7 @@ export type Ticket = {
   agent: TicketAgent
   run?: TicketRunLink
   body: string
-  provider?: 'local' | 'github' | 'linear'
+  provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
   externalKey?: string
@@ -257,9 +257,28 @@ function ticketRunFromFrontmatter(fm: Record<string, unknown>): TicketRunLink | 
   }
 }
 
-export function listTickets(repoRoot: string): Ticket[] {
+// Directory resolution for the ticket store. Callers pass an optional
+// `baseDir` to point the store at an arbitrary folder (an Obsidian vault's
+// tickets/ subfolder) instead of the repo-relative .TerMinal/backlog|backlog.
+// Everything else — id allocation, frontmatter, slugs — is shared, so an
+// Obsidian ticket is byte-identical to a local one, just stored elsewhere.
+function ticketReadDirs(repoRoot: string, baseDir?: string): string[] {
+  if (baseDir) return existsSync(baseDir) ? [baseDir] : []
+  return existingProjectAreaPaths(repoRoot, 'backlog')
+}
+function ticketWriteDir(repoRoot: string, baseDir?: string): string {
+  if (baseDir) {
+    mkdirSync(baseDir, { recursive: true })
+    return baseDir
+  }
+  return existsSync(projectAreaPathForWrite(repoRoot, 'backlog'))
+    ? projectAreaPathForWrite(repoRoot, 'backlog')
+    : ensureProjectArea(repoRoot, 'backlog')
+}
+
+export function listTickets(repoRoot: string, baseDir?: string): Ticket[] {
   const out: Ticket[] = []
-  for (const dir of existingProjectAreaPaths(repoRoot, 'backlog')) {
+  for (const dir of ticketReadDirs(repoRoot, baseDir)) {
     for (const f of readdirSync(dir)) {
       // Tickets are NNNN-slug.md — a leading digit excludes README.md, EXAMPLE.md, etc.
       if (!/^\d/.test(f) || !f.endsWith('.md')) continue
@@ -273,9 +292,9 @@ export function listTickets(repoRoot: string): Ticket[] {
   return out.sort((a, b) => b.id - a.id)
 }
 
-export function getTicket(repoRoot: string, slug: string): Ticket | null {
+export function getTicket(repoRoot: string, slug: string, baseDir?: string): Ticket | null {
   const safe = slug.replace(/[^\w-]/g, '')
-  const p = existingProjectAreaPaths(repoRoot, 'backlog')
+  const p = ticketReadDirs(repoRoot, baseDir)
     .map((dir) => join(dir, `${safe}.md`))
     .find((candidate) => existsSync(candidate))
   if (!p) return null
@@ -300,9 +319,10 @@ export function updateTicket(
   repoRoot: string,
   slug: string,
   patch: TicketPatch,
+  baseDir?: string,
 ): boolean {
   const safe = slug.replace(/[^\w-]/g, '')
-  const p = existingProjectAreaPaths(repoRoot, 'backlog')
+  const p = ticketReadDirs(repoRoot, baseDir)
     .map((dir) => join(dir, `${safe}.md`))
     .find((candidate) => existsSync(candidate))
   if (!p) return false
@@ -378,11 +398,9 @@ function fmList(key: string, items: string[]): string {
     : `${key}: []`
 }
 
-export function createTicket(repoRoot: string, input: NewTicket): Ticket {
-  const dir = existsSync(projectAreaPathForWrite(repoRoot, 'backlog'))
-    ? projectAreaPathForWrite(repoRoot, 'backlog')
-    : ensureProjectArea(repoRoot, 'backlog')
-  const nextId = listTickets(repoRoot).reduce((max, t) => Math.max(max, t.id), 0) + 1
+export function createTicket(repoRoot: string, input: NewTicket, baseDir?: string): Ticket {
+  const dir = ticketWriteDir(repoRoot, baseDir)
+  const nextId = listTickets(repoRoot, baseDir).reduce((max, t) => Math.max(max, t.id), 0) + 1
   const num = String(nextId).padStart(4, '0')
   const slug = `${num}-${slugify(input.title)}`
   const recommendation = recommendTicketAgent({ title: input.title, type: input.type || 'feature', body: input.body || '' })

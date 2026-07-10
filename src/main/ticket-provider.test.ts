@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { githubIssueToTicket, linearIssueToTicket, repoTicketProvider } from './ticket-provider'
+import {
+  createRepoTicket,
+  githubIssueToTicket,
+  linearIssueToTicket,
+  listRepoTickets,
+  repoTicketProvider,
+} from './ticket-provider'
 
 function repoWithTicketConfig(config?: unknown) {
   const repo = mkdtempSync(join(tmpdir(), 'terminal-ticket-provider-'))
@@ -29,6 +34,32 @@ describe('repoTicketProvider', () => {
   test('falls back to local for unknown provider values', () => {
     const repo = repoWithTicketConfig({ provider: 'jira' })
     expect(repoTicketProvider(repo)).toMatchObject({ kind: 'local', label: 'Local backlog' })
+  })
+
+  test('recognizes the obsidian provider', () => {
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/tmp/x' } })
+    expect(repoTicketProvider(repo)).toMatchObject({ kind: 'obsidian', label: 'Obsidian' })
+  })
+})
+
+describe('obsidian provider dispatch', () => {
+  test('writes tickets into the vault (not the repo) and stamps provider:obsidian', async () => {
+    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
+    try {
+      const t = await createRepoTicket(repo, { title: 'Vault route', type: 'feature', priority: 'medium', status: 'open', body: 'b' })
+      expect(t.provider).toBe('obsidian')
+      expect(t.providerLabel).toBe('Obsidian')
+      // landed in <vault>/tickets/, never in the repo working tree
+      expect(existsSync(join(vault, 'tickets', `${t.slug}.md`))).toBe(true)
+      expect(existsSync(join(repo, 'backlog'))).toBe(false)
+      const listed = await listRepoTickets(repo)
+      expect(listed.map((x) => x.slug)).toContain(t.slug)
+      expect(listed.every((x) => x.provider === 'obsidian')).toBe(true)
+    } finally {
+      rmSync(vault, { recursive: true, force: true })
+      rmSync(repo, { recursive: true, force: true })
+    }
   })
 })
 
