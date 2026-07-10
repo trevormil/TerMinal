@@ -360,7 +360,7 @@ export type Ticket = {
   agent: TicketAgent
   run?: TicketRunLink
   body: string
-  provider?: 'local' | 'github' | 'linear'
+  provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
   externalKey?: string
@@ -396,7 +396,8 @@ export type ProjectSession = {
 }
 
 export type NewTicket = { title: string; type: string; priority: string; status: string; body: string; agent?: Partial<TicketAgent> }
-export type TicketProviderKind = 'local' | 'github' | 'linear'
+export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
+export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
 export type TicketProviderConfig = {
   provider?: TicketProviderKind
   github?: {
@@ -411,6 +412,7 @@ export type TicketProviderConfig = {
     teamKey?: string
     listArgs?: Record<string, unknown>
   }
+  obsidian?: ObsidianTicketConfig
 }
 export type TicketProviderTestResult = {
   ok: boolean
