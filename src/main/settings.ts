@@ -136,7 +136,7 @@ export function defaultDaemonSettings(): DaemonCfg {
       openrouter: { path: '', defaultModel: '' },
       hermes: { path: '', defaultModel: '' },
     },
-    defaultEngine: 'claude',
+    defaultEngine: 'codex',
     forge: 'auto',
   }
 }
@@ -148,7 +148,7 @@ export function defaultSettings(): Settings {
     projectsDir: daemon.projectsDir,
     worktreesDir: daemon.worktreesDir,
     engines: daemon.engines,
-    defaultEngine: daemon.defaultEngine, // claude is the required engine; codex is optional
+    defaultEngine: daemon.defaultEngine, // codex is the default agent-run engine; claude stays selectable
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     inbox: { completionHook: true, agentContextPreamble: true },

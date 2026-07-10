@@ -1795,7 +1795,7 @@ export function runScheduleDesignerSpawn(
     ? agents
         .map(
           (a) =>
-            `  - id: ${a.id} · title: ${a.title}${a.description ? ` · ${a.description}` : ''} · default-engine: ${a.engine || 'claude'} · opensPr: ${!!a.opensPr}`,
+            `  - id: ${a.id} · title: ${a.title}${a.description ? ` · ${a.description}` : ''} · default-engine: ${a.engine || 'codex'} · opensPr: ${!!a.opensPr}`,
         )
         .join('\n')
     : '  (none — the user should create an agent first via the Agents tab)'
