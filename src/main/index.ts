@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
-import { spawn as cpSpawn, execFileSync, type ChildProcess } from 'node:child_process'
+import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -31,178 +31,6 @@ function projectTemplateSource(marker: string): TemplateSource | { error: string
     templateRepo: configured,
     cloneToTmp: cloneTemplateToTmp,
   })
-}
-
-type AgentViewUpstreamStatus = {
-  ok: boolean
-  running: boolean
-  starting: boolean
-  url: string
-  apiUrl: string
-  repoRoot: string
-  error?: string
-  log?: string
-}
-
-const AGENTVIEW_URL = 'http://127.0.0.1:5173'
-const AGENTVIEW_API_URL = 'http://127.0.0.1:4317'
-let agentViewApiProc: ChildProcess | null = null
-let agentViewWebProc: ChildProcess | null = null
-let agentViewInstallProc: ChildProcess | null = null
-let agentViewStarting: Promise<AgentViewUpstreamStatus> | null = null
-let agentViewLog = ''
-
-function appendAgentViewLog(label: string, chunk: unknown) {
-  const text = String(chunk || '')
-  if (!text) return
-  agentViewLog = `${agentViewLog}${text
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => `[${label}] ${line}`)
-    .join('\n')}\n`.slice(-12_000)
-}
-
-function agentViewRepoRoot(): string {
-  const terminalRoot = sourceCheckoutRoot(join('src', 'main', 'index.ts')) || join(moduleDir, '..', '..')
-  const candidates = [
-    process.env.AGENTVIEW_REPO || '', // explicit override
-    join(terminalRoot, 'vendor', 'agentview'), // bundled/vendored checkout
-    join(terminalRoot, '..', 'agentview'), // sibling checkout next to TerMinal
-  ].filter(Boolean)
-  for (const candidate of candidates) {
-    if (existsSync(join(candidate, 'package.json')) && existsSync(join(candidate, 'src', 'frontend', 'App.tsx'))) return candidate
-  }
-  return ''
-}
-
-async function urlOk(url: string): Promise<boolean> {
-  try {
-    const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 900)
-    const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(t)
-    return res.ok || res.status < 500
-  } catch {
-    return false
-  }
-}
-
-async function waitForUrl(url: string, timeoutMs = 20_000): Promise<boolean> {
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    if (await urlOk(url)) return true
-    await new Promise((resolve) => setTimeout(resolve, 350))
-  }
-  return false
-}
-
-function spawnAgentViewProcess(repoRoot: string, script: 'api' | 'dev'): ChildProcess {
-  const child = cpSpawn('bun', ['run', script], {
-    cwd: repoRoot,
-    env: { ...process.env, FORCE_COLOR: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout?.on('data', (chunk) => appendAgentViewLog(script, chunk))
-  child.stderr?.on('data', (chunk) => appendAgentViewLog(script, chunk))
-  child.on('exit', (code, signal) => {
-    appendAgentViewLog(script, `exited code=${code ?? ''} signal=${signal ?? ''}`)
-    if (script === 'api') agentViewApiProc = null
-    else agentViewWebProc = null
-  })
-  return child
-}
-
-function runAgentViewInstall(repoRoot: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (existsSync(join(repoRoot, 'node_modules'))) {
-      resolve(true)
-      return
-    }
-    appendAgentViewLog('install', 'node_modules missing; running npm ci from upstream package-lock.json')
-    const child = cpSpawn('npm', ['ci'], {
-      cwd: repoRoot,
-      env: { ...process.env, FORCE_COLOR: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    agentViewInstallProc = child
-    child.stdout?.on('data', (chunk) => appendAgentViewLog('install', chunk))
-    child.stderr?.on('data', (chunk) => appendAgentViewLog('install', chunk))
-    child.on('exit', (code, signal) => {
-      appendAgentViewLog('install', `exited code=${code ?? ''} signal=${signal ?? ''}`)
-      agentViewInstallProc = null
-      resolve(code === 0)
-    })
-    child.on('error', (error) => {
-      appendAgentViewLog('install', error.message)
-      agentViewInstallProc = null
-      resolve(false)
-    })
-  })
-}
-
-async function agentViewUpstreamStatus(): Promise<AgentViewUpstreamStatus> {
-  const repoRoot = agentViewRepoRoot()
-  const running = (await urlOk(AGENTVIEW_URL)) && (await urlOk(`${AGENTVIEW_API_URL}/api/health`))
-  return {
-    ok: !!repoRoot,
-    running,
-    starting: !!agentViewStarting,
-    url: AGENTVIEW_URL,
-    apiUrl: AGENTVIEW_API_URL,
-    repoRoot,
-    error: repoRoot ? undefined : 'AgentView checkout not found. Initialize vendor/agentview or set AGENTVIEW_REPO.',
-    log: agentViewLog,
-  }
-}
-
-async function startAgentViewUpstream(): Promise<AgentViewUpstreamStatus> {
-  if (agentViewStarting) return agentViewStarting
-  agentViewStarting = (async () => {
-    const repoRoot = agentViewRepoRoot()
-    if (!repoRoot) return agentViewUpstreamStatus()
-    agentViewLog = ''
-    const installed = await runAgentViewInstall(repoRoot)
-    if (!installed) {
-      return {
-        ok: false,
-        running: false,
-        starting: false,
-        url: AGENTVIEW_URL,
-        apiUrl: AGENTVIEW_API_URL,
-        repoRoot,
-        error: 'AgentView dependency install failed. Check the startup log.',
-        log: agentViewLog,
-      }
-    }
-    const apiLive = await urlOk(`${AGENTVIEW_API_URL}/api/health`)
-    const webLive = await urlOk(AGENTVIEW_URL)
-    if (!apiLive && !agentViewApiProc) agentViewApiProc = spawnAgentViewProcess(repoRoot, 'api')
-    if (!webLive && !agentViewWebProc) agentViewWebProc = spawnAgentViewProcess(repoRoot, 'dev')
-    const ready = await waitForUrl(AGENTVIEW_URL, 25_000)
-    const apiReady = await waitForUrl(`${AGENTVIEW_API_URL}/api/health`, 10_000)
-    return {
-      ok: ready && apiReady,
-      running: ready && apiReady,
-      starting: false,
-      url: AGENTVIEW_URL,
-      apiUrl: AGENTVIEW_API_URL,
-      repoRoot,
-      error: ready && apiReady ? undefined : 'AgentView did not become ready. Check the startup log.',
-      log: agentViewLog,
-    }
-  })().finally(() => {
-    agentViewStarting = null
-  })
-  return agentViewStarting
-}
-
-function stopAgentViewUpstream() {
-  agentViewInstallProc?.kill('SIGTERM')
-  agentViewApiProc?.kill('SIGTERM')
-  agentViewWebProc?.kill('SIGTERM')
-  agentViewInstallProc = null
-  agentViewApiProc = null
-  agentViewWebProc = null
 }
 
 import {
@@ -2261,13 +2089,6 @@ ipcMain.handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
 ipcMain.handle('agentview:transcript-window', (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
   curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
 )
-ipcMain.handle('agentview:upstream-status', () => agentViewUpstreamStatus())
-ipcMain.handle('agentview:upstream-start', () => startAgentViewUpstream())
-ipcMain.handle('agentview:upstream-stop', () => {
-  stopAgentViewUpstream()
-  return agentViewUpstreamStatus()
-})
-
 ipcMain.handle('harness:status', () => {
   const cfgDir = join(homedir(), '.config', 'TerMinal')
   const cronRunsDir = join(cfgDir, 'cron-runs')
@@ -2425,10 +2246,6 @@ ipcMain.handle('workflow:write', (_e, rel: string, content: string) => writeWork
 // the whole app.
 process.on('uncaughtException', (e) => console.error('[gt] uncaught:', e))
 
-app.on('before-quit', () => {
-  stopAgentViewUpstream()
-})
-
 // Standard role-based menu, minus the View → Zoom items. Electron's default
 // menu binds Cmd +/-/0 to webContents zoom, which shadows the terminal's own
 // font-zoom keys and fights the app's uiScale. Dropping just those three items
@@ -2492,6 +2309,5 @@ app.on('window-all-closed', () => {
   if (telegramTimer) clearInterval(telegramTimer)
   for (const s of sessions.values()) s.pty.kill()
   sessions.clear()
-  stopAgentViewUpstream()
   if (process.platform !== 'darwin') app.quit()
 })

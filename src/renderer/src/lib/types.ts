@@ -259,17 +259,6 @@ export type ObservabilityIndexQueryResult = {
   error?: string
 }
 
-export type AgentViewUpstreamStatus = {
-  ok: boolean
-  running: boolean
-  starting: boolean
-  url: string
-  apiUrl: string
-  repoRoot: string
-  error?: string
-  log?: string
-}
-
 export type TaskItem = { id: string; subject: string; status: string; activeForm: string }
 
 // Mirror of src/main/events.ts ActivityKind — keep in sync with the tab's
@@ -1661,9 +1650,6 @@ export type GtApi = {
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
     session: (sessionId: string) => Promise<ObservabilitySessionDetail | null>
-    upstreamStatus: () => Promise<AgentViewUpstreamStatus>
-    upstreamStart: () => Promise<AgentViewUpstreamStatus>
-    upstreamStop: () => Promise<AgentViewUpstreamStatus>
     toolCall: (sessionId: string, callId: string) => Promise<ObservabilityToolCallPayload | null>
     transcriptWindow: (sessionId: string, centerLine?: number, radius?: number) => Promise<ObservabilityTranscriptWindow | null>
   }

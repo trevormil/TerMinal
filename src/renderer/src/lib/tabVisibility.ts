@@ -1,6 +1,5 @@
 export const DEFAULT_HIDDEN_TABS = [
   'activity',
-  'agentview',
   'docs',
   'help',
   'notes',
