@@ -21,7 +21,7 @@ export function ModelSelect({
   const customActive = custom && !!model && !knownIds.has(model)
 
   const card = (selected: boolean) =>
-    `rounded-xl border px-3 py-2.5 text-left transition-colors ${
+    `rounded-xl border px-3 py-2 text-left transition-colors ${
       selected
         ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/10 text-zinc-100'
         : 'border-[var(--gt-border)] bg-black/20 text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:bg-white/5'
@@ -57,7 +57,6 @@ export function ModelSelect({
         {models.map((m) => (
           <button key={m.id} type="button" onClick={() => onChange(m.id)} className={card(model === m.id)}>
             <div className="truncate text-[13px] font-semibold">{m.label}</div>
-            <div className="truncate font-mono text-[10px] text-zinc-600">{m.id}</div>
           </button>
         ))}
       </div>
