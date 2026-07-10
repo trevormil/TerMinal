@@ -232,6 +232,11 @@ export function TerminalPane({
   const inputLineBufferRef = useRef('')
   const skipNextEnhanceSubmitRef = useRef(false)
   const applyFontSizeRef = useRef<(size: number) => void>(() => {})
+  // Latest attention state/clearer, read from the mount-effect closures (which
+  // capture props once). An idle notification for this session clears the
+  // moment the user actually engages it — focuses the terminal or types.
+  const onClearAttentionRef = useRef<(() => void) | undefined>(undefined)
+  const needsAttentionRef = useRef(false)
   const [dragActive, setDragActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
@@ -273,6 +278,13 @@ export function TerminalPane({
   useEffect(() => {
     autoInstructionsRef.current = autoInstructions
   }, [autoInstructions])
+
+  useEffect(() => {
+    onClearAttentionRef.current = onClearAttention
+  }, [onClearAttention])
+  useEffect(() => {
+    needsAttentionRef.current = needsAttention
+  }, [needsAttention])
 
   useEffect(() => {
     if (!active) return
@@ -355,6 +367,9 @@ export function TerminalPane({
     }
 
     const writeInput = (data: string) => {
+      // Any real keystroke into this terminal means the user is engaging it —
+      // clear its idle notification (no-op when there isn't one).
+      if (needsAttentionRef.current) onClearAttentionRef.current?.()
       if (data.includes('\x1b')) {
         inputLineBufferRef.current = ''
         skipNextEnhanceSubmitRef.current = false
@@ -457,6 +472,13 @@ export function TerminalPane({
       (key) => key === sessionKey && term.write('\r\n\x1b[2m── process exited ──\x1b[0m\r\n'),
     )
     const onInput = term.onData(writeInput)
+    // Focusing the terminal (click, tab-switch, or programmatic focus of the
+    // active pane) counts as engaging this session — clear its idle
+    // notification. focusin bubbles from xterm's inner textarea to `el`.
+    const onFocusIn = () => {
+      if (needsAttentionRef.current) onClearAttentionRef.current?.()
+    }
+    el.addEventListener('focusin', onFocusIn)
     const onTheme = () => {
       term.options.theme = xtermThemeFromCss()
       term.options.minimumContrastRatio = 4.5
@@ -527,6 +549,7 @@ export function TerminalPane({
     return () => {
       cancelAnimationFrame(raf)
       if (fitTimer) window.clearTimeout(fitTimer)
+      el.removeEventListener('focusin', onFocusIn)
       el.removeEventListener('contextmenu', onContext)
       el.removeEventListener('dragover', onDragOver)
       el.removeEventListener('dragenter', onDragEnter)
