@@ -82,7 +82,7 @@ import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snip
 import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
 import { listDisabled, setDisabled as setAgentDisabled, setAllDisabled as setAllSchedulesDisabled } from './agents-disabled'
-import { scaffoldProject } from './scaffold'
+import { scaffoldProject, type ScaffoldTicketProvider } from './scaffold'
 import {
   readSettings,
   patchSettings,
@@ -891,8 +891,8 @@ ipcMain.handle('dialog:pickDir', async () => {
   })
   return r.canceled ? null : r.filePaths[0]
 })
-ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string) => {
-  const r = scaffoldProject(name, parentDir)
+ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
+  const r = scaffoldProject(name, parentDir, ticketProvider)
   emitActivity(
     {
       kind: r.ok ? 'task-complete' : 'error',

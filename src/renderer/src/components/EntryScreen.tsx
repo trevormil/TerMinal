@@ -201,6 +201,9 @@ export function EntryScreen({
   const [projParent, setProjParent] = useState('')
   const [scaffoldBusy, setScaffoldBusy] = useState(false)
   const [scaffoldErr, setScaffoldErr] = useState('')
+  // Ticket provider for the new repo (local default; obsidian = private vault).
+  const [projProvider, setProjProvider] = useState<'local' | 'obsidian'>('local')
+  const [projVault, setProjVault] = useState('') // blank → main defaults to <parent>/<name>-vault
   // After a local scaffold, show the module selection modal before opening the project.
   const [defaultParent, setDefaultParent] = useState('') // configured projects dir ('' → ~)
   const [remoteListing, setRemoteListing] = useState<RemoteDirList | null>(null)
@@ -232,10 +235,15 @@ export function EntryScreen({
     setScaffoldBusy(true)
     setScaffoldErr('')
     const parent = location === 'remote' ? projParent || cwd || undefined : projParent || undefined
+    // Obsidian ticketing is local-only; remote scaffolds stay on local backlog.
+    const ticketProvider =
+      location !== 'remote' && projProvider === 'obsidian'
+        ? { kind: 'obsidian' as const, vaultPath: projVault.trim() || undefined }
+        : undefined
     const r =
       location === 'remote' && remoteHostId
         ? await window.gt.remoteScaffoldProject(remoteHostId, projName.trim(), parent)
-        : await window.gt.scaffoldProject(projName.trim(), parent)
+        : await window.gt.scaffoldProject(projName.trim(), parent, ticketProvider)
     setScaffoldBusy(false)
     if (r.ok && r.path) {
       if (location === 'remote') {
@@ -971,6 +979,48 @@ export function EntryScreen({
                     {scaffoldBusy ? 'Creating…' : 'Create'}
                   </button>
                 </div>
+                {location !== 'remote' && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                    <span className="text-zinc-600">Tickets:</span>
+                    {(['local', 'obsidian'] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setProjProvider(p)}
+                        className={`rounded-full border px-2.5 py-0.5 capitalize ${
+                          projProvider === p
+                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                            : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {p === 'local' ? 'Local backlog' : 'Obsidian vault'}
+                      </button>
+                    ))}
+                    {projProvider === 'obsidian' && (
+                      <>
+                        <input
+                          value={projVault}
+                          onChange={(e) => setProjVault(e.target.value)}
+                          placeholder={`${projectParentLabel}/${projName.trim() || 'project-name'}-vault`}
+                          spellCheck={false}
+                          className={`${sel} min-w-0 flex-1 font-mono`}
+                        />
+                        <button
+                          onClick={async () => {
+                            const d = await window.gt.pickDir()
+                            if (d) setProjVault(d)
+                          }}
+                          title="Choose an existing vault folder"
+                          className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                        >
+                          <FolderOpen size={13} strokeWidth={2} />
+                        </button>
+                        <span className="w-full text-[10px] text-zinc-600">
+                          Private vault outside the repo (blank = a new <span className="font-mono">-vault</span> beside it). Never committed to git.
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
                 {scaffoldErr && (
                   <div className="mt-1 text-[11px] text-[var(--gt-red)]">{scaffoldErr}</div>
                 )}
