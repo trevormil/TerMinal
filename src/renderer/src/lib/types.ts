@@ -1336,7 +1336,12 @@ export type GtApi = {
   scaffoldProject: (
     name: string,
     parentDir?: string,
-    ticketProvider?: { kind: 'local' | 'obsidian'; vaultPath?: string },
+    ticketProvider?: {
+      kind: 'local' | 'obsidian'
+      vaultLocation?: 'in-repo' | 'sibling' | 'existing'
+      vaultPath?: string
+      vaultName?: string
+    },
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
   remoteDirs: (hostId: string, path?: string) => Promise<RemoteDirList>
   remoteScaffoldProject: (

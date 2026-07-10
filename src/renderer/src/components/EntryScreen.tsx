@@ -203,7 +203,10 @@ export function EntryScreen({
   const [scaffoldErr, setScaffoldErr] = useState('')
   // Ticket provider for the new repo (local default; obsidian = private vault).
   const [projProvider, setProjProvider] = useState<'local' | 'obsidian'>('local')
-  const [projVault, setProjVault] = useState('') // blank → main defaults to <parent>/<name>-vault
+  // Where an obsidian vault lives: in-repo (gitignored), a sibling folder
+  // (default), or an existing vault the user picks.
+  const [projVaultLoc, setProjVaultLoc] = useState<'in-repo' | 'sibling' | 'existing'>('sibling')
+  const [projVault, setProjVault] = useState('') // absolute path, only for the 'existing' choice
   // After a local scaffold, show the module selection modal before opening the project.
   const [defaultParent, setDefaultParent] = useState('') // configured projects dir ('' → ~)
   const [remoteListing, setRemoteListing] = useState<RemoteDirList | null>(null)
@@ -232,14 +235,22 @@ export function EntryScreen({
   }
   const createProject = async () => {
     if (!projName.trim() || scaffoldBusy) return
+    // Obsidian ticketing is local-only; remote scaffolds stay on local backlog.
+    const wantsObsidian = location !== 'remote' && projProvider === 'obsidian'
+    if (wantsObsidian && projVaultLoc === 'existing' && !projVault.trim()) {
+      setScaffoldErr('Pick an existing vault folder, or choose a different vault location.')
+      return
+    }
     setScaffoldBusy(true)
     setScaffoldErr('')
     const parent = location === 'remote' ? projParent || cwd || undefined : projParent || undefined
-    // Obsidian ticketing is local-only; remote scaffolds stay on local backlog.
-    const ticketProvider =
-      location !== 'remote' && projProvider === 'obsidian'
-        ? { kind: 'obsidian' as const, vaultPath: projVault.trim() || undefined }
-        : undefined
+    const ticketProvider = wantsObsidian
+      ? {
+          kind: 'obsidian' as const,
+          vaultLocation: projVaultLoc,
+          vaultPath: projVaultLoc === 'existing' ? projVault.trim() || undefined : undefined,
+        }
+      : undefined
     const r =
       location === 'remote' && remoteHostId
         ? await window.gt.remoteScaffoldProject(remoteHostId, projName.trim(), parent)
@@ -979,14 +990,14 @@ export function EntryScreen({
                     {scaffoldBusy ? 'Creating…' : 'Create'}
                   </button>
                 </div>
-                {location !== 'remote' && (
+                {location !== 'remote' && projName.trim() && (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                     <span className="text-zinc-600">Tickets:</span>
                     {(['local', 'obsidian'] as const).map((p) => (
                       <button
                         key={p}
                         onClick={() => setProjProvider(p)}
-                        className={`rounded-full border px-2.5 py-0.5 capitalize ${
+                        className={`rounded-full border px-2.5 py-0.5 ${
                           projProvider === p
                             ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
                             : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
@@ -997,25 +1008,53 @@ export function EntryScreen({
                     ))}
                     {projProvider === 'obsidian' && (
                       <>
-                        <input
-                          value={projVault}
-                          onChange={(e) => setProjVault(e.target.value)}
-                          placeholder={`${projectParentLabel}/${projName.trim() || 'project-name'}-vault`}
-                          spellCheck={false}
-                          className={`${sel} min-w-0 flex-1 font-mono`}
-                        />
-                        <button
-                          onClick={async () => {
-                            const d = await window.gt.pickDir()
-                            if (d) setProjVault(d)
-                          }}
-                          title="Choose an existing vault folder"
-                          className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-                        >
-                          <FolderOpen size={13} strokeWidth={2} />
-                        </button>
+                        <span className="ml-1 text-zinc-600">at</span>
+                        {([
+                          ['in-repo', 'In repo (gitignored)'],
+                          ['sibling', 'Folder beside repo'],
+                          ['existing', 'Existing vault'],
+                        ] as const).map(([v, label]) => (
+                          <button
+                            key={v}
+                            onClick={() => setProjVaultLoc(v)}
+                            className={`rounded-full border px-2.5 py-0.5 ${
+                              projVaultLoc === v
+                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        {projVaultLoc === 'existing' && (
+                          <>
+                            <input
+                              value={projVault}
+                              onChange={(e) => setProjVault(e.target.value)}
+                              placeholder="/path/to/existing/vault"
+                              spellCheck={false}
+                              className={`${sel} min-w-0 flex-1 font-mono`}
+                            />
+                            <button
+                              onClick={async () => {
+                                const d = await window.gt.pickDir()
+                                if (d) setProjVault(d)
+                              }}
+                              title="Choose an existing vault folder"
+                              className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                            >
+                              <FolderOpen size={13} strokeWidth={2} />
+                            </button>
+                          </>
+                        )}
                         <span className="w-full text-[10px] text-zinc-600">
-                          Private vault outside the repo (blank = a new <span className="font-mono">-vault</span> beside it). Never committed to git.
+                          {projVaultLoc === 'in-repo' ? (
+                            <>Private <span className="font-mono">tickets-vault/</span> inside the repo, gitignored — never committed.</>
+                          ) : projVaultLoc === 'sibling' ? (
+                            <>A new <span className="font-mono">{`${projName.trim()}-vault`}</span> beside the repo, outside git.</>
+                          ) : (
+                            <>Reuse an existing Obsidian vault. Tickets go in its <span className="font-mono">tickets/</span> subfolder.</>
+                          )}
                         </span>
                       </>
                     )}
