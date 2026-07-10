@@ -88,6 +88,34 @@ function areaPath(root, area) {
   return join(root, hasV2Layout(root) ? rels[0] : rels[rels.length - 1])
 }
 
+// Ticket-provider config (.TerMinal/tickets.json). Obsidian repos store tickets
+// in an external vault; every ticket op below resolves its dir through these so
+// list/get/file/update all hit the vault, not the repo's local backlog.
+function readTicketConfig(root) {
+  try {
+    const p = join(root, '.TerMinal', 'tickets.json')
+    if (!existsSync(p)) return {}
+    const parsed = JSON.parse(readFileSync(p, 'utf8'))
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+function obsidianTicketsDir(cfg) {
+  if (!cfg || cfg.provider !== 'obsidian' || !cfg.obsidian || !cfg.obsidian.vaultPath) return null
+  const sub = String(cfg.obsidian.ticketsSubdir || 'tickets').replace(/^\/+|\/+$/g, '') || 'tickets'
+  return join(cfg.obsidian.vaultPath, sub)
+}
+// Read dirs (obsidian → the vault only; else the repo's backlog layouts).
+function backlogReadDirs(root) {
+  const dir = obsidianTicketsDir(readTicketConfig(root))
+  return dir ? (existsSync(dir) ? [dir] : []) : areaPaths(root, 'backlog')
+}
+// Write dir (obsidian → the vault; else the repo's canonical backlog).
+function backlogWriteDir(root) {
+  return obsidianTicketsDir(readTicketConfig(root)) || areaPath(root, 'backlog')
+}
+
 function pingTelegram(text, inlineKeyboard) {
   const telegram = tgCreds()
   if (telegram) {
@@ -200,7 +228,7 @@ function findRepoRoot(repoArg) {
 
 function listTicketsForRoot(repoRoot, filter, includeBody) {
   const out = []
-  for (const dir of areaPaths(repoRoot, 'backlog')) {
+  for (const dir of backlogReadDirs(repoRoot)) {
     let files
     try {
       files = readdirSync(dir)
@@ -276,7 +304,7 @@ function getTicketTool(args) {
   if (!slug) return null
   // Try every known repo until we find it
   for (const root of knownRepoRoots()) {
-    const f = areaPaths(root, 'backlog').map((dir) => join(dir, `${slug}.md`)).find((p) => existsSync(p))
+    const f = backlogReadDirs(root).map((dir) => join(dir, `${slug}.md`)).find((p) => existsSync(p))
     if (f) {
       const raw = readFileSync(f, 'utf8')
       const { meta, body } = parseFrontmatter(raw)
@@ -550,7 +578,7 @@ function fileTicket(args) {
   if (!title) throw new Error('title is required')
   const repoRoot = findRepoRoot(repo)
   if (!repoRoot) throw new Error(`no repo matching "${repo}"`)
-  const backlogDir = areaPath(repoRoot, 'backlog')
+  const backlogDir = backlogWriteDir(repoRoot)
   mkdirSync(backlogDir, { recursive: true })
   // Atomic-ish ID allocation via .next-id (matches bin/next-backlog-id semantics)
   const nextIdFile = join(backlogDir, '.next-id')
@@ -607,7 +635,7 @@ function locateTicket(slug) {
   let path = null
   let repoRoot = null
   for (const root of knownRepoRoots()) {
-    const p = areaPaths(root, 'backlog').map((dir) => join(dir, `${slug}.md`)).find((candidate) => existsSync(candidate))
+    const p = backlogReadDirs(root).map((dir) => join(dir, `${slug}.md`)).find((candidate) => existsSync(candidate))
     if (p) {
       path = p
       repoRoot = root
@@ -1280,7 +1308,7 @@ function factoryHealthTool() {
     const repo = basename(root)
     const repoOut = { repo, ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 }, openPrs: 0 }
     // Tickets
-    const backlogs = areaPaths(root, 'backlog')
+    const backlogs = backlogReadDirs(root)
     for (const backlog of backlogs) {
       try {
         for (const f of readdirSync(backlog)) {
