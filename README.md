@@ -125,7 +125,14 @@ Knowledge Base, Agent Config, and Help are available from
 - **Terminal** — the `claude` or `codex` CLI with a session-aware cockpit sidebar.
 - **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
   **grouped by status** (closed/icebox collapsed by default). Inline
-  status/priority edits write back to the markdown file.
+  status/priority edits write back to the markdown file. Each repo picks a
+  **ticket provider** in Settings → Tickets: local backlog (default), GitHub
+  Issues, Linear, or **Obsidian** — a private, local vault (each repo → its own
+  vault). Obsidian tickets are the same `NNNN-slug.md` markdown, stored in the
+  vault's `tickets/` folder outside git, with a Dataview board + Templater
+  template seeded on setup and an "Open in Obsidian" deep link. Agents reach the
+  vault through the ticket tools (or `$OBSIDIAN_VAULT_PATH` with native file
+  tools) — no MCP required.
 - **MRs / PRs** — live merge/pull requests via `glab` (GitLab) or `gh` (GitHub),
   **auto-detected per repo** from the remote (the tab + vocabulary switch between
   "MR !N" and "PR #N"). Each opens a full review surface: description, the

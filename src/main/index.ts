@@ -64,6 +64,7 @@ import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './b
 import {
   getRepoTicket,
   listLinearTeams,
+  obsidianRepoVault,
   readRepoTicketConfig,
   saveRepoTicketConfig,
   scaffoldObsidianVault,
@@ -453,6 +454,15 @@ function startSession(key: string, opts: StartOpts) {
     GT_TERMINAL_CWD: displayCwd,
   } as Record<string, string>
   delete env.NO_COLOR
+  // Obsidian-provider repos: expose the vault so a session's native file tools
+  // can browse tickets directly (no MCP needed). Local only.
+  if (repoRoot) {
+    const ov = obsidianRepoVault(repoRoot)
+    if (ov) {
+      env.OBSIDIAN_VAULT_PATH = ov.vaultPath
+      env.OBSIDIAN_TICKETS_DIR = ov.ticketsDir
+    }
+  }
   // OpenRouter (either harness) and Hermes bill through OpenRouter — inject the
   // sealed key so the interactive session authenticates (mirrors the agent runner).
   if (engine === 'openrouter' || engine === 'hermes') {
