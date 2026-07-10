@@ -5,11 +5,9 @@ import { app } from 'electron'
 import { resolvedProjectsDir, resolvedTemplateRepo } from './settings'
 import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
 import { saveRepoTicketConfig, scaffoldObsidianVault } from './ticket-provider'
+import { resolveObsidianScaffold, type ScaffoldTicketProvider } from './scaffold-vault'
 
-// Optional ticket-provider choice made at bootstrap. Only 'local' (default) and
-// 'obsidian' are offered in the new-project flow; github/linear are configured
-// later in Settings. Obsidian needs a vault path (a folder outside the repo).
-export type ScaffoldTicketProvider = { kind: 'local' | 'obsidian'; vaultPath?: string }
+export type { ScaffoldTicketProvider } // re-exported so callers keep importing from './scaffold'
 
 // Spin up a new repo from the configured template (default:
 // github.com/trevormil/project-template). In dev the template ships as a git
@@ -84,17 +82,21 @@ export function scaffoldProject(
           GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || 'noreply@terminal.local',
         },
       })
+    // Resolve the vault path + the .gitignore rules to add. The per-machine
+    // vault pointer (.TerMinal/tickets.json) is always ignored; an in-repo vault
+    // also ignores its own folder. Done BEFORE the first commit so the rules are
+    // tracked and the files written below stay ignored.
     const wantsObsidian = ticketProvider?.kind === 'obsidian'
-    // Keep the per-machine vault pointer out of git BEFORE the first commit so
-    // the ignore rule is committed and tickets.json (written below) is ignored.
+    let obsidianVaultPath = ''
     if (wantsObsidian) {
+      const resolved = resolveObsidianScaffold(dest, parent, safe, ticketProvider!)
+      obsidianVaultPath = resolved.vaultPath
       try {
         const gi = join(dest, '.gitignore')
-        const line = '.TerMinal/tickets.json'
         const cur = existsSync(gi) ? readFileSync(gi, 'utf8') : ''
-        if (!cur.split('\n').some((l) => l.trim() === line)) {
-          appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${line}\n`)
-        }
+        const have = new Set(cur.split('\n').map((l) => l.trim()))
+        const add = resolved.ignore.filter((l) => !have.has(l))
+        if (add.length) appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${add.join('\n')}\n`)
       } catch {
         /* best effort */
       }
@@ -102,16 +104,18 @@ export function scaffoldProject(
     git('init', '-q')
     git('add', '-A')
     git('commit', '-qm', 'chore: scaffold from project-template')
-    // Set the ticket provider after the commit. Writes the now-gitignored
-    // .TerMinal/tickets.json + seeds the vault. Best-effort — config is optional,
-    // so a failure still returns the scaffolded repo on the default local backlog.
+    // Write the (now-gitignored) provider config + seed the vault after the
+    // commit. Best-effort — a failure still returns the repo on local backlog.
     try {
-      if (wantsObsidian) {
-        // Default the vault to a sibling folder next to the repo (outside its git
-        // tree) when the caller didn't pick one.
-        const vaultPath = ticketProvider!.vaultPath?.trim() || join(parent, `${safe}-vault`)
-        saveRepoTicketConfig(dest, { provider: 'obsidian', obsidian: { vaultPath } })
-        scaffoldObsidianVault({ vaultPath })
+      if (wantsObsidian && obsidianVaultPath) {
+        saveRepoTicketConfig(dest, {
+          provider: 'obsidian',
+          obsidian: {
+            vaultPath: obsidianVaultPath,
+            ...(ticketProvider!.vaultName?.trim() ? { vaultName: ticketProvider!.vaultName.trim() } : {}),
+          },
+        })
+        scaffoldObsidianVault({ vaultPath: obsidianVaultPath })
       }
     } catch {
       /* leave the new repo on local backlog */
