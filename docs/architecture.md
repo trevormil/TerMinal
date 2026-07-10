@@ -103,7 +103,14 @@ offline, survive a fresh clone):
   optional `ref:{ticket?,pr?}` join key.
 - `hitl.json` — the global HITL inbox (`hitl.ts`). `fileHitl` writes the item,
   mirrors a `blocked` activity event, and fires a Telegram ping. The top-right
-  Inbox button badge shows the unresolved count.
+  Inbox button badge shows the unresolved count. HITL items filed
+  **out-of-process** (`bin/terminal-cli`, `bin/terminal-cron`,
+  `bin/terminal-mcp-server`) ping Telegram too, but those are plain Bun
+  processes that can't call Electron `safeStorage` to decrypt the token sealed
+  in `settings.json` — so `settings.ts` mirrors the decrypted creds to a `0600`
+  sidecar (`telegram.local.json`, `syncTelegramSidecar`, resynced on save and
+  startup) that the bin filers read first, falling back to a legacy
+  `telegram-notify.sh` script (cron included) when no native creds resolve.
 - `schedules.json` + `cron-runs/` — the schedule store and per-run records.
 - agent-run records — in `agents.ts`, surfaced globally on the Agents tab.
 
@@ -111,8 +118,16 @@ offline, survive a fresh clone):
 is mirrored to a per-schedule **launchd** LaunchAgent that runs a headless runner
 (`bin/terminal-cron`, zero Electron imports, installed to
 `~/.config/TerMinal/bin`) so it fires even when the app is closed.
-`reconcileSchedules()` diffs launchd ↔ store to kill orphans. A failed (not
-cancelled) run auto-files a HITL item.
+`reconcileSchedules()` diffs launchd ↔ store to kill orphans and returns
+`{loaded, removed, failed[]}` — `loaded` only counts jobs launchd actually
+loaded (`isJobLoaded`, a plist-exists + `launchctl print` probe), so a schedule
+that's enabled in the store but never bound in launchd (a "dark" schedule) is
+surfaced instead of silently never firing. `syncSchedule` is idempotent
+(`needsReload`: skip bootout/bootstrap when the job is already loaded and the
+plist is unchanged) so an app relaunch doesn't reset a `StartInterval` job's
+timer. Interval `nextRun` is anchored to `max(lastRun, jobLoadedAt)` (plist
+mtime), matching launchd's actual "fires N seconds after load" semantics. A
+failed (not cancelled) run auto-files a HITL item.
 
 **Aggregation** (`factory-health.ts`): a read-only roll-up over those stores —
 throughput windows, agent/cron success rates, recent failures, a daily
