@@ -36,8 +36,8 @@ const gt = {
   projectDirs: () => ipcRenderer.invoke('dirs:projects'),
   detectEnv: () => ipcRenderer.invoke('env:detect'),
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
-  scaffoldProject: (name: string, parentDir?: string) =>
-    ipcRenderer.invoke('project:scaffold', name, parentDir),
+  scaffoldProject: (name: string, parentDir?: string, ticketProvider?: unknown) =>
+    ipcRenderer.invoke('project:scaffold', name, parentDir, ticketProvider),
   remoteDirs: (hostId: string, path?: string) => ipcRenderer.invoke('remote:dirs', hostId, path),
   remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
     ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
