@@ -1,14 +1,14 @@
 ---
 id: 21
 title: "External ticket providers (Linear, etc.) — remote source of truth, local mirror, frequent sync"
-status: open
+status: dropped
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-07-10
 prs: []
 refs: []
 depends_on: []
@@ -24,6 +24,12 @@ agent_id: 1000x-ai-engineer
 agent_scope: global
 agent_kind: classic
 ---
+
+> **Dropped 2026-07-10** — superseded by the **Obsidian** ticket provider
+> (#27/#28), which delivers the local, private, offline ticketing this ticket was
+> really after, without a cloud source of truth or sync machinery. The existing
+> Linear provider code stays as-is; the full remote-mirror build-out is no longer
+> planned.
 
 ## Description
 

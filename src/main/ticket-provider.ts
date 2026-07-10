@@ -119,6 +119,17 @@ export function obsidianRepoDeepLink(repoRoot: string, slug: string): string | n
   return obsidianDeepLink(readConfig(repoRoot).obsidian, slug)
 }
 
+// The vault + tickets folder for a repo IF it's on the obsidian provider — used
+// to expose OBSIDIAN_VAULT_PATH / OBSIDIAN_TICKETS_DIR to spawned sessions so an
+// agent's native file tools can browse the vault directly. null otherwise.
+export function obsidianRepoVault(repoRoot: string): { vaultPath: string; ticketsDir: string } | null {
+  const cfg = readConfig(repoRoot)
+  if (normProvider(cfg.provider) !== 'obsidian') return null
+  const dir = obsidianBaseDir(cfg.obsidian)
+  if (!cfg.obsidian?.vaultPath || !dir) return null
+  return { vaultPath: cfg.obsidian.vaultPath.trim(), ticketsDir: dir }
+}
+
 // Idempotently seed helper notes into an Obsidian vault: a guide, a Dataview
 // board, and a Templater new-ticket template. Never overwrites existing files,
 // so it's safe to run on every save and safe against a vault the user also uses
@@ -625,7 +636,7 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
     return 'Ticket provider: Linear. Use the configured Linear MCP/CLI for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
   }
   if (provider.kind === 'obsidian') {
-    return "Ticket provider: Obsidian. Tickets are NNNN-slug.md markdown files in this repo's configured Obsidian vault (tickets/ subfolder), NOT in the repo. Use the TerMinal ticket tools / terminal-cli ticket commands; do not create ticket files inside the repo working tree."
+    return "Ticket provider: Obsidian. Tickets are NNNN-slug.md markdown files in this repo's configured Obsidian vault (NOT in the repo). Prefer the TerMinal ticket tools / terminal-cli ticket commands, which read/write the vault automatically. For raw browsing, the vault is at $OBSIDIAN_VAULT_PATH and its tickets at $OBSIDIAN_TICKETS_DIR — use your native file tools there, never inside the repo working tree."
   }
   return "Ticket provider: local backlog. Use this repo's .TerMinal/backlog markdown tickets (legacy repos may use backlog/)."
 }

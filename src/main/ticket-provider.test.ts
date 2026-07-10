@@ -8,6 +8,7 @@ import {
   linearIssueToTicket,
   listRepoTickets,
   obsidianDeepLink,
+  obsidianRepoVault,
   repoTicketProvider,
   scaffoldObsidianVault,
 } from './ticket-provider'
@@ -42,6 +43,15 @@ describe('repoTicketProvider', () => {
   test('recognizes the obsidian provider', () => {
     const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/tmp/x' } })
     expect(repoTicketProvider(repo)).toMatchObject({ kind: 'obsidian', label: 'Obsidian' })
+  })
+
+  test('obsidianRepoVault exposes vault + tickets dir only when the provider is obsidian', () => {
+    const obs = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/v/MyVault', ticketsSubdir: 'issues' } })
+    expect(obsidianRepoVault(obs)).toEqual({ vaultPath: '/v/MyVault', ticketsDir: '/v/MyVault/issues' })
+    // configured vault block but provider is local → not exposed
+    const local = repoWithTicketConfig({ provider: 'local', obsidian: { vaultPath: '/v/x' } })
+    expect(obsidianRepoVault(local)).toBeNull()
+    expect(obsidianRepoVault(repoWithTicketConfig({ provider: 'obsidian' }))).toBeNull()
   })
 })
 

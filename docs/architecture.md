@@ -61,8 +61,18 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   `~/.claude/tasks/<id>/*.json` (todos). Also computes the harness TDD/review.
 - `usage.ts` — `GET /api/oauth/usage` with the keychain OAuth token; cached
   (rate-limited).
-- `backlog.ts` — tickets from `<repo>/backlog/*.md` (frontmatter incl.
-  `horizon`/`hitl`); create/update write back.
+- `backlog.ts` — the markdown ticket store: tickets from `<repo>/backlog/*.md`
+  (frontmatter incl. `horizon`/`hitl`); create/update write back. An optional
+  `baseDir` override points the same store at an arbitrary folder (an Obsidian
+  vault's `tickets/`), reusing id allocation + frontmatter unchanged.
+- `ticket-provider.ts` — per-repo provider abstraction (`local | github |
+  linear | obsidian`, in gitignored `.TerMinal/tickets.json`) routing
+  list/get/create/update. **Obsidian** points `backlog.ts` at a dedicated
+  per-repo vault (1 repo ↔ 1 vault, tickets private + outside git); it seeds a
+  Dataview board + Templater template, exposes `obsidian://` deep links, and
+  surfaces the vault to sessions via `OBSIDIAN_VAULT_PATH`/`OBSIDIAN_TICKETS_DIR`
+  so native file tools reach it (no MCP). `github` shells out to `gh`; `linear`
+  spawns its MCP over stdio from the main process.
 - `forge.ts` — the GitHub/GitLab seam: `forgeFor(repoRoot)` picks `gh`/`glab`
   and the `PR`/`MR` + `#`/`!` vocabulary from the remote host (or the
   `settings.forge` override). `mrs.ts` delegates here; the renderer is forge-agnostic.
