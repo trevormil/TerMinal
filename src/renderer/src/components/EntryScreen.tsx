@@ -359,9 +359,9 @@ export function EntryScreen({
     if (dir) selectDir(dir)
   }
 
-  // hermes/openrouter have no TerMinal-resumable transcripts — hide the resume list.
-  const canResume =
-    isAiEngine(engine) && engine !== 'hermes' && engine !== 'openrouter' && location === 'local' && !lockedRemote
+  // openrouter is one-shot with no resumable local store — hide its resume list.
+  // Hermes resumes from its ~/.hermes SQLite store, so it's allowed.
+  const canResume = isAiEngine(engine) && engine !== 'openrouter' && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const scopedSessionCount = sessions ? filterSessionMetas(sessions, { filterDir }).length : 0
   const shown = sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []
