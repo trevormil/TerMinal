@@ -478,7 +478,9 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
                   key={tool.id}
                   onClick={() => loadTool(tool.url)}
                   title={tool.title}
-                  className={`group mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
+                  className={`group mb-1 flex h-9 w-full items-center gap-2 rounded-md transition-colors ${
+                    toolsExpanded ? 'px-2 text-left' : 'justify-center px-0'
+                  } ${
                     active
                       ? 'bg-[var(--gt-accent)]/18 text-zinc-100'
                       : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'

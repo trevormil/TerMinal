@@ -1,9 +1,14 @@
 import { Waypoints } from 'lucide-react'
 import type { Engine } from '../lib/types'
-import openaiLogo from '../assets/openai.svg'
-import claudeLogo from '../assets/claude.svg'
-import cursorLogo from '../assets/cursor.png'
-import hermesLogo from '../assets/hermes.svg'
+// `?inline` forces each logo to a base64 data: URI baked into the bundle rather
+// than an external asset file fetched at render time. The Cursor PNG (the only
+// raster logo) used to exceed Vite's 4KB inline limit, so it shipped as a separate
+// file that intermittently failed to resolve on Electron's custom protocol —
+// making only the Cursor badge flaky. Inlining all four makes them unfailable.
+import openaiLogo from '../assets/openai.svg?inline'
+import claudeLogo from '../assets/claude.svg?inline'
+import cursorLogo from '../assets/cursor.png?inline'
+import hermesLogo from '../assets/hermes.svg?inline'
 import { engineLabel } from '../lib/engines'
 
 // OpenRouter ships no wordmark asset — render a lucide glyph for it instead.

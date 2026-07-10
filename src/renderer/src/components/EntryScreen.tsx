@@ -467,8 +467,6 @@ export function EntryScreen({
   const engineOptions = ['local', 'claude', 'codex', 'cursor', 'openrouter', 'hermes'] as SessionEngine[]
   const daemonLabel =
     location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'
-  const daemonSubLabel =
-    location === 'remote' ? remoteHost?.sshTarget || 'Add an SSH profile in Settings' : 'this Mac'
   const selectedWorkspaceLabel =
     location === 'remote'
       ? remoteDisplayPath(remoteListing?.cwd || remoteCwd || '~')
@@ -480,7 +478,7 @@ export function EntryScreen({
     'rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60'
   const sectionTitle = 'text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500'
   const pickButton = (active: boolean, disabled = false) =>
-    `group flex min-h-[56px] items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
+    `group flex min-h-[44px] items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
       active
         ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
         : disabled
@@ -674,12 +672,7 @@ export function EntryScreen({
                     ) : (
                       <EngineLogo engine={e} size={16} />
                     )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-[12.5px] font-semibold">{sessionEngineLabel(e)}</span>
-                      <span className="block truncate text-[9.5px] font-normal text-zinc-600">
-                        {e === 'local' ? 'shell' : e === 'cursor' ? 'agent' : e === 'openrouter' ? 'via harness' : e === 'hermes' ? 'Nous' : 'code'}
-                      </span>
-                    </span>
+                    <span className="min-w-0 truncate text-[12.5px] font-semibold">{sessionEngineLabel(e)}</span>
                   </button>
                 ))}
               </div>
@@ -690,10 +683,7 @@ export function EntryScreen({
                     {(['codex', 'hermes'] as const).map((h) => (
                       <button key={h} onClick={() => setOpenrouterHarness(h)} className={pickButton(openrouterHarness === h)}>
                         <EngineLogo engine={h} size={15} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
-                          <span className="block truncate text-[9.5px] font-normal text-zinc-600">runs the OpenRouter model</span>
-                        </span>
+                        <span className="min-w-0 truncate text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
                       </button>
                     ))}
                   </div>
@@ -755,12 +745,7 @@ export function EntryScreen({
                     className={pickButton(location === 'local')}
                   >
                     <FolderOpen size={16} strokeWidth={2} className="shrink-0 text-zinc-400" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] font-semibold">Local</span>
-                      <span className="block truncate text-[10px] text-zinc-600">
-                        this Mac · local daemon
-                      </span>
-                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">Local</span>
                   </button>
                   <button
                     onClick={() => switchLocation('remote')}
@@ -772,12 +757,7 @@ export function EntryScreen({
                       strokeWidth={2}
                       className="shrink-0 text-[var(--gt-accent-2)]"
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] font-semibold">Remote SSH</span>
-                      <span className="block truncate text-[10px] text-zinc-600">
-                        {daemonSubLabel}
-                      </span>
-                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">Remote SSH</span>
                   </button>
                 </div>
                 {remoteHosts.length === 0 && (

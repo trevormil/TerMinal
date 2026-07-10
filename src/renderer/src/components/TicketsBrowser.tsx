@@ -697,7 +697,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   selected.agent.scope !== agentRecommendation.agent.scope ||
                   selected.agent.kind !== agentRecommendation.agent.kind) && (
                   <div
-                    className="mb-3 flex items-center gap-1.5 text-[11px] text-zinc-500"
+                    className="mb-3 mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500"
                     title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')].filter(Boolean).join(' · ')}
                   >
                     <span className="text-zinc-600">Suggested owner:</span>
