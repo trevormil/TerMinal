@@ -991,43 +991,48 @@ export function EntryScreen({
                   </button>
                 </div>
                 {location !== 'remote' && projName.trim() && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    <span className="text-zinc-600">Tickets:</span>
-                    {(['local', 'obsidian'] as const).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => setProjProvider(p)}
-                        className={`rounded-full border px-2.5 py-0.5 ${
-                          projProvider === p
-                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                            : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {p === 'local' ? 'Local backlog' : 'Obsidian vault'}
-                      </button>
-                    ))}
+                  <div className="mt-2 space-y-1.5 text-[11px] text-zinc-500">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-16 shrink-0 text-zinc-600">Tickets</span>
+                      {(['local', 'obsidian'] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setProjProvider(p)}
+                          className={`rounded-full border px-2.5 py-0.5 ${
+                            projProvider === p
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {p === 'local' ? 'Local backlog' : 'Obsidian vault'}
+                        </button>
+                      ))}
+                    </div>
                     {projProvider === 'obsidian' && (
                       <>
-                        <span className="ml-1 text-zinc-600">at</span>
-                        {([
-                          ['in-repo', 'In repo (gitignored)'],
-                          ['sibling', 'Folder beside repo'],
-                          ['existing', 'Existing vault'],
-                        ] as const).map(([v, label]) => (
-                          <button
-                            key={v}
-                            onClick={() => setProjVaultLoc(v)}
-                            className={`rounded-full border px-2.5 py-0.5 ${
-                              projVaultLoc === v
-                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="w-16 shrink-0 text-zinc-600">Vault at</span>
+                          {([
+                            ['in-repo', 'In repo (gitignored)'],
+                            ['sibling', 'Folder beside repo'],
+                            ['existing', 'Existing vault'],
+                          ] as const).map(([v, label]) => (
+                            <button
+                              key={v}
+                              onClick={() => setProjVaultLoc(v)}
+                              className={`rounded-full border px-2.5 py-0.5 ${
+                                projVaultLoc === v
+                                  ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                  : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                         {projVaultLoc === 'existing' && (
-                          <>
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0" />
                             <input
                               value={projVault}
                               onChange={(e) => setProjVault(e.target.value)}
@@ -1045,17 +1050,20 @@ export function EntryScreen({
                             >
                               <FolderOpen size={13} strokeWidth={2} />
                             </button>
-                          </>
+                          </div>
                         )}
-                        <span className="w-full text-[10px] text-zinc-600">
-                          {projVaultLoc === 'in-repo' ? (
-                            <>Private <span className="font-mono">tickets-vault/</span> inside the repo, gitignored — never committed.</>
-                          ) : projVaultLoc === 'sibling' ? (
-                            <>A new <span className="font-mono">{`${projName.trim()}-vault`}</span> beside the repo, outside git.</>
-                          ) : (
-                            <>Reuse an existing Obsidian vault. Tickets go in its <span className="font-mono">tickets/</span> subfolder.</>
-                          )}
-                        </span>
+                        <div className="flex gap-2 text-[10px] text-zinc-600">
+                          <span className="w-16 shrink-0" />
+                          <span className="min-w-0">
+                            {projVaultLoc === 'in-repo' ? (
+                              <>Private <span className="font-mono">tickets-vault/</span> inside the repo, gitignored — never committed.</>
+                            ) : projVaultLoc === 'sibling' ? (
+                              <>A new <span className="font-mono">{`${projName.trim()}-vault`}</span> beside the repo, outside git.</>
+                            ) : (
+                              <>Reuse an existing Obsidian vault. Tickets go in its <span className="font-mono">tickets/</span> subfolder.</>
+                            )}
+                          </span>
+                        </div>
                       </>
                     )}
                   </div>
