@@ -1,15 +1,16 @@
 ---
 id: 22
 title: "Integrate Hermes sessions into the resume picker (from ~/.hermes, with resume)"
-status: open
+status: closed
 priority: low
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-09
-prs: []
+updated: 2026-07-10
+prs:
+  - "https://github.com/trevormil/TerMinal/pull/24"
 refs:
   - "Follow-up to the fix that stopped listSessions('hermes') from leaking Claude/Codex/Cursor sessions (returns [] for now)"
 depends_on: []
