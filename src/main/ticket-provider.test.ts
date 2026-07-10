@@ -7,8 +7,11 @@ import {
   githubIssueToTicket,
   linearIssueToTicket,
   listRepoTickets,
+  obsidianDeepLink,
   repoTicketProvider,
+  scaffoldObsidianVault,
 } from './ticket-provider'
+import { readFileSync } from 'node:fs'
 
 function repoWithTicketConfig(config?: unknown) {
   const repo = mkdtempSync(join(tmpdir(), 'terminal-ticket-provider-'))
@@ -59,6 +62,37 @@ describe('obsidian provider dispatch', () => {
     } finally {
       rmSync(vault, { recursive: true, force: true })
       rmSync(repo, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('obsidian deep link + scaffold', () => {
+  test('obsidianDeepLink builds an obsidian:// URI honoring vaultName + subdir', () => {
+    expect(obsidianDeepLink({ vaultPath: '/x/My Vault' }, '0001-add-x')).toBe(
+      'obsidian://open?vault=My%20Vault&file=tickets%2F0001-add-x.md',
+    )
+    expect(obsidianDeepLink({ vaultPath: '/x/v', vaultName: 'Named', ticketsSubdir: 'issues' }, '0002-y')).toBe(
+      'obsidian://open?vault=Named&file=issues%2F0002-y.md',
+    )
+    expect(obsidianDeepLink(undefined, '0001-x')).toBeNull()
+    expect(obsidianDeepLink({ vaultPath: '' }, '0001-x')).toBeNull()
+  })
+
+  test('scaffoldObsidianVault seeds guide/board/template idempotently, never clobbering', () => {
+    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-scaffold-'))
+    try {
+      scaffoldObsidianVault({ vaultPath: vault, ticketsSubdir: 'tickets' })
+      expect(existsSync(join(vault, '_TerMinal.md'))).toBe(true)
+      expect(existsSync(join(vault, '_Boards', 'Tickets.md'))).toBe(true)
+      expect(existsSync(join(vault, '_Templates', 'Ticket.md'))).toBe(true)
+      // Board references the tickets subdir for Dataview
+      expect(readFileSync(join(vault, '_Boards', 'Tickets.md'), 'utf8')).toContain('FROM "tickets"')
+      // Idempotent: a user edit survives a re-scaffold
+      writeFileSync(join(vault, '_TerMinal.md'), 'MY EDIT')
+      scaffoldObsidianVault({ vaultPath: vault })
+      expect(readFileSync(join(vault, '_TerMinal.md'), 'utf8')).toBe('MY EDIT')
+    } finally {
+      rmSync(vault, { recursive: true, force: true })
     }
   })
 })

@@ -101,6 +101,61 @@ function obsidianBaseDir(cfg: ObsidianTicketConfig | undefined): string | null {
 }
 const stampObsidian = (t: Ticket): Ticket => ({ ...t, provider: 'obsidian', providerLabel: PROVIDER_LABEL.obsidian })
 
+const vaultNameFor = (cfg: ObsidianTicketConfig): string =>
+  (cfg.vaultName?.trim() || cfg.vaultPath.replace(/\/+$/, '').split('/').pop() || 'vault')
+
+// An `obsidian://open` deep link to a ticket file, or null if the vault isn't
+// configured. Used by the Tickets tab's "Open in Obsidian" action.
+export function obsidianDeepLink(cfg: ObsidianTicketConfig | undefined, slug: string): string | null {
+  if (!cfg) return null
+  const dir = obsidianBaseDir(cfg)
+  if (!dir) return null
+  const sub = (cfg.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
+  const rel = `${sub}/${slug.replace(/[^\w-]/g, '')}.md`
+  return `obsidian://open?vault=${encodeURIComponent(vaultNameFor(cfg))}&file=${encodeURIComponent(rel)}`
+}
+
+export function obsidianRepoDeepLink(repoRoot: string, slug: string): string | null {
+  return obsidianDeepLink(readConfig(repoRoot).obsidian, slug)
+}
+
+// Idempotently seed helper notes into an Obsidian vault: a guide, a Dataview
+// board, and a Templater new-ticket template. Never overwrites existing files,
+// so it's safe to run on every save and safe against a vault the user also uses
+// for their own notes. Best-effort — a write failure never blocks saving.
+export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): void {
+  const vault = cfg?.vaultPath?.trim()
+  if (!vault || !existsSync(vault)) return
+  const sub = (cfg!.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
+  const seed = (rel: string, content: string) => {
+    try {
+      const p = join(vault, rel)
+      if (existsSync(p)) return
+      mkdirSync(join(p, '..'), { recursive: true })
+      writeFileSync(p, content)
+    } catch {
+      /* best effort */
+    }
+  }
+  try {
+    mkdirSync(join(vault, sub), { recursive: true })
+  } catch {
+    /* best effort */
+  }
+  seed(
+    '_TerMinal.md',
+    `# TerMinal tickets\n\nThis vault is TerMinal's private ticket store for a repo. Tickets are markdown\nfiles with YAML frontmatter in \`${sub}/\` — TerMinal reads and writes them; edit\nfreely in Obsidian, they stay in sync.\n\n- **Board:** [[_Boards/Tickets]] (needs the Dataview community plugin)\n- **New ticket:** \`_Templates/Ticket.md\` (needs the Templater community plugin)\n\nTerMinal allocates ticket ids (\`NNNN-slug.md\`). If you hand-create a ticket in\nObsidian, use the next free number.\n\nFrontmatter: \`id, title, status, priority, horizon, type, source, created,\nupdated, prs, refs, depends_on, acceptance, model_tier, worked_by, agent_id,\nagent_scope, agent_kind\`.\n`,
+  )
+  seed(
+    join('_Boards', 'Tickets.md'),
+    `# Tickets\n\n> Needs the **Dataview** plugin. Board over \`${sub}/\`.\n\n\`\`\`dataview\nTABLE WITHOUT ID file.link AS Ticket, status, priority, type, updated\nFROM "${sub}"\nWHERE id\nSORT priority ASC, updated DESC\n\`\`\`\n\n## Open by priority\n\n\`\`\`dataview\nTABLE WITHOUT ID file.link AS Ticket, type, updated\nFROM "${sub}"\nWHERE id AND status != "closed" AND status != "done"\nGROUP BY priority\n\`\`\`\n`,
+  )
+  seed(
+    join('_Templates', 'Ticket.md'),
+    `---\nid:\ntitle: "<% tp.file.title %>"\nstatus: open\npriority: medium\nhorizon: now\ntype: feature\nsource: obsidian\ncreated: <% tp.date.now("YYYY-MM-DD") %>\nupdated: <% tp.date.now("YYYY-MM-DD") %>\nprs: []\nrefs: []\ndepends_on: []\nacceptance: []\nmodel_tier: auto\nworked_by: []\nagent_id: 1000x-ai-engineer\nagent_scope: global\nagent_kind: classic\n---\n\n<!-- Templater template. TerMinal normally allocates the id + NNNN-slug filename;\n     if you create a ticket here manually, set id to the next free number. -->\n`,
+  )
+}
+
 function configPath(repoRoot: string): string {
   return join(repoRoot, '.TerMinal', 'tickets.json')
 }
