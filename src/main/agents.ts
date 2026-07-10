@@ -1824,11 +1824,11 @@ Schedule entry schema:
   "lastStatus": "never"
 }
 
-ScheduleSpec options:
-  { "kind": "interval", "everyMinutes": <number> }                              # every N minutes
+ScheduleSpec options (all fire at fixed wall-clock times — no intervals):
   { "kind": "calendar", "minute": 0, "hour": 9 }                                # every day at 9:00
   { "kind": "calendar", "minute": 30, "hour": 14, "weekdays": [1,3,5] }         # Mon/Wed/Fri 2:30pm
   { "kind": "cron",     "expr": "30 9 * * 1-5" }                                # raw 5-field cron
+  { "kind": "cron",     "expr": "*/15 * * * *" }                                # sub-daily cadence → use cron steps
 
 User's description:
 > ${t}

@@ -814,9 +814,9 @@ export type AgentRun = {
 }
 
 export type ScheduleSpec =
-  | { kind: 'interval'; everyMinutes: number }
   | { kind: 'calendar'; minute: number; hour: number; weekdays?: number[] }
   | { kind: 'cron'; expr: string }
+export type ScheduleRetry = { maxRetries: number; backoffSec: number }
 export type ScheduleStatus = 'never' | 'running' | 'done' | 'failed'
 export type ScheduleEnv = Record<string, string>
 export type Schedule = {
@@ -831,6 +831,9 @@ export type Schedule = {
   spec: ScheduleSpec
   enabled: boolean
   env?: ScheduleEnv
+  // Optional flaky-run controls (see main/schedules.ts). Absent → runner defaults.
+  retry?: ScheduleRetry
+  timeoutSec?: number
   createdAt: number
   lastRun?: number
   lastStatus?: ScheduleStatus
@@ -1511,6 +1514,8 @@ export type GtApi = {
       spec: ScheduleSpec
       enabled?: boolean
       env?: ScheduleEnv
+      retry?: ScheduleRetry
+      timeoutSec?: number
     }) => Promise<{ ok: true; id: string } | { error: string }>
     remove: (id: string) => Promise<boolean>
     toggle: (id: string, enabled: boolean) => Promise<boolean>

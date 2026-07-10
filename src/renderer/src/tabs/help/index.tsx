@@ -209,7 +209,7 @@ function HelpTab(_props: { ctx: TabContext }) {
               Named workflows for human-triggered work from Agents, Tickets, PRs, snippets, or a terminal prompt.
             </WorkflowItem>
             <WorkflowItem icon={CalendarClock} title="Schedules" command="Schedules · /new-schedule">
-              Time-based automation for existing agents: intervals, weekdays, cron expressions, or plain-English setup.
+              Time-based automation for existing agents: specific times, weekdays, cron expressions, or plain-English setup.
             </WorkflowItem>
             <WorkflowItem icon={Inbox} title="Automation Inbox" command="Runs · /enqueue-request">
               Always-on intake for file drops, webhook adapters, Slack pollers, MR watchers, and other integrations.

@@ -256,6 +256,21 @@ const STALE_MS = 2 * 60 * 60 * 1000 // 2 hours
 // 3 is a sane default that survives transient flakes but stops runaway loops.
 const CIRCUIT_BREAK_AFTER = 3
 
+// Retry policy for flaky runs. A non-zero exit (or a timeout) is retried up to
+// DEFAULT_RETRY_MAX more times with exponential backoff before the run is
+// finalized as failed — only then do the HITL / ticket / circuit-breaker
+// handlers fire. Per-schedule sched.retry / sched.timeoutSec override these.
+const DEFAULT_RETRY_MAX = 2 // 2 retries → up to 3 attempts per firing
+const BACKOFF_BASE_SEC = 30 // 30s → 2m → 8m (×4 each step)
+const BACKOFF_FACTOR = 4
+const BACKOFF_MAX_SEC = 8 * 60
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000 // 30m hard cap per attempt
+const TIMEOUT_EXIT = 124 // conventional exit code for a timed-out command
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const backoffMsFor = (retryIndex, baseSec) =>
+  Math.min(baseSec * BACKOFF_FACTOR ** retryIndex, BACKOFF_MAX_SEC) * 1000
+
 function log(msg) {
   try {
     appendFileSync(CRON_LOG, `${new Date().toISOString()} ${msg}\n`)
@@ -552,28 +567,132 @@ function sweepStaleRuns() {
   return swept
 }
 
-// Cadence health check: for each enabled schedule, compare expected interval
-// against `lastRun`. If the schedule should have fired more than 2x its
-// cadence ago and there's no recent run, file a HITL — launchd may have
-// unloaded it or the plist drifted. Returns the number of overdue items.
+// ---- self-contained cron matcher (mirrors src/main/cron.ts) ----------------
+// terminal-cron imports nothing from the app bundle, so the calendar/cron
+// evaluation the cadence watchdog needs is reimplemented here. Keep in sync
+// with src/main/cron.ts (cronToTrigger / specToTrigger / prevRun).
+function parseCronFieldLocal(field, min, max) {
+  if (field === '*') return null
+  const out = new Set()
+  for (const part of field.split(',')) {
+    const m = part.match(/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/)
+    if (!m) return null // malformed → bail (watchdog skips this schedule)
+    const [, range, stepRaw] = m
+    const step = stepRaw ? Number(stepRaw) : 1
+    if (step < 1) return null
+    let lo, hi
+    if (range === '*') {
+      lo = min
+      hi = max
+    } else if (range.includes('-')) {
+      const [a, b] = range.split('-').map(Number)
+      lo = a
+      hi = b
+    } else {
+      lo = hi = Number(range)
+    }
+    if (lo < min || hi > max || lo > hi) return null
+    for (let v = lo; v <= hi; v += step) out.add(v)
+  }
+  return [...out]
+}
+
+// Reduce a spec to concrete allowed values per field (null = "any").
+function specEntriesLocal(spec) {
+  if (!spec) return null
+  if (spec.kind === 'cron') {
+    const fields = String(spec.expr || '')
+      .trim()
+      .split(/\s+/)
+    if (fields.length !== 5) return null
+    const [minF, hourF, domF, monF, dowF] = fields
+    const dows = parseCronFieldLocal(dowF, 0, 7)?.map((d) => (d === 7 ? 0 : d))
+    return {
+      minutes: parseCronFieldLocal(minF, 0, 59),
+      hours: parseCronFieldLocal(hourF, 0, 23),
+      days: parseCronFieldLocal(domF, 1, 31),
+      months: parseCronFieldLocal(monF, 1, 12),
+      dows: dows ? [...new Set(dows)] : null,
+    }
+  }
+  if (spec.kind === 'calendar') {
+    return {
+      minutes: [spec.minute || 0],
+      hours: [spec.hour || 0],
+      days: null,
+      months: null,
+      dows: spec.weekdays && spec.weekdays.length ? spec.weekdays : null,
+    }
+  }
+  return null
+}
+
+function matchesEntriesLocal(e, d) {
+  return (
+    (e.minutes === null || e.minutes.includes(d.getMinutes())) &&
+    (e.hours === null || e.hours.includes(d.getHours())) &&
+    (e.days === null || e.days.includes(d.getDate())) &&
+    (e.dows === null || e.dows.includes(d.getDay())) &&
+    (e.months === null || e.months.includes(d.getMonth() + 1))
+  )
+}
+
+// Most recent expected fire at or before `from` (ms), scanning back up to 45
+// days. null if none — includes schedules that fire less often than that (the
+// watchdog simply won't flag them, which is fine).
+const CADENCE_SCAN_DAYS = 45
+function prevExpectedFire(spec, from) {
+  const e = specEntriesLocal(spec)
+  if (!e) return null
+  const d = new Date(from)
+  d.setSeconds(0, 0)
+  for (let i = 0; i < CADENCE_SCAN_DAYS * 24 * 60; i++) {
+    if (matchesEntriesLocal(e, d)) return d.getTime()
+    d.setMinutes(d.getMinutes() - 1)
+  }
+  return null
+}
+
+// Open overdue HITLs, keyed by schedule id — so a stuck schedule pings once,
+// not on every watchdog tick.
+function openOverdueHitlIds() {
+  try {
+    const list = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
+    if (!Array.isArray(list)) return new Set()
+    const ids = new Set()
+    for (const h of list) if (h.status === 'open' && h.overdueScheduleId) ids.add(h.overdueScheduleId)
+    return ids
+  } catch {
+    return new Set()
+  }
+}
+
+// Cadence health check: an enabled schedule that has missed its TWO most recent
+// expected fires (2x-cadence tolerance) is overdue — launchd may have unloaded
+// it or the plist drifted. lastRun is stamped at run START, so a long in-flight
+// run never reads as overdue. Deduped against open overdue HITLs. Returns count.
 function watchdogCadenceCheck() {
   const schedules = readSchedules()
+  const disabled = readDisabled()
+  const openOverdue = openOverdueHitlIds()
   let overdue = 0
   const now = Date.now()
   for (const s of schedules) {
     if (!s.enabled) continue
-    // Only intervals have a predictable next-firing; calendar/cron we leave
-    // alone for now (LaunchAgents fire at the calendar moment, so "missed
-    // by 2x the cadence" doesn't generalize cleanly).
-    const intervalMs = s.spec?.kind === 'interval' ? (s.spec.everyMinutes || 60) * 60_000 : null
-    if (!intervalMs) continue
+    if (disabled.has(s.id)) continue // kill-switched — not expected to fire
     if (!s.lastRun) continue // never run yet — let it ride
-    const since = now - s.lastRun
-    if (since < intervalMs * 2) continue
+    const prev = prevExpectedFire(s.spec, now)
+    if (!prev) continue
+    const prev2 = prevExpectedFire(s.spec, prev - 60_000)
+    if (!prev2) continue
+    if (s.lastRun >= prev2) continue // fired within the last 2 expected slots
     overdue++
+    if (openOverdue.has(s.id)) continue // already flagged, don't re-ping
+    const mins = Math.round((now - s.lastRun) / 60_000)
     fileHitl({
+      overdueScheduleId: s.id,
       title: `Schedule overdue · ${s.agentTitle}`,
-      action: `expected every ${Math.round(intervalMs / 60_000)} min, last ran ${Math.round(since / 60_000)} min ago — check launchd plist`,
+      action: `missed its last 2 expected fires — last ran ${mins} min ago. Check the launchd plist / re-enable from the Schedules tab.`,
       detail: `schedule ${s.id} · ${s.repoLabel}`,
       repo: s.repoLabel,
       repoRoot: s.repoRoot,
@@ -581,12 +700,12 @@ function watchdogCadenceCheck() {
     activity({
       kind: 'blocked',
       title: `Schedule overdue · ${s.agentTitle}`,
-      detail: `${Math.round(since / 60_000)} min since last run`,
+      detail: `${mins} min since last run`,
       repo: s.repoLabel,
       repoRoot: s.repoRoot,
       suppressTelegram: true,
     })
-    log(`watchdog: schedule ${s.id} (${s.agentTitle}) overdue by ${Math.round(since / 60_000)} min`)
+    log(`watchdog: schedule ${s.id} (${s.agentTitle}) overdue — last ran ${mins} min ago`)
   }
   return overdue
 }
@@ -717,9 +836,10 @@ async function runSchedule(id) {
   })
 
   // isolated worktree off the default base
+  const base = defaultBase(repo)
   try {
     mkdirSync(join(WT_DIR, repoBase), { recursive: true })
-    git(repo, ['worktree', 'add', worktree, '-b', branch, defaultBase(repo)])
+    git(repo, ['worktree', 'add', worktree, '-b', branch, base])
   } catch (e) {
     const msg = `worktree failed: ${e}`
     log(`run ${runId}: ${msg}`)
@@ -808,29 +928,84 @@ async function runSchedule(id) {
     // global config's default project.
     ...(sched.env && typeof sched.env === 'object' ? sched.env : {}),
   }
-  const code = await new Promise((resolve) => {
-    const p = spawn('script', ['-q', '/dev/null', shell, '-l', '-c', cmd], {
-      cwd: worktree,
-      env: childEnv,
-      stdio: ['ignore', fd, fd],
+  // Retry policy for this schedule (per-schedule overrides → runner defaults).
+  const maxRetries = Math.max(0, Number(sched.retry?.maxRetries ?? DEFAULT_RETRY_MAX))
+  const backoffBaseSec = Math.max(1, Number(sched.retry?.backoffSec ?? BACKOFF_BASE_SEC))
+  const timeoutMs = sched.timeoutSec > 0 ? sched.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS
+
+  // One attempt: spawn the wrapped CLI, enforce the per-attempt timeout, and
+  // resolve { code, timedOut }. Detached so we get a process group we can kill
+  // wholesale on timeout (killing `script` alone can orphan the agent child).
+  const runAttempt = (attempts) =>
+    new Promise((resolve) => {
+      const p = spawn('script', ['-q', '/dev/null', shell, '-l', '-c', cmd], {
+        cwd: worktree,
+        env: childEnv,
+        stdio: ['ignore', fd, fd],
+        detached: true,
+      })
+      // Persist the wrapper PID so the watchdog can detect a dead-but-
+      // still-marked-running record via `kill(pid, 0)` rather than waiting
+      // STALE_MS (2h). Without this, a launchd SIGKILL or any silent runner
+      // death leaves the cron-runs/<id>.json zombied at status:running for
+      // hours — long enough that downstream cron ticks treat the schedule
+      // as in-progress and skip themselves.
+      if (p.pid) writeRec({ status: 'running', pid: p.pid, attempts })
+      let timedOut = false
+      const killGroup = (sig) => {
+        try {
+          if (p.pid) process.kill(-p.pid, sig)
+        } catch {}
+      }
+      const timer = setTimeout(() => {
+        timedOut = true
+        appendFileSync(logFile, `\n[timeout] attempt exceeded ${Math.round(timeoutMs / 1000)}s — killing run\n`)
+        killGroup('SIGTERM')
+        setTimeout(() => killGroup('SIGKILL'), 5000) // hard-kill if it ignores TERM
+      }, timeoutMs)
+      p.on('error', (err) => {
+        clearTimeout(timer)
+        appendFileSync(logFile, `\n[spawn error] ${err.message}\n`)
+        resolve({ code: 1, timedOut })
+      })
+      p.on('exit', (c) => {
+        clearTimeout(timer)
+        resolve({ code: timedOut ? TIMEOUT_EXIT : c ?? 1, timedOut })
+      })
     })
-    // Persist the wrapper PID so the watchdog can detect a dead-but-
-    // still-marked-running record via `kill(pid, 0)` rather than waiting
-    // STALE_MS (2h). Without this, a launchd SIGKILL or any silent runner
-    // death leaves the cron-runs/<id>.json zombied at status:running for
-    // hours — long enough that downstream cron ticks treat the schedule
-    // as in-progress and skip themselves.
-    if (p.pid) writeRec({ status: 'running', pid: p.pid })
-    p.on('error', (err) => {
-      appendFileSync(logFile, `\n[spawn error] ${err.message}\n`)
-      resolve(1)
-    })
-    p.on('exit', (c) => resolve(c ?? 1))
-  })
+
+  let code = 1
+  let timedOut = false
+  let attempts = 0
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const waitMs = backoffMsFor(attempt - 1, backoffBaseSec)
+      appendFileSync(
+        logFile,
+        `\n▸ attempt ${attempt} failed (exit ${code}${timedOut ? ', timed out' : ''}) — retry ${attempt}/${maxRetries} in ${Math.round(waitMs / 1000)}s\n`,
+      )
+      stamp(id, { lastStatus: 'running' })
+      await sleep(waitMs)
+      // Reset the worktree to a clean base so a half-applied failed attempt
+      // never bleeds into the retry (we reuse the worktree, not a fresh one).
+      try {
+        git(worktree, ['reset', '--hard', base])
+        git(worktree, ['clean', '-fd'])
+      } catch (e) {
+        appendFileSync(logFile, `[retry] worktree reset failed: ${e}\n`)
+      }
+      appendFileSync(logFile, `\n▸ attempt ${attempt + 1}/${maxRetries + 1}\n`)
+    }
+    attempts = attempt + 1
+    const res = await runAttempt(attempts)
+    code = res.code
+    timedOut = res.timedOut
+    if (code === 0) break
+  }
 
   const status = code === 0 ? 'done' : 'failed'
   const endedAt = Date.now()
-  writeRec({ status, endedAt, exitCode: code })
+  writeRec({ status, endedAt, exitCode: code, attempts, ...(timedOut ? { timedOut: true } : {}) })
   stamp(id, { lastStatus: status })
   // Observability: parse the captured log for usage stats and persist as an
   // AIRun ledger entry. Silent on miss (scripts may emit
@@ -856,21 +1031,24 @@ async function runSchedule(id) {
   } catch {
     /* never block run finalization on observability */
   }
+  const attemptNote = attempts > 1 ? ` · ${attempts} attempts` : ''
   activity({
     kind: code === 0 ? 'agent-run' : 'tests-fail',
     title: `Scheduled · ${sched.agentTitle} · ${status}`,
-    detail: `${sched.engine} · ${branch}`,
+    detail: `${sched.engine} · ${branch}${attemptNote}${code === 0 && attempts > 1 ? ' (recovered on retry)' : ''}`,
     repo: sched.repoLabel,
     repoRoot: repo,
   })
   if (code !== 0) {
+    // All retries exhausted — now (and only now) escalate.
+    const failReason = timedOut ? `timed out after ${Math.round(timeoutMs / 1000)}s` : `exited with code ${code}`
     const failTicketPath = fileTicket(repo, {
-      title: `Cron run failed: ${sched.agentTitle} (exit ${code})`,
-      body: `The scheduled \`${sched.agentTitle}\` run exited with code ${code}.\n\n- schedule: \`${id}\`\n- run: \`${runId}\`\n- branch: \`${branch}\`\n- worktree: \`${worktree}\`\n- log: \`~/.config/TerMinal/cron-runs/${runId}.log\`\n\nInvestigate the log and fix the underlying issue; circuit-breaker auto-disables after ${CIRCUIT_BREAK_AFTER} consecutive failures.`,
+      title: `Cron run failed: ${sched.agentTitle} (${timedOut ? 'timeout' : `exit ${code}`})`,
+      body: `The scheduled \`${sched.agentTitle}\` run ${failReason} after ${attempts} attempt${attempts === 1 ? '' : 's'}.\n\n- schedule: \`${id}\`\n- run: \`${runId}\`\n- branch: \`${branch}\`\n- worktree: \`${worktree}\`\n- log: \`~/.config/TerMinal/cron-runs/${runId}.log\`\n\nInvestigate the log and fix the underlying issue; circuit-breaker auto-disables after ${CIRCUIT_BREAK_AFTER} consecutive failures.`,
     })
     fileHitl({
       title: `Scheduled run failed · ${sched.agentTitle}`,
-      action: `exit ${code} — review the run log`,
+      action: `${failReason} after ${attempts} attempt${attempts === 1 ? '' : 's'} — review the run log`,
       detail: `run ${runId} · ${branch}`,
       repo: sched.repoLabel,
       repoRoot: repo,
@@ -880,7 +1058,7 @@ async function runSchedule(id) {
     })
     maybeCircuitBreak(id, sched)
   }
-  log(`run ${runId}: ${status} (exit ${code})`)
+  log(`run ${runId}: ${status} (exit ${code}, ${attempts} attempt${attempts === 1 ? '' : 's'}${timedOut ? ', timed out' : ''})`)
   return code === 0 ? 0 : 1
 }
 
