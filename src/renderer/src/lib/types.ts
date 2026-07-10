@@ -1719,6 +1719,8 @@ export type GtApi = {
   }>
   clipboardWrite: (text: string) => Promise<void>
   clipboardRead: () => Promise<string>
+  pathForFile: (file: File) => string
+  clipboardImageToFile: () => Promise<string | null>
   notes: {
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
