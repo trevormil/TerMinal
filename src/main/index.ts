@@ -66,6 +66,8 @@ import {
   listLinearTeams,
   readRepoTicketConfig,
   saveRepoTicketConfig,
+  scaffoldObsidianVault,
+  obsidianRepoDeepLink,
   testRepoTicketProvider,
   type RepoTicketsConfig,
 } from './ticket-provider'
@@ -1685,6 +1687,8 @@ ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local') return { error: 'Ticket provider setup is local-only for now.' }
   const saved = saveRepoTicketConfig(daemon.repoRoot(), cfg)
+  // Seed the vault's guide/board/template on save (idempotent, best-effort).
+  if (saved.provider === 'obsidian') scaffoldObsidianVault(saved.obsidian)
   emitActivity({
     kind: 'info',
     title: `Ticket provider · ${saved.provider || 'local'}`,
@@ -1704,6 +1708,16 @@ ipcMain.handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
   const daemon = activeDaemon()
   if (daemon.kind !== 'local') return []
   return listLinearTeams(daemon.repoRoot(), cfg)
+})
+// Open a ticket in Obsidian via its obsidian:// deep link. No-op (returns false)
+// when the repo isn't on the obsidian provider or the vault isn't configured.
+ipcMain.handle('tickets:open-in-obsidian', (_e, slug: string) => {
+  const daemon = activeDaemon()
+  if (daemon.kind !== 'local') return false
+  const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
+  if (!link) return false
+  shell.openExternal(link)
+  return true
 })
 ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   const daemon = activeDaemon()

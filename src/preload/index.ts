@@ -240,6 +240,7 @@ const gt = {
     providerSave: (cfg: unknown) => ipcRenderer.invoke('tickets:provider-save', cfg),
     providerTest: (cfg: unknown, smoke?: boolean) => ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
     linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
+    openInObsidian: (slug: string) => ipcRenderer.invoke('tickets:open-in-obsidian', slug),
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
     update: (slug: string, patch: unknown) =>

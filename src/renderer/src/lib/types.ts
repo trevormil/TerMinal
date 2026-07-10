@@ -1571,6 +1571,7 @@ export type GtApi = {
     providerSave: (cfg: TicketProviderConfig) => Promise<TicketProviderConfig | { error: string }>
     providerTest: (cfg: TicketProviderConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
     linearTeams: (cfg?: TicketProviderConfig) => Promise<{ id: string; name: string; key?: string }[]>
+    openInObsidian: (slug: string) => Promise<boolean>
     create: (input: NewTicket) => Promise<Ticket>
     recommendAgent: (input: { title?: string; type?: string; body?: string }) => Promise<TicketAgentRecommendation>
     update: (slug: string, patch: { status?: string; priority?: string; acceptance?: string[]; agent?: Partial<TicketAgent>; run?: Partial<TicketRunLink> }) => Promise<boolean>

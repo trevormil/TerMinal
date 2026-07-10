@@ -641,6 +641,16 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   }}
                 />
                 <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+                {selected.provider === 'obsidian' && (
+                  <button
+                    onClick={() => window.gt.tickets.openInObsidian(selected.slug)}
+                    title="Open this ticket in Obsidian"
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
+                  >
+                    <ArrowUpRight size={11} strokeWidth={2} />
+                    Obsidian
+                  </button>
+                )}
                 <select
                   value={ticketAgentContextId(selected.agent)}
                   onChange={async (e) => {
