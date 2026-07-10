@@ -1193,47 +1193,6 @@ export type CiJob = { id: number; name: string; stage: string; status: string; w
 export type CiInfo = { status: string; webUrl: string; jobs: CiJob[] }
 export type MrListResult = { mrs: Mr[]; error?: string }
 
-// ─── CI tab — full pipeline / workflow run list (independent of MR) ─────────
-export type CiRunStatus =
-  | 'queued'
-  | 'in_progress'
-  | 'success'
-  | 'failed'
-  | 'canceled'
-  | 'skipped'
-  | 'pending'
-export type CiRun = {
-  id: string
-  name: string
-  status: CiRunStatus
-  branch: string
-  shortSha: string
-  event: string
-  webUrl: string
-  createdAt: number
-  updatedAt: number
-  durationMs: number | null
-}
-export type CiTabStep = {
-  name: string
-  status: CiRunStatus
-  number: number
-}
-export type CiTabJob = {
-  id: string
-  name: string
-  stage: string
-  status: CiRunStatus
-  webUrl: string
-  startedAt: number | null
-  finishedAt: number | null
-  durationMs: number | null
-  steps?: CiTabStep[]
-}
-export type CiListResult = { runs: CiRun[]; error?: string }
-export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
-export type CiLogResult = { log: string; truncated?: boolean; error?: string }
-
 export type TabContext = {
   cwd: string
   sessionId: string
@@ -1641,11 +1600,6 @@ export type GtApi = {
   onDigestStatus: (cb: (s: DigestRunState) => void) => () => void
   getMrCi: (iid: number) => Promise<CiInfo | null>
   mergeMr: (iid: number) => Promise<{ ok: boolean; error?: string }>
-  ci: {
-    list: (limit?: number) => Promise<CiListResult>
-    jobs: (runId: string) => Promise<CiJobsResult>
-    log: (jobId: string) => Promise<CiLogResult>
-  }
   openExternal: (url: string) => Promise<void>
   openInBrowser: (url: string) => Promise<void>
   openInEditor: (path?: string) => Promise<void>

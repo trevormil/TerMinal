@@ -1952,15 +1952,6 @@ ipcMain.handle('mrs:ci', (_e, iid: number) => {
 ipcMain.handle('mrs:merge', (_e, iid: number) => {
   return activeDaemon().mrMerge(iid)
 })
-ipcMain.handle('ci:list', async (_e, limit?: number) => {
-  return activeDaemon().ciList(limit)
-})
-ipcMain.handle('ci:jobs', async (_e, runId: string) => {
-  return activeDaemon().ciJobs(runId)
-})
-ipcMain.handle('ci:log', async (_e, jobId: string) => {
-  return activeDaemon().ciLog(jobId)
-})
 ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
