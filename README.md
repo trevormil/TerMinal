@@ -111,7 +111,7 @@ repo-aware — each shows based on the attached session's repo. The default top
 level is intentionally focused: **Tickets**, **MRs / PRs**, **Agents**, **Runs**,
 **Schedules**, **CI**, **Browser**, **Observability**, and **Files**.
 Secondary/reference surfaces such as Activity, Docs, Reports, Sessions,
-Knowledge Base, Agent Config, Help, and AgentView are available from
+Knowledge Base, Agent Config, and Help are available from
 **Settings → Tabs** when you want them.
 
 - **Terminal** — the `claude` or `codex` CLI with a session-aware cockpit sidebar.

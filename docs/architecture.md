@@ -183,7 +183,7 @@ excluded from the claude/codex AI-usage ledger (they'd be mis-priced).
 Tabs are still auto-discovered, but default visibility is curated in
 `src/renderer/src/lib/tabVisibility.ts`. Primary factory surfaces stay visible:
 Tickets, MRs/PRs, Agents, Runs, Schedules, CI, Browser, Observability, and
-Files. Secondary surfaces — Activity, AgentView, Docs, Help, Notes/Knowledge
+Files. Secondary surfaces — Activity, Docs, Help, Notes/Knowledge
 Base, Reports, Sessions, and Agent Config — are hidden by default and can be
 restored from Settings → Tabs. This keeps the default cockpit focused while
 preserving the extensible "folder = tab" model.
