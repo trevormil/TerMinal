@@ -94,7 +94,7 @@ function ScheduleForm({
   const [customBusy, setCustomBusy] = useState(false)
   const [customErr, setCustomErr] = useState('')
   const [agentId, setAgentId] = useState(agents[0]?.id || '')
-  const [engine, setEngine] = useState<Engine>('claude')
+  const [engine, setEngine] = useState<Engine>('codex')
   const [model, setModel] = useState('')
   const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('terminal')
   useEffect(() => {

@@ -1301,7 +1301,7 @@ ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: st
     if (!agent) return { error: 'unknown agent' }
     // OpenRouter runs on the bundled local or-agent harness — never dispatch it
     // to a remote host (no or-agent there); fall back to the remote's engine.
-    const resolvedEngine = localOnlyToRemote(engine || agent.engine || remote.daemon?.defaultEngine || 'claude')
+    const resolvedEngine = localOnlyToRemote(engine || agent.engine || remote.daemon?.defaultEngine || 'codex')
     const { steps, persona: personaLabel, pipeline: pipelineLabelText } = remoteSteps({ label: agent.title, prompt: agent.prompt }, persona, pipeline)
     const run = await remoteRuns.start(remote, {
       agentId: agent.id,
@@ -1506,7 +1506,7 @@ ipcMain.handle(
           repoLabel: repoLabelFor(cur().cwd),
           agentId: agent.id,
           agentTitle: agent.title,
-          engine: input.engine || agent.engine || remote.daemon?.defaultEngine || 'claude',
+          engine: input.engine || agent.engine || remote.daemon?.defaultEngine || 'codex',
           model: input.model ?? agent.model,
           prompt: agent.prompt,
           spec: input.spec,

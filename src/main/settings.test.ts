@@ -145,7 +145,7 @@ describe('migrate', () => {
 
   test('invalid enum values fall back to defaults', () => {
     const s = migrate({ defaultEngine: 'gpt', forge: 'bitbucket', appearance: { mode: 'sepia' } })
-    expect(s.defaultEngine).toBe('claude') // claude is the required engine; codex is optional
+    expect(s.defaultEngine).toBe('codex') // codex is the default agent-run engine; claude stays selectable
     expect(s.forge).toBe('auto')
     expect(s.appearance.mode).toBe('dark')
   })

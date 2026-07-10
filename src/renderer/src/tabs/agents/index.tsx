@@ -347,7 +347,7 @@ function AgentDesigner({
   onAdvanced: () => void
 }) {
   const [text, setText] = useState('')
-  const [engine, setEngine] = useState<Engine>('claude')
+  const [engine, setEngine] = useState<Engine>('codex')
   const [model, setModel] = useState<string | undefined>(undefined)
   const [launchMode, setLaunchMode] = useState<LaunchMode>('terminal')
   const [scope, setScope] = useState<'repo' | 'global'>('repo')
@@ -548,7 +548,7 @@ function AgentEditor({
   const [id, setId] = useState(a?.id || '')
   const [title, setTitle] = useState(a?.title || '')
   const [description, setDescription] = useState(a?.description || '')
-  const [engine, setEngine] = useState<Engine>(a?.engine || 'claude')
+  const [engine, setEngine] = useState<Engine>(a?.engine || 'codex')
   const [model, setModel] = useState(a?.model || '')
   const [opensPr, setOpensPr] = useState(!!a?.opensPr)
   const [prompt, setPrompt] = useState(a?.prompt || '')
@@ -742,7 +742,7 @@ function PersistentAgentsPanel({ ctx, headerSlot }: { ctx: TabContext; headerSlo
   const [createRequest, setCreateRequest] = useState('')
   const [createTitle, setCreateTitle] = useState('')
   const [createDescription, setCreateDescription] = useState('')
-  const [createEngine, setCreateEngine] = useState<Engine>('claude')
+  const [createEngine, setCreateEngine] = useState<Engine>('codex')
   const [createModel, setCreateModel] = useState<string | undefined>(undefined)
   const [createLaunchMode, setCreateLaunchMode] = useState<LaunchMode>('terminal')
   const [createBusy, setCreateBusy] = useState(false)
