@@ -229,6 +229,15 @@ function HelpTab(_props: { ctx: TabContext }) {
               live event feed; Knowledge Base / Files / Sessions round it out. Search and Inbox live in the top-right utilities.
             </p>
             <p>
+              <span className="font-semibold text-zinc-200">Session launcher:</span> the New Session screen has two
+              modes — <span className="text-zinc-300">Single session</span> (one engine in one folder) and{' '}
+              <span className="text-zinc-300">Paired loop</span>, which opens two linked agents side by side: a{' '}
+              <em>driver</em> turns your goal into a gradable contract and grades each round while a <em>worker</em>{' '}
+              writes code in an isolated worktree, handing off automatically. This is a launcher mode — distinct from{' '}
+              <span className="font-semibold text-zinc-200">The loop</span> above, which is the autonomous ticket→PR
+              factory cycle.
+            </p>
+            <p>
               <span className="font-semibold text-zinc-200">Cockpit (right, the Plugins button):</span> live widgets
               — context window, usage + burn-rate, TDD status, git, todos, open-PR summary, and Skills. Toggle any
               of them from the Plugins drawer; the × on a widget hides it.

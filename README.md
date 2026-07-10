@@ -80,6 +80,14 @@ Claude/Codex session, start a new one in any folder, or **spin up a brand-new
 project from a template** (see below). Sessions launch the real engine CLI in
 the selected directory and resume through that engine's native resume path.
 
+The picker has two modes, toggled at the top: **Single session** (the default —
+one engine in one folder) and **Paired loop** — two linked agents opened side by
+side to converge on a goal. You give one **goal**; a **driver** turns it into a
+gradable contract and adversarially grades each round, while a **worker** writes
+the code in an isolated git worktree. The two run contract-first and hand off to
+each other automatically. Paired loop is local-only (it needs a worktree). The
+mechanics live in [`docs/architecture.md`](docs/architecture.md#loop-engine-paired--headless).
+
 The app is **self-configuring** — install either `claude` or `codex` to run
 sessions; `gh` and `glab` are optional and enable the forge features that use
 them. See

@@ -1,7 +1,7 @@
 ---
 id: 23
 title: "Document the live-paired / loop session launcher mode"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
@@ -9,7 +9,8 @@ type: docs
 source: doc-sweep
 created: 2026-07-10
 updated: 2026-07-10
-prs: []
+prs:
+  - "https://github.com/trevormil/TerMinal/pull/26"
 refs:
   - "Shipped across 34b6794, f5dbcae, fc7866f, e53e321, 21e15df, 6074de5, 3d16c0b — no doc commit accompanied any of them"
 depends_on: []
