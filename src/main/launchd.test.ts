@@ -12,7 +12,7 @@ const sched = (id: string, enabled: boolean): Schedule =>
     agentTitle: 'A',
     engine: 'claude',
     prompt: '',
-    spec: { kind: 'interval', everyMinutes: 60 },
+    spec: { kind: 'calendar', minute: 0, hour: 9 },
     enabled,
     createdAt: 0,
   }) as Schedule
@@ -40,9 +40,9 @@ describe('darkSchedules', () => {
 describe('needsReload', () => {
   const xml = '<plist>same</plist>'
 
-  test('loaded + identical plist → no reload (preserve running interval timer)', () => {
-    // The whole point: relaunching TerMinal must NOT bootout/bootstrap a
-    // healthy job, or launchd resets its StartInterval countdown every launch.
+  test('loaded + identical plist → no reload (avoid needless churn)', () => {
+    // Relaunching TerMinal must NOT bootout/bootstrap a healthy job when the
+    // plist is unchanged — a pointless reload cycle on every launch.
     expect(needsReload(xml, xml, true)).toBe(false)
   })
 

@@ -20,7 +20,7 @@ import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, CronRun, Engine } from '../../lib/types'
+import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, ScheduleRetry, CronRun, Engine } from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -84,6 +84,8 @@ function ScheduleForm({
     spec: ScheduleSpec,
     model?: string,
     env?: Record<string, string>,
+    retry?: ScheduleRetry,
+    timeoutSec?: number,
   ) => Promise<void>
   onCustomSpawned: () => void
 }) {
@@ -105,12 +107,15 @@ function ScheduleForm({
     const a = agents.find((x) => x.id === agentId)
     setModel(a?.model || '')
   }, [agentId, agents])
-  const [kind, setKind] = useState<'interval' | 'calendar' | 'cron'>('calendar')
-  const [everyN, setEveryN] = useState(1)
-  const [unit, setUnit] = useState<'minutes' | 'hours'>('hours')
+  const [kind, setKind] = useState<'calendar' | 'cron'>('calendar')
   const [time, setTime] = useState('09:00')
   const [weekdays, setWeekdays] = useState<number[]>([])
   const [cron, setCron] = useState('30 9 * * 1-5')
+  // Optional flaky-run controls. Blank = use the runner defaults (2 retries,
+  // 30s base backoff, 30m timeout). Only sent when the operator fills them in.
+  const [maxRetries, setMaxRetries] = useState('')
+  const [backoffSec, setBackoffSec] = useState('')
+  const [timeoutMin, setTimeoutMin] = useState('')
   // Per-schedule env vars — one KEY=value per line. Sanitized + uppercased by
   // the main-side IPC; only POSIX-shaped names survive (`[A-Z_][A-Z0-9_]*`).
   // Optional; the common case is empty.
@@ -122,10 +127,22 @@ function ScheduleForm({
     setWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d].sort((a, b) => a - b)))
 
   const buildSpec = (): ScheduleSpec => {
-    if (kind === 'interval') return { kind: 'interval', everyMinutes: Math.max(1, unit === 'hours' ? everyN * 60 : everyN) }
     if (kind === 'cron') return { kind: 'cron', expr: cron.trim() }
     const [h, m] = time.split(':').map(Number)
     return { kind: 'calendar', minute: m || 0, hour: h || 0, weekdays: weekdays.length ? weekdays : undefined }
+  }
+
+  // Only build a retry object when the operator typed a retry count; backoff
+  // defaults to 30s if left blank. Timeout is minutes in the UI → seconds out.
+  const buildRetry = (): ScheduleRetry | undefined => {
+    const n = parseInt(maxRetries, 10)
+    if (!Number.isFinite(n) || n < 0) return undefined
+    const b = parseInt(backoffSec, 10)
+    return { maxRetries: n, backoffSec: Number.isFinite(b) && b > 0 ? b : 30 }
+  }
+  const buildTimeoutSec = (): number | undefined => {
+    const n = parseInt(timeoutMin, 10)
+    return Number.isFinite(n) && n > 0 ? n * 60 : undefined
   }
 
   // Parse the env textarea into a Record. Lines starting with `#` are comments;
@@ -153,7 +170,15 @@ function ScheduleForm({
     setBusy(true)
     setErr('')
     try {
-      await onSave(agentId, engine, buildSpec(), model.trim() || undefined, parseEnv(envText))
+      await onSave(
+        agentId,
+        engine,
+        buildSpec(),
+        model.trim() || undefined,
+        parseEnv(envText),
+        buildRetry(),
+        buildTimeoutSec(),
+      )
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -287,7 +312,7 @@ function ScheduleForm({
       </div>
 
       <div className="flex items-center gap-1">
-        {(['calendar', 'interval', 'cron'] as const).map((k) => (
+        {(['calendar', 'cron'] as const).map((k) => (
           <button
             key={k}
             onClick={() => setKind(k)}
@@ -297,27 +322,11 @@ function ScheduleForm({
                 : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            {k === 'calendar' ? 'at a time' : k === 'interval' ? 'every N' : 'cron'}
+            {k === 'calendar' ? 'at a time' : 'cron'}
           </button>
         ))}
       </div>
 
-      {kind === 'interval' && (
-        <div className="flex items-center gap-2 text-[12px] text-zinc-400">
-          every
-          <input
-            type="number"
-            min={1}
-            value={everyN}
-            onChange={(e) => setEveryN(Math.max(1, Number(e.target.value)))}
-            className={`${FIELD} w-16`}
-          />
-          <select value={unit} onChange={(e) => setUnit(e.target.value as 'minutes' | 'hours')} className={FIELD}>
-            <option value="minutes">minutes</option>
-            <option value="hours">hours</option>
-          </select>
-        </div>
-      )}
       {kind === 'calendar' && (
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-400">
           at
@@ -347,9 +356,44 @@ function ScheduleForm({
             placeholder="min hour dom month dow  (e.g. 30 9 * * 1-5)"
             className={`${FIELD} w-full font-mono`}
           />
-          <div className="text-[10px] text-zinc-600">5-field cron — ranges/lists/steps ok (e.g. */15, 1-5, 9,17).</div>
+          <div className="text-[10px] text-zinc-600">
+            5-field cron — ranges/lists/steps ok (e.g. */15, 1-5, 9,17). Fires at fixed wall-clock times.
+          </div>
         </div>
       )}
+
+      {/* Optional reliability knobs for flaky runs. Blank = runner defaults
+          (2 retries · 30s base backoff · 30m timeout). */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+        <span className="text-zinc-600">retries</span>
+        <input
+          type="number"
+          min={0}
+          value={maxRetries}
+          onChange={(e) => setMaxRetries(e.target.value)}
+          placeholder="2"
+          className={`${FIELD} w-14`}
+        />
+        <span className="text-zinc-600">backoff</span>
+        <input
+          type="number"
+          min={1}
+          value={backoffSec}
+          onChange={(e) => setBackoffSec(e.target.value)}
+          placeholder="30s"
+          className={`${FIELD} w-16`}
+        />
+        <span className="text-zinc-600">timeout</span>
+        <input
+          type="number"
+          min={1}
+          value={timeoutMin}
+          onChange={(e) => setTimeoutMin(e.target.value)}
+          placeholder="30m"
+          className={`${FIELD} w-16`}
+        />
+        <span className="text-[10px] text-zinc-700">blank = defaults</span>
+      </div>
 
       {/* Optional per-schedule env vars. Power-user surface: most schedules
           have zero. The cron runner spreads these into the spawned agent's
@@ -501,8 +545,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     spec: ScheduleSpec,
     model?: string,
     env?: Record<string, string>,
+    retry?: ScheduleRetry,
+    timeoutSec?: number,
   ) => {
-    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env })
+    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
     reload()

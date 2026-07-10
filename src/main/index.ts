@@ -333,7 +333,6 @@ import {
   removeAllJobs,
   runScheduleNow,
   isJobLoaded,
-  jobLoadedAt,
 } from './launchd'
 import { registerMcpEverywhere } from './mcp-register'
 import {
@@ -1459,25 +1458,21 @@ ipcMain.handle('schedules:list', () => {
     return remoteSchedules
       .list(remote)
       .then((rows) =>
-        rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now, s.lastRun) })),
+        rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) })),
       )
       .catch(() => [])
   }
-  return readSchedules(now).map((s) => {
-    // launchd's StartInterval fires relative to when the job was loaded, not to
-    // the last run. Anchor the countdown to whichever is later so it matches the
-    // real next fire (e.g. right after a relaunch reloaded the job).
-    const anchor = Math.max(s.lastRun ?? 0, jobLoadedAt(s.id) ?? 0) || undefined
-    return {
-      ...s,
-      describe: describeSpec(s.spec),
-      nextRun: nextRun(s.spec, now, anchor),
+  return readSchedules(now).map((s) => ({
+    ...s,
+    describe: describeSpec(s.spec),
+    // Calendar/cron jobs fire at fixed wall-clock times, so the next fire is a
+    // pure function of the spec — no load-time anchor needed.
+    nextRun: nextRun(s.spec, now),
     // Real "will it fire?" signal: an enabled schedule with no loaded launchd
     // job is dark and never fires. Only probe enabled ones (disabled are
     // intentionally not loaded). launchctl print is a few ms; counts are tiny.
-      loaded: s.enabled ? isJobLoaded(s.id) : undefined,
-    }
-  })
+    loaded: s.enabled ? isJobLoaded(s.id) : undefined,
+  }))
 })
 ipcMain.handle(
   'schedules:save',
@@ -1491,8 +1486,23 @@ ipcMain.handle(
       spec: ScheduleSpec
       enabled?: boolean
       env?: Record<string, string>
+      retry?: { maxRetries: number; backoffSec: number }
+      timeoutSec?: number
     },
   ) => {
+    // Normalize the optional flaky-run knobs; drop anything non-numeric so a
+    // half-filled editor field never writes garbage into schedules.json.
+    const retry =
+      input.retry && Number.isFinite(input.retry.maxRetries)
+        ? {
+            maxRetries: Math.max(0, Math.floor(input.retry.maxRetries)),
+            backoffSec: Math.max(1, Math.floor(Number(input.retry.backoffSec) || 30)),
+          }
+        : undefined
+    const timeoutSec =
+      Number.isFinite(input.timeoutSec) && (input.timeoutSec as number) > 0
+        ? Math.floor(input.timeoutSec as number)
+        : undefined
     const remote = curRemote()
     if (remote) {
       return (async () => {
@@ -1512,6 +1522,8 @@ ipcMain.handle(
           spec: input.spec,
           enabled: input.enabled ?? true,
           env: sanitizeScheduleEnv(input.env),
+          retry,
+          timeoutSec,
           createdAt: Date.now(),
           lastStatus: 'never' as const,
         }
@@ -1543,6 +1555,8 @@ ipcMain.handle(
       // Drop empty/whitespace-only keys so a half-filled editor doesn't pollute
       // the spawn env with bogus blanks; treat missing field as "no env vars".
       env: sanitizeScheduleEnv(input.env),
+      retry,
+      timeoutSec,
     }
     const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
     if (!sched) return { error: 'schedule not found' }

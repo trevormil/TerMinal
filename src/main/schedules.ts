@@ -33,24 +33,58 @@ export type Schedule = {
    * user's shell, so these are visible to the spawned engine.
    */
   env?: Record<string, string>
+  /**
+   * Optional per-schedule retry policy for flaky runs. When a run exits
+   * non-zero, the headless runner (bin/terminal-cron) retries up to
+   * `maxRetries` more times with exponential backoff before finalizing the run
+   * as failed (and only then filing HITL / tripping the circuit breaker).
+   * Absent → the runner's built-in defaults.
+   */
+  retry?: { maxRetries: number; backoffSec: number }
+  /**
+   * Optional hard wall-clock cap (seconds) on a single run attempt. The runner
+   * kills a run that exceeds it and treats the timeout as a (retryable)
+   * failure. Absent → the runner's built-in default.
+   */
+  timeoutSec?: number
   createdAt: number
   lastRun?: number
   lastStatus?: ScheduleStatus
   lastRunId?: string
 }
 
-// Migrate legacy {cadence: hourly|daily|weekly} entries to the spec model.
+// Convert a legacy interval (everyMinutes) into an equivalent wall-clock cron
+// expression. Sub-hour intervals that divide 60 map to `*/N`; whole-hour
+// intervals that divide 24 map to `0 */H`; anything else falls back to hourly.
+function intervalToCron(everyMinutes: number): string {
+  const n = Math.max(1, Math.round(everyMinutes))
+  if (n < 60) return `${60 % n === 0 ? `*/${n}` : '*'} * * * *`
+  if (n % 60 === 0) {
+    const h = n / 60
+    if (h < 24 && 24 % h === 0) return `0 */${h} * * *`
+  }
+  return '0 * * * *' // hourly fallback
+}
+
+// Migrate legacy entries: {cadence: hourly|daily|weekly} and any stored
+// {kind:'interval'} spec both fold into the calendar/cron model. Interval
+// schedules no longer exist — StartInterval drifts, so everything is a
+// wall-clock cron/calendar now.
 function migrate(s: Record<string, unknown>, now: number): Schedule {
   const out = { ...s } as Record<string, unknown>
   if (!out.spec) {
     const cadence = out.cadence
     out.spec =
       cadence === 'hourly'
-        ? { kind: 'interval', everyMinutes: 60 }
+        ? { kind: 'cron', expr: '0 * * * *' }
         : cadence === 'weekly'
           ? { kind: 'calendar', minute: 0, hour: 9, weekdays: [1] }
           : { kind: 'calendar', minute: 0, hour: 9 } // daily default
     delete out.cadence
+  }
+  const spec = out.spec as Record<string, unknown> | undefined
+  if (spec && spec.kind === 'interval') {
+    out.spec = { kind: 'cron', expr: intervalToCron(Number(spec.everyMinutes) || 60) }
   }
   if (typeof out.createdAt !== 'number') out.createdAt = now
   if (typeof out.prompt !== 'string') out.prompt = ''

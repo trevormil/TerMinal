@@ -1,6 +1,13 @@
 // Pure cron / schedule helpers — no Electron, no fs. Translates a schedule's
 // timing spec (structured or a raw 5-field cron expression) into a launchd
-// trigger, plus human description + next-fire computation for the UI.
+// trigger, plus human description + prev/next-fire computation for the UI.
+//
+// Every schedule fires at specific wall-clock times via launchd
+// StartCalendarInterval. There is deliberately NO interval/StartInterval path:
+// StartInterval fires relative to when the job was loaded, drifts on every app
+// relaunch, and coalesces missed fires while the Mac sleeps — the opposite of a
+// predictable cron. `*/N` in a cron field is still fine; it expands to concrete
+// calendar minutes (0, N, 2N, …), which fire at the same wall-clock time daily.
 
 export type CalendarDict = {
   Minute?: number
@@ -9,14 +16,12 @@ export type CalendarDict = {
   Weekday?: number
   Month?: number
 }
-export type LaunchdTrigger =
-  | { kind: 'interval'; seconds: number }
-  | { kind: 'calendar'; entries: CalendarDict[] }
+// launchd trigger — always a set of StartCalendarInterval dicts.
+export type LaunchdTrigger = { kind: 'calendar'; entries: CalendarDict[] }
 
-// Stored timing spec. `interval` → StartInterval; `calendar` → one or more
-// StartCalendarInterval dicts; `cron` → a raw expression parsed to either.
+// Stored timing spec. `calendar` → one or more StartCalendarInterval dicts;
+// `cron` → a raw 5-field expression parsed to the same.
 export type ScheduleSpec =
-  | { kind: 'interval'; everyMinutes: number }
   | { kind: 'calendar'; minute: number; hour: number; weekdays?: number[] }
   | { kind: 'cron'; expr: string }
 
@@ -52,18 +57,14 @@ function parseField(field: string, min: number, max: number): number[] | null {
   return [...out].sort((a, b) => a - b)
 }
 
-// Parse a 5-field cron expression (min hour dom month dow) → a launchd trigger.
+// Parse a 5-field cron expression (min hour dom month dow) → calendar dicts.
+// `*/N` and `*` are ordinary fields here: they expand to concrete values, so
+// even "every 15 minutes" becomes four fixed StartCalendarInterval minutes
+// rather than a drift-prone StartInterval.
 export function cronToTrigger(expr: string): LaunchdTrigger {
   const fields = expr.trim().split(/\s+/)
   if (fields.length !== 5) throw new Error('cron must have 5 fields: min hour dom month dow')
   const [minF, hourF, domF, monF, dowF] = fields
-
-  // Pure interval fast-path: "*/N * * * *" or "* * * * *".
-  const everyMin = minF.match(/^\*\/(\d+)$/)
-  if ((everyMin || minF === '*') && hourF === '*' && domF === '*' && monF === '*' && dowF === '*') {
-    const n = everyMin ? Number(everyMin[1]) : 1
-    return { kind: 'interval', seconds: Math.max(60, n * 60) }
-  }
 
   const minutes = parseField(minF, 0, 59)
   const hours = parseField(hourF, 0, 23)
@@ -93,13 +94,12 @@ export function cronToTrigger(expr: string): LaunchdTrigger {
             if (M !== null) e.Month = M
             entries.push(e)
             if (entries.length > MAX_CALENDAR_ENTRIES)
-              throw new Error('cron expands to too many entries — use an interval instead')
+              throw new Error('cron expands to too many entries — narrow the expression')
           }
   return { kind: 'calendar', entries }
 }
 
 export function specToTrigger(spec: ScheduleSpec): LaunchdTrigger {
-  if (spec.kind === 'interval') return { kind: 'interval', seconds: Math.max(60, spec.everyMinutes * 60) }
   if (spec.kind === 'cron') return cronToTrigger(spec.expr)
   // calendar
   if (spec.weekdays && spec.weekdays.length)
@@ -113,11 +113,6 @@ export function specToTrigger(spec: ScheduleSpec): LaunchdTrigger {
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 
 export function describeSpec(spec: ScheduleSpec): string {
-  if (spec.kind === 'interval') {
-    const n = spec.everyMinutes
-    if (n % 60 === 0) return `every ${n / 60}h`
-    return `every ${n}m`
-  }
   if (spec.kind === 'cron') return `cron: ${spec.expr}`
   const at = hhmm(spec.hour, spec.minute)
   if (!spec.weekdays || spec.weekdays.length === 0 || spec.weekdays.length === 7) return `daily at ${at}`
@@ -125,37 +120,42 @@ export function describeSpec(spec: ScheduleSpec): string {
   return `${days.join(',')} at ${at}`
 }
 
-// Next fire time (ms) for display. Interval is anchored to `from` (launchd's
-// StartInterval is load-relative, so this is approximate); calendar/cron are
-// computed exactly by scanning minute-by-minute up to a year out.
-export function nextRun(spec: ScheduleSpec, from = Date.now(), lastRun?: number): number | null {
+// Does a wall-clock minute match any of a trigger's calendar dicts?
+function matchesTrigger(trig: LaunchdTrigger, d: Date): boolean {
+  return trig.entries.some(
+    (e) =>
+      (e.Minute === undefined || e.Minute === d.getMinutes()) &&
+      (e.Hour === undefined || e.Hour === d.getHours()) &&
+      (e.Day === undefined || e.Day === d.getDate()) &&
+      (e.Weekday === undefined || e.Weekday === d.getDay()) &&
+      (e.Month === undefined || e.Month === d.getMonth() + 1),
+  )
+}
+
+// Next fire time (ms) at or after `from`, computed exactly by scanning
+// minute-by-minute up to a year out. Returns null if nothing matches.
+export function nextRun(spec: ScheduleSpec, from = Date.now()): number | null {
   const trig = specToTrigger(spec)
-  if (trig.kind === 'interval') {
-    // launchd StartInterval fires every N seconds relative to the LAST fire, so
-    // the real next fire is lastRun + interval — not from + interval. Anchoring
-    // to `from` was the bug: every reload recomputed now+interval, so the
-    // countdown never ticked down and the absolute "next" time drifted forward.
-    // Before the first run we have no anchor and fall back to from + interval.
-    // When lastRun + interval is already past (missed/coalesced fires while
-    // asleep), the result is in the past and the UI honestly reads "now".
-    return (lastRun ?? from) + trig.seconds * 1000
-  }
-  const matches = (d: Date): boolean =>
-    trig.entries.some(
-      (e) =>
-        (e.Minute === undefined || e.Minute === d.getMinutes()) &&
-        (e.Hour === undefined || e.Hour === d.getHours()) &&
-        (e.Day === undefined || e.Day === d.getDate()) &&
-        (e.Weekday === undefined || e.Weekday === d.getDay()) &&
-        (e.Month === undefined || e.Month === d.getMonth() + 1),
-    )
-  // start at the next whole minute
   const d = new Date(from)
   d.setSeconds(0, 0)
-  d.setMinutes(d.getMinutes() + 1)
+  d.setMinutes(d.getMinutes() + 1) // start at the next whole minute
   for (let i = 0; i < 366 * 24 * 60; i++) {
-    if (matches(d)) return d.getTime()
+    if (matchesTrigger(trig, d)) return d.getTime()
     d.setMinutes(d.getMinutes() + 1)
+  }
+  return null
+}
+
+// Most recent fire time (ms) at or before `from`, scanning backward up to a
+// year. This is the source of truth for the cadence watchdog: a schedule is
+// "overdue" when its last actual run predates the previous expected fire.
+export function prevRun(spec: ScheduleSpec, from = Date.now()): number | null {
+  const trig = specToTrigger(spec)
+  const d = new Date(from)
+  d.setSeconds(0, 0) // include the current minute
+  for (let i = 0; i < 366 * 24 * 60; i++) {
+    if (matchesTrigger(trig, d)) return d.getTime()
+    d.setMinutes(d.getMinutes() - 1)
   }
   return null
 }

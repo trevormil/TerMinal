@@ -1,7 +1,6 @@
 import {
   writeFileSync,
   readFileSync,
-  statSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -119,18 +118,15 @@ function plistXml(s: Schedule): string {
   const trig = specToTrigger(s.spec)
   const args = [resolveBun(), RUNNER, 'run', s.id]
   const argsXml = args.map((a) => `    <string>${esc(a)}</string>`).join('\n')
-  let trigXml: string
-  if (trig.kind === 'interval') {
-    trigXml = `  <key>StartInterval</key>\n  <integer>${trig.seconds}</integer>`
-  } else {
-    const dict = (e: CalendarDict) =>
-      '    <dict>\n' +
-      Object.entries(e)
-        .map(([k, v]) => `      <key>${k}</key><integer>${v}</integer>`)
-        .join('\n') +
-      '\n    </dict>'
-    trigXml = `  <key>StartCalendarInterval</key>\n  <array>\n${trig.entries.map(dict).join('\n')}\n  </array>`
-  }
+  // Always StartCalendarInterval — fires at fixed wall-clock times and re-fires
+  // on wake, unlike the drift-prone StartInterval we no longer emit.
+  const dict = (e: CalendarDict) =>
+    '    <dict>\n' +
+    Object.entries(e)
+      .map(([k, v]) => `      <key>${k}</key><integer>${v}</integer>`)
+      .join('\n') +
+    '\n    </dict>'
+  const trigXml = `  <key>StartCalendarInterval</key>\n  <array>\n${trig.entries.map(dict).join('\n')}\n  </array>`
   const logOut = join(CFG, 'cron-runs', `${s.id}.launchd.log`)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -214,23 +210,10 @@ export function isJobLoaded(id: string): boolean {
   }
 }
 
-// When was a schedule's job loaded? The plist's mtime is our proxy — we (re)write
-// it only when we bootstrap, so its mtime ≈ when launchd's StartInterval timer
-// started. Interval jobs fire relative to THIS, not to the last run, so the
-// countdown must anchor to max(lastRun, jobLoadedAt) to match reality.
-export function jobLoadedAt(id: string): number | undefined {
-  try {
-    return existsSync(plistPath(id)) ? statSync(plistPath(id)).mtimeMs : undefined
-  } catch {
-    return undefined
-  }
-}
-
 // Pure decision: does an enabled schedule's job need a bootout/bootstrap cycle?
 // Only when it's not currently loaded, or the plist content actually changed.
-// Reloading an already-correct job resets its StartInterval countdown — so every
-// TerMinal relaunch would push an hourly job's next fire out by up to an hour.
-// Idempotent reconcile is what lets interval schedules fire on a stable cadence.
+// Reloading an already-correct job is pointless churn (a bootout/bootstrap on
+// every TerMinal relaunch), so skip it when the on-disk plist already matches.
 export function needsReload(onDiskXml: string | null, newXml: string, isLoaded: boolean): boolean {
   return !isLoaded || onDiskXml !== newXml
 }
@@ -272,8 +255,8 @@ export function syncSchedule(s: Schedule): { ok: boolean; error?: string } {
   }
   const xml = plistXml(s)
   const onDisk = existsSync(plistPath(s.id)) ? readFileSync(plistPath(s.id), 'utf8') : null
-  // Already loaded with the exact plist we'd write? Leave it running — reloading
-  // would reset launchd's StartInterval countdown (see needsReload).
+  // Already loaded with the exact plist we'd write? Leave it running — a
+  // needless bootout/bootstrap on every relaunch is pointless churn (see needsReload).
   if (!needsReload(onDisk, xml, isJobLoaded(s.id))) return { ok: true }
   bootout(s.id) // clean reload for a changed/unloaded job
   try {
