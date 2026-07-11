@@ -1,5 +1,5 @@
 ---
-id: 24
+id: 32
 title: "Cover CLI and MCP ticket routing for Obsidian vault provider"
 status: open
 priority: medium
