@@ -178,6 +178,15 @@ import {
   sweepStaleSessionRuns,
 } from './cron-runs'
 import { collectRemoteRuns } from './remote-runs'
+import { isExternallyOpenableUrl } from './url-safety'
+
+// Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
+// protocols) reaching shell.openExternal from rendered content is a known
+// Electron footgun — see url-safety.ts.
+const openExternalSafe = (url: unknown): void => {
+  if (isExternallyOpenableUrl(url)) void shell.openExternal(url)
+  else console.error('[gt] refused openExternal for non-web URL:', String(url).slice(0, 80))
+}
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import { processListenerInbox, readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
@@ -750,8 +759,18 @@ function createWindow() {
     sendFullscreen()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    openExternalSafe(url)
     return { action: 'deny' }
+  })
+  // Contain popups from the <webview> browser tab: deny a new OS window and
+  // load the target in-frame instead (only for web URLs). The renderer's
+  // 'new-window' listener never fired — that event doesn't exist on Electron's
+  // <webview> — so without this, popups escaped uncontained.
+  win.webContents.on('did-attach-webview', (_e, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isExternallyOpenableUrl(url)) void guest.loadURL(url).catch(() => {})
+      return { action: 'deny' }
+    })
   })
   win.webContents.on('render-process-gone', (_e, d) => console.error('[gt] renderer gone:', d.reason))
 
@@ -1846,7 +1865,7 @@ ipcMain.handle('mrs:ci', (_e, iid: number) => {
 ipcMain.handle('mrs:merge', (_e, iid: number) => {
   return activeDaemon().mrMerge(iid)
 })
-ipcMain.handle('open:external', (_e, url: string) => shell.openExternal(url))
+ipcMain.handle('open:external', (_e, url: string) => openExternalSafe(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
 ipcMain.handle('open:config-dir', () => shell.openPath(join(homedir(), '.config', 'TerMinal')))

@@ -61,7 +61,10 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     if (!host) return
     const wv = document.createElement('webview') as Webview
     wv.setAttribute('partition', opts.partition) // persist logins/cookies
-    wv.setAttribute('allowpopups', 'false')
+    // Do NOT set allowpopups: it's a presence-keyed boolean attribute, so even
+    // 'false' ENABLES popups. Omitting it keeps the secure default (popups
+    // denied). Popups are instead contained in-frame by the main-process
+    // did-attach-webview handler (src/main/index.ts).
     wv.setAttribute('src', opts.initialUrl)
     wv.style.width = '100%'
     wv.style.height = '100%'
@@ -86,23 +89,20 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     }
     const onNav = () => sync()
     const onTitle = (e: Event & { title?: string }) => setPageTitle(e.title || wv.getTitle?.() || '')
-    // pop-ups / target=_blank → keep them in this webview instead of new windows
-    const onNewWindow = (e: Event & { url?: string }) => {
-      if (e.url) wv.loadURL(e.url).catch(() => {})
-    }
+    // pop-ups / target=_blank containment lives in the main process
+    // (did-attach-webview → guest.setWindowOpenHandler): the DOM <webview> emits
+    // no 'new-window' event on Electron 41, so a renderer listener never fired.
     wv.addEventListener('did-start-loading', onStart)
     wv.addEventListener('did-stop-loading', onStop)
     wv.addEventListener('did-navigate', onNav)
     wv.addEventListener('did-navigate-in-page', onNav)
     wv.addEventListener('page-title-updated', onTitle as EventListener)
-    wv.addEventListener('new-window', onNewWindow as EventListener)
     return () => {
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStop)
       wv.removeEventListener('did-navigate', onNav)
       wv.removeEventListener('did-navigate-in-page', onNav)
       wv.removeEventListener('page-title-updated', onTitle as EventListener)
-      wv.removeEventListener('new-window', onNewWindow as EventListener)
       wv.remove()
       wvRef.current = null
     }

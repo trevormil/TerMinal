@@ -1,7 +1,28 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+
+// Write via temp-file + rename. Both targets — ~/.claude.json (Claude Code's
+// live, auth-bearing state) and ~/.codex/config.toml (holds unrelated
+// projects/hooks/features blocks) — are rewritten whole; a plain writeFileSync
+// truncates-then-writes, so a crash/kill mid-write can leave them empty or
+// partial, destroying config we don't own. rename is atomic within a
+// filesystem, and the temp sits in the same dir so the rename stays intra-fs.
+function atomicWrite(path: string, data: string): void {
+  const tmp = `${path}.terminal-tmp-${process.pid}`
+  try {
+    writeFileSync(tmp, data)
+    renameSync(tmp, path)
+  } catch (e) {
+    try {
+      if (existsSync(tmp)) unlinkSync(tmp)
+    } catch {
+      /* best effort */
+    }
+    throw e
+  }
+}
 
 // Auto-register terminal-mcp-server with Claude Code and Codex CLI so every
 // session — TerMinal-spawned or ad-hoc — discovers the harness tools natively
@@ -59,7 +80,7 @@ export function registerWithClaude(): { ok: boolean; action: string; error?: str
   servers[SERVER_NAME] = desired
   ;(json as Record<string, unknown>).mcpServers = servers
   try {
-    writeFileSync(path, JSON.stringify(json, null, 2))
+    atomicWrite(path, JSON.stringify(json, null, 2))
     return { ok: true, action: existing ? 'updated' : 'added' }
   } catch (e) {
     return { ok: false, action: 'write-failed', error: (e as Error).message }
@@ -110,7 +131,7 @@ export function registerWithCodex(): { ok: boolean; action: string; error?: stri
   }
 
   try {
-    writeFileSync(path, text)
+    atomicWrite(path, text)
     return { ok: true, action: headingIdx >= 0 ? 'updated' : 'added' }
   } catch (e) {
     return { ok: false, action: 'write-failed', error: (e as Error).message }
