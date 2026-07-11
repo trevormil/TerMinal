@@ -54,6 +54,10 @@ export const LOOP_ENGINES: LoopEngine[] = ['claude', 'codex', 'cursor', 'hermes'
 export type PairedLoopConfig = {
   goal: string
   repoRoot: string
+  // 'paired' — two live sessions (driver + worker) grade each other.
+  // 'single' — one live generator session; TerMinal spawns a fresh grader after
+  //            each of its turns (warm generator, always-fresh evaluator).
+  topology: 'paired' | 'single'
   driver: { engine: LoopEngine; model?: string }
   worker: { engine: LoopEngine; model?: string }
 }
@@ -175,6 +179,10 @@ export function EntryScreen({
   useEffect(() => setMode(initialMode), [initialMode])
   // Live-paired loop fields (mode === 'loop').
   const [goal, setGoal] = useState('')
+  // Loop topology: 'paired' (two live sessions) vs 'single' (one live generator
+  // + an ephemeral auto-grader per turn). Named apart from `mode` above, whose
+  // 'single' means "one ordinary session" — a different axis entirely.
+  const [loopTopology, setLoopTopology] = useState<'paired' | 'single'>('paired')
   const [workerEngine, setWorkerEngine] = useState<LoopEngine>('claude')
   const [workerModel, setWorkerModel] = useState('')
   const [driverEngine, setDriverEngine] = useState<LoopEngine>('claude')
@@ -359,12 +367,13 @@ export function EntryScreen({
     const res = await onStartLoop({
       goal: g,
       repoRoot: loopRepoRoot,
+      topology: loopTopology,
       driver: { engine: driverEngine, model: driverModel || undefined },
       worker: { engine: workerEngine, model: workerModel || undefined },
     })
-    // On success, App closes this screen and splits the two sessions.
+    // On success, App closes this screen and opens the loop's session(s).
     if (!res.ok) {
-      setLoopErr(res.error || 'Could not start the paired loop.')
+      setLoopErr(res.error || 'Could not start the loop.')
       setLoopBusy(false)
     }
   }
@@ -732,24 +741,56 @@ export function EntryScreen({
                   />
                 </div>
                 <div>
-                  <div className={`${sectionTitle} mb-2`}>2 · Role agents</div>
+                  <div className={`${sectionTitle} mb-2`}>2 · Topology</div>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        ['paired', 'Paired', 'two live sessions grade each other'],
+                        ['single', 'Single', 'one live generator + an auto-grader per turn'],
+                      ] as const
+                    ).map(([val, label, hint]) => (
+                      <button
+                        key={val}
+                        onClick={() => setLoopTopology(val)}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-left transition ${
+                          loopTopology === val
+                            ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/10'
+                            : 'border-[var(--gt-border)] bg-black/20 hover:border-[var(--gt-border)]'
+                        }`}
+                      >
+                        <div className="text-[12px] font-medium text-zinc-100">{label}</div>
+                        <div className="text-[10px] text-zinc-500">{hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className={`${sectionTitle} mb-2`}>
+                    3 · {loopTopology === 'single' ? 'Generator' : 'Role agents'}
+                  </div>
                   <div className="flex gap-3">
                     <RoleCard
-                      label="Worker"
-                      hint="writes code in the worktree"
+                      label={loopTopology === 'single' ? 'Generator' : 'Worker'}
+                      hint={
+                        loopTopology === 'single'
+                          ? 'writes code; a fresh grader reviews each turn'
+                          : 'writes code in the worktree'
+                      }
                       engine={workerEngine}
                       model={workerModel}
                       onEngine={setWorkerEngine}
                       onModel={setWorkerModel}
                     />
-                    <RoleCard
-                      label="Driver"
-                      hint="plans + grades, in the main repo"
-                      engine={driverEngine}
-                      model={driverModel}
-                      onEngine={setDriverEngine}
-                      onModel={setDriverModel}
-                    />
+                    {loopTopology === 'paired' && (
+                      <RoleCard
+                        label="Driver"
+                        hint="plans + grades, in the main repo"
+                        engine={driverEngine}
+                        model={driverModel}
+                        onEngine={setDriverEngine}
+                        onModel={setDriverModel}
+                      />
+                    )}
                   </div>
                 </div>
               </>

@@ -507,10 +507,49 @@ export default function App() {
     setAdding(false)
   }
 
+  // Single-mode loop: create the loop, then open ONE live generator session in
+  // the worktree. TerMinal's auto-grader (loop-listener singleTick) spawns a
+  // fresh evaluator after each of its turns and delivers the next prompt back in.
+  // See .claude/skills/loop-driver (single mode).
+  const startSingleLoop = async (cfg: PairedLoopConfig): Promise<{ ok: boolean; error?: string }> => {
+    const rec = await window.gt.loops.create({
+      repoRoot: cfg.repoRoot,
+      goal: cfg.goal,
+      mode: 'single',
+      engine: cfg.worker.engine,
+      model: cfg.worker.model,
+    })
+    if (!rec || 'error' in rec)
+      return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
+    const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
+    const tag = rec.id.slice(-4)
+    // The generator wears the planner hat on turn one: draft the contract if
+    // empty, then implement. It runs IN the worktree so edits land on the loop
+    // branch; the auto-grader takes over after each turn it completes.
+    const seed = `/loop-implementer — single loop ${rec.id}. Your worktree is the current directory (branch ${rec.branch}). State dir: ${stateDir}. Goal: ${cfg.goal}. If contract.md has no assertions yet, draft 10-30 testable ones first (you wear the planner hat this once), then do the first generator turn. Update feature_list.json + progress.md, append your JSONL event to events.jsonl, and finish with a final line exactly: LOOP-DONE: generator #1 <summary>. An independent grader reviews each turn — never grade yourself.`
+    const key = crypto.randomUUID()
+    setSessions((s) => [
+      ...s,
+      {
+        key,
+        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.worktree, name: `loop·gen ${tag}`, initialInput: seed, loopId: rec.id, loopRole: 'worker' },
+        info: { sessionId: '', cwd: rec.worktree },
+      },
+    ])
+    setTerminalLayout('single')
+    activate(key)
+    setFleet(false)
+    setInbox(false)
+    setSearchOpen(false)
+    setAdding(false)
+    return { ok: true }
+  }
+
   // Live-paired loop: create the loop (worktree + contract state) then open its
   // two linked sessions — a worker in the worktree, a driver in the main repo —
   // side by side. Both are seeded contract-first. See .claude/skills/loop.
   const startPairedLoop = async (cfg: PairedLoopConfig): Promise<{ ok: boolean; error?: string }> => {
+    if (cfg.topology === 'single') return startSingleLoop(cfg)
     const rec = await window.gt.loops.create({
       repoRoot: cfg.repoRoot,
       goal: cfg.goal,
