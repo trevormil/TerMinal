@@ -472,9 +472,17 @@ function readPickerWindow(file: string): { raw: string; mtime: number } | null {
   }
 }
 
+/** A session id is interpolated into a `<id>.jsonl` filesystem path, so it must
+ *  not contain path separators or `..` — otherwise a renderer-supplied value
+ *  like `../../../secret` would escape PROJECTS_DIR and read arbitrary
+ *  .jsonl files. (Real ids are UUIDs; this only rejects traversal.) */
+export function isValidSessionId(sessionId: unknown): sessionId is string {
+  return typeof sessionId === 'string' && sessionId.length > 0 && !/[\\/]|\.\./.test(sessionId)
+}
+
 /** Locate a session's transcript file by id, across all project dirs. */
 export function findSessionFile(sessionId: string): string | null {
-  if (!sessionId || !existsSync(PROJECTS_DIR)) return null
+  if (!isValidSessionId(sessionId) || !existsSync(PROJECTS_DIR)) return null
   for (const project of readdirSync(PROJECTS_DIR)) {
     const p = join(PROJECTS_DIR, project, `${sessionId}.jsonl`)
     if (existsSync(p)) return p
@@ -1379,7 +1387,15 @@ export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
 
 let observabilityDetailCache: { id: string; mtime: number; detail: ObservabilitySessionDetail } | null = null
 
-export function readObservabilitySessionDetail(sessionId: string): ObservabilitySessionDetail | null {
+export function readObservabilitySessionDetail(
+  sessionId: string,
+  // The caller may pass a pre-computed Claude session list to reuse across many
+  // calls. Bulk index rebuilds do this: without it, every call re-ran
+  // listSessions('claude') (a full re-scan + re-parse of every transcript's
+  // picker window), making the rebuild O(N²). Behavior is identical — same list,
+  // same lookup — it's just hoisted out of the loop.
+  sessionList?: SessionMeta[],
+): ObservabilitySessionDetail | null {
   const file = findSessionFile(sessionId)
   if (!file) return null
   const mtime = statMtimeMs(file)
@@ -1389,7 +1405,7 @@ export function readObservabilitySessionDetail(sessionId: string): Observability
 
   const stats = withStatusLineContext(parseTranscriptFile(file, sessionId), sessionId)
   const meta =
-    listSessions('claude').find((session) => session.id === sessionId) ||
+    (sessionList ?? listSessions('claude')).find((session) => session.id === sessionId) ||
     ({
       id: sessionId,
       engine: 'claude',
@@ -1655,27 +1671,75 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
   return { toolPayloads, events }
 }
 
+/** Read just the [center-radius, center+radius] line window of a (possibly very
+ *  large) JSONL transcript without materializing the whole file. The previous
+ *  readFileSync+split allocated the entire file (tens–hundreds of MB) on the
+ *  main thread just to show ~48 lines. Chunked read with a sliding tail buffer
+ *  (+ an explicit-center collector) keeps memory O(radius) while reproducing
+ *  the exact split('\n') line numbering, including a trailing empty line when
+ *  the file ends in a newline. */
+export function readLineWindow(
+  file: string,
+  centerLine: number,
+  radius: number,
+): { windowLines: { line: number; text: string }[]; startLine: number; endLine: number; totalLines: number } {
+  const wantCenter = centerLine > 0
+  const cStart = wantCenter ? Math.max(1, Math.floor(centerLine) - radius) : 0
+  const cEnd = wantCenter ? Math.floor(centerLine) + radius : 0
+  const tail: { line: number; text: string }[] = []
+  const ranged: { line: number; text: string }[] = []
+  const tailCap = radius * 2 + 1
+  let lineNo = 0
+  const pushLine = (text: string) => {
+    lineNo++
+    tail.push({ line: lineNo, text })
+    if (tail.length > tailCap) tail.shift()
+    if (wantCenter && lineNo >= cStart && lineNo <= cEnd) ranged.push({ line: lineNo, text })
+  }
+
+  const fd = openSync(file, 'r')
+  try {
+    const CHUNK = 64 * 1024
+    const buf = Buffer.allocUnsafe(CHUNK)
+    let leftover = ''
+    let bytes = 0
+    while ((bytes = readSync(fd, buf, 0, CHUNK, null)) > 0) {
+      leftover += buf.toString('utf8', 0, bytes)
+      let nl: number
+      while ((nl = leftover.indexOf('\n')) >= 0) {
+        pushLine(leftover.slice(0, nl))
+        leftover = leftover.slice(nl + 1)
+      }
+    }
+    pushLine(leftover) // final element — matches split('\n') (empty when file ends in \n)
+  } finally {
+    closeSync(fd)
+  }
+
+  const totalLines = lineNo
+  const center = wantCenter ? Math.min(totalLines, Math.floor(centerLine)) : totalLines
+  const startLine = Math.max(1, center - radius)
+  const endLine = Math.min(totalLines, center + radius)
+  const useRanged = wantCenter && Math.floor(centerLine) <= totalLines
+  const windowLines = (useRanged ? ranged : tail).filter((l) => l.line >= startLine && l.line <= endLine)
+  return { windowLines, startLine, endLine, totalLines }
+}
+
 export function readObservabilityTranscriptWindow(sessionId: string, centerLine = 0, radius = 24): ObservabilityTranscriptWindow | null {
   const file = findSessionFile(sessionId)
   if (!file) return null
 
-  let raw = ''
+  const safeRadius = Math.max(4, Math.min(80, Math.floor(radius || 24)))
+  let win: ReturnType<typeof readLineWindow>
   try {
-    raw = readFileSync(file, 'utf8')
+    win = readLineWindow(file, centerLine, safeRadius)
   } catch {
     return null
   }
-
-  const allLines = raw.split('\n')
-  const totalLines = allLines.length
-  const safeRadius = Math.max(4, Math.min(80, Math.floor(radius || 24)))
-  const center = centerLine > 0 ? Math.min(totalLines, Math.floor(centerLine)) : totalLines
-  const startLine = Math.max(1, center - safeRadius)
-  const endLine = Math.min(totalLines, center + safeRadius)
+  const { windowLines, startLine, endLine, totalLines } = win
   const lines: ObservabilityTranscriptLine[] = []
 
-  for (let lineNo = startLine; lineNo <= endLine; lineNo++) {
-    const text = allLines[lineNo - 1] || ''
+  for (const { line: lineNo, text } of windowLines) {
     if (!text.trim()) continue
     const row: ObservabilityTranscriptLine = { line: lineNo, text }
     try {

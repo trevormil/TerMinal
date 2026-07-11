@@ -2113,7 +2113,11 @@ ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => (curRemot
 ipcMain.handle('observability:daily', (_e, days: number = 7) => (curRemote() ? [] : dailySpend(days)))
 ipcMain.handle('observability:runs', (_e, limit: number = 100) => (curRemote() ? [] : listAIRuns(limit)))
 ipcMain.handle('observability:models', () => knownModels())
-ipcMain.handle('observability:index-status', () => (curRemote() ? observabilityIndexStatus() : observabilityIndexStatus()))
+ipcMain.handle('observability:index-status', () =>
+  curRemote()
+    ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.' }
+    : observabilityIndexStatus(),
+)
 ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
   curRemote()
     ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.', durationMs: 0, indexedSessions: 0 }

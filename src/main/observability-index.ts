@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 import { costOf } from './ai-pricing'
-import { readObservabilityIndexRecords, readObservabilitySessionDetail, readObservabilitySnapshot } from './data'
+import { listSessions, readObservabilityIndexRecords, readObservabilitySessionDetail, readObservabilitySnapshot } from './data'
 
 const DB_PATH = join(homedir(), '.config', 'TerMinal', 'observability.sqlite')
 
@@ -295,6 +295,11 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
 
   const snapshot = readObservabilitySnapshot(Math.max(1, Math.min(100000, limit)))
   const indexedAt = Date.now()
+  // Compute the Claude session list ONCE and reuse it for every per-session
+  // detail read below. Previously each readObservabilitySessionDetail re-ran
+  // listSessions('claude') internally, re-scanning every transcript on disk on
+  // every iteration → O(N²) and a multi-second main-thread freeze.
+  const claudeSessions = listSessions('claude')
 
   handle.exec(createSchemaSql())
 
@@ -345,7 +350,7 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
       if (session.engine !== 'claude' || session.telemetry !== 'ready') continue
       let detail: ReturnType<typeof readObservabilitySessionDetail> = null
       try {
-        detail = readObservabilitySessionDetail(session.id)
+        detail = readObservabilitySessionDetail(session.id, claudeSessions)
       } catch {
         detail = null
       }
