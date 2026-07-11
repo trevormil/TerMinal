@@ -364,7 +364,15 @@ export function openSettingsFromDisk(raw: unknown, storage: SettingsSecretStorag
 export function sealSettingsForDisk(settings: Settings, storage: SettingsSecretStorage | null = secretStorage): unknown {
   const canEncrypt = !!storage && (storage.canEncrypt ? storage.canEncrypt() : true)
   return transformSecretPaths(settings, (value) => {
-    if (typeof value !== 'string' || !value || !canEncrypt || !storage) return value
+    if (typeof value !== 'string' || !value) return value
+    if (!canEncrypt || !storage) {
+      // Never write a secret in cleartext. When OS encryption is unavailable
+      // (keychain locked/denied, unsigned/dev build) omit the value from disk —
+      // the in-memory setting still works for this session; the user re-enters
+      // it if needed. Returning undefined drops the key from the serialized JSON.
+      console.error('[gt] settings: OS encryption unavailable — omitting a secret from disk instead of writing cleartext')
+      return undefined
+    }
     return { __terminalSecret: SECRET_MARKER, payload: storage.seal(value) } satisfies EncryptedSecret
   })
 }
@@ -419,7 +427,16 @@ export function patchSettings(patch: SettingsPatch): Settings {
   cache = next
   try {
     mkdirSync(dirname(FILE), { recursive: true })
-    writeFileSync(FILE, JSON.stringify(sealSettingsForDisk(next), null, 2))
+    // 0600: settings.json holds sealed secrets (and, when OS encryption is
+    // available, nothing sensitive in cleartext) — but keep it owner-only
+    // regardless so no other local user can read it. writeFileSync only applies
+    // mode on create, so chmod a pre-existing file too.
+    writeFileSync(FILE, JSON.stringify(sealSettingsForDisk(next), null, 2), { mode: 0o600 })
+    try {
+      chmodSync(FILE, 0o600)
+    } catch {
+      /* best effort */
+    }
   } catch {
     /* best effort */
   }

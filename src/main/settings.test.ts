@@ -189,6 +189,26 @@ describe('settings secrets', () => {
     expect(opened.projectsDir).toBe('/projects')
   })
 
+  test('omits secrets (no cleartext) when OS encryption is unavailable', () => {
+    const noEncrypt = { ...adapter, canEncrypt: () => false }
+    const settings = migrate({
+      telegram: { notify: true, control: true, botToken: 'bot-secret', chatId: 'chat-secret' },
+      openrouterApiKey: 'sk-or-v1-secret',
+      projectsDir: '/projects',
+    })
+    const sealed = sealSettingsForDisk(settings, noEncrypt) as any
+    const json = JSON.stringify(sealed)
+    // The token must NOT be written in cleartext…
+    expect(json).not.toContain('bot-secret')
+    expect(json).not.toContain('chat-secret')
+    expect(json).not.toContain('sk-or-v1-secret')
+    // …and since we can't seal it, the keys are dropped, not left plaintext.
+    expect(sealed.telegram.botToken).toBeUndefined()
+    expect(sealed.openrouterApiKey).toBeUndefined()
+    // Non-secret settings still persist.
+    expect(sealed.projectsDir).toBe('/projects')
+  })
+
   test('openrouter api key is sealed on disk and opens back', () => {
     const settings = migrate({ openrouterApiKey: 'sk-or-v1-supersecret', projectsDir: '/p' })
     const sealed = sealSettingsForDisk(settings, adapter)
