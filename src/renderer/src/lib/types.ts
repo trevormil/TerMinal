@@ -972,6 +972,9 @@ export type UnifiedRun = {
   costUsd?: number
   trace?: AgentRunTrace
   evaluation?: AgentRunEvaluation
+  /** Remote host this run came from. Undefined = local machine. */
+  hostId?: string
+  hostLabel?: string
 }
 
 export type CronRun = {
@@ -1407,7 +1410,11 @@ export type GtApi = {
   }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
-    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => Promise<string>
+    remoteAllRuns: () => Promise<{
+      runs: UnifiedRun[]
+      errors: { hostId: string; label: string; error: string }[]
+    }>
+    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>

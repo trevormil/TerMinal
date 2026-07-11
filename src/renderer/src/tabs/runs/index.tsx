@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2, Server } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
@@ -49,8 +49,14 @@ const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
 
 function RunsTab({ ctx }: { ctx: TabContext }) {
   const [view, setView] = useState<'runs' | 'inbox'>('runs')
-  const [runs, setRuns] = useState<UnifiedRun[] | null>(null)
+  // Local and remote runs are fetched separately (local is cheap + pollable;
+  // remote is an SSH fan-out) then merged into one list so the operator sees
+  // both without switching the session's daemon profile.
+  const [localRuns, setLocalRuns] = useState<UnifiedRun[] | null>(null)
+  const [remoteRuns, setRemoteRuns] = useState<UnifiedRun[]>([])
+  const [remoteErrors, setRemoteErrors] = useState<{ hostId: string; label: string; error: string }[]>([])
   const [source, setSource] = useState<'all' | UnifiedRun['source']>('all')
+  const [host, setHost] = useState<string>('all') // 'all' | 'local' | hostId
   const [status, setStatus] = useState<string>('all')
   const [repo, setRepo] = useState(() => localStorage.getItem(RUNS_REPO_FILTER_KEY) ?? '__auto__')
   const [agentFilter, setAgentFilter] = useState('')
@@ -63,7 +69,38 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
 
   // Runs are fire-and-forget processes only (cron/agent/bg) — interactive
   // terminal sessions belong to the Terminal tab, not here.
-  const reload = () => window.gt.agents.allRuns().then((rs) => setRuns(rs.filter((r) => r.source !== 'session')))
+  const reloadLocal = () =>
+    window.gt.agents.allRuns().then((rs) => setLocalRuns(rs.filter((r) => r.source !== 'session')))
+  // Remote is an SSH fan-out across every configured host — best-effort, and
+  // guarded so overlapping slow SSH calls don't stack up.
+  const remoteInFlight = useRef(false)
+  const reloadRemote = async () => {
+    if (remoteInFlight.current) return
+    remoteInFlight.current = true
+    try {
+      const { runs, errors } = await window.gt.agents.remoteAllRuns()
+      setRemoteRuns(runs.filter((r) => r.source !== 'session'))
+      setRemoteErrors(errors)
+    } catch {
+      /* leave prior remote state in place on a transient failure */
+    } finally {
+      remoteInFlight.current = false
+    }
+  }
+  const reload = async () => {
+    await Promise.all([reloadLocal(), reloadRemote()])
+  }
+  const runs = useMemo(
+    () =>
+      localRuns === null
+        ? null
+        : [...localRuns, ...remoteRuns].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)),
+    [localRuns, remoteRuns],
+  )
+  // Latest merged list, read by the polling interval so its callback never
+  // closes over a stale (null) snapshot — the reason auto-refresh was dead.
+  const runsRef = useRef<UnifiedRun[] | null>(null)
+  runsRef.current = runs
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
@@ -78,12 +115,18 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     }
   }
   useEffect(() => {
-    reload()
+    reloadLocal()
+    reloadRemote()
     reloadCosts()
-    // Auto-refresh while at least one run is running. Cheap polling — the
-    // list itself is in-memory + tiny files on disk.
+    // Auto-refresh while at least one run is running. Local + costs are cheap;
+    // only re-issue the SSH fan-out when a REMOTE run is actually in flight, so
+    // idle remote hosts aren't polled over SSH every 2s.
     const t = setInterval(() => {
-      if (runs && runs.some((r) => r.status === 'running')) reload()
+      const cur = runsRef.current
+      if (cur && cur.some((r) => r.status === 'running')) {
+        reloadLocal()
+        if (cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
+      }
       reloadCosts()
     }, 2000)
     return () => clearInterval(t)
@@ -139,8 +182,18 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     if (!runs) return []
     return [...new Set(runs.map((r) => r.engine).filter(Boolean))].sort()
   }, [runs])
+  // Host chips: 'local' plus every host that has runs. Options are {value,label}
+  // because a host's value is its id but we show its friendly label.
+  const hostOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of remoteRuns) if (r.hostId) map.set(r.hostId, r.hostLabel || r.hostId)
+    for (const e of remoteErrors) if (!map.has(e.hostId)) map.set(e.hostId, e.label)
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [remoteRuns, remoteErrors])
+  const hasRemoteHosts = hostOptions.length > 0
   const filtersActive =
     source !== 'all' ||
+    host !== 'all' ||
     status !== 'all' ||
     (repo !== '__auto__' && !!repo) ||
     !!agentFilter ||
@@ -153,6 +206,8 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     const q = search.trim().toLowerCase()
     return runs.filter((r) => {
       if (source !== 'all' && r.source !== source) return false
+      if (host === 'local' && r.hostId) return false
+      if (host !== 'all' && host !== 'local' && r.hostId !== host) return false
       if (status !== 'all' && r.status !== status) return false
       if (repo !== '__auto__' && repo && r.repoLabel !== repo) return false
       if (agentFilter && r.agentId !== agentFilter) return false
@@ -170,7 +225,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
         r.id.toLowerCase().includes(q)
       )
     })
-  }, [runs, source, status, repo, agentFilter, engineFilter, forceFilter, search])
+  }, [runs, source, host, status, repo, agentFilter, engineFilter, forceFilter, search])
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
 
@@ -313,6 +368,22 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 </button>
               ))}
             </div>
+            {hasRemoteHosts && (
+              <select
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                title="Filter by machine (local or a remote SSH host)"
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
+              >
+                <option value="all">all hosts</option>
+                <option value="local">Local</option>
+                {hostOptions.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
             <FilterSelect value={status} onChange={(v) => setStatus(v || 'all')} options={statusOptions} placeholder="all status" />
             <FilterSelect value={repo === '__auto__' ? '' : repo} onChange={setRepoFilter} options={repoOptions} placeholder="all repos" />
             <FilterSelect value={agentFilter} onChange={setAgentFilter} options={agentOptions} placeholder="all agents" />
@@ -330,6 +401,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               <button
                 onClick={() => {
                   setSource('all')
+                  setHost('all')
                   setStatus('all')
                   setRepoFilter('')
                   setAgentFilter('')
@@ -344,6 +416,19 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
             )}
           </div>
         </div>
+
+        {/* Remote hosts that didn't answer this fetch — surfaced so an empty
+            remote list reads as "host unreachable", not "no runs". */}
+        {remoteErrors.length > 0 && (
+          <div className="shrink-0 border-b border-[var(--gt-yellow)]/30 bg-[var(--gt-yellow)]/10 px-3 py-1 text-[10.5px] text-[var(--gt-yellow)]">
+            {remoteErrors.map((e) => (
+              <div key={e.hostId} className="truncate" title={e.error}>
+                <Server size={9} strokeWidth={2} className="mr-1 inline" />
+                {e.label}: {e.error}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Rows */}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -369,6 +454,15 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 >
                   <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                   <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
+                  {r.hostId && (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
+                      title={`Remote host: ${r.hostLabel || r.hostId}`}
+                    >
+                      <Server size={8} strokeWidth={2} />
+                      {r.hostLabel || r.hostId}
+                    </span>
+                  )}
                   {r.force && <ForceChip />}
                   <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">{r.agentTitle}</span>
                   <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.repoLabel}</span>
@@ -409,6 +503,15 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 {engineLabel(selectedRun.engine)}
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
+              {selectedRun.hostId && (
+                <span
+                  className="inline-flex items-center gap-1 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--gt-accent-light)]"
+                  title={`Remote host: ${selectedRun.hostLabel || selectedRun.hostId}`}
+                >
+                  <Server size={10} strokeWidth={2} />
+                  {selectedRun.hostLabel || selectedRun.hostId}
+                </span>
+              )}
               <div className="flex-1" />
               {(selectedRun.costUsd ?? costByRunId.get(selectedRun.id)) != null &&
                 (selectedRun.costUsd ?? costByRunId.get(selectedRun.id) ?? 0) > 0 && (
@@ -425,7 +528,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <> · {fmtDuration(selectedRun.endedAt - selectedRun.startedAt)}</>
                 )}
               </span>
-              {selectedRun.worktree && (
+              {selectedRun.worktree && !selectedRun.hostId && (
                 <button
                   onClick={() => {
                     if (selectedRun.source === 'session') navigateTo('terminal', { sessionId: selectedRun.id, cwd: selectedRun.worktree })
@@ -441,7 +544,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   launchd in a different process tree; agents.cancel can't
                   reach them). Showing the button conditionally avoids the
                   "why does this do nothing" UX trap. */}
-              {selectedRun.status === 'running' && (selectedRun.source === 'agent' || selectedRun.source === 'bg') && (
+              {selectedRun.status === 'running' && !selectedRun.hostId && (selectedRun.source === 'agent' || selectedRun.source === 'bg') && (
                 <button
                   onClick={async () => {
                     if (!confirm('Cancel this run? The agent will be SIGTERM-ed.')) return
@@ -461,6 +564,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   managed by the runner. */}
               {selectedRun.source === 'agent' &&
                 selectedRun.status !== 'running' &&
+                !selectedRun.hostId &&
                 selectedRun.worktree && (
                   <button
                     onClick={async () => {
@@ -477,9 +581,11 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 )}
               <button
                 onClick={() => handleRerun(selectedRun)}
-                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg' || selectedRun.source === 'session'}
+                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg' || selectedRun.source === 'session' || !!selectedRun.hostId}
                 title={
-                  selectedRun.status === 'running'
+                  selectedRun.hostId
+                    ? 'Remote runs are re-run from the host itself, not from here yet'
+                    : selectedRun.status === 'running'
                     ? 'Already running'
                     : selectedRun.source === 'bg'
                       ? 'Background inbox tasks cannot be re-run from here yet'
@@ -532,7 +638,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 )}
               </div>
             )}
-            <RunLogPane source={selectedRun.source} runId={selectedRun.id} status={selectedRun.status} className="flex-1" />
+            <RunLogPane source={selectedRun.source} runId={selectedRun.id} status={selectedRun.status} hostId={selectedRun.hostId} className="flex-1" />
           </>
         )}
       </section>

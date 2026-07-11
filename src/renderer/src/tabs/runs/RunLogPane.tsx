@@ -9,11 +9,13 @@ export function RunLogPane({
   source,
   runId,
   status,
+  hostId,
   className = '',
 }: {
   source: RunSource
   runId: string
   status?: string
+  hostId?: string
   className?: string
 }) {
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
@@ -25,7 +27,7 @@ export function RunLogPane({
     setLog(null)
     const fetch = async () => {
       try {
-        const text = await window.gt.agents.runLog(source, runId)
+        const text = await window.gt.agents.runLog(source, runId, hostId)
         if (alive) setLog({ runId, text })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -43,7 +45,7 @@ export function RunLogPane({
       alive = false
       clearInterval(t)
     }
-  }, [runId, source, status])
+  }, [runId, source, status, hostId])
 
   const visibleLog = useMemo(() => {
     const raw = stripAnsi(log?.text || '')
