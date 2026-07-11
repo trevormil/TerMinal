@@ -760,7 +760,7 @@ async function runSchedule(id) {
       action: `Budget cap reached: ${budget.refused}. /budget override <Nh> to bypass.`,
       detail: `schedule ${id} · agent ${sched.agentId}`,
       repo: sched.repoLabel,
-      repoRoot: repo,
+      repoRoot: sched.repoRoot,
     })
     return 0
   }

@@ -4,7 +4,8 @@
 // Storage: ~/.config/TerMinal/bg-tasks.json (single file, last 50 tasks)
 // Logs:    ~/.config/TerMinal/bg-tasks/<id>.log
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, openSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, openSync, closeSync } from 'node:fs'
+import { applySweepFinals } from './bg-sweep'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -250,6 +251,10 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     env: childEnv,
   })
   child.unref()
+  // The child dup'd this log fd at spawn; close the parent's copy so it doesn't
+  // leak for the lifetime of the (long-lived, daily-driver) main process. Left
+  // open, every bg-task would leak one fd toward EMFILE.
+  closeSync(out)
 
   const task: BgTask = {
     id,
@@ -389,9 +394,25 @@ function telegramPing(text: string): void {
   }
 }
 
+// Re-entrancy guard: the no-marker failure branch awaits summarizeFailedRun
+// (an LLM call, up to ~10s) — longer than the 5s watcher tick. Without this,
+// a second sweep would start concurrently, double-firing HITL/Telegram for the
+// same dead task and racing writeTasks.
+let isSweeping = false
+
 async function sweep(): Promise<void> {
+  if (isSweeping) return
+  isSweeping = true
+  try {
+    await sweepInner()
+  } finally {
+    isSweeping = false
+  }
+}
+
+async function sweepInner(): Promise<void> {
   const tasks = readTasks()
-  let changed = false
+  const finals = new Map<string, { status: BgTask['status']; endedAt?: number; mrUrl?: string }>()
   for (const t of tasks) {
     if (t.status !== 'running') continue
     if (isAlive(t.pid)) continue
@@ -500,9 +521,15 @@ async function sweep(): Promise<void> {
         /* backlog unreadable — HITL still records the failure */
       }
     }
-    changed = true
+    finals.set(t.id, { status: t.status, endedAt: t.endedAt, mrUrl: t.mrUrl })
   }
-  if (changed) writeTasks(tasks)
+  if (finals.size) {
+    // Re-read: spawnBgTask/cancelBgTask may have written new/updated tasks
+    // while we awaited the summarizer. Merge our finals into the fresh list by
+    // id so those concurrent writes are never clobbered by a stale snapshot.
+    const { tasks: merged, changed } = applySweepFinals(readTasks(), finals)
+    if (changed) writeTasks(merged)
+  }
 }
 
 export function startBgWatcher(): void {

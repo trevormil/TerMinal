@@ -15,6 +15,7 @@ import {
   writeFileSync,
   appendFileSync,
   openSync,
+  closeSync,
   readdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -458,6 +459,15 @@ export function spawnRoleTurn(rec: LoopRecord, role: LoopRole): { error?: string
     child.unref()
   } catch (e) {
     return { error: `spawn: ${(e as Error).message}` }
+  } finally {
+    // The child dup'd this log fd at spawn; close the parent's copy in all
+    // cases so it doesn't leak per role-turn toward EMFILE in the long-lived
+    // main process.
+    try {
+      closeSync(out)
+    } catch {
+      /* already closed / never opened */
+    }
   }
   rec.status = 'running'
   rec.activeRunId = runId
