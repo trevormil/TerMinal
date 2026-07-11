@@ -78,7 +78,9 @@ const gt = {
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
-    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => ipcRenderer.invoke('runs:log', source, runId),
+    remoteAllRuns: () => ipcRenderer.invoke('runs:remote-all'),
+    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
+      ipcRenderer.invoke('runs:log', source, runId, hostId),
     list: () => ipcRenderer.invoke('agents:list'),
     definitions: () => ipcRenderer.invoke('agents:definitions'),
     save: (agent: unknown) => ipcRenderer.invoke('agents:save', agent),

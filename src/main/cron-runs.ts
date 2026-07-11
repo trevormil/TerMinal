@@ -233,6 +233,10 @@ export type UnifiedRun = {
   costUsd?: number
   trace?: AgentRun['trace']
   evaluation?: AgentRun['evaluation']
+  /** Remote host this run came from. Undefined = local machine. Stamped by
+   *  the `runs:remote-all` fan-out so the Runs tab can badge/filter by host. */
+  hostId?: string
+  hostLabel?: string
 }
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {

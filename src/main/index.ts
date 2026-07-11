@@ -177,6 +177,7 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
+import { collectRemoteRuns } from './remote-runs'
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import { processListenerInbox, readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
@@ -1518,12 +1519,25 @@ ipcMain.handle('schedules:runs', (_e, id?: string) => {
   const remote = curRemote()
   return remote ? remoteSchedules.runs(remote, id).catch(() => []) : readCronRuns(id)
 })
-ipcMain.handle('runs:all', () => {
-  const remote = curRemote()
-  return remote ? remoteRuns.all(remote).catch(() => []) : listAllRuns()
+// Local runs only — always fast, safe to poll. Remote runs come from the
+// separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
+// without switching the session's daemon profile.
+ipcMain.handle('runs:all', () => listAllRuns())
+// Fan out to every configured remote host in parallel, stamped with hostId so
+// the tab can merge them with local runs and badge/filter by host. Best-effort:
+// an unreachable host contributes an error entry, not a failed view.
+ipcMain.handle('runs:remote-all', () => {
+  const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
+  return collectRemoteRuns(hosts, async (h) => {
+    const ref = remoteFromHostId(h.id)
+    if (!ref) return []
+    return remoteRuns.all(ref)
+  })
 })
-ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string) => {
-  const remote = curRemote()
+ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => {
+  // A run row carries its host; route the log fetch to that host. Fall back to
+  // the focused session's remote (or local) when no hostId is supplied.
+  const remote = hostId ? remoteFromHostId(hostId) : curRemote()
   if (remote) return remoteRuns.log(remote, runId).catch(() => '')
   if (source === 'cron') return readCronRunLog(runId)
   if (source === 'session') return readSessionRunLog(runId)
