@@ -11,7 +11,7 @@
 
 import { join } from 'node:path'
 import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs'
-import { getLoop } from './loops'
+import { getLoop, singleEnterEvaluate, singleDecide } from './loops'
 
 type Role = 'driver' | 'worker'
 
@@ -33,6 +33,19 @@ const lastEventAt = new Map<string, number>()
 
 export function registerLoopSession(key: string, loopId: string, role: Role): void {
   members.set(key, { loopId, role })
+  // Seed the events offset at the current EOF the moment the session registers,
+  // so a single-mode generator turn that lands before the first tick is not
+  // missed (and so we never replay pre-existing history for any mode).
+  if (offsets.get(loopId) === undefined) {
+    const file = eventsPath(loopId)
+    let size = 0
+    try {
+      if (file && existsSync(file)) size = statSync(file).size
+    } catch {
+      /* default 0 */
+    }
+    offsets.set(loopId, size)
+  }
 }
 export function unregisterLoopSession(key: string): void {
   members.delete(key)
@@ -40,6 +53,13 @@ export function unregisterLoopSession(key: string): void {
 
 function peerKey(loopId: string, senderRole: Role): string | undefined {
   for (const [k, m] of members) if (m.loopId === loopId && m.role !== senderRole) return k
+  return undefined
+}
+
+// The (single) live session that belongs to a loop, regardless of role. Used by
+// single mode, where the generator both sends and receives — it has no peer.
+function selfKey(loopId: string): string | undefined {
+  for (const [k, m] of members) if (m.loopId === loopId) return k
   return undefined
 }
 
@@ -112,6 +132,12 @@ function readNewEvents(loopId: string): { role?: string; summary?: string; detai
 
 function tick(deps: Deps): void {
   for (const loopId of activeLoopIds()) {
+    const rec = getLoop(loopId)
+    if (rec?.mode === 'single') {
+      singleTick(deps, loopId)
+      continue
+    }
+    // Paired (default): forward each new handoff event to the other session.
     const events = readNewEvents(loopId)
     for (const ev of events) {
       const role = ev.role === 'driver' || ev.role === 'worker' ? (ev.role as Role) : null
@@ -123,6 +149,42 @@ function tick(deps: Deps): void {
       lastEventAt.set(loopId, Date.now())
     }
   }
+}
+
+// Single mode: drive the live generator ↔ ephemeral grader cycle. Each branch is
+// guarded so exactly one thing happens per tick and the loop can only advance
+// through decide() (which enforces the maxIterations cap). readNewEvents is
+// called every tick to keep the offset draining, so stale grader events never
+// leak into the next generate window.
+function singleTick(deps: Deps, loopId: string): void {
+  const rec = getLoop(loopId)
+  if (!rec || rec.mode !== 'single') return
+  if (rec.status === 'stopped' || rec.phase === 'done') {
+    readNewEvents(loopId) // drain
+    return
+  }
+  if (rec.activeRunId) {
+    readNewEvents(loopId) // evaluator in flight; the loops watcher will advance it
+    return
+  }
+  const events = readNewEvents(loopId)
+  if (rec.phase === 'generate') {
+    // A new event while generating means the live session finished its turn.
+    if (events.length > 0) {
+      singleEnterEvaluate(loopId)
+      lastEventAt.set(loopId, Date.now())
+    }
+    return
+  }
+  if (rec.phase === 'decide') {
+    const res = singleDecide(loopId)
+    if ('error' in res) return
+    const key = selfKey(loopId)
+    if (key) deliver(deps, key, 'driver', res.prompt)
+    return
+  }
+  // phase 'evaluate' with no active run: the evaluator just finished and the
+  // watcher hasn't moved it to 'decide' yet — wait for the next tick.
 }
 
 // Claude fallback: a Claude paired session finished a turn. If no events.jsonl
@@ -139,6 +201,19 @@ export function noteLoopTurnComplete(key: string, deps: Deps): void {
   if (!sid) return
   const text = deps.lastAssistantText(sid)
   if (text) deliver(deps, peer, m.role, text)
+}
+
+// Single-mode Claude fallback: the live generator finished a turn. If it didn't
+// append an events.jsonl line (which the tick would have caught), still advance
+// to grading. Idempotent — singleEnterEvaluate no-ops unless phase is 'generate'
+// with no turn in flight, so this never double-spawns alongside the event path.
+export function noteSingleLoopTurn(key: string): void {
+  const m = members.get(key)
+  if (!m) return
+  const rec = getLoop(m.loopId)
+  if (rec?.mode !== 'single') return
+  if (Date.now() - (lastEventAt.get(m.loopId) ?? 0) < 6000) return // event path already fired
+  singleEnterEvaluate(m.loopId)
 }
 
 let timer: ReturnType<typeof setInterval> | null = null

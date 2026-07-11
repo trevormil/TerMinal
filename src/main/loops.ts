@@ -24,6 +24,7 @@ import { spawn as cpSpawn, execSync } from 'node:child_process'
 import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 import { gateSpawn } from './budgets'
+import { decideOutcome } from './loop-decide'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const LOOPS_FILE = join(CFG, 'loops.json')
@@ -32,11 +33,18 @@ export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
 export type LoopRole = 'planner' | 'generator' | 'evaluator'
 export type LoopPhase = 'negotiate' | 'generate' | 'evaluate' | 'decide' | 'done' | 'stopped'
 export type LoopStatus = 'idle' | 'running' | 'blocked' | 'done' | 'stopped'
-// Two execution modes over the SAME loop state (contract.md, events.jsonl, …):
+// Three execution modes over the SAME loop state (contract.md, events.jsonl, …):
 //   headless — TerMinal auto-steps one-shot role turns (stepLoop + watcher).
 //   paired   — two live interactive sessions (a driver + a worker) drive the
 //              roles themselves; the auto-stepper stays out of their way.
-export type LoopMode = 'headless' | 'paired'
+//   single   — ONE live generator session (planner+generator hat) plus an
+//              ephemeral evaluator spawned by TerMinal after each of its turns.
+//              The live session keeps warm context; the grader is always a fresh
+//              context (the one non-negotiable: code is never graded by its
+//              author). Driven by loop-listener's singleTick. Termination is
+//              guaranteed by the maxIterations cap in decide() — see
+//              singleDecide below.
+export type LoopMode = 'headless' | 'paired' | 'single'
 
 export type LoopRecord = {
   id: string
@@ -243,6 +251,14 @@ export function createLoop(input: CreateLoopInput): LoopRecord | { error: string
     createdAt: now,
     updatedAt: now,
   }
+  // Single mode skips the separate planner/evaluator negotiation: the one live
+  // session drafts the contract on its first turn (it wears the planner hat),
+  // then implements. So it starts already in 'generate' at iteration 1.
+  if (rec.mode === 'single') {
+    rec.phase = 'generate'
+    rec.nextRole = 'generator'
+    rec.iteration = 1
+  }
   initState(rec)
   saveLoop(rec)
   emitActivity({
@@ -408,24 +424,16 @@ function turnPrompt(rec: LoopRecord, role: LoopRole): string {
   ].join('\n')
 }
 
-export function stepLoop(id: string): LoopRecord | { error: string } {
-  const rec = getLoop(id)
-  if (!rec) return { error: 'unknown loop' }
-  if (rec.mode === 'paired') return { error: 'paired loops are driven by their live sessions' }
-  if (rec.status === 'stopped' || rec.phase === 'done')
-    return { error: `loop is ${rec.phase}` }
-  if (rec.activeRunId) return { error: 'a turn is already running' }
-
-  // decide is deterministic — no agent turn
-  if (rec.phase === 'decide') {
-    decide(rec)
-    return rec
-  }
-
+/**
+ * Spawn one headless, one-shot role turn (planner / generator / evaluator) as a
+ * detached process that logs to turns/ and ends on a `LOOP-DONE:` line. Records
+ * activeRunId/activeRole/activeLog on the loop so the watcher can reconcile it.
+ * Shared by stepLoop (headless) and singleEnterEvaluate (single-mode grader).
+ */
+export function spawnRoleTurn(rec: LoopRecord, role: LoopRole): { error?: string } {
   const gate = gateSpawn('loop')
   if (gate.decision === 'refuse') return { error: gate.reason || 'blocked by budget' }
 
-  const role = rec.nextRole
   const runId = randomUUID().slice(0, 8)
   const logFile = join(loopDir(rec), 'turns', `${rec.iteration}-${role}-${runId}.log`)
   const prompt = turnPrompt(rec, role)
@@ -463,6 +471,26 @@ export function stepLoop(id: string): LoopRecord | { error: string } {
     repo: rec.repo,
     repoRoot: rec.repoRoot,
   })
+  return {}
+}
+
+export function stepLoop(id: string): LoopRecord | { error: string } {
+  const rec = getLoop(id)
+  if (!rec) return { error: 'unknown loop' }
+  if (rec.mode === 'paired') return { error: 'paired loops are driven by their live sessions' }
+  if (rec.mode === 'single')
+    return { error: 'single loops are driven by their live session + auto-grader' }
+  if (rec.status === 'stopped' || rec.phase === 'done') return { error: `loop is ${rec.phase}` }
+  if (rec.activeRunId) return { error: 'a turn is already running' }
+
+  // decide is deterministic — no agent turn
+  if (rec.phase === 'decide') {
+    decide(rec)
+    return rec
+  }
+
+  const r = spawnRoleTurn(rec, rec.nextRole)
+  if (r.error) return { error: r.error }
   return rec
 }
 
@@ -494,7 +522,7 @@ function decide(rec: LoopRecord): void {
   } catch {
     plateau = false
   }
-  if (rec.iteration >= rec.maxIterations || (allPass && plateau)) {
+  if (decideOutcome(rec.iteration, rec.maxIterations, allPass, plateau) === 'done') {
     rec.phase = 'done'
     rec.status = 'done'
     logLine(rec, `done | ${allPass ? 'contract met' : 'iteration cap'}${plateau ? ', taste plateaued' : ''}`)
@@ -513,6 +541,93 @@ function decide(rec: LoopRecord): void {
     logLine(rec, `decide | continue -> iteration ${rec.iteration}`)
   }
   saveLoop(rec)
+}
+
+// ---------------------------------------------------------------------------
+// Single mode — one live generator session + an ephemeral grader per turn.
+//
+// The live session wears the planner+generator hat (drafts the contract on turn
+// one, then implements). After each of its turns TerMinal spawns a FRESH
+// evaluator, grades against the contract, runs decide(), and either delivers the
+// next generate prompt back into the SAME live session or stops. The evaluator's
+// context is always fresh — the one non-negotiable (code is never graded by the
+// context that wrote it) survives even though the generator stays warm.
+//
+// TERMINATION IS GUARANTEED. A generate prompt is delivered to the live session
+// only when decide() moves the phase back to 'generate', and decide() stops the
+// loop the moment `iteration >= maxIterations` (or the contract converges). So
+// the number of generate prompts delivered can never exceed maxIterations — the
+// loop cannot run forever regardless of what the models do. The live session
+// also never self-advances: with no delivered prompt it simply idles.
+// ---------------------------------------------------------------------------
+
+/**
+ * The live generator finished a turn → spawn the ephemeral evaluator. Idempotent
+ * by construction: it only fires from phase 'generate' with no turn already in
+ * flight, so a duplicate signal (event + Claude turn-complete fallback) no-ops.
+ */
+export function singleEnterEvaluate(id: string): { error?: string } {
+  const rec = getLoop(id)
+  if (!rec) return { error: 'unknown loop' }
+  if (rec.mode !== 'single') return { error: 'not a single loop' }
+  if (rec.status === 'stopped' || rec.phase === 'done') return {}
+  if (rec.phase !== 'generate' || rec.activeRunId) return {} // nothing to grade yet
+  rec.phase = 'evaluate'
+  rec.nextRole = 'evaluator'
+  saveLoop(rec)
+  logLine(rec, `generate#${rec.iteration} | live session turn complete -> grading`)
+  return spawnRoleTurn(rec, 'evaluator')
+}
+
+/**
+ * The evaluator finished (the watcher advanced the phase to 'decide'). Run the
+ * deterministic decision and return what to deliver to the live session: the
+ * next generate prompt, or a done note when the loop should stop.
+ */
+export function singleDecide(id: string): { done: boolean; prompt: string } | { error: string } {
+  const rec = getLoop(id)
+  if (!rec) return { error: 'unknown loop' }
+  if (rec.mode !== 'single') return { error: 'not a single loop' }
+  if (rec.phase !== 'decide') return { error: `loop not ready to decide (phase ${rec.phase})` }
+  decide(rec) // mutates + saves: -> 'generate' (iteration++) or 'done'
+  const after = getLoop(id) as LoopRecord
+  if (after.phase === 'done') return { done: true, prompt: singleDoneNote(after) }
+  return { done: false, prompt: singleGeneratePrompt(after) }
+}
+
+function lastScoreSummary(rec: LoopRecord): string {
+  try {
+    const files = readdirSync(join(loopDir(rec), 'scores'))
+      .filter((f) => f.endsWith('.md'))
+      .sort()
+    if (!files.length) return ''
+    const body = readFileSync(join(loopDir(rec), 'scores', files[files.length - 1]), 'utf8')
+    return body.replace(/\s+/g, ' ').trim().slice(0, 400)
+  } catch {
+    return ''
+  }
+}
+
+/** Prompt delivered into the live session to drive the next generator turn. */
+export function singleGeneratePrompt(rec: LoopRecord): string {
+  const d = loopDir(rec)
+  const score = lastScoreSummary(rec)
+  return [
+    `/loop-implementer — single loop ${rec.id}, iteration ${rec.iteration}.`,
+    `The auto-grader finished the previous iteration.${score ? ` Latest score: ${score}` : ''}`,
+    `Read contract.md, feature_list.json, progress.md and the newest scores/*.md under ${d} (bounded reads).`,
+    `Do exactly ONE generator turn in your worktree: implement the next unmet/failing assertions, update feature_list.json (mark items "done", never "pass") and progress.md, append one line to log.md, and append your JSONL event to events.jsonl.`,
+    `Finish with a final line exactly: LOOP-DONE: generator #${rec.iteration} <one-line summary>. Do not grade yourself or start another turn.`,
+  ].join(' ')
+}
+
+/** Note delivered into the live session when the loop stops (no more turns). */
+export function singleDoneNote(rec: LoopRecord): string {
+  return [
+    `Loop ${rec.id} is complete — contract met or the iteration cap (${rec.maxIterations}) was reached.`,
+    `The auto-grader has stopped and no further turns will be delivered.`,
+    `Review the scores under .TerMinal/loops/${rec.id}/scores/ and the branch ${rec.branch}. You can stop here.`,
+  ].join(' ')
 }
 
 // ---------------------------------------------------------------------------

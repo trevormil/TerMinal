@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   createRepoTicket,
+  getRepoTicket,
   githubIssueToTicket,
   linearIssueToTicket,
   listRepoTickets,
@@ -11,6 +12,7 @@ import {
   obsidianRepoVault,
   repoTicketProvider,
   scaffoldObsidianVault,
+  updateRepoTicket,
 } from './ticket-provider'
 import { readFileSync } from 'node:fs'
 
@@ -74,6 +76,59 @@ describe('obsidian provider dispatch', () => {
       rmSync(repo, { recursive: true, force: true })
     }
   })
+
+  test('updates and reads Obsidian tickets through the vault with sanitized slugs', async () => {
+    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
+    try {
+      const ticket = await createRepoTicket(repo, {
+        title: 'Sanitize vault route',
+        type: 'testing',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
+
+      expect(
+        await updateRepoTicket(repo, `../${ticket.slug}`, { status: 'closed', priority: 'high' }),
+      ).toBe(true)
+
+      const loaded = await getRepoTicket(repo, `../${ticket.slug}`)
+      expect(loaded).toMatchObject({
+        slug: ticket.slug,
+        provider: 'obsidian',
+        providerLabel: 'Obsidian',
+        status: 'closed',
+        priority: 'high',
+      })
+      expect(existsSync(join(repo, `${ticket.slug}.md`))).toBe(false)
+      expect(existsSync(join(vault, 'tickets', `${ticket.slug}.md`))).toBe(true)
+    } finally {
+      rmSync(vault, { recursive: true, force: true })
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('missing Obsidian vault config fails closed instead of falling back to repo backlog', async () => {
+    const repo = repoWithTicketConfig({ provider: 'obsidian' })
+    try {
+      await expect(
+        createRepoTicket(repo, {
+          title: 'No vault',
+          type: 'testing',
+          priority: 'medium',
+          status: 'open',
+          body: 'b',
+        }),
+      ).rejects.toThrow(/Obsidian vault path is not configured/)
+      expect(await listRepoTickets(repo)).toEqual([])
+      expect(await getRepoTicket(repo, '0001-no-vault')).toBeNull()
+      expect(await updateRepoTicket(repo, '0001-no-vault', { status: 'closed' })).toBe(false)
+      expect(existsSync(join(repo, 'backlog'))).toBe(false)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('obsidian deep link + scaffold', () => {
@@ -86,6 +141,12 @@ describe('obsidian deep link + scaffold', () => {
     )
     expect(obsidianDeepLink(undefined, '0001-x')).toBeNull()
     expect(obsidianDeepLink({ vaultPath: '' }, '0001-x')).toBeNull()
+  })
+
+  test('obsidianDeepLink strips traversal characters from ticket slugs', () => {
+    expect(
+      obsidianDeepLink({ vaultPath: '/x/v', ticketsSubdir: '/issues/' }, '../0007-escape !'),
+    ).toBe('obsidian://open?vault=v&file=issues%2F0007-escape.md')
   })
 
   test('scaffoldObsidianVault seeds guide/board/template idempotently, never clobbering', () => {

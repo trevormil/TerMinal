@@ -22,16 +22,17 @@ it once — the prompts here encode those nine rules.
 Do **not** loop a one-shot task, a task with no verification, or anything whose
 "done" you cannot describe in a contract.
 
-## Two execution modes (same loop, same disk state)
+## Three execution modes (same loop, same disk state)
 
-A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of two
-ways. The roles, contract, and taste rubric are identical either way — only
+A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of three
+ways. The roles, contract, and taste rubric are identical every way — only
 *who runs the turns* differs.
 
 - **Headless** (default) — TerMinal's loop engine (`src/main/loops.ts`)
   auto-steps one-shot role turns: it spawns a fresh `planner`, then
   `generator`, then `evaluator` process, reconciles each on a `LOOP-DONE:`
-  marker, and advances the phase. You watch it from the loop cockpit widget
+  marker, and advances the phase. Every turn is a cold, fresh context — all
+  continuity lives on disk. You watch it from the loop cockpit widget
   (Step / Restart / Stop). Best for unattended, converge-while-you-sleep runs.
 - **Live-paired** — two interactive TerMinal sessions play the roles
   themselves: a **worker** session (`/loop-implementer`, in the worktree) and a
@@ -44,8 +45,23 @@ ways. The roles, contract, and taste rubric are identical either way — only
   As the driver, your invocation carries the runtime params — the **loop id**,
   the worker's **worktree**, the **state dir**, and the **goal**; read them from
   the prompt. Work in the main repo; only the state dir is yours to write.
+- **Single** — ONE live generator session (in the worktree) that keeps warm
+  context across iterations; TerMinal spawns a **fresh evaluator** after each of
+  its turns, grades against the contract, and delivers the next steering prompt
+  back into the same session. It sits between the other two: warm generator
+  (cheaper, remembers what it just tried) plus an always-fresh adversarial
+  grader (the one non-negotiable — code is never graded by the context that
+  wrote it — survives). The single session wears the planner hat once (drafts
+  the contract on turn one), then only generates; grading is external. Start it
+  from the loop launcher with topology **Single**. **Termination is guaranteed
+  by the `maxIterations` cap** (a generate prompt is delivered only when
+  `decide()` continues, and `decide()` stops at the cap) — it cannot infinite
+  loop regardless of model behaviour. Best for a single-tab, run-overnight loop
+  without babysitting two sessions. Engine: `singleTick` in `loop-listener.ts`
+  drives the generator↔grader cycle; `singleEnterEvaluate` / `singleDecide` in
+  `loops.ts` do the work.
 
-The rest of this skill is mode-agnostic. Everything below applies to both.
+The rest of this skill is mode-agnostic. Everything below applies to all three.
 
 ## The three roles (never blur them)
 

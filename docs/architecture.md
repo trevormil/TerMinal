@@ -152,7 +152,7 @@ carry `trace` metadata (`ticketSlug`, `ticketRef`, `prIid`, source branch) and
 an `evaluation` summary. The Runs tab renders both ahead of the raw log; the
 Tickets tab uses the same run id to embed the linked log and evaluation.
 
-## Loop engine (paired / headless)
+## Loop engine (headless / paired / single)
 
 A goal-convergence loop that lets the model drive: a **planner** drafts a
 gradable contract, a **generator** implements against it (and may not grade
@@ -167,7 +167,7 @@ state under `<repoRoot>/.TerMinal/loops/<id>/` — `contract.md`,
 `readLoopState(id)` derives a bounded read-model (phase, iteration, last score,
 assertion tallies, log tail) for the cockpit widget.
 
-**Two modes over the same loop state** (`LoopMode = 'headless' | 'paired'`):
+**Three modes over the same loop state** (`LoopMode = 'headless' | 'paired' | 'single'`):
 
 - **Headless** — the engine spawns one agent turn per phase itself.
   `stepLoop(id)` builds the per-role command (`buildTurnCommand`) and spawns the
@@ -190,8 +190,25 @@ assertion tallies, log tail) for the cockpit widget.
   skill invocation, loop id, worktree, state dir, and goal — because all role
   behavior lives in the slash-command skills, not the seed.
 
+- **Single** — the mode the loop launcher's **Single** topology starts. ONE live
+  generator session (in the worktree, `App.tsx` `startSingleLoop`, `loopRole:
+  'worker'`) keeps warm context; TerMinal spawns a **fresh** evaluator after each
+  of its turns. `stepLoop` refuses single loops — they are driven by the live
+  session plus the listener's `singleTick`, which watches the generator's
+  `events.jsonl` line (Claude turn-complete as a fallback), calls
+  `singleEnterEvaluate` (spawns the ephemeral grader via the shared
+  `spawnRoleTurn`), then on the grader's `LOOP-DONE` runs `singleDecide` and
+  delivers the next generate prompt back into the same session. The
+  generator/evaluator invariant survives (grader is always a fresh context); the
+  softer planner/generator split is merged (the live session drafts the contract
+  on turn one). **Termination is guaranteed:** a generate prompt is delivered
+  only when `decide()` continues, and the stop rule — the pure `decideOutcome`
+  in `loop-decide.ts` — returns `done` the moment `iteration >= maxIterations`,
+  so deliveries can never exceed the cap.
+
 **Always-on listener** (`src/main/loop-listener.ts`) is the code-driven channel
-between a paired loop's two sessions. Because it lives in the persistent Electron
+between a paired loop's two sessions (and the generator↔grader driver for single
+loops). Because it lives in the persistent Electron
 main process — not in an agent's prompt — it never needs re-arming: a 1.5 s
 timer (`startLoopListener`) tails each loop's `events.jsonl` (the
 provider-neutral base channel any engine can append to), and when one role emits
@@ -199,10 +216,12 @@ a handoff event it writes a single bounded line into the **peer** session's PTY
 and submits it. This is deliberately unlike the earlier prompt/plugin-driven
 relay and the CLI notify bridge, which depend on the model choosing to "keep
 listening." Sessions register via `registerLoopSession(key, loopId, role)` on
-start (from `StartOpts.loopId`/`loopRole`) and unregister on stop. First sighting
-seeds the read offset at EOF, so prior events don't replay. A Claude-only
-fallback (`noteLoopTurnComplete`) forwards the last assistant turn to the peer
-when a turn completes without an `events.jsonl` handoff.
+start (from `StartOpts.loopId`/`loopRole`) and unregister on stop; registration
+seeds the read offset at the current EOF, so prior events don't replay and a
+single-mode generator turn that lands before the first tick isn't missed.
+Claude-only fallbacks forward a completed turn when the agent didn't append an
+`events.jsonl` handoff — `noteLoopTurnComplete` to the peer (paired),
+`noteSingleLoopTurn` to kick the auto-grader (single).
 
 **Entry points:** `loops:create|list|get|state|step|restart|stop` IPC (local
 only); `startLoopWatcher()` + `startLoopListener()` boot at app startup.

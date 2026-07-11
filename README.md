@@ -242,6 +242,12 @@ pick a parent folder, hit Create. It copies the template into a **brand-new**
 directory (never overwrites an existing one), runs `git init` + a first commit,
 and opens a session there.
 
+Ticket-provider choices in this flow are covered in
+[`docs/runbooks/new-project.md`](docs/runbooks/new-project.md), including the
+Obsidian vault bootstrap path. Existing repos can switch providers from
+Settings; see
+[`docs/runbooks/obsidian-ticket-provider.md`](docs/runbooks/obsidian-ticket-provider.md).
+
 **From the terminal:**
 
 ```bash

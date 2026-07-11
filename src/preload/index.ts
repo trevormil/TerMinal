@@ -308,7 +308,7 @@ const gt = {
     list: () => ipcRenderer.invoke('loops:list'),
     get: (id: string) => ipcRenderer.invoke('loops:get', id),
     state: (id: string) => ipcRenderer.invoke('loops:state', id),
-    create: (input: { repoRoot: string; goal: string; mode?: 'headless' | 'paired'; engine?: 'claude' | 'codex' | 'cursor'; model?: string; maxIterations?: number }) =>
+    create: (input: { repoRoot: string; goal: string; mode?: 'headless' | 'paired' | 'single'; engine?: 'claude' | 'codex' | 'cursor' | 'hermes'; model?: string; maxIterations?: number }) =>
       ipcRenderer.invoke('loops:create', input),
     step: (id: string) => ipcRenderer.invoke('loops:step', id),
     restart: (id: string) => ipcRenderer.invoke('loops:restart', id),

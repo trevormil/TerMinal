@@ -199,6 +199,7 @@ import {
   registerLoopSession,
   unregisterLoopSession,
   noteLoopTurnComplete,
+  noteSingleLoopTurn,
 } from './loop-listener'
 import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
 import { factoryHealth } from './factory-health'
@@ -694,6 +695,9 @@ function pollActivity() {
     // Paired-loop Claude fallback: forward this turn to the peer if the agent
     // didn't already hand off via events.jsonl. No-ops for non-paired sessions.
     noteLoopTurnComplete(key, loopListenerDeps)
+    // Single-loop Claude fallback: kick the auto-grader if the live generator
+    // finished without appending an event. No-ops for non-single sessions.
+    noteSingleLoopTurn(key)
     const focusedHere = key === activeKey && (win?.isFocused() ?? false)
     const label = s.pinned.name || basename(s.pinned.cwd) || 'session'
     const st = readTranscriptStats(sid)
