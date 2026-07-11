@@ -447,6 +447,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   // '__auto__' = follow the current repo (resolved below); '' = all repos.
   const [repo, setRepo] = useState(() => localStorage.getItem(SCHED_REPO_FILTER_KEY) ?? '__auto__')
   const activeRepoLabel = ctx.repoPath || repoOf(ctx.repoRoot || ctx.cwd || '')
+  // The pause-all/kill-switch (agents-disabled.ts) is a LOCAL-only mechanism;
+  // the remote daemon has no disabled-list, so those IPCs no-op when a remote
+  // host is attached. Guard the UI so it never flashes a false "paused N".
+  const isRemote = !!remoteForTabContext(ctx)
   // Default the filter to the current repo whenever we're in one. Manual picks
   // (incl. "All repos") persist and win over this.
   useEffect(() => {
@@ -591,6 +595,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             total > 0 && (
               <button
                 onClick={async () => {
+                  if (isRemote) {
+                    flash('pause-all is local-only — toggle remote schedules individually')
+                    return
+                  }
                   await window.gt.schedules.disabledAll(!allPaused)
                   reloadDisabled()
                   flash(allPaused ? `resumed ${total} schedules` : `paused ${total} schedules`)

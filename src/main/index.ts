@@ -209,6 +209,7 @@ import { type WorkspaceSearchKind } from './workspace-search'
 import {
   remoteAgents,
   remoteCommandForEngine,
+  isSafeSshTarget,
   remoteDirs,
   remoteMrs,
   remoteProbe,
@@ -483,6 +484,9 @@ function startSession(key: string, opts: StartOpts) {
   }
   delete env.CLAUDECODE
 
+  if (remote && !isSafeSshTarget(remote.sshTarget)) {
+    throw new Error(`refusing to ssh to unsafe target: ${JSON.stringify(remote.sshTarget)}`)
+  }
   const proc = remote
     ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)], {
         name: 'xterm-256color',
