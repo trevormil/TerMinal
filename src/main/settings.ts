@@ -218,7 +218,11 @@ function remoteHosts(raw: unknown): RemoteHost[] {
         daemon: daemonCfg(x.daemon),
       }
     })
-    .filter((h) => h.id && h.sshTarget)
+    // Drop hosts whose sshTarget could be parsed by `ssh` as an option
+    // (leading `-`, e.g. `-oProxyCommand=…` → local RCE) or carries control
+    // chars. Mirrors isSafeSshTarget in remote.ts (kept inline to avoid a
+    // settings↔remote import cycle).
+    .filter((h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget))
 }
 
 function noteFolders(raw: unknown): NoteFolder[] {
