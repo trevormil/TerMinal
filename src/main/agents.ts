@@ -1562,6 +1562,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       if (stdoutTail) append(streamDecoder.write(stdoutTail))
       append(streamDecoder.end())
       if (stderrTail) append(stderrTail)
+      // Structured step-end marker (exit code) so the log formatter can pair it
+      // with the start marker for collapsible steps + jump-to-failure (#3). Only
+      // for multi-step runs (matches the start marker at the top of runStep).
+      if (spec.steps.length > 1) append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} end (exit ${code ?? 1}) ━━\n`)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
       if (code !== 0) return finalize('failed', code ?? undefined)
       stepIdx++
