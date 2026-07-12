@@ -887,14 +887,35 @@ async function runSchedule(id) {
     : existsSync(globalScript)
       ? globalScript
       : null
+  // Autonomy preamble for the OpenRouter/Hermes harnesses — keeps weaker models
+  // from stopping to ask in a non-interactive one-shot. Mirrors OR_AUTONOMY_PREAMBLE
+  // in src/main/agents.ts (keep in sync by hand).
+  const OR_PREAMBLE =
+    'You are running FULLY AUTONOMOUSLY in a non-interactive one-shot process. ' +
+    'There is NO human reading your output and no follow-up turn — you cannot ask questions. ' +
+    'Do NOT ask for confirmation, permission, or which part to start with, and do NOT end your ' +
+    'turn with a question or a plan. Execute the ENTIRE task now: inspect the code, make all the ' +
+    'edits, run the project checks, commit, and open the PR. Keep calling tools until the work is ' +
+    'actually done. Only stop early if you are genuinely blocked — and then state the blocker explicitly.'
+  const hermesModel = sched.model ? ` -m ${shq(sched.model)}` : ''
+  const hermesUsage = join(worktree, '.terminal-hermes-usage.json')
+  // Engine → command. openrouter/hermes were previously missing here and fell
+  // through to codex (a silent wrong-engine bug); they now build their real
+  // commands (or-agent is bundled on the runner's PATH; hermes must be present).
   const cmd = scriptPath
     ? shq(scriptPath)
     : sched.engine === 'claude'
       ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}`
       : sched.engine === 'cursor'
         ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
-      : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
-  const shell = process.env.SHELL || '/bin/zsh'
+        : sched.engine === 'openrouter'
+          ? `or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+          : sched.engine === 'hermes'
+            ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
+            : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
+  // zsh is macOS's default but usually absent on Linux hosts — fall back to bash there.
+  const isMac = process.platform === 'darwin'
+  const shell = process.env.SHELL || (isMac ? '/bin/zsh' : '/bin/bash')
   writeFileSync(
     logFile,
     `▸ ${sched.agentTitle} · ${sched.engine}\n▸ branch ${branch}\n▸ ${scriptPath ? `exec ${scriptPath}` : cmd}\n\n`,
@@ -938,7 +959,16 @@ async function runSchedule(id) {
   // wholesale on timeout (killing `script` alone can orphan the agent child).
   const runAttempt = (attempts) =>
     new Promise((resolve) => {
-      const p = spawn('script', ['-q', '/dev/null', shell, '-l', '-c', cmd], {
+      // `script` pseudo-TTY wrapper differs by platform:
+      //  - macOS/BSD: `script -q /dev/null <cmd...>` takes the command as trailing
+      //    argv and exits with the command's status.
+      //  - util-linux (Linux): needs `-c "<cmd>"` and, crucially, `-e/--return` to
+      //    propagate the child's exit code. WITHOUT -e it always exits 0, so every
+      //    run — including failures — would be recorded as done.
+      const scriptArgs = isMac
+        ? ['-q', '/dev/null', shell, '-l', '-c', cmd]
+        : ['-q', '-e', '-c', `${shq(shell)} -l -c ${shq(cmd)}`, '/dev/null']
+      const p = spawn('script', scriptArgs, {
         cwd: worktree,
         env: childEnv,
         stdio: ['ignore', fd, fd],
