@@ -134,6 +134,7 @@ import {
   runPrAgent,
   listPipelines,
   listRuns,
+  readAgentRunLog,
   rerunAgentRun,
   cancelRun,
   removeWorktree,
@@ -1597,8 +1598,10 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', run
   if (source === 'cron') return readCronRunLog(runId)
   if (source === 'session') return readSessionRunLog(runId)
   if (source === 'bg') return readBgTaskLog(runId)
-  // In-process agent run output lives in memory via listRuns(); look it up by id.
-  return listRuns().find((r) => r.id === runId)?.output || ''
+  // In-process agent run output lives in memory via listRuns(); fall back to the
+  // on-disk log for a run that aged out of the in-memory working set (runs are
+  // never deleted, so an archived run is still viewable).
+  return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
 })
 ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {

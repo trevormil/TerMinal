@@ -6,7 +6,6 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
-  rmSync,
   unlinkSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -14,6 +13,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
+import { inMemoryWorkingSet } from './run-retention'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
@@ -766,9 +766,19 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
 
 // --- persistence: one <id>.json (metadata) + <id>.log (output) per run --------
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'agent-runs')
-const KEEP_RUNS = 100
 const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
 const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+
+// Read a persisted agent run's full log from disk by id — so a run that aged out
+// of the in-memory working set is still viewable in the Runs tab. Returns '' if
+// absent. Mirrors readCronRunLog.
+export function readAgentRunLog(id: string): string {
+  try {
+    return readFileSync(logPath(id), 'utf8')
+  } catch {
+    return ''
+  }
+}
 
 function persistMeta(run: AgentRun) {
   try {
@@ -816,18 +826,12 @@ export function loadPersistedRuns() {
       /* skip corrupt */
     }
   }
-  metas.sort((a, b) => a.startedAt - b.startedAt)
-  // prune oldest beyond KEEP_RUNS (delete files too)
-  while (metas.length > KEEP_RUNS) {
-    const old = metas.shift()!
-    try {
-      rmSync(metaPath(old.id), { force: true })
-      rmSync(logPath(old.id), { force: true })
-    } catch {
-      /* ignore */
-    }
-  }
-  for (const m of metas) {
+  // Never delete run files (storage is cheap — the user prunes manually). Only
+  // load the most recent N into memory to bound RAM; older runs stay on disk and
+  // remain viewable via readAgentRunLog. 0 = load all.
+  const cap = readSettings().runMemoryCap
+  const inMemory = inMemoryWorkingSet(metas, cap)
+  for (const m of inMemory) {
     if (runs.has(m.id)) continue // never clobber a live (in-memory) run
     runs.set(m.id, m)
     if (m.status === 'interrupted') persistMeta(m) // persist the corrected status
