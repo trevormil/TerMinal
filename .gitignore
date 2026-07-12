@@ -9,3 +9,7 @@ backlog/.next-id.lock
 sessions/.next-id.lock
 .status.md
 .TerMinal/notes.md
+
+# CodeGraph local index — per-repo, user-managed; never committed (keeps builds
+# from stamping -dirty). Indexing is the operator's decision (see CLAUDE.md).
+.codegraph/
