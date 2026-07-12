@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
+import { CheckCircle2, Copy, Download, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 
@@ -141,7 +141,57 @@ export function RunLogPane({
             <X size={11} strokeWidth={2} />
           </button>
         )}
+        {/* Raw-log export: copy the full RAW log (pre-filter, pre-format) to the
+            clipboard, or download it as <runId>.log — GitHub's "download raw logs". */}
+        <button
+          onClick={() => window.gt.clipboardWrite(log?.text || '')}
+          disabled={!log?.text}
+          className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
+          title="Copy raw log"
+        >
+          <Copy size={11} strokeWidth={2} />
+        </button>
+        <button
+          onClick={() => {
+            const url = URL.createObjectURL(new Blob([log?.text || ''], { type: 'text/plain' }))
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `run-${runId}.log`
+            a.click()
+            URL.revokeObjectURL(url)
+          }}
+          disabled={!log?.text}
+          className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
+          title="Download raw log"
+        >
+          <Download size={11} strokeWidth={2} />
+        </button>
       </div>
+      {/* Step nav (#3): multi-step runs get clickable chips — colored by step
+          status — that scroll to the step boundary. The failed step is the jump-
+          to-failure. Single-step runs (the common case) show nothing. */}
+      {formatted.steps.length > 1 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[var(--gt-border)]/40 bg-[var(--gt-panel)]/20 px-3 py-1">
+          <span className="mr-0.5 text-[9.5px] uppercase tracking-wider text-zinc-600">steps</span>
+          {formatted.steps.map((s) => (
+            <button
+              key={`${s.n}-${s.line}`}
+              onClick={() => document.getElementById(`ll-${s.line}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              title={`${s.label}${s.exitCode != null ? ` · exit ${s.exitCode}` : ''}`}
+              className={`inline-flex max-w-[160px] items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+                s.status === 'failed'
+                  ? 'border-[var(--gt-red)]/50 text-[var(--gt-red)]'
+                  : s.status === 'ok'
+                    ? 'border-[var(--gt-green)]/40 text-[var(--gt-green)]'
+                    : 'border-[var(--gt-border)] text-zinc-400'
+              }`}
+            >
+              <span className="font-mono">{s.n}</span>
+              <span className="truncate">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div
         ref={logRef}
         className="min-h-0 flex-1 overflow-auto bg-[var(--gt-code-bg)]"
@@ -202,6 +252,7 @@ export function RunLogPane({
               {formatted.lines.map((line, i) => (
                 <div
                   key={i}
+                  id={`ll-${i}`}
                   className={`whitespace-pre-wrap break-words ${lineClass(line.kind)}`}
                 >
                   {line.kind === 'blank' ? '\u00a0' : line.text}

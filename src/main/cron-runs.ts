@@ -3,6 +3,7 @@ import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
 import { listBgTasks, type BgTask } from './bg-tasks'
+import { bucketRunTrends, type RunTrendPoint } from './run-trends'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
@@ -15,7 +16,7 @@ export type CronRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: 'running' | 'done' | 'failed'
+  status: 'running' | 'done' | 'failed' | 'canceled'
   startedAt: number
   endedAt?: number
   exitCode?: number
@@ -23,6 +24,8 @@ export type CronRun = {
   repoLabel: string
   worktree: string
   error?: string
+  pid?: number // script-wrapper pid (watchdog liveness probe)
+  runnerPid?: number // this runner's pid — SIGTERM'd to cancel the run (#9)
 }
 
 export type SessionRun = {
@@ -237,6 +240,8 @@ export type UnifiedRun = {
    *  the `runs:remote-all` fan-out so the Runs tab can badge/filter by host. */
   hostId?: string
   hostLabel?: string
+  /** Cron runner's own pid — SIGTERM'd to cancel the run (#9). */
+  runnerPid?: number
 }
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {
@@ -278,6 +283,7 @@ function cronRunToUnified(r: CronRun & { repoRoot?: string }): UnifiedRun {
     worktree: r.worktree,
     scheduleId: r.scheduleId,
     error: r.error,
+    runnerPid: r.runnerPid,
   }
 }
 
@@ -316,6 +322,14 @@ function sessionRunToUnified(r: SessionRun): UnifiedRun {
     worktree: r.worktree,
     error: r.error,
   }
+}
+
+// Success-rate / duration trends over the last `days` (#6). Reads the full run
+// history (a generous limit — runs are never deleted) and buckets by day.
+export function runTrends(days = 14): RunTrendPoint[] {
+  const midnight = new Date()
+  midnight.setHours(0, 0, 0, 0)
+  return bucketRunTrends(listAllRuns(20000), days, midnight.getTime())
 }
 
 export function listAllRuns(limit = 400): UnifiedRun[] {

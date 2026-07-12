@@ -822,6 +822,11 @@ export type Schedule = {
   spec: ScheduleSpec
   enabled: boolean
   env?: ScheduleEnv
+  // Where/how this schedule fires (ADR-0002). host absent → local launchd; a
+  // hostId → that always-on host via systemd. runtime absent/'bare' → engine in
+  // a worktree; 'container' → Docker image (opt-in, #13).
+  host?: string
+  runtime?: 'bare' | 'container' | 'k8s'
   // Optional flaky-run controls (see main/schedules.ts). Absent → runner defaults.
   retry?: ScheduleRetry
   timeoutSec?: number
@@ -899,6 +904,9 @@ export type HitlItem = {
   terminalCwd?: string
   occurrenceCount?: number
   lastOccurredAt?: number
+  // Stamped by the remote fan-out for a HITL filed by a host run (#14).
+  hostId?: string
+  hostLabel?: string
 }
 export type BgTask = {
   id: string
@@ -950,6 +958,23 @@ export type LoopState = {
   tail: string[]
 }
 
+export type RunArtifact = {
+  slug: string
+  title: string
+  agent?: string
+  ok?: boolean
+  createdAt?: string
+  reportPath: string
+  summary?: string
+}
+export type RunTrendPoint = {
+  date: string
+  total: number
+  succeeded: number
+  failed: number
+  successRate: number
+  avgDurationMs: number
+}
 export type UnifiedRun = {
   id: string
   source: 'cron' | 'agent' | 'bg' | 'session'
@@ -1352,6 +1377,27 @@ export type GtApi = {
     name: string,
     parentDir?: string,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
+  // Provision a Linux host to run scheduled agents via systemd (ADR-0002 #12):
+  // install Bun, enable linger, install the runner; returns a readiness report.
+  provisionHost: (hostId: string) => Promise<{
+    ok?: boolean
+    error?: string
+    bun?: string | null
+    linger?: boolean
+    runner?: boolean
+    cli?: boolean
+    engines?: Record<string, boolean>
+    ready?: boolean
+    missing?: string[]
+    log?: string
+  }>
+  // Reachability probe for a host (#20): classified reason + actionable hint.
+  healthCheckHost: (hostId: string) => Promise<{
+    reachable: boolean
+    latencyMs?: number
+    reason?: 'timeout' | 'auth' | 'dns' | 'refused' | 'unknown'
+    hint?: string
+  }>
   isFullscreen: () => Promise<boolean>
   onFullscreen: (cb: (v: boolean) => void) => () => void
   settings: {
@@ -1415,6 +1461,9 @@ export type GtApi = {
       errors: { hostId: string; label: string; error: string }[]
     }>
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
+    runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
+    runTrends: (days?: number) => Promise<RunTrendPoint[]>
+    cancelCron: (id: string, hostId?: string) => Promise<{ ok: boolean; error?: string }>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>
@@ -1520,10 +1569,12 @@ export type GtApi = {
       env?: ScheduleEnv
       retry?: ScheduleRetry
       timeoutSec?: number
+      host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
+      runtime?: 'bare' | 'container' | 'k8s'
     }) => Promise<{ ok: true; id: string } | { error: string }>
     remove: (id: string) => Promise<boolean>
     toggle: (id: string, enabled: boolean) => Promise<boolean>
-    runNow: (id: string) => Promise<{ ok: true }>
+    runNow: (id: string, hostId?: string) => Promise<{ ok: true } | { error: string }>
     runs: (id?: string) => Promise<CronRun[]>
     runLog: (runId: string) => Promise<string>
     reconcile: () => Promise<
@@ -1543,9 +1594,10 @@ export type GtApi = {
   }
   hitl: {
     list: () => Promise<HitlItem[]>
+    remoteAll: () => Promise<{ items: HitlItem[]; errors: { hostId: string; label: string; error: string }[] }>
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
-    resolve: (id: string, resolved?: boolean) => Promise<boolean>
-    remove: (id: string) => Promise<boolean>
+    resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
+    remove: (id: string, hostId?: string) => Promise<boolean>
   }
   factory: {
     health: () => Promise<FactoryHealth>

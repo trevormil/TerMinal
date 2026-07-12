@@ -6,7 +6,6 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
-  rmSync,
   unlinkSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -14,6 +13,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
+import { inMemoryWorkingSet } from './run-retention'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
@@ -766,9 +766,19 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
 
 // --- persistence: one <id>.json (metadata) + <id>.log (output) per run --------
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'agent-runs')
-const KEEP_RUNS = 100
 const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
 const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+
+// Read a persisted agent run's full log from disk by id — so a run that aged out
+// of the in-memory working set is still viewable in the Runs tab. Returns '' if
+// absent. Mirrors readCronRunLog.
+export function readAgentRunLog(id: string): string {
+  try {
+    return readFileSync(logPath(id), 'utf8')
+  } catch {
+    return ''
+  }
+}
 
 function persistMeta(run: AgentRun) {
   try {
@@ -816,18 +826,12 @@ export function loadPersistedRuns() {
       /* skip corrupt */
     }
   }
-  metas.sort((a, b) => a.startedAt - b.startedAt)
-  // prune oldest beyond KEEP_RUNS (delete files too)
-  while (metas.length > KEEP_RUNS) {
-    const old = metas.shift()!
-    try {
-      rmSync(metaPath(old.id), { force: true })
-      rmSync(logPath(old.id), { force: true })
-    } catch {
-      /* ignore */
-    }
-  }
-  for (const m of metas) {
+  // Never delete run files (storage is cheap — the user prunes manually). Only
+  // load the most recent N into memory to bound RAM; older runs stay on disk and
+  // remain viewable via readAgentRunLog. 0 = load all.
+  const cap = readSettings().runMemoryCap
+  const inMemory = inMemoryWorkingSet(metas, cap)
+  for (const m of inMemory) {
     if (runs.has(m.id)) continue // never clobber a live (in-memory) run
     runs.set(m.id, m)
     if (m.status === 'interrupted') persistMeta(m) // persist the corrected status
@@ -1471,12 +1475,15 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     }
     emitActivity({
       // infra/run failures surface as 'error' (notify) so they don't hide in the
-      // agent-run stream; normal completions stay 'agent-run'.
+      // agent-run stream; normal completions stay 'agent-run'. The failure ping
+      // carries the exit code so it's actionable from the notification alone.
       kind: status === 'failed' || status === 'interrupted' ? 'error' : 'agent-run',
       title: `Agent ${status} · ${spec.title}`,
-      detail: `${spec.engine} · ${branch}`,
+      detail: `${spec.engine} · ${branch}${status === 'failed' && exitCode != null ? ` · exit ${exitCode}` : ''}`,
       repo: repoLabel,
       repoRoot,
+      runId: run.id,
+      runSource: 'agent',
     })
   }
 
@@ -1555,6 +1562,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       if (stdoutTail) append(streamDecoder.write(stdoutTail))
       append(streamDecoder.end())
       if (stderrTail) append(stderrTail)
+      // Structured step-end marker (exit code) so the log formatter can pair it
+      // with the start marker for collapsible steps + jump-to-failure (#3). Only
+      // for multi-step runs (matches the start marker at the top of runStep).
+      if (spec.steps.length > 1) append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} end (exit ${code ?? 1}) ━━\n`)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
       if (code !== 0) return finalize('failed', code ?? undefined)
       stepIdx++

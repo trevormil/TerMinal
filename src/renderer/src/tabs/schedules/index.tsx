@@ -86,6 +86,8 @@ function ScheduleForm({
     env?: Record<string, string>,
     retry?: ScheduleRetry,
     timeoutSec?: number,
+    host?: string,
+    runtime?: 'bare' | 'container' | 'k8s',
   ) => Promise<void>
   onCustomSpawned: () => void
 }) {
@@ -99,8 +101,26 @@ function ScheduleForm({
   const [engine, setEngine] = useState<Engine>('codex')
   const [model, setModel] = useState('')
   const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('terminal')
+  // Where this schedule fires (ADR-0002). '' = local (launchd). A hostId → that
+  // always-on host via systemd. Only offered in the local control-plane context
+  // (not when already attached to a remote session). Linux hosts only — the
+  // systemd trigger layer is Linux-specific.
+  const [host, setHost] = useState('')
+  const [runtime, setRuntime] = useState<'bare' | 'container' | 'k8s'>('bare')
+  const [hostOptions, setHostOptions] = useState<{ id: string; label: string }[]>([])
+  // Reachability per host — hosts go down routinely (tailscale reauth ~24h, asleep),
+  // so probe up front and show it in the selector instead of failing at save time.
+  const [hostHealth, setHostHealth] = useState<Record<string, { reachable: boolean; hint?: string }>>({})
   useEffect(() => {
-    window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
+    window.gt.settings.get().then((s) => {
+      setEngine(s.defaultEngine)
+      const hosts = (s.remoteHosts || []).filter((h) => h.platform !== 'macos').map((h) => ({ id: h.id, label: h.label }))
+      setHostOptions(hosts)
+      for (const h of hosts)
+        window.gt
+          .healthCheckHost(h.id)
+          .then((r) => setHostHealth((m) => ({ ...m, [h.id]: { reachable: r.reachable, hint: r.hint } })))
+    })
   }, [])
   // Pre-fill model from the selected agent's default whenever the agent changes.
   useEffect(() => {
@@ -178,6 +198,8 @@ function ScheduleForm({
         parseEnv(envText),
         buildRetry(),
         buildTimeoutSec(),
+        host || undefined,
+        host ? runtime : undefined,
       )
     } catch (e) {
       setErr((e as Error).message)
@@ -309,6 +331,36 @@ function ScheduleForm({
           }}
           size="sm"
         />
+        {/* Run-on host selector — only in the local control plane (not when
+            already attached to a remote), and only when Linux hosts exist. */}
+        {!remote && hostOptions.length > 0 && (
+          <>
+            <span className="text-[11px] text-zinc-500">on</span>
+            <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
+              <option value="">this Mac (launchd)</option>
+              {hostOptions.map((h) => {
+                const hh = hostHealth[h.id]
+                const dot = !hh ? '' : hh.reachable ? '● ' : '○ '
+                return (
+                  <option key={h.id} value={h.id}>
+                    {dot}
+                    {h.label} (systemd){hh && !hh.reachable ? ' — unreachable' : ''}
+                  </option>
+                )
+              })}
+            </select>
+            {host && (
+              <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container' | 'k8s')} className={FIELD}>
+                <option value="bare">bare</option>
+                <option value="container">container</option>
+                <option value="k8s">k8s (k3s CronJob)</option>
+              </select>
+            )}
+            {host && hostHealth[host] && !hostHealth[host].reachable && (
+              <span className="text-[10.5px] text-amber-400">{hostHealth[host].hint}</span>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
@@ -513,6 +565,26 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     }
   }, [log?.runId, log?.text, runs])
 
+  // Auto-refresh the expanded schedule's run list while any of its runs is still
+  // running, so a run that finishes flips running → done/failed IN PLACE instead
+  // of being stuck on the one-shot snapshot from openRuns() until you collapse +
+  // re-expand. Gated on `anyRunning` (not the `runs` array identity) so a steady
+  // stream of same-status polls doesn't churn the interval; the effect tears the
+  // poll down the moment nothing is running.
+  const anyRunning = runs.some((r) => r.status === 'running')
+  useEffect(() => {
+    if (!expanded || !anyRunning) return
+    let alive = true
+    const id = setInterval(async () => {
+      const next = await window.gt.schedules.runs(expanded)
+      if (alive) setRuns(next)
+    }, 2000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [expanded, anyRunning])
+
   // Global view: repo options span every repo that has a schedule. (Run-only
   // repos previously also appeared here; that's now the Runs tab's job.)
   const repoOptions = useMemo(() => {
@@ -551,8 +623,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     env?: Record<string, string>,
     retry?: ScheduleRetry,
     timeoutSec?: number,
+    host?: string,
+    runtime?: 'bare' | 'container' | 'k8s',
   ) => {
-    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec })
+    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec, host, runtime })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
     reload()

@@ -18,10 +18,50 @@ export type LogHighlight = {
   url?: string
 }
 
+// A parsed step in a multi-step run — paired start (`━━ step N/M · label ━━`)
+// and end (`━━ step N/M end (exit C) ━━`) markers the runner emits (#3). `line`
+// is the 0-based index of the START marker in the formatted body, for jump-to.
+export type LogStep = {
+  n: number
+  total: number
+  label: string
+  exitCode?: number
+  status: 'running' | 'ok' | 'failed'
+  line: number
+}
+
 export type FormattedLog = {
   meta: string[]
   highlights: LogHighlight[]
+  steps: LogStep[]
   lines: { text: string; kind: LogLineKind }[]
+}
+
+const STEP_START = /^━━ step (\d+)\/(\d+) · (.+) ━━$/
+const STEP_END = /^━━ step (\d+)\/(\d+) end \(exit (-?\d+)\) ━━$/
+
+// Pair step start/end markers into structured steps over the body lines.
+export function parseSteps(bodyLines: string[]): LogStep[] {
+  const steps: LogStep[] = []
+  bodyLines.forEach((raw, idx) => {
+    const line = raw.trim()
+    const start = line.match(STEP_START)
+    if (start) {
+      steps.push({ n: Number(start[1]), total: Number(start[2]), label: start[3], status: 'running', line: idx })
+      return
+    }
+    const end = line.match(STEP_END)
+    if (end) {
+      const n = Number(end[1])
+      const exitCode = Number(end[3])
+      const step = [...steps].reverse().find((s) => s.n === n && s.status === 'running')
+      if (step) {
+        step.exitCode = exitCode
+        step.status = exitCode === 0 ? 'ok' : 'failed'
+      }
+    }
+  })
+  return steps
 }
 
 function classifyLine(line: string, inFence: boolean): LogLineKind {
@@ -100,5 +140,5 @@ export function formatRunLog(text: string): FormattedLog {
     return { text: line, kind }
   })
 
-  return { meta, highlights: uniqueHighlights(bodyLines), lines: body }
+  return { meta, highlights: uniqueHighlights(bodyLines), steps: parseSteps(bodyLines), lines: body }
 }

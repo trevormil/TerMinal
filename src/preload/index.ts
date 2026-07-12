@@ -41,6 +41,8 @@ const gt = {
   remoteDirs: (hostId: string, path?: string) => ipcRenderer.invoke('remote:dirs', hostId, path),
   remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
     ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
+  provisionHost: (hostId: string) => ipcRenderer.invoke('hosts:provision', hostId),
+  healthCheckHost: (hostId: string) => ipcRenderer.invoke('hosts:health', hostId),
   isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:is-fullscreen'),
   onFullscreen: (cb: (v: boolean) => void) => {
     const h = (_e: unknown, v: boolean) => cb(v)
@@ -81,6 +83,9 @@ const gt = {
     remoteAllRuns: () => ipcRenderer.invoke('runs:remote-all'),
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
       ipcRenderer.invoke('runs:log', source, runId, hostId),
+    runArtifacts: (repoRoot: string) => ipcRenderer.invoke('runs:artifacts', repoRoot),
+    runTrends: (days?: number) => ipcRenderer.invoke('runs:trends', days),
+    cancelCron: (id: string, hostId?: string) => ipcRenderer.invoke('runs:cancel-cron', id, hostId),
     list: () => ipcRenderer.invoke('agents:list'),
     definitions: () => ipcRenderer.invoke('agents:definitions'),
     save: (agent: unknown) => ipcRenderer.invoke('agents:save', agent),
@@ -156,7 +161,7 @@ const gt = {
     save: (input: unknown) => ipcRenderer.invoke('schedules:save', input),
     remove: (id: string) => ipcRenderer.invoke('schedules:remove', id),
     toggle: (id: string, enabled: boolean) => ipcRenderer.invoke('schedules:toggle', id, enabled),
-    runNow: (id: string) => ipcRenderer.invoke('schedules:run-now', id),
+    runNow: (id: string, hostId?: string) => ipcRenderer.invoke('schedules:run-now', id, hostId),
     runs: (id?: string) => ipcRenderer.invoke('schedules:runs', id),
     runLog: (runId: string) => ipcRenderer.invoke('schedules:run-log', runId),
     reconcile: () => ipcRenderer.invoke('schedules:reconcile'),
@@ -175,9 +180,10 @@ const gt = {
   },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
+    remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
     file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
-    resolve: (id: string, resolved?: boolean) => ipcRenderer.invoke('hitl:resolve', id, resolved),
-    remove: (id: string) => ipcRenderer.invoke('hitl:remove', id),
+    resolve: (id: string, resolved?: boolean, hostId?: string) => ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
+    remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
   },
   factory: {
     health: () => ipcRenderer.invoke('factory:health'),

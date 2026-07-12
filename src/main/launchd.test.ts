@@ -1,9 +1,9 @@
 import { test, expect, describe } from 'bun:test'
-import { darkSchedules, needsReload } from './launchd'
+import { darkSchedules, needsReload, scheduleLoadedState } from './launchd'
 import type { Schedule } from './schedules'
 
-// Minimal Schedule factory — only the fields darkSchedules reads matter.
-const sched = (id: string, enabled: boolean): Schedule =>
+// Minimal Schedule factory — only the fields these helpers read matter.
+const sched = (id: string, enabled: boolean, host?: string): Schedule =>
   ({
     id,
     repoRoot: '/x',
@@ -14,6 +14,7 @@ const sched = (id: string, enabled: boolean): Schedule =>
     prompt: '',
     spec: { kind: 'calendar', minute: 0, hour: 9 },
     enabled,
+    host,
     createdAt: 0,
   }) as Schedule
 
@@ -34,6 +35,26 @@ describe('darkSchedules', () => {
   test('all healthy → empty', () => {
     const list = [sched('a', true), sched('b', true)]
     expect(darkSchedules(list, () => true)).toEqual([])
+  })
+
+  test('never flags a HOST-targeted schedule — it has no launchd job by design', () => {
+    const list = [sched('hostjob', true, 'tm')]
+    expect(darkSchedules(list, () => false)).toEqual([])
+  })
+})
+
+describe('scheduleLoadedState', () => {
+  test('local enabled schedule reflects its launchd loaded state', () => {
+    expect(scheduleLoadedState(sched('a', true), () => true)).toBe(true)
+    expect(scheduleLoadedState(sched('a', true), () => false)).toBe(false)
+  })
+  test('a HOST schedule is never probed via launchd → undefined, not a false false', () => {
+    // Regression for the launchd-only-probe finding: a correctly-installed host
+    // (systemd/k8s) schedule must NOT be reported as loaded:false.
+    expect(scheduleLoadedState(sched('a', true, 'tm'), () => false)).toBeUndefined()
+  })
+  test('disabled schedule → undefined (intentionally not loaded)', () => {
+    expect(scheduleLoadedState(sched('a', false), () => false)).toBeUndefined()
   })
 })
 

@@ -84,6 +84,10 @@ export type Settings = {
   noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
+  // Max agent runs loaded into memory at startup (the Runs-tab working set). Run
+  // logs on disk are NEVER auto-deleted (storage is cheap — prune manually); this
+  // only bounds RAM so a huge archive doesn't bloat the process. 0 = load all.
+  runMemoryCap: number
   templateRepo: string // scaffold source
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
@@ -163,6 +167,7 @@ export function defaultSettings(): Settings {
     noteFolders: [],
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
+    runMemoryCap: 1000,
     templateRepo: daemon.templateRepo,
     pinnedPanels: [],
     openrouterApiKey: '',
@@ -319,6 +324,7 @@ export function migrate(raw: unknown): Settings {
   }
   s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
+  if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0) s.runMemoryCap = Math.floor(r.runMemoryCap)
   return s
 }
 

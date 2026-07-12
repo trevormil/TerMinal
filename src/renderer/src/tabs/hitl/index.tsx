@@ -92,7 +92,14 @@ export function InboxDrawer({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [resolvingAll, setResolvingAll] = useState(false)
 
-  const reload = () => window.gt.hitl.list().then(setItems)
+  // Merge local HITL with open items fanned out from every host (#14), so a run
+  // that failed on a host and filed a block there shows here with a host badge.
+  // Best-effort: an unreachable host is dropped, never blocks the local view.
+  const reload = () =>
+    Promise.all([
+      window.gt.hitl.list(),
+      window.gt.hitl.remoteAll().then((r) => r.items).catch(() => [] as HitlItem[]),
+    ]).then(([local, remote]) => setItems([...local, ...remote]))
   useEffect(() => {
     reload()
     // pick up newly auto-filed items (e.g. a failed cron) live
@@ -114,7 +121,7 @@ export function InboxDrawer({
     if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
     setResolvingAll(true)
     try {
-      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true).catch(() => false)))
+      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)))
       await reload()
     } finally {
       setResolvingAll(false)
@@ -283,7 +290,7 @@ export function InboxDrawer({
                     {h.status === 'open' ? (
                       <button
                         onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, true)
+                          await window.gt.hitl.resolve(h.id, true, h.hostId)
                           reload()
                         }}
                         className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
@@ -294,7 +301,7 @@ export function InboxDrawer({
                     ) : (
                       <button
                         onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, false)
+                          await window.gt.hitl.resolve(h.id, false, h.hostId)
                           reload()
                         }}
                         title="Reopen"
@@ -311,7 +318,7 @@ export function InboxDrawer({
                           )
                         )
                           return
-                        await window.gt.hitl.remove(h.id)
+                        await window.gt.hitl.remove(h.id, h.hostId)
                         reload()
                       }}
                       title="Remove"

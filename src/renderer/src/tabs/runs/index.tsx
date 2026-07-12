@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2, Server } from 'lucide-react'
+import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2, Server, FileText } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
-import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
+import type { Tab, TabContext, UnifiedRun, RunArtifact, RunTrendPoint } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -104,6 +104,8 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
+  // 14-day success-rate / duration trend (#6) — GitHub Insights equivalent.
+  const [trends, setTrends] = useState<RunTrendPoint[]>([])
   const reloadCosts = async () => {
     try {
       const ai = await window.gt.observability.runs(500)
@@ -118,15 +120,17 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     reloadLocal()
     reloadRemote()
     reloadCosts()
-    // Auto-refresh while at least one run is running. Local + costs are cheap;
-    // only re-issue the SSH fan-out when a REMOTE run is actually in flight, so
-    // idle remote hosts aren't polled over SSH every 2s.
+    window.gt.agents.runTrends(14).then(setTrends).catch(() => {})
+    // Always refresh local + costs (cheap local IPC). Gating local refresh on
+    // "something is already running" latched the poll OFF whenever the snapshot
+    // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
+    // from another tab) never appeared and never flipped to done. Only the SSH
+    // remote fan-out stays gated — on a running REMOTE run — so idle hosts aren't
+    // polled over SSH every 2s.
     const t = setInterval(() => {
+      reloadLocal()
       const cur = runsRef.current
-      if (cur && cur.some((r) => r.status === 'running')) {
-        reloadLocal()
-        if (cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
-      }
+      if (cur && cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
       reloadCosts()
     }, 2000)
     return () => clearInterval(t)
@@ -229,6 +233,21 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
 
+  // Artifacts the selected run's repo produced (#8). Local runs only — a remote
+  // run's artifacts live on its host. Fetched on selection; cheap local glob.
+  const [artifacts, setArtifacts] = useState<RunArtifact[]>([])
+  useEffect(() => {
+    setArtifacts([])
+    if (!selectedRun || selectedRun.hostId || !selectedRun.repoRoot) return
+    let alive = true
+    window.gt.agents.runArtifacts(selectedRun.repoRoot).then((a) => {
+      if (alive) setArtifacts(a)
+    })
+    return () => {
+      alive = false
+    }
+  }, [selectedRun?.id, selectedRun?.repoRoot, selectedRun?.hostId])
+
   // Re-run: cron runs route to schedules.runNow (re-fires the launchd schedule
   // so the run gets all the same env vars + log path); in-process runs route
   // through main so they re-use the original repo + saved run provenance.
@@ -237,7 +256,12 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     setRerunError('')
     try {
       if (run.source === 'cron' && run.scheduleId) {
-        await window.gt.schedules.runNow(run.scheduleId)
+        // Re-run on the owning host (systemd/k8s fleet) when remote, else local.
+        const r = await window.gt.schedules.runNow(run.scheduleId, run.hostId)
+        if (r && 'error' in r) {
+          setRerunError(r.error)
+          return
+        }
       } else if (run.source === 'agent') {
         const r = await window.gt.agents.rerun(run.id)
         if ('error' in r) {
@@ -348,6 +372,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               <RefreshCw size={11} strokeWidth={2} />
             </button>
           </div>
+          {/* 14-day trend strip (#6): one cell per day, height ∝ volume, color by
+              success rate. Hover for the numbers. A quick "is the factory healthy?" */}
+          {trends.some((d) => d.total > 0) && (
+            <div className="flex items-end gap-[3px]" title="Run success rate — last 14 days">
+              {trends.map((d) => {
+                const rate = d.succeeded + d.failed > 0 ? d.successRate : null
+                const h = d.total === 0 ? 3 : 4 + Math.min(16, Math.round(Math.log2(d.total + 1) * 6))
+                const color =
+                  rate === null ? 'var(--gt-border)' : rate >= 0.99 ? 'var(--gt-green)' : rate >= 0.75 ? '#d4a017' : 'var(--gt-red)'
+                return (
+                  <div
+                    key={d.date}
+                    style={{ height: h, backgroundColor: color, opacity: d.total === 0 ? 0.35 : 0.85 }}
+                    className="w-[7px] rounded-[1.5px]"
+                    title={`${d.date} · ${d.total} run${d.total === 1 ? '' : 's'}${
+                      d.succeeded + d.failed > 0 ? ` · ${Math.round(d.successRate * 100)}% ok` : ''
+                    }${d.avgDurationMs ? ` · ~${fmtDuration(d.avgDurationMs)}` : ''}`}
+                  />
+                )
+              })}
+              <span className="ml-1.5 text-[9.5px] text-zinc-600">14d</span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             <input
               value={search}
@@ -503,6 +550,18 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 {engineLabel(selectedRun.engine)}
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
+              {selectedRun.exitCode != null && (
+                <span
+                  className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                    selectedRun.exitCode === 0
+                      ? 'border-[var(--gt-green)]/40 text-[var(--gt-green)]'
+                      : 'border-[var(--gt-red)]/40 text-[var(--gt-red)]'
+                  }`}
+                  title="Process exit code"
+                >
+                  exit {selectedRun.exitCode}
+                </span>
+              )}
               {selectedRun.hostId && (
                 <span
                   className="inline-flex items-center gap-1 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--gt-accent-light)]"
@@ -540,25 +599,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   {selectedRun.source === 'session' ? 'Terminal' : 'Worktree'}
                 </button>
               )}
-              {/* Cancel: only works for in-process runs (cron runs spawn from
-                  launchd in a different process tree; agents.cancel can't
-                  reach them). Showing the button conditionally avoids the
-                  "why does this do nothing" UX trap. */}
-              {selectedRun.status === 'running' && !selectedRun.hostId && (selectedRun.source === 'agent' || selectedRun.source === 'bg') && (
-                <button
-                  onClick={async () => {
-                    if (!confirm('Cancel this run? The agent will be SIGTERM-ed.')) return
-                    if (selectedRun.source === 'bg') await window.gt.bg.cancel(selectedRun.id)
-                    else await window.gt.agents.cancel(selectedRun.id)
-                    await reload()
-                  }}
-                  title="SIGTERM this run"
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-1.5 py-0.5 text-[10.5px] text-[var(--gt-red)] hover:border-[var(--gt-red)]/60"
-                >
-                  <StopCircle size={10} strokeWidth={2} />
-                  Cancel
-                </button>
-              )}
+              {/* Cancel: in-process agent/bg runs (SIGTERM the tracked child), and
+                  cron runs — local OR remote — via the runner's cooperative cancel
+                  (SIGTERM its runnerPid → kills the attempt + stops retrying). */}
+              {selectedRun.status === 'running' &&
+                ((selectedRun.source !== 'cron' && !selectedRun.hostId && (selectedRun.source === 'agent' || selectedRun.source === 'bg')) ||
+                  selectedRun.source === 'cron') && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Cancel this run? It will be SIGTERM-ed and not retried.')) return
+                      if (selectedRun.source === 'cron') {
+                        const r = await window.gt.agents.cancelCron(selectedRun.id, selectedRun.hostId)
+                        if (!r.ok) setRerunError(r.error || 'could not cancel')
+                      } else if (selectedRun.source === 'bg') await window.gt.bg.cancel(selectedRun.id)
+                      else await window.gt.agents.cancel(selectedRun.id)
+                      await reload()
+                    }}
+                    title="Cancel this run (SIGTERM, no retry)"
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-1.5 py-0.5 text-[10.5px] text-[var(--gt-red)] hover:border-[var(--gt-red)]/60"
+                  >
+                    <StopCircle size={10} strokeWidth={2} />
+                    Cancel
+                  </button>
+                )}
               {/* Remove worktree: post-run cleanup for in-process runs. Cron
                   worktrees live in ~/.config/TerMinal/cron-worktrees/ and are
                   managed by the runner. */}
@@ -581,19 +644,31 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 )}
               <button
                 onClick={() => handleRerun(selectedRun)}
-                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg' || selectedRun.source === 'session' || !!selectedRun.hostId}
+                disabled={
+                  rerunBusy ||
+                  selectedRun.status === 'running' ||
+                  // Re-runnable: any cron run with a scheduleId (local OR remote — the
+                  // host re-fires it), or a LOCAL agent run. Remote-agent/bg/session
+                  // have no re-run primitive yet.
+                  !(
+                    (selectedRun.source === 'cron' && !!selectedRun.scheduleId) ||
+                    (selectedRun.source === 'agent' && !selectedRun.hostId)
+                  )
+                }
                 title={
-                  selectedRun.hostId
-                    ? 'Remote runs are re-run from the host itself, not from here yet'
-                    : selectedRun.status === 'running'
+                  selectedRun.status === 'running'
                     ? 'Already running'
                     : selectedRun.source === 'bg'
                       ? 'Background inbox tasks cannot be re-run from here yet'
-                    : selectedRun.source === 'session'
-                      ? 'Terminal sessions cannot be re-run from here yet'
-                    : selectedRun.source === 'cron' && !selectedRun.scheduleId
-                      ? 'Cron run without scheduleId — cannot re-fire'
-                      : 'Re-run this agent'
+                      : selectedRun.source === 'session'
+                        ? 'Terminal sessions cannot be re-run from here yet'
+                        : selectedRun.source === 'agent' && selectedRun.hostId
+                          ? 'Remote agent runs cannot be re-run from here yet'
+                          : selectedRun.source === 'cron' && !selectedRun.scheduleId
+                            ? 'Cron run without scheduleId — cannot re-fire'
+                            : selectedRun.hostId
+                              ? `Re-run on ${selectedRun.hostLabel || selectedRun.hostId}`
+                              : 'Re-run this agent'
                 }
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -636,6 +711,28 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 {selectedRun.evaluation && (
                   <RunEvaluationPanel evaluation={selectedRun.evaluation} />
                 )}
+              </div>
+            )}
+            {artifacts.length > 0 && (
+              <div className="shrink-0 space-y-1 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                  Artifacts · {artifacts.length}
+                </span>
+                <div className="flex flex-col gap-1">
+                  {artifacts.slice(0, 8).map((a) => (
+                    <button
+                      key={a.slug}
+                      onClick={() => window.gt.openExternal(`file://${a.reportPath}`)}
+                      title={a.summary || a.reportPath}
+                      className="flex items-center gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-left text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50"
+                    >
+                      <FileText size={11} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                      <span className="truncate">{a.title}</span>
+                      {a.agent && <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{a.agent}</span>}
+                      {a.ok === false && <span className="shrink-0 text-[9.5px] text-[var(--gt-red)]">failed</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             <RunLogPane source={selectedRun.source} runId={selectedRun.id} status={selectedRun.status} hostId={selectedRun.hostId} className="flex-1" />

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatRunLog } from './runLogFormat'
+import { formatRunLog, parseSteps } from './runLogFormat'
 
 describe('formatRunLog', () => {
   test('splits leading TerMinal metadata from output', () => {
@@ -39,5 +39,33 @@ describe('formatRunLog', () => {
       { kind: 'failed', label: 'Failed', value: 'not this one' },
     ])
     expect(out.lines[0]).toEqual({ text: '# Not a rendered document', kind: 'heading' })
+  })
+})
+
+describe('parseSteps (#3 collapsible steps + jump-to-failure)', () => {
+  test('pairs start/end markers into ok / failed steps with exit codes + line index', () => {
+    const lines = [
+      '━━ step 1/2 · build ━━',
+      'compiling…',
+      '━━ step 1/2 end (exit 0) ━━',
+      '━━ step 2/2 · test ━━',
+      'boom',
+      '━━ step 2/2 end (exit 1) ━━',
+    ]
+    const steps = parseSteps(lines)
+    expect(steps).toHaveLength(2)
+    expect(steps[0]).toMatchObject({ n: 1, label: 'build', status: 'ok', exitCode: 0, line: 0 })
+    expect(steps[1]).toMatchObject({ n: 2, label: 'test', status: 'failed', exitCode: 1, line: 3 })
+  })
+  test('an unfinished step (no end marker) stays running', () => {
+    const steps = parseSteps(['━━ step 1/3 · lint ━━', 'working'])
+    expect(steps[0].status).toBe('running')
+    expect(steps[0].exitCode).toBeUndefined()
+  })
+  test('no step markers → empty; formatRunLog exposes steps', () => {
+    expect(parseSteps(['plain', 'output'])).toEqual([])
+    const f = formatRunLog('▸ header\n\n━━ step 1/1 · go ━━\nok\n━━ step 1/1 end (exit 0) ━━\n')
+    expect(f.steps).toHaveLength(1)
+    expect(f.steps[0].status).toBe('ok')
   })
 })

@@ -11,6 +11,13 @@ import * as pty from 'node-pty'
 // exist — derive the module dir the ESM-canonical way or the window never opens.
 const moduleDir = dirname(fileURLToPath(import.meta.url))
 
+// The bundled headless runner's source path — packaged (Resources) vs dev (repo
+// bin/). Used to install it locally and to push it to remote hosts on provision.
+const runnerSrcPath = () =>
+  app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+const cliSrcPath = () =>
+  app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
+
 function sourceCheckoutRoot(marker: string): string {
   const candidates = [process.env.GT_TERMINAL_REPO || '', process.cwd(), app.getAppPath(), join(moduleDir, '..', '..')].filter(Boolean)
   for (const c of candidates) {
@@ -127,6 +134,7 @@ import {
   runPrAgent,
   listPipelines,
   listRuns,
+  readAgentRunLog,
   rerunAgentRun,
   cancelRun,
   removeWorktree,
@@ -159,12 +167,15 @@ import {
   installOrTier,
   // mcp-register pulled separately below; not part of launchd helpers.
   reconcileSchedules,
-  syncSchedule,
   unscheduleJob,
   removeAllJobs,
   runScheduleNow,
-  isJobLoaded,
+  scheduleLoadedState,
 } from './launchd'
+import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
+import { provisionHost } from './host-provision'
+import { checkHostHealth } from './host-health'
+import { ensureHostRepo } from './host-repo'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   appendSessionRunLog,
@@ -174,10 +185,12 @@ import {
   readCronRunLog,
   readSessionRunLog,
   listAllRuns,
+  runTrends,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
-import { collectRemoteRuns } from './remote-runs'
+import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
+import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
@@ -225,6 +238,7 @@ import {
   remoteProbe,
   remoteProject,
   remoteRuns,
+  remoteHitl,
   remoteSettings,
   remoteSchedules,
   remoteTickets,
@@ -784,7 +798,7 @@ function createWindow() {
   // Real cron: install the headless runner at its stable path, then reconcile
   // launchd ↔ schedules.json (loads enabled jobs, removes any orphans). Jobs
   // fire via launchd even when the app is closed — no in-app ticker.
-  const runnerSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+  const runnerSrc = runnerSrcPath()
   installRunner(runnerSrc)
   const cliSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
   installCli(cliSrc)
@@ -812,6 +826,9 @@ function createWindow() {
   }
   try {
     const rec = reconcileSchedules()
+    // Host (systemd) schedules reconcile over SSH — fire-and-forget so an
+    // unreachable host never delays startup (ADR-0002). Local launchd above is sync.
+    void reconcileHosts(readSchedules()).catch(() => {})
     if (rec.failed.length) {
       // A schedule that didn't load into launchd never fires. Don't swallow it:
       // log every failure and surface one Activity event so it's visible.
@@ -1342,15 +1359,14 @@ ipcMain.handle('schedules:list', () => {
     // Calendar/cron jobs fire at fixed wall-clock times, so the next fire is a
     // pure function of the spec — no load-time anchor needed.
     nextRun: nextRun(s.spec, now),
-    // Real "will it fire?" signal: an enabled schedule with no loaded launchd
-    // job is dark and never fires. Only probe enabled ones (disabled are
-    // intentionally not loaded). launchctl print is a few ms; counts are tiny.
-    loaded: s.enabled ? isJobLoaded(s.id) : undefined,
+    // Real "will it fire?" signal — probes launchd for LOCAL schedules only; a
+    // host schedule (systemd/k8s) has no launchd job by design (see helper).
+    loaded: scheduleLoadedState(s),
   }))
 })
 ipcMain.handle(
   'schedules:save',
-  (
+  async (
     _e,
     input: {
       id?: string
@@ -1362,6 +1378,8 @@ ipcMain.handle(
       env?: Record<string, string>
       retry?: { maxRetries: number; backoffSec: number }
       timeoutSec?: number
+      host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
+      runtime?: 'bare' | 'container' | 'k8s'
     },
   ) => {
     // Normalize the optional flaky-run knobs; drop anything non-numeric so a
@@ -1416,8 +1434,19 @@ ipcMain.handle(
     if (!root) return { error: 'not a git repo' }
     const agent = readAgents(root).find((a) => a.id === input.agentId)
     if (!agent) return { error: 'unknown agent' }
+    // Host-targeted schedule: store the HOST repo path (~/repos/<name>, expanded by
+    // the runner on the host) and ensure the repo is cloned there — the Mac repo
+    // path wouldn't exist on the host, so the runner's worktree base would fail (#18).
+    let hostRepoRootPath: string | undefined
+    if (input.host) {
+      const h = readSettings().remoteHosts.find((x) => x.id === input.host)
+      if (!h) return { error: `unknown host: ${input.host}` }
+      const er = await ensureHostRepo(h.sshTarget, root)
+      if (!er.ok) return { error: `host repo: ${er.error}` }
+      hostRepoRootPath = er.repoRoot
+    }
     const base: NewSchedule = {
-      repoRoot: root,
+      repoRoot: hostRepoRootPath || root,
       repoLabel: repoForCwd(cur().cwd)?.path || basename(root),
       agentId: agent.id,
       agentTitle: agent.title,
@@ -1431,11 +1460,20 @@ ipcMain.handle(
       env: sanitizeScheduleEnv(input.env),
       retry,
       timeoutSec,
+      host: input.host || undefined,
+      runtime: input.runtime,
     }
+    // Capture the prior schedule BEFORE the update so we can tear down its old
+    // trigger if host or runtime changed — otherwise switching host A→B, k8s→bare,
+    // bare→k8s, or local↔host would leave the previous timer/CronJob/plist firing.
+    const prev = input.id ? getSchedule(input.id) : null
     const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
     if (!sched) return { error: 'schedule not found' }
-    const r = syncSchedule(sched)
-    if (!r.ok) return { error: `launchd: ${r.error}` }
+    if (prev && (prev.host !== sched.host || prev.runtime !== sched.runtime)) {
+      await routeRemoveSchedule(prev).catch(() => {}) // best-effort teardown of the old trigger + host record
+    }
+    const r = await routeSyncSchedule(sched)
+    if (!r.ok) return { error: r.error }
     emitActivity({
       kind: 'check',
       title: `Schedule ${input.id ? 'updated' : 'created'} · ${agent.title}`,
@@ -1459,11 +1497,12 @@ function sanitizeScheduleEnv(raw: unknown): Record<string, string> | undefined {
   }
   return Object.keys(out).length ? out : undefined
 }
-ipcMain.handle('schedules:remove', (_e, id: string) => {
+ipcMain.handle('schedules:remove', async (_e, id: string) => {
   const remote = curRemote()
   if (remote) return remoteSchedules.remove(remote, id).catch(() => false)
   const s = getSchedule(id)
-  unscheduleJob(id)
+  if (s) await routeRemoveSchedule(s)
+  else unscheduleJob(id)
   const ok = removeSchedule(id)
   if (ok) {
     emitActivity({
@@ -1477,14 +1516,14 @@ ipcMain.handle('schedules:remove', (_e, id: string) => {
   }
   return ok
 })
-ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
+ipcMain.handle('schedules:toggle', async (_e, id: string, enabled: boolean) => {
   const remote = curRemote()
   if (remote) return remoteSchedules.toggle(remote, id, enabled).catch(() => false)
   const ok = toggleSchedule(id, enabled)
   const s = getSchedule(id)
   if (s) {
     try {
-      syncSchedule(s)
+      await routeSyncSchedule(s)
     } catch {
       /* best effort */
     }
@@ -1501,8 +1540,10 @@ ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
   }
   return ok
 })
-ipcMain.handle('schedules:run-now', async (_e, id: string) => {
-  const remote = curRemote()
+ipcMain.handle('schedules:run-now', async (_e, id: string, hostId?: string) => {
+  // Re-run a run on the host that owns it (hostId) — the fleet re-run path —
+  // else the attached-session remote, else local.
+  const remote = hostId ? remoteFromHostId(hostId) : curRemote()
   if (remote) {
     const sched = (await remoteSchedules.list(remote).catch(() => [])).find((s) => s.id === id)
     const run = await remoteSchedules.runNow(remote, id, {
@@ -1561,8 +1602,39 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', run
   if (source === 'cron') return readCronRunLog(runId)
   if (source === 'session') return readSessionRunLog(runId)
   if (source === 'bg') return readBgTaskLog(runId)
-  // In-process agent run output lives in memory via listRuns(); look it up by id.
-  return listRuns().find((r) => r.id === runId)?.output || ''
+  // In-process agent run output lives in memory via listRuns(); fall back to the
+  // on-disk log for a run that aged out of the in-memory working set (runs are
+  // never deleted, so an archived run is still viewable).
+  return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+})
+// Artifacts a run produced — agent-request reports under the repo's
+// .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
+// on its host. The renderer opens a report via openExternal(file://…).
+ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
+// Success-rate / duration trend over the last N days (#6) for the Runs tab.
+ipcMain.handle('runs:trends', (_e, days?: number) => runTrends(days ?? 14))
+// Cancel a running CRON run (#9). Local: SIGTERM the runner's own pid — its
+// cooperative handler kills the current attempt and stops retrying, recording the
+// run as canceled. Remote: route to the host's runs.cancel op.
+ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
+  if (hostId) {
+    const remote = remoteFromHostId(hostId)
+    if (!remote) return { ok: false, error: `unknown host: ${hostId}` }
+    return remoteRuns
+      .cancel(remote, id)
+      .then((ok) => (ok ? { ok: true } : { ok: false, error: 'host could not cancel the run' }))
+      .catch((e) => ({ ok: false, error: String((e as Error).message || e) }))
+  }
+  const rec = readCronRuns(undefined, 20000).find((r) => r.id === id)
+  if (!rec) return { ok: false, error: 'run not found' }
+  if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
+  if (!rec.runnerPid) return { ok: false, error: 'no runner pid recorded (older run — cannot cancel)' }
+  try {
+    process.kill(rec.runnerPid, 'SIGTERM')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 })
 ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
@@ -1592,7 +1664,27 @@ ipcMain.handle('schedules:run-log', (_e, runId: string) => {
   const remote = curRemote()
   return remote ? remoteSchedules.runLog(remote, runId).catch(() => '') : readCronRunLog(runId)
 })
-ipcMain.handle('schedules:reconcile', () => (curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : reconcileSchedules()))
+ipcMain.handle('schedules:reconcile', () =>
+  curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : routeReconcile(readSchedules()),
+)
+// Prepare a Linux host to run scheduled agents via systemd: install Bun, enable
+// linger (headless firing), install the runner, report readiness (ADR-0002 #12).
+ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return { ok: false, error: `unknown host: ${hostId}` }
+  const engines = Object.keys(host.daemon?.engines || {})
+  const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'], {
+    cliSrcPath: cliSrcPath(),
+  })
+  return { ok: r.ready, ...r }
+})
+// Reachability probe for a host (tailscale reauth / asleep / VPN down) → classified
+// reason + actionable hint, so the UI degrades gracefully instead of hanging (#20).
+ipcMain.handle('hosts:health', async (_e, hostId: string) => {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return { reachable: false, hint: `unknown host: ${hostId}` }
+  return checkHostHealth(host.sshTarget)
+})
 ipcMain.handle('listeners:status', () => readListenerStatus())
 ipcMain.handle('listeners:process', () => {
   const r = processListenerInbox()
@@ -1605,9 +1697,34 @@ ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
 ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
 ipcMain.handle('hitl:list', () => readHitl())
+// Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
+// hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
+// an unreachable host contributes an error, not a failed view.
+ipcMain.handle('hitl:remote-all', () => {
+  const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
+  return collectRemoteHitl(hosts, async (h) => {
+    const ref = remoteFromHostId(h.id)
+    return ref ? remoteHitl.list(ref) : []
+  })
+})
 ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))
-ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean) => resolveHitl(id, resolved ?? true))
-ipcMain.handle('hitl:remove', (_e, id: string) => removeHitl(id))
+// Resolve/remove route to the item's host when it came from the remote fan-out
+// (#14) — resolving a host block on the Mac must write on the host that owns it,
+// not locally. No hostId → local, as before.
+ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean, hostId?: string) => {
+  if (hostId) {
+    const ref = remoteFromHostId(hostId)
+    if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
+  }
+  return resolveHitl(id, resolved ?? true)
+})
+ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
+  if (hostId) {
+    const ref = remoteFromHostId(hostId)
+    if (ref) return remoteHitl.remove(ref, id).catch(() => false)
+  }
+  return removeHitl(id)
+})
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.
 ipcMain.handle('factory:health', () => factoryHealth())
 ipcMain.handle('factory:start', (_e, engine: Engine) => {
