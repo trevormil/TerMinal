@@ -5,8 +5,8 @@ describe('buildSelfUpdateScript', () => {
   const s = buildSelfUpdateScript('trevormil/TerMinal', 'main')
   test('clones-or-pulls the repo at the requested branch', () => {
     expect(s).toContain('trevormil/TerMinal')
-    expect(s).toContain('origin/main')
-    expect(s).toContain('git') // fetch/reset or clone
+    expect(s).toContain('fetch --quiet origin main')
+    expect(s).toContain('reset --hard --quiet FETCH_HEAD') // robust for shallow clones
   })
   test('reinstalls BOTH runner and cli (executable)', () => {
     expect(s).toContain('terminal-cron')
@@ -16,6 +16,22 @@ describe('buildSelfUpdateScript', () => {
   test('is idempotent — pulls when the clone exists, clones when it does not', () => {
     expect(s).toContain('.git')
     expect(s).toMatch(/clone/)
+  })
+  test('rebuilds the agent image ONLY when the runner changed (#21)', () => {
+    expect(s).toContain('build-agent-image.sh')
+    // gated on a git diff of bin/terminal-cron between old and new HEAD
+    expect(s).toContain('diff --quiet')
+    expect(s).toContain('bin/terminal-cron')
+    expect(s).toContain('image rebuild skipped')
+  })
+  test('re-imports into k3s with passwordless sudo, else prints the manual command', () => {
+    expect(s).toContain('k3s ctr images import')
+    expect(s).toContain('sudo -n')
+    expect(s).toContain('re-import manually')
+  })
+  test('skips the whole rebuild when docker or the Dockerfile is absent', () => {
+    expect(s).toContain('command -v docker')
+    expect(s).toContain('terminal-agent.Dockerfile')
   })
 })
 

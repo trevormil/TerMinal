@@ -20,7 +20,11 @@ if [ ! -f "$RUNNER" ]; then
   exit 1
 fi
 
-CTX="$(mktemp -d)"
+# Build context MUST live under $HOME in a NON-hidden dir: snap-packaged Docker
+# (Ubuntu's default) is confined by the snap `home` interface — it cannot read
+# /tmp (→ "unable to prepare context: path not found") NOR hidden dotfiles/dirs in
+# $HOME (→ an empty/2B context). So: $HOME + a visible name.
+CTX="$(mktemp -d "${HOME}/terminal-agent-build.XXXXXX")"
 trap 'rm -rf "$CTX"' EXIT
 cp "$RUNNER" "$CTX/terminal-cron"
 cp "$HERE/terminal-agent.Dockerfile" "$CTX/Dockerfile"
