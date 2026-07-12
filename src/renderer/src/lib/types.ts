@@ -1371,6 +1371,13 @@ export type GtApi = {
     missing?: string[]
     log?: string
   }>
+  // Reachability probe for a host (#20): classified reason + actionable hint.
+  healthCheckHost: (hostId: string) => Promise<{
+    reachable: boolean
+    latencyMs?: number
+    reason?: 'timeout' | 'auth' | 'dns' | 'refused' | 'unknown'
+    hint?: string
+  }>
   isFullscreen: () => Promise<boolean>
   onFullscreen: (cb: (v: boolean) => void) => () => void
   settings: {

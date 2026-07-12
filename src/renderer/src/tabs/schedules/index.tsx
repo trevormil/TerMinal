@@ -108,10 +108,18 @@ function ScheduleForm({
   const [host, setHost] = useState('')
   const [runtime, setRuntime] = useState<'bare' | 'container'>('bare')
   const [hostOptions, setHostOptions] = useState<{ id: string; label: string }[]>([])
+  // Reachability per host — hosts go down routinely (tailscale reauth ~24h, asleep),
+  // so probe up front and show it in the selector instead of failing at save time.
+  const [hostHealth, setHostHealth] = useState<Record<string, { reachable: boolean; hint?: string }>>({})
   useEffect(() => {
     window.gt.settings.get().then((s) => {
       setEngine(s.defaultEngine)
-      setHostOptions((s.remoteHosts || []).filter((h) => h.platform !== 'macos').map((h) => ({ id: h.id, label: h.label })))
+      const hosts = (s.remoteHosts || []).filter((h) => h.platform !== 'macos').map((h) => ({ id: h.id, label: h.label }))
+      setHostOptions(hosts)
+      for (const h of hosts)
+        window.gt
+          .healthCheckHost(h.id)
+          .then((r) => setHostHealth((m) => ({ ...m, [h.id]: { reachable: r.reachable, hint: r.hint } })))
     })
   }, [])
   // Pre-fill model from the selected agent's default whenever the agent changes.
@@ -330,17 +338,25 @@ function ScheduleForm({
             <span className="text-[11px] text-zinc-500">on</span>
             <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
               <option value="">this Mac (launchd)</option>
-              {hostOptions.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.label} (systemd)
-                </option>
-              ))}
+              {hostOptions.map((h) => {
+                const hh = hostHealth[h.id]
+                const dot = !hh ? '' : hh.reachable ? '● ' : '○ '
+                return (
+                  <option key={h.id} value={h.id}>
+                    {dot}
+                    {h.label} (systemd){hh && !hh.reachable ? ' — unreachable' : ''}
+                  </option>
+                )
+              })}
             </select>
             {host && (
               <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container')} className={FIELD}>
                 <option value="bare">bare</option>
                 <option value="container">container</option>
               </select>
+            )}
+            {host && hostHealth[host] && !hostHealth[host].reachable && (
+              <span className="text-[10.5px] text-amber-400">{hostHealth[host].hint}</span>
             )}
           </>
         )}

@@ -42,6 +42,7 @@ const gt = {
   remoteScaffoldProject: (hostId: string, name: string, parentDir?: string) =>
     ipcRenderer.invoke('remote:scaffold', hostId, name, parentDir),
   provisionHost: (hostId: string) => ipcRenderer.invoke('hosts:provision', hostId),
+  healthCheckHost: (hostId: string) => ipcRenderer.invoke('hosts:health', hostId),
   isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:is-fullscreen'),
   onFullscreen: (cb: (v: boolean) => void) => {
     const h = (_e: unknown, v: boolean) => cb(v)

@@ -173,6 +173,7 @@ import {
 } from './launchd'
 import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
 import { provisionHost } from './host-provision'
+import { checkHostHealth } from './host-health'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   appendSessionRunLog,
@@ -1621,6 +1622,13 @@ ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
     cliSrcPath: cliSrcPath(),
   })
   return { ok: r.ready, ...r }
+})
+// Reachability probe for a host (tailscale reauth / asleep / VPN down) → classified
+// reason + actionable hint, so the UI degrades gracefully instead of hanging (#20).
+ipcMain.handle('hosts:health', async (_e, hostId: string) => {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return { reachable: false, hint: `unknown host: ${hostId}` }
+  return checkHostHealth(host.sshTarget)
 })
 ipcMain.handle('listeners:status', () => readListenerStatus())
 ipcMain.handle('listeners:process', () => {
