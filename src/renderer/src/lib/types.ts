@@ -826,7 +826,7 @@ export type Schedule = {
   // hostId → that always-on host via systemd. runtime absent/'bare' → engine in
   // a worktree; 'container' → Docker image (opt-in, #13).
   host?: string
-  runtime?: 'bare' | 'container'
+  runtime?: 'bare' | 'container' | 'k8s'
   // Optional flaky-run controls (see main/schedules.ts). Absent → runner defaults.
   retry?: ScheduleRetry
   timeoutSec?: number
@@ -1550,7 +1550,7 @@ export type GtApi = {
       retry?: ScheduleRetry
       timeoutSec?: number
       host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
-      runtime?: 'bare' | 'container'
+      runtime?: 'bare' | 'container' | 'k8s'
     }) => Promise<{ ok: true; id: string } | { error: string }>
     remove: (id: string) => Promise<boolean>
     toggle: (id: string, enabled: boolean) => Promise<boolean>

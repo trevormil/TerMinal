@@ -1377,7 +1377,7 @@ ipcMain.handle(
       retry?: { maxRetries: number; backoffSec: number }
       timeoutSec?: number
       host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
-      runtime?: 'bare' | 'container'
+      runtime?: 'bare' | 'container' | 'k8s'
     },
   ) => {
     // Normalize the optional flaky-run knobs; drop anything non-numeric so a

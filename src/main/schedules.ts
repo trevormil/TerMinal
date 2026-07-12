@@ -37,7 +37,7 @@ export type Schedule = {
    * the run executes in a Docker image whose entrypoint dispatches the engine
    * (opt-in; the same image is the future DOKS CronJob artifact). Landed in #13.
    */
-  runtime?: 'bare' | 'container'
+  runtime?: 'bare' | 'container' | 'k8s'
   /**
    * Per-schedule environment variables. Spread into the spawned wrapper's env
    * after the standard TERMINAL_* keys, so the schedule can pin parameterized

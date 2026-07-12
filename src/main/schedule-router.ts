@@ -10,6 +10,7 @@
 
 import { syncSchedule, unscheduleJob, reconcileSchedules } from './launchd'
 import { syncScheduleOnHost, reconcileSchedulesOnHost, type SystemdHost } from './systemd'
+import { applyScheduleOnHost, removeScheduleOnHost, reconcileScheduleCronJobs } from './k8s'
 import { remoteSchedules, type RemoteSessionRef } from './remote'
 import { readSettings, type RemoteHost } from './settings'
 import type { Schedule } from './schedules'
@@ -22,6 +23,10 @@ export type RouterDeps = {
   launchdReconcile: () => ReconcileResult
   systemdSync: (host: SystemdHost, s: Schedule) => Promise<{ ok: boolean; error?: string }>
   systemdReconcile: (host: SystemdHost, schedules: Schedule[]) => Promise<ReconcileResult>
+  // k8s (runtime:'k8s') → CronJob on the host's k3s instead of a systemd timer (#16).
+  k8sApply: (sshTarget: string, s: Schedule) => Promise<{ ok: boolean; error?: string }>
+  k8sRemove: (sshTarget: string, s: Schedule) => Promise<{ ok: boolean; error?: string }>
+  k8sReconcile: (sshTarget: string, schedules: Schedule[]) => Promise<ReconcileResult>
   pushRecord: (ref: RemoteSessionRef, s: Schedule) => Promise<unknown>
   removeRecord: (ref: RemoteSessionRef, id: string) => Promise<unknown>
   hosts: () => RemoteHost[]
@@ -33,6 +38,9 @@ const realDeps: RouterDeps = {
   launchdReconcile: reconcileSchedules,
   systemdSync: syncScheduleOnHost,
   systemdReconcile: reconcileSchedulesOnHost,
+  k8sApply: (t, s) => applyScheduleOnHost(t, s),
+  k8sRemove: (t, s) => removeScheduleOnHost(t, s),
+  k8sReconcile: (t, ss) => reconcileScheduleCronJobs(t, ss),
   pushRecord: (ref, s) => remoteSchedules.save(ref, s),
   removeRecord: (ref, id) => remoteSchedules.remove(ref, id),
   hosts: () => readSettings().remoteHosts,
@@ -60,11 +68,13 @@ export async function routeSyncSchedule(s: Schedule, deps: RouterDeps = realDeps
   const host = deps.hosts().find((h) => h.id === s.host)
   if (!host) return { ok: false, error: `unknown host: ${s.host}` }
   try {
+    // Both systemd and k8s run the same runner reading the host's schedules.json,
+    // so the record push is shared; only the trigger differs.
     await deps.pushRecord(sessionRef(host), s)
   } catch (e) {
     return { ok: false, error: `push schedule to host: ${(e as Error).message}` }
   }
-  return deps.systemdSync(systemdHost(host), s)
+  return s.runtime === 'k8s' ? deps.k8sApply(host.sshTarget, s) : deps.systemdSync(systemdHost(host), s)
 }
 
 // Tear down a schedule's trigger. Local → unschedule the launchd job. Host →
@@ -80,9 +90,11 @@ export async function routeRemoveSchedule(s: Schedule, deps: RouterDeps = realDe
   try {
     await deps.removeRecord(sessionRef(host), s.id)
   } catch {
-    /* best effort — still remove the unit below */
+    /* best effort — still remove the trigger below */
   }
-  return deps.systemdSync(systemdHost(host), { ...s, enabled: false })
+  return s.runtime === 'k8s'
+    ? deps.k8sRemove(host.sshTarget, s)
+    : deps.systemdSync(systemdHost(host), { ...s, enabled: false })
 }
 
 // Reconcile ONLY the host (systemd) trigger layers: one systemd reconcile per
@@ -101,10 +113,21 @@ export async function reconcileHosts(all: Schedule[], deps: RouterDeps = realDep
       agg.failed.push({ id: `host:${hostId}`, error: `unknown host: ${hostId}` })
       continue
     }
-    const r = await deps.systemdReconcile(systemdHost(host), schedules)
-    agg.loaded += r.loaded
-    agg.removed += r.removed
-    agg.failed.push(...r.failed)
+    // Split by trigger: systemd timers vs k8s CronJobs. Each reconcile removes its
+    // own orphans, so a schedule that switched runtimes is cleaned by the layer it
+    // left (its old timer/CronJob no longer appears in the other's wanted set).
+    const k8sScheds = schedules.filter((s) => s.runtime === 'k8s')
+    const sysScheds = schedules.filter((s) => s.runtime !== 'k8s')
+    const rs = await deps.systemdReconcile(systemdHost(host), sysScheds)
+    agg.loaded += rs.loaded
+    agg.removed += rs.removed
+    agg.failed.push(...rs.failed)
+    if (k8sScheds.length) {
+      const rk = await deps.k8sReconcile(host.sshTarget, k8sScheds)
+      agg.loaded += rk.loaded
+      agg.removed += rk.removed
+      agg.failed.push(...rk.failed)
+    }
   }
   return agg
 }

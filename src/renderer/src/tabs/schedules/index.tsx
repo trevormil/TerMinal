@@ -87,7 +87,7 @@ function ScheduleForm({
     retry?: ScheduleRetry,
     timeoutSec?: number,
     host?: string,
-    runtime?: 'bare' | 'container',
+    runtime?: 'bare' | 'container' | 'k8s',
   ) => Promise<void>
   onCustomSpawned: () => void
 }) {
@@ -106,7 +106,7 @@ function ScheduleForm({
   // (not when already attached to a remote session). Linux hosts only — the
   // systemd trigger layer is Linux-specific.
   const [host, setHost] = useState('')
-  const [runtime, setRuntime] = useState<'bare' | 'container'>('bare')
+  const [runtime, setRuntime] = useState<'bare' | 'container' | 'k8s'>('bare')
   const [hostOptions, setHostOptions] = useState<{ id: string; label: string }[]>([])
   // Reachability per host — hosts go down routinely (tailscale reauth ~24h, asleep),
   // so probe up front and show it in the selector instead of failing at save time.
@@ -350,9 +350,10 @@ function ScheduleForm({
               })}
             </select>
             {host && (
-              <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container')} className={FIELD}>
+              <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container' | 'k8s')} className={FIELD}>
                 <option value="bare">bare</option>
                 <option value="container">container</option>
+                <option value="k8s">k8s (k3s CronJob)</option>
               </select>
             )}
             {host && hostHealth[host] && !hostHealth[host].reachable && (
@@ -623,7 +624,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     retry?: ScheduleRetry,
     timeoutSec?: number,
     host?: string,
-    runtime?: 'bare' | 'container',
+    runtime?: 'bare' | 'container' | 'k8s',
   ) => {
     const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec, host, runtime })
     if (r && 'error' in r) throw new Error(r.error)

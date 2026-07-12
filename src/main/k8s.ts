@@ -11,6 +11,11 @@ import { execFile } from 'node:child_process'
 import { isSafeSshTarget } from './remote'
 import { isSafeUnitId } from './systemd'
 import type { ScheduleSpec } from './cron'
+import type { Schedule } from './schedules'
+
+const DEFAULT_IMAGE = 'terminal-agent:latest'
+const DEFAULT_TIMEOUT_SEC = 1800
+const DEFAULT_BACKOFF = 2
 
 const PREFIX = 'terminal-cron-'
 const name = (id: string) => `${PREFIX}${id}`
@@ -138,6 +143,70 @@ export async function applyCronJobOnHost(
 ): Promise<{ ok: boolean; error?: string }> {
   const r = await ssh(host.sshTarget, applyManifestCmd(), buildCronJobManifest(id, spec, o))
   return r.ok ? { ok: true } : { ok: false, error: r.error }
+}
+
+export type HostFacts = { uid: number; gid: number; home: string }
+
+// Resolve the host's uid/gid/home for the CronJob manifest (k8s needs real numbers
+// + an absolute path, unlike the systemd %-specifiers). One cheap SSH round trip.
+export async function resolveHostFacts(sshTarget: string): Promise<HostFacts | null> {
+  const r = await ssh(sshTarget, 'printf "%s\\n%s\\n%s" "$(id -u)" "$(id -g)" "$HOME"')
+  if (!r.ok) return null
+  const [u, g, home] = r.stdout.trim().split('\n')
+  const uid = Number(u)
+  const gid = Number(g)
+  if (!Number.isInteger(uid) || !Number.isInteger(gid) || !home) return null
+  return { uid, gid, home }
+}
+
+// Build CronJobOpts from host facts + a schedule. Expands a ~/-relative repoRoot
+// (stored by #18) to the absolute host path; pulls timeout/backoff from the
+// schedule's retry policy.
+export function optsForSchedule(facts: HostFacts, s: Schedule, image = DEFAULT_IMAGE): CronJobOpts {
+  const repoRoot = s.repoRoot.startsWith('~/') ? `${facts.home}/${s.repoRoot.slice(2)}` : s.repoRoot
+  return {
+    image,
+    home: facts.home,
+    cfgDir: `${facts.home}/.config/TerMinal`,
+    repoRoot,
+    uid: facts.uid,
+    gid: facts.gid,
+    timeoutSec: s.timeoutSec && s.timeoutSec > 0 ? s.timeoutSec : DEFAULT_TIMEOUT_SEC,
+    backoffLimit: s.retry?.maxRetries ?? DEFAULT_BACKOFF,
+  }
+}
+
+// Apply/reconcile CronJobs for k8s-runtime schedules on a host — resolves host
+// facts once, then applies each. The router calls these; they keep all k8s
+// specifics (fact resolution, opts building) out of the router.
+export async function applyScheduleOnHost(sshTarget: string, s: Schedule, image?: string): Promise<{ ok: boolean; error?: string }> {
+  const facts = await resolveHostFacts(sshTarget)
+  if (!facts) return { ok: false, error: 'could not resolve host uid/gid/home for the CronJob' }
+  return applyCronJobOnHost({ sshTarget }, s.id, s.spec, optsForSchedule(facts, s, image))
+}
+
+export async function removeScheduleOnHost(sshTarget: string, s: Schedule): Promise<{ ok: boolean; error?: string }> {
+  return deleteCronJobOnHost({ sshTarget }, s.id)
+}
+
+export async function reconcileScheduleCronJobs(
+  sshTarget: string,
+  schedules: Schedule[],
+  image?: string,
+): Promise<{ loaded: number; removed: number; failed: { id: string; error: string }[] }> {
+  const enabled = schedules.filter((s) => s.enabled)
+  let facts: HostFacts | null = null
+  if (enabled.length) {
+    facts = await resolveHostFacts(sshTarget)
+    if (!facts) return { loaded: 0, removed: 0, failed: [{ id: '*', error: 'could not resolve host facts' }] }
+  }
+  // enabled.map only runs when facts is set (guarded above); [] still reconciles to
+  // delete orphan CronJobs for a host whose k8s schedules were all removed.
+  const r = await reconcileCronJobsOnHost(
+    { sshTarget },
+    enabled.map((s) => ({ id: s.id, spec: s.spec, opts: optsForSchedule(facts!, s, image) })),
+  )
+  return { loaded: r.applied, removed: r.removed, failed: r.failed }
 }
 
 export async function deleteCronJobOnHost(host: K8sHost, id: string): Promise<{ ok: boolean; error?: string }> {

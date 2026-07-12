@@ -33,6 +33,9 @@ function fakeDeps(over: Partial<RouterDeps> = {}): RouterDeps {
     launchdReconcile: mock(() => ({ loaded: 1, removed: 0, failed: [] })),
     systemdSync: mock(async () => ({ ok: true })),
     systemdReconcile: mock(async () => ({ loaded: 0, removed: 0, failed: [] })),
+    k8sApply: mock(async () => ({ ok: true })),
+    k8sRemove: mock(async () => ({ ok: true })),
+    k8sReconcile: mock(async () => ({ loaded: 0, removed: 0, failed: [] })),
     pushRecord: mock(async () => ({ ok: true, id: 's1' })),
     removeRecord: mock(async () => true),
     hosts: () => [host('tm'), host('box2')],
@@ -80,6 +83,14 @@ describe('routeSyncSchedule', () => {
     const r = await routeSyncSchedule(sched({ host: 'tm' }), d)
     expect(r.ok).toBe(false)
     expect(r.error).toContain('bus not found')
+  })
+  test('runtime:k8s host schedule pushes the record then applies a CronJob, not a systemd unit', async () => {
+    const d = fakeDeps()
+    const r = await routeSyncSchedule(sched({ host: 'tm', runtime: 'k8s' }), d)
+    expect(r.ok).toBe(true)
+    expect(d.pushRecord).toHaveBeenCalledTimes(1) // runner still reads schedules.json
+    expect(d.k8sApply).toHaveBeenCalledTimes(1)
+    expect(d.systemdSync).not.toHaveBeenCalled()
   })
 })
 
