@@ -70,6 +70,19 @@ and loops over `remoteHosts[]`; nothing is single-host.
 shape, runs appear in the Runs tab with a host badge for free
 (`collectRemoteRuns` already stamps `hostId`/`hostLabel`).
 
+**Cross-host data plane (2026-07-12).** State is coherent across hosts by leaning on
+whatever store is *already global*, and only aggregating what is genuinely host-local:
+- **PRs/MRs → the forge; code/branches → git remote.** Global by construction, zero sync.
+- **Tickets → left as-is** (per-repo backlog / provider) — the operator confirmed this is
+  fine; not made cross-host here.
+- **Runs + HITL → control-plane fan-out.** The Mac reads all hosts over SSH (host-stamped)
+  and routes writes/resolves back to the owning host (`collectRemoteRuns`,
+  `collectRemoteHitl`, `hitl:resolve`/`remove` route by `hostId`).
+- **Budgets, kill-switch, circuit-breaker, agent-state → intentionally PER-HOST, not
+  centralized.** Hosts are single-purpose (one host per kind of work), so separate limits
+  are correct, not a gap. Revisit only if one host ever runs mixed workloads that must
+  share a global cap.
+
 ## [3] Consequences
 
 - Schedules fire regardless of laptop state, on any number of registered Linux hosts.

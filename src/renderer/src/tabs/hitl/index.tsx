@@ -121,7 +121,7 @@ export function InboxDrawer({
     if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
     setResolvingAll(true)
     try {
-      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true).catch(() => false)))
+      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)))
       await reload()
     } finally {
       setResolvingAll(false)
@@ -290,7 +290,7 @@ export function InboxDrawer({
                     {h.status === 'open' ? (
                       <button
                         onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, true)
+                          await window.gt.hitl.resolve(h.id, true, h.hostId)
                           reload()
                         }}
                         className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
@@ -301,7 +301,7 @@ export function InboxDrawer({
                     ) : (
                       <button
                         onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, false)
+                          await window.gt.hitl.resolve(h.id, false, h.hostId)
                           reload()
                         }}
                         title="Reopen"
@@ -318,7 +318,7 @@ export function InboxDrawer({
                           )
                         )
                           return
-                        await window.gt.hitl.remove(h.id)
+                        await window.gt.hitl.remove(h.id, h.hostId)
                         reload()
                       }}
                       title="Remove"

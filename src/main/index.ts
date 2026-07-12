@@ -1666,8 +1666,23 @@ ipcMain.handle('hitl:remote-all', () => {
   })
 })
 ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))
-ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean) => resolveHitl(id, resolved ?? true))
-ipcMain.handle('hitl:remove', (_e, id: string) => removeHitl(id))
+// Resolve/remove route to the item's host when it came from the remote fan-out
+// (#14) — resolving a host block on the Mac must write on the host that owns it,
+// not locally. No hostId → local, as before.
+ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean, hostId?: string) => {
+  if (hostId) {
+    const ref = remoteFromHostId(hostId)
+    if (ref) return remoteHitl.resolve(ref, id, resolved ?? true).catch(() => false)
+  }
+  return resolveHitl(id, resolved ?? true)
+})
+ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
+  if (hostId) {
+    const ref = remoteFromHostId(hostId)
+    if (ref) return remoteHitl.remove(ref, id).catch(() => false)
+  }
+  return removeHitl(id)
+})
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.
 ipcMain.handle('factory:health', () => factoryHealth())
 ipcMain.handle('factory:start', (_e, engine: Engine) => {

@@ -179,8 +179,8 @@ const gt = {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
     file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
-    resolve: (id: string, resolved?: boolean) => ipcRenderer.invoke('hitl:resolve', id, resolved),
-    remove: (id: string) => ipcRenderer.invoke('hitl:remove', id),
+    resolve: (id: string, resolved?: boolean, hostId?: string) => ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
+    remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
   },
   factory: {
     health: () => ipcRenderer.invoke('factory:health'),

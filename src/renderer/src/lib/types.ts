@@ -1576,8 +1576,8 @@ export type GtApi = {
     list: () => Promise<HitlItem[]>
     remoteAll: () => Promise<{ items: HitlItem[]; errors: { hostId: string; label: string; error: string }[] }>
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
-    resolve: (id: string, resolved?: boolean) => Promise<boolean>
-    remove: (id: string) => Promise<boolean>
+    resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
+    remove: (id: string, hostId?: string) => Promise<boolean>
   }
   factory: {
     health: () => Promise<FactoryHealth>
