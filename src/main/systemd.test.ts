@@ -8,6 +8,7 @@ import {
   removeUnitCmd,
   listUnitsCmd,
   parseInstalledUnits,
+  containerExecStart,
 } from './systemd'
 
 describe('specToOnCalendar', () => {
@@ -87,6 +88,59 @@ describe('renderUnits', () => {
     expect(timer).toContain('OnCalendar=Fri *-*-* 09:30:00')
     expect(timer).toContain('Persistent=true')
     expect(timer).toContain('WantedBy=timers.target')
+  })
+})
+
+describe('containerExecStart (runtime: container)', () => {
+  const opts = {
+    image: 'terminal-agent:latest',
+    home: '/home/u',
+    cfgDir: '/home/u/.config/TerMinal',
+    repoRoot: '/home/u/repos/app',
+    credDirs: ['/home/u/.claude', '/home/u/.codex'],
+  }
+  const cmd = containerExecStart('coverage', opts)
+  test('runs an ephemeral, named container of the image with `run <id>`', () => {
+    // /usr/bin/env so systemd (which resolves ExecStart against the manager PATH,
+    // not the unit PATH) can find snap-installed docker in /snap/bin.
+    expect(cmd).toContain('/usr/bin/env docker run --rm')
+    expect(cmd).toContain('--name terminal-cron-coverage')
+    expect(cmd).toMatch(/terminal-agent:latest run coverage$/)
+  })
+  test('mounts cfg (records land on host) + repo at their real paths, HOME set', () => {
+    expect(cmd).toContain('-e HOME=/home/u')
+    expect(cmd).toContain('-v /home/u/.config/TerMinal:/home/u/.config/TerMinal')
+    expect(cmd).toContain('-v /home/u/repos/app:/home/u/repos/app')
+  })
+  test('mounts credential dirs read-only', () => {
+    expect(cmd).toContain('-v /home/u/.claude:/home/u/.claude:ro')
+    expect(cmd).toContain('-v /home/u/.codex:/home/u/.codex:ro')
+  })
+  test('rejects an unsafe schedule id (never interpolate into the container name)', () => {
+    expect(() => containerExecStart('a;rm -rf', opts)).toThrow()
+  })
+})
+
+describe('renderUnits with container runtime', () => {
+  const { service } = renderUnits(
+    'coverage',
+    { kind: 'calendar', minute: 0, hour: 8 },
+    {
+      bun: 'bun',
+      runner: 'r',
+      env: {},
+      container: {
+        image: 'terminal-agent:latest',
+        home: '/home/u',
+        cfgDir: '/home/u/.config/TerMinal',
+        repoRoot: '/home/u/repos/app',
+      },
+    },
+  )
+  test('ExecStart is the docker run, not the bare bun runner', () => {
+    expect(service).toContain('ExecStart=/usr/bin/env docker run --rm')
+    expect(service).toContain('terminal-agent:latest run coverage')
+    expect(service).not.toContain('ExecStart=bun r run coverage')
   })
 })
 

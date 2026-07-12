@@ -48,11 +48,51 @@ export function specToOnCalendar(spec: ScheduleSpec): string[] {
   return specToTrigger(spec).entries.map(dictToOnCalendar)
 }
 
+// Container execution (ADR-0002 C3, #13). Runs the SAME bundled runner inside a
+// Docker image, mounting the host cfg dir (so cron-runs records still land on the
+// host → Runs tab reads them for free) and the repo at their real paths, plus
+// credential dirs read-only. The image + this contract are reused by the k3s
+// CronJob path (#16).
+export type ContainerRun = {
+  image: string
+  home: string
+  cfgDir: string // host ~/.config/TerMinal — mounted at the same path
+  repoRoot: string // host repo — mounted at the same path so worktree paths resolve
+  credDirs?: string[] // e.g. ~/.claude, ~/.codex — mounted read-only for engine auth
+  user?: string // run as this uid:gid so mounted-dir writes are owned by the host user, not root
+}
+
+// Build the `docker run` command that executes the runner in a container for a
+// schedule. Same-path bind mounts keep the runner's absolute paths valid; the id
+// is guarded so it can never break out of the --name/argv.
+export function containerExecStart(id: string, c: ContainerRun): string {
+  if (!isSafeUnitId(id)) throw new Error(`unsafe schedule id: ${id}`)
+  const mounts = [
+    `-v ${c.cfgDir}:${c.cfgDir}`,
+    `-v ${c.repoRoot}:${c.repoRoot}`,
+    ...(c.credDirs || []).map((d) => `-v ${d}:${d}:ro`),
+  ]
+  // systemd ExecStart needs an absolute executable and resolves it against the
+  // MANAGER's PATH, not the unit's Environment=PATH — so a bare `docker` (snap
+  // installs it in /snap/bin) fails with status 203/EXEC. `/usr/bin/env` is
+  // absolute and does resolve `docker` via the unit's PATH. Host-agnostic.
+  return [
+    '/usr/bin/env docker run --rm',
+    ...(c.user ? [`--user ${c.user}`] : []),
+    `--name ${unitName(id)}`,
+    `-e HOME=${c.home}`,
+    ...mounts,
+    c.image,
+    `run ${id}`,
+  ].join(' ')
+}
+
 export type RenderOpts = {
   bun: string
   runner: string
   description?: string
   env?: Record<string, string>
+  container?: ContainerRun // present → ExecStart runs the runner in a container instead of bare
 }
 
 // Render the .service + .timer pair for a schedule. Pure: all host-specific
@@ -64,13 +104,15 @@ export function renderUnits(id: string, spec: ScheduleSpec, opts: RenderOpts): {
     .map(([k, v]) => `Environment=${k}=${v}`)
     .join('\n')
   // Type=oneshot: the runner does one bounded run then exits; the timer, not
-  // systemd restart logic, controls cadence.
+  // systemd restart logic, controls cadence. runtime:container → the run executes
+  // in a Docker image (same runner inside); bare → the runner directly on the host.
+  const execStart = opts.container ? containerExecStart(id, opts.container) : `${opts.bun} ${opts.runner} run ${id}`
   const service =
     `[Unit]\n` +
     `Description=${desc}\n\n` +
     `[Service]\n` +
     `Type=oneshot\n` +
-    `ExecStart=${opts.bun} ${opts.runner} run ${id}\n` +
+    `ExecStart=${execStart}\n` +
     (envLines ? `${envLines}\n` : '')
   // Persistent=true re-fires a run missed while the host was asleep/off — the
   // systemd equivalent of launchd firing on wake.
@@ -147,6 +189,7 @@ export type SystemdHost = {
   runner?: string
   home?: string
   path?: string
+  image?: string // container-runtime image override (default terminal-agent:latest)
 }
 
 // systemd expands %h to the user's home in unit files (ExecStart/Environment);
@@ -156,7 +199,8 @@ const DEFAULT_RUNNER = '%h/.config/TerMinal/bin/terminal-cron'
 const DEFAULT_BUN = '%h/.bun/bin/bun'
 // A sane PATH for the fired timer — --user services otherwise get a minimal PATH
 // and can't find bun/claude/codex/gh/glab. Provisioning (#12) can override.
-const DEFAULT_PATH = '%h/.local/bin:%h/.bun/bin:%h/.npm-global/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin'
+const DEFAULT_PATH = '%h/.local/bin:%h/.bun/bin:%h/.npm-global/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin'
+const DEFAULT_IMAGE = 'terminal-agent:latest'
 
 function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; stdout: string; error?: string }> {
   return new Promise((resolve) => {
@@ -176,12 +220,25 @@ function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; s
   })
 }
 
-function renderOptsFor(host: SystemdHost): RenderOpts {
-  return {
+function renderOptsFor(host: SystemdHost, s: Schedule): RenderOpts {
+  const opts: RenderOpts = {
     bun: host.bun || DEFAULT_BUN,
     runner: host.runner || DEFAULT_RUNNER,
     env: { PATH: host.path || DEFAULT_PATH },
   }
+  if (s.runtime === 'container') {
+    // systemd expands %h/%U/%G in ExecStart at fire time, so the docker mounts +
+    // uid resolve to the real host user without us knowing the absolute home here.
+    opts.container = {
+      image: host.image || DEFAULT_IMAGE,
+      home: '%h',
+      cfgDir: '%h/.config/TerMinal',
+      repoRoot: s.repoRoot,
+      credDirs: ['%h/.claude', '%h/.codex'],
+      user: '%U:%G',
+    }
+  }
+  return opts
 }
 
 // Install/enable an enabled schedule's timer on the host, or remove it when
@@ -196,7 +253,7 @@ export async function syncScheduleOnHost(
     const r = await sshExec(host.sshTarget, removeUnitCmd(s.id))
     return r.ok ? { ok: true } : { ok: false, error: r.error }
   }
-  const { service, timer } = renderUnits(s.id, s.spec, renderOptsFor(host))
+  const { service, timer } = renderUnits(s.id, s.spec, renderOptsFor(host, s))
   const r = await sshExec(host.sshTarget, installUnitsCmd(s.id, service, timer))
   return r.ok ? { ok: true } : { ok: false, error: r.error }
 }
