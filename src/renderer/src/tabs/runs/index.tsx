@@ -238,7 +238,12 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     setRerunError('')
     try {
       if (run.source === 'cron' && run.scheduleId) {
-        await window.gt.schedules.runNow(run.scheduleId)
+        // Re-run on the owning host (systemd/k8s fleet) when remote, else local.
+        const r = await window.gt.schedules.runNow(run.scheduleId, run.hostId)
+        if (r && 'error' in r) {
+          setRerunError(r.error)
+          return
+        }
       } else if (run.source === 'agent') {
         const r = await window.gt.agents.rerun(run.id)
         if ('error' in r) {
@@ -594,19 +599,31 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 )}
               <button
                 onClick={() => handleRerun(selectedRun)}
-                disabled={rerunBusy || selectedRun.status === 'running' || selectedRun.source === 'bg' || selectedRun.source === 'session' || !!selectedRun.hostId}
+                disabled={
+                  rerunBusy ||
+                  selectedRun.status === 'running' ||
+                  // Re-runnable: any cron run with a scheduleId (local OR remote — the
+                  // host re-fires it), or a LOCAL agent run. Remote-agent/bg/session
+                  // have no re-run primitive yet.
+                  !(
+                    (selectedRun.source === 'cron' && !!selectedRun.scheduleId) ||
+                    (selectedRun.source === 'agent' && !selectedRun.hostId)
+                  )
+                }
                 title={
-                  selectedRun.hostId
-                    ? 'Remote runs are re-run from the host itself, not from here yet'
-                    : selectedRun.status === 'running'
+                  selectedRun.status === 'running'
                     ? 'Already running'
                     : selectedRun.source === 'bg'
                       ? 'Background inbox tasks cannot be re-run from here yet'
-                    : selectedRun.source === 'session'
-                      ? 'Terminal sessions cannot be re-run from here yet'
-                    : selectedRun.source === 'cron' && !selectedRun.scheduleId
-                      ? 'Cron run without scheduleId — cannot re-fire'
-                      : 'Re-run this agent'
+                      : selectedRun.source === 'session'
+                        ? 'Terminal sessions cannot be re-run from here yet'
+                        : selectedRun.source === 'agent' && selectedRun.hostId
+                          ? 'Remote agent runs cannot be re-run from here yet'
+                          : selectedRun.source === 'cron' && !selectedRun.scheduleId
+                            ? 'Cron run without scheduleId — cannot re-fire'
+                            : selectedRun.hostId
+                              ? `Re-run on ${selectedRun.hostLabel || selectedRun.hostId}`
+                              : 'Re-run this agent'
                 }
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
               >

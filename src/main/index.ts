@@ -1538,8 +1538,10 @@ ipcMain.handle('schedules:toggle', async (_e, id: string, enabled: boolean) => {
   }
   return ok
 })
-ipcMain.handle('schedules:run-now', async (_e, id: string) => {
-  const remote = curRemote()
+ipcMain.handle('schedules:run-now', async (_e, id: string, hostId?: string) => {
+  // Re-run a run on the host that owns it (hostId) — the fleet re-run path —
+  // else the attached-session remote, else local.
+  const remote = hostId ? remoteFromHostId(hostId) : curRemote()
   if (remote) {
     const sched = (await remoteSchedules.list(remote).catch(() => [])).find((s) => s.id === id)
     const run = await remoteSchedules.runNow(remote, id, {
