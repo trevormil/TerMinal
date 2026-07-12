@@ -11,6 +11,11 @@ import * as pty from 'node-pty'
 // exist — derive the module dir the ESM-canonical way or the window never opens.
 const moduleDir = dirname(fileURLToPath(import.meta.url))
 
+// The bundled headless runner's source path — packaged (Resources) vs dev (repo
+// bin/). Used to install it locally and to push it to remote hosts on provision.
+const runnerSrcPath = () =>
+  app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+
 function sourceCheckoutRoot(marker: string): string {
   const candidates = [process.env.GT_TERMINAL_REPO || '', process.cwd(), app.getAppPath(), join(moduleDir, '..', '..')].filter(Boolean)
   for (const c of candidates) {
@@ -165,6 +170,7 @@ import {
   isJobLoaded,
 } from './launchd'
 import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
+import { provisionHost } from './host-provision'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   appendSessionRunLog,
@@ -784,7 +790,7 @@ function createWindow() {
   // Real cron: install the headless runner at its stable path, then reconcile
   // launchd ↔ schedules.json (loads enabled jobs, removes any orphans). Jobs
   // fire via launchd even when the app is closed — no in-app ticker.
-  const runnerSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+  const runnerSrc = runnerSrcPath()
   installRunner(runnerSrc)
   const cliSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
   installCli(cliSrc)
@@ -1603,6 +1609,15 @@ ipcMain.handle('schedules:run-log', (_e, runId: string) => {
 ipcMain.handle('schedules:reconcile', () =>
   curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : routeReconcile(readSchedules()),
 )
+// Prepare a Linux host to run scheduled agents via systemd: install Bun, enable
+// linger (headless firing), install the runner, report readiness (ADR-0002 #12).
+ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
+  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
+  if (!host) return { ok: false, error: `unknown host: ${hostId}` }
+  const engines = Object.keys(host.daemon?.engines || {})
+  const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'])
+  return { ok: r.ready, ...r }
+})
 ipcMain.handle('listeners:status', () => readListenerStatus())
 ipcMain.handle('listeners:process', () => {
   const r = processListenerInbox()

@@ -1357,6 +1357,19 @@ export type GtApi = {
     name: string,
     parentDir?: string,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>
+  // Provision a Linux host to run scheduled agents via systemd (ADR-0002 #12):
+  // install Bun, enable linger, install the runner; returns a readiness report.
+  provisionHost: (hostId: string) => Promise<{
+    ok?: boolean
+    error?: string
+    bun?: string | null
+    linger?: boolean
+    runner?: boolean
+    engines?: Record<string, boolean>
+    ready?: boolean
+    missing?: string[]
+    log?: string
+  }>
   isFullscreen: () => Promise<boolean>
   onFullscreen: (cb: (v: boolean) => void) => () => void
   settings: {
