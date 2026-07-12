@@ -967,6 +967,14 @@ export type RunArtifact = {
   reportPath: string
   summary?: string
 }
+export type RunTrendPoint = {
+  date: string
+  total: number
+  succeeded: number
+  failed: number
+  successRate: number
+  avgDurationMs: number
+}
 export type UnifiedRun = {
   id: string
   source: 'cron' | 'agent' | 'bg' | 'session'
@@ -1454,6 +1462,7 @@ export type GtApi = {
     }>
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
     runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
+    runTrends: (days?: number) => Promise<RunTrendPoint[]>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>

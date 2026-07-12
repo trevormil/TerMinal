@@ -185,6 +185,7 @@ import {
   readCronRunLog,
   readSessionRunLog,
   listAllRuns,
+  runTrends,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
@@ -1610,6 +1611,8 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', run
 // .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
 // on its host. The renderer opens a report via openExternal(file://…).
 ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
+// Success-rate / duration trend over the last N days (#6) for the Runs tab.
+ipcMain.handle('runs:trends', (_e, days?: number) => runTrends(days ?? 14))
 ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
   if (curRemote()) return false

@@ -5,7 +5,7 @@ import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
-import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
+import type { Tab, TabContext, UnifiedRun, RunArtifact, RunTrendPoint } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -104,6 +104,8 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
+  // 14-day success-rate / duration trend (#6) — GitHub Insights equivalent.
+  const [trends, setTrends] = useState<RunTrendPoint[]>([])
   const reloadCosts = async () => {
     try {
       const ai = await window.gt.observability.runs(500)
@@ -118,6 +120,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     reloadLocal()
     reloadRemote()
     reloadCosts()
+    window.gt.agents.runTrends(14).then(setTrends).catch(() => {})
     // Always refresh local + costs (cheap local IPC). Gating local refresh on
     // "something is already running" latched the poll OFF whenever the snapshot
     // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
@@ -369,6 +372,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               <RefreshCw size={11} strokeWidth={2} />
             </button>
           </div>
+          {/* 14-day trend strip (#6): one cell per day, height ∝ volume, color by
+              success rate. Hover for the numbers. A quick "is the factory healthy?" */}
+          {trends.some((d) => d.total > 0) && (
+            <div className="flex items-end gap-[3px]" title="Run success rate — last 14 days">
+              {trends.map((d) => {
+                const rate = d.succeeded + d.failed > 0 ? d.successRate : null
+                const h = d.total === 0 ? 3 : 4 + Math.min(16, Math.round(Math.log2(d.total + 1) * 6))
+                const color =
+                  rate === null ? 'var(--gt-border)' : rate >= 0.99 ? 'var(--gt-green)' : rate >= 0.75 ? '#d4a017' : 'var(--gt-red)'
+                return (
+                  <div
+                    key={d.date}
+                    style={{ height: h, backgroundColor: color, opacity: d.total === 0 ? 0.35 : 0.85 }}
+                    className="w-[7px] rounded-[1.5px]"
+                    title={`${d.date} · ${d.total} run${d.total === 1 ? '' : 's'}${
+                      d.succeeded + d.failed > 0 ? ` · ${Math.round(d.successRate * 100)}% ok` : ''
+                    }${d.avgDurationMs ? ` · ~${fmtDuration(d.avgDurationMs)}` : ''}`}
+                  />
+                )
+              })}
+              <span className="ml-1.5 text-[9.5px] text-zinc-600">14d</span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             <input
               value={search}
