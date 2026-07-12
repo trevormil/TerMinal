@@ -1475,12 +1475,15 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     }
     emitActivity({
       // infra/run failures surface as 'error' (notify) so they don't hide in the
-      // agent-run stream; normal completions stay 'agent-run'.
+      // agent-run stream; normal completions stay 'agent-run'. The failure ping
+      // carries the exit code so it's actionable from the notification alone.
       kind: status === 'failed' || status === 'interrupted' ? 'error' : 'agent-run',
       title: `Agent ${status} · ${spec.title}`,
-      detail: `${spec.engine} · ${branch}`,
+      detail: `${spec.engine} · ${branch}${status === 'failed' && exitCode != null ? ` · exit ${exitCode}` : ''}`,
       repo: repoLabel,
       repoRoot,
+      runId: run.id,
+      runSource: 'agent',
     })
   }
 
