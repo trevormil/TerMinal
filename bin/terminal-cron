@@ -796,7 +796,10 @@ async function runSchedule(id) {
   const runId = randomUUID()
   const ts = Date.now()
   const tag = `${ts}-${runId.slice(0, 4)}`
-  const repo = sched.repoRoot
+  // Host-targeted schedules store a host-relative repoRoot (e.g. ~/repos/<name>,
+  // per ADR-0002 #18) since the app that saved them ran on a different machine.
+  // Expand a leading ~/ against THIS host's home so worktree/base paths resolve.
+  const repo = sched.repoRoot.startsWith('~/') ? join(homedir(), sched.repoRoot.slice(2)) : sched.repoRoot
   const repoBase = repo.split('/').pop() || 'repo'
   const worktree = join(WT_DIR, repoBase, `${id}-${tag}`)
   const branch = `cron/${sched.agentId}-${tag}`

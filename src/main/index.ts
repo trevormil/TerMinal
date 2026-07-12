@@ -174,6 +174,7 @@ import {
 import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
 import { provisionHost } from './host-provision'
 import { checkHostHealth } from './host-health'
+import { ensureHostRepo } from './host-repo'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   appendSessionRunLog,
@@ -1430,8 +1431,19 @@ ipcMain.handle(
     if (!root) return { error: 'not a git repo' }
     const agent = readAgents(root).find((a) => a.id === input.agentId)
     if (!agent) return { error: 'unknown agent' }
+    // Host-targeted schedule: store the HOST repo path (~/repos/<name>, expanded by
+    // the runner on the host) and ensure the repo is cloned there — the Mac repo
+    // path wouldn't exist on the host, so the runner's worktree base would fail (#18).
+    let hostRepoRootPath: string | undefined
+    if (input.host) {
+      const h = readSettings().remoteHosts.find((x) => x.id === input.host)
+      if (!h) return { error: `unknown host: ${input.host}` }
+      const er = await ensureHostRepo(h.sshTarget, root)
+      if (!er.ok) return { error: `host repo: ${er.error}` }
+      hostRepoRootPath = er.repoRoot
+    }
     const base: NewSchedule = {
-      repoRoot: root,
+      repoRoot: hostRepoRootPath || root,
       repoLabel: repoForCwd(cur().cwd)?.path || basename(root),
       agentId: agent.id,
       agentTitle: agent.title,
