@@ -244,6 +244,12 @@ function bootstrap(id: string): boolean {
 // Returns ok=false (with a reason) if launchd didn't actually load the job.
 export function syncSchedule(s: Schedule): { ok: boolean; error?: string } {
   mkdirSync(LA_DIR, { recursive: true })
+  // Host-targeted schedules fire via systemd on that host (ADR-0002), never
+  // launchd — tear down any local plist left over from when it ran locally.
+  if (s.host) {
+    unscheduleJob(s.id)
+    return { ok: true }
+  }
   if (!s.enabled) {
     bootout(s.id)
     try {
@@ -296,7 +302,10 @@ export function reconcileSchedules(): {
   removed: number
   failed: { id: string; error: string }[]
 } {
-  const schedules = readSchedules()
+  // Only local schedules (no host) are launchd's business; host-targeted ones
+  // are reconciled via systemd in schedule-router.ts. A plist whose schedule
+  // moved to a host is therefore treated as an orphan and removed below.
+  const schedules = readSchedules().filter((s) => !s.host)
   const byId = new Map(schedules.map((s) => [s.id, s]))
   let removed = 0
   let loaded = 0

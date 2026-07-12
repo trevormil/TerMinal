@@ -149,7 +149,14 @@ export type SystemdHost = {
   path?: string
 }
 
-const DEFAULT_RUNNER = '$HOME/.config/TerMinal/bin/terminal-cron'
+// systemd expands %h to the user's home in unit files (ExecStart/Environment);
+// plain $HOME would be taken literally there since Environment= does no shell
+// expansion. Use %h so units resolve without the caller knowing the abs home.
+const DEFAULT_RUNNER = '%h/.config/TerMinal/bin/terminal-cron'
+const DEFAULT_BUN = '%h/.bun/bin/bun'
+// A sane PATH for the fired timer — --user services otherwise get a minimal PATH
+// and can't find bun/claude/codex/gh/glab. Provisioning (#12) can override.
+const DEFAULT_PATH = '%h/.local/bin:%h/.bun/bin:%h/.npm-global/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin'
 
 function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; stdout: string; error?: string }> {
   return new Promise((resolve) => {
@@ -171,12 +178,9 @@ function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; s
 
 function renderOptsFor(host: SystemdHost): RenderOpts {
   return {
-    bun: host.bun || 'bun',
+    bun: host.bun || DEFAULT_BUN,
     runner: host.runner || DEFAULT_RUNNER,
-    env: {
-      HOME: host.home || '$HOME',
-      ...(host.path ? { PATH: host.path } : {}),
-    },
+    env: { PATH: host.path || DEFAULT_PATH },
   }
 }
 

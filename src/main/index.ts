@@ -159,12 +159,12 @@ import {
   installOrTier,
   // mcp-register pulled separately below; not part of launchd helpers.
   reconcileSchedules,
-  syncSchedule,
   unscheduleJob,
   removeAllJobs,
   runScheduleNow,
   isJobLoaded,
 } from './launchd'
+import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
 import { registerMcpEverywhere } from './mcp-register'
 import {
   appendSessionRunLog,
@@ -812,6 +812,9 @@ function createWindow() {
   }
   try {
     const rec = reconcileSchedules()
+    // Host (systemd) schedules reconcile over SSH — fire-and-forget so an
+    // unreachable host never delays startup (ADR-0002). Local launchd above is sync.
+    void reconcileHosts(readSchedules()).catch(() => {})
     if (rec.failed.length) {
       // A schedule that didn't load into launchd never fires. Don't swallow it:
       // log every failure and surface one Activity event so it's visible.
@@ -1350,7 +1353,7 @@ ipcMain.handle('schedules:list', () => {
 })
 ipcMain.handle(
   'schedules:save',
-  (
+  async (
     _e,
     input: {
       id?: string
@@ -1362,6 +1365,8 @@ ipcMain.handle(
       env?: Record<string, string>
       retry?: { maxRetries: number; backoffSec: number }
       timeoutSec?: number
+      host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
+      runtime?: 'bare' | 'container'
     },
   ) => {
     // Normalize the optional flaky-run knobs; drop anything non-numeric so a
@@ -1431,11 +1436,13 @@ ipcMain.handle(
       env: sanitizeScheduleEnv(input.env),
       retry,
       timeoutSec,
+      host: input.host || undefined,
+      runtime: input.runtime,
     }
     const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
     if (!sched) return { error: 'schedule not found' }
-    const r = syncSchedule(sched)
-    if (!r.ok) return { error: `launchd: ${r.error}` }
+    const r = await routeSyncSchedule(sched)
+    if (!r.ok) return { error: r.error }
     emitActivity({
       kind: 'check',
       title: `Schedule ${input.id ? 'updated' : 'created'} · ${agent.title}`,
@@ -1459,11 +1466,12 @@ function sanitizeScheduleEnv(raw: unknown): Record<string, string> | undefined {
   }
   return Object.keys(out).length ? out : undefined
 }
-ipcMain.handle('schedules:remove', (_e, id: string) => {
+ipcMain.handle('schedules:remove', async (_e, id: string) => {
   const remote = curRemote()
   if (remote) return remoteSchedules.remove(remote, id).catch(() => false)
   const s = getSchedule(id)
-  unscheduleJob(id)
+  if (s) await routeRemoveSchedule(s)
+  else unscheduleJob(id)
   const ok = removeSchedule(id)
   if (ok) {
     emitActivity({
@@ -1477,14 +1485,14 @@ ipcMain.handle('schedules:remove', (_e, id: string) => {
   }
   return ok
 })
-ipcMain.handle('schedules:toggle', (_e, id: string, enabled: boolean) => {
+ipcMain.handle('schedules:toggle', async (_e, id: string, enabled: boolean) => {
   const remote = curRemote()
   if (remote) return remoteSchedules.toggle(remote, id, enabled).catch(() => false)
   const ok = toggleSchedule(id, enabled)
   const s = getSchedule(id)
   if (s) {
     try {
-      syncSchedule(s)
+      await routeSyncSchedule(s)
     } catch {
       /* best effort */
     }
@@ -1592,7 +1600,9 @@ ipcMain.handle('schedules:run-log', (_e, runId: string) => {
   const remote = curRemote()
   return remote ? remoteSchedules.runLog(remote, runId).catch(() => '') : readCronRunLog(runId)
 })
-ipcMain.handle('schedules:reconcile', () => (curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : reconcileSchedules()))
+ipcMain.handle('schedules:reconcile', () =>
+  curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : routeReconcile(readSchedules()),
+)
 ipcMain.handle('listeners:status', () => readListenerStatus())
 ipcMain.handle('listeners:process', () => {
   const r = processListenerInbox()

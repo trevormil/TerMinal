@@ -25,6 +25,20 @@ export type Schedule = {
   spec: ScheduleSpec
   enabled: boolean
   /**
+   * Where this schedule fires (ADR-0002). Absent → local, triggered by launchd.
+   * A hostId referencing settings.remoteHosts[] → fired by a systemd --user timer
+   * on that always-on host (never a literal host name). The trigger layer is
+   * chosen by the resolved host's `platform`, routed in schedule-router.ts.
+   */
+  host?: string
+  /**
+   * Execution substrate on the target host (ADR-0002 C3). Absent/`bare` → the
+   * runner spawns the engine directly in a git worktree (default). `container` →
+   * the run executes in a Docker image whose entrypoint dispatches the engine
+   * (opt-in; the same image is the future DOKS CronJob artifact). Landed in #13.
+   */
+  runtime?: 'bare' | 'container'
+  /**
    * Per-schedule environment variables. Spread into the spawned wrapper's env
    * after the standard TERMINAL_* keys, so the schedule can pin parameterized
    * inputs the agent prompt depends on (e.g. BEACON_PROJECT=bolt to drain a
