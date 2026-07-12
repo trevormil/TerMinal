@@ -74,7 +74,11 @@ export async function routeSyncSchedule(s: Schedule, deps: RouterDeps = realDeps
   } catch (e) {
     return { ok: false, error: `push schedule to host: ${(e as Error).message}` }
   }
-  return s.runtime === 'k8s' ? deps.k8sApply(host.sshTarget, s) : deps.systemdSync(systemdHost(host), s)
+  // systemdSync handles enabled:false by removing the unit; the k8s path must
+  // mirror that — a disabled k8s schedule deletes its CronJob rather than
+  // (re)applying one that would keep firing.
+  if (s.runtime === 'k8s') return s.enabled ? deps.k8sApply(host.sshTarget, s) : deps.k8sRemove(host.sshTarget, s)
+  return deps.systemdSync(systemdHost(host), s)
 }
 
 // Tear down a schedule's trigger. Local → unschedule the launchd job. Host →

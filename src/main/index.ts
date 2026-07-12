@@ -169,7 +169,7 @@ import {
   unscheduleJob,
   removeAllJobs,
   runScheduleNow,
-  isJobLoaded,
+  scheduleLoadedState,
 } from './launchd'
 import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
 import { provisionHost } from './host-provision'
@@ -1356,10 +1356,9 @@ ipcMain.handle('schedules:list', () => {
     // Calendar/cron jobs fire at fixed wall-clock times, so the next fire is a
     // pure function of the spec — no load-time anchor needed.
     nextRun: nextRun(s.spec, now),
-    // Real "will it fire?" signal: an enabled schedule with no loaded launchd
-    // job is dark and never fires. Only probe enabled ones (disabled are
-    // intentionally not loaded). launchctl print is a few ms; counts are tiny.
-    loaded: s.enabled ? isJobLoaded(s.id) : undefined,
+    // Real "will it fire?" signal — probes launchd for LOCAL schedules only; a
+    // host schedule (systemd/k8s) has no launchd job by design (see helper).
+    loaded: scheduleLoadedState(s),
   }))
 })
 ipcMain.handle(
@@ -1461,8 +1460,15 @@ ipcMain.handle(
       host: input.host || undefined,
       runtime: input.runtime,
     }
+    // Capture the prior schedule BEFORE the update so we can tear down its old
+    // trigger if host or runtime changed — otherwise switching host A→B, k8s→bare,
+    // bare→k8s, or local↔host would leave the previous timer/CronJob/plist firing.
+    const prev = input.id ? getSchedule(input.id) : null
     const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
     if (!sched) return { error: 'schedule not found' }
+    if (prev && (prev.host !== sched.host || prev.runtime !== sched.runtime)) {
+      await routeRemoveSchedule(prev).catch(() => {}) // best-effort teardown of the old trigger + host record
+    }
     const r = await routeSyncSchedule(sched)
     if (!r.ok) return { error: r.error }
     emitActivity({

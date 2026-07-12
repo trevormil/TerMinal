@@ -92,6 +92,38 @@ describe('routeSyncSchedule', () => {
     expect(d.k8sApply).toHaveBeenCalledTimes(1)
     expect(d.systemdSync).not.toHaveBeenCalled()
   })
+  test('DISABLED k8s schedule deletes its CronJob instead of applying one (enabled→disabled)', async () => {
+    const d = fakeDeps()
+    await routeSyncSchedule(sched({ host: 'tm', runtime: 'k8s', enabled: false }), d)
+    expect(d.k8sRemove).toHaveBeenCalledTimes(1)
+    expect(d.k8sApply).not.toHaveBeenCalled()
+  })
+})
+
+// The save IPC drives host/runtime transitions by tearing down the PREVIOUS
+// schedule's trigger (routeRemoveSchedule on the old record) then syncing the new
+// one — these cover that each layer's teardown routes correctly.
+describe('transition teardown (routeRemoveSchedule by prior runtime/host)', () => {
+  test('k8s → bare on the same host: removing the prior k8s record deletes the CronJob', async () => {
+    const d = fakeDeps()
+    await routeRemoveSchedule(sched({ host: 'tm', runtime: 'k8s' }), d)
+    expect(d.k8sRemove).toHaveBeenCalledTimes(1)
+    expect(d.systemdSync).not.toHaveBeenCalled()
+  })
+  test('bare → k8s on the same host: removing the prior systemd record disables the unit', async () => {
+    const d = fakeDeps()
+    await routeRemoveSchedule(sched({ host: 'tm', runtime: 'bare' }), d)
+    const [, passed] = (d.systemdSync as ReturnType<typeof mock>).mock.calls[0]
+    expect((passed as Schedule).enabled).toBe(false)
+    expect(d.k8sRemove).not.toHaveBeenCalled()
+  })
+  test('host A → host B: removing the prior record targets host A', async () => {
+    const d = fakeDeps()
+    await routeRemoveSchedule(sched({ host: 'tm', runtime: 'bare' }), d)
+    // removeRecord is called against the OLD host (tm), not the new one
+    const [ref] = (d.removeRecord as ReturnType<typeof mock>).mock.calls[0]
+    expect((ref as { hostId: string }).hostId).toBe('tm')
+  })
 })
 
 describe('routeRemoveSchedule', () => {
