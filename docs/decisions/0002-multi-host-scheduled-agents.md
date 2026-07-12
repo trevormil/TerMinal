@@ -55,8 +55,11 @@ the execution substrate moves.
 - `container` (opt-in) — the systemd unit runs `docker run <agent-image>` whose
   entrypoint dispatches the engine, bind-mounting the `cron-runs` dir (so records still
   surface in the Runs tab) plus the worktree/repo and secret env. The **same image is
-  the future DOKS `CronJob` artifact** — this is the deliberate bridge to running on the
-  k8s cluster later without a rewrite.
+  the `k8s CronJob` artifact** for the `runtime: k8s` path — this is the deliberate
+  bridge to running under Kubernetes without a rewrite. Note (2026-07-12): the k8s
+  target is a **single-node cluster ON the always-on host (k3s), NOT a remote/cloud
+  cluster** — same hardware as the systemd path, with k8s orchestration (CronJob
+  history, concurrency policy, backoff, resource limits). See #16.
 
 **Control plane = push model.** Editing a schedule in the Mac app writes the schedule
 and, when `host` is set, pushes it to that host and reconciles its systemd units on save
@@ -97,7 +100,7 @@ shape, runs appear in the Runs tab with a host badge for free
 - **C3 — bare vs. containerized execution:** chose **bare as the v1 default,
   `runtime:'container'` as an opt-in**. Bare is the fastest, maximum-reuse path (hosts
   already have the engine CLIs); the container path is the reproducible, isolated option
-  and doubles as the DOKS `CronJob` artifact for later k8s adoption.
+  and doubles as the `CronJob` artifact for the `runtime: k8s` path (k3s ON the host, #16).
 - **C4 — host identity:** chose **hostId reference into `remoteHosts[]`**, never a
   hardcoded name. The design is multi-host by construction; `"tm"` is only ever a *label*
   of the operator's first registered host.
