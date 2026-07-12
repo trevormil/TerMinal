@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
+import { CheckCircle2, Copy, Download, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 
@@ -141,6 +141,31 @@ export function RunLogPane({
             <X size={11} strokeWidth={2} />
           </button>
         )}
+        {/* Raw-log export: copy the full RAW log (pre-filter, pre-format) to the
+            clipboard, or download it as <runId>.log — GitHub's "download raw logs". */}
+        <button
+          onClick={() => window.gt.clipboardWrite(log?.text || '')}
+          disabled={!log?.text}
+          className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
+          title="Copy raw log"
+        >
+          <Copy size={11} strokeWidth={2} />
+        </button>
+        <button
+          onClick={() => {
+            const url = URL.createObjectURL(new Blob([log?.text || ''], { type: 'text/plain' }))
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `run-${runId}.log`
+            a.click()
+            URL.revokeObjectURL(url)
+          }}
+          disabled={!log?.text}
+          className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
+          title="Download raw log"
+        >
+          <Download size={11} strokeWidth={2} />
+        </button>
       </div>
       <div
         ref={logRef}

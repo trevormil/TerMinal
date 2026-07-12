@@ -504,6 +504,18 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 {engineLabel(selectedRun.engine)}
               </span>
               <span className="font-mono text-[10.5px] text-zinc-600">{selectedRun.branch}</span>
+              {selectedRun.exitCode != null && (
+                <span
+                  className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                    selectedRun.exitCode === 0
+                      ? 'border-[var(--gt-green)]/40 text-[var(--gt-green)]'
+                      : 'border-[var(--gt-red)]/40 text-[var(--gt-red)]'
+                  }`}
+                  title="Process exit code"
+                >
+                  exit {selectedRun.exitCode}
+                </span>
+              )}
               {selectedRun.hostId && (
                 <span
                   className="inline-flex items-center gap-1 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--gt-accent-light)]"
