@@ -1365,6 +1365,7 @@ export type GtApi = {
     bun?: string | null
     linger?: boolean
     runner?: boolean
+    cli?: boolean
     engines?: Record<string, boolean>
     ready?: boolean
     missing?: string[]

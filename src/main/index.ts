@@ -15,6 +15,8 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 // bin/). Used to install it locally and to push it to remote hosts on provision.
 const runnerSrcPath = () =>
   app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+const cliSrcPath = () =>
+  app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
 
 function sourceCheckoutRoot(marker: string): string {
   const candidates = [process.env.GT_TERMINAL_REPO || '', process.cwd(), app.getAppPath(), join(moduleDir, '..', '..')].filter(Boolean)
@@ -1615,7 +1617,9 @@ ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { ok: false, error: `unknown host: ${hostId}` }
   const engines = Object.keys(host.daemon?.engines || {})
-  const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'])
+  const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'], {
+    cliSrcPath: cliSrcPath(),
+  })
   return { ok: r.ready, ...r }
 })
 ipcMain.handle('listeners:status', () => readListenerStatus())

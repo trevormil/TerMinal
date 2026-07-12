@@ -13,6 +13,7 @@
 
 import { execFile } from 'node:child_process'
 import { isSafeSshTarget } from './remote'
+import { installSelfUpdateCmd } from './host-selfupdate'
 
 const CFG = '$HOME/.config/TerMinal'
 
@@ -39,6 +40,7 @@ export function buildReadinessProbe(engines: string[]): string {
     'echo "BUN=$(bun --version 2>/dev/null || true)"',
     'echo "LINGER=$(loginctl show-user "$(whoami)" -p Linger --value 2>/dev/null || echo unknown)"',
     `[ -x ${CFG}/bin/terminal-cron ] && echo "RUNNER=ok" || echo "RUNNER=missing"`,
+    `[ -x ${CFG}/bin/terminal-cli ] && echo "CLI=ok" || echo "CLI=missing"`,
     ...safe.map((e) => `echo "ENGINE_${e}=$(command -v ${e} 2>/dev/null || true)"`),
   ]
   return lines.join('\n')
@@ -48,6 +50,7 @@ export type HostReadiness = {
   bun: string | null
   linger: boolean
   runner: boolean
+  cli: boolean
   engines: Record<string, boolean>
   ready: boolean
   missing: string[]
@@ -66,13 +69,14 @@ export function parseReadiness(raw: string, engines: string[]): HostReadiness {
   const bun = bunRaw && bunRaw !== 'MISSING' ? bunRaw : null
   const linger = map.get('LINGER') === 'yes'
   const runner = map.get('RUNNER') === 'ok'
+  const cli = map.get('CLI') === 'ok'
   const engineMap: Record<string, boolean> = {}
   for (const e of engines) engineMap[e] = !!(map.get(`ENGINE_${e}`) || '').trim()
   const missing: string[] = []
   if (!bun) missing.push('bun')
   if (!linger) missing.push('linger')
   if (!runner) missing.push('runner')
-  return { bun, linger, runner, engines: engineMap, ready: missing.length === 0, missing }
+  return { bun, linger, runner, cli, engines: engineMap, ready: missing.length === 0, missing }
 }
 
 // ── Impure SSH/scp shell (verified against a real host; see ticket #15) ──────
@@ -105,20 +109,40 @@ function scp(localPath: string, sshTarget: string, remotePath: string): Promise<
 
 const shSingleQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
-// Provision a host end-to-end: run the idempotent setup, copy the runner into
-// place, then probe readiness. `runnerSrcPath` is the local terminal-cron path.
+export type ProvisionOpts = {
+  cliSrcPath?: string // local bin/terminal-cli — installed alongside the runner
+  selfUpdate?: boolean // install the nightly self-update timer (default true)
+  repoSlug?: string // repo the host self-updates from (default trevormil/TerMinal)
+  branch?: string // branch it tracks (default main)
+}
+
+// Provision a host end-to-end: idempotent setup, copy the runner + cli into place,
+// install the nightly self-update timer (so the host tracks latest main on its
+// own), then probe readiness. `runnerSrcPath` is the local terminal-cron path.
 export async function provisionHost(
   host: ProvisionHost,
   runnerSrcPath: string,
   engines: string[] = ['claude', 'codex'],
+  opts: ProvisionOpts = {},
 ): Promise<HostReadiness & { log: string }> {
   const log: string[] = []
   const setup = await ssh(host.sshTarget, buildProvisionScript())
   log.push(`setup: ${setup.ok ? 'ok' : `FAILED — ${setup.error}`}`)
-  // Copy the runner AFTER dirs exist. Remote-side chmod +x (scp doesn't preserve it reliably).
-  const copied = await scp(runnerSrcPath, host.sshTarget, '.config/TerMinal/bin/terminal-cron')
-  log.push(`runner copy: ${copied.ok ? 'ok' : `FAILED — ${copied.error}`}`)
-  if (copied.ok) await ssh(host.sshTarget, 'chmod +x "$HOME/.config/TerMinal/bin/terminal-cron"')
+  // Copy the runner + cli AFTER dirs exist. Remote chmod (scp doesn't preserve +x reliably).
+  const copiedRunner = await scp(runnerSrcPath, host.sshTarget, '.config/TerMinal/bin/terminal-cron')
+  log.push(`runner copy: ${copiedRunner.ok ? 'ok' : `FAILED — ${copiedRunner.error}`}`)
+  if (opts.cliSrcPath) {
+    const copiedCli = await scp(opts.cliSrcPath, host.sshTarget, '.config/TerMinal/bin/terminal-cli')
+    log.push(`cli copy: ${copiedCli.ok ? 'ok' : `FAILED — ${copiedCli.error}`}`)
+  }
+  await ssh(host.sshTarget, 'chmod +x "$HOME/.config/TerMinal/bin/"terminal-cron "$HOME/.config/TerMinal/bin/"terminal-cli 2>/dev/null; true')
+  if (opts.selfUpdate !== false) {
+    const su = await ssh(
+      host.sshTarget,
+      installSelfUpdateCmd(opts.repoSlug || 'trevormil/TerMinal', opts.branch || 'main', '*-*-* 03:30:00'),
+    )
+    log.push(`self-update timer: ${su.ok ? 'ok' : `FAILED — ${su.error}`}`)
+  }
   const probe = await ssh(host.sshTarget, buildReadinessProbe(engines))
   log.push(`probe: ${probe.ok ? 'ok' : `FAILED — ${probe.error}`}`)
   const readiness = parseReadiness(probe.stdout, engines)

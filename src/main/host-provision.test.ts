@@ -33,11 +33,12 @@ describe('buildReadinessProbe', () => {
 
 describe('parseReadiness', () => {
   test('parses a fully-ready host', () => {
-    const raw = ['BUN=1.3.14', 'LINGER=yes', 'RUNNER=ok', 'ENGINE_codex=/home/u/.bun/bin/codex', 'ENGINE_claude='].join('\n')
+    const raw = ['BUN=1.3.14', 'LINGER=yes', 'RUNNER=ok', 'CLI=ok', 'ENGINE_codex=/home/u/.bun/bin/codex', 'ENGINE_claude='].join('\n')
     const r = parseReadiness(raw, ['claude', 'codex'])
     expect(r.bun).toBe('1.3.14')
     expect(r.linger).toBe(true)
     expect(r.runner).toBe(true)
+    expect(r.cli).toBe(true)
     expect(r.engines).toEqual({ claude: false, codex: true })
     expect(r.ready).toBe(true) // bun + linger + runner present; engines are informational
   })
