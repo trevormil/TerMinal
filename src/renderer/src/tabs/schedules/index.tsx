@@ -548,6 +548,26 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     }
   }, [log?.runId, log?.text, runs])
 
+  // Auto-refresh the expanded schedule's run list while any of its runs is still
+  // running, so a run that finishes flips running → done/failed IN PLACE instead
+  // of being stuck on the one-shot snapshot from openRuns() until you collapse +
+  // re-expand. Gated on `anyRunning` (not the `runs` array identity) so a steady
+  // stream of same-status polls doesn't churn the interval; the effect tears the
+  // poll down the moment nothing is running.
+  const anyRunning = runs.some((r) => r.status === 'running')
+  useEffect(() => {
+    if (!expanded || !anyRunning) return
+    let alive = true
+    const id = setInterval(async () => {
+      const next = await window.gt.schedules.runs(expanded)
+      if (alive) setRuns(next)
+    }, 2000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [expanded, anyRunning])
+
   // Global view: repo options span every repo that has a schedule. (Run-only
   // repos previously also appeared here; that's now the Runs tab's job.)
   const repoOptions = useMemo(() => {

@@ -118,15 +118,16 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     reloadLocal()
     reloadRemote()
     reloadCosts()
-    // Auto-refresh while at least one run is running. Local + costs are cheap;
-    // only re-issue the SSH fan-out when a REMOTE run is actually in flight, so
-    // idle remote hosts aren't polled over SSH every 2s.
+    // Always refresh local + costs (cheap local IPC). Gating local refresh on
+    // "something is already running" latched the poll OFF whenever the snapshot
+    // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
+    // from another tab) never appeared and never flipped to done. Only the SSH
+    // remote fan-out stays gated — on a running REMOTE run — so idle hosts aren't
+    // polled over SSH every 2s.
     const t = setInterval(() => {
+      reloadLocal()
       const cur = runsRef.current
-      if (cur && cur.some((r) => r.status === 'running')) {
-        reloadLocal()
-        if (cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
-      }
+      if (cur && cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
       reloadCosts()
     }, 2000)
     return () => clearInterval(t)
