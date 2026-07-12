@@ -86,6 +86,8 @@ function ScheduleForm({
     env?: Record<string, string>,
     retry?: ScheduleRetry,
     timeoutSec?: number,
+    host?: string,
+    runtime?: 'bare' | 'container',
   ) => Promise<void>
   onCustomSpawned: () => void
 }) {
@@ -99,8 +101,18 @@ function ScheduleForm({
   const [engine, setEngine] = useState<Engine>('codex')
   const [model, setModel] = useState('')
   const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('terminal')
+  // Where this schedule fires (ADR-0002). '' = local (launchd). A hostId → that
+  // always-on host via systemd. Only offered in the local control-plane context
+  // (not when already attached to a remote session). Linux hosts only — the
+  // systemd trigger layer is Linux-specific.
+  const [host, setHost] = useState('')
+  const [runtime, setRuntime] = useState<'bare' | 'container'>('bare')
+  const [hostOptions, setHostOptions] = useState<{ id: string; label: string }[]>([])
   useEffect(() => {
-    window.gt.settings.get().then((s) => setEngine(s.defaultEngine))
+    window.gt.settings.get().then((s) => {
+      setEngine(s.defaultEngine)
+      setHostOptions((s.remoteHosts || []).filter((h) => h.platform !== 'macos').map((h) => ({ id: h.id, label: h.label })))
+    })
   }, [])
   // Pre-fill model from the selected agent's default whenever the agent changes.
   useEffect(() => {
@@ -178,6 +190,8 @@ function ScheduleForm({
         parseEnv(envText),
         buildRetry(),
         buildTimeoutSec(),
+        host || undefined,
+        host ? runtime : undefined,
       )
     } catch (e) {
       setErr((e as Error).message)
@@ -309,6 +323,27 @@ function ScheduleForm({
           }}
           size="sm"
         />
+        {/* Run-on host selector — only in the local control plane (not when
+            already attached to a remote), and only when Linux hosts exist. */}
+        {!remote && hostOptions.length > 0 && (
+          <>
+            <span className="text-[11px] text-zinc-500">on</span>
+            <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
+              <option value="">this Mac (launchd)</option>
+              {hostOptions.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.label} (systemd)
+                </option>
+              ))}
+            </select>
+            {host && (
+              <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container')} className={FIELD}>
+                <option value="bare">bare</option>
+                <option value="container">container</option>
+              </select>
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
@@ -551,8 +586,10 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     env?: Record<string, string>,
     retry?: ScheduleRetry,
     timeoutSec?: number,
+    host?: string,
+    runtime?: 'bare' | 'container',
   ) => {
-    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec })
+    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec, host, runtime })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
     reload()
