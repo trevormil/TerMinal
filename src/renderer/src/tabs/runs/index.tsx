@@ -599,25 +599,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   {selectedRun.source === 'session' ? 'Terminal' : 'Worktree'}
                 </button>
               )}
-              {/* Cancel: only works for in-process runs (cron runs spawn from
-                  launchd in a different process tree; agents.cancel can't
-                  reach them). Showing the button conditionally avoids the
-                  "why does this do nothing" UX trap. */}
-              {selectedRun.status === 'running' && !selectedRun.hostId && (selectedRun.source === 'agent' || selectedRun.source === 'bg') && (
-                <button
-                  onClick={async () => {
-                    if (!confirm('Cancel this run? The agent will be SIGTERM-ed.')) return
-                    if (selectedRun.source === 'bg') await window.gt.bg.cancel(selectedRun.id)
-                    else await window.gt.agents.cancel(selectedRun.id)
-                    await reload()
-                  }}
-                  title="SIGTERM this run"
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-1.5 py-0.5 text-[10.5px] text-[var(--gt-red)] hover:border-[var(--gt-red)]/60"
-                >
-                  <StopCircle size={10} strokeWidth={2} />
-                  Cancel
-                </button>
-              )}
+              {/* Cancel: in-process agent/bg runs (SIGTERM the tracked child), and
+                  cron runs — local OR remote — via the runner's cooperative cancel
+                  (SIGTERM its runnerPid → kills the attempt + stops retrying). */}
+              {selectedRun.status === 'running' &&
+                ((selectedRun.source !== 'cron' && !selectedRun.hostId && (selectedRun.source === 'agent' || selectedRun.source === 'bg')) ||
+                  selectedRun.source === 'cron') && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Cancel this run? It will be SIGTERM-ed and not retried.')) return
+                      if (selectedRun.source === 'cron') {
+                        const r = await window.gt.agents.cancelCron(selectedRun.id, selectedRun.hostId)
+                        if (!r.ok) setRerunError(r.error || 'could not cancel')
+                      } else if (selectedRun.source === 'bg') await window.gt.bg.cancel(selectedRun.id)
+                      else await window.gt.agents.cancel(selectedRun.id)
+                      await reload()
+                    }}
+                    title="Cancel this run (SIGTERM, no retry)"
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-1.5 py-0.5 text-[10.5px] text-[var(--gt-red)] hover:border-[var(--gt-red)]/60"
+                  >
+                    <StopCircle size={10} strokeWidth={2} />
+                    Cancel
+                  </button>
+                )}
               {/* Remove worktree: post-run cleanup for in-process runs. Cron
                   worktrees live in ~/.config/TerMinal/cron-worktrees/ and are
                   managed by the runner. */}

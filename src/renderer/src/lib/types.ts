@@ -1463,6 +1463,7 @@ export type GtApi = {
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
     runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
     runTrends: (days?: number) => Promise<RunTrendPoint[]>
+    cancelCron: (id: string, hostId?: string) => Promise<{ ok: boolean; error?: string }>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>

@@ -957,6 +957,26 @@ async function runSchedule(id) {
   const backoffBaseSec = Math.max(1, Number(sched.retry?.backoffSec ?? BACKOFF_BASE_SEC))
   const timeoutMs = sched.timeoutSec > 0 ? sched.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS
 
+  // Cooperative cancel: a user cancel (runs:cancel / remote runs.cancel) sends
+  // SIGTERM to THIS runner's pid (recorded as runnerPid). We kill the current
+  // attempt's process group, record the run as canceled, and exit WITHOUT
+  // retrying (killing just the child would let the retry loop re-fire).
+  let currentChild = null
+  let canceling = false
+  const onCancelSignal = () => {
+    if (canceling) return
+    canceling = true
+    try {
+      if (currentChild && currentChild.pid) process.kill(-currentChild.pid, 'SIGTERM')
+    } catch {}
+    try {
+      writeRec({ status: 'canceled', endedAt: Date.now(), error: 'canceled by user' })
+    } catch {}
+    process.exit(0)
+  }
+  process.on('SIGTERM', onCancelSignal)
+  process.on('SIGINT', onCancelSignal)
+
   // One attempt: spawn the wrapped CLI, enforce the per-attempt timeout, and
   // resolve { code, timedOut }. Detached so we get a process group we can kill
   // wholesale on timeout (killing `script` alone can orphan the agent child).
@@ -983,7 +1003,10 @@ async function runSchedule(id) {
       // death leaves the cron-runs/<id>.json zombied at status:running for
       // hours — long enough that downstream cron ticks treat the schedule
       // as in-progress and skip themselves.
-      if (p.pid) writeRec({ status: 'running', pid: p.pid, attempts })
+      currentChild = p
+      // Record BOTH pids: p.pid (script wrapper — the watchdog's liveness probe)
+      // and runnerPid (this process — a user cancel SIGTERMs this to stop retries).
+      if (p.pid) writeRec({ status: 'running', pid: p.pid, runnerPid: process.pid, attempts })
       let timedOut = false
       const killGroup = (sig) => {
         try {

@@ -16,7 +16,7 @@ export type CronRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: 'running' | 'done' | 'failed'
+  status: 'running' | 'done' | 'failed' | 'canceled'
   startedAt: number
   endedAt?: number
   exitCode?: number
@@ -24,6 +24,8 @@ export type CronRun = {
   repoLabel: string
   worktree: string
   error?: string
+  pid?: number // script-wrapper pid (watchdog liveness probe)
+  runnerPid?: number // this runner's pid — SIGTERM'd to cancel the run (#9)
 }
 
 export type SessionRun = {
@@ -238,6 +240,8 @@ export type UnifiedRun = {
    *  the `runs:remote-all` fan-out so the Runs tab can badge/filter by host. */
   hostId?: string
   hostLabel?: string
+  /** Cron runner's own pid — SIGTERM'd to cancel the run (#9). */
+  runnerPid?: number
 }
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {
@@ -279,6 +283,7 @@ function cronRunToUnified(r: CronRun & { repoRoot?: string }): UnifiedRun {
     worktree: r.worktree,
     scheduleId: r.scheduleId,
     error: r.error,
+    runnerPid: r.runnerPid,
   }
 }
 

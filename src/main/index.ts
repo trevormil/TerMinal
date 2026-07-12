@@ -1613,6 +1613,29 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', run
 ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
 // Success-rate / duration trend over the last N days (#6) for the Runs tab.
 ipcMain.handle('runs:trends', (_e, days?: number) => runTrends(days ?? 14))
+// Cancel a running CRON run (#9). Local: SIGTERM the runner's own pid — its
+// cooperative handler kills the current attempt and stops retrying, recording the
+// run as canceled. Remote: route to the host's runs.cancel op.
+ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
+  if (hostId) {
+    const remote = remoteFromHostId(hostId)
+    if (!remote) return { ok: false, error: `unknown host: ${hostId}` }
+    return remoteRuns
+      .cancel(remote, id)
+      .then((ok) => (ok ? { ok: true } : { ok: false, error: 'host could not cancel the run' }))
+      .catch((e) => ({ ok: false, error: String((e as Error).message || e) }))
+  }
+  const rec = readCronRuns(undefined, 20000).find((r) => r.id === id)
+  if (!rec) return { ok: false, error: 'run not found' }
+  if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
+  if (!rec.runnerPid) return { ok: false, error: 'no runner pid recorded (older run — cannot cancel)' }
+  try {
+    process.kill(rec.runnerPid, 'SIGTERM')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+})
 ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
   if (curRemote()) return false
