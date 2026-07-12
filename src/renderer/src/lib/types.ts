@@ -904,6 +904,9 @@ export type HitlItem = {
   terminalCwd?: string
   occurrenceCount?: number
   lastOccurredAt?: number
+  // Stamped by the remote fan-out for a HITL filed by a host run (#14).
+  hostId?: string
+  hostLabel?: string
 }
 export type BgTask = {
   id: string
@@ -1571,6 +1574,7 @@ export type GtApi = {
   }
   hitl: {
     list: () => Promise<HitlItem[]>
+    remoteAll: () => Promise<{ items: HitlItem[]; errors: { hostId: string; label: string; error: string }[] }>
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean) => Promise<boolean>
     remove: (id: string) => Promise<boolean>

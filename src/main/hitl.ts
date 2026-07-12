@@ -55,6 +55,10 @@ export type HitlItem = {
   patternKey?: string
   occurrenceCount?: number
   lastOccurredAt?: number
+  // Stamped by the remote fan-out (hitl:remote-all) for HITLs filed by a run on a
+  // host, so the Inbox can show + badge them alongside local ones (ADR-0002 #14).
+  hostId?: string
+  hostLabel?: string
 }
 
 export function readHitl(): HitlItem[] {

@@ -187,7 +187,7 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
-import { collectRemoteRuns } from './remote-runs'
+import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { isExternallyOpenableUrl } from './url-safety'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
@@ -235,6 +235,7 @@ import {
   remoteProbe,
   remoteProject,
   remoteRuns,
+  remoteHitl,
   remoteSettings,
   remoteSchedules,
   remoteTickets,
@@ -1654,6 +1655,16 @@ ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
 ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
 ipcMain.handle('hitl:list', () => readHitl())
+// Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
+// hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
+// an unreachable host contributes an error, not a failed view.
+ipcMain.handle('hitl:remote-all', () => {
+  const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
+  return collectRemoteHitl(hosts, async (h) => {
+    const ref = remoteFromHostId(h.id)
+    return ref ? remoteHitl.list(ref) : []
+  })
+})
 ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))
 ipcMain.handle('hitl:resolve', (_e, id: string, resolved?: boolean) => resolveHitl(id, resolved ?? true))
 ipcMain.handle('hitl:remove', (_e, id: string) => removeHitl(id))

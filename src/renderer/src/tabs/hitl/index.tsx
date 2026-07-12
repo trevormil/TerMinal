@@ -92,7 +92,14 @@ export function InboxDrawer({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [resolvingAll, setResolvingAll] = useState(false)
 
-  const reload = () => window.gt.hitl.list().then(setItems)
+  // Merge local HITL with open items fanned out from every host (#14), so a run
+  // that failed on a host and filed a block there shows here with a host badge.
+  // Best-effort: an unreachable host is dropped, never blocks the local view.
+  const reload = () =>
+    Promise.all([
+      window.gt.hitl.list(),
+      window.gt.hitl.remoteAll().then((r) => r.items).catch(() => [] as HitlItem[]),
+    ]).then(([local, remote]) => setItems([...local, ...remote]))
   useEffect(() => {
     reload()
     // pick up newly auto-filed items (e.g. a failed cron) live
