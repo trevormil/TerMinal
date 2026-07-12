@@ -189,6 +189,7 @@ import {
   sweepStaleSessionRuns,
 } from './cron-runs'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
+import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
@@ -1605,6 +1606,10 @@ ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', run
   // never deleted, so an archived run is still viewable).
   return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
 })
+// Artifacts a run produced — agent-request reports under the repo's
+// .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
+// on its host. The renderer opens a report via openExternal(file://…).
+ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
 ipcMain.handle('schedules:disabled-list', () => (curRemote() ? [] : listDisabled()))
 ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
   if (curRemote()) return false

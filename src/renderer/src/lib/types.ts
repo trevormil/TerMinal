@@ -958,6 +958,15 @@ export type LoopState = {
   tail: string[]
 }
 
+export type RunArtifact = {
+  slug: string
+  title: string
+  agent?: string
+  ok?: boolean
+  createdAt?: string
+  reportPath: string
+  summary?: string
+}
 export type UnifiedRun = {
   id: string
   source: 'cron' | 'agent' | 'bg' | 'session'
@@ -1444,6 +1453,7 @@ export type GtApi = {
       errors: { hostId: string; label: string; error: string }[]
     }>
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
+    runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
     save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>

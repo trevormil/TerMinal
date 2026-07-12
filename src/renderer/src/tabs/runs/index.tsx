@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2, Server } from 'lucide-react'
+import { Inbox, ListChecks, RefreshCw, FolderOpen, X, Play, StopCircle, Trash2, Server, FileText } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
-import type { Tab, TabContext, UnifiedRun } from '../../lib/types'
+import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -229,6 +229,21 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   }, [runs, source, host, status, repo, agentFilter, engineFilter, forceFilter, search])
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
+
+  // Artifacts the selected run's repo produced (#8). Local runs only — a remote
+  // run's artifacts live on its host. Fetched on selection; cheap local glob.
+  const [artifacts, setArtifacts] = useState<RunArtifact[]>([])
+  useEffect(() => {
+    setArtifacts([])
+    if (!selectedRun || selectedRun.hostId || !selectedRun.repoRoot) return
+    let alive = true
+    window.gt.agents.runArtifacts(selectedRun.repoRoot).then((a) => {
+      if (alive) setArtifacts(a)
+    })
+    return () => {
+      alive = false
+    }
+  }, [selectedRun?.id, selectedRun?.repoRoot, selectedRun?.hostId])
 
   // Re-run: cron runs route to schedules.runNow (re-fires the launchd schedule
   // so the run gets all the same env vars + log path); in-process runs route
@@ -666,6 +681,28 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 {selectedRun.evaluation && (
                   <RunEvaluationPanel evaluation={selectedRun.evaluation} />
                 )}
+              </div>
+            )}
+            {artifacts.length > 0 && (
+              <div className="shrink-0 space-y-1 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                  Artifacts · {artifacts.length}
+                </span>
+                <div className="flex flex-col gap-1">
+                  {artifacts.slice(0, 8).map((a) => (
+                    <button
+                      key={a.slug}
+                      onClick={() => window.gt.openExternal(`file://${a.reportPath}`)}
+                      title={a.summary || a.reportPath}
+                      className="flex items-center gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-left text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50"
+                    >
+                      <FileText size={11} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                      <span className="truncate">{a.title}</span>
+                      {a.agent && <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{a.agent}</span>}
+                      {a.ok === false && <span className="shrink-0 text-[9.5px] text-[var(--gt-red)]">failed</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             <RunLogPane source={selectedRun.source} runId={selectedRun.id} status={selectedRun.status} hostId={selectedRun.hostId} className="flex-1" />
