@@ -54,7 +54,7 @@ import type {
   TicketProviderTestResult,
   PinnedPanel,
 } from '../lib/types'
-import { engineLabel } from '../lib/engines'
+import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 import { EngineModelPicker } from './EngineModelPicker'
@@ -1029,45 +1029,23 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     </div>
   )
 
-  const MODEL_OPTIONS: Record<Engine, string[]> = {
-    claude: ['', 'haiku', 'sonnet', 'opus', 'fable'],
-    codex: ['', 'gpt-5', 'gpt-5-codex', 'gpt-5.1-codex', 'o4-mini'],
-    cursor: [
-      '',
-      'auto',
-      'composer-2.5-fast',
-      'composer-2.5',
-      'gpt-5.3-codex',
-      'gpt-5.3-codex-high',
-      'gpt-5.2',
-      'gpt-5.5-medium',
-      'claude-opus-4-8-high',
-      'claude-opus-4-8-thinking-high',
-      'claude-4.6-sonnet-medium',
-      'gemini-3.1-pro',
-      'grok-4.3',
-      'kimi-k2.5',
-    ],
-    openrouter: [
-      '',
-      'deepseek/deepseek-v3.2',
-      'deepseek/deepseek-chat',
-      'qwen/qwen3-coder-next',
-      'z-ai/glm-4.7-flash',
-      'minimax/minimax-m2.5',
-      'moonshotai/kimi-k2.5',
-      'mistralai/codestral-2508',
-      'google/gemini-3.1-flash-lite',
-      'openai/gpt-5.1-codex-mini',
-    ],
-    hermes: ['', 'anthropic/claude-sonnet-4.6', 'openai/gpt-5.1', 'deepseek/deepseek-v3.2', 'moonshotai/kimi-k2.5'],
-  }
-  const engineRow = (e: Engine, vendor: string) => {
+  // Which engines the local machine actually has (for readiness indicators).
+  // OpenRouter (or-agent) rides on Codex being present, so track codex.
+  const localEngineFound = (e: Engine): boolean =>
+    !env
+      ? true
+      : e === 'codex' || e === 'openrouter'
+        ? env.codex.found
+        : e === 'cursor'
+          ? env.cursor.found
+          : e === 'hermes'
+            ? env.hermes.found
+            : env.claude.found
+  const engineRow = (e: Engine) => {
+    const vendor = ENGINE_VENDOR[e]
     const remoteDetected =
       selectedProbe && !('loading' in selectedProbe) && selectedProbe.ok ? selectedProbe.engines[e] || '' : ''
-    // OpenRouter (or-agent) rides on Codex being present, so track codex detection.
-    const localFound = env ? (e === 'codex' || e === 'openrouter' ? env.codex.found : e === 'cursor' ? env.cursor.found : env.claude.found) : true
-    const found = selectedIsRemote ? !!remoteDetected : localFound
+    const found = selectedIsRemote ? !!remoteDetected : localEngineFound(e)
     const detPath = selectedIsRemote
       ? remoteDetected
       : env
@@ -1075,7 +1053,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           ? env.codex.path
           : e === 'cursor'
             ? env.cursor.path
-            : env.claude.path
+            : e === 'hermes'
+              ? env.hermes.path
+              : env.claude.path
         : ''
     const defModel = selectedDaemon.engines[e].defaultModel
     const overridePath = selectedDaemon.engines[e].path
@@ -1090,19 +1070,33 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           </div>
           <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
             default model
-            <select
-              value={defModel}
-              onChange={(ev) =>
-                saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })
-              }
-              className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
-            >
-              {MODEL_OPTIONS[e].map((m) => (
-                <option key={m} value={m}>
-                  {m || '(engine default)'}
-                </option>
-              ))}
-            </select>
+            {engineAllowsCustomModel(e) ? (
+              // hermes/openrouter take any provider/model slug — free-text, like
+              // the per-run EngineModelPicker, instead of a closed menu.
+              <input
+                key={`${profile}-${e}-model-${defModel}`}
+                defaultValue={defModel}
+                onBlur={(ev) =>
+                  ev.target.value.trim() !== defModel && saveDaemon({ engines: { [e]: { defaultModel: ev.target.value.trim() } } })
+                }
+                placeholder="(engine default) — any slug"
+                spellCheck={false}
+                className="w-52 rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200 outline-none"
+              />
+            ) : (
+              <select
+                value={defModel}
+                onChange={(ev) => saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })}
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
+              >
+                <option value="">(engine default)</option>
+                {ENGINE_MODELS[e].map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
         </div>
         <EditDetails label="Override binary path">
@@ -1525,11 +1519,11 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             desc={selectedIsRemote ? 'Detected on the selected SSH host; override paths as remote paths.' : 'The agent backends. Detected on your PATH; override the binary path if needed.'}
           >
             <div className="space-y-2">
-              {engineRow('codex', 'OpenAI Codex')}
-              {engineRow('claude', 'Anthropic Claude')}
-              {engineRow('cursor', 'Cursor Agent')}
-              {!selectedIsRemote && engineRow('openrouter', 'OpenRouter · Codex or Hermes harness')}
-              {!selectedIsRemote && engineRow('hermes', 'Nous Hermes')}
+              {engineRow('codex')}
+              {engineRow('claude')}
+              {engineRow('cursor')}
+              {!selectedIsRemote && engineRow('openrouter')}
+              {!selectedIsRemote && engineRow('hermes')}
             </div>
             {!selectedIsRemote && (
               <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
@@ -1551,20 +1545,33 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             )}
             <div className="mt-2 flex items-center gap-2">
               <span className="text-[11px] text-zinc-500">Default:</span>
-              {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => (
-                <button
-                  key={e}
-                  onClick={() => saveDaemon({ defaultEngine: e })}
-                  className={`rounded-md border px-2.5 py-1 text-[11px] ${
-                    selectedDaemon.defaultEngine === e
-                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                      : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  {engineLabel(e)}
-                </button>
-              ))}
+              {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
+                // Grey engines the local machine doesn't have — the default
+                // engine drives scheduled/agent runs, so an absent one silently
+                // no-ops. (Remote profiles use the host probe, not local env.)
+                const missing = !selectedIsRemote && !localEngineFound(e)
+                return (
+                  <button
+                    key={e}
+                    onClick={() => saveDaemon({ defaultEngine: e })}
+                    title={missing ? `${engineLabel(e)} is not installed on this machine` : undefined}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                      selectedDaemon.defaultEngine === e
+                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                        : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                    } ${missing ? 'opacity-45' : ''}`}
+                  >
+                    {engineLabel(e)}
+                  </button>
+                )
+              })}
             </div>
+            {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
+              <div className="mt-1.5 text-[10.5px] text-amber-400">
+                ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed — scheduled, ticket, and
+                background agent runs will fail. Install it or pick an installed engine.
+              </div>
+            )}
           </Section>
 
           {/* Remote hosts */}

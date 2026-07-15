@@ -64,7 +64,14 @@ const systemdHost = (h: RemoteHost): SystemdHost => ({ sshTarget: h.sshTarget })
 // into the host's schedules.json (so its runner resolves the id) then install the
 // systemd timer. Returns {ok,error} so callers surface a silent failure.
 export async function routeSyncSchedule(s: Schedule, deps: RouterDeps = realDeps): Promise<{ ok: boolean; error?: string }> {
-  if (!s.host) return deps.launchdSync(s)
+  if (!s.host) {
+    // Local schedules ride launchd, which is macOS-only (see ADR-0003). On any
+    // other platform, surface a real reason instead of the mystery "dark" badge
+    // launchctl's swallowed failure would otherwise produce.
+    if (process.platform !== 'darwin')
+      return { ok: false, error: 'local scheduling requires macOS — assign this schedule to a remote host' }
+    return deps.launchdSync(s)
+  }
   const host = deps.hosts().find((h) => h.id === s.host)
   if (!host) return { ok: false, error: `unknown host: ${s.host}` }
   try {

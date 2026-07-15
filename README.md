@@ -59,10 +59,13 @@ mounted when you switch tabs, so a session never drops.
 Requires [bun](https://bun.sh) and at least one engine CLI on your `PATH`:
 `claude` or `codex`.
 
-> **Platform: macOS (Apple Silicon).** Packaging, scheduling (launchd), and the
-> "open in editor/browser" handoffs (`open -a`) assume macOS. The editor and
-> browser default to **Cursor** and **Brave** but are configurable in Settings.
-> `bun run dev` may run on other platforms, but the OS-specific features won't.
+> **Platform: macOS (Apple Silicon).** Packaging, local scheduling (launchd), and
+> the "open in editor/browser" handoffs (`open -a`) assume macOS. The editor and
+> browser default to the first detected app (Cursor/Brave as a last resort),
+> configurable in Settings. **Dev:** macOS fully; Linux mostly (no local
+> schedules or app-handoffs — use remote hosts for scheduling); Windows
+> unsupported. Rationale + a port checklist:
+> [ADR-0003](docs/decisions/0003-macos-primary-platform.md).
 
 ```bash
 git clone https://github.com/trevormil/TerMinal.git

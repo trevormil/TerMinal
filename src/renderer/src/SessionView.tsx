@@ -334,6 +334,19 @@ export function SessionView({
   useEffect(() => {
     if (!active || terminalTile) return
     const onKey = (e: KeyboardEvent) => {
+      // ⌘[ / ⌘] cycle tabs, browser/editor style, even while the terminal is
+      // focused. ⌘ only — ctrl+[ is ESC in the terminal, so we never bind ctrl.
+      if (e.metaKey && !e.ctrlKey && !e.altKey && (e.key === '[' || e.key === ']')) {
+        if (isEditableNonTerminalTarget(e.target)) return
+        const cycle = ['terminal', ...tabs.map((t) => t.id)]
+        if (cycle.length === 0) return
+        e.preventDefault()
+        setActiveTab((cur) => {
+          const i = Math.max(0, cycle.indexOf(cur))
+          return cycle[(i + (e.key === ']' ? 1 : -1) + cycle.length) % cycle.length]
+        })
+        return
+      }
       if (!e.altKey || e.metaKey || e.ctrlKey || isEditableNonTerminalTarget(e.target)) return
       const ids = ['terminal', ...tabs.map((t) => t.id)]
       if (ids.length === 0) return

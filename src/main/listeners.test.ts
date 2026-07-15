@@ -3,6 +3,38 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
+import { isRepoRootWithin } from './repo-allowlist'
+
+describe('automation-inbox repoRoot allowlist (security)', () => {
+  const allowed = ['/Users/x/Projects', '/Users/x/Projects/.worktrees']
+
+  test('a repo inside the projects dir is allowed', () => {
+    expect(isRepoRootWithin('/Users/x/Projects/app', allowed)).toBe(true)
+    expect(isRepoRootWithin('/Users/x/Projects/.worktrees/app/feat', allowed)).toBe(true)
+  })
+
+  test('the projects dir itself is allowed', () => {
+    expect(isRepoRootWithin('/Users/x/Projects', allowed)).toBe(true)
+  })
+
+  test('a path outside the projects dir is rejected', () => {
+    expect(isRepoRootWithin('/etc', allowed)).toBe(false)
+    expect(isRepoRootWithin('/Users/x/Secrets/app', allowed)).toBe(false)
+  })
+
+  test('a sibling-prefix path is not mistaken for inside', () => {
+    // '/Users/x/Projects-evil' must not match '/Users/x/Projects'
+    expect(isRepoRootWithin('/Users/x/Projects-evil/app', allowed)).toBe(false)
+  })
+
+  test('a .. traversal that escapes is rejected', () => {
+    expect(isRepoRootWithin('/Users/x/Projects/../Secrets/app', allowed)).toBe(false)
+  })
+
+  test('an empty repoRoot is rejected', () => {
+    expect(isRepoRootWithin('', allowed)).toBe(false)
+  })
+})
 
 // listeners.ts resolves its settings path from homedir() at load and imports
 // electron-touching modules (agents/bg-tasks), so each case runs in a

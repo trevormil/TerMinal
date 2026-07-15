@@ -13,6 +13,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
+import { scriptWrapperArgs } from './script-wrapper'
 import { inMemoryWorkingSet } from './run-retention'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
@@ -1536,12 +1537,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     const cmd = scriptPath
       ? shq(scriptPath)
       : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined, spec.openrouterHarness)
-    // Wrap the spawn in `script -q /dev/null` so engines think they're on
-    // a TTY and stream output as it's generated. Without this, `claude -p`
-    // buffers everything until exit and the run log shows nothing mid-run
-    // (the same fix shipped to bin/terminal-cron). Pipes still carry the
+    // Wrap the spawn in `script` so engines think they're on a TTY and stream
+    // output as it's generated. Without this, `claude -p` buffers everything
+    // until exit and the run log shows nothing mid-run. The wrapper argv differs
+    // on Linux vs macOS (see script-wrapper.ts — on Linux, missing -e makes every
+    // run exit 0), so it lives in one tested helper. Pipes still carry the
     // streamed bytes back to Node for live render via agents:output IPC.
-    const p = spawn('script', ['-q', '/dev/null', LOGIN_SHELL, '-l', '-c', cmd], {
+    const p = spawn('script', scriptWrapperArgs(LOGIN_SHELL, cmd), {
       cwd: worktree,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
