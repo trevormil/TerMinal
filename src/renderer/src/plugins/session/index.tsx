@@ -1,5 +1,5 @@
 import { Cpu, GitBranch } from 'lucide-react'
-import { Card, Badge, Empty } from '../../components/ui'
+import { Card, Badge, CopyButton, Empty } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
@@ -38,7 +38,11 @@ const plugin: Plugin<TranscriptStats> = {
       <Card
         icon={Cpu}
         title="Session"
-        right={<span className="font-mono text-[9px] text-zinc-600">{d.sessionId.slice(0, 6)}</span>}
+        right={
+          <CopyButton value={d.sessionId} title="Copy session id" className="font-mono text-[9px] text-zinc-600">
+            {d.sessionId.slice(0, 6)}
+          </CopyButton>
+        }
       >
         <div className="mb-1.5 line-clamp-2 text-[12px] font-semibold leading-snug text-zinc-100">
           {d.aiTitle || d.firstUserText || 'untitled session'}
