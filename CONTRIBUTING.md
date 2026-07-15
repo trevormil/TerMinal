@@ -46,8 +46,8 @@ global skills, and fresh-machine setup notes.
 Run:
 
 ```bash
-bunx tsc --noEmit
-bun test
+bun run typecheck
+bun run test
 bun run build
 ```
 

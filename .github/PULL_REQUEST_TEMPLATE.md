@@ -6,7 +6,7 @@
 
 ## Checks
 
-- [ ] `bunx tsc --noEmit` passes
-- [ ] `bun test` passes (added/updated tests for behavior changes)
+- [ ] `bun run typecheck` passes
+- [ ] `bun run test` passes (added/updated tests for behavior changes)
 - [ ] `bun run build` succeeds
 - [ ] For `src/main/` changes: launched the packaged build and the window opens
