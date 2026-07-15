@@ -25,6 +25,22 @@ Finder/Dock-launched apps get a smaller `PATH` than your shell. TerMinal
 re-resolves your login shell's `PATH` at startup, but Settings → Engines also
 lets you pin explicit binary paths when a CLI lives somewhere unusual.
 
+## Verifying a download
+
+TerMinal ships as an **unsigned, un-notarized** `.dmg`, so macOS Gatekeeper will
+ask you to right-click → **Open** the first time. Because it's unsigned, verify
+the download's integrity before you do. Each release emits a `SHA256SUMS.txt`
+next to the `.dmg` (produced by `bin/release`):
+
+```bash
+# from the folder holding the .dmg and SHA256SUMS.txt
+shasum -a 256 -c SHA256SUMS.txt        # expect: TerMinal-<ver>-arm64.dmg: OK
+```
+
+If the check fails, do **not** open the app — re-download from the official
+source. (Code-signing + notarization with an Apple Developer ID is tracked as a
+follow-up; until then, checksums are the integrity signal.)
+
 ## 1. Engines (required: one of)
 
 Agents and sessions run through an engine CLI:

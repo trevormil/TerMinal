@@ -1,0 +1,29 @@
+TerMinal
+Copyright (c) Trevor Miller
+Licensed under the MIT License (see LICENSE).
+
+================================================================================
+Third-party brand assets
+================================================================================
+
+TerMinal bundles a small number of third-party brand logos so that the coding
+agent / engine backing each session is identifiable at a glance in the UI
+(see src/renderer/src/components/EngineLogo.tsx and src/renderer/src/assets/).
+
+These marks are the property of their respective owners and are used here purely
+for nominative identification of the tools TerMinal integrates with. Their
+inclusion does not imply any affiliation with, sponsorship by, or endorsement by
+those owners. TerMinal's own MIT license does NOT extend to these marks.
+
+  - assets/claude.svg, assets/ai-tools/claude.png
+      "Claude" and the Anthropic logo are trademarks of Anthropic PBC.
+  - assets/openai.svg, assets/ai-tools/chatgpt.png
+      The OpenAI / ChatGPT logos are trademarks of OpenAI, used to identify the
+      Codex engine.
+  - assets/cursor.png
+      The Cursor logo is a trademark of Anysphere, Inc.
+  - assets/hermes.svg
+      Identifies the Hermes engine; property of its respective owner.
+
+If you fork or redistribute TerMinal, review each owner's brand/trademark
+guidelines. Remove or replace any mark you are not authorized to use.
