@@ -580,6 +580,7 @@ export type EnvDetect = {
   codex: { found: boolean; path: string }
   claude: { found: boolean; path: string }
   cursor: { found: boolean; path: string }
+  hermes: { found: boolean; path: string }
   gh: { found: boolean; path: string; authed: boolean; authHost: string }
   glab: { found: boolean; path: string; authed: boolean; authHost: string }
   tgScripts: boolean

@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
+import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -598,6 +599,8 @@ export function resolveEngineModel(engine: EngineId, model?: string, daemon?: Da
 export const telegramNotifyEnabled = () => readSettings().telegram.notify
 export const telegramControlEnabled = () => readSettings().telegram.control
 
-/** macOS app name for the "Open in editor" / "Open in browser" handoffs. */
-export const resolvedEditorApp = () => readSettings().apps.editor || DEFAULT_EDITOR
-export const resolvedBrowserApp = () => readSettings().apps.browser || DEFAULT_BROWSER
+/** macOS app name for the "Open in editor" / "Open in browser" handoffs.
+ *  Explicit setting > first detected installed app > hardcoded last resort, so a
+ *  fresh user without Cursor/Brave still gets a working `open -a`. */
+export const resolvedEditorApp = () => readSettings().apps.editor || firstInstalledEditor() || DEFAULT_EDITOR
+export const resolvedBrowserApp = () => readSettings().apps.browser || firstInstalledBrowser() || DEFAULT_BROWSER
