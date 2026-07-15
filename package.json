@@ -21,7 +21,7 @@
     "start": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --mac",
     "release": "bin/release",
-    "test": "bun test --path-ignore-patterns vendor",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "rebuild": "electron-rebuild -f -o node-pty,better-sqlite3",
     "postinstall": "electron-rebuild -f -o node-pty,better-sqlite3"

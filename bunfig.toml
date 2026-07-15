@@ -1,0 +1,7 @@
+[test]
+# Scope `bun test` discovery to the app's own sources so a bare `bun test` (as
+# CONTRIBUTING/CI/humans run it) matches `bun run test`. Without this, bun
+# descends into the vendored `vendor/agentview` submodule and reports its
+# unrelated failures as ours — so a contributor who follows CONTRIBUTING sees a
+# "broken" suite. CI escapes only because checkout doesn't fetch submodules.
+root = "src"

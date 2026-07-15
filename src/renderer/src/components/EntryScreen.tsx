@@ -997,7 +997,11 @@ export function EntryScreen({
 
             {mode === 'single' && !lockedCwd && (
               <div>
-                <div className={`${sectionTitle} mb-2`}>Optional · Create from template</div>
+                <div className={`${sectionTitle} mb-1`}>Optional · Create from template</div>
+                <div className="mb-2 text-[10.5px] leading-snug text-zinc-600">
+                  Git-clones your configured template repo (Settings → Projects → templateRepo)
+                  into a new folder. Needs network access.
+                </div>
                 <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
                   <input
                     value={projName}
@@ -1110,7 +1114,13 @@ export function EntryScreen({
                   </div>
                 )}
                 {scaffoldErr && (
-                  <div className="mt-1 text-[11px] text-[var(--gt-red)]">{scaffoldErr}</div>
+                  <div className="mt-1 text-[11px] text-[var(--gt-red)]">
+                    {scaffoldErr}
+                    <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-500">
+                      Check your network/VPN and that the template repo (Settings → Projects →
+                      templateRepo) is reachable — a private repo needs your git auth.
+                    </div>
+                  </div>
                 )}
               </div>
             )}

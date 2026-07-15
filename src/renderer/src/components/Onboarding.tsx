@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, CircleCheck, CircleSlash, ArrowRight, Loader2 } from 'lucide-react'
+import { FolderOpen, CircleCheck, CircleSlash, ArrowRight, Loader2, RefreshCw } from 'lucide-react'
 import type { EnvDetect, ProjectsDirValidation } from '../lib/types'
 import logo from '../assets/logo.png'
 
@@ -26,6 +26,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [projectsDir, setProjectsDir] = useState('')
   const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(null)
   const [busy, setBusy] = useState(false)
+  const [rechecking, setRechecking] = useState(false)
+
+  // Re-probe PATH without restarting — after the user installs a missing engine
+  // in another terminal, they can refresh the readiness rows in place.
+  const recheck = async () => {
+    setRechecking(true)
+    try {
+      setEnv(await window.gt.detectEnv())
+    } finally {
+      setRechecking(false)
+    }
+  }
 
   useEffect(() => {
     window.gt.detectEnv().then(setEnv)
@@ -83,8 +95,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
         {/* environment readiness */}
         <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4">
-          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-            Detected environment
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
+              Detected environment
+            </span>
+            <button
+              onClick={recheck}
+              disabled={rechecking}
+              title="Re-probe your PATH after installing a tool"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200 disabled:opacity-50"
+            >
+              {rechecking ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} strokeWidth={2} />}
+              Re-check
+            </button>
           </div>
           {!env ? (
             <div className="flex items-center gap-2 text-[12px] text-zinc-500">
