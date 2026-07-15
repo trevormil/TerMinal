@@ -17,6 +17,13 @@ import { createTicket } from './backlog'
 import { fileHitl } from './hitl'
 import { runAgent, type Engine } from './agents'
 import { spawnBgTask } from './bg-tasks'
+import { resolvedProjectsDir, resolvedWorktreesDir } from './settings'
+import { isRepoRootWithin } from './repo-allowlist'
+
+function assertRepoRootAllowed(repoRoot: string): void {
+  if (!isRepoRootWithin(repoRoot, [resolvedProjectsDir(), resolvedWorktreesDir()]))
+    throw new Error(`refusing to dispatch: repoRoot is outside the projects directory: ${repoRoot}`)
+}
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ROOT = join(CFG, 'automation-inbox')
@@ -286,6 +293,7 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
   if (a.kind === 'run-agent') {
     if (!env.repoRoot) throw new Error('run-agent requires repoRoot')
     if (!a.agentId) throw new Error('run-agent requires agentId')
+    assertRepoRootAllowed(env.repoRoot)
     if (a.mode === 'background') {
       const prompt =
         a.prompt ||
@@ -301,6 +309,7 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
 
   if (a.kind === 'background-task') {
     if (!env.repoRoot) throw new Error('background-task requires repoRoot')
+    assertRepoRootAllowed(env.repoRoot)
     const r = spawnBgTask({ repoRoot: env.repoRoot, prompt: a.prompt, engine: a.engine, model: a.model })
     if ('error' in r) throw new Error(r.error)
     return { result: `started background task ${r.id}`, runId: r.id, runSource: 'bg' }
