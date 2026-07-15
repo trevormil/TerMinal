@@ -46,7 +46,11 @@ export function forgeFor(repoRoot: string): ForgeMeta {
 }
 
 /** Short, accurate reason for an empty list (CLI missing vs auth vs other). */
-export function forgeErrorReason(cli: string, err: Error | null, stderr?: string): string | undefined {
+export function forgeErrorReason(
+  cli: string,
+  err: Error | null,
+  stderr?: string,
+): string | undefined {
   if (!err) return undefined
   if ((err as NodeJS.ErrnoException).code === 'ENOENT') return `${cli} not found on PATH`
   const msg = `${stderr || ''} ${err.message || ''}`.toLowerCase()
@@ -143,7 +147,12 @@ export function run(
     execFile(
       cli,
       args,
-      { cwd, timeout: opts?.timeout ?? 12_000, maxBuffer: opts?.maxBuffer ?? 4 * 1024 * 1024, encoding: 'utf8' },
+      {
+        cwd,
+        timeout: opts?.timeout ?? 12_000,
+        maxBuffer: opts?.maxBuffer ?? 4 * 1024 * 1024,
+        encoding: 'utf8',
+      },
       (err, stdout, stderr) => resolve({ err, stdout: stdout || '', stderr: stderr || '' }),
     )
   })
@@ -171,7 +180,11 @@ const GH_VIEW_FIELDS = `${GH_LIST_FIELDS},baseRefName,baseRefOid,body`
 export async function listRaw(repoRoot: string): Promise<ListResult> {
   const f = forgeFor(repoRoot)
   if (f.kind === 'github') {
-    const r = await run('gh', ['pr', 'list', '--state', 'all', '--limit', '100', '--json', GH_LIST_FIELDS], repoRoot)
+    const r = await run(
+      'gh',
+      ['pr', 'list', '--state', 'all', '--limit', '100', '--json', GH_LIST_FIELDS],
+      repoRoot,
+    )
     if (r.err) return { items: [], error: forgeErrorReason('gh', r.err, r.stderr) }
     return { items: parseList('github', r.stdout) }
   }
@@ -254,7 +267,11 @@ export function parseGlabFileContent(stdout: string): string | null {
   }
 }
 
-export async function fileContent(repoRoot: string, path: string, ref: string): Promise<string | null> {
+export async function fileContent(
+  repoRoot: string,
+  path: string,
+  ref: string,
+): Promise<string | null> {
   if (!ref) return null
   const repo = repoForCwd(repoRoot)
   if (!repo) return null
@@ -275,9 +292,14 @@ export async function fileContent(repoRoot: string, path: string, ref: string): 
   }
   const proj = encodeURIComponent(repo.path)
   const filePath = encodeURIComponent(path)
-  const r = await run('glab', ['api', `projects/${proj}/repository/files/${filePath}?ref=${encodeURIComponent(ref)}`], repoRoot, {
-    maxBuffer: 8 * 1024 * 1024,
-  })
+  const r = await run(
+    'glab',
+    ['api', `projects/${proj}/repository/files/${filePath}?ref=${encodeURIComponent(ref)}`],
+    repoRoot,
+    {
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  )
   if (r.err || !r.stdout) return null
   return parseGlabFileContent(r.stdout)
 }
@@ -311,7 +333,8 @@ export async function runDifft(
     process.cwd(),
     { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 },
   )
-  if (r.err && !r.stdout) return { ok: false, output: '', error: forgeErrorReason('difft', r.err, r.stderr) }
+  if (r.err && !r.stdout)
+    return { ok: false, output: '', error: forgeErrorReason('difft', r.err, r.stderr) }
   return { ok: true, output: r.stdout }
 }
 
@@ -332,7 +355,10 @@ async function ghMergeMethod(repoRoot: string): Promise<string> {
   return '--merge'
 }
 
-export async function merge(repoRoot: string, iid: number): Promise<{ ok: boolean; error?: string }> {
+export async function merge(
+  repoRoot: string,
+  iid: number,
+): Promise<{ ok: boolean; error?: string }> {
   const f = forgeFor(repoRoot)
   if (f.kind === 'github') {
     const method = await ghMergeMethod(repoRoot)
@@ -358,7 +384,9 @@ async function glabCi(repoRoot: string, iid: number): Promise<CiInfo | null> {
       return null
     }
   }
-  const mr = await api<{ head_pipeline?: any; pipeline?: any }>(`projects/${proj}/merge_requests/${iid}`)
+  const mr = await api<{ head_pipeline?: any; pipeline?: any }>(
+    `projects/${proj}/merge_requests/${iid}`,
+  )
   const pl = mr?.head_pipeline || mr?.pipeline
   if (!pl?.id) return null
   const jobsRaw = await api<any[]>(`projects/${proj}/pipelines/${pl.id}/jobs?per_page=100`)

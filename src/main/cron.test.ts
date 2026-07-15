@@ -40,7 +40,10 @@ describe('cronToTrigger', () => {
     ])
   })
   test('day-of-month only', () => {
-    expect(cronToTrigger('0 0 1 * *')).toEqual({ kind: 'calendar', entries: [{ Minute: 0, Hour: 0, Day: 1 }] })
+    expect(cronToTrigger('0 0 1 * *')).toEqual({
+      kind: 'calendar',
+      entries: [{ Minute: 0, Hour: 0, Day: 1 }],
+    })
   })
   test('dow 7 normalizes to 0 (Sunday)', () => {
     expect(cronToTrigger('0 12 * * 7').entries).toEqual([{ Minute: 0, Hour: 12, Weekday: 0 }])
@@ -67,7 +70,9 @@ describe('specToTrigger', () => {
     })
   })
   test('calendar with weekdays → one entry each', () => {
-    expect(specToTrigger({ kind: 'calendar', minute: 0, hour: 9, weekdays: [1, 3] }).entries).toEqual([
+    expect(
+      specToTrigger({ kind: 'calendar', minute: 0, hour: 9, weekdays: [1, 3] }).entries,
+    ).toEqual([
       { Minute: 0, Hour: 9, Weekday: 1 },
       { Minute: 0, Hour: 9, Weekday: 3 },
     ])

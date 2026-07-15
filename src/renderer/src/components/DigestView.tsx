@@ -126,7 +126,10 @@ function ChunkRow({
       style={{ borderLeftColor: RISK_COLOR[chunk.risk] }}
     >
       <div className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-white/5">
-        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
           {open ? (
             <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-zinc-600" />
           ) : (
@@ -148,7 +151,10 @@ function ChunkRow({
               {chunk.risk_reason && (
                 <span
                   className="shrink-0 rounded px-1 text-[10px]"
-                  style={{ color: RISK_COLOR[chunk.risk], backgroundColor: `${RISK_COLOR[chunk.risk]}1a` }}
+                  style={{
+                    color: RISK_COLOR[chunk.risk],
+                    backgroundColor: `${RISK_COLOR[chunk.risk]}1a`,
+                  }}
                 >
                   {chunk.risk_reason}
                 </span>
@@ -174,7 +180,9 @@ function ChunkRow({
               {chunk.summary && <div className="text-[12px] text-zinc-300">{chunk.summary}</div>}
               {chunk.note && <div className="text-[11px] text-zinc-500">{chunk.note}</div>}
               {chunk.confidence && (
-                <div className="text-[11px] text-[#d6a84a]">uncertain · {chunk.confidence.replace(/^low:\s*/i, '')}</div>
+                <div className="text-[11px] text-[#d6a84a]">
+                  uncertain · {chunk.confidence.replace(/^low:\s*/i, '')}
+                </div>
               )}
             </div>
           )}
@@ -301,7 +309,16 @@ export function DigestView({
         No digest for this MR yet. Click <span className="text-zinc-400">Generate digest</span>.
       </div>
     )
-  else body = <DigestBody iid={iid} digest={digest} fileMap={fileMap} section={section} setSection={setSection} />
+  else
+    body = (
+      <DigestBody
+        iid={iid}
+        digest={digest}
+        fileMap={fileMap}
+        section={section}
+        setSection={setSection}
+      />
+    )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -351,7 +368,12 @@ function DigestBody({
 
   const nav: { key: Section; label: string; count?: number; show: boolean }[] = [
     { key: 'summary', label: 'Summary', show: true },
-    { key: 'decisions', label: 'Decisions', count: digest.decisions.length, show: digest.decisions.length > 0 },
+    {
+      key: 'decisions',
+      label: 'Decisions',
+      count: digest.decisions.length,
+      show: digest.decisions.length > 0,
+    },
     { key: 'flow', label: 'Diagrams', count: diagrams.length, show: diagrams.length > 0 },
     { key: 'changes', label: 'Changes', count: s.chunks, show: true },
   ]
@@ -431,7 +453,9 @@ function DigestBody({
             {diagrams.map((dg, i) => (
               <div key={i}>
                 <div className="mb-2 flex items-center gap-2 text-[11px]">
-                  <span className="font-semibold uppercase tracking-wide text-zinc-400">{dg.title}</span>
+                  <span className="font-semibold uppercase tracking-wide text-zinc-400">
+                    {dg.title}
+                  </span>
                   <span className="rounded bg-white/5 px-1.5 py-0.5 text-zinc-500">{dg.kind}</span>
                 </div>
                 <Mermaid source={dg.mermaid} />

@@ -16,13 +16,20 @@ export async function collectRemoteRuns(
   fetchOne: (host: RemoteRunHost) => Promise<UnifiedRun[]>,
 ): Promise<RemoteRunsResult> {
   const settled = await Promise.allSettled(
-    hosts.map((h) => fetchOne(h).then((rs) => rs.map((r) => ({ ...r, hostId: h.id, hostLabel: h.label })))),
+    hosts.map((h) =>
+      fetchOne(h).then((rs) => rs.map((r) => ({ ...r, hostId: h.id, hostLabel: h.label }))),
+    ),
   )
   const runs: UnifiedRun[] = []
   const errors: RemoteRunError[] = []
   settled.forEach((s, i) => {
     if (s.status === 'fulfilled') runs.push(...s.value)
-    else errors.push({ hostId: hosts[i].id, label: hosts[i].label, error: String((s.reason && s.reason.message) || s.reason || 'error') })
+    else
+      errors.push({
+        hostId: hosts[i].id,
+        label: hosts[i].label,
+        error: String((s.reason && s.reason.message) || s.reason || 'error'),
+      })
   })
   return { runs, errors }
 }
@@ -35,13 +42,20 @@ export async function collectRemoteHitl(
   fetchOne: (host: RemoteRunHost) => Promise<HitlItem[]>,
 ): Promise<RemoteHitlResult> {
   const settled = await Promise.allSettled(
-    hosts.map((h) => fetchOne(h).then((items) => items.map((it) => ({ ...it, hostId: h.id, hostLabel: h.label })))),
+    hosts.map((h) =>
+      fetchOne(h).then((items) => items.map((it) => ({ ...it, hostId: h.id, hostLabel: h.label }))),
+    ),
   )
   const items: HitlItem[] = []
   const errors: RemoteRunError[] = []
   settled.forEach((s, i) => {
     if (s.status === 'fulfilled') items.push(...s.value)
-    else errors.push({ hostId: hosts[i].id, label: hosts[i].label, error: String((s.reason && s.reason.message) || s.reason || 'error') })
+    else
+      errors.push({
+        hostId: hosts[i].id,
+        label: hosts[i].label,
+        error: String((s.reason && s.reason.message) || s.reason || 'error'),
+      })
   })
   return { items, errors }
 }

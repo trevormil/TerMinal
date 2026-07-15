@@ -19,15 +19,31 @@ test('budget-refused cron run exits 0 and files a HITL (no TDZ crash)', () => {
     writeFileSync(
       join(cfg, 'schedules.json'),
       JSON.stringify([
-        { id, agentId: 'demo', agentTitle: 'Demo', engine: 'codex', prompt: 'x', repoRoot: '/tmp/demo-repo', repoLabel: 'demo-repo', enabled: true },
+        {
+          id,
+          agentId: 'demo',
+          agentTitle: 'Demo',
+          engine: 'codex',
+          prompt: 'x',
+          repoRoot: '/tmp/demo-repo',
+          repoLabel: 'demo-repo',
+          enabled: true,
+        },
       ]),
     )
     writeFileSync(join(cfg, 'budgets.json'), JSON.stringify({ dailyTotalUsd: 0.01 }))
-    writeFileSync(join(cfg, 'ai-runs', 'r.json'), JSON.stringify({ startedAt: Date.now(), costUsd: 5, agentId: 'demo' }))
+    writeFileSync(
+      join(cfg, 'ai-runs', 'r.json'),
+      JSON.stringify({ startedAt: Date.now(), costUsd: 5, agentId: 'demo' }),
+    )
 
     let exitCode = 0
     try {
-      execFileSync('bun', [CRON, 'run', id], { env: { ...process.env, HOME: home }, encoding: 'utf8', stdio: 'pipe' })
+      execFileSync('bun', [CRON, 'run', id], {
+        env: { ...process.env, HOME: home },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
     } catch (e) {
       exitCode = (e as { status?: number }).status ?? 1
     }

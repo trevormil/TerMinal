@@ -48,7 +48,9 @@ describe('migrate', () => {
     expect(migrate({}).inbox.completionHook).toBe(true)
     expect(migrate({ inbox: { completionHook: false } }).inbox.completionHook).toBe(false)
     expect(migrate({}).inbox.agentContextPreamble).toBe(true)
-    expect(migrate({ inbox: { agentContextPreamble: false } }).inbox.agentContextPreamble).toBe(false)
+    expect(migrate({ inbox: { agentContextPreamble: false } }).inbox.agentContextPreamble).toBe(
+      false,
+    )
   })
 
   test('appearance defaults to dark and accepts light/system modes', () => {
@@ -87,7 +89,11 @@ describe('migrate', () => {
       forge: 'github',
       harnessDir: '/h',
       templateRepo: 'https://x/y',
-      engines: { codex: { path: '/bin/codex' }, claude: { path: '' }, cursor: { path: '/bin/cursor-agent' } },
+      engines: {
+        codex: { path: '/bin/codex' },
+        claude: { path: '' },
+        cursor: { path: '/bin/cursor-agent' },
+      },
       remoteHosts: [
         {
           id: 'tm',
@@ -170,7 +176,10 @@ describe('worktreesFrom', () => {
 describe('settings secrets', () => {
   const adapter = {
     seal: (value: string) => Buffer.from(`sealed:${value}`).toString('base64'),
-    open: (payload: string) => Buffer.from(payload, 'base64').toString('utf8').replace(/^sealed:/, ''),
+    open: (payload: string) =>
+      Buffer.from(payload, 'base64')
+        .toString('utf8')
+        .replace(/^sealed:/, ''),
   }
 
   test('seals and opens configured secret fields', () => {
@@ -218,9 +227,14 @@ describe('settings secrets', () => {
   })
 
   test('legacy plaintext and empty secrets pass through', () => {
-    const opened = migrate(openSettingsFromDisk({
-      telegram: { botToken: 'plain-token', chatId: '' },
-    }, adapter))
+    const opened = migrate(
+      openSettingsFromDisk(
+        {
+          telegram: { botToken: 'plain-token', chatId: '' },
+        },
+        adapter,
+      ),
+    )
     expect(opened.telegram.botToken).toBe('plain-token')
     expect(opened.telegram.chatId).toBe('')
     const sealed = sealSettingsForDisk(opened, adapter) as any
@@ -248,9 +262,7 @@ describe('telegram creds sidecar (out-of-process delivery)', () => {
   const creds = { botToken: 'bot:123', chatId: '999' }
 
   test('sidecar wins over settings.json', () => {
-    expect(
-      resolveTelegramCreds(creds, { botToken: 'stale', chatId: 'stale' }),
-    ).toEqual(creds)
+    expect(resolveTelegramCreds(creds, { botToken: 'stale', chatId: 'stale' })).toEqual(creds)
   })
 
   test('falls back to a plaintext settings.json telegram block', () => {
@@ -261,9 +273,7 @@ describe('telegram creds sidecar (out-of-process delivery)', () => {
     // This is the core bug: out-of-process filers must skip the sealed object
     // rather than send it as a broken request. Both sources sealed → null.
     const sealed = { __terminalSecret: 'terminal-secret:v1', payload: 'abc' }
-    expect(
-      resolveTelegramCreds(null, { botToken: sealed, chatId: sealed }),
-    ).toBeNull()
+    expect(resolveTelegramCreds(null, { botToken: sealed, chatId: sealed })).toBeNull()
   })
 
   test('missing / partial creds resolve to null', () => {

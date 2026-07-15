@@ -50,7 +50,10 @@ describe('parseRemote', () => {
 describe('getWorkingDiff', () => {
   let dir = ''
   const git = (...args: string[]) =>
-    execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    execFileSync('git', ['-C', dir, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
   const write = (name: string, content: string) => writeFileSync(join(dir, name), content)
 
   beforeEach(() => {

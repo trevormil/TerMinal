@@ -9,7 +9,9 @@ import { execSync } from 'node:child_process'
 // this is how you check what's actually installed. See runbooks/build-and-release.
 const git = (cmd: string): string => {
   try {
-    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
   } catch {
     return ''
   }
@@ -21,7 +23,8 @@ const BUILD_TIME = new Date().toISOString()
 // The owner/repo this build was made from (git origin), baked in so provisioned
 // hosts self-update from THIS repo — a fork's hosts track the fork, not upstream.
 // '' when origin is unknown → self-update is skipped rather than guessed.
-const BUILD_REPO_SLUG = (git('git remote get-url origin').match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/)?.[1]) || ''
+const BUILD_REPO_SLUG =
+  git('git remote get-url origin').match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/)?.[1] || ''
 const define = {
   __BUILD_SHA__: JSON.stringify(BUILD_SHA + BUILD_DIRTY),
   __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),

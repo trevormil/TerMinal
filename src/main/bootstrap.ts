@@ -22,7 +22,12 @@ export function classifyBootstrapStatus(
   hasPath: (rel: string) => boolean,
 ): BootstrapStatus {
   if (!repoRoot) {
-    return { state: 'none', bootstrapped: false, missing: [...BOOTSTRAP_MARKER_LABELS], message: 'No repo selected.' }
+    return {
+      state: 'none',
+      bootstrapped: false,
+      missing: [...BOOTSTRAP_MARKER_LABELS],
+      message: 'No repo selected.',
+    }
   }
   let present = 0
   const missing: string[] = []
@@ -37,7 +42,12 @@ export function classifyBootstrapStatus(
     else missing.push(marker.label)
   }
   if (present === BOOTSTRAP_MARKERS.length) {
-    return { state: 'full', bootstrapped: true, missing: [], message: 'Project-template workflow files are present.' }
+    return {
+      state: 'full',
+      bootstrapped: true,
+      missing: [],
+      message: 'Project-template workflow files are present.',
+    }
   }
   if (present === 0) {
     return {

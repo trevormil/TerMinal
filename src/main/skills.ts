@@ -116,7 +116,10 @@ export function listSkills(repoRoot: string): SkillInfo[] {
     const k = `${s.scope}:${s.namespace || ''}:${s.name}`
     const prev = seen.get(k)
     if (!prev) seen.set(k, s)
-    else prev.platforms = Array.from(new Set([...prev.platforms, ...s.platforms])).sort() as SkillInfo['platforms']
+    else
+      prev.platforms = Array.from(
+        new Set([...prev.platforms, ...s.platforms]),
+      ).sort() as SkillInfo['platforms']
   }
   const skills = [...seen.values()].sort(
     (a, b) => (a.namespace || '').localeCompare(b.namespace || '') || a.name.localeCompare(b.name),

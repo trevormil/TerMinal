@@ -21,24 +21,31 @@ export async function loadRegistry(): Promise<any> {
 
 export async function readSpend(): Promise<any[]> {
   try {
-    return (await Bun.file(SPEND).text()).trim().split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    return (await Bun.file(SPEND).text())
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l))
   } catch {
     return []
   }
 }
 
 export async function logSpend(entry: Record<string, unknown>): Promise<void> {
-  const prev = await Bun.file(SPEND).text().catch(() => "")
-  await Bun.write(SPEND, prev + JSON.stringify(entry) + "\n")
+  const prev = await Bun.file(SPEND)
+    .text()
+    .catch(() => '')
+  await Bun.write(SPEND, prev + JSON.stringify(entry) + '\n')
 }
 
 export const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export function summarize(entries: any[], opts: { today?: string; session?: string | null } = {}) {
   const today = opts.today ?? todayISO()
-  let spentToday = 0, spentSession = 0
+  let spentToday = 0,
+    spentSession = 0
   for (const r of entries) {
-    if ((r.ts ?? "").startsWith(today)) spentToday += r.cost ?? 0
+    if ((r.ts ?? '').startsWith(today)) spentToday += r.cost ?? 0
     if (opts.session && r.session === opts.session) spentSession += r.cost ?? 0
   }
   return { spentToday, spentSession }

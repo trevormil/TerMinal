@@ -9,7 +9,9 @@ function SkillRow({ s }: { s: SkillInfo }) {
     <div className="border-b border-[var(--gt-border)]/30 py-1.5 last:border-0">
       <div className="font-mono text-[11px] text-zinc-200">
         <CopyButton value={command} title={`Copy ${command} — paste in terminal`}>
-          {s.scope === 'plugin' && s.namespace ? <span className="text-zinc-500">{s.namespace}:</span> : null}
+          {s.scope === 'plugin' && s.namespace ? (
+            <span className="text-zinc-500">{s.namespace}:</span>
+          ) : null}
           {s.name}
         </CopyButton>
         {s.platforms?.length ? (
@@ -17,7 +19,9 @@ function SkillRow({ s }: { s: SkillInfo }) {
         ) : null}
       </div>
       {s.description && (
-        <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">{s.description}</div>
+        <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-snug text-zinc-500">
+          {s.description}
+        </div>
       )}
     </div>
   )
@@ -54,7 +58,11 @@ function SkillsCard({ data }: { data: SkillInfo[] | null }) {
               onClick={() => setShowPlugins((v) => !v)}
               className="mt-1.5 flex w-full items-center gap-1 py-1 text-[10.5px] text-zinc-500 hover:text-zinc-300"
             >
-              {showPlugins ? <ChevronDown size={11} strokeWidth={2} /> : <ChevronRight size={11} strokeWidth={2} />}
+              {showPlugins ? (
+                <ChevronDown size={11} strokeWidth={2} />
+              ) : (
+                <ChevronRight size={11} strokeWidth={2} />
+              )}
               {showPlugins ? 'Hide' : 'Show'} {plugins.length} plugin skills
             </button>
             {showPlugins && plugins.map((s) => <SkillRow key={`${s.namespace}:${s.name}`} s={s} />)}
@@ -69,7 +77,8 @@ const plugin: Plugin<SkillInfo[]> = {
   id: 'skills',
   title: 'Skills',
   icon: Sparkles,
-  blurb: 'Browse available Claude/Codex/Cursor skills — your project + personal skills first, plugin skills on expand.',
+  blurb:
+    'Browse available Claude/Codex/Cursor skills — your project + personal skills first, plugin skills on expand.',
   order: 9,
   intervalMs: 15_000,
   defaultEnabled: true,

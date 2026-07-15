@@ -15,12 +15,27 @@ import {
 import { Badge } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { engineLabel } from '../../lib/engines'
-import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, withLaunchContext, type LaunchMode } from '../../lib/launch'
+import {
+  engineInstanceLabel,
+  openPromptInTerminal,
+  remoteForTabContext,
+  withLaunchContext,
+  type LaunchMode,
+} from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import type { Tab, TabContext, Agent, Schedule, ScheduleSpec, ScheduleRetry, CronRun, Engine } from '../../lib/types'
+import type {
+  Tab,
+  TabContext,
+  Agent,
+  Schedule,
+  ScheduleSpec,
+  ScheduleRetry,
+  CronRun,
+  Engine,
+} from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -110,16 +125,22 @@ function ScheduleForm({
   const [hostOptions, setHostOptions] = useState<{ id: string; label: string }[]>([])
   // Reachability per host — hosts go down routinely (tailscale reauth ~24h, asleep),
   // so probe up front and show it in the selector instead of failing at save time.
-  const [hostHealth, setHostHealth] = useState<Record<string, { reachable: boolean; hint?: string }>>({})
+  const [hostHealth, setHostHealth] = useState<
+    Record<string, { reachable: boolean; hint?: string }>
+  >({})
   useEffect(() => {
     window.gt.settings.get().then((s) => {
       setEngine(s.defaultEngine)
-      const hosts = (s.remoteHosts || []).filter((h) => h.platform !== 'macos').map((h) => ({ id: h.id, label: h.label }))
+      const hosts = (s.remoteHosts || [])
+        .filter((h) => h.platform !== 'macos')
+        .map((h) => ({ id: h.id, label: h.label }))
       setHostOptions(hosts)
       for (const h of hosts)
         window.gt
           .healthCheckHost(h.id)
-          .then((r) => setHostHealth((m) => ({ ...m, [h.id]: { reachable: r.reachable, hint: r.hint } })))
+          .then((r) =>
+            setHostHealth((m) => ({ ...m, [h.id]: { reachable: r.reachable, hint: r.hint } })),
+          )
     })
   }, [])
   // Pre-fill model from the selected agent's default whenever the agent changes.
@@ -149,7 +170,12 @@ function ScheduleForm({
   const buildSpec = (): ScheduleSpec => {
     if (kind === 'cron') return { kind: 'cron', expr: cron.trim() }
     const [h, m] = time.split(':').map(Number)
-    return { kind: 'calendar', minute: m || 0, hour: h || 0, weekdays: weekdays.length ? weekdays : undefined }
+    return {
+      kind: 'calendar',
+      minute: m || 0,
+      hour: h || 0,
+      weekdays: weekdays.length ? weekdays : undefined,
+    }
   }
 
   // Only build a retry object when the operator typed a retry count; backoff
@@ -237,9 +263,14 @@ function ScheduleForm({
     <div className="space-y-3">
       <SkillHint>
         You can also schedule from the terminal with{' '}
-        <code className="font-mono text-zinc-300">/new-schedule "Run docs every Monday at 9am"</code> in Claude
-        or <code className="font-mono text-zinc-300">$new-schedule "Run docs every Monday at 9am"</code> in
-        Codex.
+        <code className="font-mono text-zinc-300">
+          /new-schedule "Run docs every Monday at 9am"
+        </code>{' '}
+        in Claude or{' '}
+        <code className="font-mono text-zinc-300">
+          $new-schedule "Run docs every Monday at 9am"
+        </code>{' '}
+        in Codex.
       </SkillHint>
       {/* Form / Custom toggle — same UX as the agents tab's new-agent flow. */}
       <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] p-0.5">
@@ -248,7 +279,9 @@ function ScheduleForm({
             key={m}
             onClick={() => setMode(m)}
             className={`rounded-sm px-2 py-0.5 text-[11px] capitalize ${
-              mode === m ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+              mode === m
+                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
             {m === 'form' ? 'Form' : 'Describe in plain text'}
@@ -292,7 +325,10 @@ function ScheduleForm({
             </select>
             {customErr && <span className="text-[11px] text-[var(--gt-red)]">{customErr}</span>}
             <div className="ml-auto flex items-center gap-2">
-              <button onClick={onCancel} className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5">
+              <button
+                onClick={onCancel}
+                className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5"
+              >
                 cancel
               </button>
               <button
@@ -300,189 +336,211 @@ function ScheduleForm({
                 disabled={!customText.trim() || customBusy}
                 className="rounded-md bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
               >
-                {customBusy ? 'Spawning…' : customLaunchMode === 'terminal' ? 'Open instance' : `Design with ${engineLabel(engine)}`}
+                {customBusy
+                  ? 'Spawning…'
+                  : customLaunchMode === 'terminal'
+                    ? 'Open instance'
+                    : `Design with ${engineLabel(engine)}`}
               </button>
             </div>
           </div>
           <div className="text-[10.5px] text-zinc-600">
-            ⌘↵ to submit · the designer reads your agent list + existing schedules, parses the cadence, and writes the new entry directly. After it finishes the app reconciles launchd so the schedule becomes real.
+            ⌘↵ to submit · the designer reads your agent list + existing schedules, parses the
+            cadence, and writes the new entry directly. After it finishes the app reconciles launchd
+            so the schedule becomes real.
           </div>
         </div>
       )}
 
       {mode === 'form' && (
-      <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-zinc-500">Run</span>
-        <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={FIELD}>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.title}
-            </option>
-          ))}
-        </select>
-        <span className="text-[11px] text-zinc-500">via</span>
-        <EngineModelPicker
-          engine={engine}
-          model={model || undefined}
-          onChange={(e, m) => {
-            setEngine(e)
-            setModel(m || '')
-          }}
-          size="sm"
-        />
-        {/* Run-on host selector — only in the local control plane (not when
-            already attached to a remote), and only when Linux hosts exist. */}
-        {!remote && hostOptions.length > 0 && (
-          <>
-            <span className="text-[11px] text-zinc-500">on</span>
-            <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
-              <option value="">this Mac (launchd)</option>
-              {hostOptions.map((h) => {
-                const hh = hostHealth[h.id]
-                const dot = !hh ? '' : hh.reachable ? '● ' : '○ '
-                return (
-                  <option key={h.id} value={h.id}>
-                    {dot}
-                    {h.label} (systemd){hh && !hh.reachable ? ' — unreachable' : ''}
-                  </option>
-                )
-              })}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-zinc-500">Run</span>
+            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={FIELD}>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.title}
+                </option>
+              ))}
             </select>
-            {host && (
-              <select value={runtime} onChange={(e) => setRuntime(e.target.value as 'bare' | 'container' | 'k8s')} className={FIELD}>
-                <option value="bare">bare</option>
-                <option value="container">container</option>
-                <option value="k8s">k8s (k3s CronJob)</option>
-              </select>
+            <span className="text-[11px] text-zinc-500">via</span>
+            <EngineModelPicker
+              engine={engine}
+              model={model || undefined}
+              onChange={(e, m) => {
+                setEngine(e)
+                setModel(m || '')
+              }}
+              size="sm"
+            />
+            {/* Run-on host selector — only in the local control plane (not when
+            already attached to a remote), and only when Linux hosts exist. */}
+            {!remote && hostOptions.length > 0 && (
+              <>
+                <span className="text-[11px] text-zinc-500">on</span>
+                <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
+                  <option value="">this Mac (launchd)</option>
+                  {hostOptions.map((h) => {
+                    const hh = hostHealth[h.id]
+                    const dot = !hh ? '' : hh.reachable ? '● ' : '○ '
+                    return (
+                      <option key={h.id} value={h.id}>
+                        {dot}
+                        {h.label} (systemd){hh && !hh.reachable ? ' — unreachable' : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+                {host && (
+                  <select
+                    value={runtime}
+                    onChange={(e) => setRuntime(e.target.value as 'bare' | 'container' | 'k8s')}
+                    className={FIELD}
+                  >
+                    <option value="bare">bare</option>
+                    <option value="container">container</option>
+                    <option value="k8s">k8s (k3s CronJob)</option>
+                  </select>
+                )}
+                {host && hostHealth[host] && !hostHealth[host].reachable && (
+                  <span className="text-[10.5px] text-amber-400">{hostHealth[host].hint}</span>
+                )}
+              </>
             )}
-            {host && hostHealth[host] && !hostHealth[host].reachable && (
-              <span className="text-[10.5px] text-amber-400">{hostHealth[host].hint}</span>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1">
-        {(['calendar', 'cron'] as const).map((k) => (
-          <button
-            key={k}
-            onClick={() => setKind(k)}
-            className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize ${
-              kind === k
-                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            {k === 'calendar' ? 'at a time' : 'cron'}
-          </button>
-        ))}
-      </div>
-
-      {kind === 'calendar' && (
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-400">
-          at
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={FIELD} />
-          <span className="text-zinc-600">on</span>
-          {WD.map((w, i) => (
-            <button
-              key={w}
-              onClick={() => toggleWd(i)}
-              className={`h-6 w-7 rounded text-[10px] ${
-                weekdays.includes(i)
-                  ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
-                  : 'border border-[var(--gt-border)] text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
-          <span className="text-[10px] text-zinc-600">{weekdays.length ? '' : '(every day)'}</span>
-        </div>
-      )}
-      {kind === 'cron' && (
-        <div className="space-y-1">
-          <input
-            value={cron}
-            onChange={(e) => setCron(e.target.value)}
-            placeholder="min hour dom month dow  (e.g. 30 9 * * 1-5)"
-            className={`${FIELD} w-full font-mono`}
-          />
-          <div className="text-[10px] text-zinc-600">
-            5-field cron — ranges/lists/steps ok (e.g. */15, 1-5, 9,17). Fires at fixed wall-clock times.
           </div>
-        </div>
-      )}
 
-      {/* Optional reliability knobs for flaky runs. Blank = runner defaults
+          <div className="flex items-center gap-1">
+            {(['calendar', 'cron'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize ${
+                  kind === k
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {k === 'calendar' ? 'at a time' : 'cron'}
+              </button>
+            ))}
+          </div>
+
+          {kind === 'calendar' && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-400">
+              at
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className={FIELD}
+              />
+              <span className="text-zinc-600">on</span>
+              {WD.map((w, i) => (
+                <button
+                  key={w}
+                  onClick={() => toggleWd(i)}
+                  className={`h-6 w-7 rounded text-[10px] ${
+                    weekdays.includes(i)
+                      ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                      : 'border border-[var(--gt-border)] text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {w}
+                </button>
+              ))}
+              <span className="text-[10px] text-zinc-600">
+                {weekdays.length ? '' : '(every day)'}
+              </span>
+            </div>
+          )}
+          {kind === 'cron' && (
+            <div className="space-y-1">
+              <input
+                value={cron}
+                onChange={(e) => setCron(e.target.value)}
+                placeholder="min hour dom month dow  (e.g. 30 9 * * 1-5)"
+                className={`${FIELD} w-full font-mono`}
+              />
+              <div className="text-[10px] text-zinc-600">
+                5-field cron — ranges/lists/steps ok (e.g. */15, 1-5, 9,17). Fires at fixed
+                wall-clock times.
+              </div>
+            </div>
+          )}
+
+          {/* Optional reliability knobs for flaky runs. Blank = runner defaults
           (2 retries · 30s base backoff · 30m timeout). */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-        <span className="text-zinc-600">retries</span>
-        <input
-          type="number"
-          min={0}
-          value={maxRetries}
-          onChange={(e) => setMaxRetries(e.target.value)}
-          placeholder="2"
-          className={`${FIELD} w-14`}
-        />
-        <span className="text-zinc-600">backoff</span>
-        <input
-          type="number"
-          min={1}
-          value={backoffSec}
-          onChange={(e) => setBackoffSec(e.target.value)}
-          placeholder="30s"
-          className={`${FIELD} w-16`}
-        />
-        <span className="text-zinc-600">timeout</span>
-        <input
-          type="number"
-          min={1}
-          value={timeoutMin}
-          onChange={(e) => setTimeoutMin(e.target.value)}
-          placeholder="30m"
-          className={`${FIELD} w-16`}
-        />
-        <span className="text-[10px] text-zinc-700">blank = defaults</span>
-      </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+            <span className="text-zinc-600">retries</span>
+            <input
+              type="number"
+              min={0}
+              value={maxRetries}
+              onChange={(e) => setMaxRetries(e.target.value)}
+              placeholder="2"
+              className={`${FIELD} w-14`}
+            />
+            <span className="text-zinc-600">backoff</span>
+            <input
+              type="number"
+              min={1}
+              value={backoffSec}
+              onChange={(e) => setBackoffSec(e.target.value)}
+              placeholder="30s"
+              className={`${FIELD} w-16`}
+            />
+            <span className="text-zinc-600">timeout</span>
+            <input
+              type="number"
+              min={1}
+              value={timeoutMin}
+              onChange={(e) => setTimeoutMin(e.target.value)}
+              placeholder="30m"
+              className={`${FIELD} w-16`}
+            />
+            <span className="text-[10px] text-zinc-700">blank = defaults</span>
+          </div>
 
-      {/* Optional per-schedule env vars. Power-user surface: most schedules
+          {/* Optional per-schedule env vars. Power-user surface: most schedules
           have zero. The cron runner spreads these into the spawned agent's
           env after the standard TERMINAL_* keys, so e.g. a "(bolt)" Beacon
           schedule can pin BEACON_PROJECT=bolt and the agent prompt's
           `$BEACON_PROJECT` substitution resolves to bolt instead of the
           global config default. */}
-      <details className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1">
-        <summary className="cursor-pointer text-[11px] text-zinc-500 hover:text-zinc-300">
-          Env vars <span className="text-zinc-700">(optional · KEY=value, one per line)</span>
-        </summary>
-        <textarea
-          value={envText}
-          onChange={(e) => setEnvText(e.target.value)}
-          rows={3}
-          placeholder={`BEACON_PROJECT=bolt\nBEACON_SECRET=sec_…`}
-          className={`${FIELD} mt-1.5 resize-y w-full font-mono text-[11px]`}
-        />
-        <div className="mt-1 text-[10px] text-zinc-600">
-          Keys must match <span className="font-mono">[A-Z_][A-Z0-9_]*</span>. Comments (<span className="font-mono">#…</span>) and blank lines ignored.
-        </div>
-      </details>
+          <details className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1">
+            <summary className="cursor-pointer text-[11px] text-zinc-500 hover:text-zinc-300">
+              Env vars <span className="text-zinc-700">(optional · KEY=value, one per line)</span>
+            </summary>
+            <textarea
+              value={envText}
+              onChange={(e) => setEnvText(e.target.value)}
+              rows={3}
+              placeholder={`BEACON_PROJECT=bolt\nBEACON_SECRET=sec_…`}
+              className={`${FIELD} mt-1.5 resize-y w-full font-mono text-[11px]`}
+            />
+            <div className="mt-1 text-[10px] text-zinc-600">
+              Keys must match <span className="font-mono">[A-Z_][A-Z0-9_]*</span>. Comments (
+              <span className="font-mono">#…</span>) and blank lines ignored.
+            </div>
+          </details>
 
-      {err && <div className="text-[11px] text-[var(--gt-red)]">{err}</div>}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={submit}
-          disabled={busy || !agentId}
-          className="rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-        >
-          {busy ? 'Saving…' : 'Schedule it'}
-        </button>
-        <button onClick={onCancel} className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5">
-          cancel
-        </button>
-      </div>
-      </div>
+          {err && <div className="text-[11px] text-[var(--gt-red)]">{err}</div>}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={submit}
+              disabled={busy || !agentId}
+              className="rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? 'Saving…' : 'Schedule it'}
+            </button>
+            <button
+              onClick={onCancel}
+              className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -523,10 +581,13 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
   }, [])
   const [disabled, setDisabledIds] = useState<Set<string>>(new Set())
   // Lazy-loaded bash bodies, keyed by agentId. Same cache pattern as the Agents tab.
-  const [scriptByAgent, setScriptByAgent] = useState<Record<string, { path: string; body: string } | null>>({})
+  const [scriptByAgent, setScriptByAgent] = useState<
+    Record<string, { path: string; body: string } | null>
+  >({})
 
   const reload = () => window.gt.schedules.list().then(setSchedules)
-  const reloadDisabled = () => window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
+  const reloadDisabled = () =>
+    window.gt.schedules.disabledList().then((ids) => setDisabledIds(new Set(ids)))
   useEffect(() => {
     reload()
     reloadDisabled()
@@ -626,7 +687,17 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     host?: string,
     runtime?: 'bare' | 'container' | 'k8s',
   ) => {
-    const r = await window.gt.schedules.save({ agentId, engine, spec, model, env, retry, timeoutSec, host, runtime })
+    const r = await window.gt.schedules.save({
+      agentId,
+      engine,
+      spec,
+      model,
+      env,
+      retry,
+      timeoutSec,
+      host,
+      runtime,
+    })
     if (r && 'error' in r) throw new Error(r.error)
     setCreating(false)
     reload()
@@ -690,7 +761,11 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60'
                 }`}
               >
-                {allPaused ? <Play size={11} strokeWidth={2.5} /> : <Pause size={11} strokeWidth={2.5} />}
+                {allPaused ? (
+                  <Play size={11} strokeWidth={2.5} />
+                ) : (
+                  <Pause size={11} strokeWidth={2.5} />
+                )}
                 {allPaused
                   ? `Resume all (${total})`
                   : pausedCount > 0
@@ -705,7 +780,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
             const r = await window.gt.schedules.reconcile()
             if ('error' in r) flash(`reconcile failed · ${r.error}`)
             else if (r.failed.length)
-              flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans · ${r.failed.length} FAILED to load`)
+              flash(
+                `reconciled · ${r.loaded} loaded, ${r.removed} orphans · ${r.failed.length} FAILED to load`,
+              )
             else flash(`reconciled · ${r.loaded} loaded, ${r.removed} orphans removed`)
             reload()
           }}
@@ -733,14 +810,17 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">
-            No schedules yet. “New schedule” registers a real macOS launchd job that runs an agent on your
-            cadence — even when TerMinal is closed.
+            No schedules yet. “New schedule” registers a real macOS launchd job that runs an agent
+            on your cadence — even when TerMinal is closed.
           </div>
         ) : shownSchedules.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">No schedules for {repo}.</div>
         ) : (
           shownSchedules.map((s) => (
-            <div key={s.id} className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+            <div
+              key={s.id}
+              className="rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3"
+            >
               <div className="flex items-start gap-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -774,7 +854,8 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                         onClick={async () => {
                           const r = await window.gt.schedules.reconcile()
                           if ('error' in r) flash(`reconcile failed · ${r.error}`)
-                          else if (r.failed.length) flash(`${r.failed.length} schedule(s) still failed to load`)
+                          else if (r.failed.length)
+                            flash(`${r.failed.length} schedule(s) still failed to load`)
                           else flash(`${s.agentTitle} · scheduled in launchd`)
                           reload()
                         }}
@@ -929,7 +1010,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                           {open && log && (
                             <div className="mt-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)]">
                               <div className="flex items-center justify-between border-b border-[var(--gt-border)]/60 px-2 py-1">
-                                <span className="text-[10px] uppercase tracking-wider text-zinc-600">log</span>
+                                <span className="text-[10px] uppercase tracking-wider text-zinc-600">
+                                  log
+                                </span>
                                 <button
                                   onClick={() => setLog(null)}
                                   className="rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-300"

@@ -11,7 +11,8 @@ const isRecord = (v: unknown): v is JsonRecord => !!v && typeof v === 'object' &
 
 function usageSummary(obj: JsonRecord): string {
   const cost = typeof obj.total_cost_usd === 'number' ? ` · $${obj.total_cost_usd.toFixed(4)}` : ''
-  const duration = typeof obj.duration_ms === 'number' ? ` · ${(obj.duration_ms / 1000).toFixed(1)}s` : ''
+  const duration =
+    typeof obj.duration_ms === 'number' ? ` · ${(obj.duration_ms / 1000).toFixed(1)}s` : ''
   return cost || duration ? `\n[usage${cost}${duration}]\n` : ''
 }
 

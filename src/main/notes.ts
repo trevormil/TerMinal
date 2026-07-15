@@ -87,7 +87,10 @@ export function listNoteFolder(root: string, rel: string): NoteFolderEntry[] {
   }
 }
 
-export function readNoteFolderFile(root: string, rel: string): { ok: boolean; content: string; reason?: string } {
+export function readNoteFolderFile(
+  root: string,
+  rel: string,
+): { ok: boolean; content: string; reason?: string } {
   if (!noteLike(rel)) return { ok: false, content: '', reason: 'not a note file' }
   const abs = safe(root, rel)
   if (!abs || !existsSync(abs)) return { ok: false, content: '', reason: 'not found' }

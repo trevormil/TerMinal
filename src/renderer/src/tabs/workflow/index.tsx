@@ -7,10 +7,28 @@ import { fileIcon } from '../../lib/fileIcons'
 import type { FileEntry, Tab, TabContext } from '../../lib/types'
 
 const EXT: Record<string, string> = {
-  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', mjs: 'js', cjs: 'js',
-  json: 'json', md: 'markdown', mdx: 'markdown', css: 'css', html: 'html',
-  py: 'py', rs: 'rs', go: 'go', yaml: 'yaml', yml: 'yaml', sql: 'sql', sh: 'sh', bash: 'sh',
-  zsh: 'sh', toml: 'toml', xml: 'xml',
+  ts: 'ts',
+  tsx: 'tsx',
+  js: 'js',
+  jsx: 'jsx',
+  mjs: 'js',
+  cjs: 'js',
+  json: 'json',
+  md: 'markdown',
+  mdx: 'markdown',
+  css: 'css',
+  html: 'html',
+  py: 'py',
+  rs: 'rs',
+  go: 'go',
+  yaml: 'yaml',
+  yml: 'yaml',
+  sql: 'sql',
+  sh: 'sh',
+  bash: 'sh',
+  zsh: 'sh',
+  toml: 'toml',
+  xml: 'xml',
 }
 const base = (p: string) => p.split('/').pop() || p
 
@@ -55,7 +73,13 @@ function TreeNode({
         } ${entry.ignored ? 'cursor-not-allowed opacity-40' : ''}`}
       >
         <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
-          {entry.dir ? open ? <ChevronDown size={12} strokeWidth={2} /> : <ChevronRight size={12} strokeWidth={2} /> : null}
+          {entry.dir ? (
+            open ? (
+              <ChevronDown size={12} strokeWidth={2} />
+            ) : (
+              <ChevronRight size={12} strokeWidth={2} />
+            )
+          ) : null}
         </span>
         <Icon size={14} strokeWidth={2} className={`shrink-0 ${cls}`} />
         <span className="min-w-0 flex-1 truncate font-mono">{entry.name}</span>
@@ -63,7 +87,13 @@ function TreeNode({
       {entry.dir &&
         open &&
         children?.map((child) => (
-          <TreeNode key={child.path} entry={child} depth={depth + 1} activePath={activePath} onOpen={onOpen} />
+          <TreeNode
+            key={child.path}
+            entry={child}
+            depth={depth + 1}
+            activePath={activePath}
+            onOpen={onOpen}
+          />
         ))}
     </>
   )
@@ -87,7 +117,12 @@ function WorkflowTab(_props: { ctx: TabContext }) {
   const openFile = async (path: string) => {
     setMessage('')
     const r = await window.gt.workflow.read(path)
-    setActive({ path, content: r.ok ? r.content : '', saved: r.ok ? r.content : '', err: r.ok ? undefined : r.reason })
+    setActive({
+      path,
+      content: r.ok ? r.content : '',
+      saved: r.ok ? r.content : '',
+      err: r.ok ? undefined : r.reason,
+    })
   }
 
   const save = async () => {
@@ -126,14 +161,24 @@ function WorkflowTab(_props: { ctx: TabContext }) {
           {roots === null ? (
             <div className="p-3 text-[12px] text-zinc-600">Loading...</div>
           ) : (
-            roots.map((entry) => <TreeNode key={entry.path} entry={entry} depth={0} activePath={active?.path || null} onOpen={openFile} />)
+            roots.map((entry) => (
+              <TreeNode
+                key={entry.path}
+                entry={entry}
+                depth={0}
+                activePath={active?.path || null}
+                onOpen={openFile}
+              />
+            ))
           )}
         </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-300">{active ? active.path : title}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-300">
+            {active ? active.path : title}
+          </span>
           {message && <span className="text-[11px] text-zinc-500">{message}</span>}
           {active && !active.err && (
             <button

@@ -193,7 +193,9 @@ function listenerKey(env: Pick<ListenerEnvelope, 'listenerId' | 'source' | 'type
   return env.listenerId?.trim() || `${env.source || 'unknown'}:${env.type || 'event'}`
 }
 
-export function enqueueListenerEvent(input: unknown): { ok: true; path: string } | { error: string } {
+export function enqueueListenerEvent(
+  input: unknown,
+): { ok: true; path: string } | { error: string } {
   ensure()
   if (!input || typeof input !== 'object') return { error: 'event must be an object' }
   const env = input as Partial<ListenerEnvelope>
@@ -211,8 +213,10 @@ function validateEnvelope(raw: unknown): ListenerEnvelope {
   const env = raw as ListenerEnvelope
   if (typeof env.source !== 'string' || !env.source.trim()) throw new Error('source is required')
   if (typeof env.type !== 'string' || !env.type.trim()) throw new Error('type is required')
-  if (env.listenerId && typeof env.listenerId !== 'string') throw new Error('listenerId must be a string')
-  if (env.listenerName && typeof env.listenerName !== 'string') throw new Error('listenerName must be a string')
+  if (env.listenerId && typeof env.listenerId !== 'string')
+    throw new Error('listenerId must be a string')
+  if (env.listenerName && typeof env.listenerName !== 'string')
+    throw new Error('listenerName must be a string')
   if (env.repoRoot && typeof env.repoRoot !== 'string') throw new Error('repoRoot must be a string')
   if (env.requestedAction && typeof env.requestedAction !== 'object') {
     throw new Error('requestedAction must be an object')
@@ -310,7 +314,12 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
   if (a.kind === 'background-task') {
     if (!env.repoRoot) throw new Error('background-task requires repoRoot')
     assertRepoRootAllowed(env.repoRoot)
-    const r = spawnBgTask({ repoRoot: env.repoRoot, prompt: a.prompt, engine: a.engine, model: a.model })
+    const r = spawnBgTask({
+      repoRoot: env.repoRoot,
+      prompt: a.prompt,
+      engine: a.engine,
+      model: a.model,
+    })
     if ('error' in r) throw new Error(r.error)
     return { result: `started background task ${r.id}`, runId: r.id, runSource: 'bg' }
   }
@@ -318,7 +327,11 @@ function processAction(env: ListenerEnvelope): ListenerActionResult {
   throw new Error(`unknown requestedAction kind: ${(a as { kind?: string }).kind || 'missing'}`)
 }
 
-export function processListenerInbox(limit = 20): { processed: number; failed: number; skipped: number } {
+export function processListenerInbox(limit = 20): {
+  processed: number
+  failed: number
+  skipped: number
+} {
   ensure()
   if (!readListenerSettings().enabled) return { processed: 0, failed: 0, skipped: 0 }
   const files = readdirSync(join(ROOT, 'new'))
@@ -427,8 +440,14 @@ function recentFrom(dir: ListenerDir) {
 
 export function readListenerStatus(): ListenerStatus {
   ensure()
-  const counts = Object.fromEntries(DIRS.map((d) => [d, fileCount(d)])) as Record<ListenerDir, number>
-  const dirs = Object.fromEntries(DIRS.map((d) => [d, join(ROOT, d)])) as Record<ListenerDir, string>
+  const counts = Object.fromEntries(DIRS.map((d) => [d, fileCount(d)])) as Record<
+    ListenerDir,
+    number
+  >
+  const dirs = Object.fromEntries(DIRS.map((d) => [d, join(ROOT, d)])) as Record<
+    ListenerDir,
+    string
+  >
   const all = [
     ...recentFrom('new'),
     ...recentFrom('processing'),
@@ -464,23 +483,21 @@ export function readListenerStatus(): ListenerStatus {
       source: item.source || 'unknown',
       type: item.type || 'event',
     })
-    const cur =
-      byListener.get(key) ||
-      {
-        id: key,
-        source: item.source || 'unknown',
-        type: item.type || 'event',
-        name: item.listenerName,
-        total: 0,
-        new: 0,
-        processing: 0,
-        done: 0,
-        failed: 0,
-        deadLetter: 0,
-        lastAt: 0,
-        lastStatus: item.dir,
-        repoRoot: item.repoRoot,
-      }
+    const cur = byListener.get(key) || {
+      id: key,
+      source: item.source || 'unknown',
+      type: item.type || 'event',
+      name: item.listenerName,
+      total: 0,
+      new: 0,
+      processing: 0,
+      done: 0,
+      failed: 0,
+      deadLetter: 0,
+      lastAt: 0,
+      lastStatus: item.dir,
+      repoRoot: item.repoRoot,
+    }
     cur.total++
     if (item.dir === 'dead-letter') cur.deadLetter++
     else cur[item.dir]++
@@ -501,7 +518,9 @@ export function readListenerStatus(): ListenerStatus {
     inboxDir: ROOT,
     dirs,
     counts,
-    listeners: [...byListener.values()].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 40),
+    listeners: [...byListener.values()]
+      .sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0))
+      .slice(0, 40),
     recent: all.sort((a, b) => (b.processedAt || 0) - (a.processedAt || 0)).slice(0, 50),
   }
 }

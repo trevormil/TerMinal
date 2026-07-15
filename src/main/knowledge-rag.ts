@@ -55,8 +55,15 @@ const slug = (input: string) =>
     .replace(/^-+|-+$/g, '') || 'rag'
 
 function defaultRootDir(scope: KnowledgeScope, repoRoot: string, item: KnowledgeItem): string {
-  const base = scope === 'repo' && repoRoot ? join(repoRoot, '.TerMinal') : join(homedir(), '.config', 'TerMinal')
-  return join(base, 'knowledge-rag', slug(item.rag?.category || item.title || item.categoryId || item.id))
+  const base =
+    scope === 'repo' && repoRoot
+      ? join(repoRoot, '.TerMinal')
+      : join(homedir(), '.config', 'TerMinal')
+  return join(
+    base,
+    'knowledge-rag',
+    slug(item.rag?.category || item.title || item.categoryId || item.id),
+  )
 }
 
 function ragCommand(item: KnowledgeItem): { command: string; args: string[] } {
@@ -74,7 +81,14 @@ function yamlString(value: string): string {
   return JSON.stringify(value)
 }
 
-function ensureWorkspace(req: RagRequest): { rootDir: string; documentsDir: string; dataDir: string; command: string; args: string[]; category: string } {
+function ensureWorkspace(req: RagRequest): {
+  rootDir: string
+  documentsDir: string
+  dataDir: string
+  command: string
+  args: string[]
+  category: string
+} {
   const rootDir = req.item.rag?.rootDir?.trim() || defaultRootDir(req.scope, req.repoRoot, req.item)
   const documentsDir = join(rootDir, 'documents')
   const dataDir = join(rootDir, 'data')
@@ -133,7 +147,12 @@ function ensureWorkspace(req: RagRequest): { rootDir: string; documentsDir: stri
   return { rootDir, documentsDir, dataDir, command, args, category }
 }
 
-async function callRagTool(workspace: ReturnType<typeof ensureWorkspace>, tool: string, args: Record<string, unknown>, timeoutMs = 180_000): Promise<unknown> {
+async function callRagTool(
+  workspace: ReturnType<typeof ensureWorkspace>,
+  tool: string,
+  args: Record<string, unknown>,
+  timeoutMs = 180_000,
+): Promise<unknown> {
   const child = spawn(workspace.command, workspace.args, {
     cwd: workspace.rootDir,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -166,16 +185,27 @@ async function callRagTool(workspace: ReturnType<typeof ensureWorkspace>, tool: 
       pending.set(id, (msg) => {
         clearTimeout(timer)
         pending.delete(id)
-        msg.error ? reject(new Error(msg.error.message || 'Knowledge RAG MCP error')) : resolve(msg.result)
+        msg.error
+          ? reject(new Error(msg.error.message || 'Knowledge RAG MCP error'))
+          : resolve(msg.result)
       })
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
     })
   try {
-    await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'TerMinal', version: '1' } })
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
+    await send('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'TerMinal', version: '1' },
+    })
+    child.stdin.write(
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n',
+    )
     const result = await send('tools/call', { name: tool, arguments: args })
     const content = Array.isArray(result?.content) ? result.content : []
-    const text = content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n').trim()
+    const text = content
+      .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
+      .join('\n')
+      .trim()
     if (!text) return result
     try {
       return JSON.parse(text)
@@ -194,40 +224,130 @@ export async function knowledgeRagStatus(req: RagRequest): Promise<KnowledgeRagS
   const workspace = ensureWorkspace(req)
   try {
     const stats = await callRagTool(workspace, 'get_index_stats', {})
-    return { ok: true, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, stats }
+    return {
+      ok: true,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      stats,
+    }
   } catch (e) {
-    return { ok: false, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, error: (e as Error).message }
+    return {
+      ok: false,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      error: (e as Error).message,
+    }
   }
 }
 
-export async function knowledgeRagReindex(req: RagRequest, fullRebuild = false): Promise<KnowledgeRagStatus> {
+export async function knowledgeRagReindex(
+  req: RagRequest,
+  fullRebuild = false,
+): Promise<KnowledgeRagStatus> {
   const workspace = ensureWorkspace(req)
   try {
-    const stats = await callRagTool(workspace, 'reindex_documents', { force: !fullRebuild, full_rebuild: fullRebuild }, 300_000)
-    return { ok: true, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, stats }
+    const stats = await callRagTool(
+      workspace,
+      'reindex_documents',
+      { force: !fullRebuild, full_rebuild: fullRebuild },
+      300_000,
+    )
+    return {
+      ok: true,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      stats,
+    }
   } catch (e) {
-    return { ok: false, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, error: (e as Error).message }
+    return {
+      ok: false,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      error: (e as Error).message,
+    }
   }
 }
 
-export async function knowledgeRagAddDocument(req: RagAddDocumentRequest): Promise<KnowledgeRagStatus> {
+export async function knowledgeRagAddDocument(
+  req: RagAddDocumentRequest,
+): Promise<KnowledgeRagStatus> {
   const workspace = ensureWorkspace(req)
-  const filename = req.filepath?.trim() || `${workspace.category}/${slug(req.item.title || 'note')}-${Date.now()}.md`
+  const filename =
+    req.filepath?.trim() ||
+    `${workspace.category}/${slug(req.item.title || 'note')}-${Date.now()}.md`
   try {
-    const stats = await callRagTool(workspace, 'add_document', { content: req.content, filepath: filename, category: workspace.category }, 300_000)
-    return { ok: true, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, stats }
+    const stats = await callRagTool(
+      workspace,
+      'add_document',
+      { content: req.content, filepath: filename, category: workspace.category },
+      300_000,
+    )
+    return {
+      ok: true,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      stats,
+    }
   } catch (e) {
-    return { ok: false, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, error: (e as Error).message }
+    return {
+      ok: false,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      error: (e as Error).message,
+    }
   }
 }
 
 export async function knowledgeRagAddUrl(req: RagAddUrlRequest): Promise<KnowledgeRagStatus> {
   const workspace = ensureWorkspace(req)
   try {
-    const stats = await callRagTool(workspace, 'add_from_url', { url: req.url, category: workspace.category, title: req.title || req.item.title || undefined }, 300_000)
-    return { ok: true, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, stats }
+    const stats = await callRagTool(
+      workspace,
+      'add_from_url',
+      {
+        url: req.url,
+        category: workspace.category,
+        title: req.title || req.item.title || undefined,
+      },
+      300_000,
+    )
+    return {
+      ok: true,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      stats,
+    }
   } catch (e) {
-    return { ok: false, rootDir: workspace.rootDir, documentsDir: workspace.documentsDir, dataDir: workspace.dataDir, command: workspace.command, args: workspace.args, error: (e as Error).message }
+    return {
+      ok: false,
+      rootDir: workspace.rootDir,
+      documentsDir: workspace.documentsDir,
+      dataDir: workspace.dataDir,
+      command: workspace.command,
+      args: workspace.args,
+      error: (e as Error).message,
+    }
   }
 }
 
@@ -243,6 +363,12 @@ export async function knowledgeRagSearch(req: RagSearchRequest): Promise<Knowled
     const results = Array.isArray((raw as any)?.results) ? (raw as any).results : []
     return { ok: true, query: req.query, rootDir: workspace.rootDir, results, raw }
   } catch (e) {
-    return { ok: false, query: req.query, rootDir: workspace.rootDir, results: [], error: (e as Error).message }
+    return {
+      ok: false,
+      query: req.query,
+      rootDir: workspace.rootDir,
+      results: [],
+      error: (e as Error).message,
+    }
   }
 }

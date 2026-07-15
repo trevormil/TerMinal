@@ -93,7 +93,10 @@ const redactTerminalText = (text: string) =>
   text
     .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
     .replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*['"]?[^'"\s]+/gi, '$1=[redacted]')
-    .replace(/\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/g, '[redacted-token]')
+    .replace(
+      /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/g,
+      '[redacted-token]',
+    )
 
 function recentTerminalText(term: Xterm | null, maxLines = 180): string {
   if (!term) return ''
@@ -115,28 +118,49 @@ function deterministicReplies(output: string, engine: string): SuggestedReply[] 
     if (!replies.some((r) => r.prompt === prompt)) replies.push({ label, prompt })
   }
 
-  if (/\b(do you want|would you like|should i|confirm|approve|continue|ready|waiting)\b/.test(lower)) {
+  if (
+    /\b(do you want|would you like|should i|confirm|approve|continue|ready|waiting)\b/.test(lower)
+  ) {
     add('Continue', 'Looks good to me. Continue.')
   }
-  if (/\b(error|failed|failure|traceback|exception|fatal|exit 1|denied|not found|typecheck|tsc)\b/.test(lower)) {
-    add('Fix failure', 'Identify the root cause of the failure, apply the smallest safe fix, and rerun the relevant check.')
-    add('Explain error', 'Explain the failure and the exact next command or code change you recommend.')
+  if (
+    /\b(error|failed|failure|traceback|exception|fatal|exit 1|denied|not found|typecheck|tsc)\b/.test(
+      lower,
+    )
+  ) {
+    add(
+      'Fix failure',
+      'Identify the root cause of the failure, apply the smallest safe fix, and rerun the relevant check.',
+    )
+    add(
+      'Explain error',
+      'Explain the failure and the exact next command or code change you recommend.',
+    )
   }
   if (/\b(test|spec|suite|bun test|pytest|vitest|jest)\b/.test(lower)) {
     add('Run tests', 'Run the relevant test suite and fix any failures.')
   }
-  if (/\b(done|implemented|rebuilt|released|pushed|committed|all set|complete|passed)\b/.test(lower)) {
+  if (
+    /\b(done|implemented|rebuilt|released|pushed|committed|all set|complete|passed)\b/.test(lower)
+  ) {
     add('Summarize', 'Summarize what changed, what was verified, and any remaining risks.')
     add('Next step', 'Suggest the highest-leverage next step from here.')
   }
   add('Keep going', 'Continue with the next obvious step.')
   add('Check status', 'Check git status and summarize the current state.')
-  if (engine !== 'local') add('Commit if ready', 'If the work is complete and verified, commit it with a concise conventional commit message.')
+  if (engine !== 'local')
+    add(
+      'Commit if ready',
+      'If the work is complete and verified, commit it with a concise conventional commit message.',
+    )
   return replies.slice(0, 5)
 }
 
 function parseAiReplies(text: string): SuggestedReply[] {
-  const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+  const cleaned = text
+    .replace(/^```json\s*/i, '')
+    .replace(/```$/i, '')
+    .trim()
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
   const raw = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned
@@ -149,7 +173,8 @@ function parseAiReplies(text: string): SuggestedReply[] {
       const r = s as Record<string, unknown>
       const prompt = typeof r.prompt === 'string' ? r.prompt.trim() : ''
       if (!prompt) return null
-      const label = typeof r.label === 'string' && r.label.trim() ? r.label.trim() : prompt.slice(0, 36)
+      const label =
+        typeof r.label === 'string' && r.label.trim() ? r.label.trim() : prompt.slice(0, 36)
       const why = typeof r.why === 'string' && r.why.trim() ? r.why.trim() : undefined
       return { label: label.slice(0, 36), prompt, why }
     })
@@ -252,7 +277,9 @@ export function TerminalPane({
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
   const [suggestionMode, setSuggestionMode] = useState<SuggestionMode>('off')
-  const [suggestionSettings, setSuggestionSettings] = useState<SuggestionSettings>(DEFAULT_SUGGESTION_SETTINGS)
+  const [suggestionSettings, setSuggestionSettings] = useState<SuggestionSettings>(
+    DEFAULT_SUGGESTION_SETTINGS,
+  )
   const [autoInstructions, setAutoInstructions] = useState('')
   const [enhancerDraft, setEnhancerDraft] = useState('')
   const [suggestions, setSuggestions] = useState<SuggestedReply[]>([])
@@ -367,9 +394,7 @@ export function TerminalPane({
       gt.listSkills()
         .then((skills) => {
           skillNames = new Set(
-            skills
-              .filter((s) => s.platforms.includes('codex'))
-              .map((s) => s.name),
+            skills.filter((s) => s.platforms.includes('codex')).map((s) => s.name),
           )
         })
         .catch(() => {
@@ -401,7 +426,8 @@ export function TerminalPane({
             interceptEnhanceSubmitRef.current(draft)
             continue
           }
-          const rewritten = choice.engine === 'codex' ? rewriteCodexSkillSubmit(currentLine, skillNames) : null
+          const rewritten =
+            choice.engine === 'codex' ? rewriteCodexSkillSubmit(currentLine, skillNames) : null
           inputLineBufferRef.current = ''
           if (rewritten) {
             gt.pty.input(sessionKey, `${clearLine}${rewritten}`)
@@ -465,7 +491,9 @@ export function TerminalPane({
           return
         }
       }
-      const dropped = (dt.getData('text/uri-list') || dt.getData('text/plain')).split('\n')[0].trim()
+      const dropped = (dt.getData('text/uri-list') || dt.getData('text/plain'))
+        .split('\n')[0]
+        .trim()
       if (dropped) {
         writeInput(dropped)
         requestAnimationFrame(() => term.focus())
@@ -610,7 +638,10 @@ export function TerminalPane({
 
   useEffect(() => {
     try {
-      setAutoInstructions(window.localStorage.getItem(`gt:auto-instructions:${sessionKey}`) ?? DEFAULT_AUTO_INSTRUCTIONS)
+      setAutoInstructions(
+        window.localStorage.getItem(`gt:auto-instructions:${sessionKey}`) ??
+          DEFAULT_AUTO_INSTRUCTIONS,
+      )
       setEnhancerDraft(window.localStorage.getItem(`gt:prompt-enhancer:${sessionKey}`) || '')
     } catch {
       setAutoInstructions(DEFAULT_AUTO_INSTRUCTIONS)
@@ -654,7 +685,8 @@ export function TerminalPane({
         kind: 'skill' as const,
         id: `${skill.scope}:${skill.namespace || ''}:${skill.name}`,
         title: `${prompt.trim()}`,
-        subtitle: skill.description || `${skill.scope}${skill.namespace ? ` · ${skill.namespace}` : ''}`,
+        subtitle:
+          skill.description || `${skill.scope}${skill.namespace ? ` · ${skill.namespace}` : ''}`,
         prompt,
         group: `Skills · ${skill.scope}${skill.namespace ? ` · ${skill.namespace}` : ''}`,
       })),
@@ -694,7 +726,10 @@ export function TerminalPane({
     setSuggestionsDismissed(true)
     requestAnimationFrame(() => termRef.current?.focus())
   }
-  const generateSuggestions = async (mode: SuggestionMode = suggestionMode, draftOverride?: string) => {
+  const generateSuggestions = async (
+    mode: SuggestionMode = suggestionMode,
+    draftOverride?: string,
+  ) => {
     setSuggestionsDismissed(false)
     if (mode === 'off') {
       setSuggestions([])
@@ -778,10 +813,9 @@ export function TerminalPane({
       messages: [
         {
           role: 'system',
-          content:
-            autoMode
-              ? 'You choose the single best next human reply for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return exactly one concise, actionable reply. Do not include markdown.'
-              : 'You generate likely next human replies for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return 1-5 concise, actionable replies. Do not include markdown.',
+          content: autoMode
+            ? 'You choose the single best next human reply for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return exactly one concise, actionable reply. Do not include markdown.'
+            : 'You generate likely next human replies for an AI coding terminal. Reply only JSON: {"suggestions":[{"label":"short button label","prompt":"text to paste and submit"}]}. Return 1-5 concise, actionable replies. Do not include markdown.',
         },
         {
           role: 'user',
@@ -799,7 +833,9 @@ export function TerminalPane({
     })
     setSuggestionBusy(false)
     if (!r.ok || !r.text) {
-      setSuggestionErr(r.error || (autoMode ? 'Auto reply unavailable' : 'AI suggestions unavailable'))
+      setSuggestionErr(
+        r.error || (autoMode ? 'Auto reply unavailable' : 'AI suggestions unavailable'),
+      )
       if (!autoMode) setSuggestions(fallback)
       return
     }
@@ -929,38 +965,61 @@ export function TerminalPane({
     const url = singleHttpUrl(text)
     if (url) {
       const preview = await window.gt.knowledge.preview(url).catch(() => null)
-      const next = appendKnowledgeItem(kb, {
-        kind: 'link',
-        title: preview?.ok && preview.title ? preview.title : new URL(url).hostname.replace(/^www\./, ''),
-        description: preview?.ok ? preview.description || '' : '',
-        content: '',
-        url: preview?.ok ? preview.url : url,
-        path: '',
-        thumbnailUrl: preview?.ok ? preview.thumbnailUrl || '' : '',
-        faviconUrl: preview?.ok ? preview.faviconUrl || '' : '',
-        siteName: preview?.ok ? preview.siteName || '' : '',
-        tags: ['terminal'],
-      }, { id: 'terminal', title: 'Terminal', description: 'Selections captured from terminal sessions.' })
+      const next = appendKnowledgeItem(
+        kb,
+        {
+          kind: 'link',
+          title:
+            preview?.ok && preview.title
+              ? preview.title
+              : new URL(url).hostname.replace(/^www\./, ''),
+          description: preview?.ok ? preview.description || '' : '',
+          content: '',
+          url: preview?.ok ? preview.url : url,
+          path: '',
+          thumbnailUrl: preview?.ok ? preview.thumbnailUrl || '' : '',
+          faviconUrl: preview?.ok ? preview.faviconUrl || '' : '',
+          siteName: preview?.ok ? preview.siteName || '' : '',
+          tags: ['terminal'],
+        },
+        {
+          id: 'terminal',
+          title: 'Terminal',
+          description: 'Selections captured from terminal sessions.',
+        },
+      )
       const ok = await window.gt.knowledge.write(scope, next)
       flashTerminalToast(ok ? `Saved link to ${scope} KB` : `Could not save ${scope} KB`)
       focusTerminalSoon()
       return
     }
 
-    const firstLine = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Terminal selection'
+    const firstLine =
+      text
+        .split('\n')
+        .map((line) => line.trim())
+        .find(Boolean) || 'Terminal selection'
     const title = firstLine.length > 56 ? `${firstLine.slice(0, 53)}...` : firstLine
-    const next = appendKnowledgeItem(kb, {
-      kind: 'markdown',
-      title,
-      description: `Captured from ${choice.engine} terminal${choice.cwd ? ` in ${choice.cwd}` : ''}.`,
-      content: `# ${title}\n\nCaptured from ${choice.engine} terminal${choice.cwd ? ` in \`${choice.cwd}\`` : ''}.\n\n\`\`\`text\n${text}\n\`\`\`\n`,
-      url: '',
-      path: '',
-      thumbnailUrl: '',
-      faviconUrl: '',
-      siteName: '',
-      tags: ['terminal'],
-    }, { id: 'terminal', title: 'Terminal', description: 'Selections captured from terminal sessions.' })
+    const next = appendKnowledgeItem(
+      kb,
+      {
+        kind: 'markdown',
+        title,
+        description: `Captured from ${choice.engine} terminal${choice.cwd ? ` in ${choice.cwd}` : ''}.`,
+        content: `# ${title}\n\nCaptured from ${choice.engine} terminal${choice.cwd ? ` in \`${choice.cwd}\`` : ''}.\n\n\`\`\`text\n${text}\n\`\`\`\n`,
+        url: '',
+        path: '',
+        thumbnailUrl: '',
+        faviconUrl: '',
+        siteName: '',
+        tags: ['terminal'],
+      },
+      {
+        id: 'terminal',
+        title: 'Terminal',
+        description: 'Selections captured from terminal sessions.',
+      },
+    )
     const ok = await window.gt.knowledge.write(scope, next)
     flashTerminalToast(ok ? `Saved selection to ${scope} KB` : `Could not save ${scope} KB`)
     focusTerminalSoon()
@@ -986,7 +1045,8 @@ export function TerminalPane({
     if (!active || suggestionMode === 'off' || suggestionsDismissed) return
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
-      const editing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+      const editing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
       if (editing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
       const n = Number(e.key)
       if (!Number.isInteger(n) || n < 1 || n > 5) return
@@ -1021,7 +1081,8 @@ export function TerminalPane({
     if (!active) return
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
-      const editing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+      const editing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && (!editing || searchOpen)) {
         e.preventDefault()
         openSearch()
@@ -1089,9 +1150,16 @@ export function TerminalPane({
       return
     }
     try {
-      const raw = r.text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+      const raw = r.text
+        .replace(/^```json\s*/i, '')
+        .replace(/```$/i, '')
+        .trim()
       const json = JSON.parse(raw) as Partial<PromptSnippet>
-      setDraft({ title: json.title || '', group: json.group || 'Custom', prompt: json.prompt || '' })
+      setDraft({
+        title: json.title || '',
+        group: json.group || 'Custom',
+        prompt: json.prompt || '',
+      })
     } catch {
       setDraft({ title: text.slice(0, 48), group: 'Custom', prompt: r.text.trim() })
     }
@@ -1180,18 +1248,20 @@ export function TerminalPane({
         </button>
       </div>
       {!isRemote && (
-      <div className="absolute right-4 top-4 z-20">
-        <button
-          onClick={() => setMenuOpen((v) => !v)}
-          title="Prompt snippets"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-        >
-          <MessageSquareText size={14} strokeWidth={2} />
-        </button>
-      </div>
+        <div className="absolute right-4 top-4 z-20">
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            title="Prompt snippets"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)]/90 text-zinc-500 shadow-lg backdrop-blur hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          >
+            <MessageSquareText size={14} strokeWidth={2} />
+          </button>
+        </div>
       )}
       {suggestionSettingsOpen && (
-        <div className={`absolute top-14 z-30 w-80 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur ${isRemote ? 'right-4' : 'right-14'}`}>
+        <div
+          className={`absolute top-14 z-30 w-80 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 p-2 shadow-2xl backdrop-blur ${isRemote ? 'right-4' : 'right-14'}`}
+        >
           <div className="mb-1.5 flex items-center gap-2 px-1">
             <Sparkles size={13} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested replies</span>
@@ -1215,8 +1285,11 @@ export function TerminalPane({
             ))}
           </div>
           <div className="mt-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5 text-[10.5px] leading-4 text-zinc-500">
-            AI uses standalone <span className="font-mono text-zinc-400">{suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}</span>.
-            Enhance catches Enter and uses that same engine to rewrite your draft before sending.
+            AI uses standalone{' '}
+            <span className="font-mono text-zinc-400">
+              {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}
+            </span>
+            . Enhance catches Enter and uses that same engine to rewrite your draft before sending.
           </div>
           <label className="mt-2 block">
             <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -1228,7 +1301,8 @@ export function TerminalPane({
                 const next = e.target.value
                 setAutoInstructions(next)
                 try {
-                  if (next.trim()) window.localStorage.setItem(`gt:auto-instructions:${sessionKey}`, next)
+                  if (next.trim())
+                    window.localStorage.setItem(`gt:auto-instructions:${sessionKey}`, next)
                   else window.localStorage.removeItem(`gt:auto-instructions:${sessionKey}`)
                 } catch {
                   /* best effort */
@@ -1248,7 +1322,15 @@ export function TerminalPane({
           style={{ height: suggestionsPanelHeight }}
         >
           <div className="mb-2 flex shrink-0 items-center gap-2">
-            <Sparkles size={13} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
+            <Sparkles
+              size={13}
+              strokeWidth={2}
+              className={
+                suggestionBusy
+                  ? 'animate-pulse text-[var(--gt-yellow)]'
+                  : 'text-[var(--gt-accent-light)]'
+              }
+            />
             <span className="text-[11px] font-semibold text-zinc-200">Suggested next replies</span>
             <span className="rounded bg-black/25 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-600">
               {suggestionMode === 'auto'
@@ -1263,7 +1345,11 @@ export function TerminalPane({
                 {suggestionMode === 'auto' ? 'generating and sending' : 'reading terminal'}
               </span>
             )}
-            {suggestionErr && <span className="truncate text-[10.5px] text-[var(--gt-yellow)]">{suggestionErr}</span>}
+            {suggestionErr && (
+              <span className="truncate text-[10.5px] text-[var(--gt-yellow)]">
+                {suggestionErr}
+              </span>
+            )}
             <div className="flex-1" />
             <button
               onClick={() => generateSuggestions(suggestionMode)}
@@ -1289,11 +1375,13 @@ export function TerminalPane({
               </div>
             ) : suggestionMode === 'auto' && suggestions.length === 0 ? (
               <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
-                Auto mode will send the top model-generated reply when this terminal completes or needs attention.
+                Auto mode will send the top model-generated reply when this terminal completes or
+                needs attention.
               </div>
             ) : suggestions.length === 0 ? (
               <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[11px] text-zinc-500">
-                Suggested replies stay here for this terminal. They refresh when the terminal needs attention, or you can refresh manually.
+                Suggested replies stay here for this terminal. They refresh when the terminal needs
+                attention, or you can refresh manually.
               </div>
             ) : (
               <div className="grid gap-1.5 lg:grid-cols-2">
@@ -1308,9 +1396,17 @@ export function TerminalPane({
                       <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="mb-1 block text-[11.5px] font-semibold text-zinc-200">{s.label}</span>
-                      <span className="block whitespace-pre-wrap break-words text-[10.5px] leading-4 text-zinc-500 group-hover:text-zinc-400">{s.prompt}</span>
-                      {s.why && <span className="mt-1 block text-[10px] leading-4 text-zinc-600">{s.why}</span>}
+                      <span className="mb-1 block text-[11.5px] font-semibold text-zinc-200">
+                        {s.label}
+                      </span>
+                      <span className="block whitespace-pre-wrap break-words text-[10.5px] leading-4 text-zinc-500 group-hover:text-zinc-400">
+                        {s.prompt}
+                      </span>
+                      {s.why && (
+                        <span className="mt-1 block text-[10px] leading-4 text-zinc-600">
+                          {s.why}
+                        </span>
+                      )}
                     </span>
                   </button>
                 ))}
@@ -1324,11 +1420,20 @@ export function TerminalPane({
           <div className="flex h-[min(780px,100%)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl">
             <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] px-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <Sparkles size={16} strokeWidth={2} className={suggestionBusy ? 'animate-pulse text-[var(--gt-yellow)]' : 'text-[var(--gt-accent-light)]'} />
+                <Sparkles
+                  size={16}
+                  strokeWidth={2}
+                  className={
+                    suggestionBusy
+                      ? 'animate-pulse text-[var(--gt-yellow)]'
+                      : 'text-[var(--gt-accent-light)]'
+                  }
+                />
                 <div className="min-w-0">
                   <div className="text-[13px] font-semibold text-zinc-100">Enhance prompt</div>
                   <div className="truncate text-[11px] text-zinc-500">
-                    {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'} rewrites your draft before it reaches {choice.engine}
+                    {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'} rewrites
+                    your draft before it reaches {choice.engine}
                   </div>
                 </div>
                 <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
@@ -1368,7 +1473,8 @@ export function TerminalPane({
                     const next = e.target.value
                     setEnhancerDraft(next)
                     try {
-                      if (next.trim()) window.localStorage.setItem(`gt:prompt-enhancer:${sessionKey}`, next)
+                      if (next.trim())
+                        window.localStorage.setItem(`gt:prompt-enhancer:${sessionKey}`, next)
                       else window.localStorage.removeItem(`gt:prompt-enhancer:${sessionKey}`)
                     } catch {
                       /* best effort */
@@ -1383,7 +1489,10 @@ export function TerminalPane({
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
                 <span>
-                  Auto instructions: <span className="text-zinc-400">{autoInstructions.trim() || DEFAULT_AUTO_INSTRUCTIONS}</span>
+                  Auto instructions:{' '}
+                  <span className="text-zinc-400">
+                    {autoInstructions.trim() || DEFAULT_AUTO_INSTRUCTIONS}
+                  </span>
                 </span>
                 {suggestionErr && <span className="text-[var(--gt-yellow)]">{suggestionErr}</span>}
               </div>
@@ -1391,15 +1500,24 @@ export function TerminalPane({
               <div className="mt-4">
                 {suggestionBusy && suggestions.length === 0 ? (
                   <div className="flex min-h-44 flex-col items-center justify-center rounded-lg border border-[var(--gt-border)] bg-black/20 px-4 py-8 text-center">
-                    <Loader2 size={26} strokeWidth={2} className="animate-spin text-[var(--gt-accent-light)]" />
-                    <div className="mt-3 text-[13px] font-semibold text-zinc-200">Enhancing prompt</div>
+                    <Loader2
+                      size={26}
+                      strokeWidth={2}
+                      className="animate-spin text-[var(--gt-accent-light)]"
+                    />
+                    <div className="mt-3 text-[13px] font-semibold text-zinc-200">
+                      Enhancing prompt
+                    </div>
                     <div className="mt-1 text-[11px] text-zinc-600">
-                      Asking {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'} for stronger prompt options.
+                      Asking {suggestionSettings.aiEngine} {suggestionSettings.aiModel || 'default'}{' '}
+                      for stronger prompt options.
                     </div>
                   </div>
                 ) : suggestions.length === 0 ? (
                   <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-4 py-4 text-[13px] leading-6 text-zinc-500">
-                    Type in the terminal and press Enter to catch the draft, or edit the rough prompt here and click Enhance. Full enhanced prompts will appear here with Input and Input + Enter actions.
+                    Type in the terminal and press Enter to catch the draft, or edit the rough
+                    prompt here and click Enhance. Full enhanced prompts will appear here with Input
+                    and Input + Enter actions.
                   </div>
                 ) : (
                   <div className="grid gap-3">
@@ -1417,7 +1535,9 @@ export function TerminalPane({
                         <div className="whitespace-pre-wrap break-words text-[14px] leading-6 text-zinc-300">
                           {s.prompt}
                         </div>
-                        {s.why && <div className="mt-2 text-[11.5px] leading-5 text-zinc-600">{s.why}</div>}
+                        {s.why && (
+                          <div className="mt-2 text-[11.5px] leading-5 text-zinc-600">{s.why}</div>
+                        )}
                         <div className="mt-3 flex flex-wrap justify-end gap-2">
                           <button
                             onClick={() => insertSuggestion(s.prompt)}
@@ -1611,7 +1731,11 @@ export function TerminalPane({
           <button
             disabled={!contextMenu.hasSelection || isRemote}
             onClick={() => saveSelectionToKnowledge('repo')}
-            title={isRemote ? 'Repo Knowledge Base capture is local-only for now; use global KB from remote terminals.' : 'Save selection to this repo Knowledge Base'}
+            title={
+              isRemote
+                ? 'Repo Knowledge Base capture is local-only for now; use global KB from remote terminals.'
+                : 'Save selection to this repo Knowledge Base'
+            }
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
           >
             <BookOpen size={13} strokeWidth={2} />
@@ -1664,16 +1788,27 @@ export function TerminalPane({
         </div>
       )}
       {menuOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-6" onClick={() => setMenuOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-6"
+          onClick={() => setMenuOpen(false)}
+        >
           <div
             className="mt-8 flex max-h-[82vh] w-[760px] max-w-full flex-col overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
-              <MessageSquareText size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+              <MessageSquareText
+                size={15}
+                strokeWidth={2}
+                className="text-[var(--gt-accent-light)]"
+              />
               <span className="text-[12px] font-semibold text-zinc-100">Launcher</span>
               <div className="relative ml-2 min-w-0 flex-1">
-                <Search size={13} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
+                <Search
+                  size={13}
+                  strokeWidth={2}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600"
+                />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -1724,7 +1859,9 @@ export function TerminalPane({
                             {s.kind}
                           </span>
                           <div className="min-w-0">
-                            <div className="truncate text-[12px] font-medium text-zinc-100">{s.title}</div>
+                            <div className="truncate text-[12px] font-medium text-zinc-100">
+                              {s.title}
+                            </div>
                             <div className="truncate text-[10.5px] text-zinc-500">{s.subtitle}</div>
                           </div>
                         </div>
@@ -1766,7 +1903,10 @@ export function TerminalPane({
         </div>
       )}
       {newOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6" onClick={() => setNewOpen(false)}>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
+          onClick={() => setNewOpen(false)}
+        >
           <div
             className="flex max-h-[86vh] w-[680px] flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -1775,7 +1915,10 @@ export function TerminalPane({
               <Bot size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
               <h2 className="text-sm font-bold text-zinc-100">New snippet</h2>
               <div className="flex-1" />
-              <button onClick={() => setNewOpen(false)} className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
+              <button
+                onClick={() => setNewOpen(false)}
+                className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+              >
                 <X size={14} strokeWidth={2} />
               </button>
             </div>
@@ -1785,7 +1928,9 @@ export function TerminalPane({
                   key={mode}
                   onClick={() => setNewMode(mode)}
                   className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold ${
-                    newMode === mode ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                    newMode === mode
+                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   {mode === 'ai' ? 'AI' : 'Custom'}
@@ -1809,7 +1954,9 @@ export function TerminalPane({
                         key={s}
                         onClick={() => setNewScope(s)}
                         className={`rounded-sm px-2 py-1 text-[11px] ${
-                          newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                          newScope === s
+                            ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                            : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                         {s === 'repo' ? 'This repo' : 'Global'}
@@ -1838,8 +1985,16 @@ export function TerminalPane({
                     disabled={!newText.trim() || newBusy}
                     className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] disabled:opacity-40"
                   >
-                    {newBusy ? <Bot size={12} strokeWidth={2} /> : <EngineLogo engine={newEngine} size={12} />}
-                    {newBusy ? 'Drafting...' : newLaunchMode === 'terminal' ? 'Open instance' : 'Draft with AI'}
+                    {newBusy ? (
+                      <Bot size={12} strokeWidth={2} />
+                    ) : (
+                      <EngineLogo engine={newEngine} size={12} />
+                    )}
+                    {newBusy
+                      ? 'Drafting...'
+                      : newLaunchMode === 'terminal'
+                        ? 'Open instance'
+                        : 'Draft with AI'}
                   </button>
                 </div>
                 {(draft.title || draft.prompt) && (
@@ -1848,7 +2003,9 @@ export function TerminalPane({
                       <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-zinc-100">
                         {draft.title || 'Untitled snippet'}
                       </span>
-                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{draft.group || 'Custom'}</span>
+                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                        {draft.group || 'Custom'}
+                      </span>
                       <button
                         onClick={() => setNewMode('custom')}
                         className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
@@ -1856,7 +2013,9 @@ export function TerminalPane({
                         Edit
                       </button>
                     </div>
-                    <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-[11.5px] leading-5 text-zinc-400">{draft.prompt}</div>
+                    <div className="max-h-28 overflow-y-auto whitespace-pre-wrap text-[11.5px] leading-5 text-zinc-400">
+                      {draft.prompt}
+                    </div>
                   </div>
                 )}
               </>
@@ -1869,7 +2028,9 @@ export function TerminalPane({
                         key={s}
                         onClick={() => setNewScope(s)}
                         className={`rounded-sm px-2 py-1 text-[11px] ${
-                          newScope === s ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                          newScope === s
+                            ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                            : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                         {s === 'repo' ? 'This repo' : 'Global'}
@@ -1904,7 +2065,10 @@ export function TerminalPane({
             <div className="flex items-center gap-2">
               {newErr && <span className="text-[11px] text-[var(--gt-red)]">{newErr}</span>}
               <div className="flex-1" />
-              <button onClick={() => setNewOpen(false)} className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5">
+              <button
+                onClick={() => setNewOpen(false)}
+                className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5"
+              >
                 Cancel
               </button>
               <button

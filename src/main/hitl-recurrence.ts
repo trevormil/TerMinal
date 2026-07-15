@@ -19,7 +19,9 @@ export function normalizeHitlIssue(text: string): string {
 }
 
 export function hitlRecurrenceKey(input: HitlRecurrenceInput): string {
-  const issue = normalizeHitlIssue([input.title, input.action, input.detail].filter(Boolean).join(' '))
+  const issue = normalizeHitlIssue(
+    [input.title, input.action, input.detail].filter(Boolean).join(' '),
+  )
   const scope = input.sessionId || input.repoRoot || input.repo || ''
   return `${issue}|${scope}`
 }

@@ -12,7 +12,13 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import type { Engine } from './agents'
 import type { AgentModelPolicy, AgentQuality } from './agents'
-import { createEntry, listDir, readFile as readScopedFile, removeEntry, writeFile as writeScopedFile } from './files'
+import {
+  createEntry,
+  listDir,
+  readFile as readScopedFile,
+  removeEntry,
+  writeFile as writeScopedFile,
+} from './files'
 
 export const PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
 
@@ -63,7 +69,13 @@ export type PersistentArtifact = {
 }
 
 export type PersistentArtifactRead =
-  | { ok: true; kind: PersistentArtifactFile['kind']; content: string; dataUrl?: string; path: string }
+  | {
+      ok: true
+      kind: PersistentArtifactFile['kind']
+      content: string
+      dataUrl?: string
+      path: string
+    }
   | { ok: false; reason: string; path?: string }
 
 export type PersistentAgentInput = {
@@ -172,15 +184,21 @@ function readMeta(id: string): PersistentAgent | null {
       raw.engine === 'hermes'
         ? raw.engine
         : 'claude'
-    const tags = Array.isArray(raw.tags) ? raw.tags.filter((x): x is string => typeof x === 'string') : []
+    const tags = Array.isArray(raw.tags)
+      ? raw.tags.filter((x): x is string => typeof x === 'string')
+      : []
     return {
       id,
       title,
       description: typeof raw.description === 'string' ? raw.description : '',
       engine,
       model: typeof raw.model === 'string' ? raw.model : '',
-      modelPolicy: raw.modelPolicy && typeof raw.modelPolicy === 'object' ? raw.modelPolicy as AgentModelPolicy : undefined,
-      quality: raw.quality && typeof raw.quality === 'object' ? raw.quality as AgentQuality : undefined,
+      modelPolicy:
+        raw.modelPolicy && typeof raw.modelPolicy === 'object'
+          ? (raw.modelPolicy as AgentModelPolicy)
+          : undefined,
+      quality:
+        raw.quality && typeof raw.quality === 'object' ? (raw.quality as AgentQuality) : undefined,
       tags,
       createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
       updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
@@ -226,7 +244,9 @@ export function getPersistentAgent(id: string): PersistentAgentDetail | null {
   }
 }
 
-export function savePersistentAgent(input: PersistentAgentInput): PersistentAgentDetail | { error: string } {
+export function savePersistentAgent(
+  input: PersistentAgentInput,
+): PersistentAgentDetail | { error: string } {
   try {
     ensureRoot()
     const id = safeId(input.id || input.title)
@@ -318,7 +338,8 @@ export function persistentAgentLaunchPrompt(
   detail.lastRunAt = now
   detail.updatedAt = now
   writeMeta(detail)
-  const taskText = task.trim() || 'Review your current STATE.md and continue the most important open thread.'
+  const taskText =
+    task.trim() || 'Review your current STATE.md and continue the most important open thread.'
   const repoLine = opts.repoRoot
     ? `Active workspace repo:\n${opts.repoRoot}`
     : 'Active workspace repo:\n- Not provided. Ask for the target repo before making repo changes.'
@@ -360,7 +381,11 @@ ${engine}${model ? ` / ${model}` : ''}
   return { agent: detail, prompt }
 }
 
-export function persistentAgentDesignerPrompt(text: string, engine: Engine, model?: string): string {
+export function persistentAgentDesignerPrompt(
+  text: string,
+  engine: Engine,
+  model?: string,
+): string {
   const t = text.trim()
   return `Create a new global persistent TerMinal memory agent from this request:
 
@@ -447,7 +472,8 @@ export function createPersistentAgentFile(id: string, rel: string, dir = false):
 export function removePersistentAgentFile(id: string, rel: string): boolean {
   const agent = readMeta(safeId(id))
   if (!agent) return false
-  if (['agent.json', 'INSTRUCTIONS.md', 'MEMORY.md', 'STATE.md', 'JOURNAL.md'].includes(rel)) return false
+  if (['agent.json', 'INSTRUCTIONS.md', 'MEMORY.md', 'STATE.md', 'JOURNAL.md'].includes(rel))
+    return false
   const ok = removeEntry(agent.dir, rel)
   if (ok) {
     agent.updatedAt = Date.now()
@@ -507,7 +533,10 @@ function walkFiles(root: string, rel = '', depth = 0): PersistentArtifactFile[] 
   })
 }
 
-function artifactPrimary(files: PersistentArtifactFile[], metaPrimary?: string): string | undefined {
+function artifactPrimary(
+  files: PersistentArtifactFile[],
+  metaPrimary?: string,
+): string | undefined {
   if (metaPrimary && files.some((f) => f.path === metaPrimary)) return metaPrimary
   const preferred =
     files.find((f) => basename(f.path).toLowerCase() === 'report.md') ||
@@ -532,19 +561,24 @@ export function listPersistentAgentArtifacts(id: string): PersistentArtifact[] {
     const artifactRel = entry.path
     const files = entry.dir
       ? walkFiles(agent.dir, artifactRel)
-      : [{
-          name: entry.name,
-          path: artifactRel,
-          size: statSync(join(agent.dir, artifactRel)).size,
-          mtime: statSync(join(agent.dir, artifactRel)).mtimeMs,
-          kind: artifactKind(artifactRel),
-        }]
+      : [
+          {
+            name: entry.name,
+            path: artifactRel,
+            size: statSync(join(agent.dir, artifactRel)).size,
+            mtime: statSync(join(agent.dir, artifactRel)).mtimeMs,
+            kind: artifactKind(artifactRel),
+          },
+        ]
     if (!files.length) continue
     let meta: Record<string, unknown> = {}
     const metaFile = files.find((f) => basename(f.path) === 'artifact.json')
     if (metaFile) {
       try {
-        meta = JSON.parse(readFileSync(join(agent.dir, metaFile.path), 'utf8')) as Record<string, unknown>
+        meta = JSON.parse(readFileSync(join(agent.dir, metaFile.path), 'utf8')) as Record<
+          string,
+          unknown
+        >
       } catch {
         meta = {}
       }
@@ -557,11 +591,17 @@ export function listPersistentAgentArtifacts(id: string): PersistentArtifact[] {
         : typeof createdRaw === 'string' && Number.isFinite(Date.parse(createdRaw))
           ? Date.parse(createdRaw)
           : newest
-    const primaryPath = artifactPrimary(files, typeof meta.primaryPath === 'string' ? meta.primaryPath : undefined)
+    const primaryPath = artifactPrimary(
+      files,
+      typeof meta.primaryPath === 'string' ? meta.primaryPath : undefined,
+    )
     artifacts.push({
       id: entry.path.replace(/^artifacts\//, ''),
       title: typeof meta.title === 'string' && meta.title.trim() ? meta.title.trim() : entry.name,
-      kind: typeof meta.kind === 'string' && meta.kind.trim() ? meta.kind.trim() : files.find((f) => f.path === primaryPath)?.kind || 'artifact',
+      kind:
+        typeof meta.kind === 'string' && meta.kind.trim()
+          ? meta.kind.trim()
+          : files.find((f) => f.path === primaryPath)?.kind || 'artifact',
       path: artifactRel,
       createdAt,
       summary: typeof meta.summary === 'string' ? meta.summary : undefined,
@@ -586,7 +626,13 @@ export function readPersistentAgentArtifact(id: string, rel: string): Persistent
     const kind = artifactKind(rel)
     const buf = readFileSync(abs)
     if (kind === 'image') {
-      return { ok: true, kind, content: '', dataUrl: `data:${imageMime(rel)};base64,${buf.toString('base64')}`, path: rel }
+      return {
+        ok: true,
+        kind,
+        content: '',
+        dataUrl: `data:${imageMime(rel)};base64,${buf.toString('base64')}`,
+        path: rel,
+      }
     }
     if (buf.includes(0)) return { ok: false, reason: 'binary file', path: rel }
     return { ok: true, kind, content: buf.toString('utf8'), path: rel }

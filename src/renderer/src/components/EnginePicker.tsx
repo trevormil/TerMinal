@@ -31,7 +31,13 @@ import { engineLabel } from '../lib/engines'
 // Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + context id ('' = none) + pipeline id ('single' = just the task).
-const VENDOR: Record<Engine, string> = { codex: 'OpenAI Codex', claude: 'Anthropic Claude', cursor: 'Cursor Agent', openrouter: 'OpenRouter · Codex or Hermes', hermes: 'Nous Hermes' }
+const VENDOR: Record<Engine, string> = {
+  codex: 'OpenAI Codex',
+  claude: 'Anthropic Claude',
+  cursor: 'Cursor Agent',
+  openrouter: 'OpenRouter · Codex or Hermes',
+  hermes: 'Nous Hermes',
+}
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
   Gauge,
@@ -129,7 +135,12 @@ export function EnginePicker({
     const ok = (['codex', 'claude', 'cursor'] as Engine[]).filter(avail)
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
-  const engineOrder: Engine[] = [defaultEngine, ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as Engine[]).filter((e) => e !== defaultEngine)]
+  const engineOrder: Engine[] = [
+    defaultEngine,
+    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as Engine[]).filter(
+      (e) => e !== defaultEngine,
+    ),
+  ]
   const selectedContext = persona ? personas.find((p) => p.id === persona) : undefined
 
   const step =
@@ -170,7 +181,10 @@ export function EnginePicker({
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="absolute inset-0 z-30 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="w-[420px] gt-pop-in rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5"
         onClick={(e) => e.stopPropagation()}
@@ -200,7 +214,9 @@ export function EnginePicker({
 
         {step === 'engine' && (
           <>
-            <p className="mb-3 text-[11.5px] text-zinc-500">{stepNum} · Launch with which engine?</p>
+            <p className="mb-3 text-[11.5px] text-zinc-500">
+              {stepNum} · Launch with which engine?
+            </p>
             <div className="grid grid-cols-3 gap-2">
               {engineOrder.map((e) => {
                 const ok = avail(e)
@@ -222,15 +238,20 @@ export function EnginePicker({
                     }`}
                   >
                     <EngineLogo engine={e} size={28} />
-                    <span className="text-[13px] font-semibold text-zinc-100">{engineLabel(e)}</span>
-                    <span className="text-[10px] text-zinc-500">{ok ? VENDOR[e] : 'not installed'}</span>
+                    <span className="text-[13px] font-semibold text-zinc-100">
+                      {engineLabel(e)}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">
+                      {ok ? VENDOR[e] : 'not installed'}
+                    </span>
                   </button>
                 )
               })}
             </div>
             {env && !env.codex.found && !env.claude.found && !env.cursor.found && (
               <p className="mt-3 text-[11px] text-[var(--gt-red)]">
-                No agent engine was found on PATH. Install Claude, Codex, or Cursor Agent, or set its path in Settings.
+                No agent engine was found on PATH. Install Claude, Codex, or Cursor Agent, or set
+                its path in Settings.
               </p>
             )}
           </>
@@ -241,12 +262,15 @@ export function EnginePicker({
             <div className="mb-3 flex items-center gap-2">
               <EngineLogo engine={engine as Engine} size={16} />
               <p className="text-[11.5px] text-zinc-500">
-                {stepNum} · Model <span className="text-zinc-600">for {engineLabel(engine || '')}</span>
+                {stepNum} · Model{' '}
+                <span className="text-zinc-600">for {engineLabel(engine || '')}</span>
               </p>
             </div>
             {engine === 'openrouter' && (
               <div className="mb-3">
-                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Harness</div>
+                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">
+                  Harness
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   {(['codex', 'hermes'] as const).map((h) => (
                     <button
@@ -259,7 +283,9 @@ export function EnginePicker({
                       }`}
                     >
                       <EngineLogo engine={h} size={15} />
-                      <span className="text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
+                      <span className="text-[12px] font-semibold">
+                        {h === 'codex' ? 'Codex' : 'Hermes'}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -321,7 +347,11 @@ export function EnginePicker({
                         : 'border-[var(--gt-border)] bg-black/20'
                     }`}
                   >
-                    <Icon size={17} strokeWidth={1.75} className="shrink-0 text-[var(--gt-accent-light)]" />
+                    <Icon
+                      size={17}
+                      strokeWidth={1.75}
+                      className="shrink-0 text-[var(--gt-accent-light)]"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-semibold text-zinc-100">{p.title}</div>
                       <div className="text-[11px] leading-snug text-zinc-500">{p.description}</div>
@@ -359,7 +389,11 @@ export function EnginePicker({
                     onClick={() => setPipeline(pl.id)}
                     className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3 text-left transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
                   >
-                    <Icon size={17} strokeWidth={1.75} className="shrink-0 text-[var(--gt-accent-light)]" />
+                    <Icon
+                      size={17}
+                      strokeWidth={1.75}
+                      className="shrink-0 text-[var(--gt-accent-light)]"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-semibold text-zinc-100">{pl.title}</div>
                       <div className="text-[11px] leading-snug text-zinc-500">{pl.description}</div>
@@ -386,7 +420,9 @@ export function EnginePicker({
             </div>
             {showExtraContext && (
               <div className="mb-3">
-                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Additional context (this run only)</div>
+                <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">
+                  Additional context (this run only)
+                </div>
                 <textarea
                   value={extraContext}
                   onChange={(e) => setExtraContext(e.target.value)}
@@ -400,7 +436,9 @@ export function EnginePicker({
               <div className="mb-3 rounded-xl border border-[var(--gt-border)] bg-black/20 p-3">
                 <div className="mb-1.5 flex items-center justify-between">
                   <span className="text-[11px] font-semibold text-zinc-300">Lanes</span>
-                  <span className="text-[10px] text-zinc-600">parallel variant attempts · process mode</span>
+                  <span className="text-[10px] text-zinc-600">
+                    parallel variant attempts · process mode
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   {[1, 2, 3, 5].map((n) => (
@@ -431,7 +469,7 @@ export function EnginePicker({
                 </div>
                 {lanes > 1 && (
                   <p className="mt-2 text-[10px] leading-snug text-zinc-600">
-                    {lanes} independent worktrees/branches, each opening its own {' '}
+                    {lanes} independent worktrees/branches, each opening its own{' '}
                     {/* judge is v2; v1 opens all + you compare */}MR. Compare and pick the winner;
                     requires the ticket to have acceptance criteria.
                   </p>
@@ -440,10 +478,26 @@ export function EnginePicker({
             )}
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'terminal', selectedContext, 1, openrouterHarness, extraContext.trim() || undefined)}
+                onClick={() =>
+                  onPick(
+                    engine as Engine,
+                    persona ?? '',
+                    pipeline || 'single',
+                    model,
+                    'terminal',
+                    selectedContext,
+                    1,
+                    openrouterHarness,
+                    extraContext.trim() || undefined,
+                  )
+                }
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
-                <SquareTerminal size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
+                <SquareTerminal
+                  size={24}
+                  strokeWidth={1.8}
+                  className="text-[var(--gt-accent-light)]"
+                />
                 <span className="text-[13px] font-semibold text-zinc-100">
                   {engine === 'claude'
                     ? 'Claude Code'
@@ -457,11 +511,25 @@ export function EnginePicker({
                   instance
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1 ? 'Single interactive run (lanes need process mode).' : 'Open Terminal with the prompt prefilled.'}
+                  {showLanes && lanes > 1
+                    ? 'Single interactive run (lanes need process mode).'
+                    : 'Open Terminal with the prompt prefilled.'}
                 </span>
               </button>
               <button
-                onClick={() => onPick(engine as Engine, persona ?? '', pipeline || 'single', model, 'process', selectedContext, showLanes ? lanes : 1, openrouterHarness, extraContext.trim() || undefined)}
+                onClick={() =>
+                  onPick(
+                    engine as Engine,
+                    persona ?? '',
+                    pipeline || 'single',
+                    model,
+                    'process',
+                    selectedContext,
+                    showLanes ? lanes : 1,
+                    openrouterHarness,
+                    extraContext.trim() || undefined,
+                  )
+                }
                 className="flex flex-col items-center gap-2 rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-4 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
               >
                 <Cpu size={24} strokeWidth={1.8} className="text-[var(--gt-accent-light)]" />
@@ -469,7 +537,9 @@ export function EnginePicker({
                   {showLanes && lanes > 1 ? `Process · ${lanes} lanes` : 'Process'}
                 </span>
                 <span className="text-center text-[10px] leading-snug text-zinc-500">
-                  {showLanes && lanes > 1 ? `Fan out ${lanes} parallel variant runs.` : 'Fire-and-forget background run.'}
+                  {showLanes && lanes > 1
+                    ? `Fan out ${lanes} parallel variant runs.`
+                    : 'Fire-and-forget background run.'}
                 </span>
               </button>
             </div>

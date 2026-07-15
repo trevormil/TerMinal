@@ -24,7 +24,12 @@ export function fixPath(): void {
   } catch {
     /* fall back to the well-known dirs below */
   }
-  const fallback = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', `${homedir()}/.local/bin`]
+  const fallback = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    `${homedir()}/.local/bin`,
+  ]
   const merged = [
     ...(resolved ? resolved.split(':') : []),
     ...(process.env.PATH ? process.env.PATH.split(':') : []),

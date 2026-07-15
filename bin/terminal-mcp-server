@@ -7,7 +7,15 @@
 // so agents skip reading ~5-7k tokens of skill files every time they file
 // data. Schema decisions stay with the model; schema formatting is done here.
 
-import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  statSync,
+  writeFileSync,
+  mkdirSync,
+  appendFileSync,
+} from 'node:fs'
 import { join, basename, dirname, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -59,13 +67,15 @@ function configuredHarnessDir() {
 }
 
 function areaCandidates(area) {
-  return {
-    backlog: ['.TerMinal/backlog', 'backlog'],
-    sessions: ['.TerMinal/sessions', 'sessions'],
-    reviews: ['.TerMinal/reviews', '.reviews'],
-    checks: ['.TerMinal/checks', '.checks', 'checks'],
-    reports: ['.TerMinal/reports', 'reports'],
-  }[area] || [area]
+  return (
+    {
+      backlog: ['.TerMinal/backlog', 'backlog'],
+      sessions: ['.TerMinal/sessions', 'sessions'],
+      reviews: ['.TerMinal/reviews', '.reviews'],
+      checks: ['.TerMinal/checks', '.checks', 'checks'],
+      reports: ['.TerMinal/reports', 'reports'],
+    }[area] || [area]
+  )
 }
 
 function hasV2Layout(root) {
@@ -78,7 +88,9 @@ function hasV2Layout(root) {
 }
 
 function areaPaths(root, area) {
-  return areaCandidates(area).map((rel) => join(root, rel)).filter((p) => existsSync(p))
+  return areaCandidates(area)
+    .map((rel) => join(root, rel))
+    .filter((p) => existsSync(p))
 }
 
 function areaPath(root, area) {
@@ -304,7 +316,9 @@ function getTicketTool(args) {
   if (!slug) return null
   // Try every known repo until we find it
   for (const root of knownRepoRoots()) {
-    const f = backlogReadDirs(root).map((dir) => join(dir, `${slug}.md`)).find((p) => existsSync(p))
+    const f = backlogReadDirs(root)
+      .map((dir) => join(dir, `${slug}.md`))
+      .find((p) => existsSync(p))
     if (f) {
       const raw = readFileSync(f, 'utf8')
       const { meta, body } = parseFrontmatter(raw)
@@ -398,22 +412,24 @@ function listSchedules(args) {
   if (!existsSync(sf)) return []
   try {
     const arr = JSON.parse(readFileSync(sf, 'utf8'))
-    return arr
-      .filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
-      // Drop the full prompt (often >1.5k chars) — keep a short preview; the
-      // model rarely needs the whole prompt just to list schedules.
-      .map((s) => ({
-        id: s.id,
-        agentId: s.agentId,
-        agentTitle: s.agentTitle,
-        repoLabel: s.repoLabel,
-        spec: s.spec,
-        engine: s.engine,
-        enabled: s.enabled,
-        lastStatus: s.lastStatus,
-        lastRun: s.lastRun,
-        promptPreview: typeof s.prompt === 'string' ? s.prompt.slice(0, 120) : undefined,
-      }))
+    return (
+      arr
+        .filter((s) => !args.repo || s.repoLabel?.toLowerCase().includes(args.repo.toLowerCase()))
+        // Drop the full prompt (often >1.5k chars) — keep a short preview; the
+        // model rarely needs the whole prompt just to list schedules.
+        .map((s) => ({
+          id: s.id,
+          agentId: s.agentId,
+          agentTitle: s.agentTitle,
+          repoLabel: s.repoLabel,
+          spec: s.spec,
+          engine: s.engine,
+          enabled: s.enabled,
+          lastStatus: s.lastStatus,
+          lastRun: s.lastRun,
+          promptPreview: typeof s.prompt === 'string' ? s.prompt.slice(0, 120) : undefined,
+        }))
+    )
   } catch {
     return []
   }
@@ -509,7 +525,20 @@ const TICKET_AGENT_ROUTES = [
   {
     agent: { id: 'security-sweep', scope: 'global', kind: 'classic' },
     type: ['security'],
-    keywords: ['security', 'auth', 'authorization', 'permission', 'xss', 'csrf', 'ssrf', 'injection', 'secret', 'token', 'cve', 'vulnerability'],
+    keywords: [
+      'security',
+      'auth',
+      'authorization',
+      'permission',
+      'xss',
+      'csrf',
+      'ssrf',
+      'injection',
+      'secret',
+      'token',
+      'cve',
+      'vulnerability',
+    ],
   },
   {
     agent: { id: 'test-coverage', scope: 'global', kind: 'classic' },
@@ -524,12 +553,32 @@ const TICKET_AGENT_ROUTES = [
   {
     agent: { id: 'perf-pass', scope: 'global', kind: 'classic' },
     type: ['performance'],
-    keywords: ['performance', 'perf', 'latency', 'slow', 'memory', 'n+1', 'cache', 'optimize', 'profiling'],
+    keywords: [
+      'performance',
+      'perf',
+      'latency',
+      'slow',
+      'memory',
+      'n+1',
+      'cache',
+      'optimize',
+      'profiling',
+    ],
   },
   {
     agent: { id: 'ci-improver', scope: 'global', kind: 'classic' },
     type: ['dx'],
-    keywords: ['ci', 'lint', 'typecheck', 'build failure', 'workflow', 'developer', 'devex', 'tooling', 'script'],
+    keywords: [
+      'ci',
+      'lint',
+      'typecheck',
+      'build failure',
+      'workflow',
+      'developer',
+      'devex',
+      'tooling',
+      'script',
+    ],
   },
 ]
 
@@ -549,14 +598,22 @@ function recommendTicketAgent(input = {}) {
     scored.sort((a, b) => b.signals.length - a.signals.length)
     return { agent: scored[0].route.agent, signals: scored[0].signals.slice(0, 5) }
   }
-  return { agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' }, signals: type ? [`type:${type}`] : [] }
+  return {
+    agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' },
+    signals: type ? [`type:${type}`] : [],
+  }
 }
 
 function normalizeTicketAgent(args, type = 'feature', recommendation) {
   const fallback = recommendation?.agent || defaultTicketAgent(type)
-  const id = typeof args?.agentId === 'string' && args.agentId.trim() ? args.agentId.trim() : fallback.id
-  const scope = args?.agentScope === 'repo' || args?.agentScope === 'global' ? args.agentScope : fallback.scope
-  const kind = args?.agentKind === 'persistent' || args?.agentKind === 'classic' ? args.agentKind : fallback.kind
+  const id =
+    typeof args?.agentId === 'string' && args.agentId.trim() ? args.agentId.trim() : fallback.id
+  const scope =
+    args?.agentScope === 'repo' || args?.agentScope === 'global' ? args.agentScope : fallback.scope
+  const kind =
+    args?.agentKind === 'persistent' || args?.agentKind === 'classic'
+      ? args.agentKind
+      : fallback.kind
   return { id, scope, kind }
 }
 
@@ -574,7 +631,15 @@ function ticketAgentFromMeta(meta) {
 // --- file_ticket ----------------------------------------------------------
 
 function fileTicket(args) {
-  const { repo, title, body = '', type = 'feature', priority = 'medium', status = 'open', source = 'mcp' } = args
+  const {
+    repo,
+    title,
+    body = '',
+    type = 'feature',
+    priority = 'medium',
+    status = 'open',
+    source = 'mcp',
+  } = args
   if (!title) throw new Error('title is required')
   const repoRoot = findRepoRoot(repo)
   if (!repoRoot) throw new Error(`no repo matching "${repo}"`)
@@ -625,7 +690,13 @@ ${body}
     writeFileSync(nextIdFile, String(nextId + 1) + '\n')
   } catch {}
   // Emit activity event so the harness picks it up
-  emitActivityRaw({ kind: 'ticket-filed', title: `Ticket filed · #${id}`, detail: title, repo: basename(repoRoot), repoRoot })
+  emitActivityRaw({
+    kind: 'ticket-filed',
+    title: `Ticket filed · #${id}`,
+    detail: title,
+    repo: basename(repoRoot),
+    repoRoot,
+  })
   return { slug, id, path }
 }
 
@@ -635,7 +706,9 @@ function locateTicket(slug) {
   let path = null
   let repoRoot = null
   for (const root of knownRepoRoots()) {
-    const p = backlogReadDirs(root).map((dir) => join(dir, `${slug}.md`)).find((candidate) => existsSync(candidate))
+    const p = backlogReadDirs(root)
+      .map((dir) => join(dir, `${slug}.md`))
+      .find((candidate) => existsSync(candidate))
     if (p) {
       path = p
       repoRoot = root
@@ -656,7 +729,9 @@ function updateTicket(args) {
   if (!m) throw new Error(`malformed frontmatter in ${path}`)
   let fm = m[1]
   const currentStatus = (fm.match(/^status:\s*(.*)$/m)?.[1] || '').trim()
-  const currentTitle = (fm.match(/^title:\s*(.*)$/m)?.[1] || slug).trim().replace(/^["']|["']$/g, '')
+  const currentTitle = (fm.match(/^title:\s*(.*)$/m)?.[1] || slug)
+    .trim()
+    .replace(/^["']|["']$/g, '')
   const ticketLabel = (fm.match(/^id:\s*(\d+)/m)?.[1] || slug).trim()
   const setField = (key, val) => {
     const re = new RegExp(`^(${key}:[ \\t]*).*$`, 'm')
@@ -704,7 +779,9 @@ function updateTicket(args) {
     const unblocked = currentStatus === 'stuck' && status !== 'stuck'
     emitActivityRaw({
       kind: status === 'closed' ? 'ticket-closed' : 'info',
-      title: unblocked ? `Ticket unblocked · #${ticketLabel}` : `Ticket ${status} · #${ticketLabel}`,
+      title: unblocked
+        ? `Ticket unblocked · #${ticketLabel}`
+        : `Ticket ${status} · #${ticketLabel}`,
       detail: unblocked ? `${currentTitle} · ${status}` : currentTitle,
       repo: basename(repoRoot),
       repoRoot,
@@ -896,18 +973,20 @@ function listActivityTool(args) {
       events.push(ev)
     } catch {}
   }
-  return events
-    .slice(-limit)
-    .reverse()
-    // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
-    .map((ev) => ({
-      id: ev.id,
-      ts: ev.ts,
-      kind: ev.kind,
-      title: ev.title,
-      detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
-      repo: ev.repo,
-    }))
+  return (
+    events
+      .slice(-limit)
+      .reverse()
+      // Drop internal fields (repoRoot, suppressTelegram); truncate detail.
+      .map((ev) => ({
+        id: ev.id,
+        ts: ev.ts,
+        kind: ev.kind,
+        title: ev.title,
+        detail: typeof ev.detail === 'string' ? ev.detail.slice(0, 200) : ev.detail,
+        repo: ev.repo,
+      }))
+  )
 }
 
 // --- list_hitl ------------------------------------------------------------
@@ -918,23 +997,25 @@ function listHitlTool(args) {
   if (!existsSync(file)) return []
   try {
     const arr = JSON.parse(readFileSync(file, 'utf8'))
-    return arr
-      .filter((h) => (status === 'all' ? true : h.status === status))
-      .filter((h) => !repo || (h.repo || '').toLowerCase().includes(repo.toLowerCase()))
-      .slice(0, limit)
-      // Project to what an agent needs — drop session/terminal plumbing
-      // (sessionId, terminalKey, terminalCwd, transcriptPath, repoRoot).
-      .map((h) => ({
-        id: h.id,
-        title: h.title,
-        action: h.action,
-        detail: typeof h.detail === 'string' ? h.detail.slice(0, 300) : h.detail,
-        repo: h.repo,
-        source: h.source,
-        status: h.status,
-        createdAt: h.createdAt,
-        resolvedAt: h.resolvedAt,
-      }))
+    return (
+      arr
+        .filter((h) => (status === 'all' ? true : h.status === status))
+        .filter((h) => !repo || (h.repo || '').toLowerCase().includes(repo.toLowerCase()))
+        .slice(0, limit)
+        // Project to what an agent needs — drop session/terminal plumbing
+        // (sessionId, terminalKey, terminalCwd, transcriptPath, repoRoot).
+        .map((h) => ({
+          id: h.id,
+          title: h.title,
+          action: h.action,
+          detail: typeof h.detail === 'string' ? h.detail.slice(0, 300) : h.detail,
+          repo: h.repo,
+          source: h.source,
+          status: h.status,
+          createdAt: h.createdAt,
+          resolvedAt: h.resolvedAt,
+        }))
+    )
   } catch {
     return []
   }
@@ -1078,17 +1159,25 @@ function pushAgent(out, seen, agent) {
 
 function agentDefinitionHints(meta) {
   if (!meta || typeof meta !== 'object') return {}
-  const modelPolicy = meta.modelPolicy && typeof meta.modelPolicy === 'object' ? meta.modelPolicy : {}
+  const modelPolicy =
+    meta.modelPolicy && typeof meta.modelPolicy === 'object' ? meta.modelPolicy : {}
   const quality = meta.quality && typeof meta.quality === 'object' ? meta.quality : {}
   const hints = {}
   const model = modelPolicy.default || meta.model
   if (model) hints.model = model
   if (modelPolicy.cheap) hints.cheapModel = modelPolicy.cheap
   if (modelPolicy.deep) hints.deepModel = modelPolicy.deep
-  if (modelPolicy.judge || quality?.judge?.model) hints.judgeModel = modelPolicy.judge || quality.judge.model
-  const acceptanceCriteria = Array.isArray(quality.acceptanceCriteria) ? quality.acceptanceCriteria.length : 0
-  const deterministicChecks = Array.isArray(quality.deterministicChecks) ? quality.deterministicChecks.length : 0
-  const requiredArtifacts = Array.isArray(quality.requiredArtifacts) ? quality.requiredArtifacts.length : 0
+  if (modelPolicy.judge || quality?.judge?.model)
+    hints.judgeModel = modelPolicy.judge || quality.judge.model
+  const acceptanceCriteria = Array.isArray(quality.acceptanceCriteria)
+    ? quality.acceptanceCriteria.length
+    : 0
+  const deterministicChecks = Array.isArray(quality.deterministicChecks)
+    ? quality.deterministicChecks.length
+    : 0
+  const requiredArtifacts = Array.isArray(quality.requiredArtifacts)
+    ? quality.requiredArtifacts.length
+    : 0
   if (acceptanceCriteria || deterministicChecks || requiredArtifacts || quality?.judge?.enabled) {
     hints.quality = {
       acceptanceCriteria,
@@ -1118,7 +1207,16 @@ function listAgentsTool(args) {
       const list = JSON.parse(readFileSync(globalJson, 'utf8'))
       const arr = Array.isArray(list) ? list : []
       for (const a of arr) {
-        if (a?.id && a?.title) pushAgent(out, seen, { id: a.id, title: a.title, scope: 'global', kind: 'classic', source: 'global', description: a.description, ...agentDefinitionHints(a) })
+        if (a?.id && a?.title)
+          pushAgent(out, seen, {
+            id: a.id,
+            title: a.title,
+            scope: 'global',
+            kind: 'classic',
+            source: 'global',
+            description: a.description,
+            ...agentDefinitionHints(a),
+          })
       }
     } catch {}
   }
@@ -1129,7 +1227,19 @@ function listAgentsTool(args) {
       const list = JSON.parse(readFileSync(localJson, 'utf8'))
       const arr = Array.isArray(list) ? list : Array.isArray(list?.agents) ? list.agents : []
       for (const a of arr) {
-        if (a?.id && a?.title) pushAgent(out, seen, { id: a.id, title: a.title, scope: 'repo', kind: 'classic', source: 'repo', force: !!a.force, opensPr: !!a.opensPr, inPlace: !!a.inPlace, description: a.description, ...agentDefinitionHints(a) })
+        if (a?.id && a?.title)
+          pushAgent(out, seen, {
+            id: a.id,
+            title: a.title,
+            scope: 'repo',
+            kind: 'classic',
+            source: 'repo',
+            force: !!a.force,
+            opensPr: !!a.opensPr,
+            inPlace: !!a.inPlace,
+            description: a.description,
+            ...agentDefinitionHints(a),
+          })
       }
     } catch {}
   }
@@ -1143,7 +1253,15 @@ function listAgentsTool(args) {
           const p = join(root, '.agents', `${id}.json`)
           if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
         } catch {}
-        pushAgent(out, seen, { id, title: meta.title || id, scope: 'repo', kind: 'classic', source: 'repo-script', description: meta.description, ...agentDefinitionHints(meta) })
+        pushAgent(out, seen, {
+          id,
+          title: meta.title || id,
+          scope: 'repo',
+          kind: 'classic',
+          source: 'repo-script',
+          description: meta.description,
+          ...agentDefinitionHints(meta),
+        })
       }
     } catch {}
   }
@@ -1159,7 +1277,15 @@ function listAgentsTool(args) {
           const p = join(globalScripts, `${id}.json`)
           if (existsSync(p)) meta = JSON.parse(readFileSync(p, 'utf8'))
         } catch {}
-        pushAgent(out, seen, { id, title: meta.title || id, scope: 'global', kind: 'classic', source: 'global-script', description: meta.description, ...agentDefinitionHints(meta) })
+        pushAgent(out, seen, {
+          id,
+          title: meta.title || id,
+          scope: 'global',
+          kind: 'classic',
+          source: 'global-script',
+          description: meta.description,
+          ...agentDefinitionHints(meta),
+        })
       }
     } catch {}
   }
@@ -1193,9 +1319,16 @@ function requestAgentArtifactTool(args) {
   if (!root) throw new Error('unknown repo; pass repo or set TERMINAL_REPO')
   const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
   if (!prompt) throw new Error('prompt is required')
-  const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : 'Agent artifact request'
+  const title =
+    typeof args.title === 'string' && args.title.trim()
+      ? args.title.trim()
+      : 'Agent artifact request'
   const agent = normalizeTicketAgent(
-    { agentId: args.agentId || 'knowledge-base', agentScope: args.agentScope || 'global', agentKind: args.agentKind || 'classic' },
+    {
+      agentId: args.agentId || 'knowledge-base',
+      agentScope: args.agentScope || 'global',
+      agentKind: args.agentKind || 'classic',
+    },
     'feature',
   )
   const timeoutMs = Math.max(30_000, Math.min(Number(args.timeoutMs || 180_000), 600_000))
@@ -1222,18 +1355,22 @@ Rules:
 - If follow-up implementation is needed, recommend exactly which agent should own it.
 `
   writeFileSync(promptPath, fullPrompt)
-  const child = spawnSync('claude', ['-p', fullPrompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: timeoutMs,
-    maxBuffer: 20 * 1024 * 1024,
-    env: {
-      ...process.env,
-      TERMINAL_DELEGATE_AGENT_ID: agent.id,
-      TERMINAL_DELEGATE_AGENT_SCOPE: agent.scope,
-      TERMINAL_DELEGATE_AGENT_KIND: agent.kind,
+  const child = spawnSync(
+    'claude',
+    ['-p', fullPrompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 20 * 1024 * 1024,
+      env: {
+        ...process.env,
+        TERMINAL_DELEGATE_AGENT_ID: agent.id,
+        TERMINAL_DELEGATE_AGENT_SCOPE: agent.scope,
+        TERMINAL_DELEGATE_AGENT_KIND: agent.kind,
+      },
     },
-  })
+  )
   const stdout = child.stdout || ''
   const stderr = child.stderr || ''
   const errorMessage = child.error?.message || ''
@@ -1276,7 +1413,18 @@ Rules:
     repo: basename(root),
     repoRoot: root,
   })
-  return { ok, repo: basename(root), agent, artifactPath: reportPath, promptPath, metaPath, summary, status: child.status, signal: child.signal, timedOut: !!timedOut }
+  return {
+    ok,
+    repo: basename(root),
+    agent,
+    artifactPath: reportPath,
+    promptPath,
+    metaPath,
+    summary,
+    status: child.status,
+    signal: child.signal,
+    timedOut: !!timedOut,
+  }
 }
 
 // --- list_review_patterns: read <harnessDir>/reports/review-patterns.md
@@ -1284,7 +1432,8 @@ function listReviewPatternsTool(args) {
   const harness = configuredHarnessDir()
   if (!harness) return { error: 'no harnessDir configured in ~/.config/TerMinal/settings.json' }
   const path = join(harness, 'reports', 'review-patterns.md')
-  if (!existsSync(path)) return { error: 'no review patterns report yet; runs nightly via bin/review-findings-mine' }
+  if (!existsSync(path))
+    return { error: 'no review patterns report yet; runs nightly via bin/review-findings-mine' }
   const limit = typeof args?.limit === 'number' ? Math.max(1, Math.min(50, args.limit)) : 10
   const raw = readFileSync(path, 'utf8')
   // Each cluster is a `## ` heading block. Parse heading + first 3 list items
@@ -1294,7 +1443,10 @@ function listReviewPatternsTool(args) {
   for (const sec of sections) {
     const lines = sec.split('\n')
     const title = (lines[0] || '').trim()
-    const meta = lines.slice(1, 12).filter((l) => l.trim()).slice(0, 8)
+    const meta = lines
+      .slice(1, 12)
+      .filter((l) => l.trim())
+      .slice(0, 8)
     out.push({ title, summary: meta.join('\n') })
     if (out.length >= limit) break
   }
@@ -1306,7 +1458,11 @@ function factoryHealthTool() {
   const out = []
   for (const root of knownRepoRoots()) {
     const repo = basename(root)
-    const repoOut = { repo, ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 }, openPrs: 0 }
+    const repoOut = {
+      repo,
+      ticketCounts: { open: 0, inProgress: 0, closed: 0, stuck: 0, icebox: 0 },
+      openPrs: 0,
+    }
     // Tickets
     const backlogs = backlogReadDirs(root)
     for (const backlog of backlogs) {
@@ -1358,12 +1514,20 @@ function searchDecisionsTool(args) {
       const dir = join(root, sub)
       if (!existsSync(dir)) continue
       let entries
-      try { entries = readdirSync(dir) } catch { continue }
+      try {
+        entries = readdirSync(dir)
+      } catch {
+        continue
+      }
       for (const f of entries) {
         if (!f.endsWith('.md')) continue
         const path = join(dir, f)
         let raw
-        try { raw = readFileSync(path, 'utf8') } catch { continue }
+        try {
+          raw = readFileSync(path, 'utf8')
+        } catch {
+          continue
+        }
         const lower = raw.toLowerCase()
         if (!lower.includes(q)) continue
         const { meta, body } = parseFrontmatter(raw)
@@ -1398,7 +1562,15 @@ function recentChangesTool(args) {
     const { execFileSync } = require('node:child_process')
     const out = execFileSync(
       'git',
-      ['-C', root, 'log', `--since=${days} days ago`, `-n`, String(limit), '--pretty=format:%h|%an|%ar|%s'],
+      [
+        '-C',
+        root,
+        'log',
+        `--since=${days} days ago`,
+        `-n`,
+        String(limit),
+        '--pretty=format:%h|%an|%ar|%s',
+      ],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     )
     const commits = out
@@ -1422,16 +1594,34 @@ function nearestSessionTool(args) {
   // Claude transcript naming convention: dir slugifies the cwd path.
   const slug = '-' + root.replace(/^\//, '').replace(/\//g, '-')
   const dir = join(homedir(), '.claude', 'projects', slug)
-  if (!existsSync(dir)) return { repo: basename(root), sessions: [], hint: `no transcript dir at ~/.claude/projects/${slug}` }
+  if (!existsSync(dir))
+    return {
+      repo: basename(root),
+      sessions: [],
+      hint: `no transcript dir at ~/.claude/projects/${slug}`,
+    }
   let files
-  try { files = readdirSync(dir) } catch { return { error: `cannot read ${dir}` } }
+  try {
+    files = readdirSync(dir)
+  } catch {
+    return { error: `cannot read ${dir}` }
+  }
   const sessions = files
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => {
       const path = join(dir, f)
       let stat
-      try { stat = statSync(path) } catch { return null }
-      return { id: f.replace(/\.jsonl$/, ''), modifiedMs: stat.mtimeMs, sizeBytes: stat.size, path: path.replace(homedir(), '~') }
+      try {
+        stat = statSync(path)
+      } catch {
+        return null
+      }
+      return {
+        id: f.replace(/\.jsonl$/, ''),
+        modifiedMs: stat.mtimeMs,
+        sizeBytes: stat.size,
+        path: path.replace(homedir(), '~'),
+      }
     })
     .filter(Boolean)
     .sort((a, b) => b.modifiedMs - a.modifiedMs)
@@ -1464,13 +1654,17 @@ const TOOLS = [
   },
   {
     name: 'get_ticket',
-    description: 'Fetch the full body + frontmatter of one ticket by its slug (e.g. "0042-fix-foo").',
+    description:
+      'Fetch the full body + frontmatter of one ticket by its slug (e.g. "0042-fix-foo").',
     inputSchema: { type: 'object', properties: { slug: { type: 'string' } }, required: ['slug'] },
   },
   {
     name: 'list_prs',
     description: 'List PRs / MRs the harness is tracking (newest first, capped at 50).',
-    inputSchema: { type: 'object', properties: { repo: { type: 'string' }, status: { type: 'string' } } },
+    inputSchema: {
+      type: 'object',
+      properties: { repo: { type: 'string' }, status: { type: 'string' } },
+    },
   },
   {
     name: 'get_pr_artifact',
@@ -1506,8 +1700,12 @@ const TOOLS = [
   },
   {
     name: 'ai_spend_today',
-    description: 'Cost summary for today (USD spent across the AI fleet). Filterable by repo or agent.',
-    inputSchema: { type: 'object', properties: { repo: { type: 'string' }, agent: { type: 'string' } } },
+    description:
+      'Cost summary for today (USD spent across the AI fleet). Filterable by repo or agent.',
+    inputSchema: {
+      type: 'object',
+      properties: { repo: { type: 'string' }, agent: { type: 'string' } },
+    },
   },
   // ---- WRITE TOOLS (deterministic — agents skip reading skill files) -----
   {
@@ -1531,7 +1729,10 @@ const TOOLS = [
           enum: ['open', 'in-progress', 'closed', 'stuck', 'icebox'],
         },
         source: { type: 'string' },
-        agentId: { type: 'string', description: 'Assigned agent id. Defaults by ticket type when omitted.' },
+        agentId: {
+          type: 'string',
+          description: 'Assigned agent id. Defaults by ticket type when omitted.',
+        },
         agentScope: { type: 'string', enum: ['repo', 'global'] },
         agentKind: { type: 'string', enum: ['classic', 'persistent'] },
       },
@@ -1540,7 +1741,7 @@ const TOOLS = [
   {
     name: 'update_ticket',
     description:
-      'Mutate a ticket\'s frontmatter (status, priority, assigned agent, run link) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.',
+      "Mutate a ticket's frontmatter (status, priority, assigned agent, run link) and optionally add/remove a PR URL. Auto-bumps `updated:`. Body is never modified. Repo is auto-resolved from the slug.",
     inputSchema: {
       type: 'object',
       required: ['slug'],
@@ -1752,7 +1953,10 @@ const TOOLS = [
         repo: { type: 'string' },
         title: { type: 'string' },
         prompt: { type: 'string' },
-        agentId: { type: 'string', description: 'Assignable agent id from list_agents. Defaults to knowledge-base.' },
+        agentId: {
+          type: 'string',
+          description: 'Assignable agent id from list_agents. Defaults to knowledge-base.',
+        },
         agentScope: { type: 'string', enum: ['repo', 'global'] },
         agentKind: { type: 'string', enum: ['classic', 'persistent'] },
         model: { type: 'string' },
@@ -1853,16 +2057,36 @@ const HANDLERS = {
 // comma-separated allowlist of tool names (presets and names may be mixed).
 const TOOL_PRESETS = {
   write: [
-    'file_ticket', 'update_ticket', 'update_ticket_agent', 'update_ticket_run', 'file_hitl', 'resolve_hitl',
-    'emit_activity', 'set_agent_state', 'get_agent_state', 'set_run_outcome',
+    'file_ticket',
+    'update_ticket',
+    'update_ticket_agent',
+    'update_ticket_run',
+    'file_hitl',
+    'resolve_hitl',
+    'emit_activity',
+    'set_agent_state',
+    'get_agent_state',
+    'set_run_outcome',
     'request_agent_artifact',
   ],
   read: [
-    'list_tickets', 'get_ticket', 'list_prs', 'get_pr_artifact',
-    'list_scheduled_agents', 'recent_agent_runs', 'ai_spend_today',
-    'list_activity', 'list_hitl', 'list_bg_tasks', 'harness_status',
-    'list_agents', 'list_review_patterns', 'factory_health',
-    'search_decisions', 'recent_changes', 'nearest_session',
+    'list_tickets',
+    'get_ticket',
+    'list_prs',
+    'get_pr_artifact',
+    'list_scheduled_agents',
+    'recent_agent_runs',
+    'ai_spend_today',
+    'list_activity',
+    'list_hitl',
+    'list_bg_tasks',
+    'harness_status',
+    'list_agents',
+    'list_review_patterns',
+    'factory_health',
+    'search_decisions',
+    'recent_changes',
+    'nearest_session',
   ],
 }
 // core = the deterministic-filing tools (the server's reason to exist) plus the
@@ -1878,7 +2102,10 @@ function exposedTools() {
   raw = (raw || 'all').trim()
   if (!raw || raw === 'all') return TOOLS
   const wanted = new Set()
-  for (const tok of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+  for (const tok of raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     if (TOOL_PRESETS[tok]) TOOL_PRESETS[tok].forEach((n) => wanted.add(n))
     else wanted.add(tok)
   }

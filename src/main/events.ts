@@ -24,12 +24,21 @@ import { inferActivityKind } from './event-classifier'
 const TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 function tgKind(ev: ActivityEvent): 'done' | 'blocked' | 'info' {
   if (ev.kind === 'error' || ev.kind === 'tests-fail' || ev.kind === 'blocked') return 'blocked'
-  if (ev.kind === 'task-complete' || ev.kind === 'tests-pass' || ev.kind === 'pr-merged') return 'done'
+  if (ev.kind === 'task-complete' || ev.kind === 'tests-pass' || ev.kind === 'pr-merged')
+    return 'done'
   if (ev.kind === 'agent-run')
-    return /failed|interrupted/i.test(ev.title) ? 'blocked' : /done/i.test(ev.title) ? 'done' : 'info'
+    return /failed|interrupted/i.test(ev.title)
+      ? 'blocked'
+      : /done/i.test(ev.title)
+        ? 'done'
+        : 'info'
   return 'info'
 }
-const KIND_EMOJI: Record<'done' | 'blocked' | 'info', string> = { done: '✅', blocked: '⛔', info: 'ℹ️' }
+const KIND_EMOJI: Record<'done' | 'blocked' | 'info', string> = {
+  done: '✅',
+  blocked: '⛔',
+  info: 'ℹ️',
+}
 
 // Compose the inline-keyboard for an event. HITL filings get [Resolve] and,
 // when a runId is known, [View run] (callback → tail log). Other events get

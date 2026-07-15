@@ -31,7 +31,8 @@ function ssh(sshTarget: string, cmd: string): Promise<{ ok: boolean; error?: str
       'ssh',
       ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', sshTarget, `bash -lc ${shq(cmd)}`],
       { encoding: 'utf8', timeout: 120_000, maxBuffer: 4 * 1024 * 1024 },
-      (err, _o, stderr) => (err ? resolve({ ok: false, error: (stderr || err.message).trim() }) : resolve({ ok: true })),
+      (err, _o, stderr) =>
+        err ? resolve({ ok: false, error: (stderr || err.message).trim() }) : resolve({ ok: true }),
     )
   })
 }
@@ -46,11 +47,14 @@ export async function ensureHostRepo(
   const repoRoot = hostRepoRoot(macRepoRoot)
   let originUrl = ''
   try {
-    originUrl = execFileSync('git', ['-C', macRepoRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim()
+    originUrl = execFileSync('git', ['-C', macRepoRoot, 'remote', 'get-url', 'origin'], {
+      encoding: 'utf8',
+    }).trim()
   } catch {
     /* no origin */
   }
-  if (!originUrl) return { repoRoot, ok: false, error: 'local repo has no origin remote to clone on the host' }
+  if (!originUrl)
+    return { repoRoot, ok: false, error: 'local repo has no origin remote to clone on the host' }
   const r = await ssh(sshTarget, ensureRepoClonedCmd(safeName(macRepoRoot), originUrl))
   return { repoRoot, ok: r.ok, error: r.error }
 }

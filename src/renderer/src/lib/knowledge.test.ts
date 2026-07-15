@@ -42,7 +42,11 @@ describe('renderer knowledge helpers', () => {
       {
         kind: 'rag',
         title: 'Research RAG',
-        rag: { command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], category: 'research' },
+        rag: {
+          command: 'uvx',
+          args: ['--python', '3.11', 'knowledge-rag==3.9.0'],
+          category: 'research',
+        },
         tags: [],
       },
       { id: 'Research', title: 'Research', description: '' },
@@ -50,7 +54,11 @@ describe('renderer knowledge helpers', () => {
     expect(next.items[0]).toMatchObject({
       kind: 'rag',
       title: 'Research RAG',
-      rag: { command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], category: 'research' },
+      rag: {
+        command: 'uvx',
+        args: ['--python', '3.11', 'knowledge-rag==3.9.0'],
+        category: 'research',
+      },
     })
   })
 })

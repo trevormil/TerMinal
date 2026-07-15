@@ -10,7 +10,10 @@ const PATTERNS: { pattern: RegExp; kind: ActivityKind }[] = [
   { pattern: /^session\s+started?/i, kind: 'session-start' },
   { pattern: /^session\s+(end|closed?|wrapped)/i, kind: 'session-end' },
   // Deploys / releases
-  { pattern: /^(deploy|deployed|ship|shipped|publish|published|release|released)\b/i, kind: 'deploy' },
+  {
+    pattern: /^(deploy|deployed|ship|shipped|publish|published|release|released)\b/i,
+    kind: 'deploy',
+  },
   // Tickets
   { pattern: /^ticket\s+(filed|created|opened)/i, kind: 'ticket-filed' },
   { pattern: /^ticket\s+(closed|resolved|done)/i, kind: 'ticket-closed' },

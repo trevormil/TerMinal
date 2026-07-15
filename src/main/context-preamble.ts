@@ -39,7 +39,9 @@ function stripFrontmatter(text: string): string {
 function titleFrom(path: string, body: string): string {
   const heading = body.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
   if (heading) return heading
-  return basename(path).replace(/\.mdx?$/i, '').replace(/[-_]+/g, ' ')
+  return basename(path)
+    .replace(/\.mdx?$/i, '')
+    .replace(/[-_]+/g, ' ')
 }
 
 function summaryFrom(body: string): string {
@@ -51,7 +53,10 @@ function summaryFrom(body: string): string {
   return ''
 }
 
-export function collectAgentContextItems(repoRoot: string, maxItems = DEFAULT_MAX_ITEMS): ContextPreambleItem[] {
+export function collectAgentContextItems(
+  repoRoot: string,
+  maxItems = DEFAULT_MAX_ITEMS,
+): ContextPreambleItem[] {
   if (!repoRoot) return []
   const files = CONTEXT_DIRS.flatMap((dir) => markdownFiles(join(repoRoot, dir), repoRoot)).sort()
   const items: ContextPreambleItem[] = []

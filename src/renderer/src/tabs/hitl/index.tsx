@@ -98,7 +98,10 @@ export function InboxDrawer({
   const reload = () =>
     Promise.all([
       window.gt.hitl.list(),
-      window.gt.hitl.remoteAll().then((r) => r.items).catch(() => [] as HitlItem[]),
+      window.gt.hitl
+        .remoteAll()
+        .then((r) => r.items)
+        .catch(() => [] as HitlItem[]),
     ]).then(([local, remote]) => setItems([...local, ...remote]))
   useEffect(() => {
     reload()
@@ -121,7 +124,9 @@ export function InboxDrawer({
     if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
     setResolvingAll(true)
     try {
-      await Promise.all(open.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)))
+      await Promise.all(
+        open.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)),
+      )
       await reload()
     } finally {
       setResolvingAll(false)
@@ -133,7 +138,9 @@ export function InboxDrawer({
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <Mail size={14} strokeWidth={2} className="text-[var(--gt-accent)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Inbox</span>
-        <span className="text-[11px] text-zinc-600">one global inbox · everything that needs you</span>
+        <span className="text-[11px] text-zinc-600">
+          one global inbox · everything that needs you
+        </span>
         <div className="flex-1" />
         {!showResolved && open.length > 0 && (
           <button
@@ -186,7 +193,9 @@ export function InboxDrawer({
                 <div
                   key={h.id}
                   className={`rounded-lg border bg-[var(--gt-panel)] p-2.5 ${
-                    h.status === 'open' ? 'border-[var(--gt-red)]/30' : 'border-[var(--gt-border)] opacity-70'
+                    h.status === 'open'
+                      ? 'border-[var(--gt-red)]/30'
+                      : 'border-[var(--gt-border)] opacity-70'
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -202,10 +211,16 @@ export function InboxDrawer({
                             x{h.occurrenceCount}
                           </span>
                         )}
-                        {h.repo && <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>}
+                        {h.repo && (
+                          <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>
+                        )}
                         <span className="text-[10px] text-zinc-600">· {reltime(h.createdAt)}</span>
                       </div>
-                      {h.action && <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">{h.action}</div>}
+                      {h.action && (
+                        <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">
+                          {h.action}
+                        </div>
+                      )}
                       {detail && (
                         <div className="mt-1">
                           {canExpand ? (
@@ -247,88 +262,88 @@ export function InboxDrawer({
                         </div>
                       )}
                     </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {canViewTerminal && (
-                      <button
-                        onClick={() =>
-                          navigateTo('terminal', {
-                            sessionKey: h.terminalKey,
-                            sessionId: h.sessionId,
-                            cwd: h.terminalCwd || h.repoRoot,
-                            repoRoot: h.repoRoot,
-                          })
-                        }
-                        title="Jump to the terminal session that filed this Inbox item"
-                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                      >
-                        <SquareTerminal size={11} strokeWidth={2} />
-                        View terminal
-                      </button>
-                    )}
-                    {h.runId && (
-                      <button
-                        onClick={() => navigateTo('runs', { runId: h.runId })}
-                        title="Jump to the run that filed this Inbox item"
-                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                      >
-                        <ListChecks size={11} strokeWidth={2} />
-                        View run
-                      </button>
-                    )}
-                    {h.ticketPath && (
-                      <button
-                        onClick={() =>
-                          navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
-                        }
-                        title="Jump to the backlog ticket auto-filed alongside this Inbox item"
-                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                      >
-                        <TicketIcon size={11} strokeWidth={2} />
-                        View ticket
-                      </button>
-                    )}
-                    {h.status === 'open' ? (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {canViewTerminal && (
+                        <button
+                          onClick={() =>
+                            navigateTo('terminal', {
+                              sessionKey: h.terminalKey,
+                              sessionId: h.sessionId,
+                              cwd: h.terminalCwd || h.repoRoot,
+                              repoRoot: h.repoRoot,
+                            })
+                          }
+                          title="Jump to the terminal session that filed this Inbox item"
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                        >
+                          <SquareTerminal size={11} strokeWidth={2} />
+                          View terminal
+                        </button>
+                      )}
+                      {h.runId && (
+                        <button
+                          onClick={() => navigateTo('runs', { runId: h.runId })}
+                          title="Jump to the run that filed this Inbox item"
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                        >
+                          <ListChecks size={11} strokeWidth={2} />
+                          View run
+                        </button>
+                      )}
+                      {h.ticketPath && (
+                        <button
+                          onClick={() =>
+                            navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
+                          }
+                          title="Jump to the backlog ticket auto-filed alongside this Inbox item"
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                        >
+                          <TicketIcon size={11} strokeWidth={2} />
+                          View ticket
+                        </button>
+                      )}
+                      {h.status === 'open' ? (
+                        <button
+                          onClick={async () => {
+                            await window.gt.hitl.resolve(h.id, true, h.hostId)
+                            reload()
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
+                        >
+                          <Check size={12} strokeWidth={2.5} />
+                          Resolve
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            await window.gt.hitl.resolve(h.id, false, h.hostId)
+                            reload()
+                          }}
+                          title="Reopen"
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-300"
+                        >
+                          <RotateCcw size={11} strokeWidth={2} />
+                        </button>
+                      )}
                       <button
                         onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, true, h.hostId)
-                          reload()
-                        }}
-                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
-                      >
-                        <Check size={12} strokeWidth={2.5} />
-                        Resolve
-                      </button>
-                    ) : (
-                      <button
-                        onClick={async () => {
-                          await window.gt.hitl.resolve(h.id, false, h.hostId)
-                          reload()
-                        }}
-                        title="Reopen"
-                        className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-300"
-                      >
-                        <RotateCcw size={11} strokeWidth={2} />
-                      </button>
-                    )}
-                    <button
-                      onClick={async () => {
-                        if (
-                          !confirm(
-                            'Delete this Inbox item permanently? Resolving keeps the record in the resolved view; deleting removes it from the durable Inbox file.',
+                          if (
+                            !confirm(
+                              'Delete this Inbox item permanently? Resolving keeps the record in the resolved view; deleting removes it from the durable Inbox file.',
+                            )
                           )
-                        )
-                          return
-                        await window.gt.hitl.remove(h.id, h.hostId)
-                        reload()
-                      }}
-                      title="Remove"
-                      className="inline-flex items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                    >
-                      <Trash2 size={11} strokeWidth={2} />
-                    </button>
+                            return
+                          await window.gt.hitl.remove(h.id, h.hostId)
+                          reload()
+                        }}
+                        title="Remove"
+                        className="inline-flex items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+                      >
+                        <Trash2 size={11} strokeWidth={2} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
               )
             })}
           </div>

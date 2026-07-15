@@ -37,7 +37,8 @@ export function pickTemplateSource(opts: {
   }
 
   const repo = opts.templateRepo.trim() || DEFAULT_TEMPLATE_REPO
-  if (!isCloneableTemplateRepo(repo)) return { error: `invalid template repo: ${repo || '(empty)'}` }
+  if (!isCloneableTemplateRepo(repo))
+    return { error: `invalid template repo: ${repo || '(empty)'}` }
   const cloned = opts.cloneToTmp(repo)
   if (!cloned) return { error: `couldn't fetch template from ${repo}` }
   if (!existsSync(join(cloned.dir, opts.marker))) {

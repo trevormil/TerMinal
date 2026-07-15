@@ -51,7 +51,9 @@ export function projectAreaPath(repoRoot: string, area: ProjectArea): string {
 
 export function existingProjectAreaPaths(repoRoot: string, area: ProjectArea): string[] {
   if (!repoRoot) return []
-  return projectAreaCandidates(area).map((rel) => join(repoRoot, rel)).filter((p) => existsSync(p))
+  return projectAreaCandidates(area)
+    .map((rel) => join(repoRoot, rel))
+    .filter((p) => existsSync(p))
 }
 
 export function projectAreaPathForRead(repoRoot: string, area: ProjectArea): string {

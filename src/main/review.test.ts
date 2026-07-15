@@ -28,7 +28,13 @@ describe('readScreenshots', () => {
       join(dir, 'screenshots.json'),
       JSON.stringify({
         screenshots: [
-          { id: 'sc-a', caption: 'Panels editor — after', path: 'screenshots/after.png', kind: 'after', findingId: '12345678' },
+          {
+            id: 'sc-a',
+            caption: 'Panels editor — after',
+            path: 'screenshots/after.png',
+            kind: 'after',
+            findingId: '12345678',
+          },
         ],
       }),
     )

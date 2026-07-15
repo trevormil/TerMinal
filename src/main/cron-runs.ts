@@ -1,4 +1,11 @@
-import { appendFileSync, readdirSync, readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs'
+import {
+  appendFileSync,
+  readdirSync,
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+} from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
@@ -146,7 +153,10 @@ export function appendSessionRunLog(runId: string, chunk: string): void {
   }
 }
 
-export function finalizeSessionRun(runId: string, patch: Pick<SessionRun, 'status' | 'endedAt'> & Partial<SessionRun>): void {
+export function finalizeSessionRun(
+  runId: string,
+  patch: Pick<SessionRun, 'status' | 'endedAt'> & Partial<SessionRun>,
+): void {
   const safe = safeRunId(runId)
   if (!safe) return
   const path = join(SESSION_RUNS_DIR, `${safe}.json`)
@@ -190,7 +200,16 @@ export function sweepStaleSessionRuns(): { swept: number } {
       if (r.status !== 'running') continue
       writeFileSync(
         path,
-        JSON.stringify({ ...r, status: 'interrupted', endedAt: r.endedAt ?? now, error: r.error ?? 'interrupted: app restarted' }, null, 2),
+        JSON.stringify(
+          {
+            ...r,
+            status: 'interrupted',
+            endedAt: r.endedAt ?? now,
+            error: r.error ?? 'interrupted: app restarted',
+          },
+          null,
+          2,
+        ),
       )
       swept++
     } catch {
@@ -337,5 +356,7 @@ export function listAllRuns(limit = 400): UnifiedRun[] {
   const agent = listAgentRuns().map(agentRunToUnified)
   const bg = listBgTasks().map(bgTaskToUnified)
   const sessions = readSessionRuns(limit).map(sessionRunToUnified)
-  return [...cron, ...agent, ...bg, ...sessions].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  return [...cron, ...agent, ...bg, ...sessions]
+    .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+    .slice(0, limit)
 }

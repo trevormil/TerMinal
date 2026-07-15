@@ -14,7 +14,8 @@ function reference(raw: string, centerLine: number, radius: number) {
   const startLine = Math.max(1, center - radius)
   const endLine = Math.min(totalLines, center + radius)
   const windowLines: { line: number; text: string }[] = []
-  for (let n = startLine; n <= endLine; n++) windowLines.push({ line: n, text: allLines[n - 1] ?? '' })
+  for (let n = startLine; n <= endLine; n++)
+    windowLines.push({ line: n, text: allLines[n - 1] ?? '' })
   return { windowLines, startLine, endLine, totalLines }
 }
 

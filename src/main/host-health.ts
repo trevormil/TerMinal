@@ -11,10 +11,12 @@ export type HealthReason = 'timeout' | 'auth' | 'dns' | 'refused' | 'unknown'
 export type SshClassification = { reason: HealthReason; hint: string }
 
 const HINTS: Record<HealthReason, string> = {
-  timeout: 'Host unreachable — VPN/tailscale down or reauth needed, or the box is asleep. Check the connection.',
+  timeout:
+    'Host unreachable — VPN/tailscale down or reauth needed, or the box is asleep. Check the connection.',
   auth: 'SSH auth failed — key not accepted or host key changed. Check your SSH config / known_hosts.',
   dns: 'Host name did not resolve — is the host up and the tailscale/DNS name correct?',
-  refused: 'Connection refused — the host is reachable but sshd is not accepting connections (service down?).',
+  refused:
+    'Connection refused — the host is reachable but sshd is not accepting connections (service down?).',
   unknown: 'Host operation failed. Check the SSH connection to this host.',
 }
 
@@ -24,8 +26,18 @@ export function classifySshError(stderr: string): SshClassification {
   const s = (stderr || '').toLowerCase()
   let reason: HealthReason = 'unknown'
   if (/timed out|timeout|operation timed out/.test(s)) reason = 'timeout'
-  else if (/permission denied|host key verification failed|too many authentication|no matching|publickey/.test(s)) reason = 'auth'
-  else if (/could not resolve|name or service not known|nodename nor servname|no address associated/.test(s)) reason = 'dns'
+  else if (
+    /permission denied|host key verification failed|too many authentication|no matching|publickey/.test(
+      s,
+    )
+  )
+    reason = 'auth'
+  else if (
+    /could not resolve|name or service not known|nodename nor servname|no address associated/.test(
+      s,
+    )
+  )
+    reason = 'dns'
   else if (/connection refused/.test(s)) reason = 'refused'
   return { reason, hint: HINTS[reason] }
 }

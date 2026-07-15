@@ -3,7 +3,12 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync } from 'nod
 import { basename, dirname, join, resolve } from 'node:path'
 import { app } from 'electron'
 import { resolvedProjectsDir, resolvedTemplateRepo } from './settings'
-import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
+import {
+  cloneTemplateToTmp,
+  pickTemplateSource,
+  templateCandidates,
+  type TemplateSource,
+} from './template'
 import { saveRepoTicketConfig, scaffoldObsidianVault } from './ticket-provider'
 import { resolveObsidianScaffold, type ScaffoldTicketProvider } from './scaffold-vault'
 
@@ -47,13 +52,17 @@ export function scaffoldProject(
   parentDir?: string,
   ticketProvider?: ScaffoldTicketProvider,
 ): ScaffoldResult {
-  const safe = name.trim().replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '')
+  const safe = name
+    .trim()
+    .replace(/[^\w.-]/g, '-')
+    .replace(/^-+|-+$/g, '')
   if (!safe || /^\.+$/.test(safe)) return { ok: false, error: 'enter a project name' }
   const parent = parentDir?.trim() || resolvedProjectsDir()
   const dest = join(parent, safe)
   // never traverse out of / clobber: dest must be a brand-new direct child of parent
   if (resolve(dirname(dest)) !== resolve(parent)) return { ok: false, error: 'invalid name' }
-  if (existsSync(dest)) return { ok: false, error: `“${safe}” already exists in that folder — pick a new name` }
+  if (existsSync(dest))
+    return { ok: false, error: `“${safe}” already exists in that folder — pick a new name` }
 
   let src: { dir: string; cleanup?: () => void }
   try {
@@ -96,7 +105,8 @@ export function scaffoldProject(
         const cur = existsSync(gi) ? readFileSync(gi, 'utf8') : ''
         const have = new Set(cur.split('\n').map((l) => l.trim()))
         const add = resolved.ignore.filter((l) => !have.has(l))
-        if (add.length) appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${add.join('\n')}\n`)
+        if (add.length)
+          appendFileSync(gi, `${cur && !cur.endsWith('\n') ? '\n' : ''}${add.join('\n')}\n`)
       } catch {
         /* best effort */
       }
@@ -112,7 +122,9 @@ export function scaffoldProject(
           provider: 'obsidian',
           obsidian: {
             vaultPath: obsidianVaultPath,
-            ...(ticketProvider!.vaultName?.trim() ? { vaultName: ticketProvider!.vaultName.trim() } : {}),
+            ...(ticketProvider!.vaultName?.trim()
+              ? { vaultName: ticketProvider!.vaultName.trim() }
+              : {}),
           },
         })
         scaffoldObsidianVault({ vaultPath: obsidianVaultPath })

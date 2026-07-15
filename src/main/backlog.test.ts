@@ -2,7 +2,14 @@ import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createTicket, getTicket, linkTicketPr, listTickets, recommendTicketAgent, updateTicket } from './backlog'
+import {
+  createTicket,
+  getTicket,
+  linkTicketPr,
+  listTickets,
+  recommendTicketAgent,
+  updateTicket,
+} from './backlog'
 
 const ticketMd = (id: number, title: string) =>
   `---\nid: ${id}\ntitle: "${title}"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n`
@@ -20,9 +27,15 @@ describe('listTickets', () => {
     writeFileSync(join(root, 'backlog', name), content)
 
   test('recommends ticket agents from type and content signals', () => {
-    expect(recommendTicketAgent({ type: 'feature', title: 'Build generic feature' }).agent.id).toBe('1000x-ai-engineer')
-    expect(recommendTicketAgent({ type: 'feature', title: 'Fix auth token leak' }).agent.id).toBe('security-sweep')
-    expect(recommendTicketAgent({ type: 'bug', body: 'Flaky tests need better coverage' }).agent.id).toBe('test-coverage')
+    expect(recommendTicketAgent({ type: 'feature', title: 'Build generic feature' }).agent.id).toBe(
+      '1000x-ai-engineer',
+    )
+    expect(recommendTicketAgent({ type: 'feature', title: 'Fix auth token leak' }).agent.id).toBe(
+      'security-sweep',
+    )
+    expect(
+      recommendTicketAgent({ type: 'bug', body: 'Flaky tests need better coverage' }).agent.id,
+    ).toBe('test-coverage')
     expect(recommendTicketAgent({ type: 'docs', title: 'Document setup' }).agent.id).toBe('docs')
   })
 
@@ -65,7 +78,13 @@ describe('listTickets', () => {
     try {
       mkdirSync(join(v2, '.TerMinal'), { recursive: true })
       writeFileSync(join(v2, '.TerMinal', 'template.json'), '{"version":2}\n')
-      const t = createTicket(v2, { title: 'Write v2 ticket', type: 'feature', priority: 'medium', status: 'open', body: '' })
+      const t = createTicket(v2, {
+        title: 'Write v2 ticket',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: '',
+      })
       expect(existsSync(join(v2, '.TerMinal', 'backlog', `${t.slug}.md`))).toBe(true)
       expect(existsSync(join(v2, 'backlog', `${t.slug}.md`))).toBe(false)
     } finally {
@@ -97,8 +116,14 @@ describe('listTickets', () => {
       })
       expect(generic.agent).toEqual({ id: '1000x-ai-engineer', scope: 'global', kind: 'classic' })
 
-      expect(updateTicket(v2, t.slug, { agent: { id: 'repo-runner', scope: 'repo', kind: 'classic' } })).toBe(true)
-      expect(listTickets(v2).find((x) => x.slug === t.slug)?.agent).toEqual({ id: 'repo-runner', scope: 'repo', kind: 'classic' })
+      expect(
+        updateTicket(v2, t.slug, { agent: { id: 'repo-runner', scope: 'repo', kind: 'classic' } }),
+      ).toBe(true)
+      expect(listTickets(v2).find((x) => x.slug === t.slug)?.agent).toEqual({
+        id: 'repo-runner',
+        scope: 'repo',
+        kind: 'classic',
+      })
     } finally {
       rmSync(v2, { recursive: true, force: true })
     }
@@ -236,7 +261,10 @@ describe('acceptance criteria + PR linking', () => {
     updateTicket(root, t.slug, { status: 'closed' })
     linkTicketPr(root, t.slug, 'https://gl/x/-/merge_requests/2')
     const after = getTicket(root, t.slug)
-    expect(after?.prs).toEqual(['https://gl/x/-/merge_requests/1', 'https://gl/x/-/merge_requests/2'])
+    expect(after?.prs).toEqual([
+      'https://gl/x/-/merge_requests/1',
+      'https://gl/x/-/merge_requests/2',
+    ])
     expect(after?.status).toBe('closed')
   })
 
@@ -279,10 +307,20 @@ describe('baseDir override (Obsidian vault)', () => {
     createTicket(root, { ...New, title: 'A' }, dir)
     createTicket(root, { ...New, title: 'B' }, dir)
     // vault sees both; repo store sees none
-    expect(listTickets(root, dir).map((t) => t.id).sort()).toEqual([1, 2])
+    expect(
+      listTickets(root, dir)
+        .map((t) => t.id)
+        .sort(),
+    ).toEqual([1, 2])
     expect(listTickets(root)).toEqual([])
     // id allocation counts within the vault, not the repo
-    createTicket(root, { title: 'repo-only', type: 'feature', priority: 'medium', status: 'open', body: 'x' })
+    createTicket(root, {
+      title: 'repo-only',
+      type: 'feature',
+      priority: 'medium',
+      status: 'open',
+      body: 'x',
+    })
     expect(listTickets(root).map((t) => t.id)).toEqual([1]) // repo store restarts at 1
     expect(createTicket(root, { ...New, title: 'C' }, dir).id).toBe(3) // vault continues at 3
 

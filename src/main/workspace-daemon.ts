@@ -2,7 +2,18 @@ import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import type { NewTicket, Ticket, TicketPatch } from './backlog'
 import { listDocs, readDoc, type DocsTree } from './docs'
-import { listDir, readFile, writeFile, searchRepo, createEntry, renameEntry, removeEntry, type Entry, type ReadResult, type SearchHit } from './files'
+import {
+  listDir,
+  readFile,
+  writeFile,
+  searchRepo,
+  createEntry,
+  renameEntry,
+  removeEntry,
+  type Entry,
+  type ReadResult,
+  type SearchHit,
+} from './files'
 import { forgeFor, type CiInfo } from './forge'
 import {
   listMrs,
@@ -19,14 +30,37 @@ import {
 } from './mrs'
 import { startDigest, digestStatus as readDigestStatus, type DigestRunState } from './digest-run'
 import { readNotes, writeNotes, type NotesScope } from './notes'
-import { repoForCwd, repoRootOf, gitStatus, getWorkingDiff, type GitStatus, type WorkingDiff } from './repo'
+import {
+  repoForCwd,
+  repoRootOf,
+  gitStatus,
+  getWorkingDiff,
+  type GitStatus,
+  type WorkingDiff,
+} from './repo'
 import { getWorkingStructuralDiff } from './local-structural'
-import { listProjectSessions, getProjectSession, hasSessions as repoHasSessions, type ProjectSession } from './sessions'
+import {
+  listProjectSessions,
+  getProjectSession,
+  hasSessions as repoHasSessions,
+  type ProjectSession,
+} from './sessions'
 import { listSkills, type SkillInfo } from './skills'
-import { workspaceSearch, type WorkspaceSearchKind, type WorkspaceSearchResponse } from './workspace-search'
+import {
+  workspaceSearch,
+  type WorkspaceSearchKind,
+  type WorkspaceSearchResponse,
+} from './workspace-search'
 import { hasAgents as repoHasAgents } from './agents'
 import { hasProjectArea } from './project-layout'
-import { createRepoTicket, getRepoTicket, listRepoTickets, repoTicketProvider, updateRepoTicket, type TicketProviderKind } from './ticket-provider'
+import {
+  createRepoTicket,
+  getRepoTicket,
+  listRepoTickets,
+  repoTicketProvider,
+  updateRepoTicket,
+  type TicketProviderKind,
+} from './ticket-provider'
 import {
   remoteDocs,
   remoteFiles,
@@ -77,7 +111,10 @@ export type WorkspaceDaemon = {
   context(sessionId: string): Promise<DaemonContext> | DaemonContext
   gitStatus(): Promise<GitStatus> | GitStatus
   workingDiff(): Promise<WorkingDiff> | WorkingDiff
-  workingStructuralDiff(path: string, width?: number): Promise<StructuralDiffResult> | StructuralDiffResult
+  workingStructuralDiff(
+    path: string,
+    width?: number,
+  ): Promise<StructuralDiffResult> | StructuralDiffResult
   docsList(): Promise<DocsTree> | DocsTree
   docsGet(relPath: string): Promise<string> | string
   sessionsList(): Promise<ProjectSession[]> | ProjectSession[]
@@ -90,7 +127,11 @@ export type WorkspaceDaemon = {
   mrsList(): Promise<MrListResult> | MrListResult
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
   mrDiff(iid: number): Promise<string> | string
-  mrStructuralDiff(iid: number, path: string, width?: number): Promise<StructuralDiffResult> | StructuralDiffResult
+  mrStructuralDiff(
+    iid: number,
+    path: string,
+    width?: number,
+  ): Promise<StructuralDiffResult> | StructuralDiffResult
   digestGet(iid: number, short?: string): Promise<DigestArtifact | null> | DigestArtifact | null
   digestRun(iid: number): Promise<{ ok: boolean; error?: string }>
   digestRunStatus(iid: number): DigestRunState | null
@@ -112,11 +153,16 @@ function sshPathBasename(cwdOrRoot: string): string {
   const rest = cwdOrRoot.replace(/^ssh:\/\//, '')
   const slash = rest.indexOf('/')
   const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
-  return remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() || (slash >= 0 ? rest.slice(0, slash) : rest)
+  return (
+    remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() ||
+    (slash >= 0 ? rest.slice(0, slash) : rest)
+  )
 }
 
 export function repoLabelForDaemonPath(cwdOrRoot: string): string {
-  return cwdOrRoot.startsWith('ssh://') ? sshPathBasename(cwdOrRoot) : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
+  return cwdOrRoot.startsWith('ssh://')
+    ? sshPathBasename(cwdOrRoot)
+    : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
 }
 
 function remoteCapabilities(): Record<string, boolean> {
@@ -163,7 +209,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
         forgeKind: forge.kind,
         forgeLabel: forge.label,
         forgeSym: forge.sym,
-        hasBacklog: !!repoRoot && (hasProjectArea(repoRoot, 'backlog') || ticketProvider.kind !== 'local'),
+        hasBacklog:
+          !!repoRoot && (hasProjectArea(repoRoot, 'backlog') || ticketProvider.kind !== 'local'),
         ticketProvider: ticketProvider.kind,
         ticketProviderLabel: ticketProvider.label,
         hasSessions: repoHasSessions(repoRoot),
@@ -172,7 +219,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     },
     gitStatus: () => gitStatus(currentCwd),
     workingDiff: () => getWorkingDiff(root()),
-    workingStructuralDiff: (path: string, width?: number) => getWorkingStructuralDiff(root(), path, width),
+    workingStructuralDiff: (path: string, width?: number) =>
+      getWorkingStructuralDiff(root(), path, width),
     docsList: () => listDocs(root() || ''),
     docsGet: (relPath: string) => readDoc(root() || '', relPath),
     sessionsList: () => listProjectSessions(root()),
@@ -185,7 +233,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     mrsList: () => listMrs(root()),
     mrGet: (iid: number) => getMr(root(), iid),
     mrDiff: (iid: number) => getMrDiff(root(), iid),
-    mrStructuralDiff: (iid: number, path: string, width?: number) => getStructuralDiff(root(), iid, path, width),
+    mrStructuralDiff: (iid: number, path: string, width?: number) =>
+      getStructuralDiff(root(), iid, path, width),
     digestGet: (iid: number, short?: string) => getDigest(root(), iid, short),
     digestRun: (iid: number) => startDigest(root(), iid),
     digestRunStatus: (iid: number) => readDigestStatus(root(), iid),
@@ -204,7 +253,10 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
   }
 }
 
-export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: string): WorkspaceDaemon {
+export function createSshWorkspaceDaemon(
+  remote: RemoteSessionRef,
+  displayCwd: string,
+): WorkspaceDaemon {
   const cwd = displayCwd || remote.cwd || ''
   const probe = () => remoteProbe(remote).catch(() => null)
   return {
@@ -271,13 +323,15 @@ export function createSshWorkspaceDaemon(remote: RemoteSessionRef, displayCwd: s
       message: 'structural diff not supported on remote workspaces yet',
     }),
     digestGet: () => null, // digest reads local artifact files; not wired over ssh yet
-    digestRun: () => Promise.resolve({ ok: false, error: 'digest not supported on remote workspaces yet' }),
+    digestRun: () =>
+      Promise.resolve({ ok: false, error: 'digest not supported on remote workspaces yet' }),
     digestRunStatus: () => null,
 
     mrCi: (iid: number) => remoteMrs.ci(remote, iid),
     mrMerge: (iid: number) => remoteMrs.merge(remote, iid),
     notesRead: (scope: NotesScope) => remoteNotes.read(remote, scope).catch(() => ''),
-    notesWrite: (scope: NotesScope, content: string) => remoteNotes.write(remote, scope, content).catch(() => false),
+    notesWrite: (scope: NotesScope, content: string) =>
+      remoteNotes.write(remote, scope, content).catch(() => false),
     filesList: (rel: string) => remoteFiles.list(remote, rel || ''),
     filesRead: (rel: string) => remoteFiles.read(remote, rel),
     filesWrite: (rel: string, content: string) => remoteFiles.write(remote, rel, content),

@@ -16,7 +16,12 @@ const session = (patch: Partial<SessionMeta>): SessionMeta => ({
 
 describe('sessionMatchesQuery', () => {
   test('matches prompt, path, branch, engine, model, and id case-insensitively', () => {
-    const s = session({ gitBranch: 'feature/Billing', model: 'gpt-5.1', engine: 'codex', id: 'xyz789' })
+    const s = session({
+      gitBranch: 'feature/Billing',
+      model: 'gpt-5.1',
+      engine: 'codex',
+      id: 'xyz789',
+    })
     expect(sessionMatchesQuery(s, 'invoices')).toBe(true)
     expect(sessionMatchesQuery(s, 'REPO/APP')).toBe(true)
     expect(sessionMatchesQuery(s, 'billing')).toBe(true)
@@ -40,13 +45,15 @@ describe('filterSessionMetas', () => {
       session({ id: '3', cwd: '/other/app', firstUserText: 'Ship invoices' }),
     ]
 
-    expect(filterSessionMetas(sessions, { filterDir: '/repo', query: 'invoices' }).map((s) => s.id)).toEqual([
-      '2',
-    ])
+    expect(
+      filterSessionMetas(sessions, { filterDir: '/repo', query: 'invoices' }).map((s) => s.id),
+    ).toEqual(['2'])
   })
 
   test('leaves pagination to the caller', () => {
-    const sessions = Array.from({ length: 75 }, (_, i) => session({ id: String(i), firstUserText: 'match' }))
+    const sessions = Array.from({ length: 75 }, (_, i) =>
+      session({ id: String(i), firstUserText: 'match' }),
+    )
     expect(filterSessionMetas(sessions, { query: 'match' })).toHaveLength(75)
   })
 })

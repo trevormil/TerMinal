@@ -130,7 +130,10 @@ export function getSchedule(id: string): Schedule | null {
   return readSchedules().find((s) => s.id === id) || null
 }
 
-export type NewSchedule = Omit<Schedule, 'id' | 'createdAt' | 'lastRun' | 'lastStatus' | 'lastRunId'>
+export type NewSchedule = Omit<
+  Schedule,
+  'id' | 'createdAt' | 'lastRun' | 'lastStatus' | 'lastRunId'
+>
 
 export function addSchedule(s: NewSchedule, now = Date.now()): Schedule {
   const sched: Schedule = { ...s, id: randomUUID(), createdAt: now, lastStatus: 'never' }

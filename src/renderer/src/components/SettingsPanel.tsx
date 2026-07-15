@@ -86,7 +86,12 @@ const daemonFromSettings = (s: Settings): DaemonCfg => ({
   defaultEngine: s.defaultEngine,
   forge: s.forge,
 })
-const mergeDaemon = (base: DaemonCfg, patch: Partial<Omit<DaemonCfg, 'engines'>> & { engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>> }): DaemonCfg => ({
+const mergeDaemon = (
+  base: DaemonCfg,
+  patch: Partial<Omit<DaemonCfg, 'engines'>> & {
+    engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>>
+  },
+): DaemonCfg => ({
   ...base,
   ...patch,
   engines: {
@@ -112,14 +117,21 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section id={id} className="scroll-mt-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/55 p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]">
+    <section
+      id={id}
+      className="scroll-mt-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/55 p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]"
+    >
       <div className="mb-3 flex items-start gap-2.5">
         <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
           <Icon size={15} strokeWidth={2} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[12px] font-semibold text-zinc-100">{title}</div>
-          {desc && <div className="mt-0.5 max-w-[68ch] text-[11px] leading-relaxed text-zinc-500">{desc}</div>}
+          {desc && (
+            <div className="mt-0.5 max-w-[68ch] text-[11px] leading-relaxed text-zinc-500">
+              {desc}
+            </div>
+          )}
         </div>
       </div>
       {children}
@@ -127,7 +139,17 @@ function Section({
   )
 }
 
-function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => void; label: string; hint?: string }) {
+function Toggle({
+  on,
+  onToggle,
+  label,
+  hint,
+}: {
+  on: boolean
+  onToggle: () => void
+  label: string
+  hint?: string
+}) {
   return (
     <button
       onClick={onToggle}
@@ -142,7 +164,9 @@ function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => vo
           on ? 'bg-[var(--gt-accent)]' : 'bg-zinc-700'
         }`}
       >
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`}
+        />
       </span>
     </button>
   )
@@ -151,10 +175,18 @@ function Toggle({ on, onToggle, label, hint }: { on: boolean; onToggle: () => vo
 // Editor for the Panels tab's pinned web dashboards. Local rows while editing;
 // persists the cleaned list (rows with a URL) on blur / add / remove. The tab
 // itself appears once at least one panel has a URL.
-function PanelsSection({ panels, onSave }: { panels: PinnedPanel[]; onSave: (p: PinnedPanel[]) => void }) {
+function PanelsSection({
+  panels,
+  onSave,
+}: {
+  panels: PinnedPanel[]
+  onSave: (p: PinnedPanel[]) => void
+}) {
   const [rows, setRows] = useState<PinnedPanel[]>(() => panels)
   const persist = (next: PinnedPanel[]) =>
-    onSave(next.filter((p) => p.url.trim()).map((p) => ({ label: p.label.trim(), url: p.url.trim() })))
+    onSave(
+      next.filter((p) => p.url.trim()).map((p) => ({ label: p.label.trim(), url: p.url.trim() })),
+    )
   const update = (i: number, patch: Partial<PinnedPanel>) =>
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const remove = (i: number) =>
@@ -174,7 +206,9 @@ function PanelsSection({ panels, onSave }: { panels: PinnedPanel[]; onSave: (p: 
     >
       <div className="flex flex-col gap-2">
         {rows.length === 0 && (
-          <div className="text-[11px] text-zinc-600">No panels yet — add one to show the Panels tab.</div>
+          <div className="text-[11px] text-zinc-600">
+            No panels yet — add one to show the Panels tab.
+          </div>
         )}
         {rows.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -272,12 +306,12 @@ function TabsVisibilityPanel() {
       return next
     })
   }
-  if (allTabs.length === 0)
-    return <div className="text-[11px] text-zinc-600">loading…</div>
+  if (allTabs.length === 0) return <div className="text-[11px] text-zinc-600">loading…</div>
   return (
     <div className="grid grid-cols-2 gap-1">
       <div className="col-span-2 mb-1 text-[10.5px] text-zinc-600">
-        New installs hide {DEFAULT_HIDDEN_TABS.join(', ')} by default. Toggle them on here when needed.
+        New installs hide {DEFAULT_HIDDEN_TABS.join(', ')} by default. Toggle them on here when
+        needed.
       </div>
       {allTabs.map((t) => {
         const off = hidden.includes(t.id)
@@ -426,8 +460,14 @@ function RebuildPanel() {
         disabled={busy || running}
         className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-2 text-left text-[12px] text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
       >
-        {busy || running ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} strokeWidth={2} />}
-        {running ? 'Rebuilding… (app will quit + relaunch automatically)' : 'Rebuild + reinstall now'}
+        {busy || running ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <RotateCcw size={14} strokeWidth={2} />
+        )}
+        {running
+          ? 'Rebuilding… (app will quit + relaunch automatically)'
+          : 'Rebuild + reinstall now'}
         <span className="ml-auto text-[10.5px] text-zinc-600">bun run release</span>
       </button>
       {error && <div className="text-[11px] text-amber-400">{error}</div>}
@@ -437,9 +477,9 @@ function RebuildPanel() {
         </pre>
       )}
       <div className="text-[10.5px] leading-4 text-zinc-600">
-        Checks origin first and fast-forwards clean main/master checkouts before building.
-        Reinstall replaces only the app bundle and TerMinal-owned helper binaries.
-        Settings, custom agents, scripts, snippets, widgets, schedules, inbox, and run state in
+        Checks origin first and fast-forwards clean main/master checkouts before building. Reinstall
+        replaces only the app bundle and TerMinal-owned helper binaries. Settings, custom agents,
+        scripts, snippets, widgets, schedules, inbox, and run state in
         <span className="font-mono"> ~/.config/TerMinal</span> are preserved.
       </div>
     </div>
@@ -463,9 +503,7 @@ function PresetVisibilityPanel() {
       <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-[12px] font-semibold text-zinc-200">{title}</span>
-          <span className="text-[10.5px] tabular-nums text-zinc-600">
-            {hidden.length} hidden
-          </span>
+          <span className="text-[10.5px] tabular-nums text-zinc-600">{hidden.length} hidden</span>
           <div className="flex-1" />
           <button
             onClick={async () => {
@@ -485,7 +523,10 @@ function PresetVisibilityPanel() {
             {hidden.map((id) => {
               const preset = byId.get(id)
               return (
-                <div key={id} className="flex items-center gap-2 rounded-md bg-black/25 px-2 py-1.5">
+                <div
+                  key={id}
+                  className="flex items-center gap-2 rounded-md bg-black/25 px-2 py-1.5"
+                >
                   <span className="min-w-0 flex-1 truncate text-[11.5px] text-zinc-300">
                     {preset?.title || id}
                   </span>
@@ -529,11 +570,15 @@ const defaultLinearConfig = (team = ''): NonNullable<TicketProviderConfig['linea
   ...(team ? { team } : {}),
 })
 
-function normalizeTicketConfig(cfg: TicketProviderConfig | { error: string } | null): TicketProviderConfig {
+function normalizeTicketConfig(
+  cfg: TicketProviderConfig | { error: string } | null,
+): TicketProviderConfig {
   if (!cfg || 'error' in cfg) return { provider: 'local' }
   if (cfg.provider === 'github') return { provider: 'github', github: cfg.github || {} }
-  if (cfg.provider === 'linear') return { provider: 'linear', linear: { ...defaultLinearConfig(), ...(cfg.linear || {}) } }
-  if (cfg.provider === 'obsidian') return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' } }
+  if (cfg.provider === 'linear')
+    return { provider: 'linear', linear: { ...defaultLinearConfig(), ...(cfg.linear || {}) } }
+  if (cfg.provider === 'obsidian')
+    return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' } }
   return { provider: 'local' }
 }
 
@@ -550,7 +595,10 @@ function TicketProviderPanel() {
     setBusy('load')
     setError('')
     try {
-      const [nextCtx, cfg] = await Promise.all([window.gt.tabContext(), window.gt.tickets.providerGet()])
+      const [nextCtx, cfg] = await Promise.all([
+        window.gt.tabContext(),
+        window.gt.tickets.providerGet(),
+      ])
       setCtx(nextCtx)
       const normalized = normalizeTicketConfig(cfg)
       setDraft(normalized)
@@ -573,9 +621,14 @@ function TicketProviderPanel() {
   const provider = draft.provider || 'local'
   const setProvider = (next: TicketProviderKind) => {
     setResult(null)
-    if (next === 'linear') setDraft({ provider: next, linear: { ...defaultLinearConfig(draft.linear?.team || draft.linear?.teamKey || '') } })
+    if (next === 'linear')
+      setDraft({
+        provider: next,
+        linear: { ...defaultLinearConfig(draft.linear?.team || draft.linear?.teamKey || '') },
+      })
     else if (next === 'github') setDraft({ provider: next, github: draft.github || {} })
-    else if (next === 'obsidian') setDraft({ provider: next, obsidian: draft.obsidian || { vaultPath: '' } })
+    else if (next === 'obsidian')
+      setDraft({ provider: next, obsidian: draft.obsidian || { vaultPath: '' } })
     else setDraft({ provider: 'local' })
   }
   const pickVault = async () => {
@@ -585,7 +638,11 @@ function TicketProviderPanel() {
     setResult(null)
     setDraft({
       provider: 'obsidian',
-      obsidian: { ...(draft.obsidian || { vaultPath: '' }), vaultPath: dir, ...(draft.obsidian?.vaultName ? {} : { vaultName: name }) },
+      obsidian: {
+        ...(draft.obsidian || { vaultPath: '' }),
+        vaultPath: dir,
+        ...(draft.obsidian?.vaultName ? {} : { vaultName: name }),
+      },
     })
   }
   const loadTeams = async () => {
@@ -597,7 +654,9 @@ function TicketProviderPanel() {
       setResult({
         ok: list.length > 0,
         provider: 'linear',
-        message: list.length ? `Found ${list.length} Linear team${list.length === 1 ? '' : 's'}.` : 'No Linear teams returned.',
+        message: list.length
+          ? `Found ${list.length} Linear team${list.length === 1 ? '' : 's'}.`
+          : 'No Linear teams returned.',
         teams: list,
       })
     } catch (e) {
@@ -617,7 +676,11 @@ function TicketProviderPanel() {
         setSaved(normalized)
         setDraft(normalized)
         window.dispatchEvent(new Event('gt.ticket-provider.changed'))
-        setResult({ ok: true, provider: normalized.provider || 'local', message: `Saved ${normalized.provider || 'local'} as this repo's ticket source.` })
+        setResult({
+          ok: true,
+          provider: normalized.provider || 'local',
+          message: `Saved ${normalized.provider || 'local'} as this repo's ticket source.`,
+        })
       }
     } catch (e) {
       setError((e as Error).message || 'Could not save ticket provider.')
@@ -661,7 +724,8 @@ function TicketProviderPanel() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12px] font-semibold text-zinc-200">{repoLabel}</div>
           <div className="text-[10.5px] text-zinc-600">
-            One source of truth per repo. Switching providers changes where tickets are read and written; it does not sync old tickets.
+            One source of truth per repo. Switching providers changes where tickets are read and
+            written; it does not sync old tickets.
           </div>
         </div>
         <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
@@ -670,15 +734,32 @@ function TicketProviderPanel() {
       </div>
 
       <div className="grid gap-2 md:grid-cols-2">
-        {providerOpt('local', 'Local backlog', '.TerMinal/backlog markdown files. Default for every repo.')}
-        {providerOpt('github', 'GitHub Issues', 'Uses the gh CLI. Best when GitHub issues are the repo tracker.')}
-        {providerOpt('linear', 'Linear', 'Uses Linear MCP. Pick a team and file issues directly in Linear.')}
-        {providerOpt('obsidian', 'Obsidian', 'Private local vault. Tickets are markdown in a vault folder, never in git.')}
+        {providerOpt(
+          'local',
+          'Local backlog',
+          '.TerMinal/backlog markdown files. Default for every repo.',
+        )}
+        {providerOpt(
+          'github',
+          'GitHub Issues',
+          'Uses the gh CLI. Best when GitHub issues are the repo tracker.',
+        )}
+        {providerOpt(
+          'linear',
+          'Linear',
+          'Uses Linear MCP. Pick a team and file issues directly in Linear.',
+        )}
+        {providerOpt(
+          'obsidian',
+          'Obsidian',
+          'Private local vault. Tickets are markdown in a vault folder, never in git.',
+        )}
       </div>
 
       {provider === 'github' && (
         <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11px] text-zinc-500">
-          TerMinal will check <span className="font-mono text-zinc-300">gh auth status</span> and issue availability for this repo. Priority/status are represented as managed labels.
+          TerMinal will check <span className="font-mono text-zinc-300">gh auth status</span> and
+          issue availability for this repo. Priority/status are represented as managed labels.
         </div>
       )}
 
@@ -686,37 +767,83 @@ function TicketProviderPanel() {
         <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Team</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                Team
+              </span>
               <select
                 value={draft.linear?.team || draft.linear?.teamKey || ''}
-                onChange={(e) => setDraft({ provider: 'linear', linear: { ...defaultLinearConfig(), ...(draft.linear || {}), team: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'linear',
+                    linear: {
+                      ...defaultLinearConfig(),
+                      ...(draft.linear || {}),
+                      team: e.target.value,
+                    },
+                  })
+                }
                 className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
               >
-                <option value="" className="bg-[var(--gt-panel)]">Pick a team…</option>
+                <option value="" className="bg-[var(--gt-panel)]">
+                  Pick a team…
+                </option>
                 {teams.map((team) => (
-                  <option key={team.id || team.name} value={team.name || team.key || team.id} className="bg-[var(--gt-panel)]">
+                  <option
+                    key={team.id || team.name}
+                    value={team.name || team.key || team.id}
+                    className="bg-[var(--gt-panel)]"
+                  >
                     {team.name || team.key || team.id}
                   </option>
                 ))}
               </select>
             </label>
             <button onClick={loadTeams} disabled={busy === 'teams'} className={action}>
-              {busy === 'teams' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} strokeWidth={2} />}
+              {busy === 'teams' ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <RotateCcw size={13} strokeWidth={2} />
+              )}
               Teams
             </button>
           </div>
           <details>
-            <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">Advanced MCP command</summary>
+            <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">
+              Advanced MCP command
+            </summary>
             <div className="mt-2 grid gap-2 md:grid-cols-[0.8fr_1.2fr]">
               <input
                 value={draft.linear?.mcp?.command || 'bunx'}
-                onChange={(e) => setDraft({ provider: 'linear', linear: { ...defaultLinearConfig(), ...(draft.linear || {}), mcp: { ...(draft.linear?.mcp || {}), command: e.target.value } } })}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'linear',
+                    linear: {
+                      ...defaultLinearConfig(),
+                      ...(draft.linear || {}),
+                      mcp: { ...(draft.linear?.mcp || {}), command: e.target.value },
+                    },
+                  })
+                }
                 className={`${inp} font-mono`}
                 spellCheck={false}
               />
               <input
-                value={(draft.linear?.mcp?.args || ['mcp-remote@0.1.38', 'https://mcp.linear.app/mcp']).join(' ')}
-                onChange={(e) => setDraft({ provider: 'linear', linear: { ...defaultLinearConfig(), ...(draft.linear || {}), mcp: { ...(draft.linear?.mcp || {}), args: e.target.value.split(/\s+/).filter(Boolean) } } })}
+                value={(
+                  draft.linear?.mcp?.args || ['mcp-remote@0.1.38', 'https://mcp.linear.app/mcp']
+                ).join(' ')}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'linear',
+                    linear: {
+                      ...defaultLinearConfig(),
+                      ...(draft.linear || {}),
+                      mcp: {
+                        ...(draft.linear?.mcp || {}),
+                        args: e.target.value.split(/\s+/).filter(Boolean),
+                      },
+                    },
+                  })
+                }
                 className={`${inp} font-mono`}
                 spellCheck={false}
               />
@@ -729,10 +856,20 @@ function TicketProviderPanel() {
         <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Vault folder</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                Vault folder
+              </span>
               <input
                 value={draft.obsidian?.vaultPath || ''}
-                onChange={(e) => setDraft({ provider: 'obsidian', obsidian: { ...(draft.obsidian || { vaultPath: '' }), vaultPath: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'obsidian',
+                    obsidian: {
+                      ...(draft.obsidian || { vaultPath: '' }),
+                      vaultPath: e.target.value,
+                    },
+                  })
+                }
                 placeholder="/Users/you/Obsidian/MyRepoVault"
                 className={`${inp} font-mono`}
                 spellCheck={false}
@@ -745,20 +882,40 @@ function TicketProviderPanel() {
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Tickets subfolder</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                Tickets subfolder
+              </span>
               <input
                 value={draft.obsidian?.ticketsSubdir ?? ''}
-                onChange={(e) => setDraft({ provider: 'obsidian', obsidian: { ...(draft.obsidian || { vaultPath: '' }), ticketsSubdir: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'obsidian',
+                    obsidian: {
+                      ...(draft.obsidian || { vaultPath: '' }),
+                      ticketsSubdir: e.target.value,
+                    },
+                  })
+                }
                 placeholder="tickets"
                 className={`${inp} font-mono`}
                 spellCheck={false}
               />
             </label>
             <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Vault name (for links)</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                Vault name (for links)
+              </span>
               <input
                 value={draft.obsidian?.vaultName ?? ''}
-                onChange={(e) => setDraft({ provider: 'obsidian', obsidian: { ...(draft.obsidian || { vaultPath: '' }), vaultName: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'obsidian',
+                    obsidian: {
+                      ...(draft.obsidian || { vaultPath: '' }),
+                      vaultName: e.target.value,
+                    },
+                  })
+                }
                 placeholder="MyRepoVault"
                 className={`${inp} font-mono`}
                 spellCheck={false}
@@ -766,35 +923,82 @@ function TicketProviderPanel() {
             </label>
           </div>
           <div className="text-[10.5px] leading-snug text-zinc-500">
-            Each repo gets its own vault. Tickets are <span className="font-mono text-zinc-300">NNNN-slug.md</span> in{' '}
-            <span className="font-mono text-zinc-300">{(draft.obsidian?.ticketsSubdir?.trim() || 'tickets')}/</span> — private and outside git. Keep the vault outside any repo so nothing leaks.
+            Each repo gets its own vault. Tickets are{' '}
+            <span className="font-mono text-zinc-300">NNNN-slug.md</span> in{' '}
+            <span className="font-mono text-zinc-300">
+              {draft.obsidian?.ticketsSubdir?.trim() || 'tickets'}/
+            </span>{' '}
+            — private and outside git. Keep the vault outside any repo so nothing leaks.
           </div>
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={saveProvider} disabled={busy === 'save'} className={action}>
-          {busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <CircleCheck size={13} strokeWidth={2} />}
+          {busy === 'save' ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <CircleCheck size={13} strokeWidth={2} />
+          )}
           Save
         </button>
-        <button onClick={() => runTest(false)} disabled={busy === 'test' || providerChanged} className={action} title={providerChanged ? 'Save before testing this provider.' : 'Non-mutating connection check.'}>
-          {busy === 'test' ? <Loader2 size={13} className="animate-spin" /> : <Activity size={13} strokeWidth={2} />}
+        <button
+          onClick={() => runTest(false)}
+          disabled={busy === 'test' || providerChanged}
+          className={action}
+          title={
+            providerChanged
+              ? 'Save before testing this provider.'
+              : 'Non-mutating connection check.'
+          }
+        >
+          {busy === 'test' ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Activity size={13} strokeWidth={2} />
+          )}
           Test
         </button>
-        <button onClick={() => runTest(true)} disabled={busy === 'smoke' || providerChanged} className={action} title={providerChanged ? 'Save before running smoke.' : 'Creates, updates, and closes a real smoke ticket.'}>
-          {busy === 'smoke' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
+        <button
+          onClick={() => runTest(true)}
+          disabled={busy === 'smoke' || providerChanged}
+          className={action}
+          title={
+            providerChanged
+              ? 'Save before running smoke.'
+              : 'Creates, updates, and closes a real smoke ticket.'
+          }
+        >
+          {busy === 'smoke' ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Send size={13} strokeWidth={2} />
+          )}
           Smoke
         </button>
-        {providerChanged && <span className="text-[10.5px] text-amber-300">Save changes before testing.</span>}
+        {providerChanged && (
+          <span className="text-[10.5px] text-amber-300">Save changes before testing.</span>
+        )}
       </div>
 
-      {error && <div className="rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-2.5 py-1.5 text-[11px] text-[var(--gt-red)]">{error}</div>}
+      {error && (
+        <div className="rounded-md border border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 px-2.5 py-1.5 text-[11px] text-[var(--gt-red)]">
+          {error}
+        </div>
+      )}
       {result && (
-        <div className={`rounded-md border px-2.5 py-1.5 text-[11px] ${result.ok ? 'border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)]' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'}`}>
+        <div
+          className={`rounded-md border px-2.5 py-1.5 text-[11px] ${result.ok ? 'border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 text-[var(--gt-green)]' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'}`}
+        >
           {result.message}
-          {typeof result.count === 'number' && <span className="ml-1 text-zinc-500">({result.count} tickets)</span>}
+          {typeof result.count === 'number' && (
+            <span className="ml-1 text-zinc-500">({result.count} tickets)</span>
+          )}
           {result.smoke?.key && (
-            <button onClick={() => result.smoke?.url && window.gt.openExternal(result.smoke.url)} className="ml-2 underline underline-offset-2">
+            <button
+              onClick={() => result.smoke?.url && window.gt.openExternal(result.smoke.url)}
+              className="ml-2 underline underline-offset-2"
+            >
               {result.smoke.key}
             </button>
           )}
@@ -804,15 +1008,30 @@ function TicketProviderPanel() {
   )
 }
 
-export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; onRerunSetup: () => void }) {
+export function SettingsPanel({
+  onClose,
+  onRerunSetup,
+}: {
+  onClose: () => void
+  onRerunSetup: () => void
+}) {
   const [s, setS] = useState<Settings | null>(null)
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
-  const [notify, setNotify] = useState<{ busy?: boolean; ok?: boolean; path?: string; error?: string } | null>(null)
+  const [notify, setNotify] = useState<{
+    busy?: boolean
+    ok?: boolean
+    path?: string
+    error?: string
+  } | null>(null)
   const [copied, setCopied] = useState(false)
   const [profile, setProfile] = useState('local')
-  const [remoteProbe, setRemoteProbe] = useState<Record<string, RemoteSettingsProbe | { loading: true }>>({})
-  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(null)
+  const [remoteProbe, setRemoteProbe] = useState<
+    Record<string, RemoteSettingsProbe | { loading: true }>
+  >({})
+  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(
+    null,
+  )
   const [remoteDraft, setRemoteDraft] = useState({
     label: '',
     sshTarget: '',
@@ -825,7 +1044,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     window.gt.detectEnv().then(setEnv)
   }, [])
   useEffect(() => {
-    if (s && profile !== 'local' && !s.remoteHosts.some((h) => h.id === profile)) setProfile('local')
+    if (s && profile !== 'local' && !s.remoteHosts.some((h) => h.id === profile))
+      setProfile('local')
   }, [s, profile])
 
   const save = async (patch: SettingsPatch) => {
@@ -838,12 +1058,16 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     const host = s.remoteHosts.find((h) => h.id === profile)
     if (!host || remoteProbe[host.id]) return
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings.remoteProbe(host.id).then((probe) =>
-      setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })),
-    )
+    window.gt.settings
+      .remoteProbe(host.id)
+      .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }, [s, profile, remoteProbe])
   const selectedHost = s?.remoteHosts.find((h) => h.id === profile) || null
-  const selectedDaemon = s ? (selectedHost ? selectedHost.daemon : daemonFromSettings(s)) : emptyDaemon()
+  const selectedDaemon = s
+    ? selectedHost
+      ? selectedHost.daemon
+      : daemonFromSettings(s)
+    : emptyDaemon()
   const selectedProbe = selectedHost ? remoteProbe[selectedHost.id] : null
   const selectedIsRemote = !!selectedHost
   useEffect(() => {
@@ -858,7 +1082,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     }
   }, [selectedDaemon.projectsDir, selectedHost?.id])
   const saveDaemon = async (
-    patch: Partial<Omit<DaemonCfg, 'engines'>> & { engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>> },
+    patch: Partial<Omit<DaemonCfg, 'engines'>> & {
+      engines?: Partial<Record<Engine, Partial<DaemonCfg['engines'][Engine]>>>
+    },
   ) => {
     if (!s) return
     if (!selectedHost) {
@@ -875,15 +1101,17 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       return
     }
     const hosts = s.remoteHosts.map((h) =>
-      h.id === selectedHost.id ? { ...h, daemon: mergeDaemon(h.daemon || emptyDaemon(), patch) } : h,
+      h.id === selectedHost.id
+        ? { ...h, daemon: mergeDaemon(h.daemon || emptyDaemon(), patch) }
+        : h,
     )
     await save({ remoteHosts: hosts })
   }
   const refreshRemoteProbe = (host: RemoteHost) => {
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings.remoteProbe(host.id).then((probe) =>
-      setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })),
-    )
+    window.gt.settings
+      .remoteProbe(host.id)
+      .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }
   const remoteId = (value: string) =>
     value
@@ -914,7 +1142,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
   }
   const appOptions = (detected: string[] | undefined, fallback: string[], current: string) => {
-    const list = [...new Set([...(detected?.length ? detected : fallback), ...(current ? [current] : [])])]
+    const list = [
+      ...new Set([...(detected?.length ? detected : fallback), ...(current ? [current] : [])]),
+    ]
     return list.map((a) => (
       <option key={a} value={a} className="bg-[var(--gt-panel)]">
         {a}
@@ -934,7 +1164,12 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     setNotify({ busy: true })
     setNotify(await window.gt.installGtNotify())
   }
-  const [mcpState, setMcpState] = useState<{ busy?: boolean; ok?: boolean; installed?: string[]; error?: string } | null>(null)
+  const [mcpState, setMcpState] = useState<{
+    busy?: boolean
+    ok?: boolean
+    installed?: string[]
+    error?: string
+  } | null>(null)
   const installMcp = async () => {
     setMcpState({ busy: true })
     const r = await window.gt.mcpInstall()
@@ -971,11 +1206,19 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50'
   const scalePct = Math.round((s.appearance.uiScale || 1) * 100)
   const valueText = (value: string, fallback: string) => (
-    <span className={`min-w-0 truncate font-mono text-[11.5px] ${value ? 'text-zinc-300' : 'text-zinc-500'}`}>
+    <span
+      className={`min-w-0 truncate font-mono text-[11.5px] ${value ? 'text-zinc-300' : 'text-zinc-500'}`}
+    >
       {value ? tilde(value) : fallback}
     </span>
   )
-  const EditDetails = ({ children, label = 'Edit manually' }: { children: ReactNode; label?: string }) => (
+  const EditDetails = ({
+    children,
+    label = 'Edit manually',
+  }: {
+    children: ReactNode
+    label?: string
+  }) => (
     <details className="group">
       <summary className="cursor-pointer list-none text-[10.5px] text-zinc-600 transition-colors hover:text-zinc-400">
         <span className="group-open:hidden">{label}</span>
@@ -1004,12 +1247,20 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
     <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">{label}</div>
+          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            {label}
+          </div>
           <div className="flex min-w-0 items-center gap-2">
             {valueText(value, fallback)}
-            {!value && <span className="rounded border border-[var(--gt-border)] px-1 py-px text-[9.5px] text-zinc-600">default</span>}
+            {!value && (
+              <span className="rounded border border-[var(--gt-border)] px-1 py-px text-[9.5px] text-zinc-600">
+                default
+              </span>
+            )}
           </div>
-          {detail && <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">{detail}</div>}
+          {detail && (
+            <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">{detail}</div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onBrowse && (
@@ -1019,7 +1270,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             </button>
           )}
           {value && onClear && (
-            <button onClick={onClear} className="rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300">
+            <button
+              onClick={onClear}
+              className="rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+            >
               Use default
             </button>
           )}
@@ -1044,7 +1298,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
   const engineRow = (e: Engine) => {
     const vendor = ENGINE_VENDOR[e]
     const remoteDetected =
-      selectedProbe && !('loading' in selectedProbe) && selectedProbe.ok ? selectedProbe.engines[e] || '' : ''
+      selectedProbe && !('loading' in selectedProbe) && selectedProbe.ok
+        ? selectedProbe.engines[e] || ''
+        : ''
     const found = selectedIsRemote ? !!remoteDetected : localEngineFound(e)
     const detPath = selectedIsRemote
       ? remoteDetected
@@ -1063,9 +1319,19 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
       <div key={e} className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1">
-            <Readiness ok={found} name={engineLabel(e)} hint={found ? detPath || vendor : 'not on PATH'} />
+            <Readiness
+              ok={found}
+              name={engineLabel(e)}
+              hint={found ? detPath || vendor : 'not on PATH'}
+            />
             <div className="mt-0.5 text-[10.5px] text-zinc-600">
-              {overridePath ? <>override: <span className="font-mono text-zinc-500">{tilde(overridePath)}</span></> : 'using detected binary'}
+              {overridePath ? (
+                <>
+                  override: <span className="font-mono text-zinc-500">{tilde(overridePath)}</span>
+                </>
+              ) : (
+                'using detected binary'
+              )}
             </div>
           </div>
           <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
@@ -1077,7 +1343,8 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
                 key={`${profile}-${e}-model-${defModel}`}
                 defaultValue={defModel}
                 onBlur={(ev) =>
-                  ev.target.value.trim() !== defModel && saveDaemon({ engines: { [e]: { defaultModel: ev.target.value.trim() } } })
+                  ev.target.value.trim() !== defModel &&
+                  saveDaemon({ engines: { [e]: { defaultModel: ev.target.value.trim() } } })
                 }
                 placeholder="(engine default) — any slug"
                 spellCheck={false}
@@ -1086,7 +1353,9 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             ) : (
               <select
                 value={defModel}
-                onChange={(ev) => saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })}
+                onChange={(ev) =>
+                  saveDaemon({ engines: { [e]: { defaultModel: ev.target.value } } })
+                }
                 className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
               >
                 <option value="">(engine default)</option>
@@ -1103,7 +1372,10 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           <input
             key={`${profile}-${e}-path-${overridePath}`}
             defaultValue={overridePath}
-            onBlur={(ev) => ev.target.value !== overridePath && saveDaemon({ engines: { [e]: { path: ev.target.value.trim() } } })}
+            onBlur={(ev) =>
+              ev.target.value !== overridePath &&
+              saveDaemon({ engines: { [e]: { path: ev.target.value.trim() } } })
+            }
             placeholder={`${e} or /absolute/path/to/${e}`}
             spellCheck={false}
             className={`${inp} font-mono`}
@@ -1174,13 +1446,22 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
           <div className="text-[11.5px] font-semibold text-zinc-200">{label}</div>
           <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">{hint}</div>
         </div>
-        <EngineModelPicker engine={engine} model={model || undefined} onChange={onPick} size="sm" align="right" />
+        <EngineModelPicker
+          engine={engine}
+          model={model || undefined}
+          onChange={onPick}
+          size="sm"
+          align="right"
+        />
       </div>
     </div>
   )
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
         className="flex h-[min(860px,calc(100vh-32px))] w-[min(1080px,calc(100vw-32px))] flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -1202,14 +1483,19 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
             <div className="text-zinc-400">build {__BUILD_SHA__}</div>
             <div>{__BUILD_TIME__.slice(0, 16).replace('T', ' ')}</div>
           </div>
-          <button onClick={onClose} className="rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
             <X size={15} strokeWidth={2} />
           </button>
         </div>
 
         <div className="flex min-h-0 flex-1">
           <aside className="hidden w-52 shrink-0 border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/35 p-3 md:block">
-            <div className="mb-2 px-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-600">Categories</div>
+            <div className="mb-2 px-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+              Categories
+            </div>
             <nav className="space-y-0.5">
               {SETTING_NAV.map(({ id, title, icon: Icon }) => (
                 <a
@@ -1223,789 +1509,1055 @@ export function SettingsPanel({ onClose, onRerunSetup }: { onClose: () => void; 
               ))}
             </nav>
             <div className="mt-4 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2 text-[10.5px] leading-relaxed text-zinc-600">
-              User-owned config lives in <span className="font-mono text-zinc-500">~/.config/TerMinal</span> and survives app updates.
+              User-owned config lives in{' '}
+              <span className="font-mono text-zinc-500">~/.config/TerMinal</span> and survives app
+              updates.
             </div>
           </aside>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <div className="mx-auto max-w-[760px] space-y-3">
-          <section className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70">
-            <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
-                <Server size={15} strokeWidth={2} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
-                <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
-                  Choose where TerMinal reads paths, engines, models, forge settings, and template defaults.
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                  {selectedHost ? 'SSH' : 'Local'}
-                </span>
-                {selectedHost && (
-                  <button onClick={() => refreshRemoteProbe(selectedHost)} className={buttonSoft}>
-                    {selectedProbe && 'loading' in selectedProbe ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                    Probe
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2 p-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  onClick={() => setProfile('local')}
-                  className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                    profile === 'local'
-                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                      : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                  }`}
-                >
-                  <Monitor size={16} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-semibold">Local machine</span>
-                    <span className="block truncate text-[10.5px] text-zinc-600">this Mac · ~/.config/TerMinal</span>
-                  </span>
-                  {profile === 'local' && <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">Active</span>}
-                </button>
-                {s.remoteHosts.map((h) => (
-                  <button
-                    key={h.id}
-                    onClick={() => setProfile(h.id)}
-                    className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                      profile === h.id
-                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                        : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                    }`}
-                  >
-                    <Server size={16} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-semibold">{h.label || h.id}</span>
-                      <span className="block truncate font-mono text-[10.5px] text-zinc-600">{h.sshTarget}</span>
+              <section className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70">
+                <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
+                    <Server size={15} strokeWidth={2} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
+                    <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
+                      Choose where TerMinal reads paths, engines, models, forge settings, and
+                      template defaults.
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                      {selectedHost ? 'SSH' : 'Local'}
                     </span>
-                    {profile === h.id && <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">Active</span>}
-                  </button>
-                ))}
-              </div>
-              {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
-                <div className={`rounded-md border px-2.5 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] bg-black/20 text-zinc-500' : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-amber-400'}`}>
-                  {selectedProbe.ok
-                    ? `Connected to ${selectedHost.sshTarget} · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
-                    : selectedProbe.error}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Projects & worktrees */}
-          <Section id="paths" icon={FolderTree} title="Projects & worktrees" desc={selectedIsRemote ? 'Remote daemon paths. Enter paths as they exist on the SSH host.' : 'Where the entry screen looks for repos, and where agent worktrees are created.'}>
-            <div className="space-y-2">
-              <PathSetting
-                label="Projects directory"
-                value={selectedDaemon.projectsDir}
-                fallback={selectedIsRemote ? 'Remote home folder' : 'Home folder'}
-                detail={selectedIsRemote ? 'Default remote workspace directory for this SSH profile.' : 'Used by the entry screen for new workspaces and scaffold destinations.'}
-                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
-                onClear={() => saveDaemon({ projectsDir: '' })}
-              >
-                {projectsDirValidation && !projectsDirValidation.ok && projectsDirValidation.reason === 'is-repo' && (
-                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
-                    <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
-                    {projectsDirValidation.suggestedParent && (
+                    {selectedHost && (
                       <button
-                        onClick={() => saveDaemon({ projectsDir: projectsDirValidation.suggestedParent || '' })}
-                        className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                        onClick={() => refreshRemoteProbe(selectedHost)}
+                        className={buttonSoft}
                       >
-                        Use parent
+                        {selectedProbe && 'loading' in selectedProbe ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <RotateCcw size={12} />
+                        )}
+                        Probe
                       </button>
                     )}
                   </div>
-                )}
-                <EditDetails>
-                  <input
-                    key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
-                    defaultValue={selectedDaemon.projectsDir}
-                    onBlur={(e) => e.target.value !== selectedDaemon.projectsDir && saveDaemon({ projectsDir: e.target.value.trim() })}
-                    placeholder={selectedIsRemote ? "~/projects" : "/path/to/projects"}
-                    spellCheck={false}
-                    className={`${inp} font-mono`}
-                  />
-                </EditDetails>
-              </PathSetting>
-              <PathSetting
-                label="Worktrees directory"
-                value={selectedDaemon.worktreesDir}
-                fallback={`${tilde(selectedDaemon.projectsDir) || '<projects>'}/.worktrees`}
-                detail="Agent process worktrees are created here."
-                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('worktreesDir')}
-                onClear={() => saveDaemon({ worktreesDir: '' })}
-              >
-                <EditDetails>
-                  <input
-                    key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
-                    defaultValue={selectedDaemon.worktreesDir}
-                    onBlur={(e) => e.target.value !== selectedDaemon.worktreesDir && saveDaemon({ worktreesDir: e.target.value.trim() })}
-                    placeholder={selectedIsRemote ? "~/.worktrees" : "/path/to/worktrees"}
-                    spellCheck={false}
-                    className={`${inp} font-mono`}
-                  />
-                </EditDetails>
-              </PathSetting>
-              <PathSetting
-                label="Template repository"
-                value={selectedDaemon.templateRepo}
-                fallback="trevormil/project-template"
-                detail="Used when creating a new project from template."
-                onClear={() => saveDaemon({ templateRepo: '' })}
-              >
-                <EditDetails>
-                  <input
-                    key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
-                    defaultValue={selectedDaemon.templateRepo}
-                    onBlur={(e) => e.target.value !== selectedDaemon.templateRepo && saveDaemon({ templateRepo: e.target.value.trim() })}
-                    placeholder="owner/repo or https://github.com/owner/repo"
-                    spellCheck={false}
-                    className={`${inp} font-mono`}
-                  />
-                </EditDetails>
-              </PathSetting>
-              <PathSetting
-                label="Harness directory"
-                value={selectedDaemon.harnessDir}
-                fallback="Not set"
-                detail="Optional review artifact harness path."
-                onBrowse={selectedIsRemote ? undefined : () => browseDaemon('harnessDir')}
-                onClear={() => saveDaemon({ harnessDir: '' })}
-              >
-                <EditDetails>
-                  <input
-                    key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
-                    defaultValue={selectedDaemon.harnessDir}
-                    onBlur={(e) => e.target.value !== selectedDaemon.harnessDir && saveDaemon({ harnessDir: e.target.value.trim() })}
-                    placeholder={selectedIsRemote ? "~/autopilot-harness" : "/path/to/autopilot-harness"}
-                    spellCheck={false}
-                    className={`${inp} font-mono`}
-                  />
-                </EditDetails>
-              </PathSetting>
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  onClick={() => window.gt.openConfigDir()}
-                  title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
-                  className={buttonSoft}
-                >
-                  Open TerMinal config dir
-                </button>
-                <span className="text-[10.5px] text-zinc-600">
-                  schedules · settings · cron logs · agent state
-                </span>
-              </div>
-            </div>
-          </Section>
-
-          <Section
-            id="appearance"
-            icon={Palette}
-            title="Appearance"
-            desc="Color mode and theme tokens. New installs default to dark; system follows the OS setting."
-          >
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                {modeOpt('dark', 'Dark', Moon)}
-                {modeOpt('light', 'Light', Sun)}
-                {modeOpt('system', 'System', Monitor)}
-              </div>
-              <div className="grid gap-2 md:grid-cols-[1fr_1.2fr]">
-                <div className="grid grid-cols-2 gap-2">
-                  {tabLayoutOpt('horizontal', 'Top tabs', 'Classic row across the session header')}
-                  {tabLayoutOpt('sidebar', 'Sidebar tabs', 'Vertical nav beside the active view')}
                 </div>
-                <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div>
-                      <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
-                      <div className="text-[10.5px] text-zinc-500">Scales the whole app shell.</div>
-                    </div>
+                <div className="space-y-2 p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <button
-                      onClick={() => save({ appearance: { uiScale: 1 } })}
-                      className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      onClick={() => setProfile('local')}
+                      className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                        profile === 'local'
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                          : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                      }`}
                     >
-                      {scalePct}%
+                      <Monitor
+                        size={16}
+                        strokeWidth={2}
+                        className="shrink-0 text-[var(--gt-accent-light)]"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12px] font-semibold">
+                          Local machine
+                        </span>
+                        <span className="block truncate text-[10.5px] text-zinc-600">
+                          this Mac · ~/.config/TerMinal
+                        </span>
+                      </span>
+                      {profile === 'local' && (
+                        <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">
+                          Active
+                        </span>
+                      )}
                     </button>
+                    {s.remoteHosts.map((h) => (
+                      <button
+                        key={h.id}
+                        onClick={() => setProfile(h.id)}
+                        className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                          profile === h.id
+                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                            : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
+                        }`}
+                      >
+                        <Server
+                          size={16}
+                          strokeWidth={2}
+                          className="shrink-0 text-[var(--gt-accent-2)]"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-semibold">
+                            {h.label || h.id}
+                          </span>
+                          <span className="block truncate font-mono text-[10.5px] text-zinc-600">
+                            {h.sshTarget}
+                          </span>
+                        </span>
+                        {profile === h.id && (
+                          <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">
+                            Active
+                          </span>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  <input
-                    type="range"
-                    min={85}
-                    max={135}
-                    step={5}
-                    value={scalePct}
-                    onChange={(e) => save({ appearance: { uiScale: Number(e.target.value) / 100 } })}
-                    className="w-full accent-[var(--gt-accent)]"
-                  />
-                  <div className="mt-1 flex justify-between text-[9.5px] text-zinc-600">
-                    <span>85</span>
-                    <span>100</span>
-                    <span>135</span>
+                  {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
+                    <div
+                      className={`rounded-md border px-2.5 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] bg-black/20 text-zinc-500' : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-amber-400'}`}
+                    >
+                      {selectedProbe.ok
+                        ? `Connected to ${selectedHost.sshTarget} · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
+                        : selectedProbe.error}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Projects & worktrees */}
+              <Section
+                id="paths"
+                icon={FolderTree}
+                title="Projects & worktrees"
+                desc={
+                  selectedIsRemote
+                    ? 'Remote daemon paths. Enter paths as they exist on the SSH host.'
+                    : 'Where the entry screen looks for repos, and where agent worktrees are created.'
+                }
+              >
+                <div className="space-y-2">
+                  <PathSetting
+                    label="Projects directory"
+                    value={selectedDaemon.projectsDir}
+                    fallback={selectedIsRemote ? 'Remote home folder' : 'Home folder'}
+                    detail={
+                      selectedIsRemote
+                        ? 'Default remote workspace directory for this SSH profile.'
+                        : 'Used by the entry screen for new workspaces and scaffold destinations.'
+                    }
+                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
+                    onClear={() => saveDaemon({ projectsDir: '' })}
+                  >
+                    {projectsDirValidation &&
+                      !projectsDirValidation.ok &&
+                      projectsDirValidation.reason === 'is-repo' && (
+                        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+                          <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
+                          {projectsDirValidation.suggestedParent && (
+                            <button
+                              onClick={() =>
+                                saveDaemon({
+                                  projectsDir: projectsDirValidation.suggestedParent || '',
+                                })
+                              }
+                              className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                            >
+                              Use parent
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    <EditDetails>
+                      <input
+                        key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
+                        defaultValue={selectedDaemon.projectsDir}
+                        onBlur={(e) =>
+                          e.target.value !== selectedDaemon.projectsDir &&
+                          saveDaemon({ projectsDir: e.target.value.trim() })
+                        }
+                        placeholder={selectedIsRemote ? '~/projects' : '/path/to/projects'}
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </EditDetails>
+                  </PathSetting>
+                  <PathSetting
+                    label="Worktrees directory"
+                    value={selectedDaemon.worktreesDir}
+                    fallback={`${tilde(selectedDaemon.projectsDir) || '<projects>'}/.worktrees`}
+                    detail="Agent process worktrees are created here."
+                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('worktreesDir')}
+                    onClear={() => saveDaemon({ worktreesDir: '' })}
+                  >
+                    <EditDetails>
+                      <input
+                        key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
+                        defaultValue={selectedDaemon.worktreesDir}
+                        onBlur={(e) =>
+                          e.target.value !== selectedDaemon.worktreesDir &&
+                          saveDaemon({ worktreesDir: e.target.value.trim() })
+                        }
+                        placeholder={selectedIsRemote ? '~/.worktrees' : '/path/to/worktrees'}
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </EditDetails>
+                  </PathSetting>
+                  <PathSetting
+                    label="Template repository"
+                    value={selectedDaemon.templateRepo}
+                    fallback="trevormil/project-template"
+                    detail="Used when creating a new project from template."
+                    onClear={() => saveDaemon({ templateRepo: '' })}
+                  >
+                    <EditDetails>
+                      <input
+                        key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
+                        defaultValue={selectedDaemon.templateRepo}
+                        onBlur={(e) =>
+                          e.target.value !== selectedDaemon.templateRepo &&
+                          saveDaemon({ templateRepo: e.target.value.trim() })
+                        }
+                        placeholder="owner/repo or https://github.com/owner/repo"
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </EditDetails>
+                  </PathSetting>
+                  <PathSetting
+                    label="Harness directory"
+                    value={selectedDaemon.harnessDir}
+                    fallback="Not set"
+                    detail="Optional review artifact harness path."
+                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('harnessDir')}
+                    onClear={() => saveDaemon({ harnessDir: '' })}
+                  >
+                    <EditDetails>
+                      <input
+                        key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
+                        defaultValue={selectedDaemon.harnessDir}
+                        onBlur={(e) =>
+                          e.target.value !== selectedDaemon.harnessDir &&
+                          saveDaemon({ harnessDir: e.target.value.trim() })
+                        }
+                        placeholder={
+                          selectedIsRemote ? '~/autopilot-harness' : '/path/to/autopilot-harness'
+                        }
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </EditDetails>
+                  </PathSetting>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => window.gt.openConfigDir()}
+                      title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
+                      className={buttonSoft}
+                    >
+                      Open TerMinal config dir
+                    </button>
+                    <span className="text-[10.5px] text-zinc-600">
+                      schedules · settings · cron logs · agent state
+                    </span>
                   </div>
                 </div>
-              </div>
-              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
-                  Theme
-                  <select
-                    value={s.appearance.theme}
-                    onChange={(e) => save({ appearance: { theme: e.target.value } })}
-                    className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                  >
-                    {THEMES.map((theme) => (
-                      <option key={theme.id} value={theme.id} className="bg-[var(--gt-panel)]">
-                        {theme.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  {ACCENT_SWATCHES.map((swatch) => {
-                    const on = s.appearance.accent === swatch.id
+              </Section>
+
+              <Section
+                id="appearance"
+                icon={Palette}
+                title="Appearance"
+                desc="Color mode and theme tokens. New installs default to dark; system follows the OS setting."
+              >
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    {modeOpt('dark', 'Dark', Moon)}
+                    {modeOpt('light', 'Light', Sun)}
+                    {modeOpt('system', 'System', Monitor)}
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-[1fr_1.2fr]">
+                    <div className="grid grid-cols-2 gap-2">
+                      {tabLayoutOpt(
+                        'horizontal',
+                        'Top tabs',
+                        'Classic row across the session header',
+                      )}
+                      {tabLayoutOpt(
+                        'sidebar',
+                        'Sidebar tabs',
+                        'Vertical nav beside the active view',
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div>
+                          <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
+                          <div className="text-[10.5px] text-zinc-500">
+                            Scales the whole app shell.
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => save({ appearance: { uiScale: 1 } })}
+                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                        >
+                          {scalePct}%
+                        </button>
+                      </div>
+                      <input
+                        type="range"
+                        min={85}
+                        max={135}
+                        step={5}
+                        value={scalePct}
+                        onChange={(e) =>
+                          save({ appearance: { uiScale: Number(e.target.value) / 100 } })
+                        }
+                        className="w-full accent-[var(--gt-accent)]"
+                      />
+                      <div className="mt-1 flex justify-between text-[9.5px] text-zinc-600">
+                        <span>85</span>
+                        <span>100</span>
+                        <span>135</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
+                      Theme
+                      <select
+                        value={s.appearance.theme}
+                        onChange={(e) => save({ appearance: { theme: e.target.value } })}
+                        className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                      >
+                        {THEMES.map((theme) => (
+                          <option key={theme.id} value={theme.id} className="bg-[var(--gt-panel)]">
+                            {theme.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      {ACCENT_SWATCHES.map((swatch) => {
+                        const on = s.appearance.accent === swatch.id
+                        return (
+                          <button
+                            key={swatch.title}
+                            onClick={() => save({ appearance: { accent: swatch.id } })}
+                            title={swatch.title}
+                            className={`h-6 w-6 rounded-md border transition-colors ${
+                              on
+                                ? 'border-[var(--gt-accent-light)]'
+                                : 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60'
+                            }`}
+                            style={{ background: swatch.color || 'var(--gt-grad)' }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
+                    <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
+                        <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] text-zinc-500">
+                          {s.appearance.mode}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
+                        <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
+                        <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
+                      <div className="text-[var(--gt-green)]">$ terminal theme check</div>
+                      <div className="text-[var(--gt-text-muted)]">
+                        tokens apply to chrome, panes, scrollbars, and terminals
+                      </div>
+                      <div>
+                        <span className="text-[var(--gt-accent-light)]">accent</span>
+                        <span className="text-[var(--gt-text-muted)]"> / </span>
+                        <span className="text-[var(--gt-blue)]">info</span>
+                        <span className="text-[var(--gt-text-muted)]"> / </span>
+                        <span className="text-[var(--gt-yellow)]">warn</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
+              {/* Engines */}
+              <Section
+                id="engines"
+                icon={Cpu}
+                title="Engines"
+                desc={
+                  selectedIsRemote
+                    ? 'Detected on the selected SSH host; override paths as remote paths.'
+                    : 'The agent backends. Detected on your PATH; override the binary path if needed.'
+                }
+              >
+                <div className="space-y-2">
+                  {engineRow('codex')}
+                  {engineRow('claude')}
+                  {engineRow('cursor')}
+                  {!selectedIsRemote && engineRow('openrouter')}
+                  {!selectedIsRemote && engineRow('hermes')}
+                </div>
+                {!selectedIsRemote && (
+                  <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                    <label className="block text-[11px] font-medium text-zinc-300">
+                      OpenRouter API key
+                    </label>
+                    <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                      Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty →
+                      falls back to the shell&apos;s OPENROUTER_API_KEY.
+                    </div>
+                    <input
+                      key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
+                      type="password"
+                      defaultValue={s?.openrouterApiKey || ''}
+                      onBlur={(ev) =>
+                        ev.target.value !== (s?.openrouterApiKey || '') &&
+                        save({ openrouterApiKey: ev.target.value.trim() })
+                      }
+                      placeholder="sk-or-v1-…"
+                      spellCheck={false}
+                      autoComplete="off"
+                      className={`${inp} mt-1.5 font-mono`}
+                    />
+                  </div>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-500">Default:</span>
+                  {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
+                    // Grey engines the local machine doesn't have — the default
+                    // engine drives scheduled/agent runs, so an absent one silently
+                    // no-ops. (Remote profiles use the host probe, not local env.)
+                    const missing = !selectedIsRemote && !localEngineFound(e)
                     return (
                       <button
-                        key={swatch.title}
-                        onClick={() => save({ appearance: { accent: swatch.id } })}
-                        title={swatch.title}
-                        className={`h-6 w-6 rounded-md border transition-colors ${
-                          on ? 'border-[var(--gt-accent-light)]' : 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60'
-                        }`}
-                        style={{ background: swatch.color || 'var(--gt-grad)' }}
-                      />
+                        key={e}
+                        onClick={() => saveDaemon({ defaultEngine: e })}
+                        title={
+                          missing ? `${engineLabel(e)} is not installed on this machine` : undefined
+                        }
+                        className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                          selectedDaemon.defaultEngine === e
+                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                            : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                        } ${missing ? 'opacity-45' : ''}`}
+                      >
+                        {engineLabel(e)}
+                      </button>
                     )
                   })}
                 </div>
-              </div>
-              <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
-                <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
-                    <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] text-zinc-500">
-                      {s.appearance.mode}
-                    </span>
+                {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
+                  <div className="mt-1.5 text-[10.5px] text-amber-400">
+                    ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed — scheduled,
+                    ticket, and background agent runs will fail. Install it or pick an installed
+                    engine.
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
-                    <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
-                    <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
-                  </div>
-                </div>
-                <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
-                  <div className="text-[var(--gt-green)]">$ terminal theme check</div>
-                  <div className="text-[var(--gt-text-muted)]">tokens apply to chrome, panes, scrollbars, and terminals</div>
-                  <div>
-                    <span className="text-[var(--gt-accent-light)]">accent</span>
-                    <span className="text-[var(--gt-text-muted)]"> / </span>
-                    <span className="text-[var(--gt-blue)]">info</span>
-                    <span className="text-[var(--gt-text-muted)]"> / </span>
-                    <span className="text-[var(--gt-yellow)]">warn</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Section>
+                )}
+              </Section>
 
-          {/* Engines */}
-          <Section
-            id="engines"
-            icon={Cpu}
-            title="Engines"
-            desc={selectedIsRemote ? 'Detected on the selected SSH host; override paths as remote paths.' : 'The agent backends. Detected on your PATH; override the binary path if needed.'}
-          >
-            <div className="space-y-2">
-              {engineRow('codex')}
-              {engineRow('claude')}
-              {engineRow('cursor')}
-              {!selectedIsRemote && engineRow('openrouter')}
-              {!selectedIsRemote && engineRow('hermes')}
-            </div>
-            {!selectedIsRemote && (
-              <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-                <label className="block text-[11px] font-medium text-zinc-300">OpenRouter API key</label>
-                <div className="mt-0.5 text-[10.5px] text-zinc-600">
-                  Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty → falls back to the shell&apos;s OPENROUTER_API_KEY.
-                </div>
-                <input
-                  key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
-                  type="password"
-                  defaultValue={s?.openrouterApiKey || ''}
-                  onBlur={(ev) => ev.target.value !== (s?.openrouterApiKey || '') && save({ openrouterApiKey: ev.target.value.trim() })}
-                  placeholder="sk-or-v1-…"
-                  spellCheck={false}
-                  autoComplete="off"
-                  className={`${inp} mt-1.5 font-mono`}
-                />
-              </div>
-            )}
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] text-zinc-500">Default:</span>
-              {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
-                // Grey engines the local machine doesn't have — the default
-                // engine drives scheduled/agent runs, so an absent one silently
-                // no-ops. (Remote profiles use the host probe, not local env.)
-                const missing = !selectedIsRemote && !localEngineFound(e)
-                return (
-                  <button
-                    key={e}
-                    onClick={() => saveDaemon({ defaultEngine: e })}
-                    title={missing ? `${engineLabel(e)} is not installed on this machine` : undefined}
-                    className={`rounded-md border px-2.5 py-1 text-[11px] ${
-                      selectedDaemon.defaultEngine === e
-                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                        : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                    } ${missing ? 'opacity-45' : ''}`}
-                  >
-                    {engineLabel(e)}
-                  </button>
-                )
-              })}
-            </div>
-            {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
-              <div className="mt-1.5 text-[10.5px] text-amber-400">
-                ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed — scheduled, ticket, and
-                background agent runs will fail. Install it or pick an installed engine.
-              </div>
-            )}
-          </Section>
-
-          {/* Remote hosts */}
-          <Section
-            id="remote"
-            icon={Server}
-            title="SSH hosts"
-            desc="Remote profiles for terminal sessions and daemon-backed tabs. Pick a host here, then use Daemon profile to tune its paths, engines, models, forge mode, and template repo."
-          >
-            <div className="space-y-3">
-              {s.remoteHosts.length > 0 ? (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {s.remoteHosts.map((h) => (
-                    <div
-                      key={h.id}
-                      className={`rounded-lg border p-3 ${
-                        profile === h.id
-                          ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
-                          : 'border-[var(--gt-border)] bg-black/20'
-                      }`}
-                    >
-                      <div className="mb-2 flex items-start gap-2">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-2)]">
-                          <Server size={14} strokeWidth={2} />
+              {/* Remote hosts */}
+              <Section
+                id="remote"
+                icon={Server}
+                title="SSH hosts"
+                desc="Remote profiles for terminal sessions and daemon-backed tabs. Pick a host here, then use Daemon profile to tune its paths, engines, models, forge mode, and template repo."
+              >
+                <div className="space-y-3">
+                  {s.remoteHosts.length > 0 ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {s.remoteHosts.map((h) => (
+                        <div
+                          key={h.id}
+                          className={`rounded-lg border p-3 ${
+                            profile === h.id
+                              ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
+                              : 'border-[var(--gt-border)] bg-black/20'
+                          }`}
+                        >
+                          <div className="mb-2 flex items-start gap-2">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-2)]">
+                              <Server size={14} strokeWidth={2} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12px] font-semibold text-zinc-100">
+                                {h.label}
+                              </div>
+                              <div className="truncate font-mono text-[10.5px] text-zinc-600">
+                                {h.sshTarget}
+                              </div>
+                            </div>
+                            <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-500">
+                              {h.platform}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-black/20 px-2 py-1.5 text-[10.5px]">
+                            <span className="text-zinc-600">cwd</span>
+                            <span className="truncate font-mono text-zinc-400">
+                              {h.defaultCwd || h.daemon.projectsDir || '~'}
+                            </span>
+                            <span className="text-zinc-600">id</span>
+                            <span className="truncate font-mono text-zinc-500">{h.id}</span>
+                          </div>
+                          <div className="mt-2 flex items-center gap-1">
+                            <button
+                              onClick={() => setProfile(h.id)}
+                              className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                            >
+                              Use profile
+                            </button>
+                            <button
+                              onClick={() =>
+                                setRemoteDraft({
+                                  label: h.label,
+                                  sshTarget: h.sshTarget,
+                                  defaultCwd: h.defaultCwd,
+                                  platform: h.platform,
+                                })
+                              }
+                              className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => removeRemoteHost(h.id)}
+                              className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[12px] font-semibold text-zinc-100">{h.label}</div>
-                          <div className="truncate font-mono text-[10.5px] text-zinc-600">{h.sshTarget}</div>
-                        </div>
-                        <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-500">
-                          {h.platform}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-black/20 px-2 py-1.5 text-[10.5px]">
-                        <span className="text-zinc-600">cwd</span>
-                        <span className="truncate font-mono text-zinc-400">{h.defaultCwd || h.daemon.projectsDir || '~'}</span>
-                        <span className="text-zinc-600">id</span>
-                        <span className="truncate font-mono text-zinc-500">{h.id}</span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-1">
-                        <button
-                          onClick={() => setProfile(h.id)}
-                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                        >
-                          Use profile
-                        </button>
-                        <button
-                          onClick={() =>
-                            setRemoteDraft({
-                              label: h.label,
-                              sshTarget: h.sshTarget,
-                              defaultCwd: h.defaultCwd,
-                              platform: h.platform,
-                            })
-                          }
-                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => removeRemoteHost(h.id)}
-                          className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-[11px] text-zinc-600">
-                  No remote hosts yet. Add one with an SSH config alias like <span className="font-mono">tm</span> or a target like <span className="font-mono">user@example.com</span>.
-                </div>
-              )}
-              <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[12px] font-semibold text-zinc-200">Add or update host</div>
-                    <div className="text-[10.5px] text-zinc-600">Using the same label replaces an existing profile.</div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-[11px] text-zinc-600">
+                      No remote hosts yet. Add one with an SSH config alias like{' '}
+                      <span className="font-mono">tm</span> or a target like{' '}
+                      <span className="font-mono">user@example.com</span>.
+                    </div>
+                  )}
+                  <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[12px] font-semibold text-zinc-200">
+                          Add or update host
+                        </div>
+                        <div className="text-[10.5px] text-zinc-600">
+                          Using the same label replaces an existing profile.
+                        </div>
+                      </div>
+                      <button
+                        onClick={saveRemoteDraft}
+                        disabled={!remoteDraft.sshTarget.trim()}
+                        className={actionButton}
+                      >
+                        Save host
+                      </button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Label
+                        </span>
+                        <input
+                          value={remoteDraft.label}
+                          onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
+                          placeholder="remote desktop"
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          SSH target
+                        </span>
+                        <input
+                          value={remoteDraft.sshTarget}
+                          onChange={(e) =>
+                            setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))
+                          }
+                          placeholder="tm or user@example.com"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Default cwd
+                        </span>
+                        <input
+                          value={remoteDraft.defaultCwd}
+                          onChange={(e) =>
+                            setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))
+                          }
+                          placeholder="~"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Platform
+                        </span>
+                        <select
+                          value={remoteDraft.platform}
+                          onChange={(e) =>
+                            setRemoteDraft((d) => ({
+                              ...d,
+                              platform: e.target.value as RemotePlatform,
+                            }))
+                          }
+                          className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                        >
+                          <option value="linux" className="bg-[var(--gt-panel)]">
+                            Linux
+                          </option>
+                          <option value="macos" className="bg-[var(--gt-panel)]">
+                            macOS
+                          </option>
+                          <option value="auto" className="bg-[var(--gt-panel)]">
+                            Auto
+                          </option>
+                        </select>
+                      </label>
+                    </div>
                   </div>
-                  <button onClick={saveRemoteDraft} disabled={!remoteDraft.sshTarget.trim()} className={actionButton}>
-                    Save host
-                  </button>
                 </div>
-                <div className="grid gap-2 md:grid-cols-2">
-                  <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Label</span>
-                    <input
-                      value={remoteDraft.label}
-                      onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
-                      placeholder="remote desktop"
-                      className={`${inp} font-mono`}
+              </Section>
+
+              {/* Forge */}
+              <Section
+                id="forge"
+                icon={GitPullRequest}
+                title="Code forge"
+                desc="Auto picks gh for GitHub remotes and glab otherwise — per repo."
+              >
+                <div className="flex gap-2">
+                  {forgeOpt('auto', 'Auto', 'detect per repo')}
+                  {forgeOpt('github', 'GitHub', 'force gh / PRs')}
+                  {forgeOpt('gitlab', 'GitLab', 'force glab / MRs')}
+                </div>
+                {selectedIsRemote && selectedProbe && !('loading' in selectedProbe) ? (
+                  <div className="mt-3 space-y-1">
+                    <Readiness
+                      ok={!!selectedProbe.tools.gh}
+                      name="gh"
+                      hint={selectedProbe.tools.gh || 'not detected on remote PATH'}
                     />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">SSH target</span>
-                    <input
-                      value={remoteDraft.sshTarget}
-                      onChange={(e) => setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))}
-                      placeholder="tm or user@example.com"
-                      spellCheck={false}
-                      className={`${inp} font-mono`}
+                    <Readiness
+                      ok={!!selectedProbe.tools.glab}
+                      name="glab"
+                      hint={selectedProbe.tools.glab || 'not detected on remote PATH'}
                     />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Default cwd</span>
-                    <input
-                      value={remoteDraft.defaultCwd}
-                      onChange={(e) => setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))}
-                      placeholder="~"
-                      spellCheck={false}
-                      className={`${inp} font-mono`}
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Platform</span>
+                  </div>
+                ) : (
+                  env && (
+                    <div className="mt-3 space-y-1">
+                      <Readiness
+                        ok={env.gh.found && env.gh.authed}
+                        name="gh"
+                        hint={
+                          env.gh.found
+                            ? env.gh.authed
+                              ? `authenticated${env.gh.authHost ? ` (${env.gh.authHost})` : ''}`
+                              : 'installed — run `gh auth login`'
+                            : 'not installed — `brew install gh`'
+                        }
+                      />
+                      <Readiness
+                        ok={env.glab.found && env.glab.authed}
+                        name="glab"
+                        hint={
+                          env.glab.found
+                            ? env.glab.authed
+                              ? `authenticated${env.glab.authHost ? ` (${env.glab.authHost})` : ''}`
+                              : 'installed — run `glab auth login`'
+                            : 'not installed — `brew install glab`'
+                        }
+                      />
+                    </div>
+                  )
+                )}
+              </Section>
+
+              <Section
+                id="tickets"
+                icon={TicketIcon}
+                title="Tickets"
+                desc="Pick the repo's ticket source of truth. Local backlog is the default; GitHub and Linear use their existing CLIs/MCPs."
+              >
+                <TicketProviderPanel />
+              </Section>
+
+              {/* External apps */}
+              <Section
+                id="apps"
+                icon={AppWindow}
+                title="External apps"
+                desc="Which app the Files tab's 'Open in editor' and the Browser tab's 'Open in browser' hand off to. Runs `open -a <app>` (works for any installed macOS app)."
+              >
+                <div className="flex flex-wrap gap-5">
+                  <label className="flex items-center gap-2 text-[12px] text-zinc-400">
+                    Editor
                     <select
-                      value={remoteDraft.platform}
-                      onChange={(e) => setRemoteDraft((d) => ({ ...d, platform: e.target.value as RemotePlatform }))}
-                      className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                      value={s.apps.editor || 'Cursor'}
+                      onChange={(e) => save({ apps: { editor: e.target.value } })}
+                      className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
                     >
-                      <option value="linux" className="bg-[var(--gt-panel)]">Linux</option>
-                      <option value="macos" className="bg-[var(--gt-panel)]">macOS</option>
-                      <option value="auto" className="bg-[var(--gt-panel)]">Auto</option>
+                      {appOptions(
+                        env?.apps.editors,
+                        ['Cursor', 'Visual Studio Code'],
+                        s.apps.editor,
+                      )}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-[12px] text-zinc-400">
+                    Browser
+                    <select
+                      value={s.apps.browser || 'Brave Browser'}
+                      onChange={(e) => save({ apps: { browser: e.target.value } })}
+                      className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                    >
+                      {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
                     </select>
                   </label>
                 </div>
-              </div>
-            </div>
-          </Section>
+              </Section>
 
-          {/* Forge */}
-          <Section id="forge" icon={GitPullRequest} title="Code forge" desc="Auto picks gh for GitHub remotes and glab otherwise — per repo.">
-            <div className="flex gap-2">
-              {forgeOpt('auto', 'Auto', 'detect per repo')}
-              {forgeOpt('github', 'GitHub', 'force gh / PRs')}
-              {forgeOpt('gitlab', 'GitLab', 'force glab / MRs')}
-            </div>
-            {selectedIsRemote && selectedProbe && !('loading' in selectedProbe) ? (
-              <div className="mt-3 space-y-1">
-                <Readiness ok={!!selectedProbe.tools.gh} name="gh" hint={selectedProbe.tools.gh || 'not detected on remote PATH'} />
-                <Readiness ok={!!selectedProbe.tools.glab} name="glab" hint={selectedProbe.tools.glab || 'not detected on remote PATH'} />
-              </div>
-            ) : env && (
-              <div className="mt-3 space-y-1">
-                <Readiness ok={env.gh.found && env.gh.authed} name="gh" hint={env.gh.found ? (env.gh.authed ? `authenticated${env.gh.authHost ? ` (${env.gh.authHost})` : ''}` : 'installed — run `gh auth login`') : 'not installed — `brew install gh`'} />
-                <Readiness ok={env.glab.found && env.glab.authed} name="glab" hint={env.glab.found ? (env.glab.authed ? `authenticated${env.glab.authHost ? ` (${env.glab.authHost})` : ''}` : 'installed — run `glab auth login`') : 'not installed — `brew install glab`'} />
-              </div>
-            )}
-          </Section>
-
-          <Section
-            id="tickets"
-            icon={TicketIcon}
-            title="Tickets"
-            desc="Pick the repo's ticket source of truth. Local backlog is the default; GitHub and Linear use their existing CLIs/MCPs."
-          >
-            <TicketProviderPanel />
-          </Section>
-
-          {/* External apps */}
-          <Section
-            id="apps"
-            icon={AppWindow}
-            title="External apps"
-            desc="Which app the Files tab's 'Open in editor' and the Browser tab's 'Open in browser' hand off to. Runs `open -a <app>` (works for any installed macOS app)."
-          >
-            <div className="flex flex-wrap gap-5">
-              <label className="flex items-center gap-2 text-[12px] text-zinc-400">
-                Editor
-                <select
-                  value={s.apps.editor || 'Cursor'}
-                  onChange={(e) => save({ apps: { editor: e.target.value } })}
-                  className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                >
-                  {appOptions(env?.apps.editors, ['Cursor', 'Visual Studio Code'], s.apps.editor)}
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-[12px] text-zinc-400">
-                Browser
-                <select
-                  value={s.apps.browser || 'Brave Browser'}
-                  onChange={(e) => save({ apps: { browser: e.target.value } })}
-                  className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                >
-                  {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
-                </select>
-              </label>
-            </div>
-          </Section>
-
-          <PanelsSection panels={s.pinnedPanels} onSave={(pinnedPanels) => save({ pinnedPanels })} />
-
-          {/* Inbox */}
-          <Section
-            id="inbox"
-            icon={Inbox}
-            title="Inbox"
-            desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
-          >
-            <div className="space-y-2">
-              <Toggle
-                on={s.inbox.completionHook}
-                onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
-                label="File completion hooks to Inbox"
-                hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
+              <PanelsSection
+                panels={s.pinnedPanels}
+                onSave={(pinnedPanels) => save({ pinnedPanels })}
               />
-              <Toggle
-                on={s.inbox.agentContextPreamble}
-                onToggle={() => save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })}
-                label="Add repo context to prompt agents"
-                hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
-              />
-              <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
-                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  <span className="block text-zinc-300">Always on</span>
-                  <span>human blockers, cron failures, spend alerts</span>
-                </div>
-                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  <span className="block text-zinc-300">This toggle</span>
-                  <span>post-completion review prompts only</span>
-                </div>
-              </div>
-            </div>
-          </Section>
 
-          {/* Suggested replies */}
-          <Section
-            id="suggestions"
-            icon={Sparkles}
-            title="Suggested replies"
-            desc="Per-terminal modes decide when to use these standalone engines. Enhance mode rewrites a draft prompt through the configured AI suggestion engine before sending."
-          >
-            <div className="space-y-2">
-              <SuggestionModelSetting
-                label="AI suggestion model"
-                engine={s.suggestions.aiEngine}
-                model={s.suggestions.aiModel}
-                onPick={(aiEngine, aiModel) => save({ suggestions: { aiEngine, aiModel: aiModel || '' } })}
-                hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
-              />
-              <SuggestionModelSetting
-                label="Auto-send model"
-                engine={s.suggestions.autoEngine}
-                model={s.suggestions.autoModel}
-                onPick={(autoEngine, autoModel) => save({ suggestions: { autoEngine, autoModel: autoModel || '' } })}
-                hint="Used when a terminal is set to Auto mode. TerMinal asks for one best reply and submits it after completion."
-              />
-              <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
-                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  <span className="block text-zinc-300">Rules</span>
-                  <span>deterministic suggestions only</span>
-                </div>
-                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  <span className="block text-zinc-300">AI</span>
-                  <span>shows suggestions for you to choose</span>
-                </div>
-                <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                  <span className="block text-zinc-300">Enhance / Auto</span>
-                  <span>rewrite a draft prompt; auto submits one reply</span>
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          {/* Telegram */}
-          <Section id="telegram" icon={MessageCircle} title="Telegram" desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present.">
-            <div className="space-y-2">
-              <Toggle on={s.telegram.notify} onToggle={() => save({ telegram: { notify: !s.telegram.notify } })} label="Mirror notifications to Telegram" />
-              <Toggle on={s.telegram.control} onToggle={() => save({ telegram: { control: !s.telegram.control } })} label="Remote control (AFK)" hint="Launch/cancel agents by texting the bot" />
-              <label className="block space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Bot token</span>
-                <input
-                  defaultValue={s.telegram.botToken}
-                  onBlur={(e) => e.target.value !== s.telegram.botToken && save({ telegram: { botToken: e.target.value.trim() } })}
-                  placeholder="123456:ABC-DEF..."
-                  spellCheck={false}
-                  className={`${inp} font-mono`}
-                />
-              </label>
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <label className="block min-w-0 space-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Chat id</span>
-                  <input
-                    defaultValue={s.telegram.chatId}
-                    onBlur={(e) => e.target.value !== s.telegram.chatId && save({ telegram: { chatId: e.target.value.trim() } })}
-                    placeholder="your numeric chat id"
-                    spellCheck={false}
-                    className={`${inp} font-mono`}
-                  />
-                </label>
-                <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
-                  {tg?.busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2} />}
-                  Test
-                </button>
-              </div>
-              {tg && !tg.busy && (
-                <div className={`text-[11px] ${tg.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
-                  {tg.ok ? '✓ Sent — check your chat.' : tg.error}
-                </div>
-              )}
-              {!!s.telegram.chatId && s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
-                <div className="text-[11px] text-amber-400">
-                  ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message @userinfobot to get it.
-                </div>
-              )}
-              {s.telegram.control && (
-                <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
-                  <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">
-                    Command reference (send /help in the chat)
-                  </summary>
-                  <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10.5px] text-zinc-500">
-                    <span className="col-span-2 text-[var(--gt-accent-light)]">
-                      /feature &lt;what you want built&gt; [@repo]
-                    </span>
-                    <span>/repos · /cd &lt;repo&gt;</span>
-                    <span>/sessions · /about</span>
-                    <span>/runs · /cancel &lt;n&gt;</span>
-                    <span>/tail &lt;id|n&gt;</span>
-                    <span>/agents [@repo]</span>
-                    <span>/run &lt;agent&gt; [opts]</span>
-                    <span>/tickets [@repo]</span>
-                    <span>/ticket &lt;slug|n&gt;</span>
-                    <span>/ticket new &lt;title&gt;</span>
-                    <span>/close &lt;slug|n&gt;</span>
-                    <span>/schedules</span>
-                    <span>/pause · /resume · /runnow</span>
-                    <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
-                    <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
-                    <span>/state &lt;agent&gt;</span>
-                    <span>/reset-state &lt;agent&gt;</span>
-                    <span>/bg [@repo] &lt;prompt&gt;</span>
-                    <span>/bg list · /bg cancel &lt;n&gt;</span>
-                    <span>/budget [set &lt;usd&gt;]</span>
-                    <span>/status · /harness · /activity</span>
-                    <span>/install &lt;agent&gt;</span>
-                    <span>/rebuild</span>
-                  </div>
-                  <div className="mt-1.5 text-[10px] text-zinc-600">
-                    <span className="text-zinc-500">/feature</span> drafts a ticket from plain text, then
-                    offers a 🚀 Start work button that builds it and links the PR back. Plain English works
-                    too — it's translated to a command. HITL pings include inline ✅ Resolve / 🪵 Tail run
-                    buttons.
-                  </div>
-                </details>
-              )}
-            </div>
-          </Section>
-
-          {/* Setup / integrations */}
-          <Section id="integrations" icon={PlugZap} title="Setup & integrations" desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills.">
-            <div className="space-y-2">
-              <button onClick={copySetupPrompt} className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40">
-                {copied ? <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" /> : <ClipboardCopy size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
-                Copy global-skills setup prompt
-                <span className="ml-auto text-[10.5px] text-zinc-600">{copied ? 'copied — paste into Claude' : 'paste into Claude'}</span>
-              </button>
-              <button onClick={installNotify} disabled={notify?.busy} className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50">
-                {notify?.busy ? <Loader2 size={14} className="animate-spin" /> : <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
-                Install <span className="font-mono">gt-notify</span> to ~/.local/bin
-                <span className="ml-auto text-[10.5px] text-zinc-600">activity feed hook</span>
-              </button>
-              {notify && !notify.busy && (
-                <div className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
-                  {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
-                </div>
-              )}
-              <button
-                onClick={installMcp}
-                disabled={mcpState?.busy}
-                className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+              {/* Inbox */}
+              <Section
+                id="inbox"
+                icon={Inbox}
+                title="Inbox"
+                desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
               >
-                {mcpState?.busy ? <Loader2 size={14} className="animate-spin" /> : <TerminalSquare size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />}
-                Install MCP server (Claude Code + Codex)
-                <span className="ml-auto text-[10.5px] text-zinc-600">cross-session views</span>
-              </button>
-              {mcpState && !mcpState.busy && (
-                <div className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}>
-                  {mcpState.ok
-                    ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
-                    : mcpState.error}
+                <div className="space-y-2">
+                  <Toggle
+                    on={s.inbox.completionHook}
+                    onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
+                    label="File completion hooks to Inbox"
+                    hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
+                  />
+                  <Toggle
+                    on={s.inbox.agentContextPreamble}
+                    onToggle={() =>
+                      save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })
+                    }
+                    label="Add repo context to prompt agents"
+                    hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
+                  />
+                  <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">Always on</span>
+                      <span>human blockers, cron failures, spend alerts</span>
+                    </div>
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">This toggle</span>
+                      <span>post-completion review prompts only</span>
+                    </div>
+                  </div>
                 </div>
-              )}
-              <button onClick={onRerunSetup} className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40">
-                <RotateCcw size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-                Re-run first-time setup
-              </button>
-            </div>
-          </Section>
+              </Section>
 
-          {/* Tab visibility — hide tabs you never use. */}
-          <Section
-            id="tabs"
-            icon={Rows3}
-            title="Tabs"
-            desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
-          >
-            <TabsVisibilityPanel />
-          </Section>
+              {/* Suggested replies */}
+              <Section
+                id="suggestions"
+                icon={Sparkles}
+                title="Suggested replies"
+                desc="Per-terminal modes decide when to use these standalone engines. Enhance mode rewrites a draft prompt through the configured AI suggestion engine before sending."
+              >
+                <div className="space-y-2">
+                  <SuggestionModelSetting
+                    label="AI suggestion model"
+                    engine={s.suggestions.aiEngine}
+                    model={s.suggestions.aiModel}
+                    onPick={(aiEngine, aiModel) =>
+                      save({ suggestions: { aiEngine, aiModel: aiModel || '' } })
+                    }
+                    hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
+                  />
+                  <SuggestionModelSetting
+                    label="Auto-send model"
+                    engine={s.suggestions.autoEngine}
+                    model={s.suggestions.autoModel}
+                    onPick={(autoEngine, autoModel) =>
+                      save({ suggestions: { autoEngine, autoModel: autoModel || '' } })
+                    }
+                    hint="Used when a terminal is set to Auto mode. TerMinal asks for one best reply and submits it after completion."
+                  />
+                  <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">Rules</span>
+                      <span>deterministic suggestions only</span>
+                    </div>
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">AI</span>
+                      <span>shows suggestions for you to choose</span>
+                    </div>
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">Enhance / Auto</span>
+                      <span>rewrite a draft prompt; auto submits one reply</span>
+                    </div>
+                  </div>
+                </div>
+              </Section>
 
-          <Section
-            id="presets"
-            icon={Eye}
-            title="Presets"
-            desc="App-provided snippets and agents update with TerMinal. Hide the ones you do not want; custom global/repo items remain user-owned."
-          >
-            <PresetVisibilityPanel />
-          </Section>
+              {/* Telegram */}
+              <Section
+                id="telegram"
+                icon={MessageCircle}
+                title="Telegram"
+                desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present."
+              >
+                <div className="space-y-2">
+                  <Toggle
+                    on={s.telegram.notify}
+                    onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
+                    label="Mirror notifications to Telegram"
+                  />
+                  <Toggle
+                    on={s.telegram.control}
+                    onToggle={() => save({ telegram: { control: !s.telegram.control } })}
+                    label="Remote control (AFK)"
+                    hint="Launch/cancel agents by texting the bot"
+                  />
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                      Bot token
+                    </span>
+                    <input
+                      defaultValue={s.telegram.botToken}
+                      onBlur={(e) =>
+                        e.target.value !== s.telegram.botToken &&
+                        save({ telegram: { botToken: e.target.value.trim() } })
+                      }
+                      placeholder="123456:ABC-DEF..."
+                      spellCheck={false}
+                      className={`${inp} font-mono`}
+                    />
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <label className="block min-w-0 space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                        Chat id
+                      </span>
+                      <input
+                        defaultValue={s.telegram.chatId}
+                        onBlur={(e) =>
+                          e.target.value !== s.telegram.chatId &&
+                          save({ telegram: { chatId: e.target.value.trim() } })
+                        }
+                        placeholder="your numeric chat id"
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </label>
+                    <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
+                      {tg?.busy ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Send size={13} strokeWidth={2} />
+                      )}
+                      Test
+                    </button>
+                  </div>
+                  {tg && !tg.busy && (
+                    <div
+                      className={`text-[11px] ${tg.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                    >
+                      {tg.ok ? '✓ Sent — check your chat.' : tg.error}
+                    </div>
+                  )}
+                  {!!s.telegram.chatId &&
+                    s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
+                      <div className="text-[11px] text-amber-400">
+                        ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message
+                        @userinfobot to get it.
+                      </div>
+                    )}
+                  {s.telegram.control && (
+                    <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
+                      <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">
+                        Command reference (send /help in the chat)
+                      </summary>
+                      <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10.5px] text-zinc-500">
+                        <span className="col-span-2 text-[var(--gt-accent-light)]">
+                          /feature &lt;what you want built&gt; [@repo]
+                        </span>
+                        <span>/repos · /cd &lt;repo&gt;</span>
+                        <span>/sessions · /about</span>
+                        <span>/runs · /cancel &lt;n&gt;</span>
+                        <span>/tail &lt;id|n&gt;</span>
+                        <span>/agents [@repo]</span>
+                        <span>/run &lt;agent&gt; [opts]</span>
+                        <span>/tickets [@repo]</span>
+                        <span>/ticket &lt;slug|n&gt;</span>
+                        <span>/ticket new &lt;title&gt;</span>
+                        <span>/close &lt;slug|n&gt;</span>
+                        <span>/schedules</span>
+                        <span>/pause · /resume · /runnow</span>
+                        <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
+                        <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
+                        <span>/state &lt;agent&gt;</span>
+                        <span>/reset-state &lt;agent&gt;</span>
+                        <span>/bg [@repo] &lt;prompt&gt;</span>
+                        <span>/bg list · /bg cancel &lt;n&gt;</span>
+                        <span>/budget [set &lt;usd&gt;]</span>
+                        <span>/status · /harness · /activity</span>
+                        <span>/install &lt;agent&gt;</span>
+                        <span>/rebuild</span>
+                      </div>
+                      <div className="mt-1.5 text-[10px] text-zinc-600">
+                        <span className="text-zinc-500">/feature</span> drafts a ticket from plain
+                        text, then offers a 🚀 Start work button that builds it and links the PR
+                        back. Plain English works too — it's translated to a command. HITL pings
+                        include inline ✅ Resolve / 🪵 Tail run buttons.
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </Section>
 
-          {/* Harness self-status — meta-observability snapshot. */}
-          <Section
-            id="status"
-            icon={Activity}
-            title="Harness status"
-            desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
-          >
-            <HarnessStatusPanel />
-          </Section>
+              {/* Setup / integrations */}
+              <Section
+                id="integrations"
+                icon={PlugZap}
+                title="Setup & integrations"
+                desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills."
+              >
+                <div className="space-y-2">
+                  <button
+                    onClick={copySetupPrompt}
+                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
+                  >
+                    {copied ? (
+                      <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" />
+                    ) : (
+                      <ClipboardCopy
+                        size={14}
+                        strokeWidth={2}
+                        className="text-[var(--gt-accent-light)]"
+                      />
+                    )}
+                    Copy global-skills setup prompt
+                    <span className="ml-auto text-[10.5px] text-zinc-600">
+                      {copied ? 'copied — paste into Claude' : 'paste into Claude'}
+                    </span>
+                  </button>
+                  <button
+                    onClick={installNotify}
+                    disabled={notify?.busy}
+                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+                  >
+                    {notify?.busy ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <TerminalSquare
+                        size={14}
+                        strokeWidth={2}
+                        className="text-[var(--gt-accent-light)]"
+                      />
+                    )}
+                    Install <span className="font-mono">gt-notify</span> to ~/.local/bin
+                    <span className="ml-auto text-[10.5px] text-zinc-600">activity feed hook</span>
+                  </button>
+                  {notify && !notify.busy && (
+                    <div
+                      className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                    >
+                      {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
+                    </div>
+                  )}
+                  <button
+                    onClick={installMcp}
+                    disabled={mcpState?.busy}
+                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+                  >
+                    {mcpState?.busy ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <TerminalSquare
+                        size={14}
+                        strokeWidth={2}
+                        className="text-[var(--gt-accent-light)]"
+                      />
+                    )}
+                    Install MCP server (Claude Code + Codex)
+                    <span className="ml-auto text-[10.5px] text-zinc-600">cross-session views</span>
+                  </button>
+                  {mcpState && !mcpState.busy && (
+                    <div
+                      className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                    >
+                      {mcpState.ok
+                        ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
+                        : mcpState.error}
+                    </div>
+                  )}
+                  <button
+                    onClick={onRerunSetup}
+                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
+                  >
+                    <RotateCcw
+                      size={14}
+                      strokeWidth={2}
+                      className="text-[var(--gt-accent-light)]"
+                    />
+                    Re-run first-time setup
+                  </button>
+                </div>
+              </Section>
 
-          {/* In-app rebuild — eats own dog food. Spawns bin/release fully
+              {/* Tab visibility — hide tabs you never use. */}
+              <Section
+                id="tabs"
+                icon={Rows3}
+                title="Tabs"
+                desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
+              >
+                <TabsVisibilityPanel />
+              </Section>
+
+              <Section
+                id="presets"
+                icon={Eye}
+                title="Presets"
+                desc="App-provided snippets and agents update with TerMinal. Hide the ones you do not want; custom global/repo items remain user-owned."
+              >
+                <PresetVisibilityPanel />
+              </Section>
+
+              {/* Harness self-status — meta-observability snapshot. */}
+              <Section
+                id="status"
+                icon={Activity}
+                title="Harness status"
+                desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
+              >
+                <HarnessStatusPanel />
+              </Section>
+
+              {/* In-app rebuild — eats own dog food. Spawns bin/release fully
               detached so it survives the pkill mid-flow + lands a fresh app
               in /Applications + relaunches. */}
-          <Section
-            id="rebuild"
-            icon={PackageOpen}
-            title="Rebuild + reinstall"
-            desc="Run bin/release from inside the app — fetches latest when safe, builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
-          >
-            <RebuildPanel />
-          </Section>
+              <Section
+                id="rebuild"
+                icon={PackageOpen}
+                title="Rebuild + reinstall"
+                desc="Run bin/release from inside the app — fetches latest when safe, builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
+              >
+                <RebuildPanel />
+              </Section>
 
-          <div className="px-5 py-3 text-center text-[10.5px] text-zinc-600">
-            TerMinal · settings stored in ~/.config/TerMinal/settings.json
-          </div>
+              <div className="px-5 py-3 text-center text-[10.5px] text-zinc-600">
+                TerMinal · settings stored in ~/.config/TerMinal/settings.json
+              </div>
             </div>
           </div>
         </div>

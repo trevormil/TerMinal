@@ -27,7 +27,11 @@ function CiTab({ url }: { url: string }) {
       <BrowserToolbar
         surface={surface}
         leftAccessory={
-          <GitMerge size={14} strokeWidth={2} className="ml-1 mr-0.5 shrink-0 text-[var(--gt-accent-light)]" />
+          <GitMerge
+            size={14}
+            strokeWidth={2}
+            className="ml-1 mr-0.5 shrink-0 text-[var(--gt-accent-light)]"
+          />
         }
         rightAccessory={
           <button

@@ -4,8 +4,20 @@ import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import { telegramControlEnabled, readSettings, resolvedTemplateRepo } from './settings'
-import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
-import { readAgents, runAgent, listRuns, cancelRun, readAgentState, resetAgentState } from './agents'
+import {
+  cloneTemplateToTmp,
+  pickTemplateSource,
+  templateCandidates,
+  type TemplateSource,
+} from './template'
+import {
+  readAgents,
+  runAgent,
+  listRuns,
+  cancelRun,
+  readAgentState,
+  resetAgentState,
+} from './agents'
 import { readPersonas } from './personas'
 import {
   parseCommand,
@@ -15,7 +27,14 @@ import {
   splitRepoToken,
   type FeatureDraft,
 } from './telegram-parse'
-import { sendUrl, getUpdatesUrl, parseUpdates, answerCallbackUrl, telegramChatIdError, type TgInlineKeyboard } from './telegram-api'
+import {
+  sendUrl,
+  getUpdatesUrl,
+  parseUpdates,
+  answerCallbackUrl,
+  telegramChatIdError,
+  type TgInlineKeyboard,
+} from './telegram-api'
 import { listTickets, createTicket, updateTicket, getTicket } from './backlog'
 import { readHitl, resolveHitl } from './hitl'
 import { readSchedules } from './schedules'
@@ -102,7 +121,10 @@ let getActive: () => RepoCtx | null = () => null
 let stickyRepo: RepoCtx | null = null
 
 /** Wire in how to enumerate target repos (from the terminal's open sessions). */
-export function configureTelegramControl(opts: { repos: () => RepoCtx[]; active: () => RepoCtx | null }) {
+export function configureTelegramControl(opts: {
+  repos: () => RepoCtx[]
+  active: () => RepoCtx | null
+}) {
   getRepos = opts.repos
   getActive = opts.active
 }
@@ -179,7 +201,9 @@ export async function markTelegramControlEnabled(on: boolean, announce = true) {
     // sent while control was off are not executed on enable.
     const t = readSettings().telegram
     try {
-      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), { signal: AbortSignal.timeout(15000) })
+      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), {
+        signal: AbortSignal.timeout(15000),
+      })
       if (res.ok) {
         const { nextOffset } = parseUpdates(await res.json(), t.chatId)
         if (nextOffset) writeOffset(nextOffset)
@@ -308,7 +332,12 @@ function cmdCd(args: string[]) {
 function cmdAgents(repoToken?: string) {
   const repo = resolveRepo(repoToken)
   if (!repo) return reply('No repo — /repos to see options or open a session.')
-  reply(`Agents · ${repo.label}:\n` + readAgents(repo.repoRoot).map((a) => `• ${a.id} — ${a.title}`).join('\n'))
+  reply(
+    `Agents · ${repo.label}:\n` +
+      readAgents(repo.repoRoot)
+        .map((a) => `• ${a.id} — ${a.title}`)
+        .join('\n'),
+  )
 }
 
 function cmdRuns() {
@@ -318,7 +347,10 @@ function cmdRuns() {
   reply(
     'Runs:\n' +
       runs
-        .map((r, i) => `${i + 1}. ${STATUS_EMOJI[r.status] || ''} ${r.agentTitle} · ${short(r.repoRoot)} (${r.status})`)
+        .map(
+          (r, i) =>
+            `${i + 1}. ${STATUS_EMOJI[r.status] || ''} ${r.agentTitle} · ${short(r.repoRoot)} (${r.status})`,
+        )
         .join('\n'),
   )
 }
@@ -335,7 +367,8 @@ function cmdStatus() {
 }
 
 function cmdRun(args: string[]) {
-  if (!args.length) return reply('Usage: /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo]')
+  if (!args.length)
+    return reply('Usage: /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo]')
   const { agentId, engine, pipeline, repoToken, personaCandidates } = classifyRunArgs(args)
   let persona = ''
   const repo = resolveRepo(repoToken)
@@ -345,7 +378,10 @@ function cmdRun(args: string[]) {
   if (personaCandidates.length) {
     const ids = new Set(readPersonas(repo.repoRoot).map((p) => p.id))
     const match = personaCandidates.find((p) => ids.has(p))
-    if (!match) return reply(`Unknown persona "${personaCandidates.join(' ')}". Valid: ${[...ids].join(', ')}`)
+    if (!match)
+      return reply(
+        `Unknown persona "${personaCandidates.join(' ')}". Valid: ${[...ids].join(', ')}`,
+      )
     persona = match
   }
   const r = runAgent(repo.repoRoot, agentId, engine, persona, pipeline)
@@ -363,7 +399,9 @@ let lastTicketSlugs: string[] = []
 function cmdTickets(repoToken?: string) {
   const repo = resolveRepo(repoToken)
   if (!repo) return reply('No repo — /repos to list.')
-  const list = listTickets(repo.repoRoot).filter((t) => t.status !== 'closed').slice(0, 12)
+  const list = listTickets(repo.repoRoot)
+    .filter((t) => t.status !== 'closed')
+    .slice(0, 12)
   if (!list.length) return reply(`No open tickets · ${repo.label}.`)
   lastTicketSlugs = list.map((t) => t.slug)
   reply(
@@ -458,7 +496,12 @@ function rememberDraft(ctx: FeatureCtx): string {
  *  is embedded rather than read from disk, because the bg worktree is branched
  *  off main and the ticket file is still untracked there. TerMinal links the PR
  *  onto the ticket itself (see bg-tasks sweep), so the agent must not. */
-function featureWorkPrompt(t: { id: number; title: string; body: string; acceptance: string[] }): string {
+function featureWorkPrompt(t: {
+  id: number
+  title: string
+  body: string
+  acceptance: string[]
+}): string {
   return [
     `Implement backlog ticket #${t.id}: ${t.title}`,
     '',
@@ -467,14 +510,16 @@ function featureWorkPrompt(t: { id: number; title: string; body: string; accepta
     ...(t.acceptance.length
       ? ['Acceptance criteria — every one must hold:', ...t.acceptance.map((c) => `- ${c}`), '']
       : []),
-    'Work in this worktree on its branch. Follow the repo\'s /pr-creation skill if it has one.',
+    "Work in this worktree on its branch. Follow the repo's /pr-creation skill if it has one.",
     'Implement the ticket end to end — keep changes surgical, add or adjust tests, run the checks.',
     `Commit your work and open a PR that references ticket #${t.id}.`,
     'Do NOT edit the ticket file — TerMinal links the PR onto the ticket for you.',
   ].join('\n')
 }
 
-async function draftFeature(description: string): Promise<{ draft: FeatureDraft; drafted: boolean }> {
+async function draftFeature(
+  description: string,
+): Promise<{ draft: FeatureDraft; drafted: boolean }> {
   try {
     const { cheapCall } = (await import('./cheap-llm')) as typeof import('./cheap-llm')
     const res = await cheapCall({
@@ -618,7 +663,10 @@ function cmdPause(args: string[], pause: boolean) {
   if (!args[0]) return reply(`Usage: /${pause ? 'pause' : 'resume'} <id|n|all>`)
   const all = readSchedules(Date.now())
   if (args[0].toLowerCase() === 'all') {
-    setAllDisabled(all.map((s) => s.id), pause)
+    setAllDisabled(
+      all.map((s) => s.id),
+      pause,
+    )
     return reply(`${pause ? '⏸' : '▶️'} ${pause ? 'paused' : 'resumed'} ${all.length} schedule(s).`)
   }
   const id = scheduleIdFromToken(args[0])
@@ -646,7 +694,9 @@ function cmdRunNow(args: string[]) {
 let lastHitlIds: string[] = []
 
 function cmdHitl() {
-  const open = readHitl().filter((h) => h.status === 'open').slice(0, 10)
+  const open = readHitl()
+    .filter((h) => h.status === 'open')
+    .slice(0, 10)
   if (!open.length) return reply('🟢 No open HITL items.')
   lastHitlIds = open.map((h) => h.id)
   reply(
@@ -673,10 +723,15 @@ function cmdResolveHitl(args: string[], resolved: boolean) {
   if (resolved && (args[0] || '').toLowerCase() === 'all') {
     const count = resolveAllHitl()
     lastHitlIds = []
-    return reply(count ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.` : '🟢 No open HITL items.')
+    return reply(
+      count
+        ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.`
+        : '🟢 No open HITL items.',
+    )
   }
   const n = parseInt(args[0] || '', 10)
-  if (!n || n < 1) return reply(`Usage: /${resolved ? 'resolve <n|all>' : 'reopen <n>'} (from /hitl)`)
+  if (!n || n < 1)
+    return reply(`Usage: /${resolved ? 'resolve <n|all>' : 'reopen <n>'} (from /hitl)`)
   const id = lastHitlIds[n - 1]
   if (!id) return reply('No such #n — send /hitl first.')
   resolveHitl(id, resolved)
@@ -724,7 +779,8 @@ function cmdState(args: string[]) {
   const s = readAgentState(repo.repoRoot, agentId)
   if (!s.exists)
     return reply(`No state for ${agentId} · ${repo.label}. (First run hasn't written yet.)`)
-  const at = typeof s.state.lastRunAt === 'number' ? new Date(s.state.lastRunAt).toLocaleString() : '?'
+  const at =
+    typeof s.state.lastRunAt === 'number' ? new Date(s.state.lastRunAt).toLocaleString() : '?'
   reply(
     [
       `state · ${agentId} · ${repo.label}`,
@@ -792,10 +848,7 @@ function cmdSessions() {
   reply(
     'Open sessions:\n' +
       repos
-        .map(
-          (r) =>
-            `• ${r.label}${active && r.repoRoot === active.repoRoot ? ' (active)' : ''}`,
-        )
+        .map((r) => `• ${r.label}${active && r.repoRoot === active.repoRoot ? ' (active)' : ''}`)
         .join('\n'),
   )
 }
@@ -836,14 +889,9 @@ function cmdRebuild() {
   // tail the log here — Telegram is chat, not a build console; the user can
   // /tail it from a re-launched app if they want to see it.
   try {
-    const child = execFile(
-      'bin/release',
-      [],
-      { cwd: repoRoot, env: process.env },
-      () => {
-        rebuildPid = null
-      },
-    )
+    const child = execFile('bin/release', [], { cwd: repoRoot, env: process.env }, () => {
+      rebuildPid = null
+    })
     rebuildPid = child.pid || null
   } catch (e) {
     rebuildPid = null
@@ -908,7 +956,8 @@ function cmdBudget(args: string[]) {
     // /budget set 25         — daily cap
     // /budget set docs 5     — per-agent cap
     const usd = parseFloat(t2 || t1 || '')
-    if (!Number.isFinite(usd)) return reply('Usage: /budget set <usd>  ·  /budget set <agent> <usd>')
+    if (!Number.isFinite(usd))
+      return reply('Usage: /budget set <usd>  ·  /budget set <agent> <usd>')
     if (t2) {
       setAgentCap(t1, usd)
       return reply(`✓ ${t1} cap set to $${usd.toFixed(2)}/day`)
@@ -926,7 +975,7 @@ function cmdBudget(args: string[]) {
     const m = dur.match(/^(\d+)([hm])?$/)
     if (!m) return reply('Usage: /budget override <Nh|Nm|clear>')
     const n = parseInt(m[1], 10)
-    const ms = (m[2] === 'm' ? n * 60_000 : n * 3_600_000)
+    const ms = m[2] === 'm' ? n * 60_000 : n * 3_600_000
     setOverride(ms)
     return reply(`✓ override active for ${dur}`)
   }
@@ -955,7 +1004,13 @@ function cmdBg(args: string[]) {
   let promptStart = 0
   for (let i = 0; i < args.length; i++) {
     const tok = args[i].toLowerCase()
-    if (tok === 'claude' || tok === 'codex' || tok === 'cursor' || tok === 'openrouter' || tok === 'hermes') {
+    if (
+      tok === 'claude' ||
+      tok === 'codex' ||
+      tok === 'cursor' ||
+      tok === 'openrouter' ||
+      tok === 'hermes'
+    ) {
       engine = tok
       promptStart = i + 1
       continue
@@ -1288,7 +1343,11 @@ async function dispatchCallback(data: string, queryId: string) {
       const count = resolveAllHitl()
       lastHitlIds = []
       ack(queryId, count ? `Resolved ${count}` : 'No open HITL')
-      reply(count ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.` : '🟢 No open HITL items.')
+      reply(
+        count
+          ? `☑️ Resolved ${count} open HITL item${count === 1 ? '' : 's'}.`
+          : '🟢 No open HITL items.',
+      )
       return
     }
     if (domain === 'hitl' && action === 'reopen') {
@@ -1334,7 +1393,9 @@ async function dispatchCallback(data: string, queryId: string) {
       setDisabled(id, action === 'pause')
       const s = readSchedules(Date.now()).find((x) => x.id === id)
       ack(queryId, action === 'pause' ? 'Paused' : 'Resumed')
-      reply(`${action === 'pause' ? '⏸ paused' : '▶️ resumed'} · ${s?.agentTitle || id.slice(0, 8)}`)
+      reply(
+        `${action === 'pause' ? '⏸ paused' : '▶️ resumed'} · ${s?.agentTitle || id.slice(0, 8)}`,
+      )
       return
     }
     if (domain === 'sched' && action === 'runnow') {
@@ -1365,7 +1426,9 @@ export async function pollTelegramOnce() {
     polling = true
     const t = readSettings().telegram
     try {
-      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), { signal: AbortSignal.timeout(15000) })
+      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), {
+        signal: AbortSignal.timeout(15000),
+      })
       if (res.ok) {
         const { messages, callbacks, nextOffset } = parseUpdates(await res.json(), t.chatId)
         if (nextOffset) writeOffset(nextOffset)
@@ -1395,7 +1458,8 @@ export async function pollTelegramOnce() {
 /** Settings "Test" button: send a one-off confirmation, surfacing API errors. */
 export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
   const t = readSettings().telegram
-  if (!t.botToken || !t.chatId) return { ok: false, error: 'Set both the bot token and chat id first.' }
+  if (!t.botToken || !t.chatId)
+    return { ok: false, error: 'Set both the bot token and chat id first.' }
   const idErr = telegramChatIdError(t.botToken, t.chatId)
   if (idErr) return { ok: false, error: idErr }
   try {
@@ -1410,12 +1474,21 @@ export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
       // Map the specific "send to self" 403 to the same friendly hint, in case
       // creds were set outside the Settings UI and skipped the preflight.
       if (res.status === 403 && /can't send messages to the bot/i.test(body)) {
-        return { ok: false, error: telegramChatIdError(t.botToken, t.botToken.split(':')[0] || '') || `Telegram API 403: ${body.slice(0, 200)}` }
+        return {
+          ok: false,
+          error:
+            telegramChatIdError(t.botToken, t.botToken.split(':')[0] || '') ||
+            `Telegram API 403: ${body.slice(0, 200)}`,
+        }
       }
-      return { ok: false, error: `Telegram API ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}` }
+      return {
+        ok: false,
+        error: `Telegram API ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+      }
     }
     const j = (await res.json().catch(() => null)) as { ok?: boolean; description?: string } | null
-    if (j && j.ok === false) return { ok: false, error: j.description || 'Telegram rejected the message' }
+    if (j && j.ok === false)
+      return { ok: false, error: j.description || 'Telegram rejected the message' }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }

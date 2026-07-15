@@ -83,26 +83,51 @@ export function parseReadiness(raw: string, engines: string[]): HostReadiness {
 
 export type ProvisionHost = { sshTarget: string }
 
-function ssh(sshTarget: string, cmd: string, timeoutMs = 180_000): Promise<{ ok: boolean; stdout: string; error?: string }> {
+function ssh(
+  sshTarget: string,
+  cmd: string,
+  timeoutMs = 180_000,
+): Promise<{ ok: boolean; stdout: string; error?: string }> {
   return new Promise((resolve) => {
-    if (!isSafeSshTarget(sshTarget)) return resolve({ ok: false, stdout: '', error: 'unsafe ssh target' })
+    if (!isSafeSshTarget(sshTarget))
+      return resolve({ ok: false, stdout: '', error: 'unsafe ssh target' })
     execFile(
       'ssh',
-      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', sshTarget, `bash -lc ${shSingleQuote(cmd)}`],
+      [
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'ConnectTimeout=10',
+        sshTarget,
+        `bash -lc ${shSingleQuote(cmd)}`,
+      ],
       { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        if (err) resolve({ ok: false, stdout: stdout || '', error: (stderr || err.message || 'ssh error').trim() })
+        if (err)
+          resolve({
+            ok: false,
+            stdout: stdout || '',
+            error: (stderr || err.message || 'ssh error').trim(),
+          })
         else resolve({ ok: true, stdout: stdout || '' })
       },
     )
   })
 }
 
-function scp(localPath: string, sshTarget: string, remotePath: string): Promise<{ ok: boolean; error?: string }> {
+function scp(
+  localPath: string,
+  sshTarget: string,
+  remotePath: string,
+): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
     if (!isSafeSshTarget(sshTarget)) return resolve({ ok: false, error: 'unsafe ssh target' })
-    execFile('scp', ['-q', localPath, `${sshTarget}:${remotePath}`], { timeout: 60_000 }, (err, _o, stderr) =>
-      err ? resolve({ ok: false, error: (stderr || err.message).trim() }) : resolve({ ok: true }),
+    execFile(
+      'scp',
+      ['-q', localPath, `${sshTarget}:${remotePath}`],
+      { timeout: 60_000 },
+      (err, _o, stderr) =>
+        err ? resolve({ ok: false, error: (stderr || err.message).trim() }) : resolve({ ok: true }),
     )
   })
 }
@@ -120,7 +145,11 @@ export type ProvisionOpts = {
  *  deliberately NO hardcoded repo fallback: if no slug is provided (unknown git
  *  origin), self-update is skipped rather than silently tracking someone else's
  *  repo. Pure + exported for tests. */
-export function selfUpdatePlan(opts: ProvisionOpts): { run: boolean; repoSlug: string; branch: string } {
+export function selfUpdatePlan(opts: ProvisionOpts): {
+  run: boolean
+  repoSlug: string
+  branch: string
+} {
   const repoSlug = (opts.repoSlug || '').trim()
   if (opts.selfUpdate === false || !repoSlug) return { run: false, repoSlug: '', branch: '' }
   return { run: true, repoSlug, branch: opts.branch || 'main' }
@@ -139,17 +168,33 @@ export async function provisionHost(
   const setup = await ssh(host.sshTarget, buildProvisionScript())
   log.push(`setup: ${setup.ok ? 'ok' : `FAILED — ${setup.error}`}`)
   // Copy the runner + cli AFTER dirs exist. Remote chmod (scp doesn't preserve +x reliably).
-  const copiedRunner = await scp(runnerSrcPath, host.sshTarget, '.config/TerMinal/bin/terminal-cron')
+  const copiedRunner = await scp(
+    runnerSrcPath,
+    host.sshTarget,
+    '.config/TerMinal/bin/terminal-cron',
+  )
   log.push(`runner copy: ${copiedRunner.ok ? 'ok' : `FAILED — ${copiedRunner.error}`}`)
   if (opts.cliSrcPath) {
-    const copiedCli = await scp(opts.cliSrcPath, host.sshTarget, '.config/TerMinal/bin/terminal-cli')
+    const copiedCli = await scp(
+      opts.cliSrcPath,
+      host.sshTarget,
+      '.config/TerMinal/bin/terminal-cli',
+    )
     log.push(`cli copy: ${copiedCli.ok ? 'ok' : `FAILED — ${copiedCli.error}`}`)
   }
-  await ssh(host.sshTarget, 'chmod +x "$HOME/.config/TerMinal/bin/"terminal-cron "$HOME/.config/TerMinal/bin/"terminal-cli 2>/dev/null; true')
+  await ssh(
+    host.sshTarget,
+    'chmod +x "$HOME/.config/TerMinal/bin/"terminal-cron "$HOME/.config/TerMinal/bin/"terminal-cli 2>/dev/null; true',
+  )
   const su = selfUpdatePlan(opts)
   if (su.run) {
-    const r = await ssh(host.sshTarget, installSelfUpdateCmd(su.repoSlug, su.branch, '*-*-* 03:30:00'))
-    log.push(`self-update timer: ${r.ok ? `ok (${su.repoSlug}@${su.branch})` : `FAILED — ${r.error}`}`)
+    const r = await ssh(
+      host.sshTarget,
+      installSelfUpdateCmd(su.repoSlug, su.branch, '*-*-* 03:30:00'),
+    )
+    log.push(
+      `self-update timer: ${r.ok ? `ok (${su.repoSlug}@${su.branch})` : `FAILED — ${r.error}`}`,
+    )
   } else if (opts.selfUpdate !== false) {
     log.push('self-update timer: skipped (no repo slug — set a fork origin or configure one)')
   }

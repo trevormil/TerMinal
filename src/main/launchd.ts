@@ -221,7 +221,10 @@ export function needsReload(onDiskXml: string | null, newXml: string, isLoaded: 
 // Pure classifier (injectable probe): enabled schedules whose job isn't loaded
 // in launchd — i.e. "dark" schedules that will never fire. Disabled schedules
 // are never dark (they're intentionally not loaded).
-export function darkSchedules(schedules: Schedule[], isLoaded: (id: string) => boolean = isJobLoaded): Schedule[] {
+export function darkSchedules(
+  schedules: Schedule[],
+  isLoaded: (id: string) => boolean = isJobLoaded,
+): Schedule[] {
   return schedules.filter((s) => s.enabled && !s.host && !isLoaded(s.id))
 }
 
@@ -229,7 +232,10 @@ export function darkSchedules(schedules: Schedule[], isLoaded: (id: string) => b
 // schedules are probed via launchd — a host schedule (systemd/k8s) has no launchd
 // job by design, so probing it would report a false `false` and the UI would
 // wrongly flag it as "not scheduled". Host / disabled → undefined (unknown here).
-export function scheduleLoadedState(s: Schedule, isLoaded: (id: string) => boolean = isJobLoaded): boolean | undefined {
+export function scheduleLoadedState(
+  s: Schedule,
+  isLoaded: (id: string) => boolean = isJobLoaded,
+): boolean | undefined {
   return s.enabled && !s.host ? isLoaded(s.id) : undefined
 }
 

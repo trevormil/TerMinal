@@ -19,7 +19,8 @@ import { readFileSync } from 'node:fs'
 function repoWithTicketConfig(config?: unknown) {
   const repo = mkdtempSync(join(tmpdir(), 'terminal-ticket-provider-'))
   mkdirSync(join(repo, '.TerMinal'), { recursive: true })
-  if (config !== undefined) writeFileSync(join(repo, '.TerMinal', 'tickets.json'), JSON.stringify(config))
+  if (config !== undefined)
+    writeFileSync(join(repo, '.TerMinal', 'tickets.json'), JSON.stringify(config))
   return repo
 }
 
@@ -48,8 +49,14 @@ describe('repoTicketProvider', () => {
   })
 
   test('obsidianRepoVault exposes vault + tickets dir only when the provider is obsidian', () => {
-    const obs = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/v/MyVault', ticketsSubdir: 'issues' } })
-    expect(obsidianRepoVault(obs)).toEqual({ vaultPath: '/v/MyVault', ticketsDir: '/v/MyVault/issues' })
+    const obs = repoWithTicketConfig({
+      provider: 'obsidian',
+      obsidian: { vaultPath: '/v/MyVault', ticketsSubdir: 'issues' },
+    })
+    expect(obsidianRepoVault(obs)).toEqual({
+      vaultPath: '/v/MyVault',
+      ticketsDir: '/v/MyVault/issues',
+    })
     // configured vault block but provider is local → not exposed
     const local = repoWithTicketConfig({ provider: 'local', obsidian: { vaultPath: '/v/x' } })
     expect(obsidianRepoVault(local)).toBeNull()
@@ -62,7 +69,13 @@ describe('obsidian provider dispatch', () => {
     const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
     const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
     try {
-      const t = await createRepoTicket(repo, { title: 'Vault route', type: 'feature', priority: 'medium', status: 'open', body: 'b' })
+      const t = await createRepoTicket(repo, {
+        title: 'Vault route',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
       expect(t.provider).toBe('obsidian')
       expect(t.providerLabel).toBe('Obsidian')
       // landed in <vault>/tickets/, never in the repo working tree
@@ -136,9 +149,12 @@ describe('obsidian deep link + scaffold', () => {
     expect(obsidianDeepLink({ vaultPath: '/x/My Vault' }, '0001-add-x')).toBe(
       'obsidian://open?vault=My%20Vault&file=tickets%2F0001-add-x.md',
     )
-    expect(obsidianDeepLink({ vaultPath: '/x/v', vaultName: 'Named', ticketsSubdir: 'issues' }, '0002-y')).toBe(
-      'obsidian://open?vault=Named&file=issues%2F0002-y.md',
-    )
+    expect(
+      obsidianDeepLink(
+        { vaultPath: '/x/v', vaultName: 'Named', ticketsSubdir: 'issues' },
+        '0002-y',
+      ),
+    ).toBe('obsidian://open?vault=Named&file=issues%2F0002-y.md')
     expect(obsidianDeepLink(undefined, '0001-x')).toBeNull()
     expect(obsidianDeepLink({ vaultPath: '' }, '0001-x')).toBeNull()
   })

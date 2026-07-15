@@ -6,8 +6,14 @@ describe('createAgentStreamDecoder', () => {
     const decoder = createAgentStreamDecoder('claude', true)
     const out = decoder.write(
       [
-        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }] } }),
-        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'hello' }] },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', name: 'Bash' }] },
+        }),
         '',
       ].join('\n'),
     )

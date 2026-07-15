@@ -37,14 +37,19 @@ import type {
 type ViewMode = 'knowledge' | 'scratch'
 type PreviewMode = 'edit' | 'preview' | 'split'
 
-const kindMeta: Record<KnowledgeItemKind, { label: string; Icon: typeof FileText; hint: string }> = {
-  markdown: { label: 'Markdown', Icon: FileText, hint: 'Snippet, note, playbook, transcript excerpt' },
-  link: { label: 'Link', Icon: Link2, hint: 'URL, dashboard, issue, doc, repo page' },
-  image: { label: 'Image', Icon: Image, hint: 'Remote image URL or local image path' },
-  video: { label: 'Video', Icon: Video, hint: 'YouTube/Vimeo/direct video URL or local path' },
-  file: { label: 'File', Icon: File, hint: 'Local file path or remote document URL' },
-  rag: { label: 'RAG', Icon: Database, hint: 'Local vector index powered by knowledge-rag MCP' },
-}
+const kindMeta: Record<KnowledgeItemKind, { label: string; Icon: typeof FileText; hint: string }> =
+  {
+    markdown: {
+      label: 'Markdown',
+      Icon: FileText,
+      hint: 'Snippet, note, playbook, transcript excerpt',
+    },
+    link: { label: 'Link', Icon: Link2, hint: 'URL, dashboard, issue, doc, repo page' },
+    image: { label: 'Image', Icon: Image, hint: 'Remote image URL or local image path' },
+    video: { label: 'Video', Icon: Video, hint: 'YouTube/Vimeo/direct video URL or local path' },
+    file: { label: 'File', Icon: File, hint: 'Local file path or remote document URL' },
+    rag: { label: 'RAG', Icon: Database, hint: 'Local vector index powered by knowledge-rag MCP' },
+  }
 
 const slug = (input: string) =>
   input
@@ -61,7 +66,8 @@ const starterKb = (): KnowledgeBase => ({
     {
       id: 'general',
       title: 'General',
-      description: 'Links, snippets, media, and references that do not need their own category yet.',
+      description:
+        'Links, snippets, media, and references that do not need their own category yet.',
       order: 0,
       createdAt: now(),
       updatedAt: now(),
@@ -112,7 +118,16 @@ function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
     thumbnailUrl: '',
     faviconUrl: '',
     siteName: '',
-    rag: kind === 'rag' ? { category: slug(categoryId), command: 'uvx', args: ['--python', '3.11', 'knowledge-rag==3.9.0'], hybridAlpha: 0.3, maxResults: 5 } : undefined,
+    rag:
+      kind === 'rag'
+        ? {
+            category: slug(categoryId),
+            command: 'uvx',
+            args: ['--python', '3.11', 'knowledge-rag==3.9.0'],
+            hybridAlpha: 0.3,
+            maxResults: 5,
+          }
+        : undefined,
     tags: [],
     createdAt: ts,
     updatedAt: ts,
@@ -159,8 +174,14 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       if (!alive) return
       const normalized = next.categories.length ? next : starterKb()
       setKb(normalized)
-      setActiveCategoryId((cur) => normalized.categories.some((c) => c.id === cur) ? cur : normalized.categories[0]?.id || 'general')
-      setActiveItemId((cur) => normalized.items.some((i) => i.id === cur) ? cur : normalized.items[0]?.id || '')
+      setActiveCategoryId((cur) =>
+        normalized.categories.some((c) => c.id === cur)
+          ? cur
+          : normalized.categories[0]?.id || 'general',
+      )
+      setActiveItemId((cur) =>
+        normalized.items.some((i) => i.id === cur) ? cur : normalized.items[0]?.id || '',
+      )
       setSaved(true)
     })
     window.gt.notes.read(scope).then((text) => {
@@ -222,8 +243,14 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     if (activeCategoryId && item.categoryId !== activeCategoryId) return false
     const q = query.trim().toLowerCase()
     if (!q) return true
-    return [item.title, item.description || '', item.content || '', item.url || '', item.path || '', item.tags.join(' ')]
-      .some((value) => value.toLowerCase().includes(q))
+    return [
+      item.title,
+      item.description || '',
+      item.content || '',
+      item.url || '',
+      item.path || '',
+      item.tags.join(' '),
+    ].some((value) => value.toLowerCase().includes(q))
   })
 
   const addCategory = () => {
@@ -259,7 +286,10 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   const updateItem = (patch: Partial<KnowledgeItem>, immediate = false) => {
     if (!activeItem) return
     const nextItem = { ...activeItem, ...patch, updatedAt: now() }
-    persist({ ...kb, items: kb.items.map((item) => item.id === nextItem.id ? nextItem : item) }, immediate)
+    persist(
+      { ...kb, items: kb.items.map((item) => (item.id === nextItem.id ? nextItem : item)) },
+      immediate,
+    )
   }
 
   const deleteItem = (id: string) => {
@@ -279,14 +309,20 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       setPreviewErr(preview.error || 'Preview unavailable')
       return
     }
-    updateItem({
-      url: preview.url,
-      title: item.title && item.title !== kindMeta[item.kind].label ? item.title : preview.title || item.title,
-      description: item.description || preview.description || '',
-      thumbnailUrl: item.thumbnailUrl || preview.thumbnailUrl || '',
-      faviconUrl: item.faviconUrl || preview.faviconUrl || '',
-      siteName: item.siteName || preview.siteName || '',
-    }, true)
+    updateItem(
+      {
+        url: preview.url,
+        title:
+          item.title && item.title !== kindMeta[item.kind].label
+            ? item.title
+            : preview.title || item.title,
+        description: item.description || preview.description || '',
+        thumbnailUrl: item.thumbnailUrl || preview.thumbnailUrl || '',
+        faviconUrl: item.faviconUrl || preview.faviconUrl || '',
+        siteName: item.siteName || preview.siteName || '',
+      },
+      true,
+    )
   }
 
   const updateRagConfig = (patch: NonNullable<KnowledgeItem['rag']>, immediate = false) => {
@@ -313,7 +349,9 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
 
   const addRagDocument = (item: KnowledgeItem) => {
     if (!ragDocContent.trim()) return
-    runRag(() => window.gt.knowledge.ragAddDocument(scope, item, ragDocContent, ragDocPath || undefined))
+    runRag(() =>
+      window.gt.knowledge.ragAddDocument(scope, item, ragDocContent, ragDocPath || undefined),
+    )
   }
 
   const addRagUrl = (item: KnowledgeItem) => {
@@ -337,16 +375,25 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
   }
 
   const resultField = (result: unknown, key: string) =>
-    result && typeof result === 'object' && typeof (result as Record<string, unknown>)[key] === 'string'
-      ? ((result as Record<string, string>)[key])
+    result &&
+    typeof result === 'object' &&
+    typeof (result as Record<string, unknown>)[key] === 'string'
+      ? (result as Record<string, string>)[key]
       : ''
 
-  const scopeButton = (next: KnowledgeScope, label: string, Icon: typeof Globe, disabled = false) => (
+  const scopeButton = (
+    next: KnowledgeScope,
+    label: string,
+    Icon: typeof Globe,
+    disabled = false,
+  ) => (
     <button
       disabled={disabled}
       onClick={() => setScope(next)}
       className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-semibold disabled:opacity-35 ${
-        scope === next ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+        scope === next
+          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+          : 'text-zinc-500 hover:text-zinc-200'
       }`}
     >
       <Icon size={13} strokeWidth={2} />
@@ -373,40 +420,64 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-4">
             <div className="mb-1 flex items-center gap-2">
               <Database size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-              <div className="text-[13px] font-semibold text-zinc-100">{item.title || 'RAG source'}</div>
+              <div className="text-[13px] font-semibold text-zinc-100">
+                {item.title || 'RAG source'}
+              </div>
             </div>
             <div className="text-[12px] leading-relaxed text-zinc-500">
-              Local Knowledge RAG index for this category. It stores documents on disk and searches them through the upstream MCP server.
+              Local Knowledge RAG index for this category. It stores documents on disk and searches
+              them through the upstream MCP server.
             </div>
             <div className="mt-3 grid gap-2 text-[11px] text-zinc-500 lg:grid-cols-3">
               <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
                 <div className="text-zinc-600">Documents</div>
-                <div className="text-[13px] font-semibold text-zinc-200">{ragStatus ? statValue(ragStatus.stats, ['total_documents', 'indexed', 'documents']) : '0'}</div>
+                <div className="text-[13px] font-semibold text-zinc-200">
+                  {ragStatus
+                    ? statValue(ragStatus.stats, ['total_documents', 'indexed', 'documents'])
+                    : '0'}
+                </div>
               </div>
               <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
                 <div className="text-zinc-600">Chunks</div>
-                <div className="text-[13px] font-semibold text-zinc-200">{ragStatus ? statValue(ragStatus.stats, ['total_chunks', 'chunks_added']) : '0'}</div>
+                <div className="text-[13px] font-semibold text-zinc-200">
+                  {ragStatus ? statValue(ragStatus.stats, ['total_chunks', 'chunks_added']) : '0'}
+                </div>
               </div>
               <div className="rounded-md border border-[var(--gt-border)] bg-black/25 p-2">
                 <div className="text-zinc-600">Root</div>
-                <div className="truncate font-mono text-[10.5px] text-zinc-300">{ragStatus?.rootDir || item.rag?.rootDir || 'auto'}</div>
+                <div className="truncate font-mono text-[10.5px] text-zinc-300">
+                  {ragStatus?.rootDir || item.rag?.rootDir || 'auto'}
+                </div>
               </div>
             </div>
-            {ragStatus?.error && <div className="mt-2 text-[11px] text-amber-400">{ragStatus.error}</div>}
+            {ragStatus?.error && (
+              <div className="mt-2 text-[11px] text-amber-400">{ragStatus.error}</div>
+            )}
           </div>
           {ragSearch && (
             <div className="rounded-lg border border-[var(--gt-border)] bg-black/15">
               <div className="border-b border-[var(--gt-border)] px-3 py-2 text-[11px] font-semibold text-zinc-300">
-                {ragSearch.ok ? `${ragSearch.results.length} results for "${ragSearch.query}"` : ragSearch.error}
+                {ragSearch.ok
+                  ? `${ragSearch.results.length} results for "${ragSearch.query}"`
+                  : ragSearch.error}
               </div>
               <div className="space-y-2 p-3">
                 {ragSearch.results.map((result, i) => (
-                  <div key={i} className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3">
+                  <div
+                    key={i}
+                    className="rounded-md border border-[var(--gt-border)] bg-black/20 p-3"
+                  >
                     <div className="mb-1 flex items-center gap-2 text-[11px] text-zinc-600">
                       <span className="font-mono text-zinc-500">#{i + 1}</span>
-                      <span className="truncate">{resultField(result, 'source') || resultField(result, 'filename') || 'RAG result'}</span>
+                      <span className="truncate">
+                        {resultField(result, 'source') ||
+                          resultField(result, 'filename') ||
+                          'RAG result'}
+                      </span>
                     </div>
-                    <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300">{resultField(result, 'content') || JSON.stringify(result, null, 2)}</div>
+                    <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300">
+                      {resultField(result, 'content') || JSON.stringify(result, null, 2)}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -420,17 +491,36 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     }
     if (item.kind === 'image') {
       return src ? (
-        <img src={src} alt={item.title} className="max-h-[56vh] max-w-full rounded-lg border border-[var(--gt-border)] object-contain" />
-      ) : <EmptyPreview text="Add an image URL or local path." />
+        <img
+          src={src}
+          alt={item.title}
+          className="max-h-[56vh] max-w-full rounded-lg border border-[var(--gt-border)] object-contain"
+        />
+      ) : (
+        <EmptyPreview text="Add an image URL or local path." />
+      )
     }
     if (item.kind === 'video') {
       const embed = src ? videoEmbed(src) : ''
       if (embed) {
-        return <iframe title={item.title} src={embed} className="aspect-video w-full rounded-lg border border-[var(--gt-border)]" allowFullScreen />
+        return (
+          <iframe
+            title={item.title}
+            src={embed}
+            className="aspect-video w-full rounded-lg border border-[var(--gt-border)]"
+            allowFullScreen
+          />
+        )
       }
       return src ? (
-        <video src={src} controls className="max-h-[56vh] w-full rounded-lg border border-[var(--gt-border)]" />
-      ) : <EmptyPreview text="Add a YouTube, Vimeo, direct video URL, or local path." />
+        <video
+          src={src}
+          controls
+          className="max-h-[56vh] w-full rounded-lg border border-[var(--gt-border)]"
+        />
+      ) : (
+        <EmptyPreview text="Add a YouTube, Vimeo, direct video URL, or local path." />
+      )
     }
     const target = sourceOf(item)
     return target ? (
@@ -441,23 +531,37 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           </div>
         )}
         <div className="p-4">
-        <div className="mb-2 flex items-center gap-2">
-          {item.faviconUrl ? <img src={item.faviconUrl} alt="" className="h-4 w-4 rounded-sm" /> : null}
-          <span className="truncate text-[11px] text-zinc-600">{item.siteName || (item.kind === 'link' ? 'Link target' : 'File target')}</span>
-        </div>
-        <div className="mb-1 text-[14px] font-semibold text-zinc-100">{item.title}</div>
-        {item.description && <div className="mb-3 text-[12px] leading-relaxed text-zinc-500">{item.description}</div>}
-        <div className="mb-3 break-all font-mono text-[11px] text-zinc-600">{displayPath(target)}</div>
-        <button
-          onClick={() => item.kind === 'file' && item.path ? window.gt.openInEditor(item.path) : window.gt.openInBrowser(target)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
-        >
-          <ExternalLink size={13} strokeWidth={2} />
-          Open
-        </button>
+          <div className="mb-2 flex items-center gap-2">
+            {item.faviconUrl ? (
+              <img src={item.faviconUrl} alt="" className="h-4 w-4 rounded-sm" />
+            ) : null}
+            <span className="truncate text-[11px] text-zinc-600">
+              {item.siteName || (item.kind === 'link' ? 'Link target' : 'File target')}
+            </span>
+          </div>
+          <div className="mb-1 text-[14px] font-semibold text-zinc-100">{item.title}</div>
+          {item.description && (
+            <div className="mb-3 text-[12px] leading-relaxed text-zinc-500">{item.description}</div>
+          )}
+          <div className="mb-3 break-all font-mono text-[11px] text-zinc-600">
+            {displayPath(target)}
+          </div>
+          <button
+            onClick={() =>
+              item.kind === 'file' && item.path
+                ? window.gt.openInEditor(item.path)
+                : window.gt.openInBrowser(target)
+            }
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
+          >
+            <ExternalLink size={13} strokeWidth={2} />
+            Open
+          </button>
         </div>
       </div>
-    ) : <EmptyPreview text="Add a URL or path." />
+    ) : (
+      <EmptyPreview text="Add a URL or path." />
+    )
   }
 
   const editorPane = (item: KnowledgeItem) => (
@@ -503,7 +607,14 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           <Tags size={12} strokeWidth={2} className="text-zinc-600" />
           <input
             value={item.tags.join(', ')}
-            onChange={(e) => updateItem({ tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean) })}
+            onChange={(e) =>
+              updateItem({
+                tags: e.target.value
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              })
+            }
             placeholder="tags"
             className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
           />
@@ -542,7 +653,9 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             />
           </div>
           <details>
-            <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">Advanced MCP command</summary>
+            <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">
+              Advanced MCP command
+            </summary>
             <div className="mt-2 grid gap-2 lg:grid-cols-[160px_minmax(0,1fr)]">
               <input
                 value={item.rag?.command || 'uvx'}
@@ -552,7 +665,9 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               />
               <input
                 value={(item.rag?.args || ['--python', '3.11', 'knowledge-rag==3.9.0']).join(' ')}
-                onChange={(e) => updateRagConfig({ args: e.target.value.split(/\s+/).filter(Boolean) })}
+                onChange={(e) =>
+                  updateRagConfig({ args: e.target.value.split(/\s+/).filter(Boolean) })
+                }
                 onBlur={() => updateItem({}, true)}
                 className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
               />
@@ -652,62 +767,72 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
       )}
       {item.kind !== 'markdown' && item.kind !== 'rag' && (
         <div className="shrink-0 border-b border-[var(--gt-border)] p-3">
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <input
-            value={item.url || ''}
-            onChange={(e) => updateItem({ url: e.target.value })}
-            onBlur={() => item.url && enrichItem(item)}
-            placeholder="https://..."
-            className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-          <input
-            value={item.path || ''}
-            onChange={(e) => updateItem({ path: e.target.value })}
-            placeholder="/local/path.ext"
-            className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-          <button
-            onClick={() => enrichItem(item)}
-            disabled={!item.url || previewBusy}
-            className="inline-flex h-[33px] items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
-          >
-            <Sparkles size={12} strokeWidth={2} className={previewBusy ? 'animate-pulse' : ''} />
-            Preview
-          </button>
-        </div>
-        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-          <input
-            value={item.thumbnailUrl || ''}
-            onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
-            placeholder="thumbnail URL"
-            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-          <input
-            value={item.siteName || ''}
-            onChange={(e) => updateItem({ siteName: e.target.value })}
-            placeholder="site name"
-            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-          <input
-            value={item.faviconUrl || ''}
-            onChange={(e) => updateItem({ faviconUrl: e.target.value })}
-            placeholder="favicon URL"
-            className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
-          />
-        </div>
-        {previewErr && <div className="mt-1 text-[10.5px] text-amber-400">{previewErr}</div>}
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <input
+              value={item.url || ''}
+              onChange={(e) => updateItem({ url: e.target.value })}
+              onBlur={() => item.url && enrichItem(item)}
+              placeholder="https://..."
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={item.path || ''}
+              onChange={(e) => updateItem({ path: e.target.value })}
+              placeholder="/local/path.ext"
+              className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <button
+              onClick={() => enrichItem(item)}
+              disabled={!item.url || previewBusy}
+              className="inline-flex h-[33px] items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[11.5px] text-zinc-300 hover:border-[var(--gt-accent)]/60 disabled:opacity-40"
+            >
+              <Sparkles size={12} strokeWidth={2} className={previewBusy ? 'animate-pulse' : ''} />
+              Preview
+            </button>
+          </div>
+          <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+            <input
+              value={item.thumbnailUrl || ''}
+              onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
+              placeholder="thumbnail URL"
+              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={item.siteName || ''}
+              onChange={(e) => updateItem({ siteName: e.target.value })}
+              placeholder="site name"
+              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+            <input
+              value={item.faviconUrl || ''}
+              onChange={(e) => updateItem({ faviconUrl: e.target.value })}
+              placeholder="favicon URL"
+              className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
+            />
+          </div>
+          {previewErr && <div className="mt-1 text-[10.5px] text-amber-400">{previewErr}</div>}
         </div>
       )}
       <div className="min-h-0 flex-1">
         {item.kind === 'markdown' ? (
           previewMode === 'edit' ? (
-            <CodeEditor value={item.content || ''} onChange={(value) => updateItem({ content: value })} extensions={[langs.markdown()]} wrap />
+            <CodeEditor
+              value={item.content || ''}
+              onChange={(value) => updateItem({ content: value })}
+              extensions={[langs.markdown()]}
+              wrap
+            />
           ) : previewMode === 'preview' ? (
             <div className="h-full overflow-y-auto p-5">{itemPreview(item)}</div>
           ) : (
             <div className="flex h-full min-h-0">
               <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-                <CodeEditor value={item.content || ''} onChange={(value) => updateItem({ content: value })} extensions={[langs.markdown()]} wrap />
+                <CodeEditor
+                  value={item.content || ''}
+                  onChange={(value) => updateItem({ content: value })}
+                  extensions={[langs.markdown()]}
+                  wrap
+                />
               </div>
               <div className="min-h-0 w-1/2 overflow-y-auto p-5">{itemPreview(item)}</div>
             </div>
@@ -721,18 +846,23 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     </div>
   )
 
-  const scratchBody = previewMode === 'edit' ? (
-    <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
-  ) : previewMode === 'preview' ? (
-    <div className="h-full overflow-y-auto p-5"><Markdown>{scratch}</Markdown></div>
-  ) : (
-    <div className="flex h-full min-h-0">
-      <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-        <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+  const scratchBody =
+    previewMode === 'edit' ? (
+      <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+    ) : previewMode === 'preview' ? (
+      <div className="h-full overflow-y-auto p-5">
+        <Markdown>{scratch}</Markdown>
       </div>
-      <div className="min-h-0 w-1/2 overflow-y-auto p-5"><Markdown>{scratch}</Markdown></div>
-    </div>
-  )
+    ) : (
+      <div className="flex h-full min-h-0">
+        <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
+          <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+        </div>
+        <div className="min-h-0 w-1/2 overflow-y-auto p-5">
+          <Markdown>{scratch}</Markdown>
+        </div>
+      </div>
+    )
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
@@ -741,7 +871,9 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
           <BookOpen size={15} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <div>
             <div className="text-[12px] font-semibold text-zinc-100">Knowledge Base</div>
-            <div className="text-[10.5px] text-zinc-600">{kb.items.length} items · {kb.categories.length} categories</div>
+            <div className="text-[10.5px] text-zinc-600">
+              {kb.items.length} items · {kb.categories.length} categories
+            </div>
           </div>
         </div>
         <div className="ml-2 flex rounded-lg border border-[var(--gt-border)] p-0.5">
@@ -775,8 +907,16 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             />
           </div>
         </div>
-        <span className={`text-[10.5px] ${view === 'scratch' ? (scratchSaved ? 'text-zinc-600' : 'text-amber-400') : (saved ? 'text-zinc-600' : 'text-amber-400')}`}>
-          {view === 'scratch' ? (scratchSaved ? 'saved' : 'saving...') : (saved ? 'saved' : 'saving...')}
+        <span
+          className={`text-[10.5px] ${view === 'scratch' ? (scratchSaved ? 'text-zinc-600' : 'text-amber-400') : saved ? 'text-zinc-600' : 'text-amber-400'}`}
+        >
+          {view === 'scratch'
+            ? scratchSaved
+              ? 'saved'
+              : 'saving...'
+            : saved
+              ? 'saved'
+              : 'saving...'}
         </span>
         <div className="flex rounded-lg border border-[var(--gt-border)] p-0.5">
           {modeButton('edit', 'Edit')}
@@ -791,7 +931,9 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
         <div className="flex min-h-0 flex-1">
           <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/30">
             <div className="border-b border-[var(--gt-border)] p-2">
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">Categories</div>
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
+                Categories
+              </div>
               <div className="flex gap-1">
                 <input
                   value={newCategory}
@@ -802,7 +944,10 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   placeholder="new category"
                   className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
                 />
-                <button onClick={addCategory} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100">
+                <button
+                  onClick={addCategory}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                >
                   <Plus size={13} strokeWidth={2.5} />
                 </button>
               </div>
@@ -818,10 +963,18 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                       : 'border-transparent text-zinc-400 hover:border-[var(--gt-border)] hover:bg-white/5 hover:text-zinc-200'
                   }`}
                 >
-                  <BookOpen size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+                  <BookOpen
+                    size={13}
+                    strokeWidth={2}
+                    className="shrink-0 text-[var(--gt-accent-light)]"
+                  />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-semibold">{category.title}</span>
-                    <span className="text-[10px] text-zinc-600">{counts.get(category.id) || 0} items</span>
+                    <span className="block truncate text-[12px] font-semibold">
+                      {category.title}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">
+                      {counts.get(category.id) || 0} items
+                    </span>
                   </span>
                   <span
                     onClick={(e) => {
@@ -841,8 +994,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <div className="border-b border-[var(--gt-border)] p-2">
               <div className="mb-2 flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12px] font-semibold text-zinc-100">{activeCategory?.title || 'Category'}</div>
-                  <div className="truncate text-[10.5px] text-zinc-600">{activeCategory?.description || 'Typed references and media.'}</div>
+                  <div className="truncate text-[12px] font-semibold text-zinc-100">
+                    {activeCategory?.title || 'Category'}
+                  </div>
+                  <div className="truncate text-[10.5px] text-zinc-600">
+                    {activeCategory?.description || 'Typed references and media.'}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-1">
@@ -857,7 +1014,10 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                     </option>
                   ))}
                 </select>
-                <button onClick={addItem} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60">
+                <button
+                  onClick={addItem}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
+                >
                   <Plus size={12} strokeWidth={2.5} />
                   Add
                 </button>
@@ -882,18 +1042,34 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                     >
                       {visualFor(item) && (
                         <div className="aspect-[16/6] bg-black/30">
-                          <img src={visualFor(item)} alt="" className="h-full w-full object-cover" />
+                          <img
+                            src={visualFor(item)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
                         </div>
                       )}
                       <span className="flex items-start gap-2 p-2">
-                        <Icon size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
+                        <Icon
+                          size={14}
+                          strokeWidth={2}
+                          className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]"
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="flex min-w-0 items-center gap-1.5">
-                            {item.faviconUrl ? <img src={item.faviconUrl} alt="" className="h-3.5 w-3.5 rounded-sm" /> : null}
-                            <span className="block truncate text-[12px] font-semibold text-zinc-200">{item.title}</span>
+                            {item.faviconUrl ? (
+                              <img
+                                src={item.faviconUrl}
+                                alt=""
+                                className="h-3.5 w-3.5 rounded-sm"
+                              />
+                            ) : null}
+                            <span className="block truncate text-[12px] font-semibold text-zinc-200">
+                              {item.title}
+                            </span>
                           </span>
                           <span className="line-clamp-2 text-[10.5px] leading-snug text-zinc-600">
-                          {item.description || sourceOf(item) || meta.hint}
+                            {item.description || sourceOf(item) || meta.hint}
                           </span>
                         </span>
                       </span>
@@ -908,9 +1084,13 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             {activeItem ? (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
-                  <span className="truncate text-[11px] text-zinc-500">{kindMeta[activeItem.kind].label}</span>
+                  <span className="truncate text-[11px] text-zinc-500">
+                    {kindMeta[activeItem.kind].label}
+                  </span>
                   <span className="text-zinc-700">/</span>
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-300">{activeItem.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-300">
+                    {activeItem.title}
+                  </span>
                   <button
                     onClick={() => deleteItem(activeItem.id)}
                     className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
@@ -924,10 +1104,17 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             ) : (
               <div className="flex h-full items-center justify-center p-6 text-center">
                 <div className="max-w-md">
-                  <BookOpen size={28} strokeWidth={1.8} className="mx-auto mb-3 text-[var(--gt-accent-light)]" />
-                  <div className="text-sm font-semibold text-zinc-200">Build a local knowledge base</div>
+                  <BookOpen
+                    size={28}
+                    strokeWidth={1.8}
+                    className="mx-auto mb-3 text-[var(--gt-accent-light)]"
+                  />
+                  <div className="text-sm font-semibold text-zinc-200">
+                    Build a local knowledge base
+                  </div>
                   <div className="mt-1 text-[12px] leading-relaxed text-zinc-600">
-                    Add markdown snippets, links, images, videos, or files. Categories are dynamic and scoped to this repo or globally.
+                    Add markdown snippets, links, images, videos, or files. Categories are dynamic
+                    and scoped to this repo or globally.
                   </div>
                 </div>
               </div>

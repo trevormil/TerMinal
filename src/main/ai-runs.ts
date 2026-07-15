@@ -65,7 +65,9 @@ export function writeAIRun(run: AIRun): void {
 
 /** Create + persist a new AIRun. Cost is computed from model + tokens if not
  *  supplied. Returns the persisted record. */
-export function recordAIRun(input: Omit<AIRun, 'id' | 'costUsd'> & Partial<Pick<AIRun, 'id' | 'costUsd'>>): AIRun {
+export function recordAIRun(
+  input: Omit<AIRun, 'id' | 'costUsd'> & Partial<Pick<AIRun, 'id' | 'costUsd'>>,
+): AIRun {
   const id = input.id || randomUUID()
   const costUsd =
     input.costUsd ??
@@ -167,7 +169,13 @@ export type Range = 'today' | 'week' | 'month' | 'all'
 export function summaryFor(range: Range): SpendSummary {
   const runs = listAIRuns(2000)
   const from =
-    range === 'today' ? todayStart() : range === 'week' ? weekAgo() : range === 'month' ? monthAgo() : 0
+    range === 'today'
+      ? todayStart()
+      : range === 'week'
+        ? weekAgo()
+        : range === 'month'
+          ? monthAgo()
+          : 0
   return summarize(runs, from)
 }
 
@@ -182,7 +190,13 @@ export type AgentROI = {
 export function agentROI(range: Range): AgentROI[] {
   const runs = listAIRuns(5000)
   const from =
-    range === 'today' ? todayStart() : range === 'week' ? weekAgo() : range === 'month' ? monthAgo() : 0
+    range === 'today'
+      ? todayStart()
+      : range === 'week'
+        ? weekAgo()
+        : range === 'month'
+          ? monthAgo()
+          : 0
   const map = new Map<string, AgentROI>()
   for (const r of runs) {
     if (r.startedAt < from) continue
@@ -205,7 +219,12 @@ export function agentROI(range: Range): AgentROI[] {
 }
 
 /** Per-day cost rollup for charting (last N days). Newest day first. */
-export type DailyPoint = { date: string; usd: number; runs: number; byModel: Record<string, number> }
+export type DailyPoint = {
+  date: string
+  usd: number
+  runs: number
+  byModel: Record<string, number>
+}
 
 export function dailySpend(days = 7): DailyPoint[] {
   const runs = listAIRuns(5000)
@@ -221,7 +240,12 @@ export function dailySpend(days = 7): DailyPoint[] {
       usd += r.costUsd
       byModel[r.model] = (byModel[r.model] || 0) + r.costUsd
     }
-    out.push({ date: new Date(start).toISOString().slice(0, 10), usd, runs: dayRuns.length, byModel })
+    out.push({
+      date: new Date(start).toISOString().slice(0, 10),
+      usd,
+      runs: dayRuns.length,
+      byModel,
+    })
   }
   return out
 }

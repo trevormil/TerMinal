@@ -39,8 +39,12 @@ console.log(JSON.stringify(readAgentRunContexts(repo)));`,
       )
       expect(contexts.some((c: { id: string }) => c.id === 'agent:custom-agent')).toBe(true)
       expect(contexts.some((c: { id: string }) => c.id === 'persistent:memory-agent')).toBe(true)
-      expect(contexts.find((c: { id: string }) => c.id === 'agent:custom-agent')?.prompt).toContain('Custom guidance.')
-      expect(contexts.find((c: { id: string }) => c.id === 'persistent:memory-agent')?.prompt).toContain('Persistent agent memory home')
+      expect(contexts.find((c: { id: string }) => c.id === 'agent:custom-agent')?.prompt).toContain(
+        'Custom guidance.',
+      )
+      expect(
+        contexts.find((c: { id: string }) => c.id === 'persistent:memory-agent')?.prompt,
+      ).toContain('Persistent agent memory home')
     } finally {
       rmSync(home, { recursive: true, force: true })
     }
@@ -84,11 +88,19 @@ const { listAgentDefinitions } = await import('./src/main/agents.ts');
 console.log(JSON.stringify(listAgentDefinitions(repo)));`,
       )
       const classic = definitions.find((d: { ref: { id: string } }) => d.ref.id === 'quality-agent')
-      const codeReview = definitions.find((d: { ref: { id: string } }) => d.ref.id === 'code-review')
-      const implementer = definitions.find((d: { ref: { id: string } }) => d.ref.id === '1000x-ai-engineer')
-      const persistent = definitions.find((d: { ref: { id: string } }) => d.ref.id === 'memory-agent')
+      const codeReview = definitions.find(
+        (d: { ref: { id: string } }) => d.ref.id === 'code-review',
+      )
+      const implementer = definitions.find(
+        (d: { ref: { id: string } }) => d.ref.id === '1000x-ai-engineer',
+      )
+      const persistent = definitions.find(
+        (d: { ref: { id: string } }) => d.ref.id === 'memory-agent',
+      )
       expect(codeReview.kind).toBe('classic')
-      expect(codeReview.quality.acceptanceCriteria.join('\n')).toContain('Run the detected test suite')
+      expect(codeReview.quality.acceptanceCriteria.join('\n')).toContain(
+        'Run the detected test suite',
+      )
       expect(implementer.kind).toBe('classic')
       expect(implementer.runtime.engine).toBe('codex')
       expect(implementer.quality.judge.enabled).toBe(true)

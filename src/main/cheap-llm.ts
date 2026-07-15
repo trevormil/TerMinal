@@ -72,7 +72,12 @@ function callClaudeP(
     execFile(
       bin,
       args,
-      { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, cwd: cwd && existsSync(cwd) ? cwd : undefined },
+      {
+        timeout: timeoutMs,
+        encoding: 'utf8',
+        maxBuffer: 4 * 1024 * 1024,
+        cwd: cwd && existsSync(cwd) ? cwd : undefined,
+      },
       (err, stdout, stderr) => {
         if (err) {
           // Distinguish "claude not installed" from "claude ran but errored"
@@ -100,7 +105,10 @@ function callStandaloneEngine(
   cwd?: string,
 ): Promise<{ ok: boolean; text?: string; error?: string; route: CheapResponse['route'] }> {
   if (engine === 'claude') {
-    return callClaudeP(prompt, model, timeoutMs, cwd).then((r) => ({ ...r, route: 'claude-p' as const }))
+    return callClaudeP(prompt, model, timeoutMs, cwd).then((r) => ({
+      ...r,
+      route: 'claude-p' as const,
+    }))
   }
 
   const runCwd = cwd && existsSync(cwd) ? cwd : undefined
@@ -172,12 +180,7 @@ export async function cheapCall(opts: {
   }
 
   if (wantClaude) {
-    const cp = await callClaudeP(
-      prompt,
-      anthroModel || 'haiku',
-      timeoutMs,
-      opts.cwd,
-    )
+    const cp = await callClaudeP(prompt, anthroModel || 'haiku', timeoutMs, opts.cwd)
     if (cp.ok) {
       return { ok: true, text: cp.text, model: anthroModel || 'haiku', route: 'claude-p' }
     }

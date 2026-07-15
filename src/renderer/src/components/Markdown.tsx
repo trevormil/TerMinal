@@ -5,10 +5,14 @@ import hljs from 'highlight.js/lib/common'
 function highlighted(code: string, className?: string): string {
   const lang = className?.replace(/^language-/, '')
   try {
-    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    if (lang && hljs.getLanguage(lang))
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
     return hljs.highlightAuto(code).value
   } catch {
-    return code.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] || ch)
+    return code.replace(
+      /[&<>"']/g,
+      (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] || ch,
+    )
   }
 }
 
@@ -99,7 +103,13 @@ export function Markdown({ children }: { children: string }) {
           input: (props) => {
             // GFM task-list checkboxes
             if ((props as { type?: string }).type === 'checkbox') {
-              return <input {...props} disabled className="mr-1 align-middle accent-[var(--gt-accent)]" />
+              return (
+                <input
+                  {...props}
+                  disabled
+                  className="mr-1 align-middle accent-[var(--gt-accent)]"
+                />
+              )
             }
             return <input {...props} />
           },

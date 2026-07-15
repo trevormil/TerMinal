@@ -7,7 +7,12 @@ import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
 import { hitlRecurrenceKey } from './hitl-recurrence'
-import { hitlActivityKind, hitlNotifyKind, hitlTelegramKeyboard, hitlTelegramText } from './hitl-telegram'
+import {
+  hitlActivityKind,
+  hitlNotifyKind,
+  hitlTelegramKeyboard,
+  hitlTelegramText,
+} from './hitl-telegram'
 
 // GLOBAL human-in-the-loop inbox — one cross-repo queue of TRUE human-needs
 // (decisions, destructive/cost approvals, creds, a failed cron job, anything an
@@ -111,7 +116,9 @@ function alwaysPingTelegram(item: HitlItem): void {
       return
     }
     if (!existsSync(LEGACY_TG_SCRIPT)) return
-    const child = spawn(LEGACY_TG_SCRIPT, [`--kind=${hitlNotifyKind(item.source)}`, msg], { stdio: 'ignore' })
+    const child = spawn(LEGACY_TG_SCRIPT, [`--kind=${hitlNotifyKind(item.source)}`, msg], {
+      stdio: 'ignore',
+    })
     child.on('error', () => {})
     child.unref()
   } catch {
@@ -129,10 +136,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   const fp = hitlRecurrenceKey(input)
   const since = Date.now() - DEDUP_WINDOW_MS
   const dupIndex = existing.findIndex(
-    (h) =>
-      h.status === 'open' &&
-      h.createdAt >= since &&
-      hitlRecurrenceKey(h) === fp,
+    (h) => h.status === 'open' && h.createdAt >= since && hitlRecurrenceKey(h) === fp,
   )
   if (dupIndex >= 0) {
     const dup = {
@@ -160,7 +164,13 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     )
     return dup
   }
-  const item: HitlItem = { ...input, id: randomUUID(), status: 'open', createdAt: Date.now(), occurrenceCount: 1 }
+  const item: HitlItem = {
+    ...input,
+    id: randomUUID(),
+    status: 'open',
+    createdAt: Date.now(),
+    occurrenceCount: 1,
+  }
   write([item, ...readHitl()])
   emitActivity(
     {
@@ -190,7 +200,11 @@ export function resolveHitl(id: string, resolved = true): boolean {
   const i = list.findIndex((h) => h.id === id)
   if (i < 0) return false
   const item = list[i]
-  list[i] = { ...item, status: resolved ? 'resolved' : 'open', resolvedAt: resolved ? Date.now() : undefined }
+  list[i] = {
+    ...item,
+    status: resolved ? 'resolved' : 'open',
+    resolvedAt: resolved ? Date.now() : undefined,
+  }
   write(list)
   emitActivity(
     {

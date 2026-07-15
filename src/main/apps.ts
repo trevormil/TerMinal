@@ -6,8 +6,22 @@ import { homedir } from 'node:os'
 // order. Detected by .app bundle name so `open -a <name>` works without a CLI.
 // Lives in its own module (no deps on settings) so both env.ts and settings.ts
 // can use it without a circular import.
-export const EDITOR_APPS = ['Cursor', 'Visual Studio Code', 'VSCodium', 'Zed', 'Windsurf', 'Sublime Text']
-export const BROWSER_APPS = ['Brave Browser', 'Arc', 'Google Chrome', 'Firefox', 'Microsoft Edge', 'Safari']
+export const EDITOR_APPS = [
+  'Cursor',
+  'Visual Studio Code',
+  'VSCodium',
+  'Zed',
+  'Windsurf',
+  'Sublime Text',
+]
+export const BROWSER_APPS = [
+  'Brave Browser',
+  'Arc',
+  'Google Chrome',
+  'Firefox',
+  'Microsoft Edge',
+  'Safari',
+]
 
 export function appInstalled(name: string): boolean {
   return (

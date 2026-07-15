@@ -6,7 +6,13 @@ import type { ListenerStatus, TabContext } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 
 const inboxTone = (s: string): BadgeTone =>
-  s === 'done' ? 'green' : s === 'failed' || s === 'dead-letter' ? 'red' : s === 'new' ? 'blue' : 'mute'
+  s === 'done'
+    ? 'green'
+    : s === 'failed' || s === 'dead-letter'
+      ? 'red'
+      : s === 'new'
+        ? 'blue'
+        : 'mute'
 
 function fmtWhen(ts?: number | null): string {
   if (!ts) return '-'
@@ -41,7 +47,8 @@ function AutomationInfoBox() {
       </div>
       <div className="mt-1 leading-snug">
         TerMinal watches by default and shows every request, outcome, and run log here. Use{' '}
-        <span className="font-mono text-zinc-300">/new-inbox-source</span> only for durable adapters.
+        <span className="font-mono text-zinc-300">/new-inbox-source</span> only for durable
+        adapters.
       </div>
     </div>
   )
@@ -79,7 +86,10 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
     [recent],
   )
   const categoryOptions = useMemo(
-    () => [...new Set(recent.map((r) => r.action || r.type || 'event'))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set(recent.map((r) => r.action || r.type || 'event'))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
     [recent],
   )
   const statusOptions = useMemo(
@@ -89,14 +99,29 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
   const shownRecent = useMemo(() => {
     const q = search.trim().toLowerCase()
     return recent
-      .filter((r) => !listenerFilter || (r.listenerId || `${r.source || 'unknown'}:${r.type || 'event'}`) === listenerFilter)
+      .filter(
+        (r) =>
+          !listenerFilter ||
+          (r.listenerId || `${r.source || 'unknown'}:${r.type || 'event'}`) === listenerFilter,
+      )
       .filter((r) => !sourceFilter || (r.source || 'unknown') === sourceFilter)
       .filter((r) => !categoryFilter || (r.action || r.type || 'event') === categoryFilter)
       .filter((r) => !statusFilter || r.dir === statusFilter)
       .filter((r) => !runsOnly || Boolean(r.runId))
       .filter((r) => {
         if (!q) return true
-        return [r.title, r.listenerName, r.listenerId, r.source, r.type, r.action, r.result, r.error, r.repoRoot, r.file]
+        return [
+          r.title,
+          r.listenerName,
+          r.listenerId,
+          r.source,
+          r.type,
+          r.action,
+          r.result,
+          r.error,
+          r.repoRoot,
+          r.file,
+        ]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q))
       })
@@ -107,7 +132,9 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
           return bySource || (b.processedAt || 0) - (a.processedAt || 0)
         }
         if (sortBy === 'category') {
-          const byCategory = (a.action || a.type || 'event').localeCompare(b.action || b.type || 'event')
+          const byCategory = (a.action || a.type || 'event').localeCompare(
+            b.action || b.type || 'event',
+          )
           return byCategory || (b.processedAt || 0) - (a.processedAt || 0)
         }
         return (b.processedAt || 0) - (a.processedAt || 0)
@@ -127,8 +154,12 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
             <div className="flex items-center gap-2">
               <Inbox size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
               <span className="text-[12px] font-semibold text-zinc-200">Automation Inbox</span>
-              <span className="text-[10.5px] text-zinc-600">{status ? `${shownRecent.length} / ${recent.length}` : '...'}</span>
-              <Badge tone={status?.enabled ? 'green' : 'mute'}>{status?.enabled ? 'watching' : 'paused'}</Badge>
+              <span className="text-[10.5px] text-zinc-600">
+                {status ? `${shownRecent.length} / ${recent.length}` : '...'}
+              </span>
+              <Badge tone={status?.enabled ? 'green' : 'mute'}>
+                {status?.enabled ? 'watching' : 'paused'}
+              </Badge>
               {counts && (
                 <span className="inline-flex items-center gap-1.5 text-[10.5px]">
                   {counts.new > 0 && <Badge tone="blue">{counts.new} new</Badge>}
@@ -149,7 +180,11 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                 className="rounded-md p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
                 title={status?.enabled ? 'Pause automation inbox' : 'Enable automation inbox'}
               >
-                {status?.enabled ? <Pause size={11} strokeWidth={2.5} /> : <Play size={11} strokeWidth={2.5} />}
+                {status?.enabled ? (
+                  <Pause size={11} strokeWidth={2.5} />
+                ) : (
+                  <Play size={11} strokeWidth={2.5} />
+                )}
               </button>
               <button
                 onClick={async () => {
@@ -172,7 +207,11 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <div className="relative min-w-[150px] flex-1">
-                <Search size={11} strokeWidth={2} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
+                <Search
+                  size={11}
+                  strokeWidth={2}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600"
+                />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -256,10 +295,13 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
               <div className="p-4 text-[12px] text-zinc-600">Loading automation inbox...</div>
             ) : status.recent.length === 0 ? (
               <div className="p-4 text-[12px] text-zinc-600">
-                No automation requests yet. Use /enqueue-request for one-off requests or /new-inbox-source for setup.
+                No automation requests yet. Use /enqueue-request for one-off requests or
+                /new-inbox-source for setup.
               </div>
             ) : shownRecent.length === 0 ? (
-              <div className="p-4 text-[12px] text-zinc-600">No automation requests match these filters.</div>
+              <div className="p-4 text-[12px] text-zinc-600">
+                No automation requests match these filters.
+              </div>
             ) : (
               shownRecent.map((r) => {
                 const selectedHere = rowKey(r) === sel
@@ -275,10 +317,16 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                     <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
                       {r.title || r.listenerName || r.type || r.file}
                     </span>
-                    <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">{r.listenerId || r.source || 'unknown'}</span>
-                    {r.action && <span className="shrink-0 text-[10px] text-zinc-600">{r.action}</span>}
+                    <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">
+                      {r.listenerId || r.source || 'unknown'}
+                    </span>
+                    {r.action && (
+                      <span className="shrink-0 text-[10px] text-zinc-600">{r.action}</span>
+                    )}
                     {r.runId && <Badge tone="blue">run</Badge>}
-                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">{reltime(r.processedAt)}</span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                      {reltime(r.processedAt)}
+                    </span>
                   </button>
                 )
               })
@@ -298,8 +346,12 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                 <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-zinc-100">
                   {selected.title || selected.listenerName || selected.type || selected.file}
                 </span>
-                <span className="font-mono text-[10.5px] text-zinc-600">{selected.source || 'unknown'}</span>
-                {selected.action && <span className="text-[10.5px] text-zinc-500">{selected.action}</span>}
+                <span className="font-mono text-[10.5px] text-zinc-600">
+                  {selected.source || 'unknown'}
+                </span>
+                {selected.action && (
+                  <span className="text-[10.5px] text-zinc-500">{selected.action}</span>
+                )}
                 <button
                   onClick={() => setSel(null)}
                   title="Close detail"
@@ -311,16 +363,26 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
               <div className="min-h-0 flex-1 overflow-auto p-5">
                 <div className="grid gap-2 text-[11.5px] md:grid-cols-2">
                   <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Source</div>
-                    <div className="truncate text-zinc-200">{selected.listenerName || selected.listenerId || selected.source || 'unknown'}</div>
-                    <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">{selected.type || selected.file}</div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">
+                      Source
+                    </div>
+                    <div className="truncate text-zinc-200">
+                      {selected.listenerName || selected.listenerId || selected.source || 'unknown'}
+                    </div>
+                    <div className="mt-1 truncate font-mono text-[10.5px] text-zinc-600">
+                      {selected.type || selected.file}
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Outcome</div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">
+                      Outcome
+                    </div>
                     <div className={selected.error ? 'text-[var(--gt-red)]' : 'text-zinc-200'}>
                       {selected.result || selected.error || 'pending'}
                     </div>
-                    <div className="mt-1 text-[10.5px] text-zinc-600">{fmtWhen(selected.processedAt)}</div>
+                    <div className="mt-1 text-[10.5px] text-zinc-600">
+                      {fmtWhen(selected.processedAt)}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11.5px]">
@@ -344,11 +406,19 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                 {selected.runId && selected.runSource && (
                   <div className="mt-3 h-[min(46vh,420px)] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-black/20">
                     <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/50 px-3 py-2">
-                      <ListChecks size={12} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
+                      <ListChecks
+                        size={12}
+                        strokeWidth={2}
+                        className="text-[var(--gt-accent-light)]"
+                      />
                       <span className="text-[11.5px] font-semibold text-zinc-200">Run log</span>
                       <span className="font-mono text-[10px] text-zinc-600">{selected.runId}</span>
                     </div>
-                    <RunLogPane source={selected.runSource} runId={selected.runId} className="h-[calc(100%-34px)]" />
+                    <RunLogPane
+                      source={selected.runSource}
+                      runId={selected.runId}
+                      className="h-[calc(100%-34px)]"
+                    />
                   </div>
                 )}
               </div>

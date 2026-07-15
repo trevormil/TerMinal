@@ -43,7 +43,10 @@ function gitIgnored(root: string, relPaths: string[]): Set<string> {
   const parse = (out: unknown) =>
     new Set(
       typeof out === 'string'
-        ? out.split('\n').map((s) => s.trim()).filter(Boolean)
+        ? out
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [],
     )
   try {
@@ -79,7 +82,10 @@ export function listDir(root: string, rel: string): Entry[] {
     }
     out.push({ name: n, path: rel ? join(rel, n) : n, dir })
   }
-  const ignored = gitIgnored(root, out.map((e) => e.path))
+  const ignored = gitIgnored(
+    root,
+    out.map((e) => e.path),
+  )
   for (const e of out) if (ignored.has(e.path)) e.ignored = true
   return out.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1))
 }
@@ -171,7 +177,21 @@ export function searchRepo(root: string, query: string): Promise<SearchHit[]> {
     // common term can't flood the buffer. Falls back to plain grep outside a repo.
     execFile(
       'git',
-      ['-C', root, 'grep', '-n', '-I', '--no-color', '--untracked', '-F', '-i', '-m', '30', '-e', q],
+      [
+        '-C',
+        root,
+        'grep',
+        '-n',
+        '-I',
+        '--no-color',
+        '--untracked',
+        '-F',
+        '-i',
+        '-m',
+        '30',
+        '-e',
+        q,
+      ],
       { timeout: 8_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
       (gerr, gout) => {
         if (gout) return res(parse(gout))
@@ -180,7 +200,17 @@ export function searchRepo(root: string, query: string): Promise<SearchHit[]> {
         if (gerr && (gerr as { code?: number }).code !== 1) {
           execFile(
             'grep',
-            ['-rnI', '-F', '-i', '-m', '30', '--exclude-dir=.git', '--exclude-dir=node_modules', q, root],
+            [
+              '-rnI',
+              '-F',
+              '-i',
+              '-m',
+              '30',
+              '--exclude-dir=.git',
+              '--exclude-dir=node_modules',
+              q,
+              root,
+            ],
             { timeout: 8_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
             (_e, out) => res(out ? parse(out.replaceAll(root + sep, '')) : []),
           )

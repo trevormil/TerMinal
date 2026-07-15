@@ -98,7 +98,11 @@ export type RenderOpts = {
 // Render the .service + .timer pair for a schedule. Pure: all host-specific
 // values (bun path, runner path, HOME/PATH env) are injected by the caller so
 // this stays deterministic and testable.
-export function renderUnits(id: string, spec: ScheduleSpec, opts: RenderOpts): { service: string; timer: string } {
+export function renderUnits(
+  id: string,
+  spec: ScheduleSpec,
+  opts: RenderOpts,
+): { service: string; timer: string } {
   const desc = opts.description || `TerMinal scheduled agent ${id}`
   const envLines = Object.entries(opts.env || {})
     .map(([k, v]) => `Environment=${k}=${v}`)
@@ -106,7 +110,9 @@ export function renderUnits(id: string, spec: ScheduleSpec, opts: RenderOpts): {
   // Type=oneshot: the runner does one bounded run then exits; the timer, not
   // systemd restart logic, controls cadence. runtime:container → the run executes
   // in a Docker image (same runner inside); bare → the runner directly on the host.
-  const execStart = opts.container ? containerExecStart(id, opts.container) : `${opts.bun} ${opts.runner} run ${id}`
+  const execStart = opts.container
+    ? containerExecStart(id, opts.container)
+    : `${opts.bun} ${opts.runner} run ${id}`
   const service =
     `[Unit]\n` +
     `Description=${desc}\n\n` +
@@ -199,10 +205,14 @@ const DEFAULT_RUNNER = '%h/.config/TerMinal/bin/terminal-cron'
 const DEFAULT_BUN = '%h/.bun/bin/bun'
 // A sane PATH for the fired timer — --user services otherwise get a minimal PATH
 // and can't find bun/claude/codex/gh/glab. Provisioning (#12) can override.
-const DEFAULT_PATH = '%h/.local/bin:%h/.bun/bin:%h/.npm-global/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin'
+const DEFAULT_PATH =
+  '%h/.local/bin:%h/.bun/bin:%h/.npm-global/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin'
 const DEFAULT_IMAGE = 'terminal-agent:latest'
 
-function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; stdout: string; error?: string }> {
+function sshExec(
+  sshTarget: string,
+  remoteCmd: string,
+): Promise<{ ok: boolean; stdout: string; error?: string }> {
   return new Promise((resolve) => {
     if (!isSafeSshTarget(sshTarget)) {
       resolve({ ok: false, stdout: '', error: 'unsafe ssh target' })
@@ -213,7 +223,12 @@ function sshExec(sshTarget: string, remoteCmd: string): Promise<{ ok: boolean; s
       ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', sshTarget, remoteCmd],
       { encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        if (err) resolve({ ok: false, stdout: stdout || '', error: (stderr || err.message || 'ssh error').trim() })
+        if (err)
+          resolve({
+            ok: false,
+            stdout: stdout || '',
+            error: (stderr || err.message || 'ssh error').trim(),
+          })
         else resolve({ ok: true, stdout: stdout || '' })
       },
     )
@@ -271,7 +286,8 @@ export async function reconcileSchedulesOnHost(
   const byId = new Map(schedules.map((s) => [s.id, s]))
 
   const listed = await sshExec(host.sshTarget, listUnitsCmd())
-  if (!listed.ok) return { loaded, removed, failed: [{ id: '*', error: listed.error || 'ssh list failed' }] }
+  if (!listed.ok)
+    return { loaded, removed, failed: [{ id: '*', error: listed.error || 'ssh list failed' }] }
 
   for (const id of parseInstalledUnits(listed.stdout)) {
     const s = byId.get(id)

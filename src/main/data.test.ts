@@ -64,7 +64,10 @@ describe('parseCursorSessionFile', () => {
             ],
           },
         }),
-        JSON.stringify({ role: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } }),
+        JSON.stringify({
+          role: 'assistant',
+          message: { content: [{ type: 'text', text: 'done' }] },
+        }),
       ].join('\n'),
     )
 
@@ -106,7 +109,11 @@ describe('parseTranscriptFile', () => {
               output_tokens: 50,
             },
             content: [
-              { type: 'tool_use', name: 'Read', input: { file_path: '/tmp/repo/src/main/data.ts' } },
+              {
+                type: 'tool_use',
+                name: 'Read',
+                input: { file_path: '/tmp/repo/src/main/data.ts' },
+              },
               { type: 'tool_use', name: 'Bash', input: { command: 'bun test' } },
               {
                 type: 'tool_use',
@@ -184,11 +191,21 @@ describe('parseTranscriptFile', () => {
           message: {
             id: 'msg-detail-1',
             role: 'assistant',
-            usage: { input_tokens: 10, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 },
+            usage: {
+              input_tokens: 10,
+              cache_creation_input_tokens: 2,
+              cache_read_input_tokens: 3,
+              output_tokens: 4,
+            },
             content: [
               { type: 'thinking', thinking: 'Need command' },
               { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'bun test' } },
-              { type: 'tool_use', id: 'task-1', name: 'Task', input: { subagent_type: 'qa', description: 'Inspect failures' } },
+              {
+                type: 'tool_use',
+                id: 'task-1',
+                name: 'Task',
+                input: { subagent_type: 'qa', description: 'Inspect failures' },
+              },
             ],
           },
         }),
@@ -197,7 +214,12 @@ describe('parseTranscriptFile', () => {
           message: {
             id: 'msg-detail-1',
             role: 'assistant',
-            usage: { input_tokens: 10, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 },
+            usage: {
+              input_tokens: 10,
+              cache_creation_input_tokens: 2,
+              cache_read_input_tokens: 3,
+              output_tokens: 4,
+            },
             content: [
               { type: 'text', text: 'running tests' },
               { type: 'tool_use', id: 'bash-1', name: 'Bash', input: { command: 'bun test' } },
@@ -215,13 +237,27 @@ describe('parseTranscriptFile', () => {
     )
 
     const detail = parseTranscriptDetailFile(file, 'session-1')
-    expect(detail.events).toContainEqual(expect.objectContaining({ kind: 'tool_call', toolName: 'Bash', commandPreview: 'bun test' }))
-    expect(detail.events).toContainEqual(expect.objectContaining({ kind: 'agent_launch', toolName: 'Task', agentRole: 'qa' }))
-    expect(detail.toolCalls).toContainEqual(expect.objectContaining({ callId: 'bash-1', status: 'ok', outputPreview: '3 pass' }))
+    expect(detail.events).toContainEqual(
+      expect.objectContaining({ kind: 'tool_call', toolName: 'Bash', commandPreview: 'bun test' }),
+    )
+    expect(detail.events).toContainEqual(
+      expect.objectContaining({ kind: 'agent_launch', toolName: 'Task', agentRole: 'qa' }),
+    )
+    expect(detail.toolCalls).toContainEqual(
+      expect.objectContaining({ callId: 'bash-1', status: 'ok', outputPreview: '3 pass' }),
+    )
     expect(detail.tokenSnapshots).toEqual([
-      expect.objectContaining({ input: 12, cachedInput: 3, output: 4, total: 19, cumulativeTotal: 19 }),
+      expect.objectContaining({
+        input: 12,
+        cachedInput: 3,
+        output: 4,
+        total: 19,
+        cumulativeTotal: 19,
+      }),
     ])
-    expect(detail.graph.nodes).toContainEqual(expect.objectContaining({ role: 'qa', status: 'open', taskPreview: 'Inspect failures' }))
+    expect(detail.graph.nodes).toContainEqual(
+      expect.objectContaining({ role: 'qa', status: 'open', taskPreview: 'Inspect failures' }),
+    )
   })
 })
 
@@ -232,7 +268,10 @@ describe('parseObservabilityIndexRecordsFile', () => {
     writeFileSync(
       file,
       [
-        JSON.stringify({ timestamp: '2026-06-01T10:00:00.000Z', message: { role: 'user', content: 'Run the tests' } }),
+        JSON.stringify({
+          timestamp: '2026-06-01T10:00:00.000Z',
+          message: { role: 'user', content: 'Run the tests' },
+        }),
         JSON.stringify({
           timestamp: '2026-06-01T10:00:01.000Z',
           message: {
@@ -240,18 +279,41 @@ describe('parseObservabilityIndexRecordsFile', () => {
             content: [
               { type: 'thinking', thinking: 'I should run bun test first' },
               { type: 'text', text: 'Running the suite now' },
-              { type: 'tool_use', id: 'bash-ok', name: 'Bash', input: { command: 'bun test', description: 'run suite' } },
-              { type: 'tool_use', id: 'edit-bad', name: 'Edit', input: { file_path: '/tmp/x.ts', old_string: 'a', new_string: 'b' } },
+              {
+                type: 'tool_use',
+                id: 'bash-ok',
+                name: 'Bash',
+                input: { command: 'bun test', description: 'run suite' },
+              },
+              {
+                type: 'tool_use',
+                id: 'edit-bad',
+                name: 'Edit',
+                input: { file_path: '/tmp/x.ts', old_string: 'a', new_string: 'b' },
+              },
             ],
           },
         }),
         JSON.stringify({
           timestamp: '2026-06-01T10:00:02.000Z',
-          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bash-ok', content: '3 pass 0 fail' }] },
+          message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'bash-ok', content: '3 pass 0 fail' }],
+          },
         }),
         JSON.stringify({
           timestamp: '2026-06-01T10:00:03.000Z',
-          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'edit-bad', is_error: true, content: 'String to replace not found' }] },
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'edit-bad',
+                is_error: true,
+                content: 'String to replace not found',
+              },
+            ],
+          },
         }),
       ].join('\n'),
     )
@@ -274,9 +336,20 @@ describe('parseObservabilityIndexRecordsFile', () => {
 
     // Full chronological stream with untruncated text, seq-ordered.
     const kinds = records.events.map((e) => e.kind)
-    expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message', 'tool_call', 'tool_call', 'tool_result', 'tool_result'])
+    expect(kinds).toEqual([
+      'user_message',
+      'reasoning',
+      'assistant_message',
+      'tool_call',
+      'tool_call',
+      'tool_result',
+      'tool_result',
+    ])
     expect(records.events[0]).toMatchObject({ seq: 0, role: 'user', text: 'Run the tests' })
-    expect(records.events[1]).toMatchObject({ kind: 'reasoning', text: 'I should run bun test first' })
+    expect(records.events[1]).toMatchObject({
+      kind: 'reasoning',
+      text: 'I should run bun test first',
+    })
     expect(records.events.every((e, i) => e.seq === i)).toBe(true)
   })
 })

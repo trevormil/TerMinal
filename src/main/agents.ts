@@ -18,7 +18,13 @@ import { inMemoryWorkingSet } from './run-retention'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
-import { enginePath, engineDefaultModel, readSettings, resolvedWorktreesDir, resolvedOpenRouterKey } from './settings'
+import {
+  enginePath,
+  engineDefaultModel,
+  readSettings,
+  resolvedWorktreesDir,
+  resolvedOpenRouterKey,
+} from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
@@ -212,8 +218,22 @@ export type AgentRun = {
 }
 
 export type RerunSpec =
-  | { kind: 'agent'; agentId: string; engine: Engine; personaId?: string; pipelineId?: string; model?: string }
-  | { kind: 'ticket'; slug: string; engine: Engine; personaId?: string; pipelineId?: string; model?: string }
+  | {
+      kind: 'agent'
+      agentId: string
+      engine: Engine
+      personaId?: string
+      pipelineId?: string
+      model?: string
+    }
+  | {
+      kind: 'ticket'
+      slug: string
+      engine: Engine
+      personaId?: string
+      pipelineId?: string
+      model?: string
+    }
   | {
       kind: 'pr'
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string }
@@ -225,8 +245,20 @@ export type RerunSpec =
     }
   | { kind: 'ticket-spawn'; text: string; engine: Engine; model?: string }
   | { kind: 'factory'; engine: Engine }
-  | { kind: 'agent-designer'; text: string; engine: Engine; scope: 'repo' | 'global'; model?: string }
-  | { kind: 'persistent-agent'; persistentAgentId: string; task: string; engine: Engine; model?: string }
+  | {
+      kind: 'agent-designer'
+      text: string
+      engine: Engine
+      scope: 'repo' | 'global'
+      model?: string
+    }
+  | {
+      kind: 'persistent-agent'
+      persistentAgentId: string
+      task: string
+      engine: Engine
+      model?: string
+    }
   | { kind: 'persistent-agent-designer'; text: string; engine: Engine; model?: string }
   | { kind: 'schedule-designer'; text: string; engine: Engine }
 
@@ -255,12 +287,13 @@ export const DEFAULT_AGENTS: Agent[] = [
     opensPr: false,
     inPlace: true,
     prompt:
-      "Act as the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with \"tell me when you're ready\" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with .claude/bin/hitl, then continue other work. Skip tickets blocked by depends_on (any dependency whose status is not closed). Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.",
+      'Act as the /factory orchestrator for THIS repository, following the project\'s /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes (build a stack TDD-first → batch-review to the bar → handle verdicts), compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you\'re ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need (decision, approval, creds, hard blocker) to the global HITL inbox with .claude/bin/hitl, then continue other work. Skip tickets blocked by depends_on (any dependency whose status is not closed). Emit an activity event at each checkpoint. Do not invent scope. End only when the factory loop has no runnable work left.',
   },
   {
     id: '1000x-ai-engineer',
     title: '1000x AI engineer',
-    description: 'General-purpose implementation agent for ordinary coding tickets and code problems.',
+    description:
+      'General-purpose implementation agent for ordinary coding tickets and code problems.',
     icon: 'Sparkles',
     opensPr: true,
     engine: 'codex',
@@ -282,7 +315,11 @@ export const DEFAULT_AGENTS: Agent[] = [
         'Open a PR/MR linked to the ticket, or explain why no code change was needed.',
         'File follow-up tickets for adjacent work instead of expanding scope.',
       ],
-      requiredArtifacts: ['implementation diff', 'verification output', 'PR/MR link or no-change rationale'],
+      requiredArtifacts: [
+        'implementation diff',
+        'verification output',
+        'PR/MR link or no-change rationale',
+      ],
       deterministicChecks: [
         {
           id: 'repo-clean-diff-reviewed',
@@ -345,7 +382,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'code-review',
     title: 'Code review',
-    description: 'Review one PR/MR with tests-as-gate, six-axis scoring, findings, and durable artifacts.',
+    description:
+      'Review one PR/MR with tests-as-gate, six-axis scoring, findings, and durable artifacts.',
     icon: 'ScanSearch',
     opensPr: false,
     engine: 'codex',
@@ -433,7 +471,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'comments-inspector',
     title: 'Comments inspector',
-    description: 'Audit READMEs, CLAUDE.md, JSDoc, inline comments for staleness or low-value noise.',
+    description:
+      'Audit READMEs, CLAUDE.md, JSDoc, inline comments for staleness or low-value noise.',
     icon: 'MessageSquare',
     opensPr: true,
     prompt:
@@ -451,7 +490,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'friction-hunter',
     title: 'Friction hunter',
-    description: 'Walk onboarding/first-use as a new user; file tickets where things confuse or break.',
+    description:
+      'Walk onboarding/first-use as a new user; file tickets where things confuse or break.',
     icon: 'Footprints',
     opensPr: false,
     prompt:
@@ -460,7 +500,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'red-team-audit',
     title: 'Red-team audit',
-    description: 'Adversarial cross-layer sweep — chain weaknesses, abuse cases, real attacker mindset.',
+    description:
+      'Adversarial cross-layer sweep — chain weaknesses, abuse cases, real attacker mindset.',
     icon: 'Swords',
     opensPr: false,
     prompt:
@@ -487,7 +528,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'cert-check',
     title: 'TLS / cert check',
-    description: 'Check production TLS expiry + cert hygiene for any prod hostnames this repo serves.',
+    description:
+      'Check production TLS expiry + cert hygiene for any prod hostnames this repo serves.',
     icon: 'Lock',
     opensPr: false,
     prompt:
@@ -509,7 +551,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     icon: 'ScrollText',
     opensPr: true,
     prompt:
-      "Act as a changelog agent for this repository. If a CHANGELOG.md or similar exists, identify the last release entry date and roll all merged work since then into a new Unreleased (or next-version) section: features, fixes, breaking changes, internal/chore. Pull from git log + closed PRs + closed backlog tickets. Use Conventional Commits prefixes to bucket. Keep entries user-facing — drop pure refactors unless they change behavior. Commit and open a PR. If no CHANGELOG exists, file a docs ticket proposing one rather than creating it unilaterally. End with the entry diff summary and PR URL.",
+      'Act as a changelog agent for this repository. If a CHANGELOG.md or similar exists, identify the last release entry date and roll all merged work since then into a new Unreleased (or next-version) section: features, fixes, breaking changes, internal/chore. Pull from git log + closed PRs + closed backlog tickets. Use Conventional Commits prefixes to bucket. Keep entries user-facing — drop pure refactors unless they change behavior. Commit and open a PR. If no CHANGELOG exists, file a docs ticket proposing one rather than creating it unilaterally. End with the entry diff summary and PR URL.',
   },
   {
     id: 'simplification',
@@ -532,7 +574,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'bloat-check',
     title: 'Bloat check',
-    description: 'Delete low-value tickets, suggestions, and dead artifacts. Keep the backlog honest.',
+    description:
+      'Delete low-value tickets, suggestions, and dead artifacts. Keep the backlog honest.',
     icon: 'Recycle',
     opensPr: false,
     prompt:
@@ -550,7 +593,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'ci-improver',
     title: 'CI improver',
-    description: 'Observe CI runs since last run; file tickets + PR safe fixes for failures and flakes.',
+    description:
+      'Observe CI runs since last run; file tickets + PR safe fixes for failures and flakes.',
     icon: 'Workflow',
     opensPr: true,
     prompt:
@@ -559,7 +603,7 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'summary',
     title: 'Daily summary',
-    description: 'Roll up today\'s repo activity into a concise digest under reports/.',
+    description: "Roll up today's repo activity into a concise digest under reports/.",
     icon: 'Newspaper',
     opensPr: false,
     prompt:
@@ -573,7 +617,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'emergency-fix',
     title: 'Emergency fix',
-    description: 'Production hotfix: smallest patch, commit + push direct to main, file follow-up ticket.',
+    description:
+      'Production hotfix: smallest patch, commit + push direct to main, file follow-up ticket.',
     icon: 'AlertOctagon',
     opensPr: false,
     force: true,
@@ -583,7 +628,8 @@ export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'unblock-ci',
     title: 'Unblock CI',
-    description: 'Main CI is red. Diagnose; revert, pin, or skip the hosed bit; push direct to main.',
+    description:
+      'Main CI is red. Diagnose; revert, pin, or skip the hosed bit; push direct to main.',
     icon: 'ShieldAlert',
     opensPr: false,
     force: true,
@@ -684,14 +730,16 @@ export function readAgents(repoRoot: string): Agent[] {
   // on file existence, but the agent list cares only about the merged metadata.
   for (const a of DEFAULT_AGENTS) if (!hiddenDefaults.has(a.id)) merge(a, 'default')
   for (const a of readGlobalAgents()) merge(a, 'global')
-  for (const a of readScriptAgents(join(homedir(), '.config', 'TerMinal', 'scripts'))) merge(a, 'global')
+  for (const a of readScriptAgents(join(homedir(), '.config', 'TerMinal', 'scripts')))
+    merge(a, 'global')
   if (repoRoot) for (const a of readRepoAgents(repoRoot)) merge(a, 'repo')
   if (repoRoot) for (const a of readScriptAgents(join(repoRoot, '.agents'))) merge(a, 'repo')
 
   const out: Agent[] = []
   for (const { agent, layers } of byId.values()) {
     let source: Agent['source']
-    if (layers.has('repo')) source = layers.has('default') || layers.has('global') ? 'repo-override' : 'repo'
+    if (layers.has('repo'))
+      source = layers.has('default') || layers.has('global') ? 'repo-override' : 'repo'
     else if (layers.has('global')) source = layers.has('default') ? 'global-override' : 'global'
     else source = 'default'
     out.push({ ...agent, source, hasScript: !!locateScript(repoRoot, agent.id) })
@@ -841,7 +889,10 @@ export function loadPersistedRuns() {
 
 function defaultBase(repoRoot: string): string {
   const git = (args: string[]) =>
-    execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    execFileSync('git', ['-C', repoRoot, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
   try {
     return git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).replace(/^origin\//, '')
   } catch {
@@ -910,7 +961,10 @@ export function readAgentState(
     return { path, exists: true, state: {} }
   }
 }
-export function resetAgentState(repoRoot: string, agentId: string): { ok: true } | { error: string } {
+export function resetAgentState(
+  repoRoot: string,
+  agentId: string,
+): { ok: true } | { error: string } {
   const path = agentStateFile(repoRoot, agentId)
   if (!existsSync(path)) return { ok: true }
   try {
@@ -951,7 +1005,13 @@ export const HERMES_USAGE_FILE = '.terminal-hermes-usage.json'
 // approvals (--yolo --accept-hooks), writes cost JSON to --usage-file. `provider`
 // forces OpenRouter when Hermes is used as the OpenRouter harness; omitted for the
 // standalone Hermes engine (uses Hermes' own configured provider).
-function hermesOneShot(bin: string, worktree: string, prompt: string, model?: string, provider?: string): string {
+function hermesOneShot(
+  bin: string,
+  worktree: string,
+  prompt: string,
+  model?: string,
+  provider?: string,
+): string {
   const usage = join(worktree, HERMES_USAGE_FILE)
   const mFlag = model ? ` -m ${shq(model)}` : ''
   const pFlag = provider ? ` --provider ${shq(provider)}` : ''
@@ -1001,7 +1061,8 @@ export function buildCmd(
   }
   if (engine === 'openrouter') {
     // Hermes harness: `hermes -z --provider openrouter -m <slug>`.
-    if (harness === 'hermes') return hermesOneShot(enginePath('hermes'), worktree, prompt, model, 'openrouter')
+    if (harness === 'hermes')
+      return hermesOneShot(enginePath('hermes'), worktree, prompt, model, 'openrouter')
     // Codex harness (default): or-agent = Codex driven by an OpenRouter model.
     // --model is the OR slug (falls back to the registry agentic default when
     // omitted). Reads OPENROUTER_API_KEY from the spawn env. The blunt
@@ -1048,7 +1109,10 @@ Classic agent guidance:
 ${agent.prompt}`
 }
 
-function persistentAgentContextPrompt(repoRoot: string, id: string): { title: string; prompt: string } | null {
+function persistentAgentContextPrompt(
+  repoRoot: string,
+  id: string,
+): { title: string; prompt: string } | null {
   const detail = getPersistentAgent(id)
   if (!detail) return null
   return {
@@ -1081,11 +1145,13 @@ function defaultQualityForAgent(agent: Agent): AgentQuality {
     ? agent.acceptanceCriteria
     : agent.quality?.acceptanceCriteria?.length
       ? agent.quality.acceptanceCriteria
-    : [
-        'Follow the repository agent process: assign ownership, gather knowledge before edits, and file owner-scoped follow-up tickets.',
-        agent.opensPr ? 'Open and link a PR/MR when concrete changes are made.' : 'Write a durable summary of findings and tickets filed.',
-        'End with checks run, artifacts produced, and follow-up ticket ids or none.',
-      ]
+      : [
+          'Follow the repository agent process: assign ownership, gather knowledge before edits, and file owner-scoped follow-up tickets.',
+          agent.opensPr
+            ? 'Open and link a PR/MR when concrete changes are made.'
+            : 'Write a durable summary of findings and tickets filed.',
+          'End with checks run, artifacts produced, and follow-up ticket ids or none.',
+        ]
   const deterministicChecks: AgentCheck[] = agent.quality?.deterministicChecks?.length
     ? agent.quality.deterministicChecks
     : agent.opensPr
@@ -1115,23 +1181,29 @@ function defaultQualityForAgent(agent: Agent): AgentQuality {
   }
 }
 
-function defaultQualityForPersistentAgent(agent: ReturnType<typeof listPersistentAgents>[number]): AgentQuality {
+function defaultQualityForPersistentAgent(
+  agent: ReturnType<typeof listPersistentAgents>[number],
+): AgentQuality {
   return {
-    acceptanceCriteria: agent.quality?.acceptanceCriteria?.length ? agent.quality.acceptanceCriteria : [
-      'Read INSTRUCTIONS.md, MEMORY.md, STATE.md, and recent JOURNAL.md entries before acting.',
-      'Update STATE.md and append JOURNAL.md before ending.',
-      'Write human-readable output under artifacts/<run>/ when the task produces a durable result.',
-    ],
+    acceptanceCriteria: agent.quality?.acceptanceCriteria?.length
+      ? agent.quality.acceptanceCriteria
+      : [
+          'Read INSTRUCTIONS.md, MEMORY.md, STATE.md, and recent JOURNAL.md entries before acting.',
+          'Update STATE.md and append JOURNAL.md before ending.',
+          'Write human-readable output under artifacts/<run>/ when the task produces a durable result.',
+        ],
     requiredArtifacts: agent.quality?.requiredArtifacts || ['STATE.md', 'JOURNAL.md'],
-    deterministicChecks: agent.quality?.deterministicChecks?.length ? agent.quality.deterministicChecks : [
-      {
-        id: 'memory-updated',
-        title: 'Memory state files updated when work is performed',
-        command: `test -f ${shq(join(agent.dir, 'STATE.md'))} && test -f ${shq(join(agent.dir, 'JOURNAL.md'))}`,
-        cwd: 'repo',
-        required: true,
-      },
-    ],
+    deterministicChecks: agent.quality?.deterministicChecks?.length
+      ? agent.quality.deterministicChecks
+      : [
+          {
+            id: 'memory-updated',
+            title: 'Memory state files updated when work is performed',
+            command: `test -f ${shq(join(agent.dir, 'STATE.md'))} && test -f ${shq(join(agent.dir, 'JOURNAL.md'))}`,
+            cwd: 'repo',
+            required: true,
+          },
+        ],
     judge: agent.quality?.judge || {
       enabled: false,
       mode: 'deterministic',
@@ -1236,7 +1308,10 @@ export function resolveAgentDefinition(
   )
 }
 
-function resolveRunContext(repoRoot: string, contextId?: string): { title?: string; prompt?: string } {
+function resolveRunContext(
+  repoRoot: string,
+  contextId?: string,
+): { title?: string; prompt?: string } {
   if (!contextId) return {}
   if (contextId.startsWith('agent:')) {
     const id = contextId.slice('agent:'.length)
@@ -1263,7 +1338,7 @@ export function readAgentRunContexts(repoRoot: string): AgentRunContext[] {
     icon: agent.icon,
     prompt:
       agent.kind === 'persistent'
-        ? persistentAgentContextPrompt(repoRoot, agent.ref.id)?.prompt ?? ''
+        ? (persistentAgentContextPrompt(repoRoot, agent.ref.id)?.prompt ?? '')
         : classicAgentContextPrompt({
             id: agent.ref.id,
             title: agent.title,
@@ -1344,7 +1419,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   let worktree: string
   let branch: string
   const git = (args: string[]) =>
-    execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    execFileSync('git', ['-C', repoRoot, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
   if (spec.inPlace) {
     // Run directly in the repo (no worktree) — e.g. quick ticket filing that must
     // land in the real backlog/, visible immediately, not on an isolated branch.
@@ -1408,7 +1486,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   appendLog(run.id, run.output)
   emit('agent:status', run)
   emitActivity(
-    { kind: 'agent-run', title: `Agent started · ${spec.title}`, detail: `${spec.engine} · ${repoLabel}`, repo: repoLabel, repoRoot },
+    {
+      kind: 'agent-run',
+      title: `Agent started · ${spec.title}`,
+      detail: `${spec.engine} · ${repoLabel}`,
+      repo: repoLabel,
+      repoRoot,
+    },
     { notify: false },
   )
 
@@ -1430,7 +1514,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // Cost capture for the Runs UI. Hermes (engine, or the OpenRouter Hermes
     // harness) writes a JSON usage report to <worktree>/.terminal-hermes-usage.json;
     // the OpenRouter Codex harness prints "or-agent: done — cost $X" instead.
-    const viaHermes = spec.engine === 'hermes' || (spec.engine === 'openrouter' && spec.openrouterHarness === 'hermes')
+    const viaHermes =
+      spec.engine === 'hermes' ||
+      (spec.engine === 'openrouter' && spec.openrouterHarness === 'hermes')
     if (viaHermes) {
       run.costUsd = readHermesUsageCost(join(run.worktree, HERMES_USAGE_FILE))
     } else if (spec.engine === 'openrouter') {
@@ -1491,7 +1577,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   let stepIdx = 0
   const runStep = () => {
     const step = spec.steps[stepIdx]
-    if (spec.steps.length > 1) append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} · ${step.label} ━━\n\n`)
+    if (spec.steps.length > 1)
+      append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} · ${step.label} ━━\n\n`)
     // Script-first: if .agents/<id>.sh (or global ~/.config/TerMinal/scripts/<id>.sh)
     // exists, exec it directly with env vars instead of building a prompt-based
     // command from the prompt. Inside the script the operator can mix
@@ -1532,11 +1619,19 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // spawned model knows it has main-push authority; script-first agents read
     // the env var directly.
     const contextEnabled = readSettings().inbox.agentContextPreamble
-    const contextPrompt = scriptPath ? step.prompt : withAgentContextPreamble(repoRoot, step.prompt, contextEnabled)
+    const contextPrompt = scriptPath
+      ? step.prompt
+      : withAgentContextPreamble(repoRoot, step.prompt, contextEnabled)
     const promptForStep = spec.force && !scriptPath ? FORCE_PREAMBLE + contextPrompt : contextPrompt
     const cmd = scriptPath
       ? shq(scriptPath)
-      : buildCmd(spec.engine, worktree, promptForStep, effectiveModel || undefined, spec.openrouterHarness)
+      : buildCmd(
+          spec.engine,
+          worktree,
+          promptForStep,
+          effectiveModel || undefined,
+          spec.openrouterHarness,
+        )
     // Wrap the spawn in `script` so engines think they're on a TTY and stream
     // output as it's generated. Without this, `claude -p` buffers everything
     // until exit and the run log shows nothing mid-run. The wrapper argv differs
@@ -1567,7 +1662,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       // Structured step-end marker (exit code) so the log formatter can pair it
       // with the start marker for collapsible steps + jump-to-failure (#3). Only
       // for multi-step runs (matches the start marker at the top of runStep).
-      if (spec.steps.length > 1) append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} end (exit ${code ?? 1}) ━━\n`)
+      if (spec.steps.length > 1)
+        append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} end (exit ${code ?? 1}) ━━\n`)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
       if (code !== 0) return finalize('failed', code ?? undefined)
       stepIdx++
@@ -1600,7 +1696,10 @@ export function runAgent(
       : `${ticketProviderInstructions(provider)} If this task does not involve filing or updating tickets, ignore this ticketing note.\n\n`
   const { steps, persona, pipeline } = buildSteps(
     repoRoot,
-    { label: agent.title, prompt: `${ticketContext}${agent.prompt}${extraContextBlock(extraContext)}` },
+    {
+      label: agent.title,
+      prompt: `${ticketContext}${agent.prompt}${extraContextBlock(extraContext)}`,
+    },
     personaId,
     pipelineId,
   )
@@ -1619,7 +1718,14 @@ export function runAgent(
       acceptanceCriteria: agent.acceptanceCriteria,
       requiredArtifacts: agent.outputContract ? [agent.outputContract] : undefined,
     },
-    rerun: { kind: 'agent', agentId: agent.id, engine: resolvedEngine, personaId, pipelineId, model: resolvedModel },
+    rerun: {
+      kind: 'agent',
+      agentId: agent.id,
+      engine: resolvedEngine,
+      personaId,
+      pipelineId,
+      model: resolvedModel,
+    },
   })
 }
 
@@ -1783,7 +1889,9 @@ export function runPersistentAgentDesignerSpawn(
   return runSpec(repoRoot, {
     id: 'persistent-agent-designer',
     title: `Design persistent agent · ${t.slice(0, 48)}`,
-    steps: [{ label: 'design persistent agent', prompt: persistentAgentDesignerPrompt(t, engine, model) }],
+    steps: [
+      { label: 'design persistent agent', prompt: persistentAgentDesignerPrompt(t, engine, model) },
+    ],
     engine,
     model,
     inPlace: true,
@@ -1871,7 +1979,15 @@ After this completes the app reconciles schedules automatically — your new ent
 /** Hard ceiling on parallel lanes — fan-out spawns one engine process each. */
 export const MAX_LANES = 100
 
-type TicketRunInput = { slug?: string; id: number; title: string; body: string; externalKey?: string; url?: string; agent?: TicketAgent }
+type TicketRunInput = {
+  slug?: string
+  id: number
+  title: string
+  body: string
+  externalKey?: string
+  url?: string
+  agent?: TicketAgent
+}
 
 export function runTicketAgent(
   repoRoot: string,
@@ -1896,8 +2012,16 @@ export function runTicketAgent(
     : ''
   const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr} End with a short summary of what changed and the PR URL.${extraContextBlock(extraContext)}`
   const resolvedPersonaId = personaId || ticketAgentContextId(ticket.agent)
-  const { steps, persona, pipeline } = buildSteps(repoRoot, { label: `implement ${ref}`, prompt: base }, resolvedPersonaId, pipelineId)
-  const ownerQuality = ticket.agent?.kind === 'classic' ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality : undefined
+  const { steps, persona, pipeline } = buildSteps(
+    repoRoot,
+    { label: `implement ${ref}`, prompt: base },
+    resolvedPersonaId,
+    pipelineId,
+  )
+  const ownerQuality =
+    ticket.agent?.kind === 'classic'
+      ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality
+      : undefined
   return runSpec(repoRoot, {
     id: lane ? `ticket-${ticket.id}-L${lane.index}` : `ticket-${ticket.id}`,
     title: lane ? `Implement ${ref} · lane ${lane.index}/${lane.total}` : `Implement ${ref}`,
@@ -1910,7 +2034,17 @@ export function runTicketAgent(
     trace: { ticketSlug: ticket.slug, ticketId: ticket.id, ticketRef: ref, lane },
     // Lanes aren't individually rerunnable as the ticket (that would relaunch
     // the whole group); only solo runs carry a ticket rerun spec.
-    rerun: ticket.slug && !lane ? { kind: 'ticket', slug: ticket.slug, engine, personaId: resolvedPersonaId, pipelineId, model } : undefined,
+    rerun:
+      ticket.slug && !lane
+        ? {
+            kind: 'ticket',
+            slug: ticket.slug,
+            engine,
+            personaId: resolvedPersonaId,
+            pipelineId,
+            model,
+          }
+        : undefined,
   })
 }
 
@@ -1930,14 +2064,32 @@ export function runTicketLanes(
 ): LaneFanout | { error: string } {
   const n = Math.max(1, Math.min(MAX_LANES, Math.floor(lanes || 1)))
   if (n <= 1) {
-    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, undefined, extraContext)
+    const r = runTicketAgent(
+      repoRoot,
+      ticket,
+      engine,
+      personaId,
+      pipelineId,
+      model,
+      undefined,
+      extraContext,
+    )
     return 'error' in r ? r : { group: null, runs: [r] }
   }
   const group = `lane-${ticket.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`
   const runs: AgentRun[] = []
   const errors: string[] = []
   for (let k = 1; k <= n; k++) {
-    const r = runTicketAgent(repoRoot, ticket, engine, personaId, pipelineId, model, { group, index: k, total: n }, extraContext)
+    const r = runTicketAgent(
+      repoRoot,
+      ticket,
+      engine,
+      personaId,
+      pipelineId,
+      model,
+      { group, index: k, total: n },
+      extraContext,
+    )
     if ('error' in r) errors.push(`lane ${k}: ${r.error}`)
     else runs.push(r)
   }
@@ -2030,9 +2182,20 @@ export function runPrAgent(
     pipeline,
     prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
     model,
-    quality: kind === 'review' ? readAgents(repoRoot).find((a) => a.id === 'code-review')?.quality : undefined,
+    quality:
+      kind === 'review'
+        ? readAgents(repoRoot).find((a) => a.id === 'code-review')?.quality
+        : undefined,
     trace: { prIid: pr.iid, prKind: kind, sourceBranch: pr.sourceBranch },
-    rerun: { kind: 'pr', pr, prKind: kind, engine, personaId: resolvedPersonaId, pipelineId, model },
+    rerun: {
+      kind: 'pr',
+      pr,
+      prKind: kind,
+      engine,
+      personaId: resolvedPersonaId,
+      pipelineId,
+      model,
+    },
   })
 }
 
@@ -2053,24 +2216,65 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
         : undefined
     return runAgent(run.repoRoot, run.agentId, engine, undefined, undefined, run.model)
   }
-  if (spec.kind === 'agent') return runAgent(run.repoRoot, spec.agentId, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+  if (spec.kind === 'agent')
+    return runAgent(
+      run.repoRoot,
+      spec.agentId,
+      spec.engine,
+      spec.personaId,
+      spec.pipelineId,
+      spec.model,
+    )
   if (spec.kind === 'ticket') {
     const t = await getRepoTicket(run.repoRoot, spec.slug)
     return t
-      ? runTicketAgent(run.repoRoot, { slug: t.slug, id: t.id, title: t.title, body: t.body, externalKey: t.externalKey, url: t.url, agent: t.agent }, spec.engine, spec.personaId, spec.pipelineId, spec.model)
+      ? runTicketAgent(
+          run.repoRoot,
+          {
+            slug: t.slug,
+            id: t.id,
+            title: t.title,
+            body: t.body,
+            externalKey: t.externalKey,
+            url: t.url,
+            agent: t.agent,
+          },
+          spec.engine,
+          spec.personaId,
+          spec.pipelineId,
+          spec.model,
+        )
       : { error: 'ticket not found' }
   }
-  if (spec.kind === 'pr') return runPrAgent(run.repoRoot, spec.pr, spec.prKind, spec.engine, spec.personaId, spec.pipelineId, spec.model)
-  if (spec.kind === 'ticket-spawn') return runTicketSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
+  if (spec.kind === 'pr')
+    return runPrAgent(
+      run.repoRoot,
+      spec.pr,
+      spec.prKind,
+      spec.engine,
+      spec.personaId,
+      spec.pipelineId,
+      spec.model,
+    )
+  if (spec.kind === 'ticket-spawn')
+    return runTicketSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
   if (spec.kind === 'factory') return runFactorySpawn(run.repoRoot, spec.engine)
-  if (spec.kind === 'agent-designer') return runDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.scope, spec.model)
+  if (spec.kind === 'agent-designer')
+    return runDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.scope, spec.model)
   if (spec.kind === 'persistent-agent') {
-    return runPersistentAgent(run.repoRoot, spec.persistentAgentId, spec.task, spec.engine, spec.model)
+    return runPersistentAgent(
+      run.repoRoot,
+      spec.persistentAgentId,
+      spec.task,
+      spec.engine,
+      spec.model,
+    )
   }
   if (spec.kind === 'persistent-agent-designer') {
     return runPersistentAgentDesignerSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
   }
-  if (spec.kind === 'schedule-designer') return runScheduleDesignerSpawn(run.repoRoot, spec.text, spec.engine)
+  if (spec.kind === 'schedule-designer')
+    return runScheduleDesignerSpawn(run.repoRoot, spec.text, spec.engine)
   return { error: 'unsupported run type' }
 }
 

@@ -38,7 +38,8 @@ const HEURISTICS: { class: FailureClass; pattern: RegExp; evidence: string }[] =
   // Prettier
   {
     class: 'prettier-formatting',
-    pattern: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i,
+    pattern:
+      /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i,
     evidence: 'prettier --check signature',
   },
   // ESLint (auto-fixable subset)
@@ -56,7 +57,8 @@ const HEURISTICS: { class: FailureClass; pattern: RegExp; evidence: string }[] =
   // Snapshot mismatches
   {
     class: 'snapshot-mismatch',
-    pattern: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i,
+    pattern:
+      /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i,
     evidence: 'snapshot fail signature',
   },
   // Real test failures (Vitest/Jest/Bun)
@@ -68,13 +70,15 @@ const HEURISTICS: { class: FailureClass; pattern: RegExp; evidence: string }[] =
   // Build / vite / webpack / esbuild
   {
     class: 'build-config',
-    pattern: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i,
+    pattern:
+      /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i,
     evidence: 'bundler error',
   },
   // Lockfile drift
   {
     class: 'lockfile-drift',
-    pattern: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i,
+    pattern:
+      /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i,
     evidence: 'lockfile drift signature',
   },
   // Dependency install
@@ -86,13 +90,15 @@ const HEURISTICS: { class: FailureClass; pattern: RegExp; evidence: string }[] =
   // Flaky network / infra
   {
     class: 'flake-network',
-    pattern: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i,
+    pattern:
+      /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i,
     evidence: 'transient network signature',
   },
   // Deploy / k8s / docker
   {
     class: 'deploy-infra',
-    pattern: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i,
+    pattern:
+      /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i,
     evidence: 'deploy/infra error',
   },
 ]

@@ -117,7 +117,15 @@ function groupByDay(events: ActivityEvent[]): { label: string; items: ActivityEv
   return groups
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
   return (
     <button
       onClick={onClick}
@@ -288,7 +296,9 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{e.title}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">
+                          {e.title}
+                        </span>
                         <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
                           {reltime(e.ts)}
                         </span>
@@ -307,7 +317,9 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
                           {KIND_LABEL[e.kind] || e.kind}
                         </span>
                         {e.repo && scope === 'all' && (
-                          <span className="truncate font-mono text-[10px] text-zinc-600">{e.repo}</span>
+                          <span className="truncate font-mono text-[10px] text-zinc-600">
+                            {e.repo}
+                          </span>
                         )}
                       </div>
                     </div>

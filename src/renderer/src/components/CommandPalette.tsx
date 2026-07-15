@@ -94,12 +94,10 @@ export function CommandPalette({
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
-    const close =
-      (fn: () => void) =>
-      () => {
-        fn()
-        onClose()
-      }
+    const close = (fn: () => void) => () => {
+      fn()
+      onClose()
+    }
 
     out.push({
       id: 'tab:terminal',
@@ -262,7 +260,9 @@ export function CommandPalette({
                   )}
                   <span className="truncate">{it.label}</span>
                   {it.hint && (
-                    <span className="ml-auto truncate pl-3 text-[11px] text-zinc-600">{it.hint}</span>
+                    <span className="ml-auto truncate pl-3 text-[11px] text-zinc-600">
+                      {it.hint}
+                    </span>
                   )}
                 </button>
               </div>

@@ -25,10 +25,37 @@ import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 // SHORT names (ts/js/py/rs/sh/rb), not the long ones. Mapping to a missing key
 // returns undefined → no parser → no syntax highlighting (the bug this fixes).
 const EXT: Record<string, string> = {
-  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', mjs: 'js', cjs: 'js',
-  json: 'json', md: 'markdown', mdx: 'markdown', css: 'css', scss: 'scss', less: 'less', html: 'html',
-  py: 'py', rs: 'rs', go: 'go', yaml: 'yaml', yml: 'yaml', sql: 'sql', sh: 'sh', bash: 'sh',
-  zsh: 'sh', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', java: 'java', php: 'php', rb: 'rb', toml: 'toml', xml: 'xml',
+  ts: 'ts',
+  tsx: 'tsx',
+  js: 'js',
+  jsx: 'jsx',
+  mjs: 'js',
+  cjs: 'js',
+  json: 'json',
+  md: 'markdown',
+  mdx: 'markdown',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  html: 'html',
+  py: 'py',
+  rs: 'rs',
+  go: 'go',
+  yaml: 'yaml',
+  yml: 'yaml',
+  sql: 'sql',
+  sh: 'sh',
+  bash: 'sh',
+  zsh: 'sh',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
+  hpp: 'cpp',
+  java: 'java',
+  php: 'php',
+  rb: 'rb',
+  toml: 'toml',
+  xml: 'xml',
 }
 function langFor(path: string): Extension[] {
   const key = EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | undefined
@@ -148,7 +175,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
-  const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, { min: 200, max: 640, edge: 'left' })
+  const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
+    min: 200,
+    max: 640,
+    edge: 'left',
+  })
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -181,7 +212,16 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     setOpen((o) =>
       o.some((f) => f.path === path)
         ? o
-        : [...o, { path, content: r.ok ? r.content : '', dirty: false, err: r.ok ? undefined : r.reason, scrollLine: line }],
+        : [
+            ...o,
+            {
+              path,
+              content: r.ok ? r.content : '',
+              dirty: false,
+              err: r.ok ? undefined : r.reason,
+              scrollLine: line,
+            },
+          ],
     )
   }
   // Cross-tab nav: navigateTo('files', { path, line }) opens that file (from
@@ -210,7 +250,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   const save = async () => {
     if (!activeFile || activeFile.err) return
-    if (await window.gt.files.write(activeFile.path, activeFile.content)) patch(activeFile.path, { dirty: false })
+    if (await window.gt.files.write(activeFile.path, activeFile.content))
+      patch(activeFile.path, { dirty: false })
   }
 
   // auto-save: debounce a write per file on edit (no ⌘S needed). Keyed by path
@@ -228,7 +269,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   useEffect(
     () => () => {
       for (const t of Object.values(saveTimers.current)) clearTimeout(t)
-      for (const f of openRef.current) if (f.dirty && !f.err) window.gt.files.write(f.path, f.content)
+      for (const f of openRef.current)
+        if (f.dirty && !f.err) window.gt.files.write(f.path, f.content)
     },
     [],
   )
@@ -315,27 +357,29 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           open.map((f) => {
             const { Icon, cls } = fileIcon(base(f.path), false)
             return (
-            <div
-              key={f.path}
-              onClick={() => setActivePath(f.path)}
-              title={f.path}
-              className={`group flex cursor-pointer items-center gap-1.5 border-r border-[var(--gt-border)] px-3 text-[12px] ${
-                activePath === f.path ? 'bg-[var(--gt-bg)] text-zinc-100' : 'bg-black/20 text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              <Icon size={13} strokeWidth={2} className={`shrink-0 ${cls}`} />
-              {f.dirty && <span className="h-1.5 w-1.5 rounded-full bg-[var(--gt-yellow)]" />}
-              <span className="max-w-[160px] truncate font-mono">{base(f.path)}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  closeFile(f.path)
-                }}
-                className="ml-1 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+              <div
+                key={f.path}
+                onClick={() => setActivePath(f.path)}
+                title={f.path}
+                className={`group flex cursor-pointer items-center gap-1.5 border-r border-[var(--gt-border)] px-3 text-[12px] ${
+                  activePath === f.path
+                    ? 'bg-[var(--gt-bg)] text-zinc-100'
+                    : 'bg-black/20 text-zinc-500 hover:text-zinc-300'
+                }`}
               >
-                <X size={11} strokeWidth={2.5} />
-              </button>
-            </div>
+                <Icon size={13} strokeWidth={2} className={`shrink-0 ${cls}`} />
+                {f.dirty && <span className="h-1.5 w-1.5 rounded-full bg-[var(--gt-yellow)]" />}
+                <span className="max-w-[160px] truncate font-mono">{base(f.path)}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeFile(f.path)
+                  }}
+                  className="ml-1 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
+                >
+                  <X size={11} strokeWidth={2.5} />
+                </button>
+              </div>
             )
           })
         )}
@@ -378,12 +422,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
         {/* sidebar (right) — drag the divider to resize */}
         <ResizeHandle onMouseDown={filesSidebar.onResizeStart} />
-        <aside className="flex shrink-0 flex-col border-l border-[var(--gt-border)]" style={{ width: filesSidebar.width }}>
+        <aside
+          className="flex shrink-0 flex-col border-l border-[var(--gt-border)]"
+          style={{ width: filesSidebar.width }}
+        >
           <div className="flex shrink-0 border-b border-[var(--gt-border)] p-1.5">
             <button
               onClick={() => setSidebar('files')}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
-                sidebar === 'files' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+                sidebar === 'files'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <FolderTree size={13} strokeWidth={2} />
@@ -392,7 +441,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <button
               onClick={() => setSidebar('search')}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
-                sidebar === 'search' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+                sidebar === 'search'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <Search size={13} strokeWidth={2} />
@@ -401,7 +452,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <button
               onClick={() => setSidebar('changes')}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium ${
-                sidebar === 'changes' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200'
+                sidebar === 'changes'
+                  ? 'bg-white/10 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >
               <GitCompare size={13} strokeWidth={2} />
@@ -411,8 +464,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
           {sidebar === 'changes' ? (
             <div className="flex min-h-0 flex-1 flex-col p-3 text-[11px] leading-relaxed text-zinc-600">
-              Showing your pre-PR working-tree diff in the editor pane — everything since the base branch, plus
-              uncommitted and untracked changes.
+              Showing your pre-PR working-tree diff in the editor pane — everything since the base
+              branch, plus uncommitted and untracked changes.
             </div>
           ) : sidebar === 'files' ? (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -432,7 +485,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <FolderPlus size={12} strokeWidth={2} />
                   Folder
                 </button>
-                <span className="truncate font-mono text-[10px] text-zinc-600">in&nbsp;/{selectedDir}</span>
+                <span className="truncate font-mono text-[10px] text-zinc-600">
+                  in&nbsp;/{selectedDir}
+                </span>
                 <button
                   onClick={() =>
                     window.gt.openInEditor(
@@ -450,7 +505,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               {prompt && (
                 <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-black/30 px-2 py-1.5">
                   <span className="text-[10px] text-zinc-500">
-                    {prompt.kind === 'rename' ? 'rename' : prompt.kind === 'new-folder' ? 'folder' : 'file'}
+                    {prompt.kind === 'rename'
+                      ? 'rename'
+                      : prompt.kind === 'new-folder'
+                        ? 'folder'
+                        : 'file'}
                   </span>
                   <input
                     autoFocus
@@ -469,7 +528,10 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <span className="min-w-0 flex-1 truncate text-[var(--gt-red)]">
                     Delete {base(confirmDelete)}?
                   </span>
-                  <button onClick={commitDelete} className="rounded bg-[var(--gt-red)]/20 px-1.5 py-0.5 text-[var(--gt-red)]">
+                  <button
+                    onClick={commitDelete}
+                    className="rounded bg-[var(--gt-red)]/20 px-1.5 py-0.5 text-[var(--gt-red)]"
+                  >
                     delete
                   </button>
                   <button
@@ -517,7 +579,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 ) : results === null ? (
                   <div className="p-3 text-[12px] text-zinc-600">Type a query and press Enter.</div>
                 ) : results.length === 0 ? (
-                  <div className="p-3 text-[12px] text-zinc-600">No matches for “{query.trim()}”.</div>
+                  <div className="p-3 text-[12px] text-zinc-600">
+                    No matches for “{query.trim()}”.
+                  </div>
                 ) : (
                   results.map((r, i) => {
                     const { Icon, cls } = fileIcon(base(r.file), false)

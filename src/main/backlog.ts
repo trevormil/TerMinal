@@ -124,7 +124,9 @@ function toTicket(slug: string, md: string): Ticket {
     modelTier: str(fm.model_tier) || 'auto',
     workedBy: Array.isArray(fm.worked_by)
       ? (fm.worked_by as unknown[]).map(String)
-      : str(fm.worked_by) ? [str(fm.worked_by)] : [],
+      : str(fm.worked_by)
+        ? [str(fm.worked_by)]
+        : [],
     agent: ticketAgentFromFrontmatter(fm, type),
     run: ticketRunFromFrontmatter(fm),
     body: body.trim(),
@@ -160,7 +162,20 @@ const ROUTES: {
     agent: { id: 'security-sweep', scope: 'global', kind: 'classic' },
     reason: 'Security-sensitive wording or ticket type should go to the security sweep specialist.',
     type: ['security'],
-    keywords: ['security', 'auth', 'authorization', 'permission', 'xss', 'csrf', 'ssrf', 'injection', 'secret', 'token', 'cve', 'vulnerability'],
+    keywords: [
+      'security',
+      'auth',
+      'authorization',
+      'permission',
+      'xss',
+      'csrf',
+      'ssrf',
+      'injection',
+      'secret',
+      'token',
+      'cve',
+      'vulnerability',
+    ],
   },
   {
     agent: { id: 'test-coverage', scope: 'global', kind: 'classic' },
@@ -178,17 +193,39 @@ const ROUTES: {
     agent: { id: 'perf-pass', scope: 'global', kind: 'classic' },
     reason: 'Performance-sensitive work should go to the performance specialist.',
     type: ['performance'],
-    keywords: ['performance', 'perf', 'latency', 'slow', 'memory', 'n+1', 'cache', 'optimize', 'profiling'],
+    keywords: [
+      'performance',
+      'perf',
+      'latency',
+      'slow',
+      'memory',
+      'n+1',
+      'cache',
+      'optimize',
+      'profiling',
+    ],
   },
   {
     agent: { id: 'ci-improver', scope: 'global', kind: 'classic' },
     reason: 'Developer workflow, CI, and tooling work should go to the CI/DX specialist.',
     type: ['dx'],
-    keywords: ['ci', 'lint', 'typecheck', 'build failure', 'workflow', 'developer', 'devex', 'tooling', 'script'],
+    keywords: [
+      'ci',
+      'lint',
+      'typecheck',
+      'build failure',
+      'workflow',
+      'developer',
+      'devex',
+      'tooling',
+      'script',
+    ],
   },
 ]
 
-export function recommendTicketAgent(input: TicketAgentRecommendationInput = {}): TicketAgentRecommendation {
+export function recommendTicketAgent(
+  input: TicketAgentRecommendationInput = {},
+): TicketAgentRecommendation {
   const type = (input.type || 'feature').toLowerCase()
   const text = `${input.title || ''}\n${input.body || ''}`.toLowerCase()
   const scored = ROUTES.map((route) => {
@@ -208,7 +245,8 @@ export function recommendTicketAgent(input: TicketAgentRecommendationInput = {})
   }
   return {
     agent: { id: '1000x-ai-engineer', scope: 'global', kind: 'classic' },
-    reason: 'General feature, bug, UX, or implementation work defaults to the 1000x AI engineer implementer.',
+    reason:
+      'General feature, bug, UX, or implementation work defaults to the 1000x AI engineer implementer.',
     signals: type ? [`type:${type}`] : [],
   }
 }
@@ -220,7 +258,11 @@ function explicitAgent(input: Partial<TicketAgent> | undefined): TicketAgent | n
   return { id: input.id.trim(), scope, kind }
 }
 
-function normalizeTicketAgent(input: Partial<TicketAgent> | undefined, type: string, recommendation?: TicketAgentRecommendation): TicketAgent {
+function normalizeTicketAgent(
+  input: Partial<TicketAgent> | undefined,
+  type: string,
+  recommendation?: TicketAgentRecommendation,
+): TicketAgent {
   const explicit = explicitAgent(input)
   if (explicit) return explicit
   const fallback = recommendation?.agent || recommendTicketAgent({ type }).agent
@@ -403,7 +445,11 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
   const nextId = listTickets(repoRoot, baseDir).reduce((max, t) => Math.max(max, t.id), 0) + 1
   const num = String(nextId).padStart(4, '0')
   const slug = `${num}-${slugify(input.title)}`
-  const recommendation = recommendTicketAgent({ title: input.title, type: input.type || 'feature', body: input.body || '' })
+  const recommendation = recommendTicketAgent({
+    title: input.title,
+    type: input.type || 'feature',
+    body: input.body || '',
+  })
   const t: Ticket = {
     slug,
     id: nextId,
