@@ -193,6 +193,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     () =>
       onNavigate((ev) => {
         if (ev.tabId !== 'files') return
+        // Cockpit Git panel → jump straight to the Changes view.
+        if (ev.payload?.sidebar === 'changes') setSidebar('changes')
         const path = ev.payload?.path as string | undefined
         if (path) openFileRef.current(path, ev.payload?.line as number | undefined)
       }),
