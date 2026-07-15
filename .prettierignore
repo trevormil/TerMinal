@@ -3,3 +3,14 @@ out
 dist
 *.log
 landing
+bun.lock
+# git submodules — not ours to format
+vendor
+templates
+# runtime state (tickets, schedules, agent state) — not source
+.TerMinal
+# extensionless TS bin scripts — prettier can't infer the parser
+bin
+# prose docs are hand-maintained (anchored headings, tables) — not prettier-owned
+*.md
+**/*.md

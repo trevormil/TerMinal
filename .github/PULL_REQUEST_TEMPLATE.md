@@ -6,6 +6,7 @@
 
 ## Checks
 
+- [ ] `bun run format:check` passes (prettier)
 - [ ] `bun run typecheck` passes
 - [ ] `bun run test` passes (added/updated tests for behavior changes)
 - [ ] `bun run build` succeeds

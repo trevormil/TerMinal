@@ -46,6 +46,7 @@ global skills, and fresh-machine setup notes.
 Run:
 
 ```bash
+bun run format      # or format:check — CI enforces prettier
 bun run typecheck
 bun run test
 bun run build
