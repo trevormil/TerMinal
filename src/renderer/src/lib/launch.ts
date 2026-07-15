@@ -3,6 +3,21 @@ import type { Engine, Persona, RemoteSession, TabContext } from './types'
 
 export type LaunchMode = 'process' | 'terminal'
 
+/**
+ * When a Terminal-tab session's pty exits, should we re-spawn the pane as a
+ * local login shell instead of leaving a dead "process exited" pane?
+ *
+ * Yes for an attached engine (claude/codex/…) running locally. No for a remote
+ * session (a local shell would be the wrong host) and no once we've already
+ * dropped to a shell (its own exit ends the pane, so we don't loop).
+ */
+export function shouldDropToShellOnExit(input: {
+  isRemote: boolean
+  isLocalShell: boolean
+}): boolean {
+  return !input.isRemote && !input.isLocalShell
+}
+
 export const engineInstanceLabel = (engine: Engine): string =>
   engine === 'claude'
     ? 'Claude Code'

@@ -34,7 +34,12 @@ import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
 import { formatDroppedPaths } from '../lib/terminalInput'
 import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
-import { engineInstanceLabel, openPromptInTerminal, type LaunchMode } from '../lib/launch'
+import {
+  engineInstanceLabel,
+  openPromptInTerminal,
+  shouldDropToShellOnExit,
+  type LaunchMode,
+} from '../lib/launch'
 import { appendKnowledgeItem, singleHttpUrl } from '../lib/knowledge'
 
 type LauncherItem =
@@ -237,6 +242,12 @@ export function TerminalPane({
   // moment the user actually engages it — focuses the terminal or types.
   const onClearAttentionRef = useRef<(() => void) | undefined>(undefined)
   const needsAttentionRef = useRef(false)
+  // For the drop-to-shell-on-exit behavior: the session's resolved cwd (from
+  // startSession) and whether this pane is currently a plain local shell — set
+  // once we've converted, so the local shell's own exit ends the pane normally
+  // instead of looping.
+  const resolvedCwdRef = useRef(choice.cwd || '')
+  const isLocalShellRef = useRef(choice.engine === 'local')
   const [dragActive, setDragActive] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [suggestionSettingsOpen, setSuggestionSettingsOpen] = useState(false)
@@ -468,9 +479,33 @@ export function TerminalPane({
     // attach listeners BEFORE starting the pty so no early output is missed.
     // Filter by sessionKey: every session's pty streams to all listeners.
     const offData = gt.pty.onData((key, d) => key === sessionKey && term.write(d))
-    const offExit = gt.pty.onExit(
-      (key) => key === sessionKey && term.write('\r\n\x1b[2m── process exited ──\x1b[0m\r\n'),
-    )
+    const offExit = gt.pty.onExit((key, code) => {
+      if (key !== sessionKey) return
+      // When an attached engine (claude/codex/…) exits — Ctrl-C, normal quit,
+      // or crash — don't leave a dead pane. Re-spawn the SAME session key as a
+      // plain local login shell in the same cwd, so the pane drops to a live
+      // prompt right under the last output (scrollback is kept — same xterm).
+      // The engine's run record already finalized on this exit; this is a fresh
+      // local session. Skip for remote sessions (a local shell would be the
+      // wrong host) and for a shell we already dropped to (avoids a loop).
+      if (shouldDropToShellOnExit({ isRemote, isLocalShell: isLocalShellRef.current })) {
+        isLocalShellRef.current = true
+        term.write(
+          `\r\n\x1b[2m── ${choice.engine} exited${
+            typeof code === 'number' ? ` (${code})` : ''
+          } — dropped to shell ──\x1b[0m\r\n`,
+        )
+        gt.startSession(sessionKey, {
+          mode: 'new',
+          engine: 'local',
+          cwd: resolvedCwdRef.current,
+          cols: term.cols,
+          rows: term.rows,
+        })
+        return
+      }
+      term.write('\r\n\x1b[2m── process exited ──\x1b[0m\r\n')
+    })
     const onInput = term.onData(writeInput)
     // Focusing the terminal (click, tab-switch, or programmatic focus of the
     // active pane) counts as engaging this session — clear its idle
@@ -487,6 +522,7 @@ export function TerminalPane({
 
     // spawn the chosen engine attached to the session, sized to the live terminal
     gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) => {
+      resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
       if (choice.initialInput) {
         window.setTimeout(() => gt.pty.input(sessionKey, choice.initialInput || ''), 900)
