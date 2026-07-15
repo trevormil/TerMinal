@@ -1,6 +1,14 @@
 import { FlaskConical, TriangleAlert } from 'lucide-react'
 import { Card, Big, Badge, Row, Empty } from '../../components/ui'
+import { navigateTo } from '../../lib/nav'
 import type { Plugin, TddInfo } from '../../lib/types'
+
+// Deep-link into the MRs tab (replay once — the receiver mounts after the tab
+// switches; mirrors the git/mr-summary widgets).
+const openPr = (iid: number) => {
+  navigateTo('mrs', { iid })
+  setTimeout(() => navigateTo('mrs', { iid }), 50)
+}
 
 const verdictTone = (v: string): 'ok' | 'warn' | 'bad' | 'mute' =>
   v === 'approve' ? 'ok' : v === 'request-changes' || v === 'blocked' ? 'bad' : 'mute'
@@ -23,7 +31,7 @@ const plugin: Plugin<TddInfo> = {
           <Empty>{d?.repo ? `No tracked review · ${d.repo}` : 'Not a tracked repo'}</Empty>
         </Card>
       )
-    return (
+    const card = (
       <Card
         icon={FlaskConical}
         title="TDD / Review"
@@ -44,6 +52,18 @@ const plugin: Plugin<TddInfo> = {
         <Row label="verdict" value={<Badge tone={verdictTone(d.verdict)}>{d.verdict}</Badge>} />
         <Row label="tests" value={<Badge tone={testTone(d.testStatus)}>{d.testStatus}</Badge>} />
       </Card>
+    )
+    // Deep-link to the PR when we have its number; otherwise leave it inert.
+    if (!d.number) return card
+    return (
+      <button
+        type="button"
+        onClick={() => openPr(d.number)}
+        title={`Open PR #${d.number}`}
+        className="block w-full text-left rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+      >
+        {card}
+      </button>
     )
   },
 }

@@ -1,6 +1,14 @@
 import { GitPullRequest } from 'lucide-react'
 import { Card, Big, Row, Badge, Empty } from '../../components/ui'
+import { navigateTo } from '../../lib/nav'
 import type { Plugin, MrSummary } from '../../lib/types'
+
+// Deep-link into the MRs tab. The receiver's onNavigate listener only mounts
+// after the active tab switches, so replay once (mirrors the git widget).
+const openMrs = (payload?: Record<string, unknown>) => {
+  navigateTo('mrs', payload)
+  setTimeout(() => navigateTo('mrs', payload), 50)
+}
 
 const plugin: Plugin<MrSummary> = {
   id: 'mr-summary',
@@ -27,14 +35,21 @@ const plugin: Plugin<MrSummary> = {
         </Card>
       )
     return (
-      <Card icon={GitPullRequest} title={title}>
-        <div className="mb-2">
-          <Big value={d.open} sub="open" />
-        </div>
-        <Row label="approved" value={<Badge tone="green">{d.approve}</Badge>} />
-        <Row label="changes" value={<Badge tone="red">{d.changes}</Badge>} />
-        <Row label="needs review" value={<Badge tone="yellow">{d.needsReview}</Badge>} />
-      </Card>
+      <button
+        type="button"
+        onClick={() => openMrs()}
+        title="Open the MRs tab"
+        className="block w-full text-left rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+      >
+        <Card icon={GitPullRequest} title={title}>
+          <div className="mb-2">
+            <Big value={d.open} sub="open" />
+          </div>
+          <Row label="approved" value={<Badge tone="green">{d.approve}</Badge>} />
+          <Row label="changes" value={<Badge tone="red">{d.changes}</Badge>} />
+          <Row label="needs review" value={<Badge tone="yellow">{d.needsReview}</Badge>} />
+        </Card>
+      </button>
     )
   },
 }

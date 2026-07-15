@@ -47,7 +47,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   }, [projectsDir])
   const finish = async () => {
     setBusy(true)
-    await window.gt.settings.patch({ projectsDir: projectsDir.trim(), onboarded: true })
+    // Reconcile the default agent engine with what's actually installed. The
+    // stock default is codex, but a fresh user may have only claude (or cursor)
+    // — leaving it on an absent binary makes every scheduled/agent run silently
+    // no-op. Point it at a detected engine (codex preferred, then claude, then
+    // cursor); leave it untouched if none were found.
+    const detectedDefault = env?.codex.found
+      ? 'codex'
+      : env?.claude.found
+        ? 'claude'
+        : env?.cursor.found
+          ? 'cursor'
+          : undefined
+    await window.gt.settings.patch({
+      projectsDir: projectsDir.trim(),
+      onboarded: true,
+      ...(detectedDefault ? { defaultEngine: detectedDefault } : {}),
+    })
     onDone()
   }
 

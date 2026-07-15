@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { Sparkles, ChevronRight, ChevronDown } from 'lucide-react'
-import { Card, Empty } from '../../components/ui'
+import { Card, CopyButton, Empty } from '../../components/ui'
 import type { Plugin, SkillInfo } from '../../lib/types'
 
 function SkillRow({ s }: { s: SkillInfo }) {
+  const command = `/${s.scope === 'plugin' && s.namespace ? `${s.namespace}:` : ''}${s.name}`
   return (
     <div className="border-b border-[var(--gt-border)]/30 py-1.5 last:border-0">
       <div className="font-mono text-[11px] text-zinc-200">
-        {s.scope === 'plugin' && s.namespace ? <span className="text-zinc-500">{s.namespace}:</span> : null}
-        {s.name}
+        <CopyButton value={command} title={`Copy ${command} — paste in terminal`}>
+          {s.scope === 'plugin' && s.namespace ? <span className="text-zinc-500">{s.namespace}:</span> : null}
+          {s.name}
+        </CopyButton>
         {s.platforms?.length ? (
           <span className="ml-1 text-[9px] text-zinc-600">{s.platforms.join('+')}</span>
         ) : null}

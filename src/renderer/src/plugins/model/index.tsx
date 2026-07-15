@@ -1,5 +1,5 @@
 import { Bot } from 'lucide-react'
-import { Card, Row, Empty } from '../../components/ui'
+import { Card, Row, CopyButton, Empty } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const plugin: Plugin<TranscriptStats> = {
@@ -26,7 +26,14 @@ const plugin: Plugin<TranscriptStats> = {
           {d.model}
         </div>
         <Row label="turns" value={d.turns} />
-        <Row label="session" value={d.sessionId.slice(0, 8) || '—'} />
+        <Row
+          label="session"
+          value={
+            <CopyButton value={d.sessionId} title="Copy session id">
+              {d.sessionId.slice(0, 8) || '—'}
+            </CopyButton>
+          }
+        />
         {d.gitBranch && <Row label="branch" value={d.gitBranch} />}
       </Card>
     )

@@ -19,7 +19,7 @@ import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { Badge } from './ui'
+import { Badge, CopyButton } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
@@ -960,7 +960,10 @@ export function MrDetailView({
           )}
         <span className="ml-2 inline-flex items-center gap-0.5 truncate text-[10px] text-zinc-700">
           <GitBranch size={11} strokeWidth={2} />
-          {mr.sourceBranch} → {mr.targetBranch}
+          <CopyButton value={mr.sourceBranch} title="Copy branch name" className="text-[10px] text-zinc-700">
+            {mr.sourceBranch}
+          </CopyButton>
+          → {mr.targetBranch}
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

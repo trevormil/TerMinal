@@ -1,7 +1,41 @@
-import type { ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Check, type LucideIcon } from 'lucide-react'
 
 // Shared widget primitives. Plugins compose these so cards look consistent.
+
+/** Inline click-to-copy affordance: renders `children` as a button that copies
+ *  `value` to the clipboard and briefly flashes a check. Stops propagation so it
+ *  works inside a clickable card. */
+export function CopyButton({
+  value,
+  title = 'Copy',
+  className = '',
+  children,
+}: {
+  value: string
+  title?: string
+  className?: string
+  children: ReactNode
+}) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      title={copied ? 'Copied' : title}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!value) return
+        window.gt.clipboardWrite(value)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }}
+      className={`inline-flex items-center gap-0.5 hover:text-zinc-200 ${copied ? 'text-[var(--gt-green)]' : ''} ${className}`}
+    >
+      {children}
+      {copied && <Check size={10} strokeWidth={2.5} className="shrink-0" />}
+    </button>
+  )
+}
 
 export function Card({
   icon: Icon,
