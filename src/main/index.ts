@@ -1667,6 +1667,9 @@ ipcMain.handle('schedules:run-log', (_e, runId: string) => {
 ipcMain.handle('schedules:reconcile', () =>
   curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : routeReconcile(readSchedules()),
 )
+// Baked at build time from git origin (electron.vite.config.ts define). '' when
+// origin is unknown → hosts skip self-update rather than track a guessed repo.
+declare const __BUILD_REPO_SLUG__: string
 // Prepare a Linux host to run scheduled agents via systemd: install Bun, enable
 // linger (headless firing), install the runner, report readiness (ADR-0002 #12).
 ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
@@ -1675,6 +1678,10 @@ ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
   const engines = Object.keys(host.daemon?.engines || {})
   const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'], {
     cliSrcPath: cliSrcPath(),
+    // Hosts self-update from the repo THIS build was made from (baked at build
+    // time from git origin), so a fork's hosts track the fork, not upstream.
+    // '' → provisionHost skips self-update rather than guessing a repo.
+    repoSlug: __BUILD_REPO_SLUG__,
   })
   return { ok: r.ready, ...r }
 })

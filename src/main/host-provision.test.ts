@@ -1,5 +1,20 @@
 import { test, expect, describe } from 'bun:test'
-import { buildProvisionScript, buildReadinessProbe, parseReadiness } from './host-provision'
+import { buildProvisionScript, buildReadinessProbe, parseReadiness, selfUpdatePlan } from './host-provision'
+
+describe('selfUpdatePlan (0022 — no hardcoded self-update repo)', () => {
+  test('no repo slug → skipped, and never emits a hardcoded/personal slug', () => {
+    const plan = selfUpdatePlan({})
+    expect(plan.run).toBe(false)
+    expect(JSON.stringify(plan)).not.toContain('trevormil')
+  })
+  test('an explicit slug is used, branch defaulting to main', () => {
+    expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal' })).toEqual({ run: true, repoSlug: 'acme/TerMinal', branch: 'main' })
+    expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal', branch: 'release' }).branch).toBe('release')
+  })
+  test('selfUpdate:false disables it even with a slug', () => {
+    expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal', selfUpdate: false }).run).toBe(false)
+  })
+})
 
 describe('buildProvisionScript', () => {
   const s = buildProvisionScript()

@@ -112,8 +112,18 @@ const shSingleQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 export type ProvisionOpts = {
   cliSrcPath?: string // local bin/terminal-cli — installed alongside the runner
   selfUpdate?: boolean // install the nightly self-update timer (default true)
-  repoSlug?: string // repo the host self-updates from (default trevormil/TerMinal)
+  repoSlug?: string // owner/repo the host self-updates from — no hardcoded default
   branch?: string // branch it tracks (default main)
+}
+
+/** Decide whether to install the self-update timer and from which repo. There is
+ *  deliberately NO hardcoded repo fallback: if no slug is provided (unknown git
+ *  origin), self-update is skipped rather than silently tracking someone else's
+ *  repo. Pure + exported for tests. */
+export function selfUpdatePlan(opts: ProvisionOpts): { run: boolean; repoSlug: string; branch: string } {
+  const repoSlug = (opts.repoSlug || '').trim()
+  if (opts.selfUpdate === false || !repoSlug) return { run: false, repoSlug: '', branch: '' }
+  return { run: true, repoSlug, branch: opts.branch || 'main' }
 }
 
 // Provision a host end-to-end: idempotent setup, copy the runner + cli into place,
@@ -136,12 +146,12 @@ export async function provisionHost(
     log.push(`cli copy: ${copiedCli.ok ? 'ok' : `FAILED — ${copiedCli.error}`}`)
   }
   await ssh(host.sshTarget, 'chmod +x "$HOME/.config/TerMinal/bin/"terminal-cron "$HOME/.config/TerMinal/bin/"terminal-cli 2>/dev/null; true')
-  if (opts.selfUpdate !== false) {
-    const su = await ssh(
-      host.sshTarget,
-      installSelfUpdateCmd(opts.repoSlug || 'trevormil/TerMinal', opts.branch || 'main', '*-*-* 03:30:00'),
-    )
-    log.push(`self-update timer: ${su.ok ? 'ok' : `FAILED — ${su.error}`}`)
+  const su = selfUpdatePlan(opts)
+  if (su.run) {
+    const r = await ssh(host.sshTarget, installSelfUpdateCmd(su.repoSlug, su.branch, '*-*-* 03:30:00'))
+    log.push(`self-update timer: ${r.ok ? `ok (${su.repoSlug}@${su.branch})` : `FAILED — ${r.error}`}`)
+  } else if (opts.selfUpdate !== false) {
+    log.push('self-update timer: skipped (no repo slug — set a fork origin or configure one)')
   }
   const probe = await ssh(host.sshTarget, buildReadinessProbe(engines))
   log.push(`probe: ${probe.ok ? 'ok' : `FAILED — ${probe.error}`}`)

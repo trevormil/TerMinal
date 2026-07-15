@@ -18,10 +18,15 @@ const BUILD_SHA = git('git rev-parse --short HEAD') || 'unknown'
 const BUILD_BRANCH = git('git rev-parse --abbrev-ref HEAD') || 'unknown'
 const BUILD_DIRTY = git('git status --porcelain') ? '-dirty' : ''
 const BUILD_TIME = new Date().toISOString()
+// The owner/repo this build was made from (git origin), baked in so provisioned
+// hosts self-update from THIS repo — a fork's hosts track the fork, not upstream.
+// '' when origin is unknown → self-update is skipped rather than guessed.
+const BUILD_REPO_SLUG = (git('git remote get-url origin').match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/)?.[1]) || ''
 const define = {
   __BUILD_SHA__: JSON.stringify(BUILD_SHA + BUILD_DIRTY),
   __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
   __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+  __BUILD_REPO_SLUG__: JSON.stringify(BUILD_REPO_SLUG),
 }
 
 // node-pty is a native module — keep it external so it isn't bundled.
