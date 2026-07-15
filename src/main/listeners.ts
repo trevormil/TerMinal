@@ -139,7 +139,9 @@ function writeJson(path: string, value: unknown): void {
 export function readListenerSettings(): ListenerSettings {
   ensure()
   const raw = readJson<Partial<ListenerSettings>>(SETTINGS, {})
-  return { enabled: raw.enabled !== false }
+  // Opt-in by default: the inbox auto-runs full-access agents on any dropped
+  // file, so it must be enabled deliberately (never on for a fresh install).
+  return { enabled: raw.enabled === true }
 }
 
 export function setListenerEnabled(enabled: boolean): ListenerSettings {

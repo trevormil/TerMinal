@@ -91,6 +91,17 @@ sync_latest
 echo "▸ building…"
 bun run dist
 
+# Emit SHA-256 checksums for the distributable(s) so a download can be verified
+# before the Gatekeeper bypass (the build is unsigned). See docs/setup.md.
+echo "▸ checksums…"
+if compgen -G "dist/*.dmg" >/dev/null; then
+  ( cd dist && shasum -a 256 *.dmg > SHA256SUMS.txt )
+  sed 's/^/    /' dist/SHA256SUMS.txt
+  echo "  → dist/SHA256SUMS.txt"
+else
+  echo "  no .dmg produced — skipping checksums"
+fi
+
 echo "▸ ad-hoc signing…"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
