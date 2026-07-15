@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Globe, PanelLeftClose, PanelLeftOpen, Plus, Trash2, BookOpen, ChevronDown } from 'lucide-react'
+import {
+  Globe,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Trash2,
+  BookOpen,
+  ChevronDown,
+} from 'lucide-react'
 import type { KnowledgeScope, Tab, TabContext } from '../../lib/types'
 import { appendKnowledgeItem, singleHttpUrl } from '../../lib/knowledge'
 import { useWebSurface, BrowserToolbar, normalizeUrl } from './webSurface'
@@ -28,13 +36,28 @@ const AI_TOOLS = [
   { id: 'chatgpt', title: 'ChatGPT', url: 'https://chatgpt.com/', logo: chatgptLogo },
   { id: 'claude', title: 'Claude', url: 'https://claude.ai/new', logo: claudeLogo },
   { id: 'gemini', title: 'Gemini', url: 'https://gemini.google.com/app', logo: geminiLogo },
-  { id: 'perplexity', title: 'Perplexity', url: 'https://www.perplexity.ai/', logo: perplexityLogo },
+  {
+    id: 'perplexity',
+    title: 'Perplexity',
+    url: 'https://www.perplexity.ai/',
+    logo: perplexityLogo,
+  },
   { id: 'copilot', title: 'Copilot', url: 'https://copilot.microsoft.com/', logo: copilotLogo },
   { id: 'grok', title: 'Grok', url: 'https://grok.com/', logo: grokLogo },
   { id: 'mistral', title: 'Le Chat', url: 'https://chat.mistral.ai/chat', logo: mistralLogo },
   { id: 'poe', title: 'Poe', url: 'https://poe.com/', logo: poeLogo },
-  { id: 'huggingface', title: 'Hugging Face', url: 'https://huggingface.co/chat/', logo: huggingfaceLogo },
-  { id: 'notebooklm', title: 'NotebookLM', url: 'https://notebooklm.google.com/', logo: notebooklmLogo },
+  {
+    id: 'huggingface',
+    title: 'Hugging Face',
+    url: 'https://huggingface.co/chat/',
+    logo: huggingfaceLogo,
+  },
+  {
+    id: 'notebooklm',
+    title: 'NotebookLM',
+    url: 'https://notebooklm.google.com/',
+    logo: notebooklmLogo,
+  },
   { id: 'deepseek', title: 'DeepSeek', url: 'https://chat.deepseek.com/', logo: deepseekLogo },
   { id: 'metaai', title: 'Meta AI', url: 'https://www.meta.ai/', logo: metaaiLogo },
   { id: 'you', title: 'You.com', url: 'https://you.com/', logo: youLogo },
@@ -136,10 +159,14 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
   }, [addr, homeUrl, surface])
 
   const loadTool = (url: string) => surface.loadUrl(url)
-  const presetBookmarks: BrowserBookmark[] = AI_TOOLS
-    .filter((tool) => !hiddenPresets.includes(tool.id))
-    .map((tool) => ({ ...tool, source: 'preset' as const }))
-  const bookmarks = [...(repoBookmark ? [repoBookmark] : []), ...presetBookmarks, ...customBookmarks]
+  const presetBookmarks: BrowserBookmark[] = AI_TOOLS.filter(
+    (tool) => !hiddenPresets.includes(tool.id),
+  ).map((tool) => ({ ...tool, source: 'preset' as const }))
+  const bookmarks = [
+    ...(repoBookmark ? [repoBookmark] : []),
+    ...presetBookmarks,
+    ...customBookmarks,
+  ]
   const addBookmark = () => {
     const url = normalizeUrl(newUrl || addr)
     if (!url) return
@@ -254,7 +281,13 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
                   <button
                     onClick={() => saveCurrentPageToKb('repo')}
                     disabled={!ctx.repoRoot || !!ctx.remote}
-                    title={ctx.remote ? 'Repo Knowledge Base save is local-only for now.' : !ctx.repoRoot ? 'No repo selected.' : 'Save to this repo Knowledge Base'}
+                    title={
+                      ctx.remote
+                        ? 'Repo Knowledge Base save is local-only for now.'
+                        : !ctx.repoRoot
+                          ? 'No repo selected.'
+                          : 'Save to this repo Knowledge Base'
+                    }
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
                   >
                     <BookOpen size={12} strokeWidth={2} />
@@ -385,9 +418,17 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
                   )}
                   {toolsExpanded && (
                     <>
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{tool.title}</span>
-                      {tool.source !== 'preset' && <span className="shrink-0 text-[9px] uppercase text-zinc-700">{tool.source}</span>}
-                      {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />}
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                        {tool.title}
+                      </span>
+                      {tool.source !== 'preset' && (
+                        <span className="shrink-0 text-[9px] uppercase text-zinc-700">
+                          {tool.source}
+                        </span>
+                      )}
+                      {active && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent-2)]" />
+                      )}
                       {tool.source !== 'repo' && (
                         <span
                           onClick={(e) => {

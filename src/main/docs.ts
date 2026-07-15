@@ -18,7 +18,8 @@ import { existingProjectAreaPaths } from './project-layout'
 //   - other       — everything else under docs/**.md (human-authored runbooks,
 //                   architecture.md at root, etc.)
 
-export type DocCategory = 'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
+export type DocCategory =
+  'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
 
 export type DocEntry = {
   path: string // relative to repoRoot, forward slashes
@@ -43,7 +44,15 @@ const CATEGORY_LABEL: Record<DocCategory, string> = {
 }
 
 // Order in the sidebar.
-const CATEGORY_ORDER: DocCategory[] = ['changelog', 'decisions', 'maintainer', 'developer', 'personal', 'reports', 'other']
+const CATEGORY_ORDER: DocCategory[] = [
+  'changelog',
+  'decisions',
+  'maintainer',
+  'developer',
+  'personal',
+  'reports',
+  'other',
+]
 
 const MARKDOWN_RE = /\.(md|mdx|markdown)$/i
 const MANAGED_BY_RE = /<!--\s*managed by:\s*([a-z0-9-]+)/i
@@ -78,7 +87,12 @@ function reportSubgroup(rel: string): string | undefined {
   // .TerMinal/checks/<kind>/<file>.md     → "<kind>"
   if (parts.length >= 3 && (parts[0] === 'reports' || parts[0] === 'checks')) return parts[1]
   if (parts.length >= 3 && parts[0] === '.checks') return parts[1]
-  if (parts.length >= 4 && parts[0] === '.TerMinal' && (parts[1] === 'reports' || parts[1] === 'checks')) return parts[2]
+  if (
+    parts.length >= 4 &&
+    parts[0] === '.TerMinal' &&
+    (parts[1] === 'reports' || parts[1] === 'checks')
+  )
+    return parts[2]
   return undefined
 }
 
@@ -104,13 +118,16 @@ function walk(root: string, dir: string, out: string[]): void {
 }
 
 export function listDocs(repoRoot: string): DocsTree {
-  const empty: DocsTree = { categories: CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABEL[id], items: [] })) }
+  const empty: DocsTree = {
+    categories: CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABEL[id], items: [] })),
+  }
   if (!repoRoot || !existsSync(repoRoot)) return empty
   const paths: string[] = []
   const docsDir = join(repoRoot, 'docs')
   if (existsSync(docsDir) && statSync(docsDir).isDirectory()) walk(repoRoot, docsDir, paths)
   for (const reportsDir of existingProjectAreaPaths(repoRoot, 'reports')) {
-    if (existsSync(reportsDir) && statSync(reportsDir).isDirectory()) walk(repoRoot, reportsDir, paths)
+    if (existsSync(reportsDir) && statSync(reportsDir).isDirectory())
+      walk(repoRoot, reportsDir, paths)
   }
   for (const checksDir of existingProjectAreaPaths(repoRoot, 'checks')) {
     if (existsSync(checksDir) && statSync(checksDir).isDirectory()) walk(repoRoot, checksDir, paths)

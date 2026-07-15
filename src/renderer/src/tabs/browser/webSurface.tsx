@@ -88,7 +88,8 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
       sync()
     }
     const onNav = () => sync()
-    const onTitle = (e: Event & { title?: string }) => setPageTitle(e.title || wv.getTitle?.() || '')
+    const onTitle = (e: Event & { title?: string }) =>
+      setPageTitle(e.title || wv.getTitle?.() || '')
     // pop-ups / target=_blank containment lives in the main process
     // (did-attach-webview → guest.setWindowOpenHandler): the DOM <webview> emits
     // no 'new-window' event on Electron 41, so a renderer listener never fired.
@@ -121,7 +122,21 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
   const forward = () => wvRef.current?.goForward()
   const reloadOrStop = () => (loading ? wvRef.current?.stop() : wvRef.current?.reload())
 
-  return { hostRef, wvRef, addr, setAddr, pageTitle, loading, canBack, canFwd, go, back, forward, reloadOrStop, loadUrl }
+  return {
+    hostRef,
+    wvRef,
+    addr,
+    setAddr,
+    pageTitle,
+    loading,
+    canBack,
+    canFwd,
+    go,
+    back,
+    forward,
+    reloadOrStop,
+    loadUrl,
+  }
 }
 
 const iconBtn =
@@ -159,7 +174,11 @@ export function BrowserToolbar({
         }}
         className="flex flex-1 items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 focus-within:border-[var(--gt-accent)]/60"
       >
-        <Globe size={13} strokeWidth={2} className={`shrink-0 ${loading ? 'text-[var(--gt-accent-2)]' : 'text-zinc-600'}`} />
+        <Globe
+          size={13}
+          strokeWidth={2}
+          className={`shrink-0 ${loading ? 'text-[var(--gt-accent-2)]' : 'text-zinc-600'}`}
+        />
         <input
           value={addr}
           onChange={(e) => setAddr(e.target.value)}

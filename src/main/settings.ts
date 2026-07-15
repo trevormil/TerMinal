@@ -95,7 +95,9 @@ export type Settings = {
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
+export type SettingsPatch = Partial<
+  Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>
+> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
@@ -157,7 +159,13 @@ export function defaultSettings(): Settings {
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     inbox: { completionHook: true, agentContextPreamble: true },
-    appearance: { mode: 'dark', theme: 'terminal', accent: '', uiScale: 1, tabLayout: 'horizontal' },
+    appearance: {
+      mode: 'dark',
+      theme: 'terminal',
+      accent: '',
+      uiScale: 1,
+      tabLayout: 'horizontal',
+    },
     apps: { editor: '', browser: '' },
     suggestions: {
       aiEngine: 'claude',
@@ -191,7 +199,8 @@ function daemonCfg(raw: unknown): DaemonCfg {
   for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
     if (typeof r[k] === 'string') out[k] = r[k]
   }
-  if (ENGINE_IDS.includes(r.defaultEngine as EngineId)) out.defaultEngine = r.defaultEngine as EngineId
+  if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
+    out.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') out.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
     const engines = r.engines as Record<string, unknown>
@@ -202,33 +211,34 @@ function daemonCfg(raw: unknown): DaemonCfg {
 
 function remoteHosts(raw: unknown): RemoteHost[] {
   if (!Array.isArray(raw)) return []
-  return raw
-    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-    .map((x) => {
-      const sshTarget = typeof x.sshTarget === 'string' ? x.sshTarget.trim() : ''
-      const idRaw = typeof x.id === 'string' ? x.id.trim() : ''
-      const id = (idRaw || sshTarget).replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '')
-      const platform: RemotePlatform =
-        x.platform === 'linux' || x.platform === 'macos' || x.platform === 'auto'
-          ? x.platform
-          : 'auto'
-      return {
-        id,
-        label:
-          typeof x.label === 'string' && x.label.trim()
-            ? x.label.trim()
-            : id || sshTarget,
-        sshTarget,
-        defaultCwd: typeof x.defaultCwd === 'string' ? x.defaultCwd.trim() : '',
-        platform,
-        daemon: daemonCfg(x.daemon),
-      }
-    })
-    // Drop hosts whose sshTarget could be parsed by `ssh` as an option
-    // (leading `-`, e.g. `-oProxyCommand=…` → local RCE) or carries control
-    // chars. Mirrors isSafeSshTarget in remote.ts (kept inline to avoid a
-    // settings↔remote import cycle).
-    .filter((h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget))
+  return (
+    raw
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x) => {
+        const sshTarget = typeof x.sshTarget === 'string' ? x.sshTarget.trim() : ''
+        const idRaw = typeof x.id === 'string' ? x.id.trim() : ''
+        const id = (idRaw || sshTarget).replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '')
+        const platform: RemotePlatform =
+          x.platform === 'linux' || x.platform === 'macos' || x.platform === 'auto'
+            ? x.platform
+            : 'auto'
+        return {
+          id,
+          label: typeof x.label === 'string' && x.label.trim() ? x.label.trim() : id || sshTarget,
+          sshTarget,
+          defaultCwd: typeof x.defaultCwd === 'string' ? x.defaultCwd.trim() : '',
+          platform,
+          daemon: daemonCfg(x.daemon),
+        }
+      })
+      // Drop hosts whose sshTarget could be parsed by `ssh` as an option
+      // (leading `-`, e.g. `-oProxyCommand=…` → local RCE) or carries control
+      // chars. Mirrors isSafeSshTarget in remote.ts (kept inline to avoid a
+      // settings↔remote import cycle).
+      .filter(
+        (h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget),
+      )
+  )
 }
 
 function noteFolders(raw: unknown): NoteFolder[] {
@@ -270,13 +280,19 @@ export function migrate(raw: unknown): Settings {
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
-    if (typeof r.inbox.agentContextPreamble === 'boolean') s.inbox.agentContextPreamble = r.inbox.agentContextPreamble
+    if (typeof r.inbox.agentContextPreamble === 'boolean')
+      s.inbox.agentContextPreamble = r.inbox.agentContextPreamble
   }
   if (r.appearance && typeof r.appearance === 'object') {
-    if (r.appearance.mode === 'dark' || r.appearance.mode === 'light' || r.appearance.mode === 'system') {
+    if (
+      r.appearance.mode === 'dark' ||
+      r.appearance.mode === 'light' ||
+      r.appearance.mode === 'system'
+    ) {
       s.appearance.mode = r.appearance.mode
     }
-    if (typeof r.appearance.theme === 'string' && r.appearance.theme.trim()) s.appearance.theme = r.appearance.theme
+    if (typeof r.appearance.theme === 'string' && r.appearance.theme.trim())
+      s.appearance.theme = r.appearance.theme
     if (typeof r.appearance.accent === 'string') s.appearance.accent = r.appearance.accent
     if (typeof r.appearance.uiScale === 'number' && Number.isFinite(r.appearance.uiScale)) {
       s.appearance.uiScale = Math.min(1.35, Math.max(0.85, r.appearance.uiScale))
@@ -298,7 +314,8 @@ export function migrate(raw: unknown): Settings {
     s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
-  if (ENGINE_IDS.includes(r.defaultEngine as EngineId)) s.defaultEngine = r.defaultEngine as EngineId
+  if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
+    s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
   if (r.engines && typeof r.engines === 'object') {
     for (const e of ENGINE_IDS) {
@@ -325,14 +342,20 @@ export function migrate(raw: unknown): Settings {
   }
   s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
-  if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0) s.runMemoryCap = Math.floor(r.runMemoryCap)
+  if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0)
+    s.runMemoryCap = Math.floor(r.runMemoryCap)
   return s
 }
 
 const FILE = join(homedir(), '.config', 'TerMinal', 'settings.json')
 
 function isEncryptedSecret(value: unknown): value is EncryptedSecret {
-  return !!value && typeof value === 'object' && (value as Record<string, unknown>).__terminalSecret === SECRET_MARKER && typeof (value as Record<string, unknown>).payload === 'string'
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    (value as Record<string, unknown>).__terminalSecret === SECRET_MARKER &&
+    typeof (value as Record<string, unknown>).payload === 'string'
+  )
 }
 
 function clonePlain<T>(value: T): T {
@@ -356,7 +379,10 @@ function transformSecretPaths(raw: unknown, visit: (value: unknown) => unknown):
   return out
 }
 
-export function openSettingsFromDisk(raw: unknown, storage: SettingsSecretStorage | null = secretStorage): unknown {
+export function openSettingsFromDisk(
+  raw: unknown,
+  storage: SettingsSecretStorage | null = secretStorage,
+): unknown {
   return transformSecretPaths(raw, (value) => {
     if (!isEncryptedSecret(value)) return value
     if (!storage) return ''
@@ -368,7 +394,10 @@ export function openSettingsFromDisk(raw: unknown, storage: SettingsSecretStorag
   })
 }
 
-export function sealSettingsForDisk(settings: Settings, storage: SettingsSecretStorage | null = secretStorage): unknown {
+export function sealSettingsForDisk(
+  settings: Settings,
+  storage: SettingsSecretStorage | null = secretStorage,
+): unknown {
   const canEncrypt = !!storage && (storage.canEncrypt ? storage.canEncrypt() : true)
   return transformSecretPaths(settings, (value) => {
     if (typeof value !== 'string' || !value) return value
@@ -377,10 +406,15 @@ export function sealSettingsForDisk(settings: Settings, storage: SettingsSecretS
       // (keychain locked/denied, unsigned/dev build) omit the value from disk —
       // the in-memory setting still works for this session; the user re-enters
       // it if needed. Returning undefined drops the key from the serialized JSON.
-      console.error('[gt] settings: OS encryption unavailable — omitting a secret from disk instead of writing cleartext')
+      console.error(
+        '[gt] settings: OS encryption unavailable — omitting a secret from disk instead of writing cleartext',
+      )
       return undefined
     }
-    return { __terminalSecret: SECRET_MARKER, payload: storage.seal(value) } satisfies EncryptedSecret
+    return {
+      __terminalSecret: SECRET_MARKER,
+      payload: storage.seal(value),
+    } satisfies EncryptedSecret
   })
 }
 
@@ -602,5 +636,7 @@ export const telegramControlEnabled = () => readSettings().telegram.control
 /** macOS app name for the "Open in editor" / "Open in browser" handoffs.
  *  Explicit setting > first detected installed app > hardcoded last resort, so a
  *  fresh user without Cursor/Brave still gets a working `open -a`. */
-export const resolvedEditorApp = () => readSettings().apps.editor || firstInstalledEditor() || DEFAULT_EDITOR
-export const resolvedBrowserApp = () => readSettings().apps.browser || firstInstalledBrowser() || DEFAULT_BROWSER
+export const resolvedEditorApp = () =>
+  readSettings().apps.editor || firstInstalledEditor() || DEFAULT_EDITOR
+export const resolvedBrowserApp = () =>
+  readSettings().apps.browser || firstInstalledBrowser() || DEFAULT_BROWSER

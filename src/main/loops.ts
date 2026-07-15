@@ -163,8 +163,11 @@ export function readLoopState(id: string): LoopState | { error: string } {
   const rec = getLoop(id)
   if (!rec) return { error: 'unknown loop' }
   const d = loopDir(rec)
-  const prog = existsSync(join(d, 'progress.md')) ? readFileSync(join(d, 'progress.md'), 'utf8') : ''
-  const grab = (k: string): string => (prog.match(new RegExp(`^${k}:\\s*(.*)$`, 'm'))?.[1] || '').trim()
+  const prog = existsSync(join(d, 'progress.md'))
+    ? readFileSync(join(d, 'progress.md'), 'utf8')
+    : ''
+  const grab = (k: string): string =>
+    (prog.match(new RegExp(`^${k}:\\s*(.*)$`, 'm'))?.[1] || '').trim()
   let counts = { total: 0, pass: 0, fail: 0, todo: 0 }
   try {
     const fl = JSON.parse(readFileSync(join(d, 'feature_list.json'), 'utf8'))
@@ -217,10 +220,10 @@ function makeWorktree(repoRoot: string, id: string): { worktree: string; branch:
     /* use HEAD */
   }
   if (!existsSync(worktree))
-    execSync(
-      `git worktree add -B ${JSON.stringify(branch)} ${JSON.stringify(worktree)} ${base}`,
-      { cwd: repoRoot, stdio: 'pipe' },
-    )
+    execSync(`git worktree add -B ${JSON.stringify(branch)} ${JSON.stringify(worktree)} ${base}`, {
+      cwd: repoRoot,
+      stdio: 'pipe',
+    })
   return { worktree, branch }
 }
 
@@ -387,7 +390,15 @@ function buildTurnCommand(
     }
   return {
     bin: enginePath('codex'),
-    args: ['exec', '-s', 'danger-full-access', '-C', dir, ...(model ? ['--model', model] : []), prompt],
+    args: [
+      'exec',
+      '-s',
+      'danger-full-access',
+      '-C',
+      dir,
+      ...(model ? ['--model', model] : []),
+      prompt,
+    ],
   }
 }
 
@@ -523,7 +534,8 @@ function decide(rec: LoopRecord): void {
     if (files.length >= 2) {
       const val = (f: string): number =>
         parseFloat(
-          (readFileSync(join(d, 'scores', f), 'utf8').match(/weighted:\s*([\d.]+)/) || [])[1] || '0',
+          (readFileSync(join(d, 'scores', f), 'utf8').match(/weighted:\s*([\d.]+)/) || [])[1] ||
+            '0',
         )
       plateau = Math.abs(val(files[files.length - 1]) - val(files[files.length - 2])) <= 0.02
     } else {
@@ -535,7 +547,10 @@ function decide(rec: LoopRecord): void {
   if (decideOutcome(rec.iteration, rec.maxIterations, allPass, plateau) === 'done') {
     rec.phase = 'done'
     rec.status = 'done'
-    logLine(rec, `done | ${allPass ? 'contract met' : 'iteration cap'}${plateau ? ', taste plateaued' : ''}`)
+    logLine(
+      rec,
+      `done | ${allPass ? 'contract met' : 'iteration cap'}${plateau ? ', taste plateaued' : ''}`,
+    )
     emitActivity({
       kind: allPass ? 'task-complete' : 'info',
       title: `Loop done: ${rec.id}`,

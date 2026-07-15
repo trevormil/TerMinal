@@ -65,10 +65,8 @@ export function installSelfUpdateCmd(repoSlug: string, branch: string, onCalenda
   const USER_DIR = '"$HOME/.config/systemd/user"'
   const scriptFile = `${BIN_Q}/'terminal-selfupdate.sh'`
   const script64 = Buffer.from(buildSelfUpdateScript(repoSlug, branch)).toString('base64')
-  const service =
-    `[Unit]\nDescription=TerMinal host self-update\n\n[Service]\nType=oneshot\nExecStart=/bin/bash %h/.config/TerMinal/bin/terminal-selfupdate.sh\n`
-  const timer =
-    `[Unit]\nDescription=TerMinal host self-update (nightly)\n\n[Timer]\nOnCalendar=${onCalendar}\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`
+  const service = `[Unit]\nDescription=TerMinal host self-update\n\n[Service]\nType=oneshot\nExecStart=/bin/bash %h/.config/TerMinal/bin/terminal-selfupdate.sh\n`
+  const timer = `[Unit]\nDescription=TerMinal host self-update (nightly)\n\n[Timer]\nOnCalendar=${onCalendar}\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`
   const svc64 = Buffer.from(service).toString('base64')
   const tim64 = Buffer.from(timer).toString('base64')
   return (

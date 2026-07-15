@@ -12,13 +12,17 @@ describe('resolveObsidianScaffold', () => {
       ignore: ['.TerMinal/tickets.json'],
     })
     // explicit sibling is the same
-    expect(resolveObsidianScaffold(dest, parent, safe, { kind: 'obsidian', vaultLocation: 'sibling' }).vaultPath).toBe(
-      '/projects/app-vault',
-    )
+    expect(
+      resolveObsidianScaffold(dest, parent, safe, { kind: 'obsidian', vaultLocation: 'sibling' })
+        .vaultPath,
+    ).toBe('/projects/app-vault')
   })
 
   test('in-repo: a gitignored tickets-vault/ inside the repo', () => {
-    const r = resolveObsidianScaffold(dest, parent, safe, { kind: 'obsidian', vaultLocation: 'in-repo' })
+    const r = resolveObsidianScaffold(dest, parent, safe, {
+      kind: 'obsidian',
+      vaultLocation: 'in-repo',
+    })
     expect(r.vaultPath).toBe('/projects/app/tickets-vault')
     expect(r.ignore).toEqual(['.TerMinal/tickets.json', '/tickets-vault/'])
   })
@@ -34,8 +38,9 @@ describe('resolveObsidianScaffold', () => {
   })
 
   test('existing with no path falls back to the sibling default', () => {
-    expect(resolveObsidianScaffold(dest, parent, safe, { kind: 'obsidian', vaultLocation: 'existing' }).vaultPath).toBe(
-      '/projects/app-vault',
-    )
+    expect(
+      resolveObsidianScaffold(dest, parent, safe, { kind: 'obsidian', vaultLocation: 'existing' })
+        .vaultPath,
+    ).toBe('/projects/app-vault')
   })
 })

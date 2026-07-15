@@ -45,7 +45,12 @@ function loadFile(path: string, source: 'global' | 'repo', scope = ''): CustomTa
     if (!Array.isArray(arr)) return []
     const prefix = source === 'repo' && scope ? `${source}:${stableKey(scope)}` : source
     return arr
-      .filter((t) => t && typeof t.title === 'string' && (typeof t.url === 'string' || typeof t.command === 'string'))
+      .filter(
+        (t) =>
+          t &&
+          typeof t.title === 'string' &&
+          (typeof t.url === 'string' || typeof t.command === 'string'),
+      )
       .map((t, i) => ({
         id: `custom:${prefix}:${t.id || t.title.toLowerCase().replace(/\s+/g, '-')}-${i}`,
         title: String(t.title),

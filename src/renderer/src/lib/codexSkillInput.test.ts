@@ -7,7 +7,9 @@ describe('rewriteCodexSkillSubmit', () => {
   test('rewrites installed slash skills to codex skill mentions', () => {
     expect(rewriteCodexSkillSubmit('/ticket test ticket', skills)).toBe('$ticket test ticket\r')
     expect(rewriteCodexSkillSubmit('/code-review', skills)).toBe('$code-review\r')
-    expect(rewriteCodexSkillSubmit('/new-agent create me an agent', skills)).toBe('$new-agent create me an agent\r')
+    expect(rewriteCodexSkillSubmit('/new-agent create me an agent', skills)).toBe(
+      '$new-agent create me an agent\r',
+    )
   })
 
   test('leaves non-skill slash commands alone', () => {

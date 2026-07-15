@@ -33,7 +33,14 @@ export function EngineLogo({
   className?: string
 }) {
   if (engine === 'openrouter') {
-    return <Waypoints size={size} strokeWidth={2} className={`inline-block shrink-0 ${className}`} aria-label="OpenRouter" />
+    return (
+      <Waypoints
+        size={size}
+        strokeWidth={2}
+        className={`inline-block shrink-0 ${className}`}
+        aria-label="OpenRouter"
+      />
+    )
   }
   const src = LOGO[engine as Engine]
   if (!src) return null

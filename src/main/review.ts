@@ -104,7 +104,10 @@ export function readScreenshots(dir: string): Screenshot[] {
     out.push({
       id: typeof s.id === 'string' && s.id ? s.id : `sc-${out.length}`,
       caption: s.caption,
-      kind: typeof s.kind === 'string' && SCREENSHOT_KINDS.has(s.kind) ? (s.kind as Screenshot['kind']) : undefined,
+      kind:
+        typeof s.kind === 'string' && SCREENSHOT_KINDS.has(s.kind)
+          ? (s.kind as Screenshot['kind'])
+          : undefined,
       findingId: typeof s.findingId === 'string' ? s.findingId : undefined,
       dataUrl: `data:${mime};base64,${buf.toString('base64')}`,
     })
@@ -128,7 +131,10 @@ const inRepoReviewDir = (repoRoot: string, iid: number | string) =>
 
 function hasArtifacts(dir: string): boolean {
   if (!existsSync(dir)) return false
-  return safeReaddir(dir).some((n) => /^[0-9a-f]{7,40}\.md$/.test(n)) || existsSync(join(dir, 'meta.json'))
+  return (
+    safeReaddir(dir).some((n) => /^[0-9a-f]{7,40}\.md$/.test(n)) ||
+    existsSync(join(dir, 'meta.json'))
+  )
 }
 
 /** The PR's artifact dir: prefer in-repo project reviews, else harness prs/. */
@@ -160,7 +166,9 @@ export function readDigest(
   preferShort?: string,
 ): any | null {
   const dirs: string[] = []
-  if (repoRoot) for (const base of existingProjectAreaPaths(repoRoot, 'reviews')) dirs.push(join(base, String(iid)))
+  if (repoRoot)
+    for (const base of existingProjectAreaPaths(repoRoot, 'reviews'))
+      dirs.push(join(base, String(iid)))
   const h = harnessPrDir(host, repoPath, iid)
   if (h) dirs.push(h)
 
@@ -231,7 +239,12 @@ function pickArtifact(dir: string, headShort?: string): Picked | null {
   if (!fb) return null
   const sha = fb.match(/\/([0-9a-f]{7,40})\.md$/)?.[1].slice(0, 7) || ''
   const stale = !!(headShort && sha && !headShort.startsWith(sha) && !sha.startsWith(headShort))
-  return { file: fb, stale, commitsBehind: stale ? 1 : 0, number: Number(dir.split('/').pop()) || 0 }
+  return {
+    file: fb,
+    stale,
+    commitsBehind: stale ? 1 : 0,
+    number: Number(dir.split('/').pop()) || 0,
+  }
 }
 
 /** Review/test state for a PR dir, or null if no artifact. headShort enables
@@ -295,7 +308,11 @@ export function newestArtifactShortSha(dir: string): string {
 }
 
 /** Newest reviewed PR dir for a repo (for the TDD widget): in-repo first. */
-export function newestReviewDirForRepo(repoRoot: string, host: string, repoPath: string): string | null {
+export function newestReviewDirForRepo(
+  repoRoot: string,
+  host: string,
+  repoPath: string,
+): string | null {
   if (repoRoot) {
     for (const rdir of existingProjectAreaPaths(repoRoot, 'reviews')) {
       let best: { dir: string; mtime: number } | null = null

@@ -24,7 +24,9 @@ const SKIP_NAMES = new Set([
 const MAX_FILE_BYTES = 2_000_000
 
 function parts(rel: string): { root: (typeof ROOTS)[number]; child: string } | null {
-  const [id, ...rest] = String(rel || '').split('/').filter(Boolean)
+  const [id, ...rest] = String(rel || '')
+    .split('/')
+    .filter(Boolean)
   const root = ROOTS.find((r) => r.id === id)
   return root ? { root, child: rest.join('/') } : null
 }
@@ -39,7 +41,8 @@ function safe(rel: string): { root: (typeof ROOTS)[number]; abs: string; child: 
 }
 
 export function listWorkflowFiles(rel = ''): Entry[] {
-  if (!rel) return ROOTS.map((r) => ({ name: r.name, path: r.id, dir: true, ignored: !existsSync(r.root) }))
+  if (!rel)
+    return ROOTS.map((r) => ({ name: r.name, path: r.id, dir: true, ignored: !existsSync(r.root) }))
   const p = safe(rel)
   if (!p || !existsSync(p.abs)) return []
   let names: string[]
@@ -53,7 +56,11 @@ export function listWorkflowFiles(rel = ''): Entry[] {
     const abs = join(p.abs, name)
     try {
       const st = statSync(abs)
-      out.push({ name, path: p.child ? `${p.root.id}/${p.child}/${name}` : `${p.root.id}/${name}`, dir: st.isDirectory() })
+      out.push({
+        name,
+        path: p.child ? `${p.root.id}/${p.child}/${name}` : `${p.root.id}/${name}`,
+        dir: st.isDirectory(),
+      })
     } catch {
       /* skip disappearing entries */
     }
@@ -67,7 +74,8 @@ export function readWorkflowFile(rel: string): ReadResult {
   try {
     const st = statSync(p.abs)
     if (st.isDirectory()) return { ok: false, content: '', reason: 'directory' }
-    if (st.size > MAX_FILE_BYTES) return { ok: false, content: '', reason: 'file too large (>2 MB)' }
+    if (st.size > MAX_FILE_BYTES)
+      return { ok: false, content: '', reason: 'file too large (>2 MB)' }
     const buf = readFileSync(p.abs)
     if (buf.includes(0)) return { ok: false, content: '', reason: 'binary file' }
     return { ok: true, content: buf.toString('utf8') }

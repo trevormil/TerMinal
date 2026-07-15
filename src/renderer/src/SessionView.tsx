@@ -110,7 +110,8 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
           <span className="flex-1 text-[var(--gt-red)]">Bootstrap failed: {error}</span>
         ) : (
           <span className="flex-1">
-            {message || "This repo isn't bootstrapped with project-template — agents, skills, .TerMinal state, or docs are missing."}
+            {message ||
+              "This repo isn't bootstrapped with project-template — agents, skills, .TerMinal state, or docs are missing."}
           </span>
         )}
         <div className="flex items-center gap-1">
@@ -148,9 +149,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
             className="w-[520px] max-w-full rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-2 text-[13px] font-semibold text-zinc-100">
-              Bootstrap this repo?
-            </div>
+            <div className="mb-2 text-[13px] font-semibold text-zinc-100">Bootstrap this repo?</div>
             <p className="mb-3 text-[12px] leading-5 text-zinc-400">
               This runs project-template/bootstrap.sh against this repo. It seeds TerMinal workflow
               files for agents, skills, hooks, inbox notifications, tickets, sessions, reviews,
@@ -158,8 +157,8 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
             </p>
             <div className="mb-3 rounded-md border border-[var(--gt-border)] bg-black/25 p-2 text-[11px] leading-5 text-zinc-500">
               Existing project data and docs are left in place. Workflow-owned files may be updated;
-              conflicting existing files are written as <span className="font-mono">*.workflow</span>{' '}
-              sidecars for manual merge.
+              conflicting existing files are written as{' '}
+              <span className="font-mono">*.workflow</span> sidecars for manual merge.
             </div>
             <div className="mb-4 truncate rounded-md bg-black/30 px-2 py-1.5 font-mono text-[11px] text-zinc-500">
               {repoRoot}
@@ -224,7 +223,15 @@ export function SessionView({
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
-  peerSessions?: { key: string; label: string; status: string; mode: 'new' | 'resume'; engine: SessionEngine; needsAttention?: boolean; loopRole?: 'driver' | 'worker' }[]
+  peerSessions?: {
+    key: string
+    label: string
+    status: string
+    mode: 'new' | 'resume'
+    engine: SessionEngine
+    needsAttention?: boolean
+    loopRole?: 'driver' | 'worker'
+  }[]
   onSwitchSession?: (key: string) => void
   onAddSession?: () => void
   onCloseSession?: (key: string) => void
@@ -266,7 +273,11 @@ export function SessionView({
     }
   })
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
-  const sessionRailW = useResizableWidth('gt.sessionRailWidth', 160, { min: 120, max: 360, edge: 'right' })
+  const sessionRailW = useResizableWidth('gt.sessionRailWidth', 160, {
+    min: 120,
+    max: 360,
+    edge: 'right',
+  })
   const cockpitW = useResizableWidth('gt.cockpitWidth', 320, { min: 240, max: 640, edge: 'left' })
   const isRemote = !!choice.remote
 
@@ -277,7 +288,10 @@ export function SessionView({
   const availablePlugins = useMemo(
     () =>
       allPlugins.filter(
-        (p) => !isRemote && choice.engine !== 'local' && (!p.engines || p.engines.includes(choice.engine as Engine)),
+        (p) =>
+          !isRemote &&
+          choice.engine !== 'local' &&
+          (!p.engines || p.engines.includes(choice.engine as Engine)),
       ),
     [allPlugins, choice.engine, isRemote],
   )
@@ -285,9 +299,7 @@ export function SessionView({
   // The hidden list lives in localStorage so a fresh window respects it
   // immediately without a settings read. ALL_TABS is the always-known set;
   // appliesTo + the hidden filter winnow it for THIS session.
-  const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(
-    () => new Set(loadHiddenTabs()),
-  )
+  const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
   useEffect(() => {
     const onChange = () => setHiddenTabs(new Set(loadHiddenTabs()))
     window.addEventListener('gt.tabs.hidden.changed', onChange)
@@ -298,7 +310,9 @@ export function SessionView({
     () =>
       ctx
         ? [
-            ...ALL_TABS.filter((t) => ctx.capabilities?.[t.id] !== false && t.appliesTo(ctx)).filter((t) => !hiddenTabs.has(t.id)),
+            ...ALL_TABS.filter(
+              (t) => ctx.capabilities?.[t.id] !== false && t.appliesTo(ctx),
+            ).filter((t) => !hiddenTabs.has(t.id)),
             ...customTabs.filter((t) => !hiddenTabs.has(t.id)),
           ].sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
         : [],
@@ -378,7 +392,9 @@ export function SessionView({
     const fresh = availablePlugins.filter((p) => !known.includes(p.id))
     if (fresh.length === 0) return
     setKnown((k) => Array.from(new Set([...k, ...fresh.map((p) => p.id)])))
-    setEnabled((e) => Array.from(new Set([...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])))
+    setEnabled((e) =>
+      Array.from(new Set([...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])),
+    )
   }, [availablePlugins, known])
 
   useEffect(() => {
@@ -415,7 +431,10 @@ export function SessionView({
           })
           .catch(() => {})
       }
-      window.gt.tabContext().then((next) => alive && setCtx(next)).catch(() => {})
+      window.gt
+        .tabContext()
+        .then((next) => alive && setCtx(next))
+        .catch(() => {})
     })
     return () => {
       alive = false
@@ -426,7 +445,10 @@ export function SessionView({
   useEffect(() => {
     if (!active) return
     const reload = () => {
-      window.gt.tabContext().then(setCtx).catch(() => {})
+      window.gt
+        .tabContext()
+        .then(setCtx)
+        .catch(() => {})
     }
     window.addEventListener('gt.ticket-provider.changed', reload)
     return () => window.removeEventListener('gt.ticket-provider.changed', reload)
@@ -469,7 +491,12 @@ export function SessionView({
   const onTerminal = terminalTile || activeTab === 'terminal'
   const sidebarTabs = !terminalTile && tabLayout === 'sidebar'
 
-  const tabPill = (id: string, Icon: LucideIcon, label: string, variant: 'top' | 'side' = 'top') => {
+  const tabPill = (
+    id: string,
+    Icon: LucideIcon,
+    label: string,
+    variant: 'top' | 'side' = 'top',
+  ) => {
     const count = tabBadges[id]
     const on = activeTab === id
     return (
@@ -533,8 +560,14 @@ export function SessionView({
     if (fromKey && fromKey !== toKey) onReorderSession?.(fromKey, toKey)
     setDraggingKey(null)
   }
-  const tabLabel = (id: string, title: string) => (id === 'mrs' && ctx ? `${ctx.forgeLabel}s` : title)
-  const activeTabTitle = activeTab === 'terminal' ? 'Terminal' : ActiveTab ? tabLabel(ActiveTab.id, ActiveTab.title) : 'Terminal'
+  const tabLabel = (id: string, title: string) =>
+    id === 'mrs' && ctx ? `${ctx.forgeLabel}s` : title
+  const activeTabTitle =
+    activeTab === 'terminal'
+      ? 'Terminal'
+      : ActiveTab
+        ? tabLabel(ActiveTab.id, ActiveTab.title)
+        : 'Terminal'
   const renderPrimaryTabs = (variant: 'top' | 'side') => (
     <>
       {tabPill('terminal', SquareTerminal, 'Terminal', variant)}
@@ -625,7 +658,9 @@ export function SessionView({
             {p.loopRole}
           </span>
         )}
-        {p.needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
+        {p.needsAttention && (
+          <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />
+        )}
         {isEditing ? (
           <input
             autoFocus
@@ -649,7 +684,9 @@ export function SessionView({
             className="w-24 rounded-sm border border-[var(--gt-accent)]/60 bg-black/40 px-1 py-px text-[11px] text-zinc-100 outline-none"
           />
         ) : (
-          <span className={`${variant === 'side' ? 'flex-1 ' : 'max-w-[140px] '}truncate`}>{p.label}</span>
+          <span className={`${variant === 'side' ? 'flex-1 ' : 'max-w-[140px] '}truncate`}>
+            {p.label}
+          </span>
         )}
         {peerSessions.length > 1 && onCloseSession && !isEditing && (
           <span
@@ -702,7 +739,8 @@ export function SessionView({
   // The peer-session sub-bar shows whenever there's a session choice or the
   // layout controls are available. `railLeft` moves those pills into a vertical
   // rail beside the terminal instead of a row above it.
-  const showSessionBar = !terminalTile && (peerSessions.length > 1 || !!onAddSession || !!onTerminalLayoutChange)
+  const showSessionBar =
+    !terminalTile && (peerSessions.length > 1 || !!onAddSession || !!onTerminalLayoutChange)
   const railLeft = showSessionBar && sessionRail === 'left'
 
   return (
@@ -715,11 +753,21 @@ export function SessionView({
           terminalTile ? 'hidden' : 'flex'
         }`}
       >
-        <div className={sidebarTabs ? 'flex min-w-0 items-center gap-1.5' : 'flex items-center gap-0.5'}>
+        <div
+          className={
+            sidebarTabs ? 'flex min-w-0 items-center gap-1.5' : 'flex items-center gap-0.5'
+          }
+        >
           {sidebarTabs ? (
             <>
-              <SquareTerminal size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
-              <span className="truncate text-[11.5px] font-semibold text-zinc-300">{activeTabTitle}</span>
+              <SquareTerminal
+                size={13}
+                strokeWidth={2}
+                className="shrink-0 text-[var(--gt-accent-light)]"
+              />
+              <span className="truncate text-[11.5px] font-semibold text-zinc-300">
+                {activeTabTitle}
+              </span>
             </>
           ) : (
             renderPrimaryTabs('top')
@@ -792,155 +840,156 @@ export function SessionView({
           </aside>
         )}
         <div className={sidebarTabs ? 'relative min-h-0 flex-1' : 'contents'}>
-        {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
+          {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
             keeps its size while backgrounded — no refit-from-zero, no flicker. */}
-        <div
-          className="absolute inset-0 grid"
-          style={{
-            gridTemplateColumns: cockpitVisible ? `minmax(0,1fr) ${cockpitW.width}px` : 'minmax(0,1fr)',
-            // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
-            // that would override the App-level wrapper's `visibility: hidden`
-            // for inactive sessions, leaking the inactive session's terminal
-            // pane onto whichever tab the ACTIVE session is showing (the
-            // "weird navigation glitch" — see screenshot).
-            visibility: onTerminal ? undefined : 'hidden',
-          }}
-        >
-          <main className="flex min-w-0 flex-col overflow-hidden bg-[var(--gt-bg)]">
-            {/* Session sub-bar — peer terminal instances inside this workspace.
+          <div
+            className="absolute inset-0 grid"
+            style={{
+              gridTemplateColumns: cockpitVisible
+                ? `minmax(0,1fr) ${cockpitW.width}px`
+                : 'minmax(0,1fr)',
+              // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
+              // that would override the App-level wrapper's `visibility: hidden`
+              // for inactive sessions, leaking the inactive session's terminal
+              // pane onto whichever tab the ACTIVE session is showing (the
+              // "weird navigation glitch" — see screenshot).
+              visibility: onTerminal ? undefined : 'hidden',
+            }}
+          >
+            <main className="flex min-w-0 flex-col overflow-hidden bg-[var(--gt-bg)]">
+              {/* Session sub-bar — peer terminal instances inside this workspace.
                 Top-level bar shows projects; this shows pty instances, either as
                 a row on top (default) or a rail on the left (sessionRail). The
                 terminal pane keeps a stable tree position across the toggle so
                 xterm never unmounts. */}
-            {sessionRail === 'top' && (
-              <div
-                className={`h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px] ${
-                  showSessionBar ? 'flex' : 'hidden'
-                }`}
-              >
-                {showSessionBar ? (
-                  <>
-                    <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
-                      terminal
-                    </span>
-                    {peerSessions.map((p) => renderSessionPill(p, 'top'))}
-                    {renderAddSessionButton('top')}
-                    <div className="flex-1" />
-                    {layoutControls}
-                  </>
-                ) : null}
-              </div>
-            )}
-            {railLeft && (
-              <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px]">
-                <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
-                  terminal
-                </span>
-                <div className="flex-1" />
-                {layoutControls}
-              </div>
-            )}
-            <div className="flex min-h-0 flex-1">
-              {railLeft && (
-                <>
-                  <aside
-                    className="flex shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-1.5"
-                    style={{ width: sessionRailW.width }}
-                  >
-                    {peerSessions.map((p) => renderSessionPill(p, 'side'))}
-                    {renderAddSessionButton('side')}
-                  </aside>
-                  <ResizeHandle onMouseDown={sessionRailW.onResizeStart} />
-                </>
+              {sessionRail === 'top' && (
+                <div
+                  className={`h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px] ${
+                    showSessionBar ? 'flex' : 'hidden'
+                  }`}
+                >
+                  {showSessionBar ? (
+                    <>
+                      <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                        terminal
+                      </span>
+                      {peerSessions.map((p) => renderSessionPill(p, 'top'))}
+                      {renderAddSessionButton('top')}
+                      <div className="flex-1" />
+                      {layoutControls}
+                    </>
+                  ) : null}
+                </div>
               )}
-              <div className="min-h-0 min-w-0 flex-1">
-                <TerminalPane
-                  sessionKey={sessionKey}
-                  choice={choice}
-                  onStarted={handleStarted}
-                  active={focusTerminal}
-                  needsAttention={needsAttention}
-                  onClearAttention={onClearAttention}
-                />
+              {railLeft && (
+                <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-2 text-[11px]">
+                  <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                    terminal
+                  </span>
+                  <div className="flex-1" />
+                  {layoutControls}
+                </div>
+              )}
+              <div className="flex min-h-0 flex-1">
+                {railLeft && (
+                  <>
+                    <aside
+                      className="flex shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)]/40 p-1.5"
+                      style={{ width: sessionRailW.width }}
+                    >
+                      {peerSessions.map((p) => renderSessionPill(p, 'side'))}
+                      {renderAddSessionButton('side')}
+                    </aside>
+                    <ResizeHandle onMouseDown={sessionRailW.onResizeStart} />
+                  </>
+                )}
+                <div className="min-h-0 min-w-0 flex-1">
+                  <TerminalPane
+                    sessionKey={sessionKey}
+                    choice={choice}
+                    onStarted={handleStarted}
+                    active={focusTerminal}
+                    needsAttention={needsAttention}
+                    onClearAttention={onClearAttention}
+                  />
+                </div>
               </div>
-            </div>
-          </main>
-          {cockpitVisible && (
-          <ResizeHandle
-            onMouseDown={cockpitW.onResizeStart}
-            style={{ right: cockpitW.width }}
-            className="absolute inset-y-0 -translate-x-1/2"
-          />
-          )}
-          {cockpitVisible && (
-          <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
-            <div className="mb-2 flex items-center justify-between px-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
-                Cockpit
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-600">{activeWidgets.length} live</span>
-                <button
-                  onClick={() => setCockpitCollapsed(true)}
-                  title="Hide cockpit"
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
-                >
-                  <PanelRightClose size={12} strokeWidth={2} />
-                </button>
-              </div>
-            </div>
-            {/* render widgets only when active so backgrounded sessions don't poll */}
-            {!active ? null : activeWidgets.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-4 text-center text-[12px] text-zinc-600">
-                No plugins enabled.
-                <button
-                  onClick={() =>
-                    setEnabled((e) =>
-                      Array.from(
-                        new Set([
-                          ...e,
-                          ...availablePlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
-                        ]),
-                      ),
-                    )
-                  }
-                  className="mx-auto mt-2 block rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
-                >
-                  Enable defaults
-                </button>
-              </div>
-            ) : (
-              activeWidgets.map((p) => (
-                <PluginWidget
-                  key={p.id}
-                  plugin={p}
-                  onHide={(id) => setEnabled((e) => e.filter((x) => x !== id))}
-                />
-              ))
+            </main>
+            {cockpitVisible && (
+              <ResizeHandle
+                onMouseDown={cockpitW.onResizeStart}
+                style={{ right: cockpitW.width }}
+                className="absolute inset-y-0 -translate-x-1/2"
+              />
             )}
-          </aside>
+            {cockpitVisible && (
+              <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
+                <div className="mb-2 flex items-center justify-between px-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
+                    Cockpit
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-zinc-600">{activeWidgets.length} live</span>
+                    <button
+                      onClick={() => setCockpitCollapsed(true)}
+                      title="Hide cockpit"
+                      className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
+                    >
+                      <PanelRightClose size={12} strokeWidth={2} />
+                    </button>
+                  </div>
+                </div>
+                {/* render widgets only when active so backgrounded sessions don't poll */}
+                {!active ? null : activeWidgets.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-4 text-center text-[12px] text-zinc-600">
+                    No plugins enabled.
+                    <button
+                      onClick={() =>
+                        setEnabled((e) =>
+                          Array.from(
+                            new Set([
+                              ...e,
+                              ...availablePlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
+                            ]),
+                          ),
+                        )
+                      }
+                      className="mx-auto mt-2 block rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
+                    >
+                      Enable defaults
+                    </button>
+                  </div>
+                ) : (
+                  activeWidgets.map((p) => (
+                    <PluginWidget
+                      key={p.id}
+                      plugin={p}
+                      onHide={(id) => setEnabled((e) => e.filter((x) => x !== id))}
+                    />
+                  ))
+                )}
+              </aside>
+            )}
+          </div>
+
+          {/* full-screen view tab */}
+          {active && !onTerminal && ActiveTab && ctx && (
+            <div className="absolute inset-0 z-10">
+              <ErrorBoundary label={ActiveTab.title}>
+                <ActiveTab.Component ctx={ctx} />
+              </ErrorBoundary>
+            </div>
+          )}
+
+          {active && showCockpit && drawer && (
+            <PluginDrawer
+              plugins={availablePlugins}
+              enabled={enabled}
+              onToggle={toggle}
+              onClose={() => setDrawer(false)}
+            />
           )}
         </div>
-
-        {/* full-screen view tab */}
-        {active && !onTerminal && ActiveTab && ctx && (
-          <div className="absolute inset-0 z-10">
-            <ErrorBoundary label={ActiveTab.title}>
-              <ActiveTab.Component ctx={ctx} />
-            </ErrorBoundary>
-          </div>
-        )}
-
-        {active && showCockpit && drawer && (
-          <PluginDrawer
-            plugins={availablePlugins}
-            enabled={enabled}
-            onToggle={toggle}
-            onClose={() => setDrawer(false)}
-          />
-        )}
-
-      </div>
       </div>
     </div>
   )

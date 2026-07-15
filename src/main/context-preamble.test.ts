@@ -23,7 +23,11 @@ describe('agent context preamble', () => {
     const root = tempRepo()
     try {
       write(root, 'docs/learnings/001-build.md', '# Build Gotcha\n\nRun bun, not npm.')
-      write(root, 'docs/decisions/0001-daemon.md', '---\nid: 1\n---\n# Daemon First\n\nPrefer daemon routing.')
+      write(
+        root,
+        'docs/decisions/0001-daemon.md',
+        '---\nid: 1\n---\n# Daemon First\n\nPrefer daemon routing.',
+      )
       write(root, 'docs/runbooks/release.md', '# Release\n\nRun bun run release.')
       write(root, 'docs/learnings/README.md', '# Placeholder\n\nDo not include.')
       write(root, 'docs/decisions/INDEX.md', '# Placeholder\n\nDo not include.')

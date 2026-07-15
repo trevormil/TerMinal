@@ -4,12 +4,16 @@ import { hitlRecurrenceKey, normalizeHitlIssue } from './hitl-recurrence'
 describe('normalizeHitlIssue', () => {
   test('strips transient ids, long numbers, hashes, and paths', () => {
     expect(
-      normalizeHitlIssue('Run run-abc123 failed in /tmp/worktree/auth at 019e1234567890abcdef #12345'),
+      normalizeHitlIssue(
+        'Run run-abc123 failed in /tmp/worktree/auth at 019e1234567890abcdef #12345',
+      ),
     ).toBe('run failed in <path> at #')
   })
 
   test('keeps distinct issues distinct', () => {
-    expect(normalizeHitlIssue('CI failed: tests red')).not.toBe(normalizeHitlIssue('Need API key approval'))
+    expect(normalizeHitlIssue('CI failed: tests red')).not.toBe(
+      normalizeHitlIssue('Need API key approval'),
+    )
   })
 })
 

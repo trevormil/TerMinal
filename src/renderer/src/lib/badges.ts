@@ -2,10 +2,15 @@ import type { BadgeTone } from '../components/ui'
 
 // Status/priority/type/verdict → badge tone, mirroring the autopilot dashboard.
 export const statusTone = (s: string): BadgeTone =>
-  (({ open: 'yellow', 'in-progress': 'blue', closed: 'green', stuck: 'red', icebox: 'mute' }) as Record<
-    string,
-    BadgeTone
-  >)[s] || 'mute'
+  (
+    ({
+      open: 'yellow',
+      'in-progress': 'blue',
+      closed: 'green',
+      stuck: 'red',
+      icebox: 'mute',
+    }) as Record<string, BadgeTone>
+  )[s] || 'mute'
 
 export const priorityTone = (p: string): BadgeTone =>
   (({ critical: 'red', high: 'yellow', medium: 'blue', low: 'mute' }) as Record<string, BadgeTone>)[
@@ -13,28 +18,33 @@ export const priorityTone = (p: string): BadgeTone =>
   ] || 'mute'
 
 export const typeTone = (t: string): BadgeTone =>
-  (({
-    bug: 'red',
-    security: 'red',
-    feature: 'accent',
-    docs: 'mute',
-    dx: 'blue',
-    testing: 'blue',
-    ux: 'yellow',
-    performance: 'yellow',
-  }) as Record<string, BadgeTone>)[t] || 'mute'
+  (
+    ({
+      bug: 'red',
+      security: 'red',
+      feature: 'accent',
+      docs: 'mute',
+      dx: 'blue',
+      testing: 'blue',
+      ux: 'yellow',
+      performance: 'yellow',
+    }) as Record<string, BadgeTone>
+  )[t] || 'mute'
 
 // Recommended model tier (downgrade gate) → badge tone.
 export const modelTierTone = (t: string): BadgeTone =>
-  (({ top: 'accent', 'cheap-agentic': 'green', 'cheap-raw': 'green', auto: 'mute' }) as Record<
-    string,
-    BadgeTone
-  >)[t] || 'mute'
+  (
+    ({ top: 'accent', 'cheap-agentic': 'green', 'cheap-raw': 'green', auto: 'mute' }) as Record<
+      string,
+      BadgeTone
+    >
+  )[t] || 'mute'
 
 export const verdictTone = (v: string): BadgeTone =>
   v === 'approve' ? 'green' : v === 'request-changes' || v === 'blocked' ? 'red' : 'mute'
 
-export const testTone = (s: string): BadgeTone => (s === 'pass' ? 'green' : s === 'fail' ? 'red' : 'mute')
+export const testTone = (s: string): BadgeTone =>
+  s === 'pass' ? 'green' : s === 'fail' ? 'red' : 'mute'
 
 // GitLab CI pipeline/job statuses → badge tone.
 export const ciTone = (s: string): BadgeTone => {

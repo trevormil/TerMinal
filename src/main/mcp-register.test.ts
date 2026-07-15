@@ -17,13 +17,20 @@ test('registerWithClaude preserves unrelated ~/.claude.json state and adds the s
     writeFileSync(join(home, '.config', 'TerMinal', 'bin', 'terminal-mcp-server'), '#!/bin/sh\n')
     writeFileSync(
       join(home, '.claude.json'),
-      JSON.stringify({ authToken: 'keep-me', projects: { a: 1 }, mcpServers: { other: { command: 'x', args: [] } } }),
+      JSON.stringify({
+        authToken: 'keep-me',
+        projects: { a: 1 },
+        mcpServers: { other: { command: 'x', args: [] } },
+      }),
     )
 
     const mod = resolve(import.meta.dir, 'mcp-register.ts')
     const out = execFileSync(
       'bun',
-      ['-e', `import { registerWithClaude } from ${JSON.stringify(mod)}; console.log(JSON.stringify(registerWithClaude()))`],
+      [
+        '-e',
+        `import { registerWithClaude } from ${JSON.stringify(mod)}; console.log(JSON.stringify(registerWithClaude()))`,
+      ],
       { env: { ...process.env, HOME: home }, encoding: 'utf8' },
     )
     expect(JSON.parse(out.trim()).ok).toBe(true)

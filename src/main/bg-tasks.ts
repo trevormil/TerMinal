@@ -4,7 +4,15 @@
 // Storage: ~/.config/TerMinal/bg-tasks.json (single file, last 50 tasks)
 // Logs:    ~/.config/TerMinal/bg-tasks/<id>.log
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, openSync, closeSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  appendFileSync,
+  openSync,
+  closeSync,
+} from 'node:fs'
 import { applySweepFinals } from './bg-sweep'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
@@ -200,13 +208,24 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
         : engine === 'hermes'
           ? {
               bin: enginePath('hermes'),
-              args: ['-z', enrichedPrompt, ...(effectiveModel ? ['-m', effectiveModel] : []), '--yolo', '--accept-hooks'],
+              args: [
+                '-z',
+                enrichedPrompt,
+                ...(effectiveModel ? ['-m', effectiveModel] : []),
+                '--yolo',
+                '--accept-hooks',
+              ],
             }
           : engine === 'openrouter'
             ? {
                 // or-agent = Codex driven by an OpenRouter model (default harness).
                 bin: enginePath('openrouter'),
-                args: ['--dir', worktree, ...(effectiveModel ? ['--model', effectiveModel] : []), enrichedPrompt],
+                args: [
+                  '--dir',
+                  worktree,
+                  ...(effectiveModel ? ['--model', effectiveModel] : []),
+                  enrichedPrompt,
+                ],
               }
             : {
                 bin: enginePath('codex'),
@@ -362,9 +381,7 @@ function extractMrUrl(log: string): string | undefined {
   const tagged = log.match(/^MR:\s*(https?:\/\/\S+)/m)
   if (tagged) return tagged[1]
   // Fallback: any MR / PR URL
-  const generic = log.match(
-    /https?:\/\/[^\s)"]+\/(?:merge_requests|pull|pull-requests)\/\d+/,
-  )
+  const generic = log.match(/https?:\/\/[^\s)"]+\/(?:merge_requests|pull|pull-requests)\/\d+/)
   return generic?.[0]
 }
 

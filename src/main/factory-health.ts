@@ -26,7 +26,13 @@ export type WindowStats = {
   docs: number
   blocked: number
 }
-export type RunStats = { total: number; done: number; failed: number; running: number; successRate: number }
+export type RunStats = {
+  total: number
+  done: number
+  failed: number
+  running: number
+  successRate: number
+}
 export type FactoryHealth = {
   generatedAt: number
   window24h: WindowStats
@@ -66,7 +72,13 @@ function runStats(runs: { status: string; startedAt?: number }[]): RunStats {
   const failed = runs.filter((r) => r.status === 'failed').length
   const running = runs.filter((r) => r.status === 'running').length
   const settled = done + failed
-  return { total, done, failed, running, successRate: settled ? Math.round((done / settled) * 100) : 0 }
+  return {
+    total,
+    done,
+    failed,
+    running,
+    successRate: settled ? Math.round((done / settled) * 100) : 0,
+  }
 }
 
 export function factoryHealth(now = Date.now()): FactoryHealth {
@@ -74,16 +86,32 @@ export function factoryHealth(now = Date.now()): FactoryHealth {
   const agentRuns = listRuns()
   const cronRuns = readCronRuns(undefined, 1000)
 
-  const recentCronFailures = cronRuns.filter((r) => r.status === 'failed' && r.startedAt >= now - DAY).length
+  const recentCronFailures = cronRuns.filter(
+    (r) => r.status === 'failed' && r.startedAt >= now - DAY,
+  ).length
 
   // recent failures across agent + cron runs (last 24h), newest first
   const recentFailures = [
     ...agentRuns
-      .filter((r) => (r.status === 'failed' || r.status === 'interrupted') && (r.endedAt || r.startedAt) >= now - DAY)
-      .map((r) => ({ title: r.agentTitle, ts: r.endedAt || r.startedAt, repo: r.repoRoot.split('/').pop() || '', kind: 'agent' })),
+      .filter(
+        (r) =>
+          (r.status === 'failed' || r.status === 'interrupted') &&
+          (r.endedAt || r.startedAt) >= now - DAY,
+      )
+      .map((r) => ({
+        title: r.agentTitle,
+        ts: r.endedAt || r.startedAt,
+        repo: r.repoRoot.split('/').pop() || '',
+        kind: 'agent',
+      })),
     ...cronRuns
       .filter((r) => r.status === 'failed' && r.startedAt >= now - DAY)
-      .map((r) => ({ title: r.agentTitle, ts: r.endedAt || r.startedAt, repo: r.repoLabel, kind: 'cron' })),
+      .map((r) => ({
+        title: r.agentTitle,
+        ts: r.endedAt || r.startedAt,
+        repo: r.repoLabel,
+        kind: 'cron',
+      })),
   ]
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 20)
@@ -103,7 +131,8 @@ export function factoryHealth(now = Date.now()): FactoryHealth {
 
   // top repos by event volume (last 7d)
   const repoCounts = new Map<string, number>()
-  for (const e of events) if (e.ts >= now - 7 * DAY && e.repo) repoCounts.set(e.repo, (repoCounts.get(e.repo) || 0) + 1)
+  for (const e of events)
+    if (e.ts >= now - 7 * DAY && e.repo) repoCounts.set(e.repo, (repoCounts.get(e.repo) || 0) + 1)
   const byRepo = [...repoCounts.entries()]
     .map(([repo, events]) => ({ repo, events }))
     .sort((a, b) => b.events - a.events)

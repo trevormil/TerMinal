@@ -32,7 +32,13 @@ export function MrMergeButton({
       <span className="inline-flex items-center gap-1 text-[11px] text-amber-400" title={err}>
         <X size={12} strokeWidth={2.5} />
         merge failed
-        <button onClick={(e) => { stop(e); setErr(null) }} className="ml-1 underline hover:text-amber-300">
+        <button
+          onClick={(e) => {
+            stop(e)
+            setErr(null)
+          }}
+          className="ml-1 underline hover:text-amber-300"
+        >
           retry
         </button>
       </span>
@@ -49,7 +55,10 @@ export function MrMergeButton({
   if (stage === 'confirm')
     return (
       <span className="inline-flex items-center gap-1">
-        <span className="text-[11px] text-zinc-400">merge {sym}{iid}?</span>
+        <span className="text-[11px] text-zinc-400">
+          merge {sym}
+          {iid}?
+        </span>
         <button
           onClick={doMerge}
           title="Confirm merge"
@@ -58,7 +67,10 @@ export function MrMergeButton({
           <Check size={12} strokeWidth={2.5} />
         </button>
         <button
-          onClick={(e) => { stop(e); setStage('idle') }}
+          onClick={(e) => {
+            stop(e)
+            setStage('idle')
+          }}
           title="Cancel"
           className="inline-flex items-center rounded-md border border-[var(--gt-border)] p-1 text-zinc-400 hover:text-zinc-200"
         >
@@ -69,7 +81,10 @@ export function MrMergeButton({
 
   return (
     <button
-      onClick={(e) => { stop(e); setStage('confirm') }}
+      onClick={(e) => {
+        stop(e)
+        setStage('confirm')
+      }}
       title={`Merge ${sym}${iid}`}
       className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 px-2 py-1 text-[11px] text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
     >

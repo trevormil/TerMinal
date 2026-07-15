@@ -1,5 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Plus, Hand, ArrowUpRight, ChevronRight, ChevronDown, Bot, GitPullRequest, CircleDot, Play, RotateCcw, SquareTerminal, ListChecks, Check, X } from 'lucide-react'
+import {
+  Plus,
+  Hand,
+  ArrowUpRight,
+  ChevronRight,
+  ChevronDown,
+  Bot,
+  GitPullRequest,
+  CircleDot,
+  Play,
+  RotateCcw,
+  SquareTerminal,
+  ListChecks,
+  Check,
+  X,
+} from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
 import { EnginePicker } from './EnginePicker'
@@ -7,14 +22,37 @@ import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
-import { statusTone, priorityTone, typeTone, horizonTone, stateTone, verdictTone, testTone, modelTierTone } from '../lib/badges'
+import {
+  statusTone,
+  priorityTone,
+  typeTone,
+  horizonTone,
+  stateTone,
+  verdictTone,
+  testTone,
+  modelTierTone,
+} from '../lib/badges'
 import { navigateTo, onNavigate } from '../lib/nav'
 import { engineLabel } from '../lib/engines'
-import { engineInstanceLabel, openPromptInTerminal, remoteForTabContext, type LaunchMode } from '../lib/launch'
+import {
+  engineInstanceLabel,
+  openPromptInTerminal,
+  remoteForTabContext,
+  type LaunchMode,
+} from '../lib/launch'
 import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
-import type { Ticket, TicketAgent, TicketAgentRecommendation, TicketRunLink, TabContext, Mr, Engine, Persona } from '../lib/types'
+import type {
+  Ticket,
+  TicketAgent,
+  TicketAgentRecommendation,
+  TicketRunLink,
+  TabContext,
+  Mr,
+  Engine,
+  Persona,
+} from '../lib/types'
 
 // A ticket's `prs:` entries are forge URLs (…/-/merge_requests/N or …/pull/N).
 // Parse the change number so we can link to the in-app MR view instead of
@@ -39,7 +77,13 @@ const TONE_TEXT: Record<BadgeTone, string> = {
 }
 
 const runSourceTone = (source: TicketRunLink['source']): BadgeTone =>
-  source === 'cron' ? 'accent' : source === 'bg' ? 'yellow' : source === 'session' ? 'green' : 'blue'
+  source === 'cron'
+    ? 'accent'
+    : source === 'bg'
+      ? 'yellow'
+      : source === 'session'
+        ? 'green'
+        : 'blue'
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'performance']
@@ -132,7 +176,9 @@ function AcceptanceSection({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={Math.max(3, draft.split('\n').length + 1)}
-          placeholder={'join endpoint returns 429 over the rate limit\nlimit configurable via env, default 60/min\nexisting auth tests still pass'}
+          placeholder={
+            'join endpoint returns 429 over the rate limit\nlimit configurable via env, default 60/min\nexisting auth tests still pass'
+          }
           className="w-full resize-y rounded-md border border-[var(--gt-border)] bg-[var(--gt-bg)] p-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-[var(--gt-accent)]/60"
         />
         <div className="mt-2 flex items-center gap-2">
@@ -162,7 +208,9 @@ function AcceptanceSection({
           onClick={open}
           className="ml-1 inline-flex items-center gap-0.5 rounded border border-[var(--gt-border)] px-1 py-0.5 text-[10px] normal-case text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
         >
-          {criteria.length ? 'edit' : (
+          {criteria.length ? (
+            'edit'
+          ) : (
             <>
               <Plus size={10} strokeWidth={2.5} /> add
             </>
@@ -173,22 +221,34 @@ function AcceptanceSection({
         <ul className="space-y-1">
           {criteria.map((c, i) => (
             <li key={i} className="flex items-start gap-2 text-[12.5px] text-zinc-300">
-              <Check size={13} strokeWidth={2.5} className="mt-0.5 shrink-0 text-[var(--gt-accent-2)]" />
+              <Check
+                size={13}
+                strokeWidth={2.5}
+                className="mt-0.5 shrink-0 text-[var(--gt-accent-2)]"
+              />
               <span>{c}</span>
             </li>
           ))}
         </ul>
       ) : (
         <div className="text-[11.5px] text-zinc-600">
-          None yet. Required before running more than one implementation lane — lanes
-          are gated and ranked against these.
+          None yet. Required before running more than one implementation lane — lanes are gated and
+          ranked against these.
         </div>
       )}
     </div>
   )
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
   return (
     <button
       onClick={onClick}
@@ -203,13 +263,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   )
 }
 
-function NewTicketModal({
-  ctx,
-  onClose,
-}: {
-  ctx: TabContext
-  onClose: () => void
-}) {
+function NewTicketModal({ ctx, onClose }: { ctx: TabContext; onClose: () => void }) {
   const [spawnText, setSpawnText] = useState('')
   const [spawnEngine, setSpawnEngine] = useState<Engine>('claude')
   const [spawnModel, setSpawnModel] = useState<string | undefined>(undefined)
@@ -241,7 +295,12 @@ function NewTicketModal({
         setTimeout(onClose, 250)
         return
       }
-      const r = await window.gt.tickets.spawn(text, spawnEngine, spawnModel, remoteForTabContext(ctx))
+      const r = await window.gt.tickets.spawn(
+        text,
+        spawnEngine,
+        spawnModel,
+        remoteForTabContext(ctx),
+      )
       if (r && 'error' in r) setSpawnMsg(`couldn't start: ${r.error}`)
       else {
         setSpawnText('')
@@ -254,26 +313,35 @@ function NewTicketModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      onClick={onClose}
+    >
       <div
         className="flex max-h-[86vh] w-[620px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-zinc-100">New ticket</h2>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5">
+          <button
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
+          >
             cancel
           </button>
         </div>
         <SkillHint>
           {ctx.ticketProvider === 'local' ? (
             <>
-              You can also file from the terminal with <code className="font-mono text-zinc-300">/ticket</code> in Claude or{' '}
+              You can also file from the terminal with{' '}
+              <code className="font-mono text-zinc-300">/ticket</code> in Claude or{' '}
               <code className="font-mono text-zinc-300">$ticket</code> in Codex.
             </>
           ) : (
             <>
-              This repo files tickets to <code className="font-mono text-zinc-300">{ctx.ticketProviderLabel}</code>. New-ticket agents will use the configured provider instead of local backlog files.
+              This repo files tickets to{' '}
+              <code className="font-mono text-zinc-300">{ctx.ticketProviderLabel}</code>. New-ticket
+              agents will use the configured provider instead of local backlog files.
             </>
           )}
         </SkillHint>
@@ -312,7 +380,11 @@ function NewTicketModal({
               disabled={!spawnText.trim() || spawning}
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
             >
-              {spawning ? <Bot size={13} strokeWidth={2} /> : <EngineLogo engine={spawnEngine} size={13} />}
+              {spawning ? (
+                <Bot size={13} strokeWidth={2} />
+              ) : (
+                <EngineLogo engine={spawnEngine} size={13} />
+              )}
               {spawning ? 'Filing...' : launchMode === 'terminal' ? 'Open instance' : 'File ticket'}
             </button>
           </div>
@@ -343,7 +415,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [mrByIid, setMrByIid] = useState<Map<number, Mr>>(() => new Map())
   const [viewMrIid, setViewMrIid] = useState<number | null>(null)
   const [agentContexts, setAgentContexts] = useState<Persona[]>([])
-  const [agentRecommendation, setAgentRecommendation] = useState<TicketAgentRecommendation | null>(null)
+  const [agentRecommendation, setAgentRecommendation] = useState<TicketAgentRecommendation | null>(
+    null,
+  )
   const loadTickets = () =>
     window.gt.tickets
       .list()
@@ -407,7 +481,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       if (fHorizon !== 'all' && t.horizon !== fHorizon) return false
       if (fHitl && !t.hitl) return false
     }
-    if (q && !(t.title.toLowerCase().includes(q.toLowerCase()) || String(t.id).includes(q))) return false
+    if (q && !(t.title.toLowerCase().includes(q.toLowerCase()) || String(t.id).includes(q)))
+      return false
     return true
   })
   const selected = tickets?.find((t) => t.slug === sel) || null
@@ -474,7 +549,11 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             ))}
             <span className="mx-1 text-zinc-700">·</span>
             {HORIZONS.map((h) => (
-              <Chip key={h} active={fHorizon === h} onClick={() => setFHorizon(fHorizon === h ? 'all' : h)}>
+              <Chip
+                key={h}
+                active={fHorizon === h}
+                onClick={() => setFHorizon(fHorizon === h ? 'all' : h)}
+              >
                 {h}
               </Chip>
             ))}
@@ -489,7 +568,11 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
         <div className="flex-1" />
         {!hitlOnly && (
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }))}
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }),
+              )
+            }
             className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
           >
             Configure
@@ -517,7 +600,10 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
 
       {/* master-detail */}
       <div className="flex min-h-0 flex-1">
-        <div className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]" style={{ width: listW.width }}>
+        <div
+          className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]"
+          style={{ width: listW.width }}
+        >
           {tickets === null ? (
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : ticketError ? (
@@ -556,14 +642,20 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         }`}
                       >
                         <div className="flex w-full items-center gap-2">
-                          <span className="font-mono text-[11px] text-zinc-600">{t.externalKey || `#${t.id}`}</span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">{t.title}</span>
+                          <span className="font-mono text-[11px] text-zinc-600">
+                            {t.externalKey || `#${t.id}`}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">
+                            {t.title}
+                          </span>
                           {t.hitl && !hitlOnly && (
                             <Badge tone="red">
                               <Hand size={10} strokeWidth={2.25} />
                             </Badge>
                           )}
-                          {t.horizon !== 'now' && <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>}
+                          {t.horizon !== 'now' && (
+                            <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>
+                          )}
                           {t.modelTier !== 'auto' && (
                             <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
                           )}
@@ -582,7 +674,11 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                               const mr = mrByIid.get(iid)
                               return (
                                 <span key={p} className="inline-flex items-center gap-1">
-                                  <GitPullRequest size={9} strokeWidth={2} className="text-zinc-700" />
+                                  <GitPullRequest
+                                    size={9}
+                                    strokeWidth={2}
+                                    className="text-zinc-700"
+                                  />
                                   <span className="text-zinc-500">
                                     {ctx.forgeSym}
                                     {ctx.forgeLabel}
@@ -664,7 +760,11 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   title="Assigned agent for this ticket"
                 >
                   {agentContexts.map((a) => (
-                    <option key={a.id} value={a.id} className="bg-[var(--gt-panel)] normal-case text-zinc-200">
+                    <option
+                      key={a.id}
+                      value={a.id}
+                      className="bg-[var(--gt-panel)] normal-case text-zinc-200"
+                    >
                       {a.title}
                     </option>
                   ))}
@@ -708,16 +808,23 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   selected.agent.kind !== agentRecommendation.agent.kind) && (
                   <div
                     className="mb-3 mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500"
-                    title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')].filter(Boolean).join(' · ')}
+                    title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')]
+                      .filter(Boolean)
+                      .join(' · ')}
                   >
                     <span className="text-zinc-600">Suggested owner:</span>
                     <Badge tone="accent">
-                      {agentContexts.find((a) => a.agentId === agentRecommendation.agent.id && a.agentKind === agentRecommendation.agent.kind)?.title ||
-                        agentRecommendation.agent.id}
+                      {agentContexts.find(
+                        (a) =>
+                          a.agentId === agentRecommendation.agent.id &&
+                          a.agentKind === agentRecommendation.agent.kind,
+                      )?.title || agentRecommendation.agent.id}
                     </Badge>
                     <button
                       onClick={async () => {
-                        await window.gt.tickets.update(selected.slug, { agent: agentRecommendation.agent })
+                        await window.gt.tickets.update(selected.slug, {
+                          agent: agentRecommendation.agent,
+                        })
                         loadTickets()
                       }}
                       className="text-[10.5px] font-semibold text-[var(--gt-accent-light)] hover:underline"
@@ -733,7 +840,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               </div>
               {selected.depends_on.length > 0 && (
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">depends on</span>
+                  <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">
+                    depends on
+                  </span>
                   {selected.depends_on.map((depId) => {
                     const dep = tickets?.find((t) => t.id === depId)
                     const blocked = dep && dep.status !== 'closed'
@@ -790,8 +899,14 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                           {iid}
                         </span>
                         {mr && <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>}
-                        {mr?.review && <Badge tone={verdictTone(mr.review.verdict)}>{mr.review.verdict}</Badge>}
-                        {mr?.review && <Badge tone={testTone(mr.review.testStatus)}>tests {mr.review.testStatus}</Badge>}
+                        {mr?.review && (
+                          <Badge tone={verdictTone(mr.review.verdict)}>{mr.review.verdict}</Badge>
+                        )}
+                        {mr?.review && (
+                          <Badge tone={testTone(mr.review.testStatus)}>
+                            tests {mr.review.testStatus}
+                          </Badge>
+                        )}
                       </button>
                     )
                   })}
@@ -820,16 +935,24 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                   Implement → PR
                 </button>
                 {started && (
-                  <span className="text-[11px] text-[var(--gt-green)]">agent started · see the Agents tab</span>
+                  <span className="text-[11px] text-[var(--gt-green)]">
+                    agent started · see the Agents tab
+                  </span>
                 )}
                 {selected.run && (
                   <span
                     className="inline-flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-[11px] text-zinc-400"
-                    title={selected.run.sessionId ? `Launched from session ${selected.run.sessionId}` : 'Last recorded ticket implementation run'}
+                    title={
+                      selected.run.sessionId
+                        ? `Launched from session ${selected.run.sessionId}`
+                        : 'Last recorded ticket implementation run'
+                    }
                   >
                     <Badge tone={runSourceTone(selected.run.source)}>{selected.run.source}</Badge>
                     <span className="font-mono text-zinc-500">{selected.run.id.slice(0, 8)}</span>
-                    {selected.run.status && <span className="uppercase">{selected.run.status}</span>}
+                    {selected.run.status && (
+                      <span className="uppercase">{selected.run.status}</span>
+                    )}
                   </span>
                 )}
                 {selected.run && (
@@ -844,7 +967,12 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                 )}
                 {selected.run?.source === 'session' && (
                   <button
-                    onClick={() => navigateTo('terminal', { sessionId: selected.run?.sessionId || selected.run?.id, cwd: ctx.repoRoot })}
+                    onClick={() =>
+                      navigateTo('terminal', {
+                        sessionId: selected.run?.sessionId || selected.run?.id,
+                        cwd: ctx.repoRoot,
+                      })
+                    }
                     title="Focus the linked terminal session if it is still open"
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
                   >
@@ -895,7 +1023,17 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     </>
                   }
                   onClose={() => setPickImpl(false)}
-                  onPick={async (e, persona, pipeline, model, launchMode, runContext, lanes, _harness, extraContext) => {
+                  onPick={async (
+                    e,
+                    persona,
+                    pipeline,
+                    model,
+                    launchMode,
+                    runContext,
+                    lanes,
+                    _harness,
+                    extraContext,
+                  ) => {
                     setPickImpl(false)
                     if (launchMode === 'terminal') {
                       const prompt = ticketImplementationPrompt(selected, {
@@ -911,12 +1049,23 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         cwd: ctx.repoRoot,
                         name: `Implement ${selected.externalKey || `#${selected.id}`}`,
                         ticketSlug: selected.slug,
-                        prompt: extraContext ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}` : prompt,
+                        prompt: extraContext
+                          ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}`
+                          : prompt,
                         remote: remoteForTabContext(ctx),
                       })
                       return
                     }
-                    const r = await window.gt.agents.runTicket(selected.slug, e, persona, pipeline, model, remoteForTabContext(ctx), lanes, extraContext)
+                    const r = await window.gt.agents.runTicket(
+                      selected.slug,
+                      e,
+                      persona,
+                      pipeline,
+                      model,
+                      remoteForTabContext(ctx),
+                      lanes,
+                      extraContext,
+                    )
                     if (!('error' in r)) {
                       setStarted(true)
                       loadTickets()
@@ -933,12 +1082,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           )}
         </div>
       </div>
-      {creating && (
-        <NewTicketModal
-          ctx={ctx}
-          onClose={() => setCreating(false)}
-        />
-      )}
+      {creating && <NewTicketModal ctx={ctx} onClose={() => setCreating(false)} />}
     </div>
   )
 }

@@ -36,10 +36,7 @@ export function PluginDrawer({
           <code className="rounded bg-black/40 px-1 text-zinc-400">poll</code>/
           <code className="rounded bg-black/40 px-1 text-zinc-400">render</code>, or declare a
           command widget in{' '}
-          <code className="rounded bg-black/40 px-1 text-zinc-400">
-            .TerMinal/widgets.json
-          </code>
-          .
+          <code className="rounded bg-black/40 px-1 text-zinc-400">.TerMinal/widgets.json</code>.
         </p>
 
         <div className="space-y-2">

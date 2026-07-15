@@ -274,10 +274,7 @@ export function parseClaudeUsageFromOutput(out: string): UsageHit | null {
   for (const raw of lines) {
     const line = raw.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '') // strip ANSI
     let m: RegExpMatchArray | null
-    if (
-      (m = line.match(/(?:input|prompt)\s*tokens?[:\s]+(\d[\d,]*)/i)) &&
-      inputTokens === 0
-    ) {
+    if ((m = line.match(/(?:input|prompt)\s*tokens?[:\s]+(\d[\d,]*)/i)) && inputTokens === 0) {
       inputTokens = parseInt(m[1].replace(/,/g, ''), 10)
     }
     if (
@@ -286,10 +283,7 @@ export function parseClaudeUsageFromOutput(out: string): UsageHit | null {
     ) {
       outputTokens = parseInt(m[1].replace(/,/g, ''), 10)
     }
-    if (
-      (m = line.match(/cache(?:d|\s*read)?[:\s]+(\d[\d,]*)/i)) &&
-      cacheRead === 0
-    ) {
+    if ((m = line.match(/cache(?:d|\s*read)?[:\s]+(\d[\d,]*)/i)) && cacheRead === 0) {
       cacheRead = parseInt(m[1].replace(/,/g, ''), 10)
     }
     if (!model && (m = line.match(/model[:\s]+([\w\-\.]+)/i))) {
@@ -351,12 +345,15 @@ export function startAICollectionLoop(): void {
   } catch {
     /* best effort */
   }
-  setInterval(() => {
-    try {
-      collectClaudeSessions()
-      collectCodexSessions()
-    } catch {
-      /* best effort */
-    }
-  }, 5 * 60 * 1000)
+  setInterval(
+    () => {
+      try {
+        collectClaudeSessions()
+        collectCodexSessions()
+      } catch {
+        /* best effort */
+      }
+    },
+    5 * 60 * 1000,
+  )
 }

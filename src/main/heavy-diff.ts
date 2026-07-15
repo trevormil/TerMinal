@@ -74,7 +74,8 @@ export function classifyHeavyDiff(
   if (risky) return { heavy: true, reason: `risky path: ${risky.path}`, files, lineCount }
 
   const threshold = opts.lineThreshold ?? DEFAULT_LINE_THRESHOLD
-  if (lineCount > threshold) return { heavy: true, reason: `large diff: ${lineCount} lines`, files, lineCount }
+  if (lineCount > threshold)
+    return { heavy: true, reason: `large diff: ${lineCount} lines`, files, lineCount }
 
   if (files.every((f) => isDocsPath(f.path))) {
     return { heavy: false, reason: 'docs-only diff', files, lineCount }

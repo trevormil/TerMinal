@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookText, FileText, Sparkles, ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react'
+import {
+  BookText,
+  FileText,
+  Sparkles,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+} from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
@@ -27,7 +35,8 @@ function buildTree(items: DocEntry[], stripPrefix = ''): TreeNode[] {
   type DirAccum = { type: 'dir'; key: string; name: string; children: TreeNode[] }
   const root: DirAccum = { type: 'dir', key: '', name: '', children: [] }
   for (const e of sorted) {
-    const trimmed = stripPrefix && e.path.startsWith(stripPrefix) ? e.path.slice(stripPrefix.length) : e.path
+    const trimmed =
+      stripPrefix && e.path.startsWith(stripPrefix) ? e.path.slice(stripPrefix.length) : e.path
     const parts = trimmed.split('/').filter(Boolean)
     let cur: DirAccum = root
     for (let i = 0; i < parts.length - 1; i++) {
@@ -46,8 +55,8 @@ function buildTree(items: DocEntry[], stripPrefix = ''): TreeNode[] {
   const sortDir = (n: DirAccum): void => {
     n.children.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-      const an = a.type === 'dir' ? a.name : (a.entry.title || a.entry.path)
-      const bn = b.type === 'dir' ? b.name : (b.entry.title || b.entry.path)
+      const an = a.type === 'dir' ? a.name : a.entry.title || a.entry.path
+      const bn = b.type === 'dir' ? b.name : b.entry.title || b.entry.path
       return an.localeCompare(bn)
     })
     for (const c of n.children) if (c.type === 'dir') sortDir(c as DirAccum)
@@ -70,7 +79,6 @@ const CATEGORY_HINT: Record<DocCategory, string> = {
   reports: 'scheduled-agent run artifacts, grouped by kind',
   other: 'human-authored (handbook, runbooks, architecture overview)',
 }
-
 
 function categoryStorageKey(repoRoot: string) {
   return `gt.docs.lastPath.${repoRoot}`
@@ -136,7 +144,9 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
     return {
       categories: tree.categories.map((c) => ({
         ...c,
-        items: c.items.filter((e) => e.title.toLowerCase().includes(q) || e.path.toLowerCase().includes(q)),
+        items: c.items.filter(
+          (e) => e.title.toLowerCase().includes(q) || e.path.toLowerCase().includes(q),
+        ),
       })),
     }
   }, [tree, query])
@@ -167,7 +177,8 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
           <div className="mb-2">
             <SkillHint>
-              Durable project memory: architecture, ADRs, runbooks, learnings, changelog, and generated references.
+              Durable project memory: architecture, ADRs, runbooks, learnings, changelog, and
+              generated references.
             </SkillHint>
           </div>
           <input
@@ -185,8 +196,9 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
               No docs yet. The auto-docs agent will populate{' '}
               <span className="font-mono text-zinc-500">docs/maintainer/</span>,{' '}
               <span className="font-mono text-zinc-500">docs/developer/</span>, and{' '}
-              <span className="font-mono text-zinc-500">docs/personal/</span> on its first run; the changelog agent
-              maintains <span className="font-mono text-zinc-500">CHANGELOG.md</span>.
+              <span className="font-mono text-zinc-500">docs/personal/</span> on its first run; the
+              changelog agent maintains{' '}
+              <span className="font-mono text-zinc-500">CHANGELOG.md</span>.
             </div>
           ) : (
             filtered.categories
@@ -241,9 +253,15 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
                         {isCollapsed ? (
                           <Folder size={11} strokeWidth={2} className="text-zinc-600" />
                         ) : (
-                          <FolderOpen size={11} strokeWidth={2} className="text-[var(--gt-accent-light)]/80" />
+                          <FolderOpen
+                            size={11}
+                            strokeWidth={2}
+                            className="text-[var(--gt-accent-light)]/80"
+                          />
                         )}
-                        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">{n.name}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">
+                          {n.name}
+                        </span>
                       </button>
                       {!isCollapsed && n.children.map((child) => renderNode(child, depth + 1))}
                     </div>
@@ -284,7 +302,11 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
             </header>
             <article className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
               <div className="mx-auto max-w-3xl">
-                {body ? <Markdown>{body}</Markdown> : <div className="text-[12px] text-zinc-600">Loading…</div>}
+                {body ? (
+                  <Markdown>{body}</Markdown>
+                ) : (
+                  <div className="text-[12px] text-zinc-600">Loading…</div>
+                )}
               </div>
             </article>
           </>

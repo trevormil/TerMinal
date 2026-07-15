@@ -217,7 +217,8 @@ export const THEMES: ThemeDefinition[] = [
   {
     id: 'midnight-pastel',
     title: 'Midnight Pastel',
-    description: 'Deep indigo base with pale-mint text and pastel pink/gold accents — tuned to Trevor’s terminal profile.',
+    description:
+      'Deep indigo base with pale-mint text and pastel pink/gold accents — tuned to Trevor’s terminal profile.',
     modes: {
       dark: midnightPastelDark,
       light: midnightPastelLight,

@@ -20,14 +20,19 @@ export type CycleEvent = { kind: ActivityKind; ts: number; ref?: { ticket?: numb
 
 const median = (arr: number[]): number | null =>
   arr.length ? [...arr].sort((a, b) => a - b)[Math.floor(arr.length / 2)] : null
-const toH = (ms: number | null): number | null => (ms == null ? null : Math.round((ms / HOUR) * 10) / 10)
+const toH = (ms: number | null): number | null =>
+  ms == null ? null : Math.round((ms / HOUR) * 10) / 10
 
-export function cycleAndFunnel(events: CycleEvent[], now: number): { cycle: CycleStats; funnel: Funnel } {
+export function cycleAndFunnel(
+  events: CycleEvent[],
+  now: number,
+): { cycle: CycleStats; funnel: Funnel } {
   const filedAt = new Map<number, number>() // ticket → earliest filed
   const openedAt = new Map<number, number>() // ticket → earliest pr-opened
   const ticketPr = new Map<number, number>() // ticket → pr (the bridge)
   const mergedAt = new Map<number, number>() // pr → earliest merged
-  const min = (m: Map<number, number>, k: number, v: number) => m.set(k, Math.min(m.get(k) ?? Infinity, v))
+  const min = (m: Map<number, number>, k: number, v: number) =>
+    m.set(k, Math.min(m.get(k) ?? Infinity, v))
   for (const e of events) {
     const t = e.ref?.ticket
     const p = e.ref?.pr
@@ -56,7 +61,9 @@ export function cycleAndFunnel(events: CycleEvent[], now: number): { cycle: Cycl
   // 7d funnel cohort: tickets filed in the window, how far each got
   const since = now - 7 * DAY
   const filed7 = new Set<number>()
-  for (const e of events) if (e.kind === 'ticket-filed' && e.ref?.ticket != null && e.ts >= since) filed7.add(e.ref.ticket)
+  for (const e of events)
+    if (e.kind === 'ticket-filed' && e.ref?.ticket != null && e.ts >= since)
+      filed7.add(e.ref.ticket)
   let opened7 = 0
   let merged7 = 0
   for (const t of filed7) {

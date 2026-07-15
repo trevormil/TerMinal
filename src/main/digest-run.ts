@@ -49,7 +49,10 @@ export async function startDigest(
   const mergeBin = join(repoRoot, '.claude/bin/merge-digest')
   const promptTmpl = join(repoRoot, '.claude/skills/digest/prompt.md')
   if (!existsSync(chunkBin) || !existsSync(promptTmpl)) {
-    return { ok: false, error: 'repo is not scaffolded with the /digest skill (.claude/bin + skill)' }
+    return {
+      ok: false,
+      error: 'repo is not scaffolded with the /digest skill (.claude/bin + skill)',
+    }
   }
 
   // Fresh diff at the CURRENT head (bypass any cached .diff.patch from an older sha).
@@ -76,14 +79,25 @@ export async function startDigest(
 
   try {
     // Deterministic chunking (fast, inline).
-    await run(chunkBin, [
-      '--patch', diffPath,
-      '--pr', `${repoRoot.split('/').pop()}#${iid}`,
-      '--short', short,
-      '--out', chunksPath,
-      '--scoped-out', scopedPath,
-      ...(existsSync(join(dir, 'findings.json')) ? ['--findings', join(dir, 'findings.json')] : []),
-    ], repoRoot)
+    await run(
+      chunkBin,
+      [
+        '--patch',
+        diffPath,
+        '--pr',
+        `${repoRoot.split('/').pop()}#${iid}`,
+        '--short',
+        short,
+        '--out',
+        chunksPath,
+        '--scoped-out',
+        scopedPath,
+        ...(existsSync(join(dir, 'findings.json'))
+          ? ['--findings', join(dir, 'findings.json')]
+          : []),
+      ],
+      repoRoot,
+    )
 
     // Build the codex prompt from the repo's skill template (kept in sync with the skill).
     const prompt = readFileSync(promptTmpl, 'utf8')
@@ -92,7 +106,10 @@ export async function startDigest(
       .replaceAll('{{BASE}}', base)
       .replaceAll('{{HEAD}}', raw.headShort)
       .replaceAll('{{DIR}}', dir.startsWith(repoRoot) ? dir.slice(repoRoot.length + 1) : dir)
-      .replaceAll('{{DIFF_PATH}}', scopedPath.startsWith(repoRoot) ? scopedPath.slice(repoRoot.length + 1) : scopedPath)
+      .replaceAll(
+        '{{DIFF_PATH}}',
+        scopedPath.startsWith(repoRoot) ? scopedPath.slice(repoRoot.length + 1) : scopedPath,
+      )
     writeFileSync(promptPath, prompt, 'utf8')
 
     // codex pass + deterministic merge, as one tracked child via the login shell
@@ -147,7 +164,9 @@ function run(bin: string, args: string[], cwd: string): Promise<void> {
     let err = ''
     p.stderr?.on('data', (d) => (err += d.toString()))
     p.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(`${bin.split('/').pop()} exited ${code}: ${err.slice(-400)}`)),
+      code === 0
+        ? resolve()
+        : reject(new Error(`${bin.split('/').pop()} exited ${code}: ${err.slice(-400)}`)),
     )
     p.on('error', reject)
   })

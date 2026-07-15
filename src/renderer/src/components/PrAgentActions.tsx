@@ -36,7 +36,14 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
         engine,
         cwd: meta.cwd,
         name: `${k} ${sym}${pr.iid}`,
-        prompt: prAgentPrompt(pr, k, { forgeSym: sym, persona, pipeline, model, runContext, reviewAgent }),
+        prompt: prAgentPrompt(pr, k, {
+          forgeSym: sym,
+          persona,
+          pipeline,
+          model,
+          runContext,
+          reviewAgent,
+        }),
         remote: meta.remote,
       })
       setDone({ msg: 'opened instance', ok: true })
@@ -85,8 +92,9 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
           showPipeline={false}
           hint={
             <>
-              Review uses the <code className="font-mono text-zinc-300">code-review</code> agent definition;
-              override that agent to customize reviewer model, rubric, artifacts, or checks.
+              Review uses the <code className="font-mono text-zinc-300">code-review</code> agent
+              definition; override that agent to customize reviewer model, rubric, artifacts, or
+              checks.
             </>
           }
           onClose={() => setKind(null)}

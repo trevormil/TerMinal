@@ -19,7 +19,12 @@ export const PIPELINES: Record<
   PipelineId,
   { id: PipelineId; title: string; description: string; stages: Step[] }
 > = {
-  single: { id: 'single', title: 'Single run', description: 'Just the task — one pass.', stages: [] },
+  single: {
+    id: 'single',
+    title: 'Single run',
+    description: 'Just the task — one pass.',
+    stages: [],
+  },
   review: {
     id: 'review',
     title: 'Review',
@@ -47,7 +52,11 @@ function resolvePipeline(pipelineId?: string) {
 
 /** Compose the runnable steps: base task + pipeline stages, each prefixed with
  *  the persona framing (if any). */
-export function composeSteps(base: Step, personaPrompt: string | null, pipelineId?: string): Step[] {
+export function composeSteps(
+  base: Step,
+  personaPrompt: string | null,
+  pipelineId?: string,
+): Step[] {
   return [base, ...resolvePipeline(pipelineId).stages].map((s) => ({
     label: s.label,
     prompt: personaPrompt ? `${personaPrompt}\n\n---\n\n${s.prompt}` : s.prompt,

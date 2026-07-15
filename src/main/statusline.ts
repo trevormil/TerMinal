@@ -87,7 +87,8 @@ export function readStatusLine(sessionId: string): StatusLine | null {
     return {
       ts: mtime,
       model: j.model,
-      contextWindowSize: typeof cw.context_window_size === 'number' ? cw.context_window_size : undefined,
+      contextWindowSize:
+        typeof cw.context_window_size === 'number' ? cw.context_window_size : undefined,
       contextUsedPct: typeof cw.used_percentage === 'number' ? cw.used_percentage : undefined,
       fiveHour: win(rl.five_hour),
       sevenDay: win(rl.seven_day),

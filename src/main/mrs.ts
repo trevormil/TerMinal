@@ -183,7 +183,11 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
     const fRaw = readJsonSafe<any>(join(dir, 'findings.json'), [])
     findings = Array.isArray(fRaw) ? fRaw : Array.isArray(fRaw?.findings) ? fRaw.findings : []
     const sRaw = readJsonSafe<any>(join(dir, 'suggestions.json'), [])
-    suggestions = Array.isArray(sRaw) ? sRaw : Array.isArray(sRaw?.suggestions) ? sRaw.suggestions : []
+    suggestions = Array.isArray(sRaw)
+      ? sRaw
+      : Array.isArray(sRaw?.suggestions)
+        ? sRaw.suggestions
+        : []
     screenshots = readScreenshots(dir)
   }
   return {
@@ -209,13 +213,23 @@ export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | n
 // Merge an MR/PR. Human-initiated only (a button the user clicks) — this is the
 // human satisfying the merge gate, not an agent auto-merging. Surfaces the
 // forge CLI's error (pipeline must pass, conflicts, approvals) verbatim.
-export async function mergeMr(repoRoot: string, iid: number): Promise<{ ok: boolean; error?: string }> {
+export async function mergeMr(
+  repoRoot: string,
+  iid: number,
+): Promise<{ ok: boolean; error?: string }> {
   const res = await forge.merge(repoRoot, iid)
   if (res.ok) {
     const label = repoForCwd(repoRoot)?.path || repoRoot.split('/').pop() || ''
     const sym = forge.forgeFor(repoRoot).sym
     emitActivity(
-      { kind: 'pr-merged', title: `Merged ${sym}${iid}`, detail: label, repo: label, repoRoot, ref: { pr: iid } },
+      {
+        kind: 'pr-merged',
+        title: `Merged ${sym}${iid}`,
+        detail: label,
+        repo: label,
+        repoRoot,
+        ref: { pr: iid },
+      },
       { notify: true },
     )
   }
@@ -248,9 +262,7 @@ export function getMrDiff(repoRoot: string, iid: number): Promise<string> {
 // unified/split views above. Requires `difft` on PATH; content comes from the
 // forge API (not local git — the PR's commits may not be fetched locally).
 
-
 const structuralDiffCache = new Map<string, StructuralDiffResult>()
-
 
 export async function getStructuralDiff(
   repoRoot: string,
@@ -316,7 +328,13 @@ export type DigestChunk = {
   note: string | null
   confidence: string | null
   decision_signals: string[]
-  hunks: { header: string; old_start: number; new_start: number; mechanical: boolean; label: string }[]
+  hunks: {
+    header: string
+    old_start: number
+    new_start: number
+    mechanical: boolean
+    label: string
+  }[]
 }
 export type DigestArtifact = {
   pr: string | null

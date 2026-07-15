@@ -1,5 +1,10 @@
 import { test, expect, describe } from 'bun:test'
-import { buildProvisionScript, buildReadinessProbe, parseReadiness, selfUpdatePlan } from './host-provision'
+import {
+  buildProvisionScript,
+  buildReadinessProbe,
+  parseReadiness,
+  selfUpdatePlan,
+} from './host-provision'
 
 describe('selfUpdatePlan (0022 — no hardcoded self-update repo)', () => {
   test('no repo slug → skipped, and never emits a hardcoded/personal slug', () => {
@@ -8,7 +13,11 @@ describe('selfUpdatePlan (0022 — no hardcoded self-update repo)', () => {
     expect(JSON.stringify(plan)).not.toContain('trevormil')
   })
   test('an explicit slug is used, branch defaulting to main', () => {
-    expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal' })).toEqual({ run: true, repoSlug: 'acme/TerMinal', branch: 'main' })
+    expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal' })).toEqual({
+      run: true,
+      repoSlug: 'acme/TerMinal',
+      branch: 'main',
+    })
     expect(selfUpdatePlan({ repoSlug: 'acme/TerMinal', branch: 'release' }).branch).toBe('release')
   })
   test('selfUpdate:false disables it even with a slug', () => {
@@ -48,7 +57,14 @@ describe('buildReadinessProbe', () => {
 
 describe('parseReadiness', () => {
   test('parses a fully-ready host', () => {
-    const raw = ['BUN=1.3.14', 'LINGER=yes', 'RUNNER=ok', 'CLI=ok', 'ENGINE_codex=/home/u/.bun/bin/codex', 'ENGINE_claude='].join('\n')
+    const raw = [
+      'BUN=1.3.14',
+      'LINGER=yes',
+      'RUNNER=ok',
+      'CLI=ok',
+      'ENGINE_codex=/home/u/.bun/bin/codex',
+      'ENGINE_claude=',
+    ].join('\n')
     const r = parseReadiness(raw, ['claude', 'codex'])
     expect(r.bun).toBe('1.3.14')
     expect(r.linger).toBe(true)

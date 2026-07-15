@@ -29,6 +29,9 @@ describe('getWorkingStructuralDiff', () => {
   })
 
   test('empty repo/path → error', async () => {
-    expect(await getWorkingStructuralDiff('', 'a.ts', 160)).toMatchObject({ ok: false, reason: 'error' })
+    expect(await getWorkingStructuralDiff('', 'a.ts', 160)).toMatchObject({
+      ok: false,
+      reason: 'error',
+    })
   })
 })

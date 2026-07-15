@@ -23,7 +23,11 @@ describe('applySweepFinals', () => {
     const finals = new Map([['a', { status: 'done' as const, endedAt: 99, mrUrl: 'http://pr/1' }]])
     const { tasks, changed } = applySweepFinals(fresh, finals)
     expect(changed).toBe(true)
-    expect(tasks.find((t) => t.id === 'a')).toMatchObject({ status: 'done', endedAt: 99, mrUrl: 'http://pr/1' })
+    expect(tasks.find((t) => t.id === 'a')).toMatchObject({
+      status: 'done',
+      endedAt: 99,
+      mrUrl: 'http://pr/1',
+    })
     // The task that appeared during the await must survive, still running.
     expect(tasks.find((t) => t.id === 'new')).toMatchObject({ status: 'running' })
   })

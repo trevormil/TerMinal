@@ -47,7 +47,13 @@ export function parseSteps(bodyLines: string[]): LogStep[] {
     const line = raw.trim()
     const start = line.match(STEP_START)
     if (start) {
-      steps.push({ n: Number(start[1]), total: Number(start[2]), label: start[3], status: 'running', line: idx })
+      steps.push({
+        n: Number(start[1]),
+        total: Number(start[2]),
+        label: start[3],
+        status: 'running',
+        line: idx,
+      })
       return
     }
     const end = line.match(STEP_END)
@@ -70,7 +76,8 @@ function classifyLine(line: string, inFence: boolean): LogLineKind {
   if (inFence) return 'code'
   if (trimmed.startsWith('▸')) return 'meta'
   if (/^━━ .* ━━$/.test(trimmed)) return 'step'
-  if (/^\[(tool|usage|spawn error)\]/i.test(trimmed)) return trimmed.toLowerCase().includes('error') ? 'error' : 'tool'
+  if (/^\[(tool|usage|spawn error)\]/i.test(trimmed))
+    return trimmed.toLowerCase().includes('error') ? 'error' : 'tool'
   if (/^(error|failed|fatal|exception|traceback)\b/i.test(trimmed)) return 'error'
   if (/^(done|success|passed|mr:|pr:)\b/i.test(trimmed)) return 'success'
   if (/^(bash|shell|command|\$|>)\b/i.test(trimmed)) return 'command'
@@ -140,5 +147,10 @@ export function formatRunLog(text: string): FormattedLog {
     return { text: line, kind }
   })
 
-  return { meta, highlights: uniqueHighlights(bodyLines), steps: parseSteps(bodyLines), lines: body }
+  return {
+    meta,
+    highlights: uniqueHighlights(bodyLines),
+    steps: parseSteps(bodyLines),
+    lines: body,
+  }
 }

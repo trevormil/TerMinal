@@ -52,7 +52,8 @@ export function openPromptInTerminal(input: {
 }
 
 export function remoteForTabContext(ctx: TabContext): RemoteSession | undefined {
-  if (ctx.remoteSession?.sshTarget) return { ...ctx.remoteSession, cwd: ctx.repoRoot || ctx.cwd || ctx.remoteSession.cwd }
+  if (ctx.remoteSession?.sshTarget)
+    return { ...ctx.remoteSession, cwd: ctx.repoRoot || ctx.cwd || ctx.remoteSession.cwd }
   if (!ctx.remote || !ctx.remoteSshTarget) return undefined
   return {
     hostId: ctx.remoteHostId || ctx.remoteSshTarget,
@@ -70,7 +71,9 @@ export function withLaunchContext(
 ): string {
   const lines = [prompt.trim()]
   if (opts.runContext) {
-    lines.push(`\nAgent context: ${opts.runContext.title} (${opts.runContext.id})\n\n${opts.runContext.prompt}`)
+    lines.push(
+      `\nAgent context: ${opts.runContext.title} (${opts.runContext.id})\n\n${opts.runContext.prompt}`,
+    )
   } else if (opts.persona) {
     lines.push(`\nAgent context: ${opts.persona}`)
   }

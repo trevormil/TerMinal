@@ -147,7 +147,9 @@ const SESSION_PAGE_SIZE = 50
 const readWorkspaceList = (key: string): string[] => {
   try {
     const parsed = JSON.parse(localStorage.getItem(key) || '[]')
-    return Array.isArray(parsed) ? [...new Set(parsed.filter((x): x is string => typeof x === 'string'))] : []
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((x): x is string => typeof x === 'string'))]
+      : []
   } catch {
     return []
   }
@@ -389,7 +391,8 @@ export function EntryScreen({
 
   // openrouter is one-shot with no resumable local store — hide its resume list.
   // Hermes resumes from its ~/.hermes SQLite store, so it's allowed.
-  const canResume = isAiEngine(engine) && engine !== 'openrouter' && location === 'local' && !lockedRemote
+  const canResume =
+    isAiEngine(engine) && engine !== 'openrouter' && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
   const scopedSessionCount = sessions ? filterSessionMetas(sessions, { filterDir }).length : 0
   const shown = sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []
@@ -492,7 +495,14 @@ export function EntryScreen({
       : projParent
         ? tilde(projParent)
         : parentLabel
-  const engineOptions = ['local', 'claude', 'codex', 'cursor', 'openrouter', 'hermes'] as SessionEngine[]
+  const engineOptions = [
+    'local',
+    'claude',
+    'codex',
+    'cursor',
+    'openrouter',
+    'hermes',
+  ] as SessionEngine[]
   const daemonLabel =
     location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'
   const selectedWorkspaceLabel =
@@ -552,7 +562,8 @@ export function EntryScreen({
             <div className="min-w-0">
               <div className="text-[12px] font-semibold text-zinc-100">Scratch session</div>
               <div className="truncate text-[10.5px] text-zinc-600">
-                Throwaway — spins up in <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
+                Throwaway — spins up in{' '}
+                <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
               </div>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -599,16 +610,20 @@ export function EntryScreen({
                       : 'text-zinc-500 hover:text-zinc-200'
                   }`}
                 >
-                  {m === 'single' ? <SquareTerminal size={13} strokeWidth={2} /> : <Repeat size={13} strokeWidth={2} />}
+                  {m === 'single' ? (
+                    <SquareTerminal size={13} strokeWidth={2} />
+                  ) : (
+                    <Repeat size={13} strokeWidth={2} />
+                  )}
                   {m === 'single' ? 'Single session' : 'Paired loop'}
                 </button>
               ))}
             </div>
             {mode === 'loop' && (
               <div className="text-[10.5px] leading-relaxed text-zinc-600">
-                Two linked agents in one worktree — a <span className="text-zinc-400">worker</span> writes code, a{' '}
-                <span className="text-zinc-400">driver</span> negotiates the contract and grades it. Opened side by
-                side, contract-first.
+                Two linked agents in one worktree — a <span className="text-zinc-400">worker</span>{' '}
+                writes code, a <span className="text-zinc-400">driver</span> negotiates the contract
+                and grades it. Opened side by side, contract-first.
               </div>
             )}
             {!lockedCwd &&
@@ -627,7 +642,9 @@ export function EntryScreen({
                       className="group inline-flex max-w-[240px] items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 py-1.5 pl-2.5 pr-1 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60"
                     >
                       <button
-                        onClick={() => (mode === 'loop' ? selectDir(r) : onChoose(choiceFromRecent(r)))}
+                        onClick={() =>
+                          mode === 'loop' ? selectDir(r) : onChoose(choiceFromRecent(r))
+                        }
                         className="inline-flex min-w-0 items-center gap-1.5 text-left"
                       >
                         {isRemotePath(r) ? (
@@ -637,7 +654,11 @@ export function EntryScreen({
                             className="shrink-0 text-[var(--gt-accent-2)]"
                           />
                         ) : (
-                          <FolderOpen size={12} strokeWidth={2} className="shrink-0 text-zinc-500" />
+                          <FolderOpen
+                            size={12}
+                            strokeWidth={2}
+                            className="shrink-0 text-zinc-500"
+                          />
                         )}
                         <span className="truncate">{pathLabel(r)}</span>
                         {isRemotePath(r) && (
@@ -658,11 +679,7 @@ export function EntryScreen({
                             : 'text-zinc-600 hover:text-zinc-300'
                         }`}
                       >
-                        <Pin
-                          size={12}
-                          strokeWidth={2}
-                          fill={isPinned ? 'currentColor' : 'none'}
-                        />
+                        <Pin size={12} strokeWidth={2} fill={isPinned ? 'currentColor' : 'none'} />
                       </button>
                     </div>
                   )
@@ -686,46 +703,58 @@ export function EntryScreen({
               })()}
 
             {mode === 'single' && (
-            <div>
-              <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
-              <div className="grid grid-cols-3 gap-2">
-                {engineOptions.map((e) => (
-                  <button
-                    key={e}
-                    onClick={() => selectEngine(e)}
-                    className={pickButton(engine === e)}
-                  >
-                    {e === 'local' ? (
-                      <SquareTerminal size={16} strokeWidth={2} className="shrink-0" />
-                    ) : (
-                      <EngineLogo engine={e} size={16} />
-                    )}
-                    <span className="min-w-0 truncate text-[12.5px] font-semibold">{sessionEngineLabel(e)}</span>
-                  </button>
-                ))}
+              <div>
+                <div className={`${sectionTitle} mb-2`}>1 · Engine</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {engineOptions.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => selectEngine(e)}
+                      className={pickButton(engine === e)}
+                    >
+                      {e === 'local' ? (
+                        <SquareTerminal size={16} strokeWidth={2} className="shrink-0" />
+                      ) : (
+                        <EngineLogo engine={e} size={16} />
+                      )}
+                      <span className="min-w-0 truncate text-[12.5px] font-semibold">
+                        {sessionEngineLabel(e)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {engine === 'openrouter' && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">
+                      Harness
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['codex', 'hermes'] as const).map((h) => (
+                        <button
+                          key={h}
+                          onClick={() => setOpenrouterHarness(h)}
+                          className={pickButton(openrouterHarness === h)}
+                        >
+                          <EngineLogo engine={h} size={15} />
+                          <span className="min-w-0 truncate text-[12px] font-semibold">
+                            {h === 'codex' ? 'Codex' : 'Hermes'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {isAiEngine(engine) && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">
+                      Model
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto pr-0.5">
+                      <ModelSelect engine={engine} model={model} onChange={setModel} />
+                    </div>
+                  </div>
+                )}
               </div>
-              {engine === 'openrouter' && (
-                <div className="mt-3">
-                  <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Harness</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['codex', 'hermes'] as const).map((h) => (
-                      <button key={h} onClick={() => setOpenrouterHarness(h)} className={pickButton(openrouterHarness === h)}>
-                        <EngineLogo engine={h} size={15} />
-                        <span className="min-w-0 truncate text-[12px] font-semibold">{h === 'codex' ? 'Codex' : 'Hermes'}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {isAiEngine(engine) && (
-                <div className="mt-3">
-                  <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">Model</div>
-                  <div className="max-h-[240px] overflow-y-auto pr-0.5">
-                    <ModelSelect engine={engine} model={model} onChange={setModel} />
-                  </div>
-                </div>
-              )}
-            </div>
             )}
 
             {mode === 'loop' && (
@@ -805,7 +834,9 @@ export function EntryScreen({
                     className={pickButton(location === 'local')}
                   >
                     <FolderOpen size={16} strokeWidth={2} className="shrink-0 text-zinc-400" />
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">Local</span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                      Local
+                    </span>
                   </button>
                   <button
                     onClick={() => switchLocation('remote')}
@@ -817,7 +848,9 @@ export function EntryScreen({
                       strokeWidth={2}
                       className="shrink-0 text-[var(--gt-accent-2)]"
                     />
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">Remote SSH</span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">
+                      Remote SSH
+                    </span>
                   </button>
                 </div>
                 {remoteHosts.length === 0 && (
@@ -999,8 +1032,8 @@ export function EntryScreen({
               <div>
                 <div className={`${sectionTitle} mb-1`}>Optional · Create from template</div>
                 <div className="mb-2 text-[10.5px] leading-snug text-zinc-600">
-                  Git-clones your configured template repo (Settings → Projects → templateRepo)
-                  into a new folder. Needs network access.
+                  Git-clones your configured template repo (Settings → Projects → templateRepo) into
+                  a new folder. Needs network access.
                 </div>
                 <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
                   <input
@@ -1057,11 +1090,13 @@ export function EntryScreen({
                       <>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="w-16 shrink-0 text-zinc-600">Vault at</span>
-                          {([
-                            ['in-repo', 'In repo (gitignored)'],
-                            ['sibling', 'Folder beside repo'],
-                            ['existing', 'Existing vault'],
-                          ] as const).map(([v, label]) => (
+                          {(
+                            [
+                              ['in-repo', 'In repo (gitignored)'],
+                              ['sibling', 'Folder beside repo'],
+                              ['existing', 'Existing vault'],
+                            ] as const
+                          ).map(([v, label]) => (
                             <button
                               key={v}
                               onClick={() => setProjVaultLoc(v)}
@@ -1101,11 +1136,21 @@ export function EntryScreen({
                           <span className="w-16 shrink-0" />
                           <span className="min-w-0">
                             {projVaultLoc === 'in-repo' ? (
-                              <>Private <span className="font-mono">tickets-vault/</span> inside the repo, gitignored — never committed.</>
+                              <>
+                                Private <span className="font-mono">tickets-vault/</span> inside the
+                                repo, gitignored — never committed.
+                              </>
                             ) : projVaultLoc === 'sibling' ? (
-                              <>A new <span className="font-mono">{`${projName.trim()}-vault`}</span> beside the repo, outside git.</>
+                              <>
+                                A new{' '}
+                                <span className="font-mono">{`${projName.trim()}-vault`}</span>{' '}
+                                beside the repo, outside git.
+                              </>
                             ) : (
-                              <>Reuse an existing Obsidian vault. Tickets go in its <span className="font-mono">tickets/</span> subfolder.</>
+                              <>
+                                Reuse an existing Obsidian vault. Tickets go in its{' '}
+                                <span className="font-mono">tickets/</span> subfolder.
+                              </>
                             )}
                           </span>
                         </div>
@@ -1221,8 +1266,8 @@ export function EntryScreen({
                 {sessionSearch.trim()
                   ? 'No sessions match that search.'
                   : filterDir
-                  ? 'No sessions for this folder — start a new one above.'
-                  : `No prior ${engineLabel(engine)} sessions found.`}
+                    ? 'No sessions for this folder — start a new one above.'
+                    : `No prior ${engineLabel(engine)} sessions found.`}
               </div>
             ) : (
               <div className="space-y-2">

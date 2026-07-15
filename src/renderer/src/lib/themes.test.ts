@@ -19,11 +19,14 @@ describe('theme tokens', () => {
     expect(rootTokens).toContain('--gt-text-muted-bright')
   })
 
-  test.each(THEMES.map((t) => [t.id, t] as const))('%s declares every :root token', (_id, theme) => {
-    for (const mode of ['dark', 'light'] as const) {
-      expect(Object.keys(theme.modes[mode]).sort()).toEqual(rootTokens)
-    }
-  })
+  test.each(THEMES.map((t) => [t.id, t] as const))(
+    '%s declares every :root token',
+    (_id, theme) => {
+      for (const mode of ['dark', 'light'] as const) {
+        expect(Object.keys(theme.modes[mode]).sort()).toEqual(rootTokens)
+      }
+    },
+  )
 
   test('theme ids are unique', () => {
     const ids = THEMES.map((t) => t.id)

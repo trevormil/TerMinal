@@ -61,14 +61,21 @@ function defaultBase(repoRoot: string): string {
   return ''
 }
 
-export type WorkingDiff = { ok: boolean; diff: string; base: string; branch: string; error?: string }
+export type WorkingDiff = {
+  ok: boolean
+  diff: string
+  base: string
+  branch: string
+  error?: string
+}
 
 // The "pre-PR" diff: everything from the merge-base with the default branch to
 // the working tree (committed branch work + staged + unstaged), plus untracked
 // files rendered as full additions. On the base branch this collapses to just
 // uncommitted changes. Read-only — never touches the index.
 export function getWorkingDiff(repoRoot: string): WorkingDiff {
-  if (!repoRoot) return { ok: false, diff: '', base: '', branch: '', error: 'Not a git repository.' }
+  if (!repoRoot)
+    return { ok: false, diff: '', base: '', branch: '', error: 'Not a git repository.' }
   // Returns stdout even on a non-zero exit (git diff --no-index exits 1 when
   // files differ, which is the normal case for an untracked file).
   const git = (args: string[]): string => {
@@ -88,7 +95,7 @@ export function getWorkingDiff(repoRoot: string): WorkingDiff {
     const mergeBase = base ? git(['merge-base', 'HEAD', base]).trim() : ''
     const tracked = mergeBase ? git(['diff', mergeBase]) : git(['diff', 'HEAD'])
     const untracked = git(['ls-files', '--others', '--exclude-standard'])
-      .split("\n")
+      .split('\n')
       .filter(Boolean)
       .slice(0, 200) // guardrail: don't fan out over a huge untracked tree
       .map((f) => git(['diff', '--no-index', '--', '/dev/null', f]))

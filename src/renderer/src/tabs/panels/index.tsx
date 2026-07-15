@@ -40,7 +40,8 @@ function PanelsTab({ ctx: _ctx }: { ctx: TabContext }) {
   if (!list.length) {
     return (
       <div className="flex h-full items-center justify-center bg-[var(--gt-bg)] p-8 text-center text-[12px] text-zinc-500">
-        Add a <code className="mx-1 rounded bg-black/30 px-1">pinnedPanels</code> entry in TerMinal settings to pin a web dashboard here.
+        Add a <code className="mx-1 rounded bg-black/30 px-1">pinnedPanels</code> entry in TerMinal
+        settings to pin a web dashboard here.
       </div>
     )
   }
@@ -64,10 +65,18 @@ function PanelsTab({ ctx: _ctx }: { ctx: TabContext }) {
         ) : (
           <span className="font-mono">{cur.label || cur.url}</span>
         )}
-        <button onClick={() => setNonce((n) => n + 1)} className="ml-auto hover:text-zinc-200" title="Reload">
+        <button
+          onClick={() => setNonce((n) => n + 1)}
+          className="ml-auto hover:text-zinc-200"
+          title="Reload"
+        >
           <RefreshCw size={12} />
         </button>
-        <button onClick={() => window.gt.openExternal(cur.url)} className="hover:text-zinc-200" title="Open externally">
+        <button
+          onClick={() => window.gt.openExternal(cur.url)}
+          className="hover:text-zinc-200"
+          title="Open externally"
+        >
           <ExternalLink size={12} />
         </button>
       </div>

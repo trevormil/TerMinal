@@ -79,10 +79,16 @@ function metricChips(meta: ReportMeta): { label: string; tone?: BadgeTone }[] {
   if (typeof meta.total_coverage_pct === 'number') {
     chips.push({ label: `${meta.total_coverage_pct}% cov` })
     if (typeof meta.delta_pct === 'number')
-      chips.push({ label: `${meta.delta_pct >= 0 ? '+' : ''}${meta.delta_pct}%`, tone: meta.delta_pct >= 0 ? 'green' : 'red' })
+      chips.push({
+        label: `${meta.delta_pct >= 0 ? '+' : ''}${meta.delta_pct}%`,
+        tone: meta.delta_pct >= 0 ? 'green' : 'red',
+      })
   }
   if (typeof meta.flakes_detected === 'number' && meta.flakes_detected > 0)
-    chips.push({ label: `${meta.flakes_detected} flake${meta.flakes_detected === 1 ? '' : 's'}`, tone: 'yellow' })
+    chips.push({
+      label: `${meta.flakes_detected} flake${meta.flakes_detected === 1 ? '' : 's'}`,
+      tone: 'yellow',
+    })
   if (typeof meta.entries_added === 'number')
     chips.push({ label: `+${meta.entries_added} entries` })
   if (Array.isArray(meta.categories_regenerated) && meta.categories_regenerated.length > 0)
@@ -160,7 +166,9 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
       list.push(r)
       byKind.set(k, list)
     }
-    return [...byKind.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([kind, runs]) => ({ kind, runs }))
+    return [...byKind.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([kind, runs]) => ({ kind, runs }))
   }, [runs])
 
   const toggleKind = (k: string) =>
@@ -185,7 +193,8 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
         </div>
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
           <SkillHint>
-            Run artifacts from scheduled agents and checks: health, drift, coverage, deps, performance, tickets, and HITL.
+            Run artifacts from scheduled agents and checks: health, drift, coverage, deps,
+            performance, tickets, and HITL.
           </SkillHint>
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -193,8 +202,8 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
             <div className="px-2 py-3 text-[11px] text-zinc-600">Loading reports…</div>
           ) : runs.length === 0 ? (
             <div className="px-2 py-3 text-[11px] leading-relaxed text-zinc-600">
-              No reports yet. Scheduled agents (changelog, drift, coverage, deps-quality, perf, health, auto-docs)
-              write here on each run. Wire them up in the Schedules tab.
+              No reports yet. Scheduled agents (changelog, drift, coverage, deps-quality, perf,
+              health, auto-docs) write here on each run. Wire them up in the Schedules tab.
             </div>
           ) : (
             groups.map((g) => {
@@ -214,13 +223,17 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                     ) : (
                       <ChevronDown size={11} strokeWidth={2.5} className="text-zinc-600" />
                     )}
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">{g.kind}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300">
+                      {g.kind}
+                    </span>
                     <span className="text-zinc-700">·</span>
                     <span className="text-[10px] tabular-nums text-zinc-600">{g.runs.length}</span>
                     {latest?.meta.status && (
                       <Badge tone={statusTone(latest.meta.status)}>{latest.meta.status}</Badge>
                     )}
-                    <span className="ml-auto text-[9.5px] text-zinc-700">{reltime(latest?.meta.generated)}</span>
+                    <span className="ml-auto text-[9.5px] text-zinc-700">
+                      {reltime(latest?.meta.generated)}
+                    </span>
                   </button>
                   {!isCollapsed &&
                     g.runs.map((r) => {
@@ -246,8 +259,12 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                             <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-300">
                               {r.meta.sha || r.entry.title}
                             </span>
-                            {r.meta.status && <Badge tone={statusTone(r.meta.status)}>{r.meta.status}</Badge>}
-                            <span className="text-[9.5px] text-zinc-600">{reltime(r.meta.generated)}</span>
+                            {r.meta.status && (
+                              <Badge tone={statusTone(r.meta.status)}>{r.meta.status}</Badge>
+                            )}
+                            <span className="text-[9.5px] text-zinc-600">
+                              {reltime(r.meta.generated)}
+                            </span>
                           </div>
                           {chips.length > 0 && (
                             <div className="flex flex-wrap gap-1 pl-4">
@@ -277,11 +294,15 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                 {selectedRun.meta.kind || selectedKind}
               </span>
               <span className="text-zinc-700">›</span>
-              <span className="font-mono text-[11px] text-zinc-400">{selectedRun.meta.sha || selectedRun.entry.title}</span>
+              <span className="font-mono text-[11px] text-zinc-400">
+                {selectedRun.meta.sha || selectedRun.entry.title}
+              </span>
               {selectedRun.meta.status && (
                 <Badge tone={statusTone(selectedRun.meta.status)}>{selectedRun.meta.status}</Badge>
               )}
-              <span className="text-[10.5px] text-zinc-600">{reltime(selectedRun.meta.generated)}</span>
+              <span className="text-[10.5px] text-zinc-600">
+                {reltime(selectedRun.meta.generated)}
+              </span>
               <div className="flex-1" />
               {selectedRun.meta.pr_opened && (
                 <button
@@ -292,9 +313,10 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
                   <ExternalLink size={10} strokeWidth={2} />
                 </button>
               )}
-              {Array.isArray(selectedRun.meta.tickets_filed) && selectedRun.meta.tickets_filed.length > 0 && (
-                <Badge tone="blue">{selectedRun.meta.tickets_filed.length} tickets</Badge>
-              )}
+              {Array.isArray(selectedRun.meta.tickets_filed) &&
+                selectedRun.meta.tickets_filed.length > 0 && (
+                  <Badge tone="blue">{selectedRun.meta.tickets_filed.length} tickets</Badge>
+                )}
             </header>
             <article className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
               <div className="mx-auto max-w-3xl">
@@ -315,8 +337,9 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
           <div className="flex h-full flex-col items-center justify-center px-8 text-center text-[12px] text-zinc-600">
             <ClipboardList size={28} strokeWidth={1.5} className="mb-3 text-zinc-700" />
             <div className="max-w-md">
-              Scheduled-agent run reports live here. Pick a run on the left to see its details, or expand a kind
-              to compare recent runs. The latest status per kind shows on the group headers — green / yellow / red.
+              Scheduled-agent run reports live here. Pick a run on the left to see its details, or
+              expand a kind to compare recent runs. The latest status per kind shows on the group
+              headers — green / yellow / red.
             </div>
           </div>
         )}

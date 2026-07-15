@@ -26,7 +26,14 @@ describe('classifyBootstrapStatus', () => {
   })
 
   test('v2 state directories satisfy v1-compatible markers', () => {
-    const present = new Set(['.agents', '.TerMinal/backlog', 'docs', '.TerMinal/sessions', '.claude/skills', '.codex/skills'])
+    const present = new Set([
+      '.agents',
+      '.TerMinal/backlog',
+      'docs',
+      '.TerMinal/sessions',
+      '.claude/skills',
+      '.codex/skills',
+    ])
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
     expect(status.state).toBe('full')
     expect(status.bootstrapped).toBe(true)

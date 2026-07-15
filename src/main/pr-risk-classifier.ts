@@ -143,7 +143,7 @@ export async function classifyRisk(input: RiskInput): Promise<RiskClassification
         {
           role: 'system',
           content:
-            'Rate this PR\'s review-priority risk as EXACTLY ONE of: low, medium, high. high = touches auth/payments/migrations/external APIs OR has architectural surface; medium = non-trivial code changes; low = docs/config/trivial. Reply with ONLY the label, no preamble.',
+            "Rate this PR's review-priority risk as EXACTLY ONE of: low, medium, high. high = touches auth/payments/migrations/external APIs OR has architectural surface; medium = non-trivial code changes; low = docs/config/trivial. Reply with ONLY the label, no preamble.",
         },
         { role: 'user', content: summary },
       ],

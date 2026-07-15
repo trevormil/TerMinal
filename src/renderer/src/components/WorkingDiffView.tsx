@@ -5,7 +5,8 @@ import type { WorkingDiff } from '../lib/types'
 
 // Structural (difft) fetch for local working-tree changes (file at HEAD vs the
 // working tree). Stable identity so DiffView's per-file effect doesn't re-run.
-const fetchWorkingStructural = (path: string, cols: number) => window.gt.getWorkingStructuralDiff(path, cols)
+const fetchWorkingStructural = (path: string, cols: number) =>
+  window.gt.getWorkingStructuralDiff(path, cols)
 
 // The local "pre-PR" diff: everything from the merge-base with the default
 // branch to the working tree (committed branch work + uncommitted + untracked).
@@ -31,7 +32,11 @@ export function WorkingDiffView({ onBack }: { onBack?: () => void }) {
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
         {onBack && (
-          <button onClick={onBack} className="flex items-center text-zinc-500 hover:text-zinc-200" title="Back">
+          <button
+            onClick={onBack}
+            className="flex items-center text-zinc-500 hover:text-zinc-200"
+            title="Back"
+          >
             <ChevronLeft size={16} strokeWidth={2} />
           </button>
         )}
@@ -55,11 +60,14 @@ export function WorkingDiffView({ onBack }: { onBack?: () => void }) {
         {res === null ? (
           <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
         ) : !res.ok ? (
-          <div className="p-6 text-[12px] text-amber-400">{res.error || 'Could not read the working diff.'}</div>
+          <div className="p-6 text-[12px] text-amber-400">
+            {res.error || 'Could not read the working diff.'}
+          </div>
         ) : empty ? (
           <div className="p-6 text-[12px] text-zinc-600">
-            No changes{res.base && res.base !== res.branch ? ` since ${res.base}` : ' in the working tree'} — nothing to
-            diff.
+            No changes
+            {res.base && res.base !== res.branch ? ` since ${res.base}` : ' in the working tree'} —
+            nothing to diff.
           </div>
         ) : (
           <DiffView

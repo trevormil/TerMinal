@@ -21,7 +21,12 @@ export function parseFrontmatter(md: string): { fm: Record<string, unknown>; bod
       const items: string[] = []
       let j = i + 1
       for (; j < lines.length && /^\s+-\s+/.test(lines[j]); j++) {
-        items.push(lines[j].replace(/^\s+-\s+/, '').trim().replace(/^["']|["']$/g, ''))
+        items.push(
+          lines[j]
+            .replace(/^\s+-\s+/, '')
+            .trim()
+            .replace(/^["']|["']$/g, ''),
+        )
       }
       if (items.length) {
         fm[key] = items

@@ -31,7 +31,13 @@ describe('classifyRunArgs', () => {
   })
 
   test('classifies engine / pipeline / @repo / persona in any order', () => {
-    const r = classifyRunArgs(['security-sweep', 'review-iterate', '@agentforge', 'claude', 'security'])
+    const r = classifyRunArgs([
+      'security-sweep',
+      'review-iterate',
+      '@agentforge',
+      'claude',
+      'security',
+    ])
     expect(r.agentId).toBe('security-sweep')
     expect(r.engine).toBe('claude')
     expect(r.pipeline).toBe('review-iterate')
@@ -51,7 +57,10 @@ describe('classifyRunArgs', () => {
   })
 
   test('unrecognized tokens become persona candidates', () => {
-    expect(classifyRunArgs(['docs', 'wizard', 'ninja']).personaCandidates).toEqual(['wizard', 'ninja'])
+    expect(classifyRunArgs(['docs', 'wizard', 'ninja']).personaCandidates).toEqual([
+      'wizard',
+      'ninja',
+    ])
   })
 })
 

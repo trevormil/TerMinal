@@ -28,7 +28,14 @@
 //
 // SELF-CONTAINED: no imports from the TerMinal app bundle, only ~/.config/TerMinal/*.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+  readdirSync,
+} from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
@@ -48,13 +55,15 @@ const runId = process.env.TERMINAL_RUN_ID || ''
 const agentId = process.env.TERMINAL_AGENT_ID || ''
 
 function areaCandidates(area) {
-  return {
-    backlog: ['.TerMinal/backlog', 'backlog'],
-    sessions: ['.TerMinal/sessions', 'sessions'],
-    reviews: ['.TerMinal/reviews', '.reviews'],
-    checks: ['.TerMinal/checks', '.checks', 'checks'],
-    reports: ['.TerMinal/reports', 'reports'],
-  }[area] || [area]
+  return (
+    {
+      backlog: ['.TerMinal/backlog', 'backlog'],
+      sessions: ['.TerMinal/sessions', 'sessions'],
+      reviews: ['.TerMinal/reviews', '.reviews'],
+      checks: ['.TerMinal/checks', '.checks', 'checks'],
+      reports: ['.TerMinal/reports', 'reports'],
+    }[area] || [area]
+  )
 }
 
 function hasV2Layout(root) {
@@ -218,7 +227,10 @@ function fileHitl(title, action) {
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
   // HITL ALWAYS pings Telegram when configured — matches the app's policy.
-  pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
+  pingTelegram(
+    `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+    hitlButtons(item),
+  )
   console.log(item.id)
 }
 
@@ -259,7 +271,9 @@ function completionHitl(engine) {
 
   const project = safeBasename(cwd) || repoLabel || 'workspace'
   const transcript = payload.transcript_path || payload.transcriptPath || ''
-  const lastMessage = String(payload.last_assistant_message || payload.last_message || '').replace(/\s+/g, ' ').slice(0, 300)
+  const lastMessage = String(payload.last_assistant_message || payload.last_message || '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 300)
   const hashInput = JSON.stringify({
     engine: engine || 'agent',
     cwd,
@@ -304,7 +318,10 @@ function completionHitl(engine) {
   mkdirSync(CFG, { recursive: true })
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
-  pingTelegram(`⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`, hitlButtons(item))
+  pingTelegram(
+    `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+    hitlButtons(item),
+  )
   console.log(id)
 }
 
@@ -560,16 +577,40 @@ function classifyCommand(kind, args) {
     // what's useful; scripts can call `terminal-cli mcp classify_ci` for the
     // full version (TODO: wire that MCP tool later).
     const PATTERNS = [
-      { class: 'prettier-formatting', re: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i },
+      {
+        class: 'prettier-formatting',
+        re: /\[warn\]\s+Code style issues found|prettier --check.*failed|files would be reformatted/i,
+      },
       { class: 'eslint-fixable', re: /\d+\s+(error|problem)s?.*eslint|eslint.*\d+\s+error/i },
       { class: 'typecheck-isolated', re: /error TS\d+:|TS\d+\s+:|TypeScript:.*error/ },
-      { class: 'snapshot-mismatch', re: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i },
-      { class: 'test-real', re: /\d+\s+failing|\d+\s+failed|FAIL\s+|✗\s+|AssertionError|Expected.*Received/ },
-      { class: 'build-config', re: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i },
-      { class: 'lockfile-drift', re: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i },
-      { class: 'dependency', re: /npm ERR! code E\d+|EPEERINVALID|404 Not Found.*\.tgz|peer dep|ETIMEDOUT.*registry/i },
-      { class: 'flake-network', re: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i },
-      { class: 'deploy-infra', re: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i },
+      {
+        class: 'snapshot-mismatch',
+        re: /snapshot file.*was not written|snapshot.*does not match|toMatchSnapshot.*fail|obsolete snapshot/i,
+      },
+      {
+        class: 'test-real',
+        re: /\d+\s+failing|\d+\s+failed|FAIL\s+|✗\s+|AssertionError|Expected.*Received/,
+      },
+      {
+        class: 'build-config',
+        re: /(rollup|vite|webpack|esbuild|tsup).*(error|failed)|Module not found|Cannot resolve|Cannot find module/i,
+      },
+      {
+        class: 'lockfile-drift',
+        re: /(lockfile|bun\.lock|package-lock).*out of (date|sync)|frozen-lockfile.*failed|lockfile mismatch/i,
+      },
+      {
+        class: 'dependency',
+        re: /npm ERR! code E\d+|EPEERINVALID|404 Not Found.*\.tgz|peer dep|ETIMEDOUT.*registry/i,
+      },
+      {
+        class: 'flake-network',
+        re: /ECONNRESET|ETIMEDOUT|503 Service Unavailable|429 Too Many Requests|connection refused/i,
+      },
+      {
+        class: 'deploy-infra',
+        re: /(ImagePullBackOff|CrashLoopBackOff|kubectl.*error|helm.*failed|docker push.*denied|terraform.*error)/i,
+      },
     ]
     const stripped = rawLog.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
     for (const p of PATTERNS) {
@@ -615,10 +656,24 @@ function classifyCommand(kind, args) {
       /(^|\/)\.prettierrc/i,
       /(^|\/)snapshots?\//i,
     ]
-    for (const f of files) for (const p of HIGH) if (p.test(f)) { console.log('high'); return }
-    if (diffLines > 500) { console.log('medium'); return }
-    if (files.every((f) => LOW.some((p) => p.test(f))) && diffLines <= 50) { console.log('low'); return }
-    if (files.every((f) => LOW.some((p) => p.test(f)))) { console.log('low'); return }
+    for (const f of files)
+      for (const p of HIGH)
+        if (p.test(f)) {
+          console.log('high')
+          return
+        }
+    if (diffLines > 500) {
+      console.log('medium')
+      return
+    }
+    if (files.every((f) => LOW.some((p) => p.test(f))) && diffLines <= 50) {
+      console.log('low')
+      return
+    }
+    if (files.every((f) => LOW.some((p) => p.test(f)))) {
+      console.log('low')
+      return
+    }
     console.log('medium')
     return
   }
@@ -628,13 +683,17 @@ function classifyCommand(kind, args) {
 
 function fileTicket(title, body) {
   if (!repo) {
-    console.error('terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner')
+    console.error(
+      'terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
+    )
     process.exit(2)
   }
   const cfg = readTicketConfig()
   if (cfg.provider === 'github') return fileGithubIssue(title, body, cfg.github || {})
   if (cfg.provider === 'linear') {
-    console.error('terminal-cli ticket: Linear repos must file through the configured Linear MCP/CLI, not local backlog markdown')
+    console.error(
+      'terminal-cli ticket: Linear repos must file through the configured Linear MCP/CLI, not local backlog markdown',
+    )
     process.exit(2)
   }
   // Obsidian repos keep tickets in their vault, not the repo's local backlog.
@@ -694,18 +753,46 @@ function obsidianTicketsDir(cfg) {
 
 function ghLabelMaps(cfg) {
   return {
-    priority: { critical: 'priority:critical', high: 'priority:high', medium: 'priority:medium', low: 'priority:low', ...(cfg.priorityLabels || {}) },
-    type: { feature: 'type:feature', bug: 'type:bug', security: 'type:security', docs: 'type:docs', dx: 'type:dx', testing: 'type:testing', ux: 'type:ux', performance: 'type:performance', ...(cfg.typeLabels || {}) },
+    priority: {
+      critical: 'priority:critical',
+      high: 'priority:high',
+      medium: 'priority:medium',
+      low: 'priority:low',
+      ...(cfg.priorityLabels || {}),
+    },
+    type: {
+      feature: 'type:feature',
+      bug: 'type:bug',
+      security: 'type:security',
+      docs: 'type:docs',
+      dx: 'type:dx',
+      testing: 'type:testing',
+      ux: 'type:ux',
+      performance: 'type:performance',
+      ...(cfg.typeLabels || {}),
+    },
   }
 }
 
 function ensureGhLabel(label) {
   try {
-    execFileSync('gh', ['label', 'create', label, '--color', 'ededed', '--description', 'Managed by TerMinal tickets'], {
-      cwd: repo,
-      stdio: ['ignore', 'ignore', 'pipe'],
-      encoding: 'utf8',
-    })
+    execFileSync(
+      'gh',
+      [
+        'label',
+        'create',
+        label,
+        '--color',
+        'ededed',
+        '--description',
+        'Managed by TerMinal tickets',
+      ],
+      {
+        cwd: repo,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        encoding: 'utf8',
+      },
+    )
   } catch (e) {
     const msg = String(e.stderr || e.message || '')
     if (!/already exists/i.test(msg)) throw e
@@ -719,20 +806,28 @@ function fileGithubIssue(title, body, cfg) {
   try {
     const args = ['issue', 'create', '--title', title || 'Untitled', '--body', body || '']
     if (labels.length) args.push('--label', labels.join(','))
-    const url = execFileSync('gh', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    const url = execFileSync('gh', args, {
+      cwd: repo,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
     const id = (url.match(/\/issues\/(\d+)/) || [])[1] || ''
     emitActivity('ticket-filed', `Ticket filed · ${id ? `#${id}` : 'GitHub Issue'}`, title || '')
     console.log(url)
   } catch (e) {
-    console.error(`terminal-cli ticket: gh issue create failed: ${String(e.stderr || e.message || '').trim()}`)
+    console.error(
+      `terminal-cli ticket: gh issue create failed: ${String(e.stderr || e.message || '').trim()}`,
+    )
     process.exit(1)
   }
 }
 
 function safeFileName(name) {
-  return String(name || '')
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
-    .replace(/^-+|-+$/g, '') || randomUUID()
+  return (
+    String(name || '')
+      .replace(/[^a-zA-Z0-9._-]/g, '-')
+      .replace(/^-+|-+$/g, '') || randomUUID()
+  )
 }
 
 function parseFlags(args) {
@@ -772,11 +867,39 @@ function readListenerEvent(args) {
       dedupeKey: flags.dedupeKey || flags.dedupe,
     }
     if (action) {
-      if (action === 'activity') event.requestedAction = { kind: 'activity', title: flags.title, detail: flags.body }
-      else if (action === 'file-ticket') event.requestedAction = { kind: 'file-ticket', title: flags.title, body: flags.body, type: flags.ticketType, priority: flags.priority }
-      else if (action === 'file-hitl') event.requestedAction = { kind: 'file-hitl', title: flags.title, action: flags.body || flags.prompt, detail: flags.detail }
-      else if (action === 'run-agent') event.requestedAction = { kind: 'run-agent', agentId: flags.agent || flags.agentId, engine: flags.engine, model: flags.model, mode: flags.mode || 'agent', prompt: flags.prompt }
-      else if (action === 'background-task') event.requestedAction = { kind: 'background-task', engine: flags.engine, model: flags.model, prompt: flags.prompt || flags.body || '' }
+      if (action === 'activity')
+        event.requestedAction = { kind: 'activity', title: flags.title, detail: flags.body }
+      else if (action === 'file-ticket')
+        event.requestedAction = {
+          kind: 'file-ticket',
+          title: flags.title,
+          body: flags.body,
+          type: flags.ticketType,
+          priority: flags.priority,
+        }
+      else if (action === 'file-hitl')
+        event.requestedAction = {
+          kind: 'file-hitl',
+          title: flags.title,
+          action: flags.body || flags.prompt,
+          detail: flags.detail,
+        }
+      else if (action === 'run-agent')
+        event.requestedAction = {
+          kind: 'run-agent',
+          agentId: flags.agent || flags.agentId,
+          engine: flags.engine,
+          model: flags.model,
+          mode: flags.mode || 'agent',
+          prompt: flags.prompt,
+        }
+      else if (action === 'background-task')
+        event.requestedAction = {
+          kind: 'background-task',
+          engine: flags.engine,
+          model: flags.model,
+          prompt: flags.prompt || flags.body || '',
+        }
     }
     return event
   }
@@ -791,7 +914,10 @@ function listenerStatus() {
   const counts = Object.fromEntries(
     listenerDirs().map((dir) => {
       try {
-        return [dir, readdirSync(join(LISTENER_ROOT, dir)).filter((f) => f.endsWith('.json')).length]
+        return [
+          dir,
+          readdirSync(join(LISTENER_ROOT, dir)).filter((f) => f.endsWith('.json')).length,
+        ]
       } catch {
         return [dir, 0]
       }
@@ -854,7 +980,14 @@ function listenerCommand(sub, args) {
   mkdirSync(join(LISTENER_ROOT, 'new'), { recursive: true })
   const id = event.id || randomUUID()
   const path = join(LISTENER_ROOT, 'new', `${safeFileName(id)}.json`)
-  writeFileSync(path, JSON.stringify({ ...event, id, createdAt: event.createdAt || new Date().toISOString() }, null, 2))
+  writeFileSync(
+    path,
+    JSON.stringify(
+      { ...event, id, createdAt: event.createdAt || new Date().toISOString() },
+      null,
+      2,
+    ),
+  )
   console.log(path)
 }
 
@@ -865,7 +998,9 @@ function loopCommand(sub, rest) {
   const LOOPS_FILE = join(CFG, 'loops.json')
   const loopDir = (id) => join(process.cwd(), '.TerMinal', 'loops', id)
   const usage = () => {
-    console.error('usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>')
+    console.error(
+      'usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>',
+    )
     process.exit(2)
   }
   if (sub === 'list') {
@@ -958,7 +1093,8 @@ function applyProfileCli(repo, profile) {
     console.error('unknown profile: ' + profile)
     process.exit(2)
   }
-  for (const id of ids) execFileSync('bash', [join(dir, 'seed-module.sh'), repo, id], { stdio: 'inherit' })
+  for (const id of ids)
+    execFileSync('bash', [join(dir, 'seed-module.sh'), repo, id], { stdio: 'inherit' })
   recordSeededModules(repo, ids, profile)
   console.log('seeded [' + profile + ']: ' + ids.join(', '))
 }

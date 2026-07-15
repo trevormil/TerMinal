@@ -43,7 +43,11 @@ function resolveBun(): string {
     /* fall through */
   }
   // Common installer locations as fallbacks (in priority order).
-  const guesses = [join(homedir(), '.bun', 'bin', 'bun'), '/opt/homebrew/bin/bun', '/usr/local/bin/bun']
+  const guesses = [
+    join(homedir(), '.bun', 'bin', 'bun'),
+    '/opt/homebrew/bin/bun',
+    '/usr/local/bin/bun',
+  ]
   for (const g of guesses) if (existsSync(g)) return g
   return 'bun' // last-ditch: hope PATH carries it (rare on cron-spawned shells)
 }
@@ -57,7 +61,8 @@ function mcpServerPath(): string {
 export function registerWithClaude(): { ok: boolean; action: string; error?: string } {
   const path = join(homedir(), '.claude.json')
   const serverPath = mcpServerPath()
-  if (!existsSync(serverPath)) return { ok: false, action: 'skip', error: `mcp server not installed at ${serverPath}` }
+  if (!existsSync(serverPath))
+    return { ok: false, action: 'skip', error: `mcp server not installed at ${serverPath}` }
   const desired = { command: resolveBun(), args: [serverPath] }
 
   let json: Record<string, unknown> = {}
@@ -65,7 +70,11 @@ export function registerWithClaude(): { ok: boolean; action: string; error?: str
     try {
       json = JSON.parse(readFileSync(path, 'utf8'))
     } catch (e) {
-      return { ok: false, action: 'skip', error: `~/.claude.json unreadable: ${(e as Error).message}` }
+      return {
+        ok: false,
+        action: 'skip',
+        error: `~/.claude.json unreadable: ${(e as Error).message}`,
+      }
     }
   }
   // The mcpServers field can ship as an object OR an empty array depending on
@@ -75,7 +84,8 @@ export function registerWithClaude(): { ok: boolean; action: string; error?: str
     raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
   const existing = servers[SERVER_NAME] as { command?: string; args?: string[] } | undefined
   const sameCmd = existing?.command === desired.command
-  const sameArgs = Array.isArray(existing?.args) && existing!.args.length === 1 && existing!.args[0] === serverPath
+  const sameArgs =
+    Array.isArray(existing?.args) && existing!.args.length === 1 && existing!.args[0] === serverPath
   if (existing && sameCmd && sameArgs) return { ok: true, action: 'already-registered' }
   servers[SERVER_NAME] = desired
   ;(json as Record<string, unknown>).mcpServers = servers
@@ -96,7 +106,8 @@ export function registerWithClaude(): { ok: boolean; action: string; error?: str
 export function registerWithCodex(): { ok: boolean; action: string; error?: string } {
   const path = join(homedir(), '.codex', 'config.toml')
   const serverPath = mcpServerPath()
-  if (!existsSync(serverPath)) return { ok: false, action: 'skip', error: `mcp server not installed at ${serverPath}` }
+  if (!existsSync(serverPath))
+    return { ok: false, action: 'skip', error: `mcp server not installed at ${serverPath}` }
   const bunPath = resolveBun()
   const heading = `[mcp_servers.${SERVER_NAME}]`
   const block = `${heading}\ncommand = ${JSON.stringify(bunPath)}\nargs = [${JSON.stringify(serverPath)}]\n`
@@ -106,7 +117,11 @@ export function registerWithCodex(): { ok: boolean; action: string; error?: stri
     try {
       text = readFileSync(path, 'utf8')
     } catch (e) {
-      return { ok: false, action: 'skip', error: `codex config unreadable: ${(e as Error).message}` }
+      return {
+        ok: false,
+        action: 'skip',
+        error: `codex config unreadable: ${(e as Error).message}`,
+      }
     }
   }
 
@@ -138,7 +153,10 @@ export function registerWithCodex(): { ok: boolean; action: string; error?: stri
   }
 }
 
-export function registerMcpEverywhere(): { claude: ReturnType<typeof registerWithClaude>; codex: ReturnType<typeof registerWithCodex> } {
+export function registerMcpEverywhere(): {
+  claude: ReturnType<typeof registerWithClaude>
+  codex: ReturnType<typeof registerWithCodex>
+} {
   return {
     claude: registerWithClaude(),
     codex: registerWithCodex(),

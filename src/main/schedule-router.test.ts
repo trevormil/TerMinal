@@ -1,5 +1,11 @@
 import { test, expect, describe, mock } from 'bun:test'
-import { triggerLayerFor, routeSyncSchedule, routeRemoveSchedule, routeReconcile, type RouterDeps } from './schedule-router'
+import {
+  triggerLayerFor,
+  routeSyncSchedule,
+  routeRemoveSchedule,
+  routeReconcile,
+  type RouterDeps,
+} from './schedule-router'
 import type { Schedule } from './schedules'
 import type { RemoteHost } from './settings'
 
@@ -151,7 +157,12 @@ describe('routeReconcile', () => {
       launchdReconcile: mock(() => ({ loaded: 2, removed: 1, failed: [] })),
       systemdReconcile: mock(async () => ({ loaded: 1, removed: 0, failed: [] })),
     })
-    const all = [sched({ id: 'a' }), sched({ id: 'b', host: 'tm' }), sched({ id: 'c', host: 'tm' }), sched({ id: 'd', host: 'box2' })]
+    const all = [
+      sched({ id: 'a' }),
+      sched({ id: 'b', host: 'tm' }),
+      sched({ id: 'c', host: 'tm' }),
+      sched({ id: 'd', host: 'box2' }),
+    ]
     const r = await routeReconcile(all, d)
     expect(d.launchdReconcile).toHaveBeenCalledTimes(1)
     // one systemd reconcile per distinct host (tm, box2)

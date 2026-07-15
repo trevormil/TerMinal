@@ -1,9 +1,28 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Tray, Menu, nativeImage, safeStorage } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  clipboard,
+  Tray,
+  Menu,
+  nativeImage,
+  safeStorage,
+} from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { statSync, existsSync, readdirSync, readFileSync, writeFileSync, openSync, mkdirSync } from 'node:fs'
+import {
+  statSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  openSync,
+  mkdirSync,
+} from 'node:fs'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import * as pty from 'node-pty'
 
@@ -14,12 +33,21 @@ const moduleDir = dirname(fileURLToPath(import.meta.url))
 // The bundled headless runner's source path — packaged (Resources) vs dev (repo
 // bin/). Used to install it locally and to push it to remote hosts on provision.
 const runnerSrcPath = () =>
-  app.isPackaged ? join(process.resourcesPath, 'terminal-cron') : join(moduleDir, '../../bin/terminal-cron')
+  app.isPackaged
+    ? join(process.resourcesPath, 'terminal-cron')
+    : join(moduleDir, '../../bin/terminal-cron')
 const cliSrcPath = () =>
-  app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
+  app.isPackaged
+    ? join(process.resourcesPath, 'terminal-cli')
+    : join(moduleDir, '../../bin/terminal-cli')
 
 function sourceCheckoutRoot(marker: string): string {
-  const candidates = [process.env.GT_TERMINAL_REPO || '', process.cwd(), app.getAppPath(), join(moduleDir, '..', '..')].filter(Boolean)
+  const candidates = [
+    process.env.GT_TERMINAL_REPO || '',
+    process.cwd(),
+    app.getAppPath(),
+    join(moduleDir, '..', '..'),
+  ].filter(Boolean)
   for (const c of candidates) {
     if (existsSync(join(c, marker))) return c
   }
@@ -83,12 +111,34 @@ import { mrSummary } from './mrs'
 import { difftOnPath } from './forge'
 import { onDigestEvent } from './digest-run'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
-import { fetchKnowledgePreview, readKnowledge, writeKnowledge, type KnowledgeScope, type KnowledgeBase } from './knowledge'
-import { knowledgeRagAddDocument, knowledgeRagAddUrl, knowledgeRagReindex, knowledgeRagSearch, knowledgeRagStatus } from './knowledge-rag'
+import {
+  fetchKnowledgePreview,
+  readKnowledge,
+  writeKnowledge,
+  type KnowledgeScope,
+  type KnowledgeBase,
+} from './knowledge'
+import {
+  knowledgeRagAddDocument,
+  knowledgeRagAddUrl,
+  knowledgeRagReindex,
+  knowledgeRagSearch,
+  knowledgeRagStatus,
+} from './knowledge-rag'
 import { BUILT_IN_SNIPPETS, listPromptSnippets, savePromptSnippet } from './snippets'
-import { hiddenPresetIds, hidePreset, readPresetPrefs, restorePreset, type PresetKind } from './presets'
+import {
+  hiddenPresetIds,
+  hidePreset,
+  readPresetPrefs,
+  restorePreset,
+  type PresetKind,
+} from './presets'
 import { listWorkflowFiles, readWorkflowFile, writeWorkflowFile } from './workflow-files'
-import { listDisabled, setDisabled as setAgentDisabled, setAllDisabled as setAllSchedulesDisabled } from './agents-disabled'
+import {
+  listDisabled,
+  setDisabled as setAgentDisabled,
+  setAllDisabled as setAllSchedulesDisabled,
+} from './agents-disabled'
 import { scaffoldProject, type ScaffoldTicketProvider } from './scaffold'
 import {
   readSettings,
@@ -110,8 +160,18 @@ import {
   type DaemonCfg,
 } from './settings'
 import { classifyBootstrapStatus } from './bootstrap'
-import { cloneTemplateToTmp, pickTemplateSource, templateCandidates, type TemplateSource } from './template'
-import { configureTelegramControl, markTelegramControlEnabled, pollTelegramOnce, testTelegram } from './telegram'
+import {
+  cloneTemplateToTmp,
+  pickTemplateSource,
+  templateCandidates,
+  type TemplateSource,
+} from './template'
+import {
+  configureTelegramControl,
+  markTelegramControlEnabled,
+  pollTelegramOnce,
+  testTelegram,
+} from './telegram'
 import {
   readAgents,
   listAgentDefinitions,
@@ -159,7 +219,15 @@ import {
   updatePersistentAgentFile,
   writePersistentAgentFile,
 } from './persistent-agents'
-import { readSchedules, addSchedule, updateSchedule, removeSchedule, toggleSchedule, getSchedule, type NewSchedule } from './schedules'
+import {
+  readSchedules,
+  addSchedule,
+  updateSchedule,
+  removeSchedule,
+  toggleSchedule,
+  getSchedule,
+  type NewSchedule,
+} from './schedules'
 import {
   installRunner,
   installCli,
@@ -172,7 +240,12 @@ import {
   runScheduleNow,
   scheduleLoadedState,
 } from './launchd'
-import { routeSyncSchedule, routeRemoveSchedule, routeReconcile, reconcileHosts } from './schedule-router'
+import {
+  routeSyncSchedule,
+  routeRemoveSchedule,
+  routeReconcile,
+  reconcileHosts,
+} from './schedule-router'
 import { provisionHost } from './host-provision'
 import { checkHostHealth } from './host-health'
 import { ensureHostRepo } from './host-repo'
@@ -202,10 +275,30 @@ const openExternalSafe = (url: unknown): void => {
 }
 import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
-import { processListenerInbox, readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
+import {
+  processListenerInbox,
+  readListenerStatus,
+  setListenerEnabled,
+  startListenerInboxWatcher,
+} from './listeners'
 import { knownModels } from './ai-pricing'
-import { readBudgets, setDailyCap, setAgentCap, setOverride, gateSpawn, startBudgetWatcher } from './budgets'
-import { spawnBgTask, listBgTasks, getBgTask, cancelBgTask, readBgTaskLog, startBgWatcher, type BgTask } from './bg-tasks'
+import {
+  readBudgets,
+  setDailyCap,
+  setAgentCap,
+  setOverride,
+  gateSpawn,
+  startBudgetWatcher,
+} from './budgets'
+import {
+  spawnBgTask,
+  listBgTasks,
+  getBgTask,
+  cancelBgTask,
+  readBgTaskLog,
+  startBgWatcher,
+  type BgTask,
+} from './bg-tasks'
 import {
   listLoops,
   getLoop,
@@ -317,17 +410,28 @@ const cur = (): Pinned =>
   }
 const curRemote = () => cur().remote
 function requestedRemote(input: unknown): RemoteSession | undefined {
-  if (!input || typeof input !== 'object' || !('sshTarget' in input) || typeof input.sshTarget !== 'string') return undefined
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    !('sshTarget' in input) ||
+    typeof input.sshTarget !== 'string'
+  )
+    return undefined
   return input as RemoteSession
 }
 function sshPathBasename(cwdOrRoot: string): string {
   const rest = cwdOrRoot.replace(/^ssh:\/\//, '')
   const slash = rest.indexOf('/')
   const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
-  return remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() || (slash >= 0 ? rest.slice(0, slash) : rest)
+  return (
+    remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() ||
+    (slash >= 0 ? rest.slice(0, slash) : rest)
+  )
 }
 const repoLabelFor = (cwdOrRoot: string) =>
-  cwdOrRoot.startsWith('ssh://') ? sshPathBasename(cwdOrRoot) : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
+  cwdOrRoot.startsWith('ssh://')
+    ? sshPathBasename(cwdOrRoot)
+    : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
 
 type StartOpts = {
   mode: 'new' | 'resume'
@@ -364,7 +468,9 @@ function daemonForRemote(remote: RemoteSession, displayCwd?: string) {
 
 function activeDaemon() {
   const pinned = cur()
-  return pinned.remote ? daemonForRemote(pinned.remote, pinned.cwd) : createLocalWorkspaceDaemon(pinned.cwd)
+  return pinned.remote
+    ? daemonForRemote(pinned.remote, pinned.cwd)
+    : createLocalWorkspaceDaemon(pinned.cwd)
 }
 
 function daemonForRequest(input: unknown) {
@@ -401,7 +507,9 @@ function startSession(key: string, opts: StartOpts) {
   // Per-session pick (opts.model) wins; else the engine's configured default.
   const defaultModel =
     engine !== 'local'
-      ? opts.model || remote?.daemon?.engines?.[engine]?.defaultModel || (!remote ? engineDefaultModel(engine) : '')
+      ? opts.model ||
+        remote?.daemon?.engines?.[engine]?.defaultModel ||
+        (!remote ? engineDefaultModel(engine) : '')
       : ''
 
   if (engine === 'local') {
@@ -461,7 +569,8 @@ function startSession(key: string, opts: StartOpts) {
     engine === 'openrouter'
       ? enginePath((opts.openrouterHarness || 'codex') === 'hermes' ? 'hermes' : 'codex')
       : undefined
-  const remoteEnginePath = remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
+  const remoteEnginePath =
+    remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
   const repoRoot = remote ? '' : repoRootOf(cwd)
   const repoLabel = repoLabelFor(displayCwd)
   const startedAt = Date.now()
@@ -512,13 +621,17 @@ function startSession(key: string, opts: StartOpts) {
     throw new Error(`refusing to ssh to unsafe target: ${JSON.stringify(remote.sshTarget)}`)
   }
   const proc = remote
-    ? pty.spawn('ssh', ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)], {
-        name: 'xterm-256color',
-        cols: opts.cols || 80,
-        rows: opts.rows || 30,
-        cwd: homedir(),
-        env,
-      })
+    ? pty.spawn(
+        'ssh',
+        ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)],
+        {
+          name: 'xterm-256color',
+          cols: opts.cols || 80,
+          rows: opts.rows || 30,
+          cwd: homedir(),
+          env,
+        },
+      )
     : engine === 'local'
       ? pty.spawn(LOGIN_SHELL, ['-l'], {
           name: 'xterm-256color',
@@ -527,13 +640,17 @@ function startSession(key: string, opts: StartOpts) {
           cwd,
           env,
         })
-      : pty.spawn(LOGIN_SHELL, ['-l', '-c', [openrouterLaunchBin || enginePath(engine), ...args].map(shq).join(' ')], {
-          name: 'xterm-256color',
-          cols: opts.cols || 80,
-          rows: opts.rows || 30,
-          cwd,
-          env,
-        })
+      : pty.spawn(
+          LOGIN_SHELL,
+          ['-l', '-c', [openrouterLaunchBin || enginePath(engine), ...args].map(shq).join(' ')],
+          {
+            name: 'xterm-256color',
+            cols: opts.cols || 80,
+            rows: opts.rows || 30,
+            cwd,
+            env,
+          },
+        )
   try {
     beginSessionRun({
       id: sessionId,
@@ -786,7 +903,9 @@ function createWindow() {
       return { action: 'deny' }
     })
   })
-  win.webContents.on('render-process-gone', (_e, d) => console.error('[gt] renderer gone:', d.reason))
+  win.webContents.on('render-process-gone', (_e, d) =>
+    console.error('[gt] renderer gone:', d.reason),
+  )
 
   // push activity events to the renderer; poll all sessions for turn completion
   onActivity((ev) => send('activity:event', ev))
@@ -800,14 +919,20 @@ function createWindow() {
   // fire via launchd even when the app is closed — no in-app ticker.
   const runnerSrc = runnerSrcPath()
   installRunner(runnerSrc)
-  const cliSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-cli') : join(moduleDir, '../../bin/terminal-cli')
+  const cliSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-cli')
+    : join(moduleDir, '../../bin/terminal-cli')
   installCli(cliSrc)
-  const mcpSrc = app.isPackaged ? join(process.resourcesPath, 'terminal-mcp-server') : join(moduleDir, '../../bin/terminal-mcp-server')
+  const mcpSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-mcp-server')
+    : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
   // Bundle the OpenRouter (or-agent) tier so a fresh install runs OpenRouter
   // agents without any global ~/.claude dotfiles.
   const orBinDir = app.isPackaged ? process.resourcesPath : join(moduleDir, '../../bin')
-  const orMrDir = app.isPackaged ? join(process.resourcesPath, 'model-routing') : join(moduleDir, '../../bin/model-routing')
+  const orMrDir = app.isPackaged
+    ? join(process.resourcesPath, 'model-routing')
+    : join(moduleDir, '../../bin/model-routing')
   installOrTier(orBinDir, orMrDir)
   // Status-line shim: lets the Plan Usage + Context widgets read rate_limits /
   // context_window_size from a per-session cache instead of the throttled API.
@@ -819,7 +944,8 @@ function createWindow() {
   // when already correct.
   try {
     const r = registerMcpEverywhere()
-    if (!r.claude.ok) console.warn(`mcp register claude: ${r.claude.action} (${r.claude.error || ''})`)
+    if (!r.claude.ok)
+      console.warn(`mcp register claude: ${r.claude.action} (${r.claude.error || ''})`)
     if (!r.codex.ok) console.warn(`mcp register codex: ${r.codex.action} (${r.codex.error || ''})`)
   } catch (e) {
     console.warn(`mcp register failed: ${(e as Error).message}`)
@@ -832,7 +958,8 @@ function createWindow() {
     if (rec.failed.length) {
       // A schedule that didn't load into launchd never fires. Don't swallow it:
       // log every failure and surface one Activity event so it's visible.
-      for (const f of rec.failed) console.warn(`schedule ${f.id} failed to load into launchd: ${f.error}`)
+      for (const f of rec.failed)
+        console.warn(`schedule ${f.id} failed to load into launchd: ${f.error}`)
       emitActivity({
         kind: 'check',
         title: `${rec.failed.length} schedule${rec.failed.length > 1 ? 's' : ''} failed to load into launchd`,
@@ -895,9 +1022,16 @@ ipcMain.handle('fleet:list', () => {
     out.push({
       key,
       sessionId: sid,
-      name: s.pinned.name || (s.pinned.remote ? s.pinned.remote.label || s.pinned.remote.sshTarget : basename(s.pinned.cwd)) || 'session',
+      name:
+        s.pinned.name ||
+        (s.pinned.remote
+          ? s.pinned.remote.label || s.pinned.remote.sshTarget
+          : basename(s.pinned.cwd)) ||
+        'session',
       cwd: s.pinned.cwd,
-      repo: s.pinned.remote ? s.pinned.remote.label || s.pinned.remote.sshTarget : repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || s.pinned.cwd),
+      repo: s.pinned.remote
+        ? s.pinned.remote.label || s.pinned.remote.sshTarget
+        : repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || s.pinned.cwd),
       branch: st.gitBranch,
       model: st.model,
       status,
@@ -936,38 +1070,49 @@ ipcMain.handle('dialog:pickDir', async () => {
   })
   return r.canceled ? null : r.filePaths[0]
 })
-ipcMain.handle('project:scaffold', (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
-  const r = scaffoldProject(name, parentDir, ticketProvider)
-  emitActivity(
-    {
-      kind: r.ok ? 'task-complete' : 'error',
-      title: r.ok ? `Project scaffolded · ${basename(r.path || name)}` : `Project scaffold failed · ${name}`,
-      detail: r.ok ? r.path : r.error,
-      repo: r.ok && r.path ? basename(r.path) : undefined,
-      repoRoot: r.ok ? r.path : undefined,
-    },
-    { notify: !r.ok },
-  )
-  return r
-})
+ipcMain.handle(
+  'project:scaffold',
+  (_e, name: string, parentDir?: string, ticketProvider?: ScaffoldTicketProvider) => {
+    const r = scaffoldProject(name, parentDir, ticketProvider)
+    emitActivity(
+      {
+        kind: r.ok ? 'task-complete' : 'error',
+        title: r.ok
+          ? `Project scaffolded · ${basename(r.path || name)}`
+          : `Project scaffold failed · ${name}`,
+        detail: r.ok ? r.path : r.error,
+        repo: r.ok && r.path ? basename(r.path) : undefined,
+        repoRoot: r.ok ? r.path : undefined,
+      },
+      { notify: !r.ok },
+    )
+    return r
+  },
+)
 ipcMain.handle('remote:dirs', (_e, hostId: string, path?: string) => {
   const remote = remoteFromHostId(hostId, path)
   if (!remote) return { cwd: path || '', parent: '', entries: [], error: 'remote host not found' }
-  return remoteDirs.list(remote, path).catch((e) => ({ cwd: path || '', parent: '', entries: [], error: (e as Error).message }))
+  return remoteDirs
+    .list(remote, path)
+    .catch((e) => ({ cwd: path || '', parent: '', entries: [], error: (e as Error).message }))
 })
 ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, parentDir?: string) => {
   const remote = remoteFromHostId(hostId, parentDir)
   if (!remote) return { ok: false, error: 'remote host not found' }
   const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
-  const r = await remoteProject.scaffold(remote, name, parentDir || remote.cwd || '~', templateRepo).catch((e) => ({
-    ok: false,
-    path: undefined,
-    error: (e as Error).message,
-  }))
+  const r = await remoteProject
+    .scaffold(remote, name, parentDir || remote.cwd || '~', templateRepo)
+    .catch((e) => ({
+      ok: false,
+      path: undefined,
+      error: (e as Error).message,
+    }))
   emitActivity(
     {
       kind: r.ok ? 'task-complete' : 'error',
-      title: r.ok ? `Remote project scaffolded · ${basename(r.path || name)}` : `Remote project scaffold failed · ${name}`,
+      title: r.ok
+        ? `Remote project scaffolded · ${basename(r.path || name)}`
+        : `Remote project scaffold failed · ${name}`,
       detail: r.ok ? `${remote.sshTarget}:${r.path}` : r.error,
       repo: r.ok && r.path ? basename(r.path) : undefined,
       repoRoot: '',
@@ -1026,21 +1171,26 @@ ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
     return { ok: false, error: (e as Error).message, engines: {}, tools: {} }
   }
 })
-ipcMain.handle('settings:validate-projects-dir', async (_e, input: { dir?: string; hostId?: string }) => {
-  const dir = input?.dir || ''
-  if (input?.hostId) {
-    const remote = remoteFromHostId(input.hostId, dir || undefined)
-    if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
-    return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
-      ok: false,
-      reason: 'error',
-      dir,
-      message: (e as Error).message,
-    }))
-  }
-  return classifyProjectsDir(dir, (d) => existsSync(join(d, '.git')))
-})
-ipcMain.handle('snippets:list', (_e, root?: string) => listPromptSnippets(repoRootOf(root || cur().cwd)))
+ipcMain.handle(
+  'settings:validate-projects-dir',
+  async (_e, input: { dir?: string; hostId?: string }) => {
+    const dir = input?.dir || ''
+    if (input?.hostId) {
+      const remote = remoteFromHostId(input.hostId, dir || undefined)
+      if (!remote) return { ok: false, reason: 'error', dir, message: 'remote host not found' }
+      return remoteSettings.validateProjectsDir(remote, dir).catch((e) => ({
+        ok: false,
+        reason: 'error',
+        dir,
+        message: (e as Error).message,
+      }))
+    }
+    return classifyProjectsDir(dir, (d) => existsSync(join(d, '.git')))
+  },
+)
+ipcMain.handle('snippets:list', (_e, root?: string) =>
+  listPromptSnippets(repoRootOf(root || cur().cwd)),
+)
 ipcMain.handle('snippets:save', (_e, input: Parameters<typeof savePromptSnippet>[0]) => {
   const root = input.repoRoot ? repoRootOf(input.repoRoot) : repoRootOf(cur().cwd)
   const r = savePromptSnippet({ ...input, repoRoot: root })
@@ -1066,7 +1216,9 @@ ipcMain.handle('presets:get', () => ({
 ipcMain.handle('presets:hide', (_e, kind: PresetKind, id: string) => hidePreset(kind, id))
 ipcMain.handle('presets:restore', (_e, kind: PresetKind, id?: string) => restorePreset(kind, id))
 
-async function remoteAgentCatalog(remote: NonNullable<ReturnType<typeof curRemote>>): Promise<Agent[]> {
+async function remoteAgentCatalog(
+  remote: NonNullable<ReturnType<typeof curRemote>>,
+): Promise<Agent[]> {
   const hiddenDefaults = hiddenPresetIds('agents')
   const byId = new Map<string, Agent>()
   for (const a of DEFAULT_AGENTS.filter((a) => !hiddenDefaults.has(a.id))) {
@@ -1082,7 +1234,11 @@ async function remoteAgentCatalog(remote: NonNullable<ReturnType<typeof curRemot
   return [...byId.values()]
 }
 
-function remoteSteps(base: { label: string; prompt: string }, personaId?: string, pipelineId?: string) {
+function remoteSteps(
+  base: { label: string; prompt: string },
+  personaId?: string,
+  pipelineId?: string,
+) {
   const persona = personaId ? readAgentRunContexts('').find((p) => p.id === personaId) : null
   return {
     steps: composeSteps(base, persona?.prompt ?? null, pipelineId),
@@ -1097,7 +1253,11 @@ function localOnlyToRemote(engine: Engine): Engine {
   return engine === 'openrouter' || engine === 'hermes' ? 'claude' : engine
 }
 
-function remoteEngineModel(remote: NonNullable<ReturnType<typeof curRemote>>, engine: Engine, model?: string) {
+function remoteEngineModel(
+  remote: NonNullable<ReturnType<typeof curRemote>>,
+  engine: Engine,
+  model?: string,
+) {
   return resolveEngineModel(engine, model, remote.daemon) || undefined
 }
 
@@ -1175,104 +1335,182 @@ ipcMain.handle('agents:state-reset', (_e, id: string) => {
   }
   return r
 })
-ipcMain.handle('agents:design', (_e, text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
-  curRemote() ? { error: 'remote agent design needs the remote daemon writer' } : runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope, model),
+ipcMain.handle(
+  'agents:design',
+  (_e, text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
+    curRemote()
+      ? { error: 'remote agent design needs the remote daemon writer' }
+      : runDesignerSpawn(repoRootOf(cur().cwd), text, engine, scope, model),
 )
 ipcMain.handle('schedules:design', (_e, text: string, engine: Engine) =>
-  curRemote() ? { error: 'remote schedule design needs the remote daemon writer' } : runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
+  curRemote()
+    ? { error: 'remote schedule design needs the remote daemon writer' }
+    : runScheduleDesignerSpawn(repoRootOf(cur().cwd), text, engine),
 )
 ipcMain.handle('agents:pipelines', () => listPipelines())
 ipcMain.handle('personas:list', () => readAgentRunContexts(repoRootOf(cur().cwd)))
-ipcMain.handle('agents:run', (_e, agentId: string, engine?: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, openrouterHarness?: 'codex' | 'hermes', extraContext?: string) =>
-  (async () => {
-    const remote = requestedRemote(requested) || curRemote()
-    if (!remote) return runAgent(repoRootOf(cur().cwd), agentId, engine, persona, pipeline, model, openrouterHarness, extraContext)
-    const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
-    if (!agent) return { error: 'unknown agent' }
-    // OpenRouter runs on the bundled local or-agent harness — never dispatch it
-    // to a remote host (no or-agent there); fall back to the remote's engine.
-    const resolvedEngine = localOnlyToRemote(engine || agent.engine || remote.daemon?.defaultEngine || 'codex')
-    const { steps, persona: personaLabel, pipeline: pipelineLabelText } = remoteSteps({ label: agent.title, prompt: agent.prompt }, persona, pipeline)
-    const run = await remoteRuns.start(remote, {
-      agentId: agent.id,
-      agentTitle: agent.title,
-      engine: resolvedEngine,
-      model: remoteEngineModel(remote, resolvedEngine, model ?? agent.model),
-      steps,
-      inPlace: agent.inPlace,
-    })
-    if (!('error' in run)) {
-      emitActivity({
-        kind: 'agent-run',
-        title: `Remote agent started · ${agent.title}`,
-        detail: `${remote.sshTarget} · ${resolvedEngine}${personaLabel ? ` · ${personaLabel}` : ''}${pipelineLabelText ? ` · ${pipelineLabelText}` : ''}`,
-        repo: repoLabelFor(cur().cwd),
-        sessionId: cur().sessionId,
-        runId: run.id,
-        runSource: 'agent',
-      })
-    }
-    return run
-  })(),
-)
-ipcMain.handle('agents:run-ticket', async (_e, slug: string, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown, lanes?: number, extraContext?: string) => {
-  const remote = requestedRemote(requested) || curRemote()
-  if (remote) {
-    // v1: lanes are local-only. Remote runs a single attempt.
-    return (async () => {
-      const t = await remoteTickets.get(remote, slug)
-      if (!t) return { error: 'ticket not found' }
-      const base = `Implement backlog ticket #${t.id}: ${t.title}\n\n${t.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${t.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
-      const { steps } = remoteSteps({ label: `implement #${t.id}`, prompt: base }, persona, pipeline)
-      const run = await remoteRuns.start(remote, {
-        agentId: `ticket-${t.id}`,
-        agentTitle: `Implement #${t.id}`,
-        engine,
-        model: remoteEngineModel(remote, engine, model),
-        steps,
-      })
-      if ('error' in run) return run
-      await remoteTickets
-        .update(remote, slug, {
-          run: {
-            id: run.id,
-            source: 'agent',
-            sessionId: cur().sessionId,
-            startedAt: new Date(run.startedAt).toISOString(),
-            status: run.status,
-          },
-        })
-        .catch(() => false)
-      return run
-    })()
-  }
-  const root = repoRootOf(cur().cwd)
-  const t = await getRepoTicket(root, slug)
-  if (!t) return { error: 'ticket not found' }
-  const ticketInput = { slug: t.slug, id: t.id, title: t.title, body: t.body, externalKey: t.externalKey, url: t.url, agent: t.agent }
-  const res = runTicketLanes(root, ticketInput, engine, persona, pipeline, model, lanes, extraContext)
-  if ('error' in res) return res
-  // Link the ticket's run pointer to the first lane (solo runs have exactly
-  // one). Lanes deliberately don't each write the ticket — the judge links the
-  // winner — so we record the lead run here for the at-a-glance run badge.
-  const lead = res.runs[0]
-  updateTicket(root, t.slug, {
-    run: {
-      id: lead.id,
-      source: 'agent',
-      sessionId: cur().sessionId,
-      startedAt: new Date(lead.startedAt).toISOString(),
-      status: lead.status,
-    },
-  })
-  return lead
-})
 ipcMain.handle(
-  'agents:run-pr',
-  (_e, pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string }, kind: PrAgentKind, engine: Engine, persona?: string, pipeline?: string, model?: string, requested?: unknown) =>
+  'agents:run',
+  (
+    _e,
+    agentId: string,
+    engine?: Engine,
+    persona?: string,
+    pipeline?: string,
+    model?: string,
+    requested?: unknown,
+    openrouterHarness?: 'codex' | 'hermes',
+    extraContext?: string,
+  ) =>
     (async () => {
       const remote = requestedRemote(requested) || curRemote()
-      if (!remote) return runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model)
+      if (!remote)
+        return runAgent(
+          repoRootOf(cur().cwd),
+          agentId,
+          engine,
+          persona,
+          pipeline,
+          model,
+          openrouterHarness,
+          extraContext,
+        )
+      const agent = (await remoteAgentCatalog(remote)).find((a) => a.id === agentId)
+      if (!agent) return { error: 'unknown agent' }
+      // OpenRouter runs on the bundled local or-agent harness — never dispatch it
+      // to a remote host (no or-agent there); fall back to the remote's engine.
+      const resolvedEngine = localOnlyToRemote(
+        engine || agent.engine || remote.daemon?.defaultEngine || 'codex',
+      )
+      const {
+        steps,
+        persona: personaLabel,
+        pipeline: pipelineLabelText,
+      } = remoteSteps({ label: agent.title, prompt: agent.prompt }, persona, pipeline)
+      const run = await remoteRuns.start(remote, {
+        agentId: agent.id,
+        agentTitle: agent.title,
+        engine: resolvedEngine,
+        model: remoteEngineModel(remote, resolvedEngine, model ?? agent.model),
+        steps,
+        inPlace: agent.inPlace,
+      })
+      if (!('error' in run)) {
+        emitActivity({
+          kind: 'agent-run',
+          title: `Remote agent started · ${agent.title}`,
+          detail: `${remote.sshTarget} · ${resolvedEngine}${personaLabel ? ` · ${personaLabel}` : ''}${pipelineLabelText ? ` · ${pipelineLabelText}` : ''}`,
+          repo: repoLabelFor(cur().cwd),
+          sessionId: cur().sessionId,
+          runId: run.id,
+          runSource: 'agent',
+        })
+      }
+      return run
+    })(),
+)
+ipcMain.handle(
+  'agents:run-ticket',
+  async (
+    _e,
+    slug: string,
+    engine: Engine,
+    persona?: string,
+    pipeline?: string,
+    model?: string,
+    requested?: unknown,
+    lanes?: number,
+    extraContext?: string,
+  ) => {
+    const remote = requestedRemote(requested) || curRemote()
+    if (remote) {
+      // v1: lanes are local-only. Remote runs a single attempt.
+      return (async () => {
+        const t = await remoteTickets.get(remote, slug)
+        if (!t) return { error: 'ticket not found' }
+        const base = `Implement backlog ticket #${t.id}: ${t.title}\n\n${t.body}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. Commit your work and open a PR that references ticket #${t.id}. If fully delivered set the ticket status to closed (else in-progress) and link the PR in its prs: field. End with a short summary of what changed and the PR URL.`
+        const { steps } = remoteSteps(
+          { label: `implement #${t.id}`, prompt: base },
+          persona,
+          pipeline,
+        )
+        const run = await remoteRuns.start(remote, {
+          agentId: `ticket-${t.id}`,
+          agentTitle: `Implement #${t.id}`,
+          engine,
+          model: remoteEngineModel(remote, engine, model),
+          steps,
+        })
+        if ('error' in run) return run
+        await remoteTickets
+          .update(remote, slug, {
+            run: {
+              id: run.id,
+              source: 'agent',
+              sessionId: cur().sessionId,
+              startedAt: new Date(run.startedAt).toISOString(),
+              status: run.status,
+            },
+          })
+          .catch(() => false)
+        return run
+      })()
+    }
+    const root = repoRootOf(cur().cwd)
+    const t = await getRepoTicket(root, slug)
+    if (!t) return { error: 'ticket not found' }
+    const ticketInput = {
+      slug: t.slug,
+      id: t.id,
+      title: t.title,
+      body: t.body,
+      externalKey: t.externalKey,
+      url: t.url,
+      agent: t.agent,
+    }
+    const res = runTicketLanes(
+      root,
+      ticketInput,
+      engine,
+      persona,
+      pipeline,
+      model,
+      lanes,
+      extraContext,
+    )
+    if ('error' in res) return res
+    // Link the ticket's run pointer to the first lane (solo runs have exactly
+    // one). Lanes deliberately don't each write the ticket — the judge links the
+    // winner — so we record the lead run here for the at-a-glance run badge.
+    const lead = res.runs[0]
+    updateTicket(root, t.slug, {
+      run: {
+        id: lead.id,
+        source: 'agent',
+        sessionId: cur().sessionId,
+        startedAt: new Date(lead.startedAt).toISOString(),
+        status: lead.status,
+      },
+    })
+    return lead
+  },
+)
+ipcMain.handle(
+  'agents:run-pr',
+  (
+    _e,
+    pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
+    kind: PrAgentKind,
+    engine: Engine,
+    persona?: string,
+    pipeline?: string,
+    model?: string,
+    requested?: unknown,
+  ) =>
+    (async () => {
+      const remote = requestedRemote(requested) || curRemote()
+      if (!remote)
+        return runPrAgent(repoRootOf(cur().cwd), pr, kind, engine, persona, pipeline, model)
       if (!pr?.sourceBranch) return { error: 'PR/MR has no source branch' }
       const probe = await remoteProbe(remote).catch(() => null)
       const forgeLabel = probe?.forgeLabel || 'MR'
@@ -1285,7 +1523,11 @@ ipcMain.handle(
         kind === 'review'
           ? `Review ${tag} using the repository's code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by .agents/code-review.md when present. Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`
           : `Iterate on ${tag} until it is merge-ready. ${iterateCtx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status and a short summary of what changed.`
-      const { steps } = remoteSteps({ label: `${kind} ${forgeSym}${pr.iid}`, prompt: base }, persona, pipeline)
+      const { steps } = remoteSteps(
+        { label: `${kind} ${forgeSym}${pr.iid}`, prompt: base },
+        persona,
+        pipeline,
+      )
       return remoteRuns.start(remote, {
         agentId: `pr-${kind}-${pr.iid}`,
         agentTitle: `${kind === 'review' ? 'Review' : 'Iterate'} ${forgeSym}${pr.iid}`,
@@ -1316,30 +1558,58 @@ ipcMain.handle('agents:runs', async () => {
       output: '',
     }))
 })
-ipcMain.handle('agents:rerun', (_e, runId: string) => (curRemote() ? { error: 'remote rerun needs the remote daemon runner' } : rerunAgentRun(runId)))
+ipcMain.handle('agents:rerun', (_e, runId: string) =>
+  curRemote() ? { error: 'remote rerun needs the remote daemon runner' } : rerunAgentRun(runId),
+)
 ipcMain.handle('agents:cancel', (_e, runId: string) => (curRemote() ? false : cancelRun(runId)))
-ipcMain.handle('agents:remove-worktree', (_e, runId: string) => (curRemote() ? false : removeWorktree(runId)))
+ipcMain.handle('agents:remove-worktree', (_e, runId: string) =>
+  curRemote() ? false : removeWorktree(runId),
+)
 ipcMain.handle('persistent-agents:list', () => listPersistentAgents())
 ipcMain.handle('persistent-agents:get', (_e, id: string) => getPersistentAgent(id))
 ipcMain.handle('persistent-agents:save', (_e, input: unknown) => savePersistentAgent(input as any))
 ipcMain.handle('persistent-agents:remove', (_e, id: string) => removePersistentAgent(id))
-ipcMain.handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) => updatePersistentAgentFile(id, file as any, body))
-ipcMain.handle('persistent-agents:launch-prompt', (_e, id: string, task: string, repoRoot?: string, engine?: Engine, model?: string) =>
-  persistentAgentLaunchPrompt(id, task, {
-    repoRoot: repoRoot || repoRootOf(cur().cwd),
-    engine,
-    model,
-  }),
+ipcMain.handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) =>
+  updatePersistentAgentFile(id, file as any, body),
 )
-ipcMain.handle('persistent-agents:run', (_e, id: string, task: string, engine?: Engine, model?: string) => runPersistentAgent(repoRootOf(cur().cwd), id, task, engine, model))
-ipcMain.handle('persistent-agents:design', (_e, text: string, engine: Engine, model?: string) => runPersistentAgentDesignerSpawn(repoRootOf(cur().cwd), text, engine, model))
-ipcMain.handle('persistent-agents:files-list', (_e, id: string, rel: string) => listPersistentAgentFiles(id, rel || ''))
-ipcMain.handle('persistent-agents:files-read', (_e, id: string, rel: string) => readPersistentAgentFile(id, rel))
-ipcMain.handle('persistent-agents:files-write', (_e, id: string, rel: string, content: string) => writePersistentAgentFile(id, rel, content))
-ipcMain.handle('persistent-agents:files-create', (_e, id: string, rel: string, dir: boolean) => createPersistentAgentFile(id, rel, dir))
-ipcMain.handle('persistent-agents:files-delete', (_e, id: string, rel: string) => removePersistentAgentFile(id, rel))
-ipcMain.handle('persistent-agents:artifacts-list', (_e, id: string) => listPersistentAgentArtifacts(id))
-ipcMain.handle('persistent-agents:artifacts-read', (_e, id: string, rel: string) => readPersistentAgentArtifact(id, rel))
+ipcMain.handle(
+  'persistent-agents:launch-prompt',
+  (_e, id: string, task: string, repoRoot?: string, engine?: Engine, model?: string) =>
+    persistentAgentLaunchPrompt(id, task, {
+      repoRoot: repoRoot || repoRootOf(cur().cwd),
+      engine,
+      model,
+    }),
+)
+ipcMain.handle(
+  'persistent-agents:run',
+  (_e, id: string, task: string, engine?: Engine, model?: string) =>
+    runPersistentAgent(repoRootOf(cur().cwd), id, task, engine, model),
+)
+ipcMain.handle('persistent-agents:design', (_e, text: string, engine: Engine, model?: string) =>
+  runPersistentAgentDesignerSpawn(repoRootOf(cur().cwd), text, engine, model),
+)
+ipcMain.handle('persistent-agents:files-list', (_e, id: string, rel: string) =>
+  listPersistentAgentFiles(id, rel || ''),
+)
+ipcMain.handle('persistent-agents:files-read', (_e, id: string, rel: string) =>
+  readPersistentAgentFile(id, rel),
+)
+ipcMain.handle('persistent-agents:files-write', (_e, id: string, rel: string, content: string) =>
+  writePersistentAgentFile(id, rel, content),
+)
+ipcMain.handle('persistent-agents:files-create', (_e, id: string, rel: string, dir: boolean) =>
+  createPersistentAgentFile(id, rel, dir),
+)
+ipcMain.handle('persistent-agents:files-delete', (_e, id: string, rel: string) =>
+  removePersistentAgentFile(id, rel),
+)
+ipcMain.handle('persistent-agents:artifacts-list', (_e, id: string) =>
+  listPersistentAgentArtifacts(id),
+)
+ipcMain.handle('persistent-agents:artifacts-read', (_e, id: string, rel: string) =>
+  readPersistentAgentArtifact(id, rel),
+)
 // Schedules are backed by real launchd jobs; every mutation syncs launchd in
 // lockstep, and `enriched` annotates each with its human cadence + next fire.
 ipcMain.handle('schedules:list', () => {
@@ -1594,19 +1864,22 @@ ipcMain.handle('runs:remote-all', () => {
     return remoteRuns.all(ref)
   })
 })
-ipcMain.handle('runs:log', (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => {
-  // A run row carries its host; route the log fetch to that host. Fall back to
-  // the focused session's remote (or local) when no hostId is supplied.
-  const remote = hostId ? remoteFromHostId(hostId) : curRemote()
-  if (remote) return remoteRuns.log(remote, runId).catch(() => '')
-  if (source === 'cron') return readCronRunLog(runId)
-  if (source === 'session') return readSessionRunLog(runId)
-  if (source === 'bg') return readBgTaskLog(runId)
-  // In-process agent run output lives in memory via listRuns(); fall back to the
-  // on-disk log for a run that aged out of the in-memory working set (runs are
-  // never deleted, so an archived run is still viewable).
-  return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
-})
+ipcMain.handle(
+  'runs:log',
+  (_e, source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => {
+    // A run row carries its host; route the log fetch to that host. Fall back to
+    // the focused session's remote (or local) when no hostId is supplied.
+    const remote = hostId ? remoteFromHostId(hostId) : curRemote()
+    if (remote) return remoteRuns.log(remote, runId).catch(() => '')
+    if (source === 'cron') return readCronRunLog(runId)
+    if (source === 'session') return readSessionRunLog(runId)
+    if (source === 'bg') return readBgTaskLog(runId)
+    // In-process agent run output lives in memory via listRuns(); fall back to the
+    // on-disk log for a run that aged out of the in-memory working set (runs are
+    // never deleted, so an archived run is still viewable).
+    return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+  },
+)
 // Artifacts a run produced — agent-request reports under the repo's
 // .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
 // on its host. The renderer opens a report via openExternal(file://…).
@@ -1628,7 +1901,8 @@ ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
   const rec = readCronRuns(undefined, 20000).find((r) => r.id === id)
   if (!rec) return { ok: false, error: 'run not found' }
   if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
-  if (!rec.runnerPid) return { ok: false, error: 'no runner pid recorded (older run — cannot cancel)' }
+  if (!rec.runnerPid)
+    return { ok: false, error: 'no runner pid recorded (older run — cannot cancel)' }
   try {
     process.kill(rec.runnerPid, 'SIGTERM')
     return { ok: true }
@@ -1665,7 +1939,9 @@ ipcMain.handle('schedules:run-log', (_e, runId: string) => {
   return remote ? remoteSchedules.runLog(remote, runId).catch(() => '') : readCronRunLog(runId)
 })
 ipcMain.handle('schedules:reconcile', () =>
-  curRemote() ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' } : routeReconcile(readSchedules()),
+  curRemote()
+    ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' }
+    : routeReconcile(readSchedules()),
 )
 // Baked at build time from git origin (electron.vite.config.ts define). '' when
 // origin is unknown → hosts skip self-update rather than track a guessed repo.
@@ -1676,13 +1952,18 @@ ipcMain.handle('hosts:provision', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
   if (!host) return { ok: false, error: `unknown host: ${hostId}` }
   const engines = Object.keys(host.daemon?.engines || {})
-  const r = await provisionHost({ sshTarget: host.sshTarget }, runnerSrcPath(), engines.length ? engines : ['claude', 'codex'], {
-    cliSrcPath: cliSrcPath(),
-    // Hosts self-update from the repo THIS build was made from (baked at build
-    // time from git origin), so a fork's hosts track the fork, not upstream.
-    // '' → provisionHost skips self-update rather than guessing a repo.
-    repoSlug: __BUILD_REPO_SLUG__,
-  })
+  const r = await provisionHost(
+    { sshTarget: host.sshTarget },
+    runnerSrcPath(),
+    engines.length ? engines : ['claude', 'codex'],
+    {
+      cliSrcPath: cliSrcPath(),
+      // Hosts self-update from the repo THIS build was made from (baked at build
+      // time from git origin), so a fork's hosts track the fork, not upstream.
+      // '' → provisionHost skips self-update rather than guessing a repo.
+      repoSlug: __BUILD_REPO_SLUG__,
+    },
+  )
   return { ok: r.ready, ...r }
 })
 // Reachability probe for a host (tailscale reauth / asleep / VPN down) → classified
@@ -1714,7 +1995,9 @@ ipcMain.handle('hitl:remote-all', () => {
     return ref ? remoteHitl.list(ref) : []
   })
 })
-ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => fileHitl(item))
+ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) =>
+  fileHitl(item),
+)
 // Resolve/remove route to the item's host when it came from the remote fan-out
 // (#14) — resolving a host block on the Mac must write on the host that owns it,
 // not locally. No hostId → local, as before.
@@ -1816,7 +2099,9 @@ ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, cur()
 
 // ---- custom tabs (declarative full-screen views, per-repo extensible) ----
 ipcMain.handle('tabs:list', (_e, cwd?: string) => listCustomTabs(cwd || cur().cwd))
-ipcMain.handle('tabs:run', (_e, command: string, cwd?: string) => runTabCommand(command, cwd || cur().cwd))
+ipcMain.handle('tabs:run', (_e, command: string, cwd?: string) =>
+  runTabCommand(command, cwd || cur().cwd),
+)
 
 // ---- scratch workspace (throwaway, repo-less sessions) ----
 // One app-owned dir under the existing TerMinal config root — persistent
@@ -1876,7 +2161,8 @@ ipcMain.handle('tickets:provider-save', (_e, cfg: RepoTicketsConfig) => {
 })
 ipcMain.handle('tickets:provider-test', (_e, cfg: RepoTicketsConfig, smoke?: boolean) => {
   const daemon = activeDaemon()
-  if (daemon.kind !== 'local') return { ok: false, provider: 'local', message: 'Ticket provider setup is local-only for now.' }
+  if (daemon.kind !== 'local')
+    return { ok: false, provider: 'local', message: 'Ticket provider setup is local-only for now.' }
   return testRepoTicketProvider(daemon.repoRoot(), cfg, { smoke: !!smoke })
 })
 ipcMain.handle('tickets:linear-teams', (_e, cfg?: RepoTicketsConfig) => {
@@ -1908,22 +2194,27 @@ ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
   })
   return t
 })
-ipcMain.handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) => recommendTicketAgent(input))
-ipcMain.handle('tickets:spawn', (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
-  const daemon = daemonForRequest(requested)
-  if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
-  const t = text.trim()
-  if (!t) return { error: 'empty request' }
-  const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
-  return remoteRuns.start(daemon.remote, {
-    agentId: 'ticket-spawn',
-    agentTitle: `File ticket · ${t.slice(0, 48)}`,
-    engine,
-    model: remoteEngineModel(daemon.remote, engine, model),
-    steps: [{ label: 'file ticket', prompt }],
-    inPlace: true,
-  })
-})
+ipcMain.handle('tickets:recommend-agent', (_e, input: TicketAgentRecommendationInput) =>
+  recommendTicketAgent(input),
+)
+ipcMain.handle(
+  'tickets:spawn',
+  (_e, text: string, engine: Engine, model?: string, requested?: unknown) => {
+    const daemon = daemonForRequest(requested)
+    if (!daemon.remote) return runTicketSpawn(daemon.repoRoot(), text, engine, model)
+    const t = text.trim()
+    if (!t) return { error: 'empty request' }
+    const prompt = `File exactly ONE new backlog ticket for the request below, using this project's ticket conventions: allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the repo's examples (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR — just file the ticket. Request: ${t}`
+    return remoteRuns.start(daemon.remote, {
+      agentId: 'ticket-spawn',
+      agentTitle: `File ticket · ${t.slice(0, 48)}`,
+      engine,
+      model: remoteEngineModel(daemon.remote, engine, model),
+      steps: [{ label: 'file ticket', prompt }],
+      inPlace: true,
+    })
+  },
+)
 ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) => {
   const daemon = activeDaemon()
   const before = await daemon.ticketGet(slug)
@@ -1933,7 +2224,9 @@ ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) =>
     const unblocked = before?.status === 'stuck' && patch.status !== 'stuck'
     emitActivity({
       kind: patch.status === 'closed' ? 'ticket-closed' : 'info',
-      title: unblocked ? `Ticket unblocked · #${t?.id ?? slug}` : `Ticket ${patch.status} · #${t?.id ?? slug}`,
+      title: unblocked
+        ? `Ticket unblocked · #${t?.id ?? slug}`
+        : `Ticket ${patch.status} · #${t?.id ?? slug}`,
       detail: unblocked ? `${t?.title || slug} · ${patch.status}` : t?.title,
       repo: daemon.repoLabel(),
       repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
@@ -2044,12 +2337,13 @@ ipcMain.handle('data:first-prompt', (_e, sessionId: string) => {
 
 ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
   const remote = curRemote()
-  if (remote) return remoteProject.bootstrapStatus(remote).catch((e) => ({
-    state: 'none',
-    bootstrapped: false,
-    missing: [],
-    message: (e as Error).message,
-  }))
+  if (remote)
+    return remoteProject.bootstrapStatus(remote).catch((e) => ({
+      state: 'none',
+      bootstrapped: false,
+      missing: [],
+      message: (e as Error).message,
+    }))
   if (!repoRoot) return { bootstrapped: true, state: 'full', missing: [], message: '' }
   return classifyBootstrapStatus(repoRoot, (rel) => existsSync(join(repoRoot, rel)))
 })
@@ -2060,7 +2354,9 @@ ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   const remote = curRemote()
   if (remote) {
     const templateRepo = remote.daemon?.templateRepo || resolvedTemplateRepo()
-    return remoteProject.bootstrap(remote, templateRepo).catch((e) => ({ error: (e as Error).message }))
+    return remoteProject
+      .bootstrap(remote, templateRepo)
+      .catch((e) => ({ error: (e as Error).message }))
   }
   if (!repoRoot) return { error: 'no repoRoot' }
   const src = projectTemplateSource('bootstrap.sh')
@@ -2073,7 +2369,8 @@ ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
     p.on('exit', (code) => {
       src.cleanup?.()
       if (code === 0) resolve({ ok: true })
-      else resolve({ error: `bootstrap exited ${code}${stderr ? `: ${stderr.slice(0, 200)}` : ''}` })
+      else
+        resolve({ error: `bootstrap exited ${code}${stderr ? `: ${stderr.slice(0, 200)}` : ''}` })
     })
     p.on('error', (e) => {
       src.cleanup?.()
@@ -2112,12 +2409,16 @@ ipcMain.handle('release:start', () => {
   const repoRoot = sourceCheckoutRoot(join('bin', 'release'))
   if (!repoRoot) {
     return {
-      error: 'bin/release not found — set GT_TERMINAL_REPO to your source checkout, or run from the repo directory',
+      error:
+        'bin/release not found — set GT_TERMINAL_REPO to your source checkout, or run from the repo directory',
     }
   }
   // Truncate the log so each rebuild starts fresh.
   try {
-    writeFileSync(RELEASE_LOG, `▸ rebuild started ${new Date().toISOString()}\n▸ repo: ${repoRoot}\n`)
+    writeFileSync(
+      RELEASE_LOG,
+      `▸ rebuild started ${new Date().toISOString()}\n▸ repo: ${repoRoot}\n`,
+    )
   } catch {
     /* best-effort */
   }
@@ -2156,26 +2457,29 @@ ipcMain.handle('release:tail', () => {
 ipcMain.handle('bg:list', () => (curRemote() ? [] : listBgTasks()))
 ipcMain.handle('bg:get', (_e, id: string) => (curRemote() ? null : getBgTask(id)))
 ipcMain.handle('bg:log', (_e, id: string) => (curRemote() ? '' : readBgTaskLog(id)))
-ipcMain.handle('bg:spawn', (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) => {
-  const remote = curRemote()
-  if (!remote) return spawnBgTask(input)
-  const prompt = input.prompt?.trim()
-  if (!prompt) return { error: 'empty prompt' }
-  const engine = localOnlyToRemote(input.engine || remote.daemon?.defaultEngine || 'claude')
-  const enrichedPrompt =
-    prompt +
-    `\n\n---\n` +
-    `When you're done, if you opened a PR/MR include its URL on a line by itself in the format:\nMR: <url>\n` +
-    `If you completed the task without opening a PR/MR, say so on a line starting with:\nDONE: <one-line summary>\n` +
-    `If you couldn't complete the task, say so on a line starting with:\nFAILED: <one-line reason>`
-  return remoteRuns.start(remote, {
-    agentId: 'background-task',
-    agentTitle: 'Background task',
-    engine,
-    model: remoteEngineModel(remote, engine, input.model),
-    steps: [{ label: 'background task', prompt: enrichedPrompt }],
-  })
-})
+ipcMain.handle(
+  'bg:spawn',
+  (_e, input: { repoRoot: string; prompt: string; engine?: Engine; model?: string }) => {
+    const remote = curRemote()
+    if (!remote) return spawnBgTask(input)
+    const prompt = input.prompt?.trim()
+    if (!prompt) return { error: 'empty prompt' }
+    const engine = localOnlyToRemote(input.engine || remote.daemon?.defaultEngine || 'claude')
+    const enrichedPrompt =
+      prompt +
+      `\n\n---\n` +
+      `When you're done, if you opened a PR/MR include its URL on a line by itself in the format:\nMR: <url>\n` +
+      `If you completed the task without opening a PR/MR, say so on a line starting with:\nDONE: <one-line summary>\n` +
+      `If you couldn't complete the task, say so on a line starting with:\nFAILED: <one-line reason>`
+    return remoteRuns.start(remote, {
+      agentId: 'background-task',
+      agentTitle: 'Background task',
+      engine,
+      model: remoteEngineModel(remote, engine, input.model),
+      steps: [{ label: 'background task', prompt: enrichedPrompt }],
+    })
+  },
+)
 ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
 
 // Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
@@ -2206,20 +2510,26 @@ ipcMain.handle('loops:restart', (_e, id: string) =>
 ipcMain.handle('loops:stop', (_e, id: string) => (curRemote() ? { error: 'remote' } : stopLoop(id)))
 
 // Cheap one-shot LLM call — routes through local coding-agent subscriptions.
-ipcMain.handle('llm:cheap', async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
-  const { cheapCall } = await import('./cheap-llm')
-  return cheapCall(opts)
-})
+ipcMain.handle(
+  'llm:cheap',
+  async (_e, opts: Parameters<typeof import('./cheap-llm').cheapCall>[0]) => {
+    const { cheapCall } = await import('./cheap-llm')
+    return cheapCall(opts)
+  },
+)
 
 // Classifier IPCs — exposed so scripts/dashboard can use them too.
 ipcMain.handle('classify:ci', async (_e, rawLog: string) => {
   const { classifyCiFailure } = await import('./ci-failure-classifier')
   return classifyCiFailure(rawLog)
 })
-ipcMain.handle('classify:risk', async (_e, input: Parameters<typeof import('./pr-risk-classifier').classifyRisk>[0]) => {
-  const { classifyRisk } = await import('./pr-risk-classifier')
-  return classifyRisk(input)
-})
+ipcMain.handle(
+  'classify:risk',
+  async (_e, input: Parameters<typeof import('./pr-risk-classifier').classifyRisk>[0]) => {
+    const { classifyRisk } = await import('./pr-risk-classifier')
+    return classifyRisk(input)
+  },
+)
 
 // Budget IPCs (#0002).
 ipcMain.handle('budgets:get', () => readBudgets())
@@ -2250,43 +2560,79 @@ ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 ipcMain.handle('observability:summary', (_e, range: Range = 'today') =>
-  curRemote() ? { totalUsd: 0, totalRuns: 0, byModel: {}, bySource: {}, byAgent: {}, byRepo: {} } : summaryFor(range),
+  curRemote()
+    ? { totalUsd: 0, totalRuns: 0, byModel: {}, bySource: {}, byAgent: {}, byRepo: {} }
+    : summaryFor(range),
 )
-ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') => (curRemote() ? [] : agentROI(range)))
-ipcMain.handle('observability:daily', (_e, days: number = 7) => (curRemote() ? [] : dailySpend(days)))
-ipcMain.handle('observability:runs', (_e, limit: number = 100) => (curRemote() ? [] : listAIRuns(limit)))
+ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') =>
+  curRemote() ? [] : agentROI(range),
+)
+ipcMain.handle('observability:daily', (_e, days: number = 7) =>
+  curRemote() ? [] : dailySpend(days),
+)
+ipcMain.handle('observability:runs', (_e, limit: number = 100) =>
+  curRemote() ? [] : listAIRuns(limit),
+)
 ipcMain.handle('observability:models', () => knownModels())
 ipcMain.handle('observability:index-status', () =>
   curRemote()
-    ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.' }
+    ? {
+        ...observabilityIndexStatus(),
+        ok: false,
+        error: 'Remote observability indexing is not wired yet.',
+      }
     : observabilityIndexStatus(),
 )
 ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
   curRemote()
-    ? { ...observabilityIndexStatus(), ok: false, error: 'Remote observability indexing is not wired yet.', durationMs: 0, indexedSessions: 0 }
+    ? {
+        ...observabilityIndexStatus(),
+        ok: false,
+        error: 'Remote observability indexing is not wired yet.',
+        durationMs: 0,
+        indexedSessions: 0,
+      }
     : rebuildObservabilityIndex(limit),
 )
 ipcMain.handle('observability:index-query', (_e, query: ObservabilityIndexQueryId, arg?: string) =>
-  curRemote() ? { ...queryObservabilityIndex(query, arg), rows: [], error: 'Remote observability indexing is not wired yet.' } : queryObservabilityIndex(query, arg),
+  curRemote()
+    ? {
+        ...queryObservabilityIndex(query, arg),
+        rows: [],
+        error: 'Remote observability indexing is not wired yet.',
+      }
+    : queryObservabilityIndex(query, arg),
 )
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {
         ts: Date.now(),
         sessions: [],
-        totals: { sessions: 0, readySessions: 0, tokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, toolCalls: 0 },
+        totals: {
+          sessions: 0,
+          readySessions: 0,
+          tokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+          toolCalls: 0,
+        },
         byEngine: {},
         byRepo: {},
         topTools: [],
       }
     : readObservabilitySnapshot(limit),
 )
-ipcMain.handle('agentview:session', (_e, sessionId: string) => (curRemote() ? null : readObservabilitySessionDetail(sessionId)))
+ipcMain.handle('agentview:session', (_e, sessionId: string) =>
+  curRemote() ? null : readObservabilitySessionDetail(sessionId),
+)
 ipcMain.handle('agentview:tool-call', (_e, sessionId: string, callId: string) =>
   curRemote() ? null : readObservabilityToolCallPayload(sessionId, callId),
 )
-ipcMain.handle('agentview:transcript-window', (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
-  curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
+ipcMain.handle(
+  'agentview:transcript-window',
+  (_e, sessionId: string, centerLine: number = 0, radius: number = 24) =>
+    curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
 )
 ipcMain.handle('harness:status', () => {
   const cfgDir = join(homedir(), '.config', 'TerMinal')
@@ -2310,7 +2656,9 @@ ipcMain.handle('harness:status', () => {
   }
   const cronRuns = readCronRuns(undefined, 1000)
   const running = cronRuns.filter((r) => r.status === 'running').length
-  const failed24h = cronRuns.filter((r) => r.status === 'failed' && r.startedAt >= Date.now() - 86_400_000).length
+  const failed24h = cronRuns.filter(
+    (r) => r.status === 'failed' && r.startedAt >= Date.now() - 86_400_000,
+  ).length
   const paused = listDisabled().length
   const inProcessRunning = listRuns().filter((r) => r.status === 'running').length
   return {
@@ -2346,7 +2694,9 @@ function openInApp(appName: string, target: string, fallback: () => void) {
   }
 }
 // "Open in browser" — the configured browser (default Brave) with its extensions/wallet.
-ipcMain.handle('open:in-browser', (_e, url: string) => openInApp(resolvedBrowserApp(), url, () => shell.openExternal(url)))
+ipcMain.handle('open:in-browser', (_e, url: string) =>
+  openInApp(resolvedBrowserApp(), url, () => shell.openExternal(url)),
+)
 // "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
 // to the active session's repo root.
 ipcMain.handle('open:in-editor', (_e, path?: string) => {
@@ -2381,7 +2731,9 @@ ipcMain.handle('notes:folder-list', (_e, id: string, rel: string) => {
 })
 ipcMain.handle('notes:folder-read', (_e, id: string, rel: string) => {
   const folder = configuredNoteFolder(id)
-  return folder ? readNoteFolderFile(folder.path, rel) : { ok: false, content: '', reason: 'note folder not found' }
+  return folder
+    ? readNoteFolderFile(folder.path, rel)
+    : { ok: false, content: '', reason: 'note folder not found' }
 })
 ipcMain.handle('notes:folder-write', (_e, id: string, rel: string, content: string) => {
   const folder = configuredNoteFolder(id)
@@ -2397,14 +2749,26 @@ ipcMain.handle('knowledge:preview', (_e, url: string) => fetchKnowledgePreview(u
 ipcMain.handle('knowledge:rag-status', (_e, scope: KnowledgeScope, item: any) =>
   knowledgeRagStatus({ scope, repoRoot: activeDaemon().repoRoot(), item }),
 )
-ipcMain.handle('knowledge:rag-reindex', (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
-  knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
+ipcMain.handle(
+  'knowledge:rag-reindex',
+  (_e, scope: KnowledgeScope, item: any, fullRebuild?: boolean) =>
+    knowledgeRagReindex({ scope, repoRoot: activeDaemon().repoRoot(), item }, !!fullRebuild),
 )
-ipcMain.handle('knowledge:rag-add-document', (_e, scope: KnowledgeScope, item: any, content: string, filepath?: string) =>
-  knowledgeRagAddDocument({ scope, repoRoot: activeDaemon().repoRoot(), item, content, filepath }),
+ipcMain.handle(
+  'knowledge:rag-add-document',
+  (_e, scope: KnowledgeScope, item: any, content: string, filepath?: string) =>
+    knowledgeRagAddDocument({
+      scope,
+      repoRoot: activeDaemon().repoRoot(),
+      item,
+      content,
+      filepath,
+    }),
 )
-ipcMain.handle('knowledge:rag-add-url', (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
-  knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),
+ipcMain.handle(
+  'knowledge:rag-add-url',
+  (_e, scope: KnowledgeScope, item: any, url: string, title?: string) =>
+    knowledgeRagAddUrl({ scope, repoRoot: activeDaemon().repoRoot(), item, url, title }),
 )
 ipcMain.handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, query: string) =>
   knowledgeRagSearch({ scope, repoRoot: activeDaemon().repoRoot(), item, query }),
@@ -2439,7 +2803,9 @@ ipcMain.handle('files:delete', (_e, rel: string) => {
 // ---- my workflow (local Claude/Codex configuration) ----
 ipcMain.handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
 ipcMain.handle('workflow:read', (_e, rel: string) => readWorkflowFile(rel))
-ipcMain.handle('workflow:write', (_e, rel: string, content: string) => writeWorkflowFile(rel, content))
+ipcMain.handle('workflow:write', (_e, rel: string, content: string) =>
+  writeWorkflowFile(rel, content),
+)
 
 // Safety net: never let a stray async error (e.g. a late PTY write) take down
 // the whole app.

@@ -15,7 +15,11 @@ import { remoteSchedules, type RemoteSessionRef } from './remote'
 import { readSettings, type RemoteHost } from './settings'
 import type { Schedule } from './schedules'
 
-export type ReconcileResult = { loaded: number; removed: number; failed: { id: string; error: string }[] }
+export type ReconcileResult = {
+  loaded: number
+  removed: number
+  failed: { id: string; error: string }[]
+}
 
 export type RouterDeps = {
   launchdSync: (s: Schedule) => { ok: boolean; error?: string }
@@ -63,13 +67,19 @@ const systemdHost = (h: RemoteHost): SystemdHost => ({ sshTarget: h.sshTarget })
 // Install/enable a schedule's trigger. Local → launchd. Host → mirror the record
 // into the host's schedules.json (so its runner resolves the id) then install the
 // systemd timer. Returns {ok,error} so callers surface a silent failure.
-export async function routeSyncSchedule(s: Schedule, deps: RouterDeps = realDeps): Promise<{ ok: boolean; error?: string }> {
+export async function routeSyncSchedule(
+  s: Schedule,
+  deps: RouterDeps = realDeps,
+): Promise<{ ok: boolean; error?: string }> {
   if (!s.host) {
     // Local schedules ride launchd, which is macOS-only (see ADR-0003). On any
     // other platform, surface a real reason instead of the mystery "dark" badge
     // launchctl's swallowed failure would otherwise produce.
     if (process.platform !== 'darwin')
-      return { ok: false, error: 'local scheduling requires macOS — assign this schedule to a remote host' }
+      return {
+        ok: false,
+        error: 'local scheduling requires macOS — assign this schedule to a remote host',
+      }
     return deps.launchdSync(s)
   }
   const host = deps.hosts().find((h) => h.id === s.host)
@@ -84,14 +94,18 @@ export async function routeSyncSchedule(s: Schedule, deps: RouterDeps = realDeps
   // systemdSync handles enabled:false by removing the unit; the k8s path must
   // mirror that — a disabled k8s schedule deletes its CronJob rather than
   // (re)applying one that would keep firing.
-  if (s.runtime === 'k8s') return s.enabled ? deps.k8sApply(host.sshTarget, s) : deps.k8sRemove(host.sshTarget, s)
+  if (s.runtime === 'k8s')
+    return s.enabled ? deps.k8sApply(host.sshTarget, s) : deps.k8sRemove(host.sshTarget, s)
   return deps.systemdSync(systemdHost(host), s)
 }
 
 // Tear down a schedule's trigger. Local → unschedule the launchd job. Host →
 // drop the host's schedules.json record and remove the systemd unit (a disabled
 // sync). `s` carries the host binding so we know which layer owns it.
-export async function routeRemoveSchedule(s: Schedule, deps: RouterDeps = realDeps): Promise<{ ok: boolean; error?: string }> {
+export async function routeRemoveSchedule(
+  s: Schedule,
+  deps: RouterDeps = realDeps,
+): Promise<{ ok: boolean; error?: string }> {
   if (!s.host) {
     deps.launchdUnschedule(s.id)
     return { ok: true }
@@ -112,10 +126,14 @@ export async function routeRemoveSchedule(s: Schedule, deps: RouterDeps = realDe
 // distinct host that owns schedules. Each reconcile SSHes to its host, so this
 // is fire-and-forgettable at app launch (a slow/unreachable host mustn't block
 // startup). A host with no schedules is skipped.
-export async function reconcileHosts(all: Schedule[], deps: RouterDeps = realDeps): Promise<ReconcileResult> {
+export async function reconcileHosts(
+  all: Schedule[],
+  deps: RouterDeps = realDeps,
+): Promise<ReconcileResult> {
   const agg: ReconcileResult = { loaded: 0, removed: 0, failed: [] }
   const byHost = new Map<string, Schedule[]>()
-  for (const s of all) if (s.host) (byHost.get(s.host) ?? byHost.set(s.host, []).get(s.host)!).push(s)
+  for (const s of all)
+    if (s.host) (byHost.get(s.host) ?? byHost.set(s.host, []).get(s.host)!).push(s)
 
   const hosts = deps.hosts()
   for (const [hostId, schedules] of byHost) {
@@ -146,7 +164,10 @@ export async function reconcileHosts(all: Schedule[], deps: RouterDeps = realDep
 // Reconcile every trigger layer: launchd for local schedules (filtered inside
 // launchd.reconcileSchedules), plus reconcileHosts for the systemd side.
 // Aggregates counts. Used by the on-demand reconcile IPC (safe to await).
-export async function routeReconcile(all: Schedule[], deps: RouterDeps = realDeps): Promise<ReconcileResult> {
+export async function routeReconcile(
+  all: Schedule[],
+  deps: RouterDeps = realDeps,
+): Promise<ReconcileResult> {
   const local = deps.launchdReconcile()
   const hosts = await reconcileHosts(all, deps)
   return {

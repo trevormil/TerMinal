@@ -3,10 +3,8 @@
 /* IBM Plex pairing: Sans for UI chrome, Mono for numerics/code/terminal.
    Registered as Tailwind theme tokens so `font-sans`/`font-mono` use them. */
 @theme {
-  --font-sans:
-    'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono:
-    'IBM Plex Mono', 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
 }
 
 :root {

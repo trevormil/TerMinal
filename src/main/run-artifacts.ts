@@ -19,7 +19,11 @@ export type RunArtifact = {
 
 // Parse one artifact.json into a RunArtifact. Pure (no fs) → unit-testable.
 // Falls back to the conventional report.md path when `primaryPath` is absent.
-export function parseArtifactMeta(raw: string, slug: string, fallbackReport: string): RunArtifact | null {
+export function parseArtifactMeta(
+  raw: string,
+  slug: string,
+  fallbackReport: string,
+): RunArtifact | null {
   try {
     const m = JSON.parse(raw) as Record<string, unknown>
     return {
@@ -28,7 +32,8 @@ export function parseArtifactMeta(raw: string, slug: string, fallbackReport: str
       agent: typeof m.agent === 'string' ? m.agent : undefined,
       ok: typeof m.ok === 'boolean' ? m.ok : undefined,
       createdAt: typeof m.createdAt === 'string' ? m.createdAt : undefined,
-      reportPath: typeof m.primaryPath === 'string' && m.primaryPath ? m.primaryPath : fallbackReport,
+      reportPath:
+        typeof m.primaryPath === 'string' && m.primaryPath ? m.primaryPath : fallbackReport,
       summary: typeof m.summary === 'string' ? m.summary : undefined,
     }
   } catch {
@@ -42,7 +47,9 @@ export function listRepoArtifacts(repoRoot: string): RunArtifact[] {
   const dir = join(repoRoot, '.TerMinal', 'agent-requests')
   let slugs: string[] = []
   try {
-    slugs = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    slugs = readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
   } catch {
     return []
   }
@@ -51,7 +58,11 @@ export function listRepoArtifacts(repoRoot: string): RunArtifact[] {
     const reportPath = join(dir, slug, 'report.md')
     let a: RunArtifact | null = null
     try {
-      a = parseArtifactMeta(readFileSync(join(dir, slug, 'artifact.json'), 'utf8'), slug, reportPath)
+      a = parseArtifactMeta(
+        readFileSync(join(dir, slug, 'artifact.json'), 'utf8'),
+        slug,
+        reportPath,
+      )
     } catch {
       /* no artifact.json — still surface the report if it exists */
       try {

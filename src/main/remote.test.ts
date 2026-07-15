@@ -1,6 +1,14 @@
 import { test, expect, describe } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { shq, isSafeSshTarget, remoteCommandForEngine, REMOTE_SCRIPT } from './remote'
@@ -28,7 +36,14 @@ describe('shq shell-quoting', () => {
   // bash. If shq ever regressed to allow expansion, printf would emit something
   // other than the input and this fails.
   test('output is literal inside a real bash shell (no expansion / no injection)', () => {
-    const payloads = ['$(echo INJECTED)', '`echo INJECTED`', 'a; echo INJECTED', "x'y", 'a b', '~/dir']
+    const payloads = [
+      '$(echo INJECTED)',
+      '`echo INJECTED`',
+      'a; echo INJECTED',
+      "x'y",
+      'a b',
+      '~/dir',
+    ]
     for (const p of payloads) {
       const out = execFileSync('bash', ['-c', 'printf %s ' + shq(p)], { encoding: 'utf8' })
       expect(out).toBe(p)
@@ -56,7 +71,11 @@ describe('isSafeSshTarget', () => {
 
 describe('remoteCommandForEngine', () => {
   test('wraps in a login shell and never leaves an injection-bearing cwd bare', () => {
-    const cmd = remoteCommandForEngine('codex', ['exec', '-s', 'danger-full-access'], '/tmp/x; rm -rf ~')
+    const cmd = remoteCommandForEngine(
+      'codex',
+      ['exec', '-s', 'danger-full-access'],
+      '/tmp/x; rm -rf ~',
+    )
     expect(cmd.startsWith('bash -lc ')).toBe(true)
     // A bare `cd -- /tmp/x; rm -rf ~` would be a disaster; the metacharacters
     // must be inside quotes. The unquoted `cd -- /tmp/x;` form must not appear.
@@ -67,7 +86,10 @@ describe('remoteCommandForEngine', () => {
 // ─── REMOTE_SCRIPT executed locally via `node -e`, exactly as it runs on a
 //     remote host over SSH. This is the only coverage of the stringified remote
 //     daemon; it exercises the real code path, not a reimplementation. ───
-function runRemoteScript(payload: Record<string, unknown>, opts: { cwd: string; home?: string }): string {
+function runRemoteScript(
+  payload: Record<string, unknown>,
+  opts: { cwd: string; home?: string },
+): string {
   return execFileSync('node', ['-e', REMOTE_SCRIPT, JSON.stringify(payload)], {
     cwd: opts.cwd,
     env: { ...process.env, ...(opts.home ? { HOME: opts.home } : {}) },
@@ -90,10 +112,23 @@ describe('REMOTE_SCRIPT tickets.update', () => {
       const slug = '0001-test'
       writeFileSync(
         join(backlog, `${slug}.md`),
-        ['---', 'id: 1', 'title: "Test"', 'status: open', 'priority: medium', 'acceptance: []', '---', '', 'body'].join('\n'),
+        [
+          '---',
+          'id: 1',
+          'title: "Test"',
+          'status: open',
+          'priority: medium',
+          'acceptance: []',
+          '---',
+          '',
+          'body',
+        ].join('\n'),
       )
       const acceptance = ['first criterion', 'second; rm -rf ~ criterion']
-      const res = runRemoteScript({ op: 'tickets.update', slug, patch: { acceptance } }, { cwd: dir })
+      const res = runRemoteScript(
+        { op: 'tickets.update', slug, patch: { acceptance } },
+        { cwd: dir },
+      )
       expect(res.trim()).toBe('true')
 
       // Round-trip through the remote reader proves the write is real & parseable.
@@ -115,7 +150,10 @@ describe('REMOTE_SCRIPT files traversal guard', () => {
     const sentinel = join(dir, '..', `sentinel-${process.pid}`)
     try {
       writeFileSync(sentinel, 'keep me')
-      const res = runRemoteScript({ op: 'files.delete', rel: `../sentinel-${process.pid}` }, { cwd: dir })
+      const res = runRemoteScript(
+        { op: 'files.delete', rel: `../sentinel-${process.pid}` },
+        { cwd: dir },
+      )
       expect(res.trim()).toBe('false')
       expect(existsSync(sentinel)).toBe(true)
     } finally {
@@ -135,7 +173,12 @@ describe('REMOTE_SCRIPT stale-run sweep', () => {
       const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000
       writeFileSync(
         join(runsDir, 'stale.json'),
-        JSON.stringify({ id: 'stale', source: 'agent', status: 'running', startedAt: threeHoursAgo }),
+        JSON.stringify({
+          id: 'stale',
+          source: 'agent',
+          status: 'running',
+          startedAt: threeHoursAgo,
+        }),
       )
       writeFileSync(
         join(runsDir, 'fresh.json'),
@@ -143,7 +186,9 @@ describe('REMOTE_SCRIPT stale-run sweep', () => {
       )
 
       const runs = JSON.parse(runRemoteScript({ op: 'runs.all' }, { cwd: dir, home }))
-      const byId = Object.fromEntries(runs.map((r: { id: string; status: string }) => [r.id, r.status]))
+      const byId = Object.fromEntries(
+        runs.map((r: { id: string; status: string }) => [r.id, r.status]),
+      )
       expect(byId.stale).toBe('failed')
       expect(byId.fresh).toBe('running')
 

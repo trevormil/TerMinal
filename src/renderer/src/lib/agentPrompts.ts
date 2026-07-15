@@ -2,8 +2,18 @@ import type { Agent, AgentDefinition, Engine, Persona, Ticket, UnifiedRun } from
 import { withLaunchContext } from './launch'
 
 export function ticketImplementationPrompt(
-  ticket: Pick<Ticket, 'id' | 'title' | 'body' | 'provider' | 'providerLabel' | 'externalKey' | 'url'>,
-  opts: { persona?: string; pipeline?: string; model?: string; runContext?: Persona; ticketProvider?: 'local' | 'github' | 'linear'; ticketProviderLabel?: string } = {},
+  ticket: Pick<
+    Ticket,
+    'id' | 'title' | 'body' | 'provider' | 'providerLabel' | 'externalKey' | 'url'
+  >,
+  opts: {
+    persona?: string
+    pipeline?: string
+    model?: string
+    runContext?: Persona
+    ticketProvider?: 'local' | 'github' | 'linear'
+    ticketProviderLabel?: string
+  } = {},
 ): string {
   const provider = ticket.provider || opts.ticketProvider || 'local'
   const ref = ticket.externalKey || `#${ticket.id}`
@@ -27,7 +37,11 @@ Implement the ticket end to end. Keep changes surgical, add or adjust tests, com
 
 export function fileTicketPrompt(
   text: string,
-  opts: { model?: string; ticketProvider?: 'local' | 'github' | 'linear'; ticketProviderLabel?: string } = {},
+  opts: {
+    model?: string
+    ticketProvider?: 'local' | 'github' | 'linear'
+    ticketProviderLabel?: string
+  } = {},
 ): string {
   const provider = opts.ticketProvider || 'local'
   const instruction =
@@ -72,7 +86,15 @@ Use an existing agent id from this repo when possible. Write the schedule using 
 export function prAgentPrompt(
   pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
   kind: 'review' | 'iterate',
-  opts: { forgeSym?: string; forgeLabel?: string; persona?: string; pipeline?: string; model?: string; runContext?: Persona; reviewAgent?: AgentDefinition } = {},
+  opts: {
+    forgeSym?: string
+    forgeLabel?: string
+    persona?: string
+    pipeline?: string
+    model?: string
+    runContext?: Persona
+    reviewAgent?: AgentDefinition
+  } = {},
 ): string {
   const sym = opts.forgeSym || '#'
   const label = opts.forgeLabel || 'PR'

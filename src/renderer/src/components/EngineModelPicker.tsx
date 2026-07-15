@@ -53,7 +53,11 @@ export function EngineModelPicker({
       const maxHeight = Math.max(180, Math.min(preferredHeight, spaceAbove - 6))
       setMenuPos({ top: Math.max(gutter, rect.top - maxHeight - 6), left, maxHeight })
     } else {
-      setMenuPos({ top: rect.bottom + 6, left, maxHeight: Math.max(180, Math.min(preferredHeight, spaceBelow - 6)) })
+      setMenuPos({
+        top: rect.bottom + 6,
+        left,
+        maxHeight: Math.max(180, Math.min(preferredHeight, spaceBelow - 6)),
+      })
     }
   }
 
@@ -109,67 +113,71 @@ export function EngineModelPicker({
         <ChevronDown size={size === 'sm' ? 10 : 12} strokeWidth={2} className="text-zinc-500" />
       </button>
 
-      {open && menuPos && createPortal(
-        <div
-          ref={menuRef}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="fixed z-[10000] w-[300px] overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-2xl"
-          style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
-        >
-          {engineList.map((e) => {
-            const isActive = e === engine
-            return (
-              <div key={e} className="mb-2 last:mb-0">
-                <div className="mb-1 flex items-center gap-1.5 px-1">
-                  <EngineLogo engine={e} size={12} />
-                  <span className="text-[11px] font-semibold text-zinc-200">{engineLabel(e)}</span>
-                  <span className="text-[10px] text-zinc-600">· {VENDOR[e]}</span>
+      {open &&
+        menuPos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="fixed z-[10000] w-[300px] overflow-y-auto rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 shadow-2xl"
+            style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
+          >
+            {engineList.map((e) => {
+              const isActive = e === engine
+              return (
+                <div key={e} className="mb-2 last:mb-0">
+                  <div className="mb-1 flex items-center gap-1.5 px-1">
+                    <EngineLogo engine={e} size={12} />
+                    <span className="text-[11px] font-semibold text-zinc-200">
+                      {engineLabel(e)}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">· {VENDOR[e]}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 px-1">
+                    <button
+                      onClick={() => {
+                        onChange(e, undefined)
+                        setOpen(false)
+                      }}
+                      className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
+                        isActive && !model
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
+                    >
+                      default
+                    </button>
+                    {MODELS[e].map((m) => {
+                      const selected = isActive && model === m.id
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            onChange(e, m.id)
+                            setOpen(false)
+                          }}
+                          className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
+                            selected
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1 px-1">
-                  <button
-                    onClick={() => {
-                      onChange(e, undefined)
-                      setOpen(false)
-                    }}
-                    className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
-                      isActive && !model
-                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
-                        : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                    }`}
-                  >
-                    default
-                  </button>
-                  {MODELS[e].map((m) => {
-                    const selected = isActive && model === m.id
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          onChange(e, m.id)
-                          setOpen(false)
-                        }}
-                        className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
-                          selected
-                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
-                            : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                        }`}
-                      >
-                        {m.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-          <div className="mt-1 border-t border-[var(--gt-border)]/60 px-1 pt-1.5 text-[9.5px] text-zinc-600">
-            Pick a model only when you want to override the engine default.
-          </div>
-        </div>,
-        document.body,
-      )}
+              )
+            })}
+            <div className="mt-1 border-t border-[var(--gt-border)]/60 px-1 pt-1.5 text-[9.5px] text-zinc-600">
+              Pick a model only when you want to override the engine default.
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

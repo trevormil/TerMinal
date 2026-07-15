@@ -122,7 +122,12 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
         .map((x) => {
           const title = typeof x.title === 'string' && x.title.trim() ? x.title.trim() : 'Untitled'
           const kind: KnowledgeItemKind =
-            x.kind === 'link' || x.kind === 'image' || x.kind === 'video' || x.kind === 'file' || x.kind === 'markdown' || x.kind === 'rag'
+            x.kind === 'link' ||
+            x.kind === 'image' ||
+            x.kind === 'video' ||
+            x.kind === 'file' ||
+            x.kind === 'markdown' ||
+            x.kind === 'rag'
               ? x.kind
               : 'markdown'
           const categoryId =
@@ -143,7 +148,9 @@ export function migrateKnowledge(raw: unknown): KnowledgeBase {
             faviconUrl: typeof x.faviconUrl === 'string' ? x.faviconUrl : '',
             siteName: typeof x.siteName === 'string' ? x.siteName : '',
             rag: normalizeRagConfig(x.rag),
-            tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === 'string') : [],
+            tags: Array.isArray(x.tags)
+              ? x.tags.filter((t): t is string => typeof t === 'string')
+              : [],
             createdAt: ts,
             updatedAt: typeof x.updatedAt === 'number' ? x.updatedAt : ts,
           } satisfies KnowledgeItem
@@ -164,8 +171,10 @@ function normalizeRagConfig(raw: unknown): KnowledgeRagConfig | undefined {
   if (typeof r.command === 'string') out.command = r.command
   if (Array.isArray(r.args)) out.args = r.args.filter((x): x is string => typeof x === 'string')
   if (typeof r.category === 'string') out.category = r.category
-  if (typeof r.hybridAlpha === 'number' && Number.isFinite(r.hybridAlpha)) out.hybridAlpha = r.hybridAlpha
-  if (typeof r.maxResults === 'number' && Number.isFinite(r.maxResults)) out.maxResults = Math.max(1, Math.min(20, Math.round(r.maxResults)))
+  if (typeof r.hybridAlpha === 'number' && Number.isFinite(r.hybridAlpha))
+    out.hybridAlpha = r.hybridAlpha
+  if (typeof r.maxResults === 'number' && Number.isFinite(r.maxResults))
+    out.maxResults = Math.max(1, Math.min(20, Math.round(r.maxResults)))
   return Object.keys(out).length ? out : undefined
 }
 
@@ -179,7 +188,11 @@ export function readKnowledge(scope: KnowledgeScope, repoRoot: string): Knowledg
   }
 }
 
-export function writeKnowledge(scope: KnowledgeScope, repoRoot: string, kb: KnowledgeBase): boolean {
+export function writeKnowledge(
+  scope: KnowledgeScope,
+  repoRoot: string,
+  kb: KnowledgeBase,
+): boolean {
   const p = pathFor(scope, repoRoot)
   if (!p) return false
   try {
@@ -242,7 +255,8 @@ export function parseKnowledgePreviewHtml(rawUrl: string, html: string): Knowled
   }
   const title = firstMeta(html, ['og:title', 'twitter:title']) || pageTitle(html)
   const description = firstMeta(html, ['og:description', 'twitter:description', 'description'])
-  const siteName = firstMeta(html, ['og:site_name', 'application-name']) || url.hostname.replace(/^www\./, '')
+  const siteName =
+    firstMeta(html, ['og:site_name', 'application-name']) || url.hostname.replace(/^www\./, '')
   const image = firstMeta(html, ['og:image', 'og:image:url', 'twitter:image', 'twitter:image:src'])
   const iconTag =
     (html.match(/<link\s+[^>]*>/gi) || []).find((tag) =>

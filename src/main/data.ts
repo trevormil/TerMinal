@@ -1,4 +1,12 @@
-import { readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs'
+import {
+  readFileSync,
+  readdirSync,
+  statSync,
+  existsSync,
+  openSync,
+  readSync,
+  closeSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import Database from 'better-sqlite3'
@@ -315,7 +323,10 @@ export type ObservabilitySnapshot = {
     costUsd: number
     toolCalls: number
   }
-  byEngine: Record<string, { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  byEngine: Record<
+    string,
+    { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }
+  >
   byRepo: Record<string, { sessions: number; tokens: number; costUsd: number; toolCalls: number }>
   topTools: { tool: string; count: number }[]
 }
@@ -383,7 +394,12 @@ function resultText(content: unknown, toolUseResult?: unknown): string {
     const parts: string[] = []
     let nonText = 0
     for (const block of content) {
-      if (block && typeof block === 'object' && (block as any).type === 'text' && typeof (block as any).text === 'string') {
+      if (
+        block &&
+        typeof block === 'object' &&
+        (block as any).type === 'text' &&
+        typeof (block as any).text === 'string'
+      ) {
         parts.push((block as any).text)
       } else if (block && typeof block === 'object') {
         nonText++
@@ -392,7 +408,12 @@ function resultText(content: unknown, toolUseResult?: unknown): string {
     if (nonText > 0) parts.push(`[${nonText} non-text block${nonText === 1 ? '' : 's'}]`)
     return parts.join('\n')
   }
-  if (toolUseResult && typeof toolUseResult === 'object' && (toolUseResult as any).success === false) return 'command failed'
+  if (
+    toolUseResult &&
+    typeof toolUseResult === 'object' &&
+    (toolUseResult as any).success === false
+  )
+    return 'command failed'
   return ''
 }
 
@@ -405,7 +426,9 @@ function timestampMs(obj: any, line: number): number {
 }
 
 function inputRecord(input: unknown): Record<string, unknown> {
-  return input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {}
 }
 
 function stableJson(value: unknown): string {
@@ -515,7 +538,10 @@ export function lastAssistantTurn(file: string): { id: string; endTurn: boolean 
       }
       if (o?.type === 'assistant') {
         const m = o.message || {}
-        return { id: String(m.id || o.uuid || o.timestamp || i), endTurn: m.stop_reason === 'end_turn' }
+        return {
+          id: String(m.id || o.uuid || o.timestamp || i),
+          endTurn: m.stop_reason === 'end_turn',
+        }
       }
     }
   } catch {
@@ -627,8 +653,10 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     if (!gitBranch && typeof obj.gitBranch === 'string') gitBranch = obj.gitBranch
     // Claude writes these as standalone lines (no message); keep the latest.
     if (obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle
-    else if (obj.type === 'permission-mode' && obj.permissionMode) permissionMode = obj.permissionMode
-    else if (obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string') lastPrompt = obj.lastPrompt
+    else if (obj.type === 'permission-mode' && obj.permissionMode)
+      permissionMode = obj.permissionMode
+    else if (obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string')
+      lastPrompt = obj.lastPrompt
 
     const msg = obj.message
     if (!msg) continue
@@ -643,7 +671,9 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
 
     if (msg.role !== 'assistant') continue
     const u = msg.usage
-    const usageKey = String(msg.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`)
+    const usageKey = String(
+      msg.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`,
+    )
     if (u && !seenUsage.has(usageKey)) {
       seenUsage.add(usageKey)
       turns++
@@ -659,7 +689,10 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
         if (block?.type === 'tool_use') {
-          const toolKey = typeof block.id === 'string' ? block.id : `${obj.uuid || ''}:${block.name}:${JSON.stringify(block.input || {})}`
+          const toolKey =
+            typeof block.id === 'string'
+              ? block.id
+              : `${obj.uuid || ''}:${block.name}:${JSON.stringify(block.input || {})}`
           if (seenToolUses.has(toolKey)) continue
           seenToolUses.add(toolKey)
           lastAction = { tool: block.name, detail: summarizeToolInput(block.name, block.input) }
@@ -704,7 +737,14 @@ export function parseTranscriptDetailFile(
   try {
     raw = readFileSync(file, 'utf8')
   } catch {
-    return { events: [], toolCalls: [], tokenSnapshots: [], turns: [], graph: { nodes: [], edges: [] }, warnings: ['Transcript unreadable'] }
+    return {
+      events: [],
+      toolCalls: [],
+      tokenSnapshots: [],
+      turns: [],
+      graph: { nodes: [], edges: [] },
+      warnings: ['Transcript unreadable'],
+    }
   }
 
   const events: ObservabilityTimelineEvent[] = []
@@ -751,7 +791,9 @@ export function parseTranscriptDetailFile(
 
     if (role === 'user') {
       const blocks = Array.isArray(content) ? content : []
-      const results = blocks.filter((block) => block && typeof block === 'object' && (block as any).type === 'tool_result')
+      const results = blocks.filter(
+        (block) => block && typeof block === 'object' && (block as any).type === 'tool_result',
+      )
       if (results.length > 0) {
         for (const block of results) {
           const full = resultText((block as any).content, obj.toolUseResult)
@@ -762,7 +804,10 @@ export function parseTranscriptDetailFile(
             kind: 'tool_result',
             severity: isError ? 'error' : 'info',
             turnId: currentTurn || undefined,
-            callId: typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : undefined,
+            callId:
+              typeof (block as any).tool_use_id === 'string'
+                ? (block as any).tool_use_id
+                : undefined,
             previewText: compactPreview(full, 1200) || 'tool completed',
             outputPreview: compactPreview(full, 4000),
             outputBytes: Buffer.byteLength(full || '', 'utf8'),
@@ -812,16 +857,27 @@ export function parseTranscriptDetailFile(
           })
         } else if (b.type === 'tool_use') {
           const toolName = String(b.name || 'tool')
-          const callId = typeof b.id === 'string' ? b.id : `${sessionId}:${lineNo}:${toolName}:${events.length}`
-          const toolKey = typeof b.id === 'string' ? b.id : `${obj.uuid || ''}:${toolName}:${JSON.stringify(b.input || {})}`
+          const callId =
+            typeof b.id === 'string' ? b.id : `${sessionId}:${lineNo}:${toolName}:${events.length}`
+          const toolKey =
+            typeof b.id === 'string'
+              ? b.id
+              : `${obj.uuid || ''}:${toolName}:${JSON.stringify(b.input || {})}`
           if (seenToolUses.has(toolKey)) continue
           seenToolUses.add(toolKey)
           const input = inputRecord(b.input)
           const kind = toolCallKind(toolName)
           const commandPreview = toolName === 'Bash' ? stringProp(input, 'command') : undefined
-          const agentRole = kind === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent' : undefined
-          const agentTaskPreview = kind === 'agent_launch' ? compactPreview(stringProp(input, 'description', 'prompt', 'task'), 1200) : undefined
-          const skillName = kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : undefined
+          const agentRole =
+            kind === 'agent_launch'
+              ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent'
+              : undefined
+          const agentTaskPreview =
+            kind === 'agent_launch'
+              ? compactPreview(stringProp(input, 'description', 'prompt', 'task'), 1200)
+              : undefined
+          const skillName =
+            kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : undefined
           pushEvent({
             timestamp,
             line: lineNo,
@@ -830,7 +886,8 @@ export function parseTranscriptDetailFile(
             turnId: currentTurn || undefined,
             callId,
             toolName,
-            previewText: `${toolName} ${commandPreview || agentTaskPreview || skillName || summarizeToolInput(toolName, input)}`.trim(),
+            previewText:
+              `${toolName} ${commandPreview || agentTaskPreview || skillName || summarizeToolInput(toolName, input)}`.trim(),
             argumentsPreview: compactPreview(input, 1400),
             argumentsBytes: Buffer.byteLength(stableJson(input), 'utf8'),
             commandPreview,
@@ -843,7 +900,9 @@ export function parseTranscriptDetailFile(
     }
 
     const u = msg?.usage
-    const usageKey = String(msg?.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`)
+    const usageKey = String(
+      msg?.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`,
+    )
     if (u && !seenUsage.has(usageKey)) {
       seenUsage.add(usageKey)
       const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
@@ -879,8 +938,18 @@ export function parseTranscriptDetailFile(
     }
   })
 
-  const resultByCall = new Map(events.filter((event) => event.kind === 'tool_result' && event.callId).map((event) => [event.callId as string, event]))
-  const callEvents = events.filter((event) => (event.kind === 'tool_call' || event.kind === 'agent_launch' || event.kind === 'skill_invoke') && event.callId)
+  const resultByCall = new Map(
+    events
+      .filter((event) => event.kind === 'tool_result' && event.callId)
+      .map((event) => [event.callId as string, event]),
+  )
+  const callEvents = events.filter(
+    (event) =>
+      (event.kind === 'tool_call' ||
+        event.kind === 'agent_launch' ||
+        event.kind === 'skill_invoke') &&
+      event.callId,
+  )
   const toolCalls: ObservabilityToolCall[] = callEvents.map((call) => {
     const result = resultByCall.get(call.callId as string)
     const durationMs = result ? Math.max(0, result.timestamp - call.timestamp) : undefined
@@ -911,7 +980,9 @@ export function parseTranscriptDetailFile(
     }
   })
 
-  const turns = [...new Set(events.map((event) => event.turnId).filter((turnId): turnId is string => !!turnId))].map((turnId) => {
+  const turns = [
+    ...new Set(events.map((event) => event.turnId).filter((turnId): turnId is string => !!turnId)),
+  ].map((turnId) => {
     const rows = events.filter((event) => event.turnId === turnId)
     const lastToken = [...rows].reverse().find((event) => event.tokenSnapshot)?.tokenSnapshot
     const startedAt = rows[0]?.timestamp || 0
@@ -924,8 +995,14 @@ export function parseTranscriptDetailFile(
       inputTokens: lastToken ? lastToken.input + lastToken.cachedInput : 0,
       outputTokens: lastToken?.output || 0,
       totalTokens: lastToken?.total || 0,
-      toolCalls: rows.filter((event) => event.kind === 'tool_call' || event.kind === 'agent_launch' || event.kind === 'skill_invoke').length,
-      lastMessage: [...rows].reverse().find((event) => event.kind === 'assistant_message')?.previewText || '',
+      toolCalls: rows.filter(
+        (event) =>
+          event.kind === 'tool_call' ||
+          event.kind === 'agent_launch' ||
+          event.kind === 'skill_invoke',
+      ).length,
+      lastMessage:
+        [...rows].reverse().find((event) => event.kind === 'assistant_message')?.previewText || '',
     }
   })
 
@@ -1067,9 +1144,7 @@ function listClaudeSessions(): SessionMeta[] {
     }
   }
   const idsByFile = new Map(files.map((f) => [f.file, f.id]))
-  return newestFiles(
-    files.map((f) => f.file),
-  )
+  return newestFiles(files.map((f) => f.file))
     .map((file) => parseClaudeSessionMeta(file, idsByFile.get(file) || ''))
     .filter((s): s is SessionMeta => !!s)
 }
@@ -1099,7 +1174,11 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
   const win = readPickerWindow(file)
   if (!win) return null
 
-  let id = file.replace(/\.jsonl$/, '').split('/').pop() || ''
+  let id =
+    file
+      .replace(/\.jsonl$/, '')
+      .split('/')
+      .pop() || ''
   id = id.replace(/^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-/, '')
   let cwd = ''
   let model = ''
@@ -1124,7 +1203,11 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
     } else if (obj.type === 'event_msg' && payload.type === 'user_message') {
       turns++
       if (!firstUserText && typeof payload.message === 'string') firstUserText = payload.message
-    } else if (obj.type === 'response_item' && payload.type === 'message' && payload.role === 'user') {
+    } else if (
+      obj.type === 'response_item' &&
+      payload.type === 'message' &&
+      payload.role === 'user'
+    ) {
       turns++
       if (!firstUserText) firstUserText = textOf(payload.content)
     }
@@ -1151,14 +1234,19 @@ function listCodexSessions(): SessionMeta[] {
 }
 
 function slugToPath(slug: string): string {
-  if (!slug || /^\d+$/.test(slug) || slug === 'empty-window' || slug.startsWith('var-folders-')) return ''
+  if (!slug || /^\d+$/.test(slug) || slug === 'empty-window' || slug.startsWith('var-folders-'))
+    return ''
   return '/' + slug.replace(/-/g, '/')
 }
 
 export function parseCursorSessionFile(file: string): SessionMeta | null {
   const win = readPickerWindow(file)
   if (!win) return null
-  let id = file.split('/').pop()?.replace(/\.jsonl$/, '') || ''
+  let id =
+    file
+      .split('/')
+      .pop()
+      ?.replace(/\.jsonl$/, '') || ''
   const parts = file.split('/')
   const projectsIdx = parts.lastIndexOf('projects')
   const slug = projectsIdx >= 0 ? parts[projectsIdx + 1] || '' : ''
@@ -1211,7 +1299,9 @@ function listCursorSessions(): SessionMeta[] {
       if (existsSync(f)) files.push(f)
     }
   }
-  return newestFiles(files).map(parseCursorSessionFile).filter((s): s is SessionMeta => !!s)
+  return newestFiles(files)
+    .map(parseCursorSessionFile)
+    .filter((s): s is SessionMeta => !!s)
 }
 
 // Hermes keeps its session history in a SQLite store (`sessions` table in
@@ -1238,7 +1328,11 @@ function listHermesSessions(): SessionMeta[] {
         const id = typeof r.id === 'string' ? r.id : ''
         if (!id) return null
         const at =
-          typeof r.ended_at === 'number' ? r.ended_at : typeof r.started_at === 'number' ? r.started_at : 0
+          typeof r.ended_at === 'number'
+            ? r.ended_at
+            : typeof r.started_at === 'number'
+              ? r.started_at
+              : 0
         const str = (v: unknown) => (typeof v === 'string' ? v : '')
         return {
           id,
@@ -1264,7 +1358,9 @@ function listHermesSessions(): SessionMeta[] {
 }
 
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
-export function listSessions(engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes'): SessionMeta[] {
+export function listSessions(
+  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes',
+): SessionMeta[] {
   const out =
     engine === 'claude'
       ? listClaudeSessions()
@@ -1302,7 +1398,10 @@ function sessionTitle(meta: SessionMeta, stats?: TranscriptStats): string {
   )
 }
 
-function toObservabilitySession(meta: SessionMeta, stats?: TranscriptStats | null): ObservabilitySession {
+function toObservabilitySession(
+  meta: SessionMeta,
+  stats?: TranscriptStats | null,
+): ObservabilitySession {
   const ready = !!stats?.ok
   const toolCounts = ready ? stats.toolCounts : {}
   return {
@@ -1330,10 +1429,12 @@ function toObservabilitySession(meta: SessionMeta, stats?: TranscriptStats | nul
 }
 
 export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
-  const sessions = listSessions().slice(0, Math.max(1, Math.min(500, limit))).map((meta): ObservabilitySession => {
-    const stats = meta.engine === 'claude' ? readTranscriptStats(meta.id) : null
-    return toObservabilitySession(meta, stats)
-  })
+  const sessions = listSessions()
+    .slice(0, Math.max(1, Math.min(500, limit)))
+    .map((meta): ObservabilitySession => {
+      const stats = meta.engine === 'claude' ? readTranscriptStats(meta.id) : null
+      return toObservabilitySession(meta, stats)
+    })
 
   const totals: ObservabilitySnapshot['totals'] = {
     sessions: sessions.length,
@@ -1356,7 +1457,13 @@ export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
     totals.costUsd += session.estCostUsd
     totals.toolCalls += session.toolTotal
 
-    const engine = (byEngine[session.engine] ??= { sessions: 0, readySessions: 0, tokens: 0, costUsd: 0, toolCalls: 0 })
+    const engine = (byEngine[session.engine] ??= {
+      sessions: 0,
+      readySessions: 0,
+      tokens: 0,
+      costUsd: 0,
+      toolCalls: 0,
+    })
     engine.sessions++
     engine.readySessions += session.telemetry === 'ready' ? 1 : 0
     engine.tokens += tokens
@@ -1369,7 +1476,8 @@ export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
     repo.costUsd += session.estCostUsd
     repo.toolCalls += session.toolTotal
 
-    for (const [tool, count] of Object.entries(session.toolCounts)) tools.set(tool, (tools.get(tool) || 0) + count)
+    for (const [tool, count] of Object.entries(session.toolCounts))
+      tools.set(tool, (tools.get(tool) || 0) + count)
   }
 
   return {
@@ -1385,7 +1493,11 @@ export function readObservabilitySnapshot(limit = 120): ObservabilitySnapshot {
   }
 }
 
-let observabilityDetailCache: { id: string; mtime: number; detail: ObservabilitySessionDetail } | null = null
+let observabilityDetailCache: {
+  id: string
+  mtime: number
+  detail: ObservabilitySessionDetail
+} | null = null
 
 export function readObservabilitySessionDetail(
   sessionId: string,
@@ -1424,7 +1536,10 @@ export function readObservabilitySessionDetail(
   return detail
 }
 
-export function readObservabilityToolCallPayload(sessionId: string, callId: string): ObservabilityToolCallPayload | null {
+export function readObservabilityToolCallPayload(
+  sessionId: string,
+  callId: string,
+): ObservabilityToolCallPayload | null {
   const file = findSessionFile(sessionId)
   if (!file || !callId) return null
 
@@ -1466,8 +1581,14 @@ export function readObservabilityToolCallPayload(sessionId: string, callId: stri
         inputBytes = Buffer.byteLength(inputText, 'utf8')
         startedLine = index + 1
         commandText = toolName === 'Bash' ? stringProp(input, 'command') : undefined
-        skillName = toolCallKind(toolName) === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : undefined
-        agentRole = toolCallKind(toolName) === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || undefined : undefined
+        skillName =
+          toolCallKind(toolName) === 'skill_invoke'
+            ? stringProp(input, 'skill', 'name', 'command')
+            : undefined
+        agentRole =
+          toolCallKind(toolName) === 'agent_launch'
+            ? stringProp(input, 'subagent_type', 'agent_type', 'role') || undefined
+            : undefined
       }
     }
     if (obj.message?.role === 'user' && Array.isArray(content)) {
@@ -1508,7 +1629,10 @@ const FULL_PAYLOAD_CAP = 1_000_000
 
 function capText(text: string): { text: string; truncated: boolean } {
   if (text.length <= FULL_PAYLOAD_CAP) return { text, truncated: false }
-  return { text: `${text.slice(0, FULL_PAYLOAD_CAP)}\n…[truncated ${text.length - FULL_PAYLOAD_CAP} chars]`, truncated: true }
+  return {
+    text: `${text.slice(0, FULL_PAYLOAD_CAP)}\n…[truncated ${text.length - FULL_PAYLOAD_CAP} chars]`,
+    truncated: true,
+  }
 }
 
 /**
@@ -1524,7 +1648,10 @@ export function readObservabilityIndexRecords(sessionId: string): ObservabilityI
   return parseObservabilityIndexRecordsFile(file, sessionId)
 }
 
-export function parseObservabilityIndexRecordsFile(file: string, sessionId: string): ObservabilityIndexRecords {
+export function parseObservabilityIndexRecordsFile(
+  file: string,
+  sessionId: string,
+): ObservabilityIndexRecords {
   let raw = ''
   try {
     raw = readFileSync(file, 'utf8')
@@ -1565,7 +1692,17 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
     try {
       obj = JSON.parse(line)
     } catch (e) {
-      pushEvent({ line: lineNo, timestamp: lineNo, kind: 'parse_error', severity: 'error', turnId: currentTurn, callId: '', toolName: '', role: '', text: (e as Error).message || 'Malformed JSON' })
+      pushEvent({
+        line: lineNo,
+        timestamp: lineNo,
+        kind: 'parse_error',
+        severity: 'error',
+        turnId: currentTurn,
+        callId: '',
+        toolName: '',
+        role: '',
+        text: (e as Error).message || 'Malformed JSON',
+      })
       return
     }
     const timestamp = timestampMs(obj, lineNo)
@@ -1575,13 +1712,26 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
 
     if (role === 'user') {
       const blocks = Array.isArray(content) ? content : []
-      const results = blocks.filter((b) => b && typeof b === 'object' && (b as any).type === 'tool_result')
+      const results = blocks.filter(
+        (b) => b && typeof b === 'object' && (b as any).type === 'tool_result',
+      )
       if (results.length > 0) {
         for (const block of results) {
-          const callId = typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : ''
+          const callId =
+            typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : ''
           const full = resultText((block as any).content, obj.toolUseResult)
           const isError = !!((block as any).is_error || obj.toolUseResult?.success === false)
-          pushEvent({ line: lineNo, timestamp, kind: 'tool_result', severity: isError ? 'error' : 'info', turnId: currentTurn, callId, toolName: '', role: 'user', text: full })
+          pushEvent({
+            line: lineNo,
+            timestamp,
+            kind: 'tool_result',
+            severity: isError ? 'error' : 'info',
+            turnId: currentTurn,
+            callId,
+            toolName: '',
+            role: 'user',
+            text: full,
+          })
           if (callId) {
             const call = calls.get(callId)
             if (call) {
@@ -1599,7 +1749,17 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
       if (!text || text.startsWith('<')) return
       turnIndex++
       currentTurn = `turn-${turnIndex}`
-      pushEvent({ line: lineNo, timestamp, kind: 'user_message', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'user', text })
+      pushEvent({
+        line: lineNo,
+        timestamp,
+        kind: 'user_message',
+        severity: 'info',
+        turnId: currentTurn,
+        callId: '',
+        toolName: '',
+        role: 'user',
+        text,
+      })
       return
     }
 
@@ -1608,9 +1768,29 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
       if (!block || typeof block !== 'object') continue
       const b: any = block
       if (b.type === 'thinking') {
-        pushEvent({ line: lineNo, timestamp, kind: 'reasoning', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'assistant', text: String(b.thinking || '') })
+        pushEvent({
+          line: lineNo,
+          timestamp,
+          kind: 'reasoning',
+          severity: 'info',
+          turnId: currentTurn,
+          callId: '',
+          toolName: '',
+          role: 'assistant',
+          text: String(b.thinking || ''),
+        })
       } else if (b.type === 'text') {
-        pushEvent({ line: lineNo, timestamp, kind: 'assistant_message', severity: 'info', turnId: currentTurn, callId: '', toolName: '', role: 'assistant', text: String(b.text || '') })
+        pushEvent({
+          line: lineNo,
+          timestamp,
+          kind: 'assistant_message',
+          severity: 'info',
+          turnId: currentTurn,
+          callId: '',
+          toolName: '',
+          role: 'assistant',
+          text: String(b.text || ''),
+        })
       } else if (b.type === 'tool_use') {
         const toolName = String(b.name || 'tool')
         const callId = typeof b.id === 'string' ? b.id : `${sessionId}:${lineNo}:${toolName}:${seq}`
@@ -1619,8 +1799,12 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
         const inputText = stableJson(input)
         const kind = toolCallKind(toolName)
         const commandText = toolName === 'Bash' ? stringProp(input, 'command') : ''
-        const agentRole = kind === 'agent_launch' ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent' : ''
-        const skillName = kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : ''
+        const agentRole =
+          kind === 'agent_launch'
+            ? stringProp(input, 'subagent_type', 'agent_type', 'role') || 'agent'
+            : ''
+        const skillName =
+          kind === 'skill_invoke' ? stringProp(input, 'skill', 'name', 'command') : ''
         calls.set(callId, {
           callId,
           turnId: currentTurn,
@@ -1637,7 +1821,17 @@ export function parseObservabilityIndexRecordsFile(file: string, sessionId: stri
           status: 'open',
           isError: false,
         })
-        pushEvent({ line: lineNo, timestamp, kind, severity: 'info', turnId: currentTurn, callId, toolName, role: 'assistant', text: inputText })
+        pushEvent({
+          line: lineNo,
+          timestamp,
+          kind,
+          severity: 'info',
+          turnId: currentTurn,
+          callId,
+          toolName,
+          role: 'assistant',
+          text: inputText,
+        })
       }
     }
   })
@@ -1682,7 +1876,12 @@ export function readLineWindow(
   file: string,
   centerLine: number,
   radius: number,
-): { windowLines: { line: number; text: string }[]; startLine: number; endLine: number; totalLines: number } {
+): {
+  windowLines: { line: number; text: string }[]
+  startLine: number
+  endLine: number
+  totalLines: number
+} {
   const wantCenter = centerLine > 0
   const cStart = wantCenter ? Math.max(1, Math.floor(centerLine) - radius) : 0
   const cEnd = wantCenter ? Math.floor(centerLine) + radius : 0
@@ -1721,11 +1920,17 @@ export function readLineWindow(
   const startLine = Math.max(1, center - radius)
   const endLine = Math.min(totalLines, center + radius)
   const useRanged = wantCenter && Math.floor(centerLine) <= totalLines
-  const windowLines = (useRanged ? ranged : tail).filter((l) => l.line >= startLine && l.line <= endLine)
+  const windowLines = (useRanged ? ranged : tail).filter(
+    (l) => l.line >= startLine && l.line <= endLine,
+  )
   return { windowLines, startLine, endLine, totalLines }
 }
 
-export function readObservabilityTranscriptWindow(sessionId: string, centerLine = 0, radius = 24): ObservabilityTranscriptWindow | null {
+export function readObservabilityTranscriptWindow(
+  sessionId: string,
+  centerLine = 0,
+  radius = 24,
+): ObservabilityTranscriptWindow | null {
   const file = findSessionFile(sessionId)
   if (!file) return null
 
@@ -1749,13 +1954,21 @@ export function readObservabilityTranscriptWindow(sessionId: string, centerLine 
       row.role = String(obj.message?.role || obj.role || '')
       const content = obj.message?.content ?? obj.content
       if (Array.isArray(content)) {
-        const toolUse = content.find((block) => block && typeof block === 'object' && (block as any).type === 'tool_use')
-        const toolResult = content.find((block) => block && typeof block === 'object' && (block as any).type === 'tool_result')
+        const toolUse = content.find(
+          (block) => block && typeof block === 'object' && (block as any).type === 'tool_use',
+        )
+        const toolResult = content.find(
+          (block) => block && typeof block === 'object' && (block as any).type === 'tool_result',
+        )
         if (toolUse) {
           row.callId = typeof (toolUse as any).id === 'string' ? (toolUse as any).id : undefined
-          row.toolName = typeof (toolUse as any).name === 'string' ? (toolUse as any).name : undefined
+          row.toolName =
+            typeof (toolUse as any).name === 'string' ? (toolUse as any).name : undefined
         } else if (toolResult) {
-          row.callId = typeof (toolResult as any).tool_use_id === 'string' ? (toolResult as any).tool_use_id : undefined
+          row.callId =
+            typeof (toolResult as any).tool_use_id === 'string'
+              ? (toolResult as any).tool_use_id
+              : undefined
           row.toolName = 'tool_result'
         }
       }

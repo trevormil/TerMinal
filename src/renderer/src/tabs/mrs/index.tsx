@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
-import { GitPullRequest, TriangleAlert, GitBranch, ArrowUpRight, ChevronDown, ChevronRight, Sparkles, Check, X } from 'lucide-react'
+import {
+  GitPullRequest,
+  TriangleAlert,
+  GitBranch,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  Check,
+  X,
+} from 'lucide-react'
 import { onNavigate } from '../../lib/nav'
 
 // project-template convention: agents tag their docs/ticket/report PRs with
@@ -25,16 +35,27 @@ const GROUPS: {
 }[] = [
   { id: 'open', label: 'open', toneKey: 'opened', match: (s) => s === 'opened' },
   { id: 'merged', label: 'merged', toneKey: 'merged', match: (s) => s === 'merged' },
-  { id: 'closed', label: 'closed', toneKey: 'closed', match: (s) => s !== 'opened' && s !== 'merged' },
+  {
+    id: 'closed',
+    label: 'closed',
+    toneKey: 'closed',
+    match: (s) => s !== 'opened' && s !== 'merged',
+  },
 ]
 const DEFAULT_COLLAPSED: GroupId[] = ['merged', 'closed']
 
-const scoreColor = (n: number) => (n >= 85 ? 'var(--gt-green)' : n >= 70 ? '#d6a84a' : 'var(--gt-red)')
+const scoreColor = (n: number) =>
+  n >= 85 ? 'var(--gt-green)' : n >= 70 ? '#d6a84a' : 'var(--gt-red)'
 const riskColor = (tier?: string) =>
   tier === 'high' ? 'var(--gt-red)' : tier === 'medium' ? '#d6a84a' : 'var(--gt-green)'
 const verdictColor = (v: string) =>
-  v === 'approve' ? 'var(--gt-green)' : v === 'request-changes' || v === 'blocked' ? 'var(--gt-red)' : '#a1a1aa'
-const testColor = (s: string) => (s === 'pass' ? 'var(--gt-green)' : s === 'fail' ? 'var(--gt-red)' : '#a1a1aa')
+  v === 'approve'
+    ? 'var(--gt-green)'
+    : v === 'request-changes' || v === 'blocked'
+      ? 'var(--gt-red)'
+      : '#a1a1aa'
+const testColor = (s: string) =>
+  s === 'pass' ? 'var(--gt-green)' : s === 'fail' ? 'var(--gt-red)' : '#a1a1aa'
 
 // The two numbers a reviewer scans for, as prominent tiles.
 function Stat({ value, label, color }: { value: string; label: string; color: string }) {
@@ -68,8 +89,13 @@ function MrRow({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[12px] text-zinc-500">{sym}{m.iid}</span>
-            {m.draft && <span className="text-[10px] uppercase tracking-wide text-amber-400">draft</span>}
+            <span className="font-mono text-[12px] text-zinc-500">
+              {sym}
+              {m.iid}
+            </span>
+            {m.draft && (
+              <span className="text-[10px] uppercase tracking-wide text-amber-400">draft</span>
+            )}
             <span className="truncate text-[13px] text-zinc-100">{m.title}</span>
             {m.labels?.includes(AUTO_MERGEABLE_LABEL) && (
               <Sparkles
@@ -89,7 +115,10 @@ function MrRow({
               <span>not reviewed</span>
             )}
             {r && (
-              <span className="inline-flex items-center gap-1" style={{ color: testColor(r.testStatus) }}>
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ color: testColor(r.testStatus) }}
+              >
                 {r.testStatus === 'pass' ? (
                   <Check size={11} strokeWidth={2.5} />
                 ) : r.testStatus === 'fail' ? (
@@ -110,7 +139,10 @@ function MrRow({
             </span>
             {m.author && <span>@{m.author}</span>}
             {m.workedBy.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-zinc-500" title="model(s) that wrote this MR">
+              <span
+                className="inline-flex items-center gap-1 text-zinc-500"
+                title="model(s) that wrote this MR"
+              >
                 ✍ {m.workedBy.join(', ')}
               </span>
             )}
@@ -118,7 +150,9 @@ function MrRow({
         </div>
         {r && (
           <div className="flex shrink-0 items-center gap-1">
-            {r.overall != null && <Stat value={String(r.overall)} label="score" color={scoreColor(r.overall)} />}
+            {r.overall != null && (
+              <Stat value={String(r.overall)} label="score" color={scoreColor(r.overall)} />
+            )}
             {r.riskTier && r.riskTier !== 'unscored' && (
               <Stat
                 value={r.riskScore != null ? `${r.riskScore}/5` : r.riskTier}
@@ -165,7 +199,12 @@ function GroupedMrList({
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
-  if (mrs === null) return <div className="p-6 text-[12px] text-zinc-600">Loading {label}s from {cli}…</div>
+  if (mrs === null)
+    return (
+      <div className="p-6 text-[12px] text-zinc-600">
+        Loading {label}s from {cli}…
+      </div>
+    )
   if (error)
     return (
       <div className="p-6 text-[12px] text-amber-400">
@@ -290,10 +329,13 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <GitPullRequest size={14} strokeWidth={2} className="text-zinc-400" />
         <span className="text-[12px] font-semibold text-zinc-200">{fullName}</span>
-        <span className="text-[11px] text-zinc-600">{ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}</span>
+        <span className="text-[11px] text-zinc-600">
+          {ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}
+        </span>
         {hasRemote && mrs && (
           <span className="ml-auto text-[11px] text-zinc-500">
-            <span className="tabular-nums text-zinc-300">{openCount}</span> open · {mrs.length} total
+            <span className="tabular-nums text-zinc-300">{openCount}</span> open · {mrs.length}{' '}
+            total
           </span>
         )}
       </div>

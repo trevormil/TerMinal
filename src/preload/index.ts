@@ -27,7 +27,8 @@ type StartOpts = {
 // The single bridge the renderer (and every plugin) talks to.
 const gt = {
   // session lifecycle (each session keyed by a renderer-generated id)
-  listSessions: (engine?: 'claude' | 'codex' | 'cursor') => ipcRenderer.invoke('sessions:list', engine),
+  listSessions: (engine?: 'claude' | 'codex' | 'cursor') =>
+    ipcRenderer.invoke('sessions:list', engine),
   startSession: (key: string, opts: StartOpts) => ipcRenderer.invoke('session:start', key, opts),
   setActiveSession: (key: string) => ipcRenderer.invoke('session:setActive', key),
   stopSession: (key: string) => ipcRenderer.invoke('session:stop', key),
@@ -70,8 +71,16 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
-  cheapLlm: (opts: { messages: { role: string; content: string }[]; model?: string; engine?: 'codex' | 'claude' | 'cursor'; route?: 'auto' | 'claude-p'; cwd?: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) =>
-    ipcRenderer.invoke('llm:cheap', opts),
+  cheapLlm: (opts: {
+    messages: { role: string; content: string }[]
+    model?: string
+    engine?: 'codex' | 'claude' | 'cursor'
+    route?: 'auto' | 'claude-p'
+    cwd?: string
+    maxTokens?: number
+    temperature?: number
+    timeoutMs?: number
+  }) => ipcRenderer.invoke('llm:cheap', opts),
   classify: {
     ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),
     risk: (input: { files: string[]; diffLines?: number; title?: string }) =>
@@ -97,10 +106,48 @@ const gt = {
       ipcRenderer.invoke('agents:design', text, engine, scope, model),
     personas: () => ipcRenderer.invoke('personas:list'),
     pipelines: () => ipcRenderer.invoke('agents:pipelines'),
-    run: (id: string, engine?: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, openrouterHarness?: 'codex' | 'hermes', extraContext?: string) =>
-      ipcRenderer.invoke('agents:run', id, engine, persona, pipeline, model, remote, openrouterHarness, extraContext),
-    runTicket: (slug: string, engine: string, persona?: string, pipeline?: string, model?: string, remote?: unknown, lanes?: number, extraContext?: string) =>
-      ipcRenderer.invoke('agents:run-ticket', slug, engine, persona, pipeline, model, remote, lanes, extraContext),
+    run: (
+      id: string,
+      engine?: string,
+      persona?: string,
+      pipeline?: string,
+      model?: string,
+      remote?: unknown,
+      openrouterHarness?: 'codex' | 'hermes',
+      extraContext?: string,
+    ) =>
+      ipcRenderer.invoke(
+        'agents:run',
+        id,
+        engine,
+        persona,
+        pipeline,
+        model,
+        remote,
+        openrouterHarness,
+        extraContext,
+      ),
+    runTicket: (
+      slug: string,
+      engine: string,
+      persona?: string,
+      pipeline?: string,
+      model?: string,
+      remote?: unknown,
+      lanes?: number,
+      extraContext?: string,
+    ) =>
+      ipcRenderer.invoke(
+        'agents:run-ticket',
+        slug,
+        engine,
+        persona,
+        pipeline,
+        model,
+        remote,
+        lanes,
+        extraContext,
+      ),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
       kind: 'review' | 'iterate',
@@ -141,17 +188,21 @@ const gt = {
     design: (text: string, engine: string, model?: string) =>
       ipcRenderer.invoke('persistent-agents:design', text, engine, model),
     files: {
-      list: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-list', id, rel),
-      read: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-read', id, rel),
+      list: (id: string, rel: string) =>
+        ipcRenderer.invoke('persistent-agents:files-list', id, rel),
+      read: (id: string, rel: string) =>
+        ipcRenderer.invoke('persistent-agents:files-read', id, rel),
       write: (id: string, rel: string, content: string) =>
         ipcRenderer.invoke('persistent-agents:files-write', id, rel, content),
       create: (id: string, rel: string, dir: boolean) =>
         ipcRenderer.invoke('persistent-agents:files-create', id, rel, dir),
-      del: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:files-delete', id, rel),
+      del: (id: string, rel: string) =>
+        ipcRenderer.invoke('persistent-agents:files-delete', id, rel),
     },
     artifacts: {
       list: (id: string) => ipcRenderer.invoke('persistent-agents:artifacts-list', id),
-      read: (id: string, rel: string) => ipcRenderer.invoke('persistent-agents:artifacts-read', id, rel),
+      read: (id: string, rel: string) =>
+        ipcRenderer.invoke('persistent-agents:artifacts-read', id, rel),
     },
   },
 
@@ -182,7 +233,8 @@ const gt = {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
     file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
-    resolve: (id: string, resolved?: boolean, hostId?: string) => ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
+    resolve: (id: string, resolved?: boolean, hostId?: string) =>
+      ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
   },
   factory: {
@@ -246,13 +298,13 @@ const gt = {
     get: (slug: string) => ipcRenderer.invoke('tickets:get', slug),
     providerGet: () => ipcRenderer.invoke('tickets:provider-get'),
     providerSave: (cfg: unknown) => ipcRenderer.invoke('tickets:provider-save', cfg),
-    providerTest: (cfg: unknown, smoke?: boolean) => ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
+    providerTest: (cfg: unknown, smoke?: boolean) =>
+      ipcRenderer.invoke('tickets:provider-test', cfg, smoke),
     linearTeams: (cfg?: unknown) => ipcRenderer.invoke('tickets:linear-teams', cfg),
     openInObsidian: (slug: string) => ipcRenderer.invoke('tickets:open-in-obsidian', slug),
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
-    update: (slug: string, patch: unknown) =>
-      ipcRenderer.invoke('tickets:update', slug, patch),
+    update: (slug: string, patch: unknown) => ipcRenderer.invoke('tickets:update', slug, patch),
     spawn: (text: string, engine: string, model?: string, remote?: unknown) =>
       ipcRenderer.invoke('tickets:spawn', text, engine, model, remote),
   },
@@ -267,7 +319,8 @@ const gt = {
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
-  getWorkingStructuralDiff: (path: string, width?: number) => ipcRenderer.invoke('git:working-structural-diff', path, width),
+  getWorkingStructuralDiff: (path: string, width?: number) =>
+    ipcRenderer.invoke('git:working-structural-diff', path, width),
   getStructuralDiff: (iid: number, path: string, width?: number) =>
     ipcRenderer.invoke('mrs:structural-diff', iid, path, width),
   difftAvailable: () => ipcRenderer.invoke('difft:available'),
@@ -300,7 +353,8 @@ const gt = {
   budgets: {
     get: () => ipcRenderer.invoke('budgets:get'),
     setDaily: (usd: number) => ipcRenderer.invoke('budgets:setDaily', usd),
-    setAgent: (agentId: string, usd: number) => ipcRenderer.invoke('budgets:setAgent', agentId, usd),
+    setAgent: (agentId: string, usd: number) =>
+      ipcRenderer.invoke('budgets:setAgent', agentId, usd),
     override: (durationMs: number) => ipcRenderer.invoke('budgets:override', durationMs),
     gate: (agentId?: string) => ipcRenderer.invoke('budgets:gate', agentId),
   },
@@ -308,16 +362,26 @@ const gt = {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),
     log: (id: string) => ipcRenderer.invoke('bg:log', id),
-    spawn: (input: { repoRoot: string; prompt: string; engine?: 'claude' | 'codex' | 'cursor'; model?: string }) =>
-      ipcRenderer.invoke('bg:spawn', input),
+    spawn: (input: {
+      repoRoot: string
+      prompt: string
+      engine?: 'claude' | 'codex' | 'cursor'
+      model?: string
+    }) => ipcRenderer.invoke('bg:spawn', input),
     cancel: (id: string) => ipcRenderer.invoke('bg:cancel', id),
   },
   loops: {
     list: () => ipcRenderer.invoke('loops:list'),
     get: (id: string) => ipcRenderer.invoke('loops:get', id),
     state: (id: string) => ipcRenderer.invoke('loops:state', id),
-    create: (input: { repoRoot: string; goal: string; mode?: 'headless' | 'paired' | 'single'; engine?: 'claude' | 'codex' | 'cursor' | 'hermes'; model?: string; maxIterations?: number }) =>
-      ipcRenderer.invoke('loops:create', input),
+    create: (input: {
+      repoRoot: string
+      goal: string
+      mode?: 'headless' | 'paired' | 'single'
+      engine?: 'claude' | 'codex' | 'cursor' | 'hermes'
+      model?: string
+      maxIterations?: number
+    }) => ipcRenderer.invoke('loops:create', input),
     step: (id: string) => ipcRenderer.invoke('loops:step', id),
     restart: (id: string) => ipcRenderer.invoke('loops:restart', id),
     stop: (id: string) => ipcRenderer.invoke('loops:stop', id),
@@ -330,13 +394,16 @@ const gt = {
     models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
-    indexQuery: (query: string, arg?: string) => ipcRenderer.invoke('observability:index-query', query, arg),
+    indexQuery: (query: string, arg?: string) =>
+      ipcRenderer.invoke('observability:index-query', query, arg),
   },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),
     session: (sessionId: string) => ipcRenderer.invoke('agentview:session', sessionId),
-    toolCall: (sessionId: string, callId: string) => ipcRenderer.invoke('agentview:tool-call', sessionId, callId),
-    transcriptWindow: (sessionId: string, centerLine: number = 0, radius: number = 24) => ipcRenderer.invoke('agentview:transcript-window', sessionId, centerLine, radius),
+    toolCall: (sessionId: string, callId: string) =>
+      ipcRenderer.invoke('agentview:tool-call', sessionId, callId),
+    transcriptWindow: (sessionId: string, centerLine: number = 0, radius: number = 24) =>
+      ipcRenderer.invoke('agentview:transcript-window', sessionId, centerLine, radius),
   },
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   clipboardRead: (): Promise<string> => ipcRenderer.invoke('clipboard:read'),
@@ -364,9 +431,11 @@ const gt = {
   },
   knowledge: {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),
-    write: (scope: 'repo' | 'global', kb: unknown) => ipcRenderer.invoke('knowledge:write', scope, kb),
+    write: (scope: 'repo' | 'global', kb: unknown) =>
+      ipcRenderer.invoke('knowledge:write', scope, kb),
     preview: (url: string) => ipcRenderer.invoke('knowledge:preview', url),
-    ragStatus: (scope: 'repo' | 'global', item: unknown) => ipcRenderer.invoke('knowledge:rag-status', scope, item),
+    ragStatus: (scope: 'repo' | 'global', item: unknown) =>
+      ipcRenderer.invoke('knowledge:rag-status', scope, item),
     ragReindex: (scope: 'repo' | 'global', item: unknown, fullRebuild?: boolean) =>
       ipcRenderer.invoke('knowledge:rag-reindex', scope, item, fullRebuild),
     ragAddDocument: (scope: 'repo' | 'global', item: unknown, content: string, filepath?: string) =>

@@ -1,6 +1,13 @@
 import { test, expect, describe, mock, beforeEach } from 'bun:test'
 
-mock.module('electron', () => ({ Notification: class { static isSupported() { return false } show() {} } }))
+mock.module('electron', () => ({
+  Notification: class {
+    static isSupported() {
+      return false
+    }
+    show() {}
+  },
+}))
 
 const detailRaw = mock(async () => ({
   iid: 12,
@@ -21,12 +28,10 @@ const fileContent = mock(
   async (_repoRoot: string, _path: string, ref: string): Promise<string | null> =>
     ref === 'basesha' ? 'old content\n' : 'new content\n',
 )
-const runDifft = mock(
-  async (): Promise<{ ok: boolean; output: string; error?: string }> => ({
-    ok: true,
-    output: '\x1b[32mstructural diff output\x1b[0m',
-  }),
-)
+const runDifft = mock(async (): Promise<{ ok: boolean; output: string; error?: string }> => ({
+  ok: true,
+  output: '\x1b[32mstructural diff output\x1b[0m',
+}))
 
 mock.module('./forge', () => ({
   detailRaw,
@@ -84,7 +89,11 @@ describe('getStructuralDiff', () => {
   })
 
   test('difft failure surfaces as error reason', async () => {
-    runDifft.mockImplementationOnce(async () => ({ ok: false, output: '', error: 'difft not found on PATH' }))
+    runDifft.mockImplementationOnce(async () => ({
+      ok: false,
+      output: '',
+      error: 'difft not found on PATH',
+    }))
     const res = await getStructuralDiff('/repo', 12, `src/err-${Math.random()}.ts`)
     expect(res).toEqual({ ok: false, reason: 'error', message: 'difft not found on PATH' })
   })

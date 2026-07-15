@@ -68,17 +68,25 @@ describe('parseUpdates', () => {
   })
 
   test('edited_message is honored', () => {
-    const json = { result: [{ update_id: 7, edited_message: { chat: { id: '999' }, text: '/runs' } }] }
+    const json = {
+      result: [{ update_id: 7, edited_message: { chat: { id: '999' }, text: '/runs' } }],
+    }
     expect(parseUpdates(json, '999').messages).toEqual([{ updateId: 7, text: '/runs' }])
   })
 
   test('non-text updates ignored; empty result → offset 0', () => {
-    expect(parseUpdates({ result: [{ update_id: 3, message: { chat: { id: '999' } } }] }, '999')).toEqual({
+    expect(
+      parseUpdates({ result: [{ update_id: 3, message: { chat: { id: '999' } } }] }, '999'),
+    ).toEqual({
       messages: [],
       callbacks: [],
       nextOffset: 4,
     })
-    expect(parseUpdates({ result: [] }, '999')).toEqual({ messages: [], callbacks: [], nextOffset: 0 })
+    expect(parseUpdates({ result: [] }, '999')).toEqual({
+      messages: [],
+      callbacks: [],
+      nextOffset: 0,
+    })
     expect(parseUpdates({}, '999')).toEqual({ messages: [], callbacks: [], nextOffset: 0 })
   })
 

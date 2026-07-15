@@ -18,7 +18,15 @@ function reldate(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
   return (
     <button
       onClick={onClick}
@@ -70,8 +78,9 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
         <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
           <div className="border-b border-[var(--gt-border)] p-2">
             <SkillHint>
-              Working notebook for one goal: context, checklist, tickets, branches, PRs, decisions, and follow-ups.
-              Use <code className="font-mono text-zinc-300">/session-start "goal"</code> and{' '}
+              Working notebook for one goal: context, checklist, tickets, branches, PRs, decisions,
+              and follow-ups. Use{' '}
+              <code className="font-mono text-zinc-300">/session-start "goal"</code> and{' '}
               <code className="font-mono text-zinc-300">/session-end</code>.
             </SkillHint>
           </div>
@@ -79,8 +88,9 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : shown.length === 0 ? (
             <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
-              No session docs in <span className="font-mono">.TerMinal/sessions/</span> yet. Start one with{' '}
-              <span className="font-mono text-zinc-400">/session-start</span> in the terminal.
+              No session docs in <span className="font-mono">.TerMinal/sessions/</span> yet. Start
+              one with <span className="font-mono text-zinc-400">/session-start</span> in the
+              terminal.
             </div>
           ) : (
             shown.map((s) => (
@@ -92,8 +102,12 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-zinc-600">{s.anchor || `#${s.id}`}</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">{s.title}</span>
+                  <span className="font-mono text-[11px] text-zinc-600">
+                    {s.anchor || `#${s.id}`}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">
+                    {s.title}
+                  </span>
                   <Badge tone={sessionStatusTone(s.status)}>{s.status}</Badge>
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-600">

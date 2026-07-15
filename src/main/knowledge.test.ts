@@ -13,7 +13,13 @@ describe('knowledge base schema', () => {
     const kb = migrateKnowledge({
       categories: [{ id: 'playbooks', title: 'Playbooks', order: 0 }],
       items: [
-        { id: 'one', title: 'One', kind: 'video', categoryId: 'missing', url: 'https://example.com' },
+        {
+          id: 'one',
+          title: 'One',
+          kind: 'video',
+          categoryId: 'missing',
+          url: 'https://example.com',
+        },
       ],
     })
     expect(kb.items[0].categoryId).toBe('playbooks')
@@ -53,8 +59,14 @@ describe('knowledge base schema', () => {
 
   test('duplicate ids are made deterministic enough to stay unique', () => {
     const kb = migrateKnowledge({
-      categories: [{ id: 'general', title: 'General' }, { id: 'general', title: 'General' }],
-      items: [{ id: 'same', title: 'A' }, { id: 'same', title: 'B' }],
+      categories: [
+        { id: 'general', title: 'General' },
+        { id: 'general', title: 'General' },
+      ],
+      items: [
+        { id: 'same', title: 'A' },
+        { id: 'same', title: 'B' },
+      ],
     })
     expect(new Set(kb.categories.map((c) => c.id)).size).toBe(kb.categories.length)
     expect(new Set(kb.items.map((i) => i.id)).size).toBe(kb.items.length)

@@ -37,11 +37,22 @@ export type RemoteRunStartInput = {
   contextPreamble?: boolean
 }
 export type RemoteDirEntry = { name: string; path: string; dir: true }
-export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
+export type RemoteDirList = {
+  cwd: string
+  parent: string
+  entries: RemoteDirEntry[]
+  error?: string
+}
 export type RemoteScaffoldResult = { ok: boolean; path?: string; error?: string }
 export type RemoteProjectsDirValidation =
   | { ok: true; dir: string }
-  | { ok: false; reason: 'is-repo' | 'error'; dir: string; suggestedParent?: string; message: string }
+  | {
+      ok: false
+      reason: 'is-repo' | 'error'
+      dir: string
+      suggestedParent?: string
+      message: string
+    }
 export type RemoteBootstrapStatus = {
   state: 'full' | 'partial' | 'none'
   bootstrapped: boolean
@@ -290,27 +301,48 @@ function remoteEnvCommand(inner: string, cwd?: string): string {
   const path =
     'export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"; ' +
     '[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"; '
-  const cd = cwd?.trim() && cwd.trim() !== '~' ? `cd -- ${cwd.trim().startsWith('~/') ? `~/${shq(cwd.trim().slice(2))}` : shq(cwd.trim())}; ` : ''
+  const cd =
+    cwd?.trim() && cwd.trim() !== '~'
+      ? `cd -- ${cwd.trim().startsWith('~/') ? `~/${shq(cwd.trim().slice(2))}` : shq(cwd.trim())}; `
+      : ''
   return `bash -lc ${shq(path + cd + inner)}`
 }
 
-export function remoteCommandForEngine(engine: string, args: string[], cwd?: string, overridePath?: string): string {
-  const bin = engine === 'local' ? '"${SHELL:-/bin/bash}"' : overridePath?.trim() || (engine === 'cursor' ? 'cursor-agent' : engine)
+export function remoteCommandForEngine(
+  engine: string,
+  args: string[],
+  cwd?: string,
+  overridePath?: string,
+): string {
+  const bin =
+    engine === 'local'
+      ? '"${SHELL:-/bin/bash}"'
+      : overridePath?.trim() || (engine === 'cursor' ? 'cursor-agent' : engine)
   const renderedBin = bin.startsWith('~/') ? `"$HOME"/${shq(bin.slice(2))}` : shq(bin)
-  const cmd = engine === 'local' ? `exec ${bin} -l` : `exec ${[renderedBin, ...args.map(shq)].join(' ')}`
+  const cmd =
+    engine === 'local' ? `exec ${bin} -l` : `exec ${[renderedBin, ...args.map(shq)].join(' ')}`
   return remoteEnvCommand('export TERM=xterm-256color COLORTERM=truecolor CLICOLOR=1; ' + cmd, cwd)
 }
 
 function remoteJson<T>(remote: RemoteSessionRef, input: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     if (!isSafeSshTarget(remote.sshTarget)) {
-      return reject(new Error(`refusing to ssh to unsafe target: ${JSON.stringify(remote.sshTarget)}`))
+      return reject(
+        new Error(`refusing to ssh to unsafe target: ${JSON.stringify(remote.sshTarget)}`),
+      )
     }
     const payload = JSON.stringify({ cwd: remote.cwd || '~', ...input })
     const inner = `node -e ${shq(REMOTE_SCRIPT)} ${shq(payload)}`
     execFile(
       'ssh',
-      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', remote.sshTarget, remoteEnvCommand(inner, remote.cwd)],
+      [
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'ConnectTimeout=10',
+        remote.sshTarget,
+        remoteEnvCommand(inner, remote.cwd),
+      ],
       { encoding: 'utf8', timeout: 60_000, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) return reject(new Error((stderr || err.message || 'ssh failed').trim()))
@@ -326,63 +358,93 @@ function remoteJson<T>(remote: RemoteSessionRef, input: Record<string, unknown>)
   })
 }
 
-export const remoteProbe = (remote: RemoteSessionRef) => remoteJson<RemoteProbe>(remote, { op: 'probe' })
-export const remoteGitStatus = (remote: RemoteSessionRef) => remoteJson<GitStatus>(remote, { op: 'gitStatus' })
+export const remoteProbe = (remote: RemoteSessionRef) =>
+  remoteJson<RemoteProbe>(remote, { op: 'probe' })
+export const remoteGitStatus = (remote: RemoteSessionRef) =>
+  remoteJson<GitStatus>(remote, { op: 'gitStatus' })
 export const remoteTickets = {
   list: (remote: RemoteSessionRef) => remoteJson<Ticket[]>(remote, { op: 'tickets.list' }),
-  get: (remote: RemoteSessionRef, slug: string) => remoteJson<Ticket | null>(remote, { op: 'tickets.get', slug }),
-  create: (remote: RemoteSessionRef, ticket: NewTicket) => remoteJson<Ticket>(remote, { op: 'tickets.create', ticket }),
-  update: (remote: RemoteSessionRef, slug: string, patch: TicketPatch) => remoteJson<boolean>(remote, { op: 'tickets.update', slug, patch }),
+  get: (remote: RemoteSessionRef, slug: string) =>
+    remoteJson<Ticket | null>(remote, { op: 'tickets.get', slug }),
+  create: (remote: RemoteSessionRef, ticket: NewTicket) =>
+    remoteJson<Ticket>(remote, { op: 'tickets.create', ticket }),
+  update: (remote: RemoteSessionRef, slug: string, patch: TicketPatch) =>
+    remoteJson<boolean>(remote, { op: 'tickets.update', slug, patch }),
 }
 export const remoteMrs = {
   list: (remote: RemoteSessionRef) => remoteJson<MrListResult>(remote, { op: 'mrs.list' }),
-  get: (remote: RemoteSessionRef, iid: number) => remoteJson<MrDetail | null>(remote, { op: 'mrs.get', iid }),
-  diff: (remote: RemoteSessionRef, iid: number) => remoteJson<string>(remote, { op: 'mrs.diff', iid }),
-  ci: (remote: RemoteSessionRef, iid: number) => remoteJson<CiInfo | null>(remote, { op: 'mrs.ci', iid }),
-  merge: (remote: RemoteSessionRef, iid: number) => remoteJson<{ ok: boolean; error?: string }>(remote, { op: 'mrs.merge', iid }),
+  get: (remote: RemoteSessionRef, iid: number) =>
+    remoteJson<MrDetail | null>(remote, { op: 'mrs.get', iid }),
+  diff: (remote: RemoteSessionRef, iid: number) =>
+    remoteJson<string>(remote, { op: 'mrs.diff', iid }),
+  ci: (remote: RemoteSessionRef, iid: number) =>
+    remoteJson<CiInfo | null>(remote, { op: 'mrs.ci', iid }),
+  merge: (remote: RemoteSessionRef, iid: number) =>
+    remoteJson<{ ok: boolean; error?: string }>(remote, { op: 'mrs.merge', iid }),
 }
 export const remoteFiles = {
-  list: (remote: RemoteSessionRef, rel: string) => remoteJson<Entry[]>(remote, { op: 'files.list', rel }),
-  read: (remote: RemoteSessionRef, rel: string) => remoteJson<ReadResult>(remote, { op: 'files.read', rel }),
-  write: (remote: RemoteSessionRef, rel: string, content: string) => remoteJson<boolean>(remote, { op: 'files.write', rel, content }),
-  search: (remote: RemoteSessionRef, q: string) => remoteJson<SearchHit[]>(remote, { op: 'files.search', q }),
-  create: (remote: RemoteSessionRef, rel: string, dir: boolean) => remoteJson<boolean>(remote, { op: 'files.create', rel, dir }),
-  rename: (remote: RemoteSessionRef, from: string, to: string) => remoteJson<boolean>(remote, { op: 'files.rename', from, to }),
-  del: (remote: RemoteSessionRef, rel: string) => remoteJson<boolean>(remote, { op: 'files.delete', rel }),
+  list: (remote: RemoteSessionRef, rel: string) =>
+    remoteJson<Entry[]>(remote, { op: 'files.list', rel }),
+  read: (remote: RemoteSessionRef, rel: string) =>
+    remoteJson<ReadResult>(remote, { op: 'files.read', rel }),
+  write: (remote: RemoteSessionRef, rel: string, content: string) =>
+    remoteJson<boolean>(remote, { op: 'files.write', rel, content }),
+  search: (remote: RemoteSessionRef, q: string) =>
+    remoteJson<SearchHit[]>(remote, { op: 'files.search', q }),
+  create: (remote: RemoteSessionRef, rel: string, dir: boolean) =>
+    remoteJson<boolean>(remote, { op: 'files.create', rel, dir }),
+  rename: (remote: RemoteSessionRef, from: string, to: string) =>
+    remoteJson<boolean>(remote, { op: 'files.rename', from, to }),
+  del: (remote: RemoteSessionRef, rel: string) =>
+    remoteJson<boolean>(remote, { op: 'files.delete', rel }),
 }
 export const remoteDocs = {
   list: (remote: RemoteSessionRef) => remoteJson<DocsTree>(remote, { op: 'docs.list' }),
-  get: (remote: RemoteSessionRef, relPath: string) => remoteJson<string>(remote, { op: 'docs.get', relPath }),
+  get: (remote: RemoteSessionRef, relPath: string) =>
+    remoteJson<string>(remote, { op: 'docs.get', relPath }),
 }
 export const remoteAgents = {
   list: (remote: RemoteSessionRef) => remoteJson<Agent[]>(remote, { op: 'agents.list' }),
-  script: (remote: RemoteSessionRef, id: string) => remoteJson<{ path: string; body: string } | null>(remote, { op: 'agents.script', id }),
+  script: (remote: RemoteSessionRef, id: string) =>
+    remoteJson<{ path: string; body: string } | null>(remote, { op: 'agents.script', id }),
 }
 export const remoteSchedules = {
   list: (remote: RemoteSessionRef) => remoteJson<Schedule[]>(remote, { op: 'schedules.list' }),
-  save: (remote: RemoteSessionRef, schedule: Schedule) => remoteJson<{ ok: true; id: string }>(remote, { op: 'schedules.save', schedule }),
-  remove: (remote: RemoteSessionRef, id: string) => remoteJson<boolean>(remote, { op: 'schedules.remove', id }),
-  toggle: (remote: RemoteSessionRef, id: string, enabled: boolean) => remoteJson<boolean>(remote, { op: 'schedules.toggle', id, enabled }),
-  runNow: (remote: RemoteSessionRef, id: string, opts?: { enginePath?: string; worktreesDir?: string }) =>
+  save: (remote: RemoteSessionRef, schedule: Schedule) =>
+    remoteJson<{ ok: true; id: string }>(remote, { op: 'schedules.save', schedule }),
+  remove: (remote: RemoteSessionRef, id: string) =>
+    remoteJson<boolean>(remote, { op: 'schedules.remove', id }),
+  toggle: (remote: RemoteSessionRef, id: string, enabled: boolean) =>
+    remoteJson<boolean>(remote, { op: 'schedules.toggle', id, enabled }),
+  runNow: (
+    remote: RemoteSessionRef,
+    id: string,
+    opts?: { enginePath?: string; worktreesDir?: string },
+  ) =>
     remoteJson<AgentRun | { error: string }>(remote, {
       op: 'schedules.runNow',
       id,
       worktreesDir: opts?.worktreesDir ?? remote.daemon?.worktreesDir,
       enginePath: opts?.enginePath,
     }),
-  runs: (remote: RemoteSessionRef, id?: string) => remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
-  runLog: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
+  runs: (remote: RemoteSessionRef, id?: string) =>
+    remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
+  runLog: (remote: RemoteSessionRef, runId: string) =>
+    remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
 }
 export const remoteHitl = {
   list: (remote: RemoteSessionRef) => remoteJson<HitlItem[]>(remote, { op: 'hitl.list' }),
   resolve: (remote: RemoteSessionRef, id: string, resolved: boolean) =>
     remoteJson<boolean>(remote, { op: 'hitl.resolve', id, resolved }),
-  remove: (remote: RemoteSessionRef, id: string) => remoteJson<boolean>(remote, { op: 'hitl.remove', id }),
+  remove: (remote: RemoteSessionRef, id: string) =>
+    remoteJson<boolean>(remote, { op: 'hitl.remove', id }),
 }
 export const remoteRuns = {
   all: (remote: RemoteSessionRef) => remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }),
-  log: (remote: RemoteSessionRef, runId: string) => remoteJson<string>(remote, { op: 'runs.log', runId }),
-  cancel: (remote: RemoteSessionRef, id: string) => remoteJson<boolean>(remote, { op: 'runs.cancel', id }),
+  log: (remote: RemoteSessionRef, runId: string) =>
+    remoteJson<string>(remote, { op: 'runs.log', runId }),
+  cancel: (remote: RemoteSessionRef, id: string) =>
+    remoteJson<boolean>(remote, { op: 'runs.cancel', id }),
   start: (remote: RemoteSessionRef, run: RemoteRunStartInput) =>
     remoteJson<AgentRun | { error: string }>(remote, {
       op: 'runs.start',
@@ -396,14 +458,18 @@ export const remoteRuns = {
 }
 export const remoteSessions = {
   list: (remote: RemoteSessionRef) => remoteJson<ProjectSession[]>(remote, { op: 'sessions.list' }),
-  get: (remote: RemoteSessionRef, slug: string) => remoteJson<ProjectSession | null>(remote, { op: 'sessions.get', slug }),
+  get: (remote: RemoteSessionRef, slug: string) =>
+    remoteJson<ProjectSession | null>(remote, { op: 'sessions.get', slug }),
 }
 export const remoteNotes = {
-  read: (remote: RemoteSessionRef, scope: NotesScope) => remoteJson<string>(remote, { op: 'notes.read', scope }),
-  write: (remote: RemoteSessionRef, scope: NotesScope, content: string) => remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
+  read: (remote: RemoteSessionRef, scope: NotesScope) =>
+    remoteJson<string>(remote, { op: 'notes.read', scope }),
+  write: (remote: RemoteSessionRef, scope: NotesScope, content: string) =>
+    remoteJson<boolean>(remote, { op: 'notes.write', scope, content }),
 }
 export const remoteDirs = {
-  list: (remote: RemoteSessionRef, path?: string) => remoteJson<RemoteDirList>(remote, { op: 'dirs.list', path }),
+  list: (remote: RemoteSessionRef, path?: string) =>
+    remoteJson<RemoteDirList>(remote, { op: 'dirs.list', path }),
 }
 export const remoteSettings = {
   validateProjectsDir: (remote: RemoteSessionRef, dir: string) =>
@@ -411,11 +477,22 @@ export const remoteSettings = {
 }
 export const remoteProject = {
   scaffold: (remote: RemoteSessionRef, name: string, parentDir: string, templateRepo?: string) =>
-    remoteJson<RemoteScaffoldResult>(remote, { op: 'project.scaffold', name, parentDir, templateRepo }),
+    remoteJson<RemoteScaffoldResult>(remote, {
+      op: 'project.scaffold',
+      name,
+      parentDir,
+      templateRepo,
+    }),
   bootstrapStatus: (remote: RemoteSessionRef) =>
     remoteJson<RemoteBootstrapStatus>(remote, { op: 'workspace.bootstrapStatus' }),
   bootstrap: (remote: RemoteSessionRef, templateRepo?: string) =>
-    remoteJson<{ ok: true } | { error: string }>(remote, { op: 'workspace.bootstrap', templateRepo }),
+    remoteJson<{ ok: true } | { error: string }>(remote, {
+      op: 'workspace.bootstrap',
+      templateRepo,
+    }),
 }
-export const remoteWorkspaceSearch = (remote: RemoteSessionRef, q: string, kinds?: WorkspaceSearchKind[]) =>
-  remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })
+export const remoteWorkspaceSearch = (
+  remote: RemoteSessionRef,
+  q: string,
+  kinds?: WorkspaceSearchKind[],
+) => remoteJson<WorkspaceSearchResponse>(remote, { op: 'workspace.search', q, kinds })

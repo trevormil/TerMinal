@@ -149,7 +149,9 @@ export function costOf(
   const out = tokens.output || 0
   const cr = tokens.cacheRead || 0
   const cw = tokens.cacheWrite || 0
-  return inp * p.input + out * p.output + cr * (p.cacheRead ?? p.input) + cw * (p.cacheWrite ?? p.input)
+  return (
+    inp * p.input + out * p.output + cr * (p.cacheRead ?? p.input) + cw * (p.cacheWrite ?? p.input)
+  )
 }
 
 export function knownModels(): string[] {

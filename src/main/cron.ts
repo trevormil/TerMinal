@@ -115,7 +115,8 @@ const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m
 export function describeSpec(spec: ScheduleSpec): string {
   if (spec.kind === 'cron') return `cron: ${spec.expr}`
   const at = hhmm(spec.hour, spec.minute)
-  if (!spec.weekdays || spec.weekdays.length === 0 || spec.weekdays.length === 7) return `daily at ${at}`
+  if (!spec.weekdays || spec.weekdays.length === 0 || spec.weekdays.length === 7)
+    return `daily at ${at}`
   const days = [...spec.weekdays].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d])
   return `${days.join(',')} at ${at}`
 }

@@ -56,7 +56,12 @@ describe('pickTemplateSource', () => {
       candidates: [],
       marker: 'bootstrap.sh',
       templateRepo: 'https://example.com/template.git',
-      cloneToTmp: () => ({ dir: clone, cleanup: () => { cleanup = true } }),
+      cloneToTmp: () => ({
+        dir: clone,
+        cleanup: () => {
+          cleanup = true
+        },
+      }),
     })
     expect(picked).toMatchObject({ dir: clone })
     expect(cleanup).toBe(false)
@@ -72,7 +77,12 @@ describe('pickTemplateSource', () => {
       candidates: [],
       marker: 'bootstrap.sh',
       templateRepo: 'https://example.com/template.git',
-      cloneToTmp: () => ({ dir: clone, cleanup: () => { cleanup = true } }),
+      cloneToTmp: () => ({
+        dir: clone,
+        cleanup: () => {
+          cleanup = true
+        },
+      }),
     })
     expect('error' in picked ? picked.error : '').toContain('missing bootstrap.sh')
     expect(cleanup).toBe(true)
@@ -110,7 +120,9 @@ describe('pickTemplateSource', () => {
           throw new Error('should not clone')
         },
       })
-      expect('error' in picked ? picked.error : '').toContain('configured template path is missing bootstrap.sh')
+      expect('error' in picked ? picked.error : '').toContain(
+        'configured template path is missing bootstrap.sh',
+      )
     } finally {
       rmSync(configured, { recursive: true, force: true })
     }

@@ -118,7 +118,10 @@ describe('glabToRaw', () => {
 
 describe('parseList', () => {
   test('parses gh array', () => {
-    const out = parseList('github', JSON.stringify([{ number: 1, state: 'OPEN', author: { login: 'a' } }]))
+    const out = parseList(
+      'github',
+      JSON.stringify([{ number: 1, state: 'OPEN', author: { login: 'a' } }]),
+    )
     expect(out).toHaveLength(1)
     expect(out[0].iid).toBe(1)
     expect(out[0].state).toBe('opened')

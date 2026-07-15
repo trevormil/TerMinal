@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, Copy, Download, ExternalLink, Search, Terminal, TriangleAlert, Wrench, X } from 'lucide-react'
+import {
+  CheckCircle2,
+  Copy,
+  Download,
+  ExternalLink,
+  Search,
+  Terminal,
+  TriangleAlert,
+  Wrench,
+  X,
+} from 'lucide-react'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
 
@@ -176,7 +186,11 @@ export function RunLogPane({
           {formatted.steps.map((s) => (
             <button
               key={`${s.n}-${s.line}`}
-              onClick={() => document.getElementById(`ll-${s.line}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() =>
+                document
+                  .getElementById(`ll-${s.line}`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
               title={`${s.label}${s.exitCode != null ? ` · exit ${s.exitCode}` : ''}`}
               className={`inline-flex max-w-[160px] items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
                 s.status === 'failed'
@@ -192,10 +206,7 @@ export function RunLogPane({
           ))}
         </div>
       )}
-      <div
-        ref={logRef}
-        className="min-h-0 flex-1 overflow-auto bg-[var(--gt-code-bg)]"
-      >
+      <div ref={logRef} className="min-h-0 flex-1 overflow-auto bg-[var(--gt-code-bg)]">
         {!visibleLog ? (
           <div className="p-4 font-mono text-[11px] text-zinc-600">Loading log...</div>
         ) : (
@@ -228,12 +239,19 @@ export function RunLogPane({
                       <>
                         {highlightIcon(h.kind)}
                         <span className="shrink-0 font-semibold">{h.label}</span>
-                        <span className="min-w-0 truncate font-mono text-[10px] opacity-90">{h.value}</span>
+                        <span className="min-w-0 truncate font-mono text-[10px] opacity-90">
+                          {h.value}
+                        </span>
                       </>
                     )
                     const cls = `inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] ${highlightClass(h.kind)}`
                     return h.url ? (
-                      <button key={`${h.kind}-${i}`} onClick={() => window.gt.openExternal(h.url!)} className={`${cls} hover:brightness-125`} title={h.value}>
+                      <button
+                        key={`${h.kind}-${i}`}
+                        onClick={() => window.gt.openExternal(h.url!)}
+                        className={`${cls} hover:brightness-125`}
+                        title={h.value}
+                      >
                         {content}
                       </button>
                     ) : (

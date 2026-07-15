@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Bell, ChevronDown, Columns2, Grid2x2, LayoutDashboard, Mail, Plus, Search, Server, Settings as SettingsIcon, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react'
+import {
+  Bell,
+  ChevronDown,
+  Columns2,
+  Grid2x2,
+  LayoutDashboard,
+  Mail,
+  Plus,
+  Search,
+  Server,
+  Settings as SettingsIcon,
+  Square,
+  SquareTerminal,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { EntryScreen, type Choice, type PairedLoopConfig } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -30,7 +45,10 @@ const repoLabelOf = (cwd: string) => {
     const rest = cwd.replace(/^ssh:\/\//, '')
     const slash = rest.indexOf('/')
     const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
-    return remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() || (slash >= 0 ? rest.slice(0, slash) : rest)
+    return (
+      remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() ||
+      (slash >= 0 ? rest.slice(0, slash) : rest)
+    )
   }
   return cwd.replace(/\/$/, '').split('/').pop() || cwd || 'untitled'
 }
@@ -75,7 +93,10 @@ const loadTerminalSessionOrder = (): Record<string, string[]> => {
     return Object.fromEntries(
       Object.entries(parsed)
         .filter(([, value]) => Array.isArray(value))
-        .map(([root, value]) => [root, (value as unknown[]).filter((x): x is string => typeof x === 'string')]),
+        .map(([root, value]) => [
+          root,
+          (value as unknown[]).filter((x): x is string => typeof x === 'string'),
+        ]),
     )
   } catch {
     return {}
@@ -103,7 +124,11 @@ const labelFromPrompt = (raw: string): string => {
   return s.slice(0, 23).trimEnd() + '…'
 }
 
-const labelForSession = (s: Sess, indexInWorkspace: number, autoNamesByKey: Map<string, string>) => {
+const labelForSession = (
+  s: Sess,
+  indexInWorkspace: number,
+  autoNamesByKey: Map<string, string>,
+) => {
   if (s.choice.name) return s.choice.name
   const auto = autoNamesByKey.get(s.key)
   if (auto) return auto
@@ -163,11 +188,15 @@ export default function App() {
       }
     }),
   )
-  const [activeKey, setActiveKey] = useState<string | null>(restored[restored.length - 1]?.key ?? null)
+  const [activeKey, setActiveKey] = useState<string | null>(
+    restored[restored.length - 1]?.key ?? null,
+  )
   // adding === 'workspace' → EntryScreen pick a repo (free cwd)
   // adding === { repoRoot, remote? } → EntryScreen inside an existing workspace, cwd locked
   // false → no overlay
-  const [adding, setAdding] = useState<false | 'workspace' | { repoRoot: string; remote?: Choice['remote'] }>(restored.length === 0 ? 'workspace' : false)
+  const [adding, setAdding] = useState<
+    false | 'workspace' | { repoRoot: string; remote?: Choice['remote'] }
+  >(restored.length === 0 ? 'workspace' : false)
 
   // persist the open sessions (only those with a real session id, i.e. started)
   useEffect(() => {
@@ -195,7 +224,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
   const [sessionRail, setSessionRail] = useState<SessionRail>(loadSessionRail)
-  const [terminalSessionOrder, setTerminalSessionOrder] = useState<Record<string, string[]>>(loadTerminalSessionOrder)
+  const [terminalSessionOrder, setTerminalSessionOrder] =
+    useState<Record<string, string[]>>(loadTerminalSessionOrder)
   const [gridKeys, setGridKeys] = useState<string[]>(loadTerminalGridKeys)
   const [gridPickerOpen, setGridPickerOpen] = useState(false)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
@@ -225,7 +255,8 @@ export default function App() {
     const openSettings = (ev: Event) => {
       setShowSettings(true)
       const section = (ev as CustomEvent<{ section?: string }>).detail?.section
-      if (section) setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50)
+      if (section)
+        setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50)
     }
     window.addEventListener('gt.settings.open', openSettings)
     return () => window.removeEventListener('gt.settings.open', openSettings)
@@ -358,7 +389,9 @@ export default function App() {
   useEffect(() => {
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind !== 'task-complete' || !ev.sessionId) return
-      const session = sessions.find((s) => (s.info.sessionId || s.choice.sessionId || '') === ev.sessionId)
+      const session = sessions.find(
+        (s) => (s.info.sessionId || s.choice.sessionId || '') === ev.sessionId,
+      )
       if (session) markAttention(session.key, { reason: 'done', at: Date.now() })
     })
     return off
@@ -434,26 +467,49 @@ export default function App() {
           const payload = ev.payload || {}
           const eng = payload.engine
           const engine: SessionEngine =
-            eng === 'codex' || eng === 'claude' || eng === 'cursor' || eng === 'local' || eng === 'openrouter' || eng === 'hermes'
+            eng === 'codex' ||
+            eng === 'claude' ||
+            eng === 'cursor' ||
+            eng === 'local' ||
+            eng === 'openrouter' ||
+            eng === 'hermes'
               ? eng
               : 'claude'
           const remotePayload = payload.remote as unknown
           const remote =
-            remotePayload && typeof remotePayload === 'object' && 'sshTarget' in remotePayload && typeof remotePayload.sshTarget === 'string'
+            remotePayload &&
+            typeof remotePayload === 'object' &&
+            'sshTarget' in remotePayload &&
+            typeof remotePayload.sshTarget === 'string'
               ? (remotePayload as Choice['remote'])
               : undefined
-          const cwd = remote?.cwd || (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
+          const cwd =
+            remote?.cwd ||
+            (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const model = typeof payload.model === 'string' ? payload.model : undefined
-          const openrouterHarness = payload.openrouterHarness === 'hermes' || payload.openrouterHarness === 'codex' ? payload.openrouterHarness : undefined
+          const openrouterHarness =
+            payload.openrouterHarness === 'hermes' || payload.openrouterHarness === 'codex'
+              ? payload.openrouterHarness
+              : undefined
           const key = crypto.randomUUID()
           setSessions((s) => [
             ...s,
             {
               key,
-              choice: { mode: 'new', engine, cwd, name, initialInput, ticketSlug, remote, model, openrouterHarness },
+              choice: {
+                mode: 'new',
+                engine,
+                cwd,
+                name,
+                initialInput,
+                ticketSlug,
+                remote,
+                model,
+                openrouterHarness,
+              },
               info: { sessionId: '', cwd },
             },
           ])
@@ -466,7 +522,8 @@ export default function App() {
         }
         if (ev.tabId === 'paired-loop:new') {
           const payload = ev.payload || {}
-          const repoRoot = (typeof payload.repoRoot === 'string' && payload.repoRoot) || activeWorkspaceRoot || ''
+          const repoRoot =
+            (typeof payload.repoRoot === 'string' && payload.repoRoot) || activeWorkspaceRoot || ''
           // Open the New workspace screen in loop mode. Lock it to a known repo
           // root when we have one so the loop targets that workspace.
           setEntryMode('loop')
@@ -481,7 +538,12 @@ export default function App() {
         const payload = ev.payload || {}
         const targetKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : ''
         const targetSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : ''
-        const targetCwd = typeof payload.cwd === 'string' ? payload.cwd : typeof payload.repoRoot === 'string' ? payload.repoRoot : ''
+        const targetCwd =
+          typeof payload.cwd === 'string'
+            ? payload.cwd
+            : typeof payload.repoRoot === 'string'
+              ? payload.repoRoot
+              : ''
         const match = sessions.find((s) => {
           if (targetKey && s.key === targetKey) return true
           const sid = s.info.sessionId || s.choice.sessionId || ''
@@ -511,7 +573,9 @@ export default function App() {
   // the worktree. TerMinal's auto-grader (loop-listener singleTick) spawns a
   // fresh evaluator after each of its turns and delivers the next prompt back in.
   // See .claude/skills/loop-driver (single mode).
-  const startSingleLoop = async (cfg: PairedLoopConfig): Promise<{ ok: boolean; error?: string }> => {
+  const startSingleLoop = async (
+    cfg: PairedLoopConfig,
+  ): Promise<{ ok: boolean; error?: string }> => {
     const rec = await window.gt.loops.create({
       repoRoot: cfg.repoRoot,
       goal: cfg.goal,
@@ -532,7 +596,16 @@ export default function App() {
       ...s,
       {
         key,
-        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.worktree, name: `loop·gen ${tag}`, initialInput: seed, loopId: rec.id, loopRole: 'worker' },
+        choice: {
+          mode: 'new',
+          engine: cfg.worker.engine,
+          model: cfg.worker.model,
+          cwd: rec.worktree,
+          name: `loop·gen ${tag}`,
+          initialInput: seed,
+          loopId: rec.id,
+          loopRole: 'worker',
+        },
         info: { sessionId: '', cwd: rec.worktree },
       },
     ])
@@ -548,7 +621,9 @@ export default function App() {
   // Live-paired loop: create the loop (worktree + contract state) then open its
   // two linked sessions — a worker in the worktree, a driver in the main repo —
   // side by side. Both are seeded contract-first. See .claude/skills/loop.
-  const startPairedLoop = async (cfg: PairedLoopConfig): Promise<{ ok: boolean; error?: string }> => {
+  const startPairedLoop = async (
+    cfg: PairedLoopConfig,
+  ): Promise<{ ok: boolean; error?: string }> => {
     if (cfg.topology === 'single') return startSingleLoop(cfg)
     const rec = await window.gt.loops.create({
       repoRoot: cfg.repoRoot,
@@ -557,7 +632,8 @@ export default function App() {
       engine: cfg.driver.engine,
       model: cfg.driver.model,
     })
-    if (!rec || 'error' in rec) return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
+    if (!rec || 'error' in rec)
+      return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
     const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
     const tag = rec.id.slice(-4)
     // Both sessions START in the main repo (so they group into one workspace and
@@ -571,12 +647,30 @@ export default function App() {
       ...s,
       {
         key: driverKey,
-        choice: { mode: 'new', engine: cfg.driver.engine, model: cfg.driver.model, cwd: rec.repoRoot, name: `loop·driver ${tag}`, initialInput: driverSeed, loopId: rec.id, loopRole: 'driver' },
+        choice: {
+          mode: 'new',
+          engine: cfg.driver.engine,
+          model: cfg.driver.model,
+          cwd: rec.repoRoot,
+          name: `loop·driver ${tag}`,
+          initialInput: driverSeed,
+          loopId: rec.id,
+          loopRole: 'driver',
+        },
         info: { sessionId: '', cwd: rec.repoRoot },
       },
       {
         key: workerKey,
-        choice: { mode: 'new', engine: cfg.worker.engine, model: cfg.worker.model, cwd: rec.repoRoot, name: `loop·worker ${tag}`, initialInput: workerSeed, loopId: rec.id, loopRole: 'worker' },
+        choice: {
+          mode: 'new',
+          engine: cfg.worker.engine,
+          model: cfg.worker.model,
+          cwd: rec.repoRoot,
+          name: `loop·worker ${tag}`,
+          initialInput: workerSeed,
+          loopId: rec.id,
+          loopRole: 'worker',
+        },
         info: { sessionId: '', cwd: rec.repoRoot },
       },
     ])
@@ -602,8 +696,10 @@ export default function App() {
       return next
     })
   }
-  const setInfo = (key: string, info: Info) => setSessions((s) => s.map((x) => (x.key === key ? { ...x, info } : x)))
-  const renameSession = (key: string, name: string) => setSessions((s) => s.map((x) => (x.key === key ? { ...x, choice: { ...x.choice, name } } : x)))
+  const setInfo = (key: string, info: Info) =>
+    setSessions((s) => s.map((x) => (x.key === key ? { ...x, info } : x)))
+  const renameSession = (key: string, name: string) =>
+    setSessions((s) => s.map((x) => (x.key === key ? { ...x, choice: { ...x.choice, name } } : x)))
 
   // Auto-naming: for any session WITHOUT an explicit user-set name, poll the
   // first user prompt and use a truncated version as the auto-label. Polls
@@ -612,7 +708,10 @@ export default function App() {
   // auto-name or override with double-click rename.
   const [autoNamesByKey, setAutoNamesByKey] = useState<Map<string, string>>(() => new Map())
   useEffect(() => {
-    const sessionsToPoll = sessions.filter((s) => !s.choice.name && (s.info.sessionId || s.choice.sessionId) && !autoNamesByKey.has(s.key))
+    const sessionsToPoll = sessions.filter(
+      (s) =>
+        !s.choice.name && (s.info.sessionId || s.choice.sessionId) && !autoNamesByKey.has(s.key),
+    )
     if (sessionsToPoll.length === 0) return
     let cancelled = false
     const poll = async () => {
@@ -663,7 +762,13 @@ export default function App() {
     const map = new Map<string, Workspace>()
     for (const s of sessions) {
       const root = cwdOf(s) || '(no cwd)'
-      if (!map.has(root)) map.set(root, { repoRoot: root, label: repoLabelOf(root), remote: !!s.choice.remote || root.startsWith('ssh://'), sessions: [] })
+      if (!map.has(root))
+        map.set(root, {
+          repoRoot: root,
+          label: repoLabelOf(root),
+          remote: !!s.choice.remote || root.startsWith('ssh://'),
+          sessions: [],
+        })
       map.get(root)!.sessions.push(s)
     }
     return [...map.values()].map((ws) => {
@@ -689,12 +794,20 @@ export default function App() {
     const s = sessions.find((x) => x.key === activeKey)
     return s ? cwdOf(s) : ''
   }, [sessions, activeKey])
-  const activeWorkspaceSessions = useMemo(() => workspaces.find((w) => w.repoRoot === activeWorkspaceRoot)?.sessions ?? [], [workspaces, activeWorkspaceRoot])
+  const activeWorkspaceSessions = useMemo(
+    () => workspaces.find((w) => w.repoRoot === activeWorkspaceRoot)?.sessions ?? [],
+    [workspaces, activeWorkspaceRoot],
+  )
   // Active workspace first — the picker and the tile rail list the current
   // project's sessions before any other repo's ("first options = current
   // workspace"), while still exposing every open session for cross-repo tiling.
   const orderedWorkspaces = useMemo(
-    () => [...workspaces].sort((a, b) => (b.repoRoot === activeWorkspaceRoot ? 1 : 0) - (a.repoRoot === activeWorkspaceRoot ? 1 : 0)),
+    () =>
+      [...workspaces].sort(
+        (a, b) =>
+          (b.repoRoot === activeWorkspaceRoot ? 1 : 0) -
+          (a.repoRoot === activeWorkspaceRoot ? 1 : 0),
+      ),
     [workspaces, activeWorkspaceRoot],
   )
   const visibleSessionOrder = useMemo(() => {
@@ -715,7 +828,10 @@ export default function App() {
     return visible
   }, [activeKey, activeWorkspaceSessions, terminalLayout, gridKeys, sessions])
   const visibleSessionKeys = useMemo(() => new Set(visibleSessionOrder), [visibleSessionOrder])
-  const visibleSessionRank = useMemo(() => new Map(visibleSessionOrder.map((key, i) => [key, i])), [visibleSessionOrder])
+  const visibleSessionRank = useMemo(
+    () => new Map(visibleSessionOrder.map((key, i) => [key, i])),
+    [visibleSessionOrder],
+  )
   const openInboxTerminals = useMemo(
     () =>
       sessions.map((s) => ({
@@ -791,7 +907,9 @@ export default function App() {
     setSessions((prev) => prev.filter((x) => cwdOf(x) !== root))
     // Push to recents so it shows up on the EntryScreen for one-click reopen.
     try {
-      const prev = (JSON.parse(localStorage.getItem('gt.recentWorkspaces') || '[]') as string[]).filter((x) => typeof x === 'string' && x !== root)
+      const prev = (
+        JSON.parse(localStorage.getItem('gt.recentWorkspaces') || '[]') as string[]
+      ).filter((x) => typeof x === 'string' && x !== root)
       localStorage.setItem('gt.recentWorkspaces', JSON.stringify([root, ...prev].slice(0, 8)))
     } catch {
       /* localStorage glitch — best effort */
@@ -835,7 +953,9 @@ export default function App() {
     () =>
       activeCtx
         ? [
-            ...ALL_TABS.filter((t) => activeCtx.capabilities?.[t.id] !== false && t.appliesTo(activeCtx)).filter((t) => !hiddenTabs.has(t.id)),
+            ...ALL_TABS.filter(
+              (t) => activeCtx.capabilities?.[t.id] !== false && t.appliesTo(activeCtx),
+            ).filter((t) => !hiddenTabs.has(t.id)),
             ...customTabs.filter((t) => !hiddenTabs.has(t.id)),
           ].sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
         : [],
@@ -850,7 +970,9 @@ export default function App() {
   // layout switches (grid→split shows the first 2; split→grid restores 4).
   const seedTiles = (cap: number) => {
     const active = activeWorkspaceSessions.map((s) => s.key)
-    const others = orderedWorkspaces.flatMap((w) => w.sessions.map((s) => s.key)).filter((k) => !active.includes(k))
+    const others = orderedWorkspaces
+      .flatMap((w) => w.sessions.map((s) => s.key))
+      .filter((k) => !active.includes(k))
     return [...active, ...others].slice(0, cap)
   }
   const switchLayout = (mode: TerminalLayout) => {
@@ -863,7 +985,12 @@ export default function App() {
     }
     setTerminalLayout(mode)
   }
-  const layoutButton = (mode: TerminalLayout, title: string, Icon: LucideIcon, disabled = false) => (
+  const layoutButton = (
+    mode: TerminalLayout,
+    title: string,
+    Icon: LucideIcon,
+    disabled = false,
+  ) => (
     <button
       key={mode}
       style={noDrag}
@@ -871,7 +998,11 @@ export default function App() {
       disabled={disabled}
       title={title}
       className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
-        terminalLayout === mode ? 'bg-[var(--gt-accent)]/25 text-zinc-100' : disabled ? 'cursor-not-allowed text-zinc-700' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+        terminalLayout === mode
+          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          : disabled
+            ? 'cursor-not-allowed text-zinc-700'
+            : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
       }`}
     >
       <Icon size={13} strokeWidth={2} />
@@ -884,7 +1015,11 @@ export default function App() {
   // view, adding a second member jumps to grid4 so the effect is visible; if the
   // user is already in split/grid we leave their chosen layout alone.
   const toggleGridKey = (key: string) => {
-    const next = gridKeys.includes(key) ? gridKeys.filter((k) => k !== key) : gridKeys.length >= tileCap ? gridKeys : [...gridKeys, key]
+    const next = gridKeys.includes(key)
+      ? gridKeys.filter((k) => k !== key)
+      : gridKeys.length >= tileCap
+        ? gridKeys
+        : [...gridKeys, key]
     setGridKeys(next)
     if (next.length >= 2 && terminalLayout === 'single') setTerminalLayout('grid4')
   }
@@ -905,13 +1040,24 @@ export default function App() {
 
   return (
     <div className="h-full w-full overflow-hidden bg-[var(--gt-bg)]">
-      <div className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)]" style={scaledShellStyle}>
+      <div
+        className="flex h-full flex-col overflow-hidden bg-[var(--gt-bg)]"
+        style={scaledShellStyle}
+      >
         {/* session tab bar (top-level, also the window drag region) */}
-        <header style={drag} className={`flex h-9 shrink-0 items-center border-b border-[var(--gt-border)] bg-[var(--gt-bg)] pr-2 ${fullscreen ? 'pl-3' : 'pl-[78px]'}`}>
+        <header
+          style={drag}
+          className={`flex h-9 shrink-0 items-center border-b border-[var(--gt-border)] bg-[var(--gt-bg)] pr-2 ${fullscreen ? 'pl-3' : 'pl-[78px]'}`}
+        >
           {/* brand mark — the logo asset is already tightly cropped, so it fills
             the box at scale-1 (no extra zoom) */}
           <div className="mr-2.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-[5px]">
-            <img src={logo} alt="TerMinal" draggable={false} className="h-full w-full object-cover" />
+            <img
+              src={logo}
+              alt="TerMinal"
+              draggable={false}
+              className="h-full w-full object-cover"
+            />
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {workspaces.map((ws) => {
@@ -928,12 +1074,14 @@ export default function App() {
                   style={noDrag}
                   title={ws.repoRoot}
                   onClick={() => {
-                    const target = ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key
+                    const target =
+                      ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key
                     // In a cross-repo multi-view, clicking a workspace whose
                     // session isn't one of the tiles drops to a focused single
                     // view of it — so the pill is never "dead" while the tiles
                     // are locked to their membership.
-                    if (terminalLayout !== 'single' && !gridKeys.includes(target)) setTerminalLayout('single')
+                    if (terminalLayout !== 'single' && !gridKeys.includes(target))
+                      setTerminalLayout('single')
                     activate(target)
                   }}
                   className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] ${
@@ -945,20 +1093,46 @@ export default function App() {
                   }`}
                 >
                   <span
-                    title={anyWorking ? 'a session is working' : needsAttention ? 'needs attention' : 'idle'}
+                    title={
+                      anyWorking
+                        ? 'a session is working'
+                        : needsAttention
+                          ? 'needs attention'
+                          : 'idle'
+                    }
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                   />
-                  {ws.remote && <Server size={11} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
+                  {ws.remote && (
+                    <Server
+                      size={11}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--gt-accent-2)]"
+                    />
+                  )}
                   <span className="max-w-[180px] truncate font-semibold">{ws.label}</span>
-                  {ws.remote && <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">ssh</span>}
-                  {needsAttention && <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />}
-                  {ws.sessions.length > 1 && <span className="rounded-full bg-black/30 px-1 text-[9.5px] tabular-nums text-zinc-500">{ws.sessions.length}</span>}
+                  {ws.remote && (
+                    <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
+                      ssh
+                    </span>
+                  )}
+                  {needsAttention && (
+                    <Bell size={10} strokeWidth={2.4} className="text-[var(--gt-yellow)]" />
+                  )}
+                  {ws.sessions.length > 1 && (
+                    <span className="rounded-full bg-black/30 px-1 text-[9.5px] tabular-nums text-zinc-500">
+                      {ws.sessions.length}
+                    </span>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       closeWorkspace(ws.repoRoot)
                     }}
-                    title={ws.sessions.length > 1 ? `Close ${ws.label} (${ws.sessions.length} sessions)` : `Close ${ws.label}`}
+                    title={
+                      ws.sessions.length > 1
+                        ? `Close ${ws.label} (${ws.sessions.length} sessions)`
+                        : `Close ${ws.label}`
+                    }
                     className="ml-0.5 flex items-center rounded p-0.5 text-zinc-600 hover:bg-white/10 hover:text-zinc-200"
                   >
                     <X size={12} strokeWidth={2.5} />
@@ -988,7 +1162,11 @@ export default function App() {
               disabled={!activeCtx}
               title={activeCtx?.remote ? 'Search remote workspace' : 'Search workspace'}
               className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
-                searchOpen ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : !activeCtx ? 'cursor-not-allowed text-zinc-700' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+                searchOpen
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                  : !activeCtx
+                    ? 'cursor-not-allowed text-zinc-700'
+                    : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
               }`}
             >
               <Search size={13} strokeWidth={2} />
@@ -999,7 +1177,9 @@ export default function App() {
             <div className="relative ml-1 shrink-0" style={noDrag}>
               <button
                 onClick={() => setAttentionOpen((v) => !v)}
-                title={attentionCount ? 'Terminals needing attention' : 'No terminals need attention'}
+                title={
+                  attentionCount ? 'Terminals needing attention' : 'No terminals need attention'
+                }
                 className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
                   attentionOpen
                     ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
@@ -1008,16 +1188,24 @@ export default function App() {
                       : 'text-zinc-600 hover:bg-white/5 hover:text-zinc-300'
                 }`}
               >
-                <Bell size={13} strokeWidth={2} className={attentionCount ? 'gt-pulse' : undefined} />
+                <Bell
+                  size={13}
+                  strokeWidth={2}
+                  className={attentionCount ? 'gt-pulse' : undefined}
+                />
                 Idle
                 {attentionCount > 0 && (
-                  <span className="ml-0.5 rounded-full bg-[var(--gt-yellow)]/20 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-yellow)]">{attentionCount}</span>
+                  <span className="ml-0.5 rounded-full bg-[var(--gt-yellow)]/20 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-yellow)]">
+                    {attentionCount}
+                  </span>
                 )}
               </button>
               {attentionOpen && (
                 <div className="absolute right-0 top-[calc(100%+6px)] z-[70] w-80 overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl">
                   <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-3 py-2">
-                    <span className="text-[11px] font-semibold text-zinc-200">Terminals Needing Attention</span>
+                    <span className="text-[11px] font-semibold text-zinc-200">
+                      Terminals Needing Attention
+                    </span>
                     {attentionCount > 0 && (
                       <button
                         onClick={() => setAttentionByKey(new Map())}
@@ -1028,7 +1216,9 @@ export default function App() {
                     )}
                   </div>
                   {attentionItems.length === 0 ? (
-                    <div className="px-3 py-5 text-center text-[12px] text-zinc-600">No idle terminals need attention.</div>
+                    <div className="px-3 py-5 text-center text-[12px] text-zinc-600">
+                      No idle terminals need attention.
+                    </div>
                   ) : (
                     <div className="max-h-72 overflow-y-auto p-1.5">
                       {attentionItems.map((item) => (
@@ -1044,7 +1234,9 @@ export default function App() {
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-zinc-200">
                               <span className="truncate font-semibold">{item.label}</span>
-                              <span className="shrink-0 text-[10px] uppercase text-zinc-600">{item.engine}</span>
+                              <span className="shrink-0 text-[10px] uppercase text-zinc-600">
+                                {item.engine}
+                              </span>
                             </div>
                             <div className="truncate text-[10.5px] text-zinc-600">
                               {item.attention.reason === 'exited'
@@ -1073,7 +1265,9 @@ export default function App() {
               }}
               title="Fleet overview — all sessions at a glance"
               className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
-                fleet ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+                fleet
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
               }`}
             >
               <LayoutDashboard size={13} strokeWidth={2} />
@@ -1090,13 +1284,17 @@ export default function App() {
             }}
             title="Inbox — unresolved human-needed items"
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
-              inbox ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+              inbox
+                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
             }`}
           >
             <Mail size={13} strokeWidth={2} />
             Inbox
             {inboxOpenCount > 0 && (
-              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">{inboxOpenCount}</span>
+              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
+                {inboxOpenCount}
+              </span>
             )}
           </button>
           <button
@@ -1115,7 +1313,10 @@ export default function App() {
         <div className="relative min-h-0 flex-1">
           {multiTerminal && !showEntry && (
             <div className="absolute inset-x-0 top-0 z-10 flex h-8 items-center gap-0.5 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300">
-              <button style={noDrag} className="inline-flex items-center gap-1.5 rounded-md bg-[var(--gt-accent)]/20 px-2.5 py-1 text-[11px] font-medium text-zinc-100">
+              <button
+                style={noDrag}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--gt-accent)]/20 px-2.5 py-1 text-[11px] font-medium text-zinc-100"
+              >
                 <SquareTerminal size={13} strokeWidth={2} />
                 Terminal
               </button>
@@ -1138,7 +1339,9 @@ export default function App() {
           )}
           {multiTerminal && !showEntry && (
             <div className="absolute inset-x-0 top-8 z-30 flex h-7 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/70 px-2 text-[11px]">
-              <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">tiles</span>
+              <span className="mr-1 text-[9.5px] uppercase tracking-wider text-zinc-600">
+                tiles
+              </span>
               {/* Tile membership grouped by repo — the tiles can span workspaces,
                 so each group is boxed under its repo label (current workspace
                 first) and every pill can focus its tile or drop out. */}
@@ -1150,8 +1353,17 @@ export default function App() {
                     key={ws.repoRoot}
                     className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/20 py-0.5 pl-1.5 pr-1"
                   >
-                    {ws.remote && <Server size={10} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
-                    <span title={ws.repoRoot} className="max-w-[90px] truncate text-[9.5px] font-medium text-zinc-500">
+                    {ws.remote && (
+                      <Server
+                        size={10}
+                        strokeWidth={2}
+                        className="shrink-0 text-[var(--gt-accent-2)]"
+                      />
+                    )}
+                    <span
+                      title={ws.repoRoot}
+                      className="max-w-[90px] truncate text-[9.5px] font-medium text-zinc-500"
+                    >
                       {ws.label}
                     </span>
                     {members.map((s) => {
@@ -1179,7 +1391,13 @@ export default function App() {
                             className="flex items-center gap-1"
                           >
                             <span
-                              title={status === 'working' ? 'working' : needsAttention ? 'needs attention' : 'idle'}
+                              title={
+                                status === 'working'
+                                  ? 'working'
+                                  : needsAttention
+                                    ? 'needs attention'
+                                    : 'idle'
+                              }
                               className={`h-1.5 w-1.5 shrink-0 rounded-full ${status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                             />
                             <span className="max-w-[110px] truncate">{label}</span>
@@ -1210,7 +1428,10 @@ export default function App() {
                 <Plus size={11} strokeWidth={2.5} />
               </button>
               <div className="flex-1" />
-              <div style={noDrag} className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5">
+              <div
+                style={noDrag}
+                className="flex h-7 shrink-0 items-center rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 py-0.5 pl-px pr-0.5"
+              >
                 {layoutButton('single', 'Single terminal', Square)}
                 {layoutButton('split', 'Split terminal columns', Columns2, sessions.length < 2)}
                 {layoutButton('grid4', 'Four-terminal grid', Grid2x2, sessions.length < 2)}
@@ -1232,12 +1453,19 @@ export default function App() {
                   </button>
                   {gridPickerOpen && (
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setGridPickerOpen(false)} />
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setGridPickerOpen(false)}
+                      />
                       <div className="absolute right-0 top-7 z-50 max-h-80 w-56 overflow-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-1 shadow-xl">
-                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">Tiled sessions · {gridKeys.length}/{tileCap}</div>
+                        <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                          Tiled sessions · {gridKeys.length}/{tileCap}
+                        </div>
                         {orderedWorkspaces.map((ws) => (
                           <div key={ws.repoRoot}>
-                            <div className="truncate px-2 pb-0.5 pt-1.5 text-[10px] font-medium text-zinc-400">{ws.label}</div>
+                            <div className="truncate px-2 pb-0.5 pt-1.5 text-[10px] font-medium text-zinc-400">
+                              {ws.label}
+                            </div>
                             {ws.sessions.map((s, i) => {
                               const checked = gridKeys.includes(s.key)
                               const atCap = !checked && gridKeys.length >= tileCap
@@ -1247,17 +1475,25 @@ export default function App() {
                                   disabled={atCap}
                                   onClick={() => toggleGridKey(s.key)}
                                   className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${
-                                    atCap ? 'cursor-not-allowed text-zinc-600' : 'text-zinc-200 hover:bg-white/5'
+                                    atCap
+                                      ? 'cursor-not-allowed text-zinc-600'
+                                      : 'text-zinc-200 hover:bg-white/5'
                                   }`}
                                 >
                                   <span
                                     className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
-                                      checked ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/30' : 'border-zinc-600'
+                                      checked
+                                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/30'
+                                        : 'border-zinc-600'
                                     }`}
                                   >
-                                    {checked && <span className="h-1.5 w-1.5 rounded-[1px] bg-[var(--gt-accent)]" />}
+                                    {checked && (
+                                      <span className="h-1.5 w-1.5 rounded-[1px] bg-[var(--gt-accent)]" />
+                                    )}
                                   </span>
-                                  <span className="truncate">{labelForSession(s, i, autoNamesByKey)}</span>
+                                  <span className="truncate">
+                                    {labelForSession(s, i, autoNamesByKey)}
+                                  </span>
                                 </button>
                               )
                             })}
@@ -1276,7 +1512,8 @@ export default function App() {
               multiTerminal
                 ? {
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gridTemplateRows: terminalLayout === 'grid4' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+                    gridTemplateRows:
+                      terminalLayout === 'grid4' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
                   }
                 : undefined
             }
@@ -1315,7 +1552,13 @@ export default function App() {
                 >
                   {visible && multiTerminal && (
                     <div className="pointer-events-none absolute left-1 top-1 z-20 flex max-w-[75%] items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-zinc-300 backdrop-blur-sm">
-                      {s.choice.remote && <Server size={9} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />}
+                      {s.choice.remote && (
+                        <Server
+                          size={9}
+                          strokeWidth={2}
+                          className="shrink-0 text-[var(--gt-accent-2)]"
+                        />
+                      )}
                       <span className="truncate">{repoLabelOf(cwdOf(s))}</span>
                     </div>
                   )}
@@ -1326,7 +1569,9 @@ export default function App() {
                     onStarted={(i) => setInfo(s.key, i)}
                     peerSessions={peers}
                     onSwitchSession={activate}
-                    onAddSession={() => setAdding({ repoRoot: cwdOf(s) || '', remote: s.choice.remote })}
+                    onAddSession={() =>
+                      setAdding({ repoRoot: cwdOf(s) || '', remote: s.choice.remote })
+                    }
                     onCloseSession={closeSession}
                     onRenameSession={renameSession}
                     onReorderSession={reorderSession}
@@ -1364,9 +1609,19 @@ export default function App() {
             </div>
           )}
           {inbox && !showEntry && (
-            <div className="absolute inset-0 z-50 flex justify-end bg-black/35" onClick={() => setInbox(false)}>
-              <div className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <InboxDrawer ctx={activeCtx} openTerminals={openInboxTerminals} onClose={() => setInbox(false)} />
+            <div
+              className="absolute inset-0 z-50 flex justify-end bg-black/35"
+              onClick={() => setInbox(false)}
+            >
+              <div
+                className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <InboxDrawer
+                  ctx={activeCtx}
+                  openTerminals={openInboxTerminals}
+                  onClose={() => setInbox(false)}
+                />
               </div>
             </div>
           )}
@@ -1376,7 +1631,11 @@ export default function App() {
                 className="absolute inset-x-3 top-3 flex h-[min(660px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <WorkspaceSearchPanel ctx={activeCtx} initialQuery={searchQuery} onClose={() => setSearchOpen(false)} />
+                <WorkspaceSearchPanel
+                  ctx={activeCtx}
+                  initialQuery={searchQuery}
+                  onClose={() => setSearchOpen(false)}
+                />
               </div>
             </div>
           )}

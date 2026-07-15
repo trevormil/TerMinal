@@ -1,7 +1,17 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createTicket as createLocalTicket, defaultTicketAgent, getTicket as getLocalTicket, listTickets as listLocalTickets, updateTicket as updateLocalTicket, type NewTicket, type Ticket, type TicketAgent, type TicketPatch } from './backlog'
+import {
+  createTicket as createLocalTicket,
+  defaultTicketAgent,
+  getTicket as getLocalTicket,
+  listTickets as listLocalTickets,
+  updateTicket as updateLocalTicket,
+  type NewTicket,
+  type Ticket,
+  type TicketAgent,
+  type TicketPatch,
+} from './backlog'
 import { run as runCli } from './forge'
 
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
@@ -99,14 +109,21 @@ function obsidianBaseDir(cfg: ObsidianTicketConfig | undefined): string | null {
   const sub = (cfg?.ticketsSubdir?.trim() || 'tickets').replace(/^\/+|\/+$/g, '')
   return sub ? join(vault, sub) : vault
 }
-const stampObsidian = (t: Ticket): Ticket => ({ ...t, provider: 'obsidian', providerLabel: PROVIDER_LABEL.obsidian })
+const stampObsidian = (t: Ticket): Ticket => ({
+  ...t,
+  provider: 'obsidian',
+  providerLabel: PROVIDER_LABEL.obsidian,
+})
 
 const vaultNameFor = (cfg: ObsidianTicketConfig): string =>
-  (cfg.vaultName?.trim() || cfg.vaultPath.replace(/\/+$/, '').split('/').pop() || 'vault')
+  cfg.vaultName?.trim() || cfg.vaultPath.replace(/\/+$/, '').split('/').pop() || 'vault'
 
 // An `obsidian://open` deep link to a ticket file, or null if the vault isn't
 // configured. Used by the Tickets tab's "Open in Obsidian" action.
-export function obsidianDeepLink(cfg: ObsidianTicketConfig | undefined, slug: string): string | null {
+export function obsidianDeepLink(
+  cfg: ObsidianTicketConfig | undefined,
+  slug: string,
+): string | null {
   if (!cfg) return null
   const dir = obsidianBaseDir(cfg)
   if (!dir) return null
@@ -122,7 +139,9 @@ export function obsidianRepoDeepLink(repoRoot: string, slug: string): string | n
 // The vault + tickets folder for a repo IF it's on the obsidian provider — used
 // to expose OBSIDIAN_VAULT_PATH / OBSIDIAN_TICKETS_DIR to spawned sessions so an
 // agent's native file tools can browse the vault directly. null otherwise.
-export function obsidianRepoVault(repoRoot: string): { vaultPath: string; ticketsDir: string } | null {
+export function obsidianRepoVault(
+  repoRoot: string,
+): { vaultPath: string; ticketsDir: string } | null {
   const cfg = readConfig(repoRoot)
   if (normProvider(cfg.provider) !== 'obsidian') return null
   const dir = obsidianBaseDir(cfg.obsidian)
@@ -203,7 +222,9 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
       ? {
           obsidian: {
             vaultPath: cfg.obsidian.vaultPath.trim(),
-            ...(cfg.obsidian.ticketsSubdir?.trim() ? { ticketsSubdir: cfg.obsidian.ticketsSubdir.trim() } : {}),
+            ...(cfg.obsidian.ticketsSubdir?.trim()
+              ? { ticketsSubdir: cfg.obsidian.ticketsSubdir.trim() }
+              : {}),
             ...(cfg.obsidian.vaultName?.trim() ? { vaultName: cfg.obsidian.vaultName.trim() } : {}),
           },
         }
@@ -247,7 +268,8 @@ function normLabels(raw: unknown): string[] {
   const out: string[] = []
   for (const x of raw) {
     if (typeof x === 'string') out.push(x)
-    else if (x && typeof x === 'object' && typeof (x as { name?: unknown }).name === 'string') out.push((x as { name: string }).name)
+    else if (x && typeof x === 'object' && typeof (x as { name?: unknown }).name === 'string')
+      out.push((x as { name: string }).name)
   }
   return out
 }
@@ -321,40 +343,81 @@ async function ensureGithubLabel(repoRoot: string, label: string) {
   }
   const suffix = label.split(':').pop() || label
   const color = colors[suffix] || 'ededed'
-  const r = await runCli('gh', ['label', 'create', label, '--color', color, '--description', 'Managed by TerMinal tickets'], repoRoot, { timeout: 8_000 })
-  if (r.err && !/already exists/i.test(`${r.stderr} ${r.err.message}`)) throw new Error((r.stderr || r.err.message).trim())
+  const r = await runCli(
+    'gh',
+    ['label', 'create', label, '--color', color, '--description', 'Managed by TerMinal tickets'],
+    repoRoot,
+    { timeout: 8_000 },
+  )
+  if (r.err && !/already exists/i.test(`${r.stderr} ${r.err.message}`))
+    throw new Error((r.stderr || r.err.message).trim())
 }
 
-async function getGithubTicket(repoRoot: string, cfg: GithubConfig, number: string): Promise<Ticket | null> {
+async function getGithubTicket(
+  repoRoot: string,
+  cfg: GithubConfig,
+  number: string,
+): Promise<Ticket | null> {
   if (!/^\d+$/.test(number)) return null
-  const issue = await ghJson(repoRoot, ['issue', 'view', number, '--json', 'number,title,state,body,labels,url,createdAt,updatedAt,author'])
+  const issue = await ghJson(repoRoot, [
+    'issue',
+    'view',
+    number,
+    '--json',
+    'number,title,state,body,labels,url,createdAt,updatedAt,author',
+  ])
   return issue ? githubIssueToTicket(issue, cfg) : null
 }
 
 async function listGithubTickets(repoRoot: string, cfg: GithubConfig): Promise<Ticket[]> {
-  const issues = await ghJson(repoRoot, ['issue', 'list', '--state', 'all', '--limit', '100', '--json', 'number,title,state,body,labels,url,createdAt,updatedAt,author'])
-  return Array.isArray(issues) ? issues.map((issue) => githubIssueToTicket(issue, cfg)).sort((a, b) => b.id - a.id) : []
+  const issues = await ghJson(repoRoot, [
+    'issue',
+    'list',
+    '--state',
+    'all',
+    '--limit',
+    '100',
+    '--json',
+    'number,title,state,body,labels,url,createdAt,updatedAt,author',
+  ])
+  return Array.isArray(issues)
+    ? issues.map((issue) => githubIssueToTicket(issue, cfg)).sort((a, b) => b.id - a.id)
+    : []
 }
 
 function labelMapValues(map: Record<string, string>): string[] {
   return [...new Set(Object.values(map))]
 }
 
-async function updateGithubTicket(repoRoot: string, cfg: GithubConfig, slug: string, patch: { status?: string; priority?: string; agent?: Partial<TicketAgent> }): Promise<boolean> {
+async function updateGithubTicket(
+  repoRoot: string,
+  cfg: GithubConfig,
+  slug: string,
+  patch: { status?: string; priority?: string; agent?: Partial<TicketAgent> },
+): Promise<boolean> {
   const number = parseExternalNumber(slug)
   if (!number) return false
   const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(cfg.statusLabels || {}) }
   const priorityLabels = { ...DEFAULT_PRIORITY_LABELS, ...(cfg.priorityLabels || {}) }
   const before = await getGithubTicket(repoRoot, cfg, number)
-  const currentLabels = before ? normLabels(await ghJson(repoRoot, ['issue', 'view', number, '--json', 'labels']).then((x) => x?.labels)) : []
+  const currentLabels = before
+    ? normLabels(
+        await ghJson(repoRoot, ['issue', 'view', number, '--json', 'labels']).then(
+          (x) => x?.labels,
+        ),
+      )
+    : []
 
   if (patch.status) {
     if (patch.status === 'closed') await ghRun(repoRoot, ['issue', 'close', number])
     else {
       if (before?.status === 'closed') await ghRun(repoRoot, ['issue', 'reopen', number])
       const next = statusLabels[patch.status]
-      const remove = labelMapValues(statusLabels).filter((label) => label !== next && currentLabels.includes(label))
-      for (const label of remove) await ghRun(repoRoot, ['issue', 'edit', number, '--remove-label', label])
+      const remove = labelMapValues(statusLabels).filter(
+        (label) => label !== next && currentLabels.includes(label),
+      )
+      for (const label of remove)
+        await ghRun(repoRoot, ['issue', 'edit', number, '--remove-label', label])
       if (next) {
         await ensureGithubLabel(repoRoot, next)
         await ghRun(repoRoot, ['issue', 'edit', number, '--add-label', next])
@@ -365,9 +428,16 @@ async function updateGithubTicket(repoRoot: string, cfg: GithubConfig, slug: str
   if (patch.priority) {
     const next = priorityLabels[patch.priority]
     if (next) {
-      const latestLabels = normLabels(await ghJson(repoRoot, ['issue', 'view', number, '--json', 'labels']).then((x) => x?.labels))
-      const remove = labelMapValues(priorityLabels).filter((label) => label !== next && latestLabels.includes(label))
-      for (const label of remove) await ghRun(repoRoot, ['issue', 'edit', number, '--remove-label', label])
+      const latestLabels = normLabels(
+        await ghJson(repoRoot, ['issue', 'view', number, '--json', 'labels']).then(
+          (x) => x?.labels,
+        ),
+      )
+      const remove = labelMapValues(priorityLabels).filter(
+        (label) => label !== next && latestLabels.includes(label),
+      )
+      for (const label of remove)
+        await ghRun(repoRoot, ['issue', 'edit', number, '--remove-label', label])
       await ensureGithubLabel(repoRoot, next)
       await ghRun(repoRoot, ['issue', 'edit', number, '--add-label', next])
     }
@@ -376,11 +446,19 @@ async function updateGithubTicket(repoRoot: string, cfg: GithubConfig, slug: str
   return true
 }
 
-async function createGithubTicket(repoRoot: string, cfg: GithubConfig, input: NewTicket): Promise<Ticket> {
+async function createGithubTicket(
+  repoRoot: string,
+  cfg: GithubConfig,
+  input: NewTicket,
+): Promise<Ticket> {
   const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(cfg.statusLabels || {}) }
   const priorityLabels = { ...DEFAULT_PRIORITY_LABELS, ...(cfg.priorityLabels || {}) }
   const typeLabels = { ...DEFAULT_TYPE_LABELS, ...(cfg.typeLabels || {}) }
-  const labels = [statusLabels[input.status], priorityLabels[input.priority], typeLabels[input.type]].filter(Boolean) as string[]
+  const labels = [
+    statusLabels[input.status],
+    priorityLabels[input.priority],
+    typeLabels[input.type],
+  ].filter(Boolean) as string[]
   for (const label of labels) await ensureGithubLabel(repoRoot, label)
   const args = ['issue', 'create', '--title', input.title || 'Untitled', '--body', input.body || '']
   if (labels.length) args.push('--label', labels.join(','))
@@ -397,14 +475,20 @@ function parseExternalNumber(slugOrId: string): string {
 }
 
 function linearIssueKey(slugOrId: string): string {
-  return String(slugOrId || '').replace(/^linear-/, '').replace(/_/g, '-')
+  return String(slugOrId || '')
+    .replace(/^linear-/, '')
+    .replace(/_/g, '-')
 }
 
 export function linearIssueToTicket(issue: any): Ticket {
   const key = String(issue.identifier || issue.key || issue.externalKey || issue.id || '')
   const numeric = Number((key.match(/(\d+)$/) || [])[1]) || Number(issue.number) || 0
-  const state = typeof issue.state === 'string' ? issue.state : issue.state?.name || issue.status || 'open'
-  const priority = typeof issue.priority === 'string' ? issue.priority : issue.priority?.name || issue.priorityLabel || 'medium'
+  const state =
+    typeof issue.state === 'string' ? issue.state : issue.state?.name || issue.status || 'open'
+  const priority =
+    typeof issue.priority === 'string'
+      ? issue.priority
+      : issue.priority?.name || issue.priorityLabel || 'medium'
   return {
     slug: `linear-${key.replace(/[^A-Za-z0-9-]/g, '-') || numeric || 'issue'}`,
     id: numeric,
@@ -450,7 +534,11 @@ function normalizePriority(raw: string): string {
   return 'medium'
 }
 
-async function callMcpTool(linear: LinearTicketConfig, tool: string, args: Record<string, unknown>): Promise<unknown> {
+async function callMcpTool(
+  linear: LinearTicketConfig,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
   const command = linear.mcp?.command
   if (!command) throw new Error('Linear MCP command missing in .TerMinal/tickets.json')
   const child = spawn(command, linear.mcp?.args || [], {
@@ -488,11 +576,20 @@ async function callMcpTool(linear: LinearTicketConfig, tool: string, args: Recor
       }, 15_000)
     })
   try {
-    await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'TerMinal', version: '1' } })
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
+    await send('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'TerMinal', version: '1' },
+    })
+    child.stdin.write(
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n',
+    )
     const result = await send('tools/call', { name: tool, arguments: args })
     const content = Array.isArray(result?.content) ? result.content : []
-    const text = content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n').trim()
+    const text = content
+      .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
+      .join('\n')
+      .trim()
     if (text) {
       try {
         return JSON.parse(text)
@@ -512,8 +609,17 @@ async function callMcpTool(linear: LinearTicketConfig, tool: string, args: Recor
 async function listLinearTickets(linear: LinearTicketConfig): Promise<Ticket[]> {
   const tool = linear.tools?.list || 'list_issues'
   const team = linear.team || linear.teamKey
-  const raw = await callMcpTool(linear, tool, { ...(linear.listArgs || {}), ...(team ? { team } : {}) })
-  const arr: unknown[] = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.issues) ? (raw as any).issues : Array.isArray((raw as any)?.data) ? (raw as any).data : []
+  const raw = await callMcpTool(linear, tool, {
+    ...(linear.listArgs || {}),
+    ...(team ? { team } : {}),
+  })
+  const arr: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as any)?.issues)
+      ? (raw as any).issues
+      : Array.isArray((raw as any)?.data)
+        ? (raw as any).data
+        : []
   return arr.map(linearIssueToTicket).sort((a, b) => b.id - a.id)
 }
 
@@ -540,7 +646,11 @@ async function createLinearTicket(linear: LinearTicketConfig, input: NewTicket):
   return linearIssueToTicket(issue)
 }
 
-async function updateLinearTicket(linear: LinearTicketConfig, slug: string, patch: { status?: string; priority?: string; agent?: Partial<TicketAgent> }): Promise<boolean> {
+async function updateLinearTicket(
+  linear: LinearTicketConfig,
+  slug: string,
+  patch: { status?: string; priority?: string; agent?: Partial<TicketAgent> },
+): Promise<boolean> {
   const tool = linear.tools?.update || 'save_issue'
   const key = linearIssueKey(slug)
   await callMcpTool(linear, tool, {
@@ -594,7 +704,8 @@ export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
 
 export async function getRepoTicket(repoRoot: string, slug: string): Promise<Ticket | null> {
   const cfg = readConfig(repoRoot)
-  if (cfg.provider === 'github') return getGithubTicket(repoRoot, cfg.github || {}, parseExternalNumber(slug))
+  if (cfg.provider === 'github')
+    return getGithubTicket(repoRoot, cfg.github || {}, parseExternalNumber(slug))
   if (cfg.provider === 'linear') return getLinearTicket(cfg.linear || {}, slug)
   if (cfg.provider === 'obsidian') {
     const dir = obsidianBaseDir(cfg.obsidian)
@@ -617,7 +728,11 @@ export async function createRepoTicket(repoRoot: string, input: NewTicket): Prom
   return createLocalTicket(repoRoot, input)
 }
 
-export async function updateRepoTicket(repoRoot: string, slug: string, patch: TicketPatch): Promise<boolean> {
+export async function updateRepoTicket(
+  repoRoot: string,
+  slug: string,
+  patch: TicketPatch,
+): Promise<boolean> {
   const cfg = readConfig(repoRoot)
   if (cfg.provider === 'github') return updateGithubTicket(repoRoot, cfg.github || {}, slug, patch)
   if (cfg.provider === 'linear') return updateLinearTicket(cfg.linear || {}, slug, patch)
@@ -641,10 +756,17 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
   return "Ticket provider: local backlog. Use this repo's .TerMinal/backlog markdown tickets (legacy repos may use backlog/)."
 }
 
-export async function listLinearTeams(repoRoot: string, cfg: RepoTicketsConfig = readConfig(repoRoot)): Promise<{ id: string; name: string; key?: string }[]> {
+export async function listLinearTeams(
+  repoRoot: string,
+  cfg: RepoTicketsConfig = readConfig(repoRoot),
+): Promise<{ id: string; name: string; key?: string }[]> {
   const linear = cfg.linear || {}
   const raw = await callMcpTool(linear, 'list_teams', { limit: 50 })
-  const teams: unknown[] = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.teams) ? (raw as any).teams : []
+  const teams: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as any)?.teams)
+      ? (raw as any).teams
+      : []
   return teams
     .map((team: any) => ({
       id: String(team.id || ''),
@@ -663,33 +785,69 @@ export async function testRepoTicketProvider(
   try {
     if (provider === 'obsidian') {
       const dir = obsidianBaseDir(cfg.obsidian)
-      if (!dir) return { ok: false, provider, message: 'Pick an Obsidian vault folder before saving.' }
+      if (!dir)
+        return { ok: false, provider, message: 'Pick an Obsidian vault folder before saving.' }
       const vault = cfg.obsidian!.vaultPath.trim()
-      if (!existsSync(vault)) return { ok: false, provider, message: `Vault folder not found: ${vault}` }
+      if (!existsSync(vault))
+        return { ok: false, provider, message: `Vault folder not found: ${vault}` }
       try {
         mkdirSync(dir, { recursive: true }) // ensure tickets/ exists + is writable
       } catch (e) {
-        return { ok: false, provider, message: `Vault tickets folder not writable: ${(e as Error).message}` }
+        return {
+          ok: false,
+          provider,
+          message: `Vault tickets folder not writable: ${(e as Error).message}`,
+        }
       }
       const count = listLocalTickets(repoRoot, dir).length
-      if (!opts.smoke) return { ok: true, provider, message: `Obsidian vault ready (${dir}).`, count }
+      if (!opts.smoke)
+        return { ok: true, provider, message: `Obsidian vault ready (${dir}).`, count }
       const smoke = createLocalTicket(
         repoRoot,
-        { title: 'TerMinal smoke test - safe to delete', type: 'testing', priority: 'low', status: 'open', body: `Created by TerMinal ticket-provider smoke test at ${new Date().toISOString()}.` },
+        {
+          title: 'TerMinal smoke test - safe to delete',
+          type: 'testing',
+          priority: 'low',
+          status: 'open',
+          body: `Created by TerMinal ticket-provider smoke test at ${new Date().toISOString()}.`,
+        },
         dir,
       )
       updateLocalTicket(repoRoot, smoke.slug, { priority: 'high' }, dir)
       updateLocalTicket(repoRoot, smoke.slug, { status: 'closed' }, dir)
       const after = getLocalTicket(repoRoot, smoke.slug, dir)
-      return { ok: true, provider, message: `Obsidian smoke ticket ${smoke.slug}.md created, updated, and closed in ${dir}.`, count, smoke: { key: after?.slug, status: after?.status, priority: after?.priority } }
+      return {
+        ok: true,
+        provider,
+        message: `Obsidian smoke ticket ${smoke.slug}.md created, updated, and closed in ${dir}.`,
+        count,
+        smoke: { key: after?.slug, status: after?.status, priority: after?.priority },
+      }
     }
     if (provider === 'github') {
       const auth = await runCli('gh', ['auth', 'status'], repoRoot, { timeout: 10_000 })
-      if (auth.err) return { ok: false, provider, message: (auth.stderr || auth.err.message || 'gh auth failed').trim() }
-      const repo = await ghJson(repoRoot, ['repo', 'view', '--json', 'hasIssuesEnabled,nameWithOwner,url'])
-      if (repo && repo.hasIssuesEnabled === false) return { ok: false, provider, message: 'GitHub issues are disabled for this repo.' }
+      if (auth.err)
+        return {
+          ok: false,
+          provider,
+          message: (auth.stderr || auth.err.message || 'gh auth failed').trim(),
+        }
+      const repo = await ghJson(repoRoot, [
+        'repo',
+        'view',
+        '--json',
+        'hasIssuesEnabled,nameWithOwner,url',
+      ])
+      if (repo && repo.hasIssuesEnabled === false)
+        return { ok: false, provider, message: 'GitHub issues are disabled for this repo.' }
       const count = (await listGithubTickets(repoRoot, cfg.github || {})).length
-      if (!opts.smoke) return { ok: true, provider, message: `GitHub Issues ready${repo?.nameWithOwner ? ` for ${repo.nameWithOwner}` : ''}.`, count }
+      if (!opts.smoke)
+        return {
+          ok: true,
+          provider,
+          message: `GitHub Issues ready${repo?.nameWithOwner ? ` for ${repo.nameWithOwner}` : ''}.`,
+          count,
+        }
       const smoke = await createGithubTicket(repoRoot, cfg.github || {}, {
         title: 'TerMinal smoke test - safe to close',
         type: 'testing',
@@ -700,14 +858,25 @@ export async function testRepoTicketProvider(
       await updateGithubTicket(repoRoot, cfg.github || {}, smoke.slug, { priority: 'high' })
       await updateGithubTicket(repoRoot, cfg.github || {}, smoke.slug, { status: 'closed' })
       const after = await getGithubTicket(repoRoot, cfg.github || {}, String(smoke.id))
-      return { ok: true, provider, message: 'GitHub smoke issue created, updated, and closed.', smoke: { key: after?.externalKey, url: after?.url, status: after?.status, priority: after?.priority } }
+      return {
+        ok: true,
+        provider,
+        message: 'GitHub smoke issue created, updated, and closed.',
+        smoke: {
+          key: after?.externalKey,
+          url: after?.url,
+          status: after?.status,
+          priority: after?.priority,
+        },
+      }
     }
     if (provider === 'linear') {
       const teams = await listLinearTeams(repoRoot, cfg)
       const team = cfg.linear?.team || cfg.linear?.teamKey
       if (!team) return { ok: false, provider, message: 'Pick a Linear team before saving.', teams }
       const count = (await listLinearTickets(cfg.linear || {})).length
-      if (!opts.smoke) return { ok: true, provider, message: `Linear ready for team ${team}.`, count, teams }
+      if (!opts.smoke)
+        return { ok: true, provider, message: `Linear ready for team ${team}.`, count, teams }
       const smoke = await createLinearTicket(cfg.linear || {}, {
         title: 'TerMinal smoke test - safe to close',
         type: 'testing',
@@ -718,7 +887,19 @@ export async function testRepoTicketProvider(
       await updateLinearTicket(cfg.linear || {}, smoke.slug, { priority: 'high' })
       await updateLinearTicket(cfg.linear || {}, smoke.slug, { status: 'closed' })
       const after = await getLinearTicket(cfg.linear || {}, smoke.slug)
-      return { ok: true, provider, message: 'Linear smoke issue created, updated, and closed.', count, teams, smoke: { key: after?.externalKey, url: after?.url, status: after?.status, priority: after?.priority } }
+      return {
+        ok: true,
+        provider,
+        message: 'Linear smoke issue created, updated, and closed.',
+        count,
+        teams,
+        smoke: {
+          key: after?.externalKey,
+          url: after?.url,
+          status: after?.status,
+          priority: after?.priority,
+        },
+      }
     }
     const count = listLocalTickets(repoRoot).length
     return { ok: true, provider, message: 'Local backlog ready.', count }

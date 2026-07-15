@@ -31,7 +31,9 @@ export function ModelSelect({
     <div className="space-y-3">
       {custom && (
         <label className="block">
-          <span className="mb-1 block text-[10.5px] uppercase tracking-wide text-zinc-500">Any OpenRouter model</span>
+          <span className="mb-1 block text-[10.5px] uppercase tracking-wide text-zinc-500">
+            Any OpenRouter model
+          </span>
           <input
             value={model ?? ''}
             onChange={(e) => onChange(e.target.value.trim() || undefined)}
@@ -55,7 +57,12 @@ export function ModelSelect({
           <div className="text-[13px] font-semibold">Default</div>
         </button>
         {models.map((m) => (
-          <button key={m.id} type="button" onClick={() => onChange(m.id)} className={card(model === m.id)}>
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onChange(m.id)}
+            className={card(model === m.id)}
+          >
             <div className="truncate text-[13px] font-semibold">{m.label}</div>
           </button>
         ))}

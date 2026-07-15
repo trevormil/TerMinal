@@ -4,7 +4,10 @@ import type { BadgeTone } from '../../components/ui'
 import type { Plugin, TranscriptStats } from '../../lib/types'
 
 const shortModel = (m: string) =>
-  m.replace('claude-', '').replace(/-(\d+)-(\d+)/, '-$1.$2').replace(/\[1m\]/, ' 1M')
+  m
+    .replace('claude-', '')
+    .replace(/-(\d+)-(\d+)/, '-$1.$2')
+    .replace(/\[1m\]/, ' 1M')
 
 const MODE: Record<string, { label: string; tone: BadgeTone }> = {
   auto: { label: 'auto', tone: 'yellow' },
@@ -39,7 +42,11 @@ const plugin: Plugin<TranscriptStats> = {
         icon={Cpu}
         title="Session"
         right={
-          <CopyButton value={d.sessionId} title="Copy session id" className="font-mono text-[9px] text-zinc-600">
+          <CopyButton
+            value={d.sessionId}
+            title="Copy session id"
+            className="font-mono text-[9px] text-zinc-600"
+          >
             {d.sessionId.slice(0, 6)}
           </CopyButton>
         }

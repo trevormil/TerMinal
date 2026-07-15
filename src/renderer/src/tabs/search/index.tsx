@@ -26,16 +26,17 @@ const KINDS: { id: WorkspaceSearchKind; label: string; icon: typeof Search }[] =
   { id: 'agent-artifact', label: 'Artifacts', icon: Bot },
 ]
 
-const KIND_META: Record<WorkspaceSearchKind, { label: string; icon: typeof Search; tone: string }> = {
-  file: { label: 'File', icon: FileText, tone: 'text-sky-300' },
-  ticket: { label: 'Ticket', icon: Ticket, tone: 'text-amber-300' },
-  mr: { label: 'MR/PR', icon: GitPullRequest, tone: 'text-fuchsia-300' },
-  run: { label: 'Run', icon: ListChecks, tone: 'text-emerald-300' },
-  activity: { label: 'Activity', icon: Activity, tone: 'text-cyan-300' },
-  doc: { label: 'Doc', icon: ScrollText, tone: 'text-indigo-300' },
-  snippet: { label: 'Snippet', icon: Clipboard, tone: 'text-lime-300' },
-  'agent-artifact': { label: 'Artifact', icon: Bot, tone: 'text-rose-300' },
-}
+const KIND_META: Record<WorkspaceSearchKind, { label: string; icon: typeof Search; tone: string }> =
+  {
+    file: { label: 'File', icon: FileText, tone: 'text-sky-300' },
+    ticket: { label: 'Ticket', icon: Ticket, tone: 'text-amber-300' },
+    mr: { label: 'MR/PR', icon: GitPullRequest, tone: 'text-fuchsia-300' },
+    run: { label: 'Run', icon: ListChecks, tone: 'text-emerald-300' },
+    activity: { label: 'Activity', icon: Activity, tone: 'text-cyan-300' },
+    doc: { label: 'Doc', icon: ScrollText, tone: 'text-indigo-300' },
+    snippet: { label: 'Snippet', icon: Clipboard, tone: 'text-lime-300' },
+    'agent-artifact': { label: 'Artifact', icon: Bot, tone: 'text-rose-300' },
+  }
 
 function route(result: WorkspaceSearchResult) {
   const payload = result.payload || {}
@@ -100,7 +101,9 @@ export function WorkspaceSearchPanel({
   onClose?: () => void
 }) {
   const [query, setQuery] = useState(initialQuery)
-  const [enabled, setEnabled] = useState<Set<WorkspaceSearchKind>>(() => new Set(KINDS.map((k) => k.id)))
+  const [enabled, setEnabled] = useState<Set<WorkspaceSearchKind>>(
+    () => new Set(KINDS.map((k) => k.id)),
+  )
   const [results, setResults] = useState<WorkspaceSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -229,9 +232,19 @@ export function WorkspaceSearchPanel({
                     {meta.label}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-zinc-200">{r.title}</span>
-                    {r.subtitle && <span className="mt-0.5 block truncate text-[11px] text-zinc-600">{r.subtitle}</span>}
-                    {r.detail && <span className="mt-1 block truncate text-[12px] text-zinc-500">{r.detail}</span>}
+                    <span className="block truncate text-[13px] font-medium text-zinc-200">
+                      {r.title}
+                    </span>
+                    {r.subtitle && (
+                      <span className="mt-0.5 block truncate text-[11px] text-zinc-600">
+                        {r.subtitle}
+                      </span>
+                    )}
+                    {r.detail && (
+                      <span className="mt-1 block truncate text-[12px] text-zinc-500">
+                        {r.detail}
+                      </span>
+                    )}
                   </span>
                   <span className="text-right text-[10.5px] text-zinc-700">{timeAgo(r.ts)}</span>
                 </button>

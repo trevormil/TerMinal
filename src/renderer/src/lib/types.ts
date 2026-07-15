@@ -209,7 +209,10 @@ export type ObservabilitySnapshot = {
     costUsd: number
     toolCalls: number
   }
-  byEngine: Record<string, { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }>
+  byEngine: Record<
+    string,
+    { sessions: number; readySessions: number; tokens: number; costUsd: number; toolCalls: number }
+  >
   byRepo: Record<string, { sessions: number; tokens: number; costUsd: number; toolCalls: number }>
   topTools: { tool: string; count: number }[]
 }
@@ -395,7 +398,14 @@ export type ProjectSession = {
   body?: string
 }
 
-export type NewTicket = { title: string; type: string; priority: string; status: string; body: string; agent?: Partial<TicketAgent> }
+export type NewTicket = {
+  title: string
+  type: string
+  priority: string
+  status: string
+  body: string
+  agent?: Partial<TicketAgent>
+}
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
 export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
 export type TicketProviderConfig = {
@@ -423,7 +433,8 @@ export type TicketProviderTestResult = {
   smoke?: { key?: string; url?: string; status?: string; priority?: string }
 }
 
-export type DocCategory = 'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
+export type DocCategory =
+  'changelog' | 'decisions' | 'maintainer' | 'developer' | 'personal' | 'reports' | 'other'
 export type DocEntry = {
   path: string
   title: string
@@ -545,7 +556,13 @@ export type RemoteHost = {
   daemon: DaemonCfg
 }
 export type PinnedPanel = { label: string; url: string }
-export type WorkingDiff = { ok: boolean; diff: string; base: string; branch: string; error?: string }
+export type WorkingDiff = {
+  ok: boolean
+  diff: string
+  base: string
+  branch: string
+  error?: string
+}
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -565,7 +582,9 @@ export type Settings = {
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
 }
-export type SettingsPatch = Partial<Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>> & {
+export type SettingsPatch = Partial<
+  Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>
+> & {
   telegram?: Partial<TelegramCfg>
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
@@ -596,9 +615,20 @@ export type RemoteSettingsProbe = {
 }
 export type ProjectsDirValidation =
   | { ok: true; dir: string }
-  | { ok: false; reason: 'is-repo' | 'error'; dir: string; suggestedParent?: string; message: string }
+  | {
+      ok: false
+      reason: 'is-repo' | 'error'
+      dir: string
+      suggestedParent?: string
+      message: string
+    }
 export type RemoteDirEntry = { name: string; path: string; dir: true }
-export type RemoteDirList = { cwd: string; parent: string; entries: RemoteDirEntry[]; error?: string }
+export type RemoteDirList = {
+  cwd: string
+  parent: string
+  entries: RemoteDirEntry[]
+  error?: string
+}
 export type BootstrapStatus = {
   state: 'full' | 'partial' | 'none'
   bootstrapped: boolean
@@ -758,7 +788,13 @@ export type PersistentArtifact = {
   files: PersistentArtifactFile[]
 }
 export type PersistentArtifactRead =
-  | { ok: true; kind: PersistentArtifactFile['kind']; content: string; dataUrl?: string; path: string }
+  | {
+      ok: true
+      kind: PersistentArtifactFile['kind']
+      content: string
+      dataUrl?: string
+      path: string
+    }
   | { ok: false; reason: string; path?: string }
 // Per-(repo, agent) state sidecar — the runtime owns lastScannedSha /
 // lastScannedRef / lastRunAt / lastRunId; scripts can pin arbitrary
@@ -856,7 +892,13 @@ export type WindowStats = {
   docs: number
   blocked: number
 }
-export type RunStats = { total: number; done: number; failed: number; running: number; successRate: number }
+export type RunStats = {
+  total: number
+  done: number
+  failed: number
+  running: number
+  successRate: number
+}
 export type CycleStats = {
   merged: number
   medianHours: number | null
@@ -1156,7 +1198,13 @@ export type DigestChunk = {
   note: string | null
   confidence: string | null
   decision_signals: string[]
-  hunks: { header: string; old_start: number; new_start: number; mechanical: boolean; label: string }[]
+  hunks: {
+    header: string
+    old_start: number
+    new_start: number
+    mechanical: boolean
+    label: string
+  }[]
 }
 // Result of a per-file structural (difft) diff. `output` is raw ANSI meant to
 // be written straight into an xterm instance in the renderer.
@@ -1310,14 +1358,7 @@ export type PromptSnippet = {
 }
 
 export type WorkspaceSearchKind =
-  | 'file'
-  | 'ticket'
-  | 'mr'
-  | 'activity'
-  | 'doc'
-  | 'run'
-  | 'snippet'
-  | 'agent-artifact'
+  'file' | 'ticket' | 'mr' | 'activity' | 'doc' | 'run' | 'snippet' | 'agent-artifact'
 export type WorkspaceSearchResult = {
   id: string
   kind: WorkspaceSearchKind
@@ -1405,7 +1446,10 @@ export type GtApi = {
     get: () => Promise<Settings>
     patch: (patch: SettingsPatch) => Promise<Settings>
     remoteProbe: (hostId: string) => Promise<RemoteSettingsProbe>
-    validateProjectsDir: (input: { dir?: string; hostId?: string }) => Promise<ProjectsDirValidation>
+    validateProjectsDir: (input: {
+      dir?: string
+      hostId?: string
+    }) => Promise<ProjectsDirValidation>
   }
   snippets: {
     list: (repoRoot?: string) => Promise<{
@@ -1461,19 +1505,29 @@ export type GtApi = {
       runs: UnifiedRun[]
       errors: { hostId: string; label: string; error: string }[]
     }>
-    runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) => Promise<string>
+    runLog: (
+      source: 'cron' | 'agent' | 'bg' | 'session',
+      runId: string,
+      hostId?: string,
+    ) => Promise<string>
     runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
     runTrends: (days?: number) => Promise<RunTrendPoint[]>
     cancelCron: (id: string, hostId?: string) => Promise<{ ok: boolean; error?: string }>
     list: () => Promise<Agent[]>
     definitions: () => Promise<AgentDefinition[]>
-    save: (agent: Partial<Agent> & { id: string; title: string; prompt: string }) => Promise<{ ok: true } | { error: string }>
+    save: (
+      agent: Partial<Agent> & { id: string; title: string; prompt: string },
+    ) => Promise<{ ok: true } | { error: string }>
     reset: (id: string) => Promise<{ ok: true } | { error: string }>
     script: (id: string) => Promise<{ path: string; body: string } | null>
     state: (id: string) => Promise<{ path: string; exists: boolean; state: AgentStateRecord }>
     stateReset: (id: string) => Promise<{ ok: true } | { error: string }>
-    design: (text: string, engine: Engine, scope: 'repo' | 'global', model?: string) =>
-      Promise<AgentRun | { error: string }>
+    design: (
+      text: string,
+      engine: Engine,
+      scope: 'repo' | 'global',
+      model?: string,
+    ) => Promise<AgentRun | { error: string }>
     personas: () => Promise<Persona[]>
     pipelines: () => Promise<PipelineInfo[]>
     run: (
@@ -1579,7 +1633,8 @@ export type GtApi = {
     runs: (id?: string) => Promise<CronRun[]>
     runLog: (runId: string) => Promise<string>
     reconcile: () => Promise<
-      { loaded: number; removed: number; failed: { id: string; error: string }[] } | { ok: false; error: string }
+      | { loaded: number; removed: number; failed: { id: string; error: string }[] }
+      | { ok: false; error: string }
     >
     removeAll: () => Promise<{ removed: number }>
     disabledList: () => Promise<string[]>
@@ -1589,13 +1644,21 @@ export type GtApi = {
   }
   listeners: {
     status: () => Promise<ListenerStatus>
-    process: () => Promise<{ processed: number; failed: number; skipped: number; status: ListenerStatus }>
+    process: () => Promise<{
+      processed: number
+      failed: number
+      skipped: number
+      status: ListenerStatus
+    }>
     toggle: (enabled: boolean) => Promise<ListenerStatus>
     openDir: () => Promise<string>
   }
   hitl: {
     list: () => Promise<HitlItem[]>
-    remoteAll: () => Promise<{ items: HitlItem[]; errors: { hostId: string; label: string; error: string }[] }>
+    remoteAll: () => Promise<{
+      items: HitlItem[]
+      errors: { hostId: string; label: string; error: string }[]
+    }>
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
@@ -1636,12 +1699,32 @@ export type GtApi = {
     providerGet: () => Promise<TicketProviderConfig | { error: string }>
     providerSave: (cfg: TicketProviderConfig) => Promise<TicketProviderConfig | { error: string }>
     providerTest: (cfg: TicketProviderConfig, smoke?: boolean) => Promise<TicketProviderTestResult>
-    linearTeams: (cfg?: TicketProviderConfig) => Promise<{ id: string; name: string; key?: string }[]>
+    linearTeams: (
+      cfg?: TicketProviderConfig,
+    ) => Promise<{ id: string; name: string; key?: string }[]>
     openInObsidian: (slug: string) => Promise<boolean>
     create: (input: NewTicket) => Promise<Ticket>
-    recommendAgent: (input: { title?: string; type?: string; body?: string }) => Promise<TicketAgentRecommendation>
-    update: (slug: string, patch: { status?: string; priority?: string; acceptance?: string[]; agent?: Partial<TicketAgent>; run?: Partial<TicketRunLink> }) => Promise<boolean>
-    spawn: (text: string, engine: Engine, model?: string, remote?: RemoteSession) => Promise<AgentRun | { error: string }>
+    recommendAgent: (input: {
+      title?: string
+      type?: string
+      body?: string
+    }) => Promise<TicketAgentRecommendation>
+    update: (
+      slug: string,
+      patch: {
+        status?: string
+        priority?: string
+        acceptance?: string[]
+        agent?: Partial<TicketAgent>
+        run?: Partial<TicketRunLink>
+      },
+    ) => Promise<boolean>
+    spawn: (
+      text: string,
+      engine: Engine,
+      model?: string,
+      remote?: RemoteSession,
+    ) => Promise<AgentRun | { error: string }>
   }
   docs: {
     list: () => Promise<DocsTree>
@@ -1674,7 +1757,9 @@ export type GtApi = {
     search: (q: string, kinds?: WorkspaceSearchKind[]) => Promise<WorkspaceSearchResponse>
   }
   release: {
-    start: () => Promise<{ ok: true; pid: number | null; log: string; repoRoot: string } | { error: string }>
+    start: () => Promise<
+      { ok: true; pid: number | null; log: string; repoRoot: string } | { error: string }
+    >
     tail: () => Promise<string>
     status: () => Promise<{ running: boolean; pid?: number | null }>
   }
@@ -1682,45 +1767,61 @@ export type GtApi = {
     summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
       totalUsd: number
       totalRuns: number
-      byModel: Record<string, { runs: number; usd: number; inputTokens: number; outputTokens: number }>
+      byModel: Record<
+        string,
+        { runs: number; usd: number; inputTokens: number; outputTokens: number }
+      >
       bySource: Record<string, { runs: number; usd: number }>
       byAgent: Record<string, { runs: number; usd: number }>
       byRepo: Record<string, { runs: number; usd: number }>
     }>
-    byAgent: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
-      agentId: string
-      runs: number
-      usd: number
-      outcomes: { prOpened: number; ticketFiled: number; merged: number; none: number }
-    }[]>
-    daily: (days?: number) => Promise<{ date: string; usd: number; runs: number; byModel: Record<string, number> }[]>
-    runs: (limit?: number) => Promise<{
-      id: string
-      source: string
-      startedAt: number
-      endedAt?: number
-      model: string
-      inputTokens: number
-      outputTokens: number
-      cacheReadTokens?: number
-      costUsd: number
-      repoRoot: string
-      sessionId?: string
-      runId?: string
-      agentId?: string
-      durationMs?: number
-      exitCode?: number
-    }[]>
+    byAgent: (range?: 'today' | 'week' | 'month' | 'all') => Promise<
+      {
+        agentId: string
+        runs: number
+        usd: number
+        outcomes: { prOpened: number; ticketFiled: number; merged: number; none: number }
+      }[]
+    >
+    daily: (
+      days?: number,
+    ) => Promise<{ date: string; usd: number; runs: number; byModel: Record<string, number> }[]>
+    runs: (limit?: number) => Promise<
+      {
+        id: string
+        source: string
+        startedAt: number
+        endedAt?: number
+        model: string
+        inputTokens: number
+        outputTokens: number
+        cacheReadTokens?: number
+        costUsd: number
+        repoRoot: string
+        sessionId?: string
+        runId?: string
+        agentId?: string
+        durationMs?: number
+        exitCode?: number
+      }[]
+    >
     models: () => Promise<string[]>
     indexStatus: () => Promise<ObservabilityIndexStatus>
     rebuildIndex: (limit?: number) => Promise<ObservabilityIndexBuildResult>
-    indexQuery: (query: ObservabilityIndexQueryId, arg?: string) => Promise<ObservabilityIndexQueryResult>
+    indexQuery: (
+      query: ObservabilityIndexQueryId,
+      arg?: string,
+    ) => Promise<ObservabilityIndexQueryResult>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
     session: (sessionId: string) => Promise<ObservabilitySessionDetail | null>
     toolCall: (sessionId: string, callId: string) => Promise<ObservabilityToolCallPayload | null>
-    transcriptWindow: (sessionId: string, centerLine?: number, radius?: number) => Promise<ObservabilityTranscriptWindow | null>
+    transcriptWindow: (
+      sessionId: string,
+      centerLine?: number,
+      radius?: number,
+    ) => Promise<ObservabilityTranscriptWindow | null>
   }
   budgets: {
     get: () => Promise<{
@@ -1785,7 +1886,10 @@ export type GtApi = {
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
     folderList: (id: string, rel: string) => Promise<FileEntry[]>
-    folderRead: (id: string, rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+    folderRead: (
+      id: string,
+      rel: string,
+    ) => Promise<{ ok: boolean; content: string; reason?: string }>
     folderWrite: (id: string, rel: string, content: string) => Promise<boolean>
   }
   knowledge: {
@@ -1793,10 +1897,28 @@ export type GtApi = {
     write: (scope: KnowledgeScope, kb: KnowledgeBase) => Promise<boolean>
     preview: (url: string) => Promise<KnowledgePreview>
     ragStatus: (scope: KnowledgeScope, item: KnowledgeItem) => Promise<KnowledgeRagStatus>
-    ragReindex: (scope: KnowledgeScope, item: KnowledgeItem, fullRebuild?: boolean) => Promise<KnowledgeRagStatus>
-    ragAddDocument: (scope: KnowledgeScope, item: KnowledgeItem, content: string, filepath?: string) => Promise<KnowledgeRagStatus>
-    ragAddUrl: (scope: KnowledgeScope, item: KnowledgeItem, url: string, title?: string) => Promise<KnowledgeRagStatus>
-    ragSearch: (scope: KnowledgeScope, item: KnowledgeItem, query: string) => Promise<KnowledgeRagSearchResult>
+    ragReindex: (
+      scope: KnowledgeScope,
+      item: KnowledgeItem,
+      fullRebuild?: boolean,
+    ) => Promise<KnowledgeRagStatus>
+    ragAddDocument: (
+      scope: KnowledgeScope,
+      item: KnowledgeItem,
+      content: string,
+      filepath?: string,
+    ) => Promise<KnowledgeRagStatus>
+    ragAddUrl: (
+      scope: KnowledgeScope,
+      item: KnowledgeItem,
+      url: string,
+      title?: string,
+    ) => Promise<KnowledgeRagStatus>
+    ragSearch: (
+      scope: KnowledgeScope,
+      item: KnowledgeItem,
+      query: string,
+    ) => Promise<KnowledgeRagSearchResult>
   }
   files: {
     list: (rel: string) => Promise<FileEntry[]>
@@ -1816,7 +1938,14 @@ export type GtApi = {
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
 export type SearchHit = { file: string; line: number; text: string }
-export type GitStatus = { ok: boolean; branch: string; ahead: number; behind: number; dirty: number; upstream: boolean }
+export type GitStatus = {
+  ok: boolean
+  branch: string
+  ahead: number
+  behind: number
+  dirty: number
+  upstream: boolean
+}
 export type MrSummary = {
   ok: boolean
   error?: string

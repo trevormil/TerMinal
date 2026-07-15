@@ -24,7 +24,9 @@ function Row({ ok, name, hint }: { ok: boolean; name: string; hint: string }) {
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [projectsDir, setProjectsDir] = useState('')
-  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(null)
+  const [projectsDirValidation, setProjectsDirValidation] = useState<ProjectsDirValidation | null>(
+    null,
+  )
   const [busy, setBusy] = useState(false)
   const [rechecking, setRechecking] = useState(false)
 
@@ -105,7 +107,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               title="Re-probe your PATH after installing a tool"
               className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200 disabled:opacity-50"
             >
-              {rechecking ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} strokeWidth={2} />}
+              {rechecking ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <RefreshCw size={11} strokeWidth={2} />
+              )}
               Re-check
             </button>
           </div>
@@ -115,11 +121,47 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Row ok={env.claude.found} name="Claude" hint={env.claude.found ? env.claude.path : 'install the Claude CLI to run sessions'} />
-              <Row ok={env.codex.found} name="Codex" hint={env.codex.found ? env.codex.path : 'optional — install for the Codex engine'} />
-              <Row ok={env.cursor.found} name="Cursor" hint={env.cursor.found ? env.cursor.path : 'optional — install Cursor Agent for the Cursor engine'} />
-              <Row ok={env.gh.found && env.gh.authed} name="gh" hint={env.gh.found ? (env.gh.authed ? `GitHub PRs ready${env.gh.authHost ? ` (${env.gh.authHost})` : ''}` : 'run `gh auth login`') : 'optional — for GitHub PRs'} />
-              <Row ok={env.glab.found && env.glab.authed} name="glab" hint={env.glab.found ? (env.glab.authed ? `GitLab MRs ready${env.glab.authHost ? ` (${env.glab.authHost})` : ''}` : 'run `glab auth login`') : 'optional — for GitLab MRs'} />
+              <Row
+                ok={env.claude.found}
+                name="Claude"
+                hint={env.claude.found ? env.claude.path : 'install the Claude CLI to run sessions'}
+              />
+              <Row
+                ok={env.codex.found}
+                name="Codex"
+                hint={env.codex.found ? env.codex.path : 'optional — install for the Codex engine'}
+              />
+              <Row
+                ok={env.cursor.found}
+                name="Cursor"
+                hint={
+                  env.cursor.found
+                    ? env.cursor.path
+                    : 'optional — install Cursor Agent for the Cursor engine'
+                }
+              />
+              <Row
+                ok={env.gh.found && env.gh.authed}
+                name="gh"
+                hint={
+                  env.gh.found
+                    ? env.gh.authed
+                      ? `GitHub PRs ready${env.gh.authHost ? ` (${env.gh.authHost})` : ''}`
+                      : 'run `gh auth login`'
+                    : 'optional — for GitHub PRs'
+                }
+              />
+              <Row
+                ok={env.glab.found && env.glab.authed}
+                name="glab"
+                hint={
+                  env.glab.found
+                    ? env.glab.authed
+                      ? `GitLab MRs ready${env.glab.authHost ? ` (${env.glab.authHost})` : ''}`
+                      : 'run `glab auth login`'
+                    : 'optional — for GitLab MRs'
+                }
+              />
             </div>
           )}
           {env && !eng && (
@@ -154,19 +196,21 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               className="min-w-0 flex-1 rounded-lg border border-[var(--gt-border)] bg-black/30 px-3 py-2 font-mono text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
             />
           </div>
-          {projectsDirValidation && !projectsDirValidation.ok && projectsDirValidation.reason === 'is-repo' && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
-              <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
-              {projectsDirValidation.suggestedParent && (
-                <button
-                  onClick={() => setProjectsDir(projectsDirValidation.suggestedParent || '')}
-                  className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
-                >
-                  Use parent
-                </button>
-              )}
-            </div>
-          )}
+          {projectsDirValidation &&
+            !projectsDirValidation.ok &&
+            projectsDirValidation.reason === 'is-repo' && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
+                {projectsDirValidation.suggestedParent && (
+                  <button
+                    onClick={() => setProjectsDir(projectsDirValidation.suggestedParent || '')}
+                    className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                  >
+                    Use parent
+                  </button>
+                )}
+              </div>
+            )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -178,12 +222,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             disabled={busy}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-5 py-2.5 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} strokeWidth={2.5} />}
+            {busy ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <ArrowRight size={15} strokeWidth={2.5} />
+            )}
             Get started
           </button>
         </div>
         <p className="mt-4 text-center text-[10.5px] text-zinc-600">
-          Telegram notifications, engine paths, and forge preferences are all in Settings (gear icon).
+          Telegram notifications, engine paths, and forge preferences are all in Settings (gear
+          icon).
         </p>
       </div>
     </div>

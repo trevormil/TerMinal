@@ -1,5 +1,12 @@
 import { test, expect, describe } from 'bun:test'
-import { specToCron, buildCronJobManifest, applyManifestCmd, deleteCronJobCmd, listCronJobsCmd, parseCronJobNames } from './k8s'
+import {
+  specToCron,
+  buildCronJobManifest,
+  applyManifestCmd,
+  deleteCronJobCmd,
+  listCronJobsCmd,
+  parseCronJobNames,
+} from './k8s'
 
 describe('specToCron', () => {
   test('passes a raw cron expr through', () => {
@@ -9,21 +16,27 @@ describe('specToCron', () => {
     expect(specToCron({ kind: 'calendar', minute: 30, hour: 9 })).toBe('30 9 * * *')
   })
   test('weekday calendar → M H * * d,d', () => {
-    expect(specToCron({ kind: 'calendar', minute: 0, hour: 8, weekdays: [1, 3, 5] })).toBe('0 8 * * 1,3,5')
+    expect(specToCron({ kind: 'calendar', minute: 0, hour: 8, weekdays: [1, 3, 5] })).toBe(
+      '0 8 * * 1,3,5',
+    )
   })
 })
 
 describe('buildCronJobManifest', () => {
-  const m = buildCronJobManifest('coverage', { kind: 'calendar', minute: 0, hour: 9 }, {
-    image: 'terminal-agent:latest',
-    home: '/home/u',
-    cfgDir: '/home/u/.config/TerMinal',
-    repoRoot: '/home/u/repos/app',
-    uid: 1000,
-    gid: 1000,
-    timeoutSec: 1800,
-    backoffLimit: 2,
-  })
+  const m = buildCronJobManifest(
+    'coverage',
+    { kind: 'calendar', minute: 0, hour: 9 },
+    {
+      image: 'terminal-agent:latest',
+      home: '/home/u',
+      cfgDir: '/home/u/.config/TerMinal',
+      repoRoot: '/home/u/repos/app',
+      uid: 1000,
+      gid: 1000,
+      timeoutSec: 1800,
+      backoffLimit: 2,
+    },
+  )
   test('is a CronJob with the schedule + no-overlap policy', () => {
     expect(m).toContain('kind: CronJob')
     expect(m).toContain('name: terminal-cron-coverage')
@@ -47,7 +60,22 @@ describe('buildCronJobManifest', () => {
     expect(m).toContain('value: /home/u') // HOME env
   })
   test('rejects an unsafe schedule id', () => {
-    expect(() => buildCronJobManifest('a b', { kind: 'cron', expr: '* * * * *' }, { image: 'i', home: '/h', cfgDir: '/c', repoRoot: '/r', uid: 1, gid: 1, timeoutSec: 1, backoffLimit: 0 })).toThrow()
+    expect(() =>
+      buildCronJobManifest(
+        'a b',
+        { kind: 'cron', expr: '* * * * *' },
+        {
+          image: 'i',
+          home: '/h',
+          cfgDir: '/c',
+          repoRoot: '/r',
+          uid: 1,
+          gid: 1,
+          timeoutSec: 1,
+          backoffLimit: 0,
+        },
+      ),
+    ).toThrow()
   })
 })
 
@@ -65,6 +93,9 @@ describe('kubectl command builders', () => {
     expect(listCronJobsCmd()).toContain('app=terminal-cron')
   })
   test('parseCronJobNames extracts schedule ids from names', () => {
-    expect(parseCronJobNames('terminal-cron-coverage\nterminal-cron-deps\n')).toEqual(['coverage', 'deps'])
+    expect(parseCronJobNames('terminal-cron-coverage\nterminal-cron-deps\n')).toEqual([
+      'coverage',
+      'deps',
+    ])
   })
 })

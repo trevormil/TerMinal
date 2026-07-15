@@ -22,7 +22,9 @@ export function RunEvaluationPanel({
     return (
       <div className="border-b border-[var(--gt-border)]/60 bg-black/15 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Evaluation</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            Evaluation
+          </span>
           <Badge tone={statusTone(evaluation.status)}>{evaluation.status}</Badge>
           <span className="min-w-0 truncate text-[11px] text-zinc-400">{evaluation.summary}</span>
         </div>
@@ -48,7 +50,9 @@ export function RunEvaluationPanel({
       <div className="mb-2 flex items-center gap-2">
         <Badge tone={statusTone(evaluation.status)}>{evaluation.status}</Badge>
         <span className="text-[11.5px] text-zinc-300">{evaluation.summary}</span>
-        <span className="ml-auto text-[10.5px] text-zinc-600">evaluated {fmtWhen(evaluation.evaluatedAt)}</span>
+        <span className="ml-auto text-[10.5px] text-zinc-600">
+          evaluated {fmtWhen(evaluation.evaluatedAt)}
+        </span>
       </div>
       {evaluation.checks.length > 0 && (
         <div className="space-y-1">
@@ -58,8 +62,16 @@ export function RunEvaluationPanel({
               <span className="min-w-0 flex-1">
                 <span className="font-semibold text-zinc-300">{check.title}</span>
                 {check.required && <span className="ml-1 text-zinc-600">required</span>}
-                {check.command && <span className="ml-2 font-mono text-[10.5px] text-zinc-500">{check.command}</span>}
-                {check.detail && <span className="mt-0.5 block truncate text-[10.5px] text-zinc-600">{check.detail}</span>}
+                {check.command && (
+                  <span className="ml-2 font-mono text-[10.5px] text-zinc-500">
+                    {check.command}
+                  </span>
+                )}
+                {check.detail && (
+                  <span className="mt-0.5 block truncate text-[10.5px] text-zinc-600">
+                    {check.detail}
+                  </span>
+                )}
               </span>
             </div>
           ))}

@@ -10,14 +10,7 @@ import { listPersistentAgentArtifacts, listPersistentAgents } from './persistent
 import { listRepoTickets, repoTicketProvider } from './ticket-provider'
 
 export type WorkspaceSearchKind =
-  | 'file'
-  | 'ticket'
-  | 'mr'
-  | 'activity'
-  | 'doc'
-  | 'run'
-  | 'snippet'
-  | 'agent-artifact'
+  'file' | 'ticket' | 'mr' | 'activity' | 'doc' | 'run' | 'snippet' | 'agent-artifact'
 
 export type WorkspaceSearchResult = {
   id: string
@@ -50,7 +43,11 @@ const MAX_RESULTS = 260
 const MAX_PER_KIND = 60
 
 const lc = (s: unknown) => String(s ?? '').toLowerCase()
-const short = (s: unknown, n = 260) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+const short = (s: unknown, n = 260) =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, n)
 const repoName = (repoRoot: string) => basename(repoRoot || '') || 'workspace'
 
 function matches(query: string, ...parts: unknown[]): boolean {
@@ -111,7 +108,22 @@ export async function workspaceSearch(
     try {
       const provider = repoTicketProvider(repoRoot)
       for (const t of await listRepoTickets(repoRoot)) {
-        if (!matches(q, t.id, t.externalKey, t.title, t.status, t.priority, t.type, t.source, t.body, t.prs.join(' '), t.url)) continue
+        if (
+          !matches(
+            q,
+            t.id,
+            t.externalKey,
+            t.title,
+            t.status,
+            t.priority,
+            t.type,
+            t.source,
+            t.body,
+            t.prs.join(' '),
+            t.url,
+          )
+        )
+          continue
         pushLimited(results, counts, {
           id: `ticket:${t.slug}`,
           kind: 'ticket',
@@ -132,13 +144,16 @@ export async function workspaceSearch(
       const { mrs, error } = await listMrs(repoRoot)
       if (error) errors.push(`MRs: ${error}`)
       for (const m of mrs) {
-        if (!matches(q, m.iid, m.title, m.state, m.author, m.sourceBranch, m.labels.join(' '))) continue
+        if (!matches(q, m.iid, m.title, m.state, m.author, m.sourceBranch, m.labels.join(' ')))
+          continue
         pushLimited(results, counts, {
           id: `mr:${m.iid}`,
           kind: 'mr',
           title: `MR/PR ${m.iid} ${m.title}`,
           subtitle: `${m.state} - ${m.author}`,
-          detail: [m.sourceBranch, m.review?.verdict, m.labels.join(', ')].filter(Boolean).join(' - '),
+          detail: [m.sourceBranch, m.review?.verdict, m.labels.join(', ')]
+            .filter(Boolean)
+            .join(' - '),
           payload: { iid: m.iid },
         })
       }
@@ -150,7 +165,8 @@ export async function workspaceSearch(
   if (selected.has('activity')) {
     try {
       for (const ev of readActivity(700)) {
-        if (!matches(q, ev.title, ev.detail, ev.kind, ev.repo, ev.repoRoot, ev.sessionId, ev.runId)) continue
+        if (!matches(q, ev.title, ev.detail, ev.kind, ev.repo, ev.repoRoot, ev.sessionId, ev.runId))
+          continue
         pushLimited(results, counts, {
           id: `activity:${ev.id}`,
           kind: 'activity',
@@ -158,7 +174,12 @@ export async function workspaceSearch(
           subtitle: `${ev.kind}${ev.repo ? ` - ${ev.repo}` : ''}`,
           detail: short(ev.detail),
           ts: ev.ts,
-          payload: { runId: ev.runId, runSource: ev.runSource, ticket: ev.ref?.ticket, pr: ev.ref?.pr },
+          payload: {
+            runId: ev.runId,
+            runSource: ev.runSource,
+            ticket: ev.ref?.ticket,
+            pr: ev.ref?.pr,
+          },
         })
       }
     } catch (e) {
@@ -190,7 +211,23 @@ export async function workspaceSearch(
   if (selected.has('run')) {
     try {
       for (const r of listAllRuns(500)) {
-        if (!matches(q, r.id, r.source, r.agentId, r.agentTitle, r.engine, r.status, r.repoLabel, r.repoRoot, r.branch, r.worktree, r.error)) continue
+        if (
+          !matches(
+            q,
+            r.id,
+            r.source,
+            r.agentId,
+            r.agentTitle,
+            r.engine,
+            r.status,
+            r.repoLabel,
+            r.repoRoot,
+            r.branch,
+            r.worktree,
+            r.error,
+          )
+        )
+          continue
         pushLimited(results, counts, {
           id: `run:${r.source}:${r.id}`,
           kind: 'run',
@@ -229,7 +266,21 @@ export async function workspaceSearch(
       for (const agent of listPersistentAgents()) {
         for (const a of listPersistentAgentArtifacts(agent.id)) {
           const fileList = a.files.map((f) => f.path).join(' ')
-          if (!matches(q, agent.id, agent.title, agent.description, a.id, a.title, a.kind, a.summary, a.path, fileList)) continue
+          if (
+            !matches(
+              q,
+              agent.id,
+              agent.title,
+              agent.description,
+              a.id,
+              a.title,
+              a.kind,
+              a.summary,
+              a.path,
+              fileList,
+            )
+          )
+            continue
           pushLimited(results, counts, {
             id: `agent-artifact:${agent.id}:${a.id}`,
             kind: 'agent-artifact',
@@ -247,5 +298,8 @@ export async function workspaceSearch(
     }
   }
 
-  return { results: results.slice(0, MAX_RESULTS), error: errors.length ? errors.join(' - ') : undefined }
+  return {
+    results: results.slice(0, MAX_RESULTS),
+    error: errors.length ? errors.join(' - ') : undefined,
+  }
 }

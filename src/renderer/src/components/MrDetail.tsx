@@ -32,11 +32,36 @@ import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges
 import type { MrDetail, Finding, CiInfo, StructuralDiffResult, Screenshot } from '../lib/types'
 
 const HLJS_LANG: Record<string, string> = {
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript',
-  cjs: 'javascript', json: 'json', md: 'markdown', css: 'css', scss: 'scss', less: 'less',
-  html: 'xml', xml: 'xml', py: 'python', rs: 'rust', go: 'go', yaml: 'yaml', yml: 'yaml', sql: 'sql',
-  sh: 'bash', bash: 'bash', zsh: 'bash', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', java: 'java',
-  php: 'php', rb: 'ruby', toml: 'ini',
+  ts: 'typescript',
+  tsx: 'typescript',
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  json: 'json',
+  md: 'markdown',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  html: 'xml',
+  xml: 'xml',
+  py: 'python',
+  rs: 'rust',
+  go: 'go',
+  yaml: 'yaml',
+  yml: 'yaml',
+  sql: 'sql',
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'bash',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
+  hpp: 'cpp',
+  java: 'java',
+  php: 'php',
+  rb: 'ruby',
+  toml: 'ini',
 }
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const langOf = (path: string) => HLJS_LANG[path.split('.').pop()?.toLowerCase() || '']
@@ -250,55 +275,69 @@ export function FileDiff({
         }
         return (
           <div key={ci}>
-            <div className="bg-[var(--gt-panel)] px-3 py-1 text-[11px] text-zinc-500">{c.content}</div>
-          {mode === 'unified' ? (
-            <table className="w-full border-collapse">
-              <tbody>
-                {c.changes.map((ch: any, i: number) => {
-                  const bg =
-                    ch.type === 'add'
-                      ? 'bg-[var(--gt-green)]/[0.08]'
-                      : ch.type === 'del'
-                        ? 'bg-[var(--gt-red)]/[0.08]'
-                        : ''
-                  const oldLn = ch.type === 'normal' ? ch.ln1 : ch.type === 'del' ? ch.ln : ''
-                  const newLn = ch.type === 'normal' ? ch.ln2 : ch.type === 'add' ? ch.ln : ''
-                  const prefix = ch.type === 'add' ? '+' : ch.type === 'del' ? '-' : ' '
-                  return (
-                    <tr key={i} className={bg}>
-                      <td className="w-10 select-none px-2 text-right text-[10px] text-zinc-600">{oldLn || ''}</td>
-                      <td className="w-10 select-none px-2 text-right text-[10px] text-zinc-600">{newLn || ''}</td>
-                      <td className="w-3 select-none text-center text-zinc-600">{prefix}</td>
-                      <td className="whitespace-pre px-2 text-zinc-200">
-                        <Code content={ch.content} langId={langId} />
+            <div className="bg-[var(--gt-panel)] px-3 py-1 text-[11px] text-zinc-500">
+              {c.content}
+            </div>
+            {mode === 'unified' ? (
+              <table className="w-full border-collapse">
+                <tbody>
+                  {c.changes.map((ch: any, i: number) => {
+                    const bg =
+                      ch.type === 'add'
+                        ? 'bg-[var(--gt-green)]/[0.08]'
+                        : ch.type === 'del'
+                          ? 'bg-[var(--gt-red)]/[0.08]'
+                          : ''
+                    const oldLn = ch.type === 'normal' ? ch.ln1 : ch.type === 'del' ? ch.ln : ''
+                    const newLn = ch.type === 'normal' ? ch.ln2 : ch.type === 'add' ? ch.ln : ''
+                    const prefix = ch.type === 'add' ? '+' : ch.type === 'del' ? '-' : ' '
+                    return (
+                      <tr key={i} className={bg}>
+                        <td className="w-10 select-none px-2 text-right text-[10px] text-zinc-600">
+                          {oldLn || ''}
+                        </td>
+                        <td className="w-10 select-none px-2 text-right text-[10px] text-zinc-600">
+                          {newLn || ''}
+                        </td>
+                        <td className="w-3 select-none text-center text-zinc-600">{prefix}</td>
+                        <td className="whitespace-pre px-2 text-zinc-200">
+                          <Code content={ch.content} langId={langId} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full table-fixed border-collapse">
+                <tbody>
+                  {alignChunk(c.changes).map((row, i) => (
+                    <tr key={i}>
+                      <td
+                        className={`w-9 select-none px-1 text-right text-[10px] text-zinc-600 ${sideBg(row.left)}`}
+                      >
+                        {row.left?.ln || ''}
+                      </td>
+                      <td
+                        className={`w-1/2 truncate whitespace-pre border-r border-[var(--gt-border)] px-2 text-zinc-200 ${sideBg(row.left)}`}
+                      >
+                        {row.left ? <Code content={row.left.content} langId={langId} /> : ''}
+                      </td>
+                      <td
+                        className={`w-9 select-none px-1 text-right text-[10px] text-zinc-600 ${sideBg(row.right)}`}
+                      >
+                        {row.right?.ln || ''}
+                      </td>
+                      <td
+                        className={`w-1/2 truncate whitespace-pre px-2 text-zinc-200 ${sideBg(row.right)}`}
+                      >
+                        {row.right ? <Code content={row.right.content} langId={langId} /> : ''}
                       </td>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full table-fixed border-collapse">
-              <tbody>
-                {alignChunk(c.changes).map((row, i) => (
-                  <tr key={i}>
-                    <td className={`w-9 select-none px-1 text-right text-[10px] text-zinc-600 ${sideBg(row.left)}`}>
-                      {row.left?.ln || ''}
-                    </td>
-                    <td className={`w-1/2 truncate whitespace-pre border-r border-[var(--gt-border)] px-2 text-zinc-200 ${sideBg(row.left)}`}>
-                      {row.left ? <Code content={row.left.content} langId={langId} /> : ''}
-                    </td>
-                    <td className={`w-9 select-none px-1 text-right text-[10px] text-zinc-600 ${sideBg(row.right)}`}>
-                      {row.right?.ln || ''}
-                    </td>
-                    <td className={`w-1/2 truncate whitespace-pre px-2 text-zinc-200 ${sideBg(row.right)}`}>
-                      {row.right ? <Code content={row.right.content} langId={langId} /> : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )
       })}
@@ -463,7 +502,11 @@ export function DiffView({
   )
   const files = useMemo(() => parseDiff(diff), [diff])
   const tree = useMemo(() => buildDiffTree(files), [files])
-  const fileList = useResizableWidth('gt.diffFileListWidth', 320, { min: 200, max: 560, edge: 'right' })
+  const fileList = useResizableWidth('gt.diffFileListWidth', 320, {
+    min: 200,
+    max: 560,
+    edge: 'right',
+  })
   const [selected, setSelected] = useState<string>('')
   const [mode, setMode] = useState<'unified' | 'split' | 'structural'>('unified')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -524,8 +567,12 @@ export function DiffView({
               <Folder size={12} strokeWidth={2} className="shrink-0 text-zinc-500" />
               <span className="min-w-0 flex-1 truncate font-mono text-zinc-400">{node.name}</span>
               <span className="shrink-0 tabular-nums text-zinc-700">{node.fileCount}</span>
-              <span className="shrink-0 tabular-nums text-[var(--gt-green)]/80">+{node.additions}</span>
-              <span className="shrink-0 tabular-nums text-[var(--gt-red)]/80">-{node.deletions}</span>
+              <span className="shrink-0 tabular-nums text-[var(--gt-green)]/80">
+                +{node.additions}
+              </span>
+              <span className="shrink-0 tabular-nums text-[var(--gt-red)]/80">
+                -{node.deletions}
+              </span>
             </button>
             {open ? renderTree(node.children, depth + 1) : null}
           </div>
@@ -567,7 +614,10 @@ export function DiffView({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]" style={{ width: fileList.width }}>
+      <div
+        className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]"
+        style={{ width: fileList.width }}
+      >
         <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-600">
           <span>
             {files.length} files{showViewed ? ` · ${viewedCount} viewed` : ''}
@@ -621,7 +671,11 @@ export function DiffView({
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'structural' ? (
-            <StructuralFileDiff key={`${iid}:${selected}`} path={selected} fetch={structuralFetch} />
+            <StructuralFileDiff
+              key={`${iid}:${selected}`}
+              path={selected}
+              fetch={structuralFetch}
+            />
           ) : (
             <FileDiff file={file} mode={mode} />
           )}
@@ -643,7 +697,9 @@ function CiPanel({ ci }: { ci: CiInfo | null | undefined }) {
   return (
     <div className="mb-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">CI pipeline</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+          CI pipeline
+        </span>
         <Badge tone={ciTone(ci.status)}>{ci.status || 'unknown'}</Badge>
         {ci.webUrl && (
           <button
@@ -693,7 +749,9 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
             score <span className="font-semibold text-zinc-200">{mr.reviewMeta.overall}</span>
           </span>
         )}
-        {mr.reviewMeta && <Badge tone={verdictTone(mr.reviewMeta.verdict)}>{mr.reviewMeta.verdict}</Badge>}
+        {mr.reviewMeta && (
+          <Badge tone={verdictTone(mr.reviewMeta.verdict)}>{mr.reviewMeta.verdict}</Badge>
+        )}
         {mr.reviewMeta && (
           <Badge tone={testTone(mr.reviewMeta.testStatus)}>tests {mr.reviewMeta.testStatus}</Badge>
         )}
@@ -718,7 +776,9 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
             stale
           </Badge>
         )}
-        {mr.artifactShortSha && <span className="font-mono text-zinc-600">artifact {mr.artifactShortSha}</span>}
+        {mr.artifactShortSha && (
+          <span className="font-mono text-zinc-600">artifact {mr.artifactShortSha}</span>
+        )}
       </div>
       <CiPanel ci={ci} />
       {mr.description ? (
@@ -775,7 +835,15 @@ function FindingCard({ f, mutedSeverity }: { f: Finding; mutedSeverity?: boolean
   )
 }
 
-function FindingCards({ items, muted, empty }: { items: Finding[]; muted?: boolean; empty: string }) {
+function FindingCards({
+  items,
+  muted,
+  empty,
+}: {
+  items: Finding[]
+  muted?: boolean
+  empty: string
+}) {
   if (items.length === 0) return <div className="p-6 text-[12px] text-zinc-600">{empty}</div>
   return (
     <div className="h-full space-y-2 overflow-y-auto p-4">
@@ -794,16 +862,22 @@ const KIND_TONE: Record<NonNullable<Screenshot['kind']>, 'ok' | 'warn' | 'blue' 
 }
 
 function Screenshots({ items }: { items: Screenshot[] }) {
-  if (items.length === 0) return <div className="p-6 text-[12px] text-zinc-600">No screenshots for this review.</div>
+  if (items.length === 0)
+    return <div className="p-6 text-[12px] text-zinc-600">No screenshots for this review.</div>
   return (
     <div className="h-full space-y-4 overflow-y-auto p-4">
       {items.map((s) => (
-        <figure key={s.id} className="m-0 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
+        <figure
+          key={s.id}
+          className="m-0 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3"
+        >
           <figcaption className="mb-2 flex flex-wrap items-center gap-1.5">
             {s.kind && <Badge tone={KIND_TONE[s.kind]}>{s.kind}</Badge>}
             <span className="text-[13px] font-medium text-zinc-200">{s.caption}</span>
             {s.findingId && (
-              <span className="ml-auto font-mono text-[10.5px] text-zinc-500">finding {s.findingId}</span>
+              <span className="ml-auto font-mono text-[10.5px] text-zinc-500">
+                finding {s.findingId}
+              </span>
             )}
           </figcaption>
           <img
@@ -855,11 +929,17 @@ export function MrDetailView({
   }, [view, iid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (mr === undefined)
-    return <div className="p-6 text-[12px] text-zinc-600">Loading {sym}{iid}…</div>
+    return (
+      <div className="p-6 text-[12px] text-zinc-600">
+        Loading {sym}
+        {iid}…
+      </div>
+    )
   if (mr === null)
     return (
       <div className="p-6 text-[12px] text-zinc-600">
-        Couldn't load {sym}{iid} (is <code className="text-zinc-400">{label === 'PR' ? 'gh' : 'glab'}</code>{' '}
+        Couldn't load {sym}
+        {iid} (is <code className="text-zinc-400">{label === 'PR' ? 'gh' : 'glab'}</code>{' '}
         authenticated for this repo?)
       </div>
     )
@@ -886,7 +966,10 @@ export function MrDetailView({
           <ChevronLeft size={14} strokeWidth={2} />
           {label}s
         </button>
-        <span className="font-mono text-[12px] text-zinc-500">{sym}{mr.iid}</span>
+        <span className="font-mono text-[12px] text-zinc-500">
+          {sym}
+          {mr.iid}
+        </span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
         <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>
         {mr.draft && <Badge tone="warn">draft</Badge>}
@@ -960,7 +1043,11 @@ export function MrDetailView({
           )}
         <span className="ml-2 inline-flex items-center gap-0.5 truncate text-[10px] text-zinc-700">
           <GitBranch size={11} strokeWidth={2} />
-          <CopyButton value={mr.sourceBranch} title="Copy branch name" className="text-[10px] text-zinc-700">
+          <CopyButton
+            value={mr.sourceBranch}
+            title="Copy branch name"
+            className="text-[10px] text-zinc-700"
+          >
             {mr.sourceBranch}
           </CopyButton>
           → {mr.targetBranch}

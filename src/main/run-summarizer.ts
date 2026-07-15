@@ -9,11 +9,7 @@ const STRIP_ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g
 
 /** Last-N-line tail with ANSI stripped. */
 export function tailLines(raw: string, n = 80): string {
-  return raw
-    .replace(STRIP_ANSI, '')
-    .split('\n')
-    .slice(-n)
-    .join('\n')
+  return raw.replace(STRIP_ANSI, '').split('\n').slice(-n).join('\n')
 }
 
 /** Deterministic fallback: find the last cluster of error-shaped lines.
@@ -37,7 +33,10 @@ export function deterministicSummary(rawLog: string): string {
     return lines.slice(-3).join(' · ').slice(0, 240)
   }
   // Cluster: anchor + up to 5 lines following
-  return lines.slice(anchor, anchor + 6).join(' · ').slice(0, 280)
+  return lines
+    .slice(anchor, anchor + 6)
+    .join(' · ')
+    .slice(0, 280)
 }
 
 /** Cheap LLM summarizer routed through cheap-llm (claude -p haiku by default).

@@ -53,7 +53,8 @@ export function saveGlobalAgent(
   const i = list.findIndex((a) => a.id === id)
   if (i >= 0) list[i] = entry
   else list.push(entry)
-  if (!writeGlobalAgents(list)) return { error: 'failed to write ~/.config/TerMinal/agents/global.json' }
+  if (!writeGlobalAgents(list))
+    return { error: 'failed to write ~/.config/TerMinal/agents/global.json' }
   return { ok: true }
 }
 

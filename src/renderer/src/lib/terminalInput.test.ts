@@ -7,7 +7,9 @@ describe('shellEscapePath', () => {
   })
 
   test('backslash-escapes spaces (the whole point)', () => {
-    expect(shellEscapePath('/Users/me/My Documents/notes.md')).toBe('/Users/me/My\\ Documents/notes.md')
+    expect(shellEscapePath('/Users/me/My Documents/notes.md')).toBe(
+      '/Users/me/My\\ Documents/notes.md',
+    )
   })
 
   test('escapes shell metacharacters that would otherwise break the line', () => {
@@ -27,7 +29,9 @@ describe('formatDroppedPaths', () => {
   })
 
   test('multiple files → space-separated, each escaped', () => {
-    expect(formatDroppedPaths(['/tmp/one.txt', '/tmp/two three.txt'])).toBe('/tmp/one.txt /tmp/two\\ three.txt ')
+    expect(formatDroppedPaths(['/tmp/one.txt', '/tmp/two three.txt'])).toBe(
+      '/tmp/one.txt /tmp/two\\ three.txt ',
+    )
   })
 
   test('drops blank/whitespace entries', () => {

@@ -34,7 +34,15 @@ const plugin: Plugin<TaskItem[]> = {
     const done = tasks.filter((t) => t.status === 'completed').length
     const active = tasks.filter((t) => t.status !== 'completed')
     return (
-      <Card icon={ListChecks} title="Todos" right={<span className="text-[9px] tabular-nums text-zinc-600">{done}/{tasks.length}</span>}>
+      <Card
+        icon={ListChecks}
+        title="Todos"
+        right={
+          <span className="text-[9px] tabular-nums text-zinc-600">
+            {done}/{tasks.length}
+          </span>
+        }
+      >
         {active.length === 0 ? (
           <div className="flex items-center gap-1 text-[11px] italic text-zinc-500">
             <CircleCheck size={11} strokeWidth={2.25} className="text-[var(--gt-green)]" />

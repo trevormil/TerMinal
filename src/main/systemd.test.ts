@@ -16,14 +16,14 @@ describe('specToOnCalendar', () => {
     expect(specToOnCalendar({ kind: 'calendar', minute: 30, hour: 9 })).toEqual(['*-*-* 09:30:00'])
   })
   test('weekday calendar spec → one line per day, DOW as systemd name', () => {
-    expect(specToOnCalendar({ kind: 'calendar', minute: 30, hour: 9, weekdays: [1, 3, 5] })).toEqual([
-      'Mon *-*-* 09:30:00',
-      'Wed *-*-* 09:30:00',
-      'Fri *-*-* 09:30:00',
-    ])
+    expect(
+      specToOnCalendar({ kind: 'calendar', minute: 30, hour: 9, weekdays: [1, 3, 5] }),
+    ).toEqual(['Mon *-*-* 09:30:00', 'Wed *-*-* 09:30:00', 'Fri *-*-* 09:30:00'])
   })
   test('Sunday (0) maps to Sun', () => {
-    expect(specToOnCalendar({ kind: 'calendar', minute: 0, hour: 8, weekdays: [0] })).toEqual(['Sun *-*-* 08:00:00'])
+    expect(specToOnCalendar({ kind: 'calendar', minute: 0, hour: 8, weekdays: [0] })).toEqual([
+      'Sun *-*-* 08:00:00',
+    ])
   })
   test('cron every-minute → wildcard minute+hour (matches launchd empty-dict)', () => {
     expect(specToOnCalendar({ kind: 'cron', expr: '* * * * *' })).toEqual(['*-*-* *:*:00'])
@@ -71,7 +71,11 @@ describe('renderUnits', () => {
   const { service, timer } = renderUnits(
     'coverage',
     { kind: 'calendar', minute: 30, hour: 9, weekdays: [1, 5] },
-    { bun: '/home/u/.bun/bin/bun', runner: '/home/u/.config/TerMinal/bin/terminal-cron', env: { HOME: '/home/u', PATH: '/home/u/.bun/bin:/usr/bin' } },
+    {
+      bun: '/home/u/.bun/bin/bun',
+      runner: '/home/u/.config/TerMinal/bin/terminal-cron',
+      env: { HOME: '/home/u', PATH: '/home/u/.bun/bin:/usr/bin' },
+    },
   )
   test('service is a oneshot that execs the runner for this id', () => {
     expect(service).toContain('Type=oneshot')
@@ -181,7 +185,12 @@ describe('command builders (injection-safe, XDG-aware)', () => {
 
 describe('parseInstalledUnits', () => {
   test('extracts ids from a listing of timer unit files', () => {
-    const out = ['terminal-cron-coverage.timer', 'terminal-cron-deps-quality.timer', 'other.timer', ''].join('\n')
+    const out = [
+      'terminal-cron-coverage.timer',
+      'terminal-cron-deps-quality.timer',
+      'other.timer',
+      '',
+    ].join('\n')
     expect(parseInstalledUnits(out)).toEqual(['coverage', 'deps-quality'])
   })
   test('ignores non-timer and non-prefixed lines', () => {

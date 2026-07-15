@@ -3,7 +3,12 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 import { costOf } from './ai-pricing'
-import { listSessions, readObservabilityIndexRecords, readObservabilitySessionDetail, readObservabilitySnapshot } from './data'
+import {
+  listSessions,
+  readObservabilityIndexRecords,
+  readObservabilitySessionDetail,
+  readObservabilitySnapshot,
+} from './data'
 
 const DB_PATH = join(homedir(), '.config', 'TerMinal', 'observability.sqlite')
 
@@ -59,46 +64,135 @@ export type ObservabilityIndexQueryResult = {
   error?: string
 }
 
-const QUERY_META: Record<ObservabilityIndexQueryId, { title: string; description: string; columns: string[] }> = {
+const QUERY_META: Record<
+  ObservabilityIndexQueryId,
+  { title: string; description: string; columns: string[] }
+> = {
   sessions_by_tokens: {
     title: 'Session token hotspots',
     description: 'Sessions ranked by total indexed input and output tokens.',
-    columns: ['session_id', 'engine', 'repo', 'model', 'total_tokens', 'input_tokens', 'output_tokens', 'cost_usd', 'tool_total'],
+    columns: [
+      'session_id',
+      'engine',
+      'repo',
+      'model',
+      'total_tokens',
+      'input_tokens',
+      'output_tokens',
+      'cost_usd',
+      'tool_total',
+    ],
   },
   low_yield_sessions: {
     title: 'Low-yield sessions',
     description: 'High-input sessions that produced comparatively little output.',
-    columns: ['session_id', 'repo', 'model', 'input_tokens', 'output_tokens', 'output_per_input', 'cost_usd'],
+    columns: [
+      'session_id',
+      'repo',
+      'model',
+      'input_tokens',
+      'output_tokens',
+      'output_per_input',
+      'cost_usd',
+    ],
   },
   tool_calls: {
     title: 'Specific tool calls',
     description: 'Individual calls with parent-turn tokens plus exact input/output byte footprint.',
-    columns: ['session_id', 'call_id', 'repo', 'model', 'turn_id', 'line', 'tool_name', 'skill_name', 'status', 'turn_input_tokens', 'turn_output_tokens', 'turn_total_tokens', 'input_bytes', 'output_bytes', 'duration_ms', 'command_preview'],
+    columns: [
+      'session_id',
+      'call_id',
+      'repo',
+      'model',
+      'turn_id',
+      'line',
+      'tool_name',
+      'skill_name',
+      'status',
+      'turn_input_tokens',
+      'turn_output_tokens',
+      'turn_total_tokens',
+      'input_bytes',
+      'output_bytes',
+      'duration_ms',
+      'command_preview',
+    ],
   },
   tool_payloads: {
     title: 'Tool call payloads',
     description: 'Every tool call with its full request JSON and full response captured verbatim.',
-    columns: ['session_id', 'call_id', 'repo', 'tool_name', 'status', 'input_bytes', 'output_bytes', 'duration_ms', 'truncated', 'input_json', 'output_json'],
+    columns: [
+      'session_id',
+      'call_id',
+      'repo',
+      'tool_name',
+      'status',
+      'input_bytes',
+      'output_bytes',
+      'duration_ms',
+      'truncated',
+      'input_json',
+      'output_json',
+    ],
   },
   tool_errors: {
     title: 'Tool call errors',
     description: 'Failed tool calls with the captured error output, newest first.',
-    columns: ['session_id', 'call_id', 'repo', 'tool_name', 'turn_id', 'line', 'output_bytes', 'duration_ms', 'command_text', 'error_text'],
+    columns: [
+      'session_id',
+      'call_id',
+      'repo',
+      'tool_name',
+      'turn_id',
+      'line',
+      'output_bytes',
+      'duration_ms',
+      'command_text',
+      'error_text',
+    ],
   },
   tool_call_bloat: {
     title: 'Tool-call output bloat',
     description: 'Tools ranked by captured output bytes and call volume.',
-    columns: ['tool_name', 'calls', 'total_output_bytes', 'avg_output_bytes', 'max_output_bytes', 'open_calls', 'error_calls'],
+    columns: [
+      'tool_name',
+      'calls',
+      'total_output_bytes',
+      'avg_output_bytes',
+      'max_output_bytes',
+      'open_calls',
+      'error_calls',
+    ],
   },
   turn_hotspots: {
     title: 'Turn hotspots',
     description: 'Individual turns ranked by total token usage.',
-    columns: ['session_id', 'turn_id', 'repo', 'model', 'total_tokens', 'input_tokens', 'output_tokens', 'tool_calls'],
+    columns: [
+      'session_id',
+      'turn_id',
+      'repo',
+      'model',
+      'total_tokens',
+      'input_tokens',
+      'output_tokens',
+      'tool_calls',
+    ],
   },
   costliest_turns: {
     title: 'Costliest turns',
     description: 'Individual turns ranked by estimated USD cost.',
-    columns: ['session_id', 'turn_id', 'repo', 'model', 'cost_usd', 'total_tokens', 'input_tokens', 'output_tokens', 'tool_calls', 'duration_ms'],
+    columns: [
+      'session_id',
+      'turn_id',
+      'repo',
+      'model',
+      'cost_usd',
+      'total_tokens',
+      'input_tokens',
+      'output_tokens',
+      'tool_calls',
+      'duration_ms',
+    ],
   },
   model_rollup: {
     title: 'Model rollup',
@@ -108,11 +202,20 @@ const QUERY_META: Record<ObservabilityIndexQueryId, { title: string; description
   repo_rollup: {
     title: 'Repo rollup',
     description: 'Token, cost, and tool-call totals grouped by repo.',
-    columns: ['repo', 'sessions', 'total_tokens', 'input_tokens', 'output_tokens', 'cost_usd', 'tool_calls'],
+    columns: [
+      'repo',
+      'sessions',
+      'total_tokens',
+      'input_tokens',
+      'output_tokens',
+      'cost_usd',
+      'tool_calls',
+    ],
   },
   session_events: {
     title: 'Session event stream',
-    description: 'Full chronological transcript of one session — every message, reasoning block, tool call and result.',
+    description:
+      'Full chronological transcript of one session — every message, reasoning block, tool call and result.',
     columns: ['seq', 'line', 'kind', 'severity', 'turn_id', 'tool_name', 'role', 'bytes', 'text'],
   },
   audit: {
@@ -173,7 +276,9 @@ function indexBuilt(): boolean {
   const handle = getDb()
   if (!handle) return false
   try {
-    return !!handle.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()
+    return !!handle
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+      .get()
   } catch {
     return false
   }
@@ -290,7 +395,21 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
   const started = Date.now()
   const handle = getDb()
   if (!handle) {
-    return { ok: false, dbPath: DB_PATH, exists: existsSync(DB_PATH), sqliteAvailable: false, indexedAt: null, sessions: 0, turns: 0, toolCalls: 0, tokenSnapshots: 0, events: 0, durationMs: 0, indexedSessions: 0, error: dbError || 'better-sqlite3 is not available' }
+    return {
+      ok: false,
+      dbPath: DB_PATH,
+      exists: existsSync(DB_PATH),
+      sqliteAvailable: false,
+      indexedAt: null,
+      sessions: 0,
+      turns: 0,
+      toolCalls: 0,
+      tokenSnapshots: 0,
+      events: 0,
+      durationMs: 0,
+      indexedSessions: 0,
+      error: dbError || 'better-sqlite3 is not available',
+    }
   }
 
   const snapshot = readObservabilitySnapshot(Math.max(1, Math.min(100000, limit)))
@@ -303,7 +422,9 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
 
   handle.exec(createSchemaSql())
 
-  const insertMeta = handle.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (@key, @value)')
+  const insertMeta = handle.prepare(
+    'INSERT OR REPLACE INTO meta (key, value) VALUES (@key, @value)',
+  )
   const insertSession = handle.prepare(`INSERT OR REPLACE INTO sessions
     (session_id, engine, title, cwd, repo, git_branch, model, mtime, telemetry, turns, context_tokens, context_limit, context_pct, input_tokens, output_tokens, total_tokens, cost_usd, tool_total, first_user_text)
     VALUES (@session_id, @engine, @title, @cwd, @repo, @git_branch, @model, @mtime, @telemetry, @turns, @context_tokens, @context_limit, @context_pct, @input_tokens, @output_tokens, @total_tokens, @cost_usd, @tool_total, @first_user_text)`)
@@ -379,7 +500,10 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
           input_tokens: num(turn.inputTokens),
           output_tokens: num(turn.outputTokens),
           total_tokens: num(turn.totalTokens),
-          cost_usd: costOf(session.model, { input: num(turn.inputTokens), output: num(turn.outputTokens) }),
+          cost_usd: costOf(session.model, {
+            input: num(turn.inputTokens),
+            output: num(turn.outputTokens),
+          }),
           tool_calls: num(turn.toolCalls),
           last_message: turn.lastMessage.slice(0, 1000),
         })
@@ -443,18 +567,41 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
 
   ingest()
 
-  return { ...observabilityIndexStatus(), durationMs: Date.now() - started, indexedSessions: snapshot.sessions.length }
+  return {
+    ...observabilityIndexStatus(),
+    durationMs: Date.now() - started,
+    indexedSessions: snapshot.sessions.length,
+  }
 }
 
 export function observabilityIndexStatus(): ObservabilityIndexStatus {
   const available = sqliteAvailable()
   const exists = available && indexBuilt()
   if (!available || !exists) {
-    return { ok: available, dbPath: DB_PATH, exists, sqliteAvailable: available, indexedAt: null, sessions: 0, turns: 0, toolCalls: 0, tokenSnapshots: 0, events: 0, error: available ? undefined : dbError || 'better-sqlite3 is not available' }
+    return {
+      ok: available,
+      dbPath: DB_PATH,
+      exists,
+      sqliteAvailable: available,
+      indexedAt: null,
+      sessions: 0,
+      turns: 0,
+      toolCalls: 0,
+      tokenSnapshots: 0,
+      events: 0,
+      error: available ? undefined : dbError || 'better-sqlite3 is not available',
+    }
   }
   try {
-    const meta = queryJson<{ value: string }>("SELECT value FROM meta WHERE key = 'indexed_at' LIMIT 1")
-    const rows = queryJson<{ sessions: number; turns: number; toolCalls: number; tokenSnapshots: number }>(`
+    const meta = queryJson<{ value: string }>(
+      "SELECT value FROM meta WHERE key = 'indexed_at' LIMIT 1",
+    )
+    const rows = queryJson<{
+      sessions: number
+      turns: number
+      toolCalls: number
+      tokenSnapshots: number
+    }>(`
       SELECT
         (SELECT COUNT(*) FROM sessions) AS sessions,
         (SELECT COUNT(*) FROM turns) AS turns,
@@ -482,7 +629,19 @@ export function observabilityIndexStatus(): ObservabilityIndexStatus {
       events: eventCount,
     }
   } catch (e) {
-    return { ok: false, dbPath: DB_PATH, exists, sqliteAvailable: available, indexedAt: null, sessions: 0, turns: 0, toolCalls: 0, tokenSnapshots: 0, events: 0, error: (e as Error).message }
+    return {
+      ok: false,
+      dbPath: DB_PATH,
+      exists,
+      sqliteAvailable: available,
+      indexedAt: null,
+      sessions: 0,
+      turns: 0,
+      toolCalls: 0,
+      tokenSnapshots: 0,
+      events: 0,
+      error: (e as Error).message,
+    }
   }
 }
 
@@ -506,7 +665,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: `session:${String(row.session_id).slice(0, 8)}`,
       title: 'High input with low output',
       metric: `${row.input_tokens} in / ${row.output_tokens} out`,
-      recommendation: 'Use narrower log/file reads, summarize prior turns, and avoid replaying broad context into the next prompt.',
+      recommendation:
+        'Use narrower log/file reads, summarize prior turns, and avoid replaying broad context into the next prompt.',
     })
   }
 
@@ -524,7 +684,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: `tool:${row.tool_name}`,
       title: 'Large tool output captured',
       metric: `${row.calls} calls / ${row.total_output_bytes} bytes`,
-      recommendation: 'Prefer deterministic filtered commands such as rg, --stat, --name-only, head/tail, or JSON field selection before handing output to the model.',
+      recommendation:
+        'Prefer deterministic filtered commands such as rg, --stat, --name-only, head/tail, or JSON field selection before handing output to the model.',
     })
   }
 
@@ -541,7 +702,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: `session:${String(row.session_id).slice(0, 8)}`,
       title: 'Large session without tool progress',
       metric: `${row.total_tokens} tokens / 0 tools`,
-      recommendation: 'Check whether the session is spending tokens on discussion instead of deterministic inspection or implementation steps.',
+      recommendation:
+        'Check whether the session is spending tokens on discussion instead of deterministic inspection or implementation steps.',
     })
   }
 
@@ -558,7 +720,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: `${String(row.session_id).slice(0, 8)}:${row.turn_id}`,
       title: 'Turn-level low yield',
       metric: `${row.input_tokens} in / ${row.output_tokens} out`,
-      recommendation: 'Before the next turn, compact the task state and replace raw history with specific file refs or command outputs.',
+      recommendation:
+        'Before the next turn, compact the task state and replace raw history with specific file refs or command outputs.',
     })
   }
 
@@ -577,7 +740,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: `tool:${row.tool_name}`,
       title: 'High tool error rate',
       metric: `${row.errors}/${row.calls} calls failed`,
-      recommendation: 'Inspect the failing calls (Tool call errors query) — recurring failures usually mean a malformed argument shape or a missing precondition.',
+      recommendation:
+        'Inspect the failing calls (Tool call errors query) — recurring failures usually mean a malformed argument shape or a missing precondition.',
     })
   }
 
@@ -587,7 +751,8 @@ function auditRows(): Record<string, unknown>[] {
       scope: 'index',
       title: 'No major token-efficiency issues found',
       metric: 'current thresholds clear',
-      recommendation: 'Keep using bounded log reads and rerun the index after larger agent sessions.',
+      recommendation:
+        'Keep using bounded log reads and rerun the index after larger agent sessions.',
     })
   }
   return rows.slice(0, 20)
@@ -597,21 +762,50 @@ function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''")
 }
 
-export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: string): ObservabilityIndexQueryResult {
+export function queryObservabilityIndex(
+  query: ObservabilityIndexQueryId,
+  arg?: string,
+): ObservabilityIndexQueryResult {
   const meta = QUERY_META[query]
-  if (!sqliteAvailable()) return { query, ...meta, rows: [], indexedAt: null, dbPath: DB_PATH, error: dbError || 'better-sqlite3 is not available' }
-  if (!indexBuilt()) return { query, ...meta, rows: [], indexedAt: null, dbPath: DB_PATH, error: 'Index has not been built yet.' }
+  if (!sqliteAvailable())
+    return {
+      query,
+      ...meta,
+      rows: [],
+      indexedAt: null,
+      dbPath: DB_PATH,
+      error: dbError || 'better-sqlite3 is not available',
+    }
+  if (!indexBuilt())
+    return {
+      query,
+      ...meta,
+      rows: [],
+      indexedAt: null,
+      dbPath: DB_PATH,
+      error: 'Index has not been built yet.',
+    }
   if (query === 'session_events' && !arg) {
-    return { query, ...meta, rows: [], indexedAt: indexedAt(), dbPath: DB_PATH, needsArg: 'session_id' }
+    return {
+      query,
+      ...meta,
+      rows: [],
+      indexedAt: indexedAt(),
+      dbPath: DB_PATH,
+      needsArg: 'session_id',
+    }
   }
   try {
     const rows =
-      query === 'audit' ? auditRows()
-      : query === 'sessions_by_tokens' ? queryJson(`
+      query === 'audit'
+        ? auditRows()
+        : query === 'sessions_by_tokens'
+          ? queryJson(`
           SELECT session_id, engine, repo, model, total_tokens, input_tokens, output_tokens, ROUND(cost_usd, 4) AS cost_usd, tool_total
           FROM sessions ORDER BY total_tokens DESC LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'low_yield_sessions' ? queryJson(`
+          : query === 'low_yield_sessions'
+            ? queryJson(`
           SELECT session_id, repo, model, input_tokens, output_tokens,
             ROUND(CAST(output_tokens AS REAL) / NULLIF(input_tokens, 0), 4) AS output_per_input,
             ROUND(cost_usd, 4) AS cost_usd
@@ -620,7 +814,8 @@ export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: 
           ORDER BY output_per_input ASC, input_tokens DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'tool_calls' ? queryJson(`
+            : query === 'tool_calls'
+              ? queryJson(`
           SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, sessions.model, tool_calls.turn_id, tool_calls.line,
             tool_calls.tool_name, tool_calls.skill_name, tool_calls.status,
             COALESCE(turns.input_tokens, 0) AS turn_input_tokens,
@@ -635,7 +830,8 @@ export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: 
           ORDER BY turn_total_tokens DESC, tool_calls.input_bytes + tool_calls.output_bytes DESC, tool_calls.output_bytes DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'tool_payloads' ? queryJson(`
+              : query === 'tool_payloads'
+                ? queryJson(`
           SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.status,
             tool_calls.input_bytes, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
             tool_calls.truncated, tool_calls.input_json, tool_calls.output_json
@@ -644,7 +840,8 @@ export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: 
           ORDER BY tool_calls.input_bytes + tool_calls.output_bytes DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'tool_errors' ? queryJson(`
+                : query === 'tool_errors'
+                  ? queryJson(`
           SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.turn_id,
             tool_calls.line, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
             tool_calls.command_text, tool_calls.error_text
@@ -654,7 +851,8 @@ export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: 
           ORDER BY tool_calls.completed_at DESC, tool_calls.started_at DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'tool_call_bloat' ? queryJson(`
+                  : query === 'tool_call_bloat'
+                    ? queryJson(`
           SELECT tool_name, COUNT(*) AS calls, SUM(output_bytes) AS total_output_bytes,
             ROUND(AVG(output_bytes), 1) AS avg_output_bytes, MAX(output_bytes) AS max_output_bytes,
             SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_calls,
@@ -663,39 +861,51 @@ export function queryObservabilityIndex(query: ObservabilityIndexQueryId, arg?: 
           GROUP BY tool_name
           ORDER BY total_output_bytes DESC, calls DESC
         `)
-      : query === 'turn_hotspots' ? queryJson(`
+                    : query === 'turn_hotspots'
+                      ? queryJson(`
           SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls
           FROM turns JOIN sessions USING (session_id)
           ORDER BY turns.total_tokens DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'costliest_turns' ? queryJson(`
+                      : query === 'costliest_turns'
+                        ? queryJson(`
           SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, ROUND(turns.cost_usd, 4) AS cost_usd,
             turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls, ROUND(turns.duration_ms, 0) AS duration_ms
           FROM turns JOIN sessions USING (session_id)
           ORDER BY turns.cost_usd DESC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : query === 'model_rollup' ? queryJson(`
+                        : query === 'model_rollup'
+                          ? queryJson(`
           SELECT model, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
             SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd
           FROM sessions GROUP BY model ORDER BY total_tokens DESC
         `)
-      : query === 'repo_rollup' ? queryJson(`
+                          : query === 'repo_rollup'
+                            ? queryJson(`
           SELECT repo, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
             SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd, SUM(tool_total) AS tool_calls
           FROM sessions GROUP BY repo ORDER BY total_tokens DESC
         `)
-      : query === 'session_events' ? queryJson(`
+                            : query === 'session_events'
+                              ? queryJson(`
           SELECT seq, line, kind, severity, turn_id, tool_name, role, bytes, SUBSTR(text, 1, 12000) AS text
           FROM events
           WHERE session_id = '${escapeSqlLiteral(arg || '')}'
           ORDER BY seq ASC
           LIMIT ${ROW_QUERY_CAP}
         `)
-      : []
+                              : []
     return { query, ...meta, rows, indexedAt: indexedAt(), dbPath: DB_PATH }
   } catch (e) {
-    return { query, ...meta, rows: [], indexedAt: indexedAt(), dbPath: DB_PATH, error: (e as Error).message }
+    return {
+      query,
+      ...meta,
+      rows: [],
+      indexedAt: indexedAt(),
+      dbPath: DB_PATH,
+      error: (e as Error).message,
+    }
   }
 }

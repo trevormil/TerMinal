@@ -23,7 +23,8 @@ const name = (id: string) => `${PREFIX}${id}`
 // Schedule spec → a standard 5-field cron string for CronJob.spec.schedule.
 export function specToCron(spec: ScheduleSpec): string {
   if (spec.kind === 'cron') return spec.expr.trim()
-  const dow = spec.weekdays && spec.weekdays.length ? [...spec.weekdays].sort((a, b) => a - b).join(',') : '*'
+  const dow =
+    spec.weekdays && spec.weekdays.length ? [...spec.weekdays].sort((a, b) => a - b).join(',') : '*'
   return `${spec.minute} ${spec.hour} * * ${dow}`
 }
 
@@ -97,7 +98,8 @@ spec:
 
 // kubectl command builders — run over SSH on the host (k3s ships kubectl).
 export const applyManifestCmd = () => 'kubectl apply -f -'
-export const deleteCronJobCmd = (id: string) => `kubectl delete cronjob ${name(id)} --ignore-not-found`
+export const deleteCronJobCmd = (id: string) =>
+  `kubectl delete cronjob ${name(id)} --ignore-not-found`
 export const listCronJobsCmd = () => `kubectl get cronjobs -l app=terminal-cron -o name`
 
 // `kubectl get -o name` prints `cronjob.batch/terminal-cron-<id>` per line.
@@ -114,15 +116,32 @@ export function parseCronJobNames(out: string): string[] {
 
 export type K8sHost = { sshTarget: string }
 
-function ssh(sshTarget: string, cmd: string, stdin?: string): Promise<{ ok: boolean; stdout: string; error?: string }> {
+function ssh(
+  sshTarget: string,
+  cmd: string,
+  stdin?: string,
+): Promise<{ ok: boolean; stdout: string; error?: string }> {
   return new Promise((resolve) => {
-    if (!isSafeSshTarget(sshTarget)) return resolve({ ok: false, stdout: '', error: 'unsafe ssh target' })
+    if (!isSafeSshTarget(sshTarget))
+      return resolve({ ok: false, stdout: '', error: 'unsafe ssh target' })
     const child = execFile(
       'ssh',
-      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', sshTarget, `bash -lc ${shSingleQuote(cmd)}`],
+      [
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'ConnectTimeout=10',
+        sshTarget,
+        `bash -lc ${shSingleQuote(cmd)}`,
+      ],
       { encoding: 'utf8', timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        if (err) resolve({ ok: false, stdout: stdout || '', error: (stderr || err.message || 'ssh error').trim() })
+        if (err)
+          resolve({
+            ok: false,
+            stdout: stdout || '',
+            error: (stderr || err.message || 'ssh error').trim(),
+          })
         else resolve({ ok: true, stdout: stdout || '' })
       },
     )
@@ -179,13 +198,20 @@ export function optsForSchedule(facts: HostFacts, s: Schedule, image = DEFAULT_I
 // Apply/reconcile CronJobs for k8s-runtime schedules on a host — resolves host
 // facts once, then applies each. The router calls these; they keep all k8s
 // specifics (fact resolution, opts building) out of the router.
-export async function applyScheduleOnHost(sshTarget: string, s: Schedule, image?: string): Promise<{ ok: boolean; error?: string }> {
+export async function applyScheduleOnHost(
+  sshTarget: string,
+  s: Schedule,
+  image?: string,
+): Promise<{ ok: boolean; error?: string }> {
   const facts = await resolveHostFacts(sshTarget)
   if (!facts) return { ok: false, error: 'could not resolve host uid/gid/home for the CronJob' }
   return applyCronJobOnHost({ sshTarget }, s.id, s.spec, optsForSchedule(facts, s, image))
 }
 
-export async function removeScheduleOnHost(sshTarget: string, s: Schedule): Promise<{ ok: boolean; error?: string }> {
+export async function removeScheduleOnHost(
+  sshTarget: string,
+  s: Schedule,
+): Promise<{ ok: boolean; error?: string }> {
   return deleteCronJobOnHost({ sshTarget }, s.id)
 }
 
@@ -198,7 +224,8 @@ export async function reconcileScheduleCronJobs(
   let facts: HostFacts | null = null
   if (enabled.length) {
     facts = await resolveHostFacts(sshTarget)
-    if (!facts) return { loaded: 0, removed: 0, failed: [{ id: '*', error: 'could not resolve host facts' }] }
+    if (!facts)
+      return { loaded: 0, removed: 0, failed: [{ id: '*', error: 'could not resolve host facts' }] }
   }
   // enabled.map only runs when facts is set (guarded above); [] still reconciles to
   // delete orphan CronJobs for a host whose k8s schedules were all removed.
@@ -209,7 +236,10 @@ export async function reconcileScheduleCronJobs(
   return { loaded: r.applied, removed: r.removed, failed: r.failed }
 }
 
-export async function deleteCronJobOnHost(host: K8sHost, id: string): Promise<{ ok: boolean; error?: string }> {
+export async function deleteCronJobOnHost(
+  host: K8sHost,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
   const r = await ssh(host.sshTarget, deleteCronJobCmd(id))
   return r.ok ? { ok: true } : { ok: false, error: r.error }
 }
@@ -225,7 +255,8 @@ export async function reconcileCronJobsOnHost(
   let removed = 0
   const wanted = new Set(schedules.map((s) => s.id))
   const listed = await ssh(host.sshTarget, listCronJobsCmd())
-  if (!listed.ok) return { applied, removed, failed: [{ id: '*', error: listed.error || 'kubectl list failed' }] }
+  if (!listed.ok)
+    return { applied, removed, failed: [{ id: '*', error: listed.error || 'kubectl list failed' }] }
   for (const id of parseCronJobNames(listed.stdout)) {
     if (!wanted.has(id)) {
       const r = await deleteCronJobOnHost(host, id)

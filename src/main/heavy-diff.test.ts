@@ -45,6 +45,10 @@ describe('classifyHeavyDiff', () => {
       heavy: false,
       reason: 'below threshold: 0 lines',
     })
-    expect(classifyHeavyDiff('')).toMatchObject({ heavy: false, reason: 'empty diff', lineCount: 0 })
+    expect(classifyHeavyDiff('')).toMatchObject({
+      heavy: false,
+      reason: 'empty diff',
+      lineCount: 0,
+    })
   })
 })

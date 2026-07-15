@@ -103,15 +103,7 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export type BadgeTone =
-  | 'ok'
-  | 'warn'
-  | 'bad'
-  | 'mute'
-  | 'red'
-  | 'yellow'
-  | 'green'
-  | 'blue'
-  | 'accent'
+  'ok' | 'warn' | 'bad' | 'mute' | 'red' | 'yellow' | 'green' | 'blue' | 'accent'
 
 const BADGE_MAP: Record<BadgeTone, string> = {
   ok: 'bg-[var(--gt-green)]/12 text-[var(--gt-green)] border-[var(--gt-green)]/25',
@@ -152,7 +144,10 @@ export function ForceChip({ size = 'sm' }: { size?: 'sm' | 'md' }) {
       ? 'inline-flex items-center gap-1 rounded-md bg-[var(--gt-red)] px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-white shadow-[0_0_10px_color-mix(in_srgb,var(--gt-red)_55%,transparent)]'
       : 'inline-flex items-center gap-1 rounded-md bg-[var(--gt-red)] px-1.5 py-[1px] text-[9.5px] font-bold uppercase tracking-[0.14em] text-white shadow-[0_0_6px_color-mix(in_srgb,var(--gt-red)_50%,transparent)]'
   return (
-    <span className={cls} title="FORCE — this agent runs with main-push authority (TERMINAL_FORCE_MAIN=1)">
+    <span
+      className={cls}
+      title="FORCE — this agent runs with main-push authority (TERMINAL_FORCE_MAIN=1)"
+    >
       ⚠ Force
     </span>
   )
