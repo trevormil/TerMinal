@@ -32,6 +32,38 @@ const define = {
   __BUILD_REPO_SLUG__: JSON.stringify(BUILD_REPO_SLUG),
 }
 
+// Strict Content-Security-Policy for the packaged renderer — defense-in-depth so
+// untrusted content (agent output, PR/MR bodies, notes) can never execute an
+// injected script or exfiltrate over the network, even if a future raw-HTML sink
+// slipped through. Injected as a <meta> at BUILD time only (`apply: 'build'`), so
+// the Vite dev server's HMR (inline scripts + eval + ws) is untouched. The built
+// index.html loads only external `'self'` scripts/styles, so `script-src 'self'`
+// is safe; `'unsafe-inline'` stays on style-src for React inline styles. frame-src
+// stays open for the Browser-tab <webview>; connect-src is 'self' (the renderer
+// makes no direct network calls — all I/O goes through the IPC bridge).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+  "frame-src 'self' https: http:",
+].join('; ')
+const cspMetaPlugin = {
+  name: 'terminal-csp-meta',
+  apply: 'build' as const,
+  transformIndexHtml(html: string) {
+    return html.replace(
+      '<head>',
+      `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
+    )
+  },
+}
+
 // node-pty is a native module — keep it external so it isn't bundled.
 export default defineConfig({
   main: {
@@ -44,7 +76,7 @@ export default defineConfig({
   renderer: {
     root: 'src/renderer',
     define,
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), cspMetaPlugin],
     // CodeMirror silently breaks if any core package resolves to more than one
     // copy: the editor and the language parsers end up with different state/view
     // /facet instances, so the language never activates → no syntax highlighting.

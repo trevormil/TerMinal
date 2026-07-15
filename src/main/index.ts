@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage,
   safeStorage,
+  session,
 } from 'electron'
 import { join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -878,6 +879,15 @@ function createWindow() {
       sandbox: false,
       webviewTag: true,
     },
+  })
+
+  // Deny web permission requests by default (camera, mic, geolocation, MIDI,
+  // notifications, …). TerMinal's own renderer needs none of them; the only
+  // exception is `fullscreen`, so the Browser-tab <webview> can full-screen
+  // video. Defense-in-depth: even if untrusted content (agent output, PR bodies)
+  // ever reached a sink, it still couldn't reach into these device APIs.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
+    cb(permission === 'fullscreen')
   })
 
   // The macOS traffic lights are hidden in fullscreen, so the renderer should
