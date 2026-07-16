@@ -49,26 +49,32 @@ export const ENGINE_MODELS: Record<Engine, ModelOption[]> = {
     { id: 'grok-4.3', label: 'grok-4.3' },
     { id: 'kimi-k2.5', label: 'kimi-k2.5' },
   ],
-  // Curated near-free coding slugs from the live OpenRouter catalog; the model
-  // step also accepts any slug via free-text.
+  // Curated coding slugs from the live OpenRouter catalog; the model step also
+  // accepts any slug via free-text. Mostly near-free, with a short frontier tail
+  // for when a cheap model won't cut it — note the ~10x price jump at that line.
+  // Verified against the catalog 2026-07-16; all support tool calling.
   openrouter: [
-    { id: 'deepseek/deepseek-v3.2', label: 'deepseek-v3.2' },
-    { id: 'deepseek/deepseek-chat', label: 'deepseek-chat' },
+    { id: 'deepseek/deepseek-v4-flash', label: 'deepseek-v4-flash' },
+    { id: 'deepseek/deepseek-v4-pro', label: 'deepseek-v4-pro' },
     { id: 'qwen/qwen3-coder-next', label: 'qwen3-coder-next' },
     { id: 'z-ai/glm-4.7-flash', label: 'glm-4.7-flash' },
-    { id: 'minimax/minimax-m2.5', label: 'minimax-m2.5' },
-    { id: 'moonshotai/kimi-k2.5', label: 'kimi-k2.5' },
-    { id: 'mistralai/codestral-2508', label: 'codestral-2508' },
+    { id: 'minimax/minimax-m3', label: 'minimax-m3' },
+    { id: 'moonshotai/kimi-k2.7-code', label: 'kimi-k2.7-code' },
+    { id: 'mistralai/devstral-2512', label: 'devstral-2512' },
     { id: 'google/gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite' },
     { id: 'openai/gpt-5.1-codex-mini', label: 'gpt-5.1-codex-mini' },
+    // Frontier — materially pricier than everything above.
+    { id: 'moonshotai/kimi-k3', label: 'kimi-k3' },
+    { id: 'z-ai/glm-5.2', label: 'glm-5.2' },
+    { id: 'openai/gpt-5.6-terra', label: 'gpt-5.6-terra' },
   ],
   // Hermes targets many providers; the model step is free-text. A short list of
   // common slugs seeds it (OpenRouter-style: any provider/model slug works).
   hermes: [
-    { id: 'anthropic/claude-sonnet-4.6', label: 'claude-sonnet-4.6' },
-    { id: 'openai/gpt-5.1', label: 'gpt-5.1' },
-    { id: 'deepseek/deepseek-v3.2', label: 'deepseek-v3.2' },
-    { id: 'moonshotai/kimi-k2.5', label: 'kimi-k2.5' },
+    { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5' },
+    { id: 'openai/gpt-5.6-terra', label: 'gpt-5.6-terra' },
+    { id: 'deepseek/deepseek-v4-flash', label: 'deepseek-v4-flash' },
+    { id: 'moonshotai/kimi-k2.7-code', label: 'kimi-k2.7-code' },
   ],
 }
 
