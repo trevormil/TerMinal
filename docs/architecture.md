@@ -72,7 +72,14 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   Dataview board + Templater template, exposes `obsidian://` deep links, and
   surfaces the vault to sessions via `OBSIDIAN_VAULT_PATH`/`OBSIDIAN_TICKETS_DIR`
   so native file tools reach it (no MCP). `github` shells out to `gh`; `linear`
-  spawns its MCP over stdio from the main process.
+  spawns its MCP over stdio from the main process. The same file's `views: [{
+  label, url }]` is **provider-independent**: each entry renders in the Tickets
+  tab as a read-only `<webview>` sub-tab showing the platform's own UI (reusing
+  `browser/webSurface`), for team boards whose tickets don't meet our frontmatter
+  spec. A view never changes where tickets are read/written — routing them through
+  a provider would fabricate the owner-agent/acceptance metadata the factory
+  contract depends on — so writes to those platforms go through their own MCP,
+  driven in-session.
 - `forge.ts` — the GitHub/GitLab seam: `forgeFor(repoRoot)` picks `gh`/`glab`
   and the `PR`/`MR` + `#`/`!` vocabulary from the remote host (or the
   `settings.forge` override). `mrs.ts` delegates here; the renderer is forge-agnostic.

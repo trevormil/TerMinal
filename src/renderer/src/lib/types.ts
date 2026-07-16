@@ -423,7 +423,12 @@ export type TicketProviderConfig = {
     listArgs?: Record<string, unknown>
   }
   obsidian?: ObsidianTicketConfig
+  views?: TicketView[]
 }
+// A read-only embedded web view of an external ticket platform, rendered as a
+// source sub-tab in the Tickets tab. Independent of `provider` — see
+// `TicketView` in src/main/ticket-provider.ts for the full contract.
+export type TicketView = { label: string; url: string }
 export type TicketProviderTestResult = {
   ok: boolean
   provider: TicketProviderKind

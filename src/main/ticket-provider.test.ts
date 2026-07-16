@@ -10,7 +10,9 @@ import {
   listRepoTickets,
   obsidianDeepLink,
   obsidianRepoVault,
+  readRepoTicketConfig,
   repoTicketProvider,
+  saveRepoTicketConfig,
   scaffoldObsidianVault,
   updateRepoTicket,
 } from './ticket-provider'
@@ -236,5 +238,114 @@ describe('linearIssueToTicket', () => {
       body: 'Smoke body',
       url: 'https://linear.app/acme/issue/TRE-5/terminal-smoke-test',
     })
+  })
+})
+
+describe('repo ticket views', () => {
+  test('views persist alongside — and independently of — the provider', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    const saved = saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [{ label: 'Linear', url: 'https://linear.app/acme/team/ENG/active' }],
+    })
+
+    // The view survives even though the provider stays local — the whole point:
+    // a read-only lens must not hijack where tickets are actually read/written.
+    expect(saved.provider).toBe('local')
+    expect(saved.views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active' },
+    ])
+    expect(readRepoTicketConfig(repo).views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active' },
+    ])
+  })
+
+  test('views are generic — any https ticket platform, several at once', () => {
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: '/v/V' } })
+    const saved = saveRepoTicketConfig(repo, {
+      provider: 'obsidian',
+      obsidian: { vaultPath: '/v/V' },
+      views: [
+        { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active' },
+        { label: 'Jira', url: 'https://acme.atlassian.net/jira/software/board/1' },
+      ],
+    })
+    expect(saved.views?.map((v) => v.label)).toEqual(['Linear', 'Jira'])
+    // provider config is untouched by the presence of views
+    expect(saved.obsidian?.vaultPath).toBe('/v/V')
+  })
+
+  test('rejects non-http(s) view urls — they get loaded into a real webview', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    const saved = saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [
+        { label: 'evil', url: 'javascript:alert(1)' },
+        { label: 'local file', url: 'file:///etc/passwd' },
+        { label: 'ok', url: 'https://linear.app/acme' },
+      ],
+    })
+    expect(saved.views).toEqual([{ label: 'ok', url: 'https://linear.app/acme' }])
+  })
+
+  test('drops views with a blank url and falls back to the url as label', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    const saved = saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [
+        { label: 'no url', url: '   ' },
+        { label: '  ', url: 'https://linear.app/acme' },
+      ],
+    })
+    expect(saved.views).toEqual([
+      { label: 'https://linear.app/acme', url: 'https://linear.app/acme' },
+    ])
+  })
+
+  test('configured views do not change where tickets are read from', async () => {
+    const repo = repoWithTicketConfig({
+      provider: 'local',
+      views: [{ label: 'Linear', url: 'https://linear.app/acme' }],
+    })
+    await createRepoTicket(repo, {
+      title: 'Real backlog ticket',
+      type: 'feature',
+      priority: 'medium',
+      status: 'open',
+      body: 'b',
+    })
+    const tickets = await listRepoTickets(repo)
+    // Still local — a view is a lens, never a provider.
+    expect(tickets).toHaveLength(1)
+    expect(tickets[0]).toMatchObject({ title: 'Real backlog ticket', provider: 'local' })
+  })
+})
+
+describe('saveRepoTicketConfig view preservation', () => {
+  test('omitting views preserves existing ones — a provider-only save must not wipe them', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [{ label: 'Linear', url: 'https://linear.app/acme' }],
+    })
+
+    // Settings' provider panel round-trips provider config and may not know about
+    // views; an omitted key must mean "unchanged", never "delete".
+    const saved = saveRepoTicketConfig(repo, { provider: 'github', github: {} })
+    expect(saved.views).toEqual([{ label: 'Linear', url: 'https://linear.app/acme' }])
+    expect(readRepoTicketConfig(repo).views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme' },
+    ])
+  })
+
+  test('an explicit empty array clears views', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [{ label: 'Linear', url: 'https://linear.app/acme' }],
+    })
+    const saved = saveRepoTicketConfig(repo, { provider: 'local', views: [] })
+    expect(saved.views ?? []).toEqual([])
+    expect(readRepoTicketConfig(repo).views ?? []).toEqual([])
   })
 })
