@@ -574,12 +574,19 @@ function normalizeTicketConfig(
   cfg: TicketProviderConfig | { error: string } | null,
 ): TicketProviderConfig {
   if (!cfg || 'error' in cfg) return { provider: 'local' }
-  if (cfg.provider === 'github') return { provider: 'github', github: cfg.github || {} }
+  // Views are provider-independent, so they ride along on every branch — dropping
+  // them here would silently wipe the repo's configured views on the next save.
+  const views = cfg.views?.length ? { views: cfg.views } : {}
+  if (cfg.provider === 'github') return { provider: 'github', github: cfg.github || {}, ...views }
   if (cfg.provider === 'linear')
-    return { provider: 'linear', linear: { ...defaultLinearConfig(), ...(cfg.linear || {}) } }
+    return {
+      provider: 'linear',
+      linear: { ...defaultLinearConfig(), ...(cfg.linear || {}) },
+      ...views,
+    }
   if (cfg.provider === 'obsidian')
-    return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' } }
-  return { provider: 'local' }
+    return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' }, ...views }
+  return { provider: 'local', ...views }
 }
 
 function TicketProviderPanel() {
@@ -932,6 +939,69 @@ function TicketProviderPanel() {
           </div>
         </div>
       )}
+
+      <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] font-semibold text-zinc-200">Ticket views</div>
+            <div className="text-[10.5px] leading-snug text-zinc-500">
+              Read-only web views shown as sub-tabs in the Tickets tab — a team&apos;s Linear/Jira
+              board embedded as-is, no format requirements. Independent of the provider above:
+              nothing here changes where tickets are read or written. Update those platforms through
+              their own MCP.
+            </div>
+          </div>
+          <button
+            onClick={() =>
+              setDraft({ ...draft, views: [...(draft.views || []), { label: '', url: '' }] })
+            }
+            className={action}
+          >
+            <Plus size={13} strokeWidth={2} />
+            Add
+          </button>
+        </div>
+        {(draft.views || []).map((v, i) => (
+          <div key={i} className="grid gap-2 md:grid-cols-[0.5fr_1.5fr_auto]">
+            <input
+              value={v.label}
+              onChange={(e) => {
+                const views = [...(draft.views || [])]
+                views[i] = { ...views[i], label: e.target.value }
+                setDraft({ ...draft, views })
+              }}
+              placeholder="Linear"
+              className={inp}
+              spellCheck={false}
+            />
+            <input
+              value={v.url}
+              onChange={(e) => {
+                const views = [...(draft.views || [])]
+                views[i] = { ...views[i], url: e.target.value }
+                setDraft({ ...draft, views })
+              }}
+              placeholder="https://linear.app/acme/team/ENG/active"
+              className={`${inp} font-mono`}
+              spellCheck={false}
+            />
+            <button
+              onClick={() =>
+                setDraft({ ...draft, views: (draft.views || []).filter((_, j) => j !== i) })
+              }
+              className={action}
+              title="Remove this view"
+            >
+              <Trash2 size={13} strokeWidth={2} />
+            </button>
+          </div>
+        ))}
+        {!(draft.views || []).length && (
+          <div className="text-[10.5px] text-zinc-600">
+            No views. Add one to embed a board — any https URL works.
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={saveProvider} disabled={busy === 'save'} className={action}>

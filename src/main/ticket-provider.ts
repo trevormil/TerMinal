@@ -54,11 +54,24 @@ export type ObsidianTicketConfig = {
   vaultName?: string
 }
 
+// A read-only web view of some ticket platform (Linear, Jira, GitHub Projects,
+// a Notion board — anything with a URL), rendered in the Tickets tab as an
+// embedded <webview>. Deliberately NOT a provider: a view never changes where
+// tickets are read from or written to, so a team board whose tickets don't match
+// our frontmatter spec can still be visible without corrupting the agent
+// contract (owner agent, acceptance, refs) that the factory depends on. Writes
+// to those platforms go through their own MCP, driven deliberately in-session.
+export type TicketView = {
+  label: string
+  url: string
+}
+
 export type RepoTicketsConfig = {
   provider?: TicketProviderKind
   github?: GithubConfig
   linear?: LinearTicketConfig
   obsidian?: ObsidianTicketConfig
+  views?: TicketView[]
 }
 
 export type TicketProviderTestResult = {
@@ -186,6 +199,28 @@ export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): vo
   )
 }
 
+// Views are loaded into a real <webview>, so the url is a capability, not a
+// label: anything but http(s) (javascript:, file:, data:) is dropped here at the
+// config boundary rather than trusted downstream.
+function sanitizeViews(raw: unknown): TicketView[] {
+  if (!Array.isArray(raw)) return []
+  const out: TicketView[] = []
+  for (const v of raw) {
+    const url = String((v as TicketView)?.url ?? '').trim()
+    if (!url) continue
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      continue
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue
+    const label = String((v as TicketView)?.label ?? '').trim()
+    out.push({ label: label || url, url })
+  }
+  return out
+}
+
 function configPath(repoRoot: string): string {
   return join(repoRoot, '.TerMinal', 'tickets.json')
 }
@@ -209,7 +244,13 @@ export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
     ...(cfg.github ? { github: cfg.github } : {}),
     ...(cfg.linear ? { linear: cfg.linear } : {}),
     ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
+    ...(cfg.views?.length ? { views: sanitizeViews(cfg.views) } : {}),
   }
+}
+
+// The repo's configured read-only ticket views, independent of its provider.
+export function repoTicketViews(repoRoot: string): TicketView[] {
+  return sanitizeViews(readConfig(repoRoot).views)
 }
 
 export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): RepoTicketsConfig {
@@ -247,6 +288,17 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
           },
         }
       : {}),
+    // Outside the provider-conditional blocks on purpose: a view is a lens, not
+    // a provider, so it must survive whichever provider is configured. An omitted
+    // `views` key means "unchanged" (callers that only edit provider config must
+    // not wipe them); an explicit array — including [] — replaces.
+    ...(() => {
+      const next =
+        cfg.views === undefined
+          ? sanitizeViews(readConfig(repoRoot).views)
+          : sanitizeViews(cfg.views)
+      return next.length ? { views: next } : {}
+    })(),
   }
   mkdirSync(join(repoRoot, '.TerMinal'), { recursive: true })
   writeFileSync(configPath(repoRoot), JSON.stringify(next, null, 2) + '\n')
