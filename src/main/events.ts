@@ -11,74 +11,18 @@ import {
   closeSync,
   watch,
 } from 'node:fs'
-import { spawn } from 'node:child_process'
 import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { telegramNotifyEnabled, readSettings } from './settings'
-import { sendUrl } from './telegram-api'
+import { readSettings } from './settings'
 import { inferActivityKind } from './event-classifier'
-
-// Telegram notify: native Bot API when a token+chat are configured; otherwise
-// fall back to the project-template /notify script if it's present.
-const TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
-function tgKind(ev: ActivityEvent): 'done' | 'blocked' | 'info' {
-  if (ev.kind === 'error' || ev.kind === 'tests-fail' || ev.kind === 'blocked') return 'blocked'
-  if (ev.kind === 'task-complete' || ev.kind === 'tests-pass' || ev.kind === 'pr-merged')
-    return 'done'
-  if (ev.kind === 'agent-run')
-    return /failed|interrupted/i.test(ev.title)
-      ? 'blocked'
-      : /done/i.test(ev.title)
-        ? 'done'
-        : 'info'
-  return 'info'
-}
-const KIND_EMOJI: Record<'done' | 'blocked' | 'info', string> = {
-  done: '✅',
-  blocked: '⛔',
-  info: 'ℹ️',
-}
-
-// Compose the inline-keyboard for an event. HITL filings get [Resolve] and,
-// when a runId is known, [View run] (callback → tail log). Other events get
-// no buttons — chat plays back as plain notifications.
-function buttonsFor(ev: ActivityEvent): unknown[][] | null {
-  if (ev.kind !== 'blocked' || !ev.hitlId) return null
-  const row: { text: string; callback_data: string }[] = [
-    { text: '✅ Resolve', callback_data: `hitl:resolve:${ev.hitlId}` },
-  ]
-  if (ev.runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${ev.runId}` })
-  return [row]
-}
-
-function sendTelegram(ev: ActivityEvent) {
-  if (ev.suppressTelegram) return
-  if (!telegramNotifyEnabled()) return // opt-in, off by default
-  const { telegram } = readSettings()
-  const msg = ev.detail ? `${ev.title} — ${ev.detail}` : ev.title
-  if (telegram.botToken && telegram.chatId) {
-    const buttons = buttonsFor(ev)
-    const body: Record<string, unknown> = {
-      chat_id: telegram.chatId,
-      text: `${KIND_EMOJI[tgKind(ev)]} ${msg}`,
-    }
-    if (buttons) body.reply_markup = { inline_keyboard: buttons }
-    fetch(sendUrl(telegram.botToken), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000),
-    }).catch(() => {}) // best effort
-    return
-  }
-  if (!existsSync(TG_SCRIPT)) return // no native config + no script → skip silently
-  try {
-    spawn(TG_SCRIPT, [`--kind=${tgKind(ev)}`, msg], { stdio: 'ignore' }).unref()
-  } catch {
-    /* best effort */
-  }
-}
+import {
+  createDesktopChannel,
+  createTelegramChannel,
+  createWebhookChannel,
+  dispatchAlert,
+  type NotifyChannel,
+} from './notify-channels'
 
 // Activity feed + system notifications. Events are stored GLOBALLY (one log
 // across every repo/session) but each is tagged with repo + session, so the
@@ -162,16 +106,37 @@ export function onActivity(fn: (ev: ActivityEvent) => void) {
   broadcast = fn
 }
 
-// macOS + Telegram notification for one event.
-function fireNotification(ev: ActivityEvent): void {
-  if (Notification.isSupported()) {
-    try {
-      new Notification({ title: ev.title, body: ev.detail || '' }).show()
-    } catch {
-      /* notifications unavailable */
-    }
+// The outbound alert channels (notify-channels.ts): Telegram, desktop, webhook.
+// Each gates itself on Settings; dispatchAlert isolates per-channel failures.
+function showDesktopNotification(title: string, body: string): void {
+  if (!Notification.isSupported()) return
+  try {
+    new Notification({ title, body }).show()
+  } catch {
+    /* notifications unavailable */
   }
-  sendTelegram(ev)
+}
+const alertChannels: NotifyChannel[] = [
+  createTelegramChannel(readSettings),
+  createDesktopChannel(readSettings, showDesktopNotification),
+  createWebhookChannel(readSettings),
+]
+
+// Fan one event out to every enabled alert channel.
+function fireNotification(ev: ActivityEvent): void {
+  dispatchAlert(alertChannels, ev)
+}
+
+/** Settings "Test" button for the desktop channel. */
+export function testDesktopAlert(): { ok: boolean; error?: string } {
+  if (!Notification.isSupported())
+    return { ok: false, error: 'Desktop notifications are not supported on this system.' }
+  try {
+    new Notification({ title: 'TerMinal test alert', body: 'Desktop channel is working.' }).show()
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 }
 
 // Ids the app emitted in-process (and already notified for) — so the file tail

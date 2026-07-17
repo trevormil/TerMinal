@@ -258,6 +258,62 @@ describe('settings secrets', () => {
   })
 })
 
+describe('alert channels (alerts)', () => {
+  const adapter = {
+    seal: (value: string) => Buffer.from(`sealed:${value}`).toString('base64'),
+    open: (payload: string) =>
+      Buffer.from(payload, 'base64')
+        .toString('utf8')
+        .replace(/^sealed:/, ''),
+  }
+
+  test('defaults: desktop on (matches historical behavior), webhook off', () => {
+    expect(defaultSettings().alerts).toEqual({
+      desktop: { enabled: true },
+      webhook: { enabled: false, url: '' },
+    })
+    expect(migrate({}).alerts).toEqual(defaultSettings().alerts)
+  })
+
+  test('migrate round-trips a configured alerts block', () => {
+    const s = migrate({
+      alerts: { desktop: { enabled: false }, webhook: { enabled: true, url: 'https://x/h' } },
+    })
+    expect(s.alerts).toEqual({
+      desktop: { enabled: false },
+      webhook: { enabled: true, url: 'https://x/h' },
+    })
+  })
+
+  test('wrong-typed alerts fields are ignored, not coerced', () => {
+    const s = migrate({ alerts: { desktop: { enabled: 'yes' }, webhook: { url: 42 } } })
+    expect(s.alerts).toEqual(defaultSettings().alerts)
+  })
+
+  test('webhook url is sealed on disk like other secrets and opens back', () => {
+    const settings = migrate({
+      alerts: { webhook: { enabled: true, url: 'https://hooks.slack.com/services/SECRET' } },
+    })
+    const sealed = sealSettingsForDisk(settings, adapter)
+    expect(JSON.stringify(sealed)).not.toContain('hooks.slack.com')
+    const opened = migrate(openSettingsFromDisk(sealed, adapter))
+    expect(opened.alerts.webhook.url).toBe('https://hooks.slack.com/services/SECRET')
+  })
+
+  test('partial alerts patches preserve sibling channels and fields', () => {
+    const cur = migrate({
+      alerts: { desktop: { enabled: false }, webhook: { enabled: true, url: 'https://x/h' } },
+    })
+    const next = mergeSettingsPatch(cur, { alerts: { webhook: { enabled: false } } })
+    expect(next.alerts).toEqual({
+      desktop: { enabled: false },
+      webhook: { enabled: false, url: 'https://x/h' },
+    })
+    const next2 = mergeSettingsPatch(next, { alerts: { desktop: { enabled: true } } })
+    expect(next2.alerts.webhook.url).toBe('https://x/h')
+  })
+})
+
 describe('telegram creds sidecar (out-of-process delivery)', () => {
   const creds = { botToken: 'bot:123', chatId: '999' }
 
