@@ -9,13 +9,14 @@ agents, runs, HITL, docs, and per-session plugin widgets. See
 [`README.md`](./README.md) and [`docs/architecture.md`](./docs/architecture.md).
 
 **Status:** Shipped, actively iterating. Daily-driver tool — Trevor uses it as
-the primary terminal across every other project in `~/CompSci/gauntlet/`.
+the primary terminal across every other local project.
 
 ## TerMinal follows the full PR + human-merge flow (global §8)
 
 TerMinal has graduated from its old direct-to-main exception. It is now a mature
 daily-driver, so **agents follow global §8 in full**: work on a feature branch
-(prefer a `git worktree` under `~/CompSci/gauntlet/.worktrees/TerMinal/<branch>/`),
+(prefer a `git worktree` under the shared worktrees root from the global
+config, e.g. `<worktrees-root>/TerMinal/<branch>/`),
 push the branch, open a PR (`gh pr create`), and **stop for a human merge**.
 Never commit or push directly to `main`.
 
@@ -93,7 +94,7 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 - **ESM main.** `src/main/index.ts` bundles to ESM at build time. `__dirname`
   and `require` throw at runtime. Use `fileURLToPath(import.meta.url)`. After
   release, verify the packaged binary actually opens a window (stderr free of
-  `ReferenceError`). See `learnings_gauntlet_terminal_esm_main_dirname`.
+  `ReferenceError`).
 - **No silent narration.** This is a UI app; user-visible messages come from
   the tabs themselves. Don't add `console.log` for "feedback" — wire to the
   Activity feed via `emitActivity` if it's worth surfacing.

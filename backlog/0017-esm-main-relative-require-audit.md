@@ -55,5 +55,5 @@ Three of these accumulated independently, each with a plausible-sounding comment
 ("lazy require to avoid pulling X into tests"). The rationale was stale in every
 case. A grep-based check is cheap and prevents the class.
 
-Relates to `learnings_gauntlet_terminal_esm_main_dirname` — same root cause as
-the `__dirname` gotcha already documented in CLAUDE.md.
+Same root cause as the packaged ESM-main `__dirname` gotcha already
+documented in CLAUDE.md.

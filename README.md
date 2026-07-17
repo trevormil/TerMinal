@@ -30,8 +30,8 @@ Sessions run on *your* `claude`/`gh`/`glab` auth. Every artifact — activity
 feed, run logs, schedules, review results, the HITL inbox — is a file on your
 machine that renders offline.
 
-> Built for a Gauntlet AI hackathon, then kept as a daily driver. macOS-first
-> ([why](docs/decisions/0003-macos-primary-platform.md)). MIT.
+> macOS-first ([why](docs/decisions/0003-macos-primary-platform.md)).
+> Open source, MIT.
 
 ---
 

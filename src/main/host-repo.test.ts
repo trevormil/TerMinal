@@ -3,7 +3,7 @@ import { hostRepoRoot, ensureRepoClonedCmd } from './host-repo'
 
 describe('hostRepoRoot', () => {
   test('maps a Mac repo path to the host convention ~/repos/<name>', () => {
-    expect(hostRepoRoot('/Users/t/CompSci/gauntlet/TerMinal')).toBe('~/repos/TerMinal')
+    expect(hostRepoRoot('/Users/t/code/TerMinal')).toBe('~/repos/TerMinal')
   })
   test('sanitizes the repo name to a safe token', () => {
     expect(hostRepoRoot('/tmp/weird name!')).toBe('~/repos/weird')

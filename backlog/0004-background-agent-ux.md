@@ -51,7 +51,7 @@ When `/bg <repo> <prompt>` fires:
 
 1. Resolve repo via `knownRepos()` (same path Telegram already uses).
 2. Create a worktree at
-   `~/CompSci/gauntlet/.worktrees/<repo>/bg-<short-id>/` (reuses existing
+   `<worktrees-root>/<repo>/bg-<short-id>/` (reuses existing
    worktree convention).
 3. Pick engine + model from agent defaults (or Telegram args: `/bg vellum
    claude opus fix the flaky test`).
@@ -65,7 +65,7 @@ When `/bg <repo> <prompt>` fires:
      "prompt": "fix the flaky drift snapshot test",
      "engine": "claude",
      "model": "sonnet",
-     "worktree": "~/CompSci/gauntlet/.worktrees/vellum-project/bg-abc1234",
+     "worktree": "~/.worktrees/vellum-project/bg-abc1234",
      "pid": 12345,
      "startedAt": 1700000000000,
      "logFile": "~/.config/TerMinal/bg-tasks/abc1234.log",
