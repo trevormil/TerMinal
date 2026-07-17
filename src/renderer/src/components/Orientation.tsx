@@ -103,7 +103,7 @@ export function Orientation({ onDone }: { onDone: () => void }) {
           </button>
         </div>
         <p className="mt-4 text-center text-[10.5px] text-zinc-600">
-          This screen shows once. Replay it anytime from Settings → Replay onboarding.
+          This screen shows once. Replay it anytime from Settings → Re-run first-time setup.
         </p>
       </div>
     </div>
