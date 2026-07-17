@@ -697,6 +697,13 @@ function fileTicket(title, body) {
     process.exit(2)
   }
   // Obsidian repos keep tickets in their vault, not the repo's local backlog.
+  // A misconfigured vault fails closed — never silently fall back to the repo.
+  if (cfg.provider === 'obsidian' && !obsidianTicketsDir(cfg)) {
+    console.error(
+      'terminal-cli ticket: Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
+    )
+    process.exit(2)
+  }
   const backlog = obsidianTicketsDir(cfg) || areaPath(repo, 'backlog')
   mkdirSync(backlog, { recursive: true })
   const files = readdirSync(backlog).filter((f) => /^\d{4}-.*\.md$/.test(f))
