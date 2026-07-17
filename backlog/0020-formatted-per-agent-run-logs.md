@@ -1,15 +1,16 @@
 ---
 id: 20
 title: "Formatted per-agent run logs (structured, not a wall of text) — Runs, CI, all run views"
-status: open
+status: in-progress
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-09
-prs: []
+updated: 2026-07-17
+prs:
+  - https://github.com/trevormil/TerMinal/pull/91
 refs: []
 depends_on: []
 acceptance:
