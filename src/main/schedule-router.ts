@@ -22,6 +22,8 @@ export type ReconcileResult = {
 }
 
 export type RouterDeps = {
+  /** Injected so the darwin-only local-schedule guard is testable on any CI OS. */
+  platform: NodeJS.Platform
   launchdSync: (s: Schedule) => { ok: boolean; error?: string }
   launchdUnschedule: (id: string) => void
   launchdReconcile: () => ReconcileResult
@@ -37,6 +39,7 @@ export type RouterDeps = {
 }
 
 const realDeps: RouterDeps = {
+  platform: process.platform,
   launchdSync: syncSchedule,
   launchdUnschedule: unscheduleJob,
   launchdReconcile: reconcileSchedules,
@@ -75,7 +78,7 @@ export async function routeSyncSchedule(
     // Local schedules ride launchd, which is macOS-only (see ADR-0003). On any
     // other platform, surface a real reason instead of the mystery "dark" badge
     // launchctl's swallowed failure would otherwise produce.
-    if (process.platform !== 'darwin')
+    if (deps.platform !== 'darwin')
       return {
         ok: false,
         error: 'local scheduling requires macOS — assign this schedule to a remote host',
