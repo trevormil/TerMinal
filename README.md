@@ -1,43 +1,37 @@
 <div align="center">
   <img src="src/renderer/src/assets/logo.png" width="96" height="96" alt="TerMinal" />
   <h1>TerMinal</h1>
-  <p><strong>A standalone software factory for coding agents.</strong></p>
+  <p><strong>The terminal, rebuilt for agents that do the work.</strong></p>
 </div>
 
 <p align="center">
   <img src="docs/terminal.png" width="900" alt="TerMinal terminal tab with the live cockpit sidebar" />
 </p>
 
-**A standalone macOS app that runs your coding agents as a software factory.**
-TerMinal hosts the real [Claude Code](https://claude.com/claude-code) CLI (and
-[Codex](https://github.com/openai/codex)) — many sessions as top tabs, each in
-its own PTY — and wraps them in a continuous, observable build loop: backlog →
-branch → PR → review → **you** merge. The human gate to `main` is never crossed
-by the app; agents stop at "PR open" and park anything that needs you to a
-global inbox. The workflow it drives is
-**[project-template](https://github.com/trevormil/project-template)** — a
-drop-in scaffold (sessions → tickets → branches → PRs → review → human merge,
-with a TDD gate and in-repo `.reviews/`) you can [add to any repo](#project-template).
+Your terminal was designed for a human typing one command at a time. Your actual
+workload is now five Claude Code sessions, a Codex agent grinding a backlog on a
+schedule, and a review pass you'd like to trust — and the terminal shows you a
+blinking cursor.
 
-**Local-first.** No server, no account, no phone-home. Every artifact — the
-activity feed, HITL inbox, schedules, run logs, code-review results — lives on
-your machine (`~/.config/TerMinal` + in-repo `.reviews/`), renders offline, and
-runs on *your* `gh`/`glab`/`claude` auth, never ours.
+**TerMinal is a macOS app that hosts the real agent CLIs** —
+[Claude Code](https://claude.com/claude-code),
+[Codex](https://github.com/openai/codex), Cursor Agent, plus OpenRouter and
+Hermes harnesses for everything else — **and wraps them in the management layer
+an agent workforce needs**: a backlog agents own, schedules that fire
+with the app closed, a review surface for every PR, a cost ledger for every run,
+and one inbox for the moments that genuinely need a human.
 
-Every session carries its own **cockpit** — a sidebar of live telemetry for
-*that* session: context-window %, token burn, your plan's **5-hour + weekly
-usage** (a live `/usage` mirror), what the agent is doing _right now_, its todo
-list, and the latest code-review/TDD verdict. Every number describes one
-session, never an aggregate.
+One rule holds the whole thing together: **agents never merge**. They design,
+ticket, branch, implement, open the PR, and stop. The merge to `main` is yours,
+every time.
 
-Around the terminal sit repo-aware **tabs** that are the factory's control
-surface — tickets, MRs/PRs, an autonomous **[Factory](#factory)** orchestrator,
-**Schedules** (real launchd cron), a global **HITL** inbox, cross-repo
-**cycle-time** observability, plus notes and a file editor. The terminal stays
-mounted when you switch tabs, so a session never drops.
+**And it's local-first, all the way down.** No server, no account, no telemetry.
+Sessions run on *your* `claude`/`gh`/`glab` auth. Every artifact — activity
+feed, run logs, schedules, review results, the HITL inbox — is a file on your
+machine that renders offline.
 
-> Built for a Gauntlet AI hackathon, then kept going. macOS-first. Dark theme,
-> [lucide](https://lucide.dev) icons, IBM Plex type.
+> Built for a Gauntlet AI hackathon, then kept as a daily driver. macOS-first
+> ([why](docs/decisions/0003-macos-primary-platform.md)). MIT.
 
 ---
 
@@ -54,288 +48,161 @@ mounted when you switch tabs, so a session never drops.
   </tr>
 </table>
 
+## What you get
+
+### A real terminal, multiplied
+
+- **Real CLIs, real PTYs.** Each session runs the actual engine binary in its
+  own pseudo-terminal (the same xterm.js + node-pty pattern as VS Code's
+  terminal). Nothing is reimplemented or proxied; resume uses each engine's
+  native resume.
+- **Workspaces as tabs.** Repos across the top, sessions within each, split and
+  4-up grid layouts across repos, ⌘K palette to jump anywhere. Terminals stay
+  mounted when you switch tabs — a session never drops.
+- **A cockpit per session.** A sidebar of live, per-session telemetry: context
+  window %, token burn, your plan's 5-hour/weekly usage (a live `/usage`
+  mirror), what the agent is doing right now, its todo list, git state, and the
+  latest TDD/code-review verdict. Every number describes one session, never an
+  aggregate.
+- **Five engines, one launcher.** Claude, Codex, and Cursor run interactive
+  sessions and agent jobs; OpenRouter and Hermes run agent jobs on any model
+  slug — with a curated menu, per-run cost capture, and your API key sealed in
+  the OS keychain.
+
+### A software factory around it
+
+- **Tickets** agents can own. Markdown backlog by default; GitHub Issues,
+  Linear, or a private per-repo **Obsidian vault** as drop-in providers; team
+  boards embed read-only. Every ticket has an owner agent, acceptance criteria,
+  and links to the runs and PRs it produced.
+- **Agents** are the unit of work — a roster of classic (prompt/script) and
+  persistent (memory-backed) agents with model policy, deterministic checks,
+  optional LLM judges, and per-repo overrides in `.agents/`. Code-changing runs
+  get an isolated git worktree; nothing touches your checkout.
+- **One ledger for runs.** In-process, scheduled, background, and
+  terminal-launched runs normalize into a single view: live log, lineage back
+  to the ticket and PR, evaluation results, dollar cost, rerun/cancel.
+- **Schedules** that outlive the app. Local schedules are real launchd jobs
+  (a headless runner ships in the bundle); schedules can also target always-on
+  Linux hosts over SSH — systemd timers or k8s CronJobs — so the factory keeps
+  running when your laptop doesn't. A failed run files itself to the inbox.
+- **PR/MR review** built in. `gh`/`glab` auto-detected per repo, full diff
+  viewer (unified/split, per-file viewed-state), review findings and
+  suggestions, forge CI status, and a merge button that is deliberately the
+  only one in the app.
+- **Loops** for goal convergence. Pair a driver session that writes a gradable
+  contract and adversarially grades, with a worker session implementing in a
+  worktree — or run single-session mode where fresh evaluators grade a
+  long-lived generator. The generator never grades itself.
+- **Observability** you can act on. Cross-repo throughput, cycle time
+  (ticket-filed → PR-merged with stage splits and a funnel), success rates, an
+  AI-spend explorer down to per-request payloads, and a `/factory` orchestrator
+  that works the backlog until it's dry.
+
+### A human gate that actually gates
+
+- **One inbox for everything human.** Approvals, credentials, decisions, hard
+  blockers — agents file items to a global HITL inbox from any repo, each pings
+  Telegram, and the app badges the count until you resolve it.
+- **AFK control from your phone.** The Telegram bridge is two-way: `/feature
+  <idea>` drafts a ticket and offers a start-work button; `/runs`, `/tail`,
+  `/hitl`, `/cancel` and friends steer the factory while you're away.
+- **Merges stay yours.** Agents stop at "PR open" by design, and the tooling
+  itself enforces it — a prompt can't talk an agent past the gate.
+
 ## Quick start
 
-Requires [bun](https://bun.sh) and at least one engine CLI on your `PATH`:
-`claude` or `codex`.
-
-> **Platform: macOS (Apple Silicon).** Packaging, local scheduling (launchd), and
-> the "open in editor/browser" handoffs (`open -a`) assume macOS. The editor and
-> browser default to the first detected app (Cursor/Brave as a last resort),
-> configurable in Settings. **Dev:** macOS fully; Linux mostly (no local
-> schedules or app-handoffs — use remote hosts for scheduling); Windows
-> unsupported. Rationale + a port checklist:
-> [ADR-0003](docs/decisions/0003-macos-primary-platform.md).
+Requires [bun](https://bun.sh) and at least one engine CLI on your `PATH`
+(`claude` or `codex`).
 
 ```bash
 git clone https://github.com/trevormil/TerMinal.git
 cd TerMinal
 git submodule update --init   # vendors project-template (for scaffolding)
 bun install                   # also rebuilds node-pty against Electron's ABI
-bun run dev                   # launch the dev build
+bun run dev
 ```
 
-On **first launch** a short onboarding probes your machine (which of
-`claude`/`codex`/`gh`/`glab` are installed + authenticated) and confirms your
-projects folder — everything has a working default, so you can skip it. After
-that, `bun run dev` opens the **session picker**: resume an existing
-Claude/Codex session, start a new one in any folder, or **spin up a brand-new
-project from a template** (see below). Sessions launch the real engine CLI in
-the selected directory and resume through that engine's native resume path.
+First launch is a two-step setup: step one probes your machine (which of
+`claude`/`codex`/`cursor`/`gh`/`glab` are installed and authenticated), confirms
+your projects folder, and lets you pick a default agent engine; step two offers
+the optional connections — Telegram, the MCP server, the activity hook, an
+OpenRouter key. Everything has a working default and both steps are skippable.
+A one-time orientation screen then maps the tabs, and each repo gets its own
+orientation on first open.
 
-The picker has two modes, toggled at the top: **Single session** (the default —
-one engine in one folder) and **Paired loop** — two linked agents opened side by
-side to converge on a goal. You give one **goal**; a **driver** turns it into a
-gradable contract and adversarially grades each round, while a **worker** writes
-the code in an isolated git worktree. The two run contract-first and hand off to
-each other automatically. Paired loop is local-only (it needs a worktree). The
-mechanics live in [`docs/architecture.md`](docs/architecture.md#loop-engine-paired--headless).
+From the session picker: resume an existing session, start a new one in any
+folder, scaffold a **new project from the template**, or launch a **paired
+loop**. `gh` and `glab` are optional — they light up the forge features that
+use them.
 
-The app is **self-configuring** — install either `claude` or `codex` to run
-sessions; `gh` and `glab` are optional and enable the forge features that use
-them. See
-[**Setup & settings**](#setup) for the full picture.
+> **Platform: macOS (Apple Silicon).** Packaging, launchd scheduling, and the
+> editor/browser handoffs assume macOS. Dev works on Linux minus local
+> schedules (use remote hosts). Rationale and a port checklist:
+> [ADR-0003](docs/decisions/0003-macos-primary-platform.md).
 
 ### Install it as a real app
 
-Package a branded, double-clickable macOS app:
-
 ```bash
-bun run dist        # → dist/TerMinal-<ver>-arm64.dmg  +  dist/mac-arm64/TerMinal.app
-```
-
-It's an unsigned local build, so after packaging give it a clean ad-hoc
-signature, then drag it to `/Applications` and pin it to the Dock:
-
-```bash
+bun run dist        # → dist/TerMinal-<ver>-arm64.dmg + dist/mac-arm64/TerMinal.app
 codesign --force --deep --sign - "dist/mac-arm64/TerMinal.app"
 cp -R "dist/mac-arm64/TerMinal.app" /Applications/
 open "/Applications/TerMinal.app"   # right-click → Open the first time
 ```
 
-See [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
+Details: [`docs/runbooks/build-and-release.md`](docs/runbooks/build-and-release.md).
 
-## Tabs
+## How a feature ships
 
-A title-bar switcher puts full-screen surfaces alongside the terminal. Tabs are
-repo-aware — each shows based on the attached session's repo. The default top
-level is intentionally focused: **Tickets**, **MRs / PRs**, **Agents**, **Runs**,
-**Schedules**, **CI**, **Browser**, **Observability**, and **Files**.
-Secondary/reference surfaces such as Activity, Docs, Reports, Sessions,
-Knowledge Base, Agent Config, and Help are available from
-**Settings → Tabs** when you want them.
+The loop TerMinal is built to run, end to end:
 
-- **Terminal** — the `claude` or `codex` CLI with a session-aware cockpit sidebar.
-- **Tickets** — browse/filter/create tickets from the repo's `backlog/`,
-  **grouped by status** (closed/icebox collapsed by default). Inline
-  status/priority edits write back to the markdown file. Each repo picks a
-  **ticket provider** in Settings → Tickets: local backlog (default), GitHub
-  Issues, Linear, or **Obsidian** — a private, local vault (each repo → its own
-  vault). Obsidian tickets are the same `NNNN-slug.md` markdown, stored in the
-  vault's `tickets/` folder outside git, with a Dataview board + Templater
-  template seeded on setup and an "Open in Obsidian" deep link. Agents reach the
-  vault through the ticket tools (or `$OBSIDIAN_VAULT_PATH` with native file
-  tools) — no MCP required.
-- **MRs / PRs** — live merge/pull requests via `glab` (GitLab) or `gh` (GitHub),
-  **auto-detected per repo** from the remote (the tab + vocabulary switch between
-  "MR !N" and "PR #N"). Each opens a full review surface: description, the
-  **review** body, **findings** + **suggestions**, a syntax-highlighted **diff**
-  (unified/split, per-file "viewed"), forge **CI status**, and a **merge** button.
-- **Agents** — on-demand classic and persistent agents (**Codex**, **Claude**,
-  or Cursor) with model policy, quality contracts, run history, and direct
-  ticket/PR ownership. See [Agents](#agents) below.
-- **Runs** — one operational ledger across in-process agents, scheduled cron
-  runs, background tasks, and terminal-launched ticket work. A run detail shows
-  the live log, lineage back to a ticket/PR when known, deterministic evaluation
-  results, rerun/cancel actions, and worktree cleanup.
-- **Factory** — toggle the autonomous [`/factory`](#factory) orchestrator on for
-  the attached repo, watch its live log, and read cross-repo **factory health**:
-  throughput (24h/7d), **cycle time** (ticket-filed → PR-merged, with stage
-  splits + a funnel), agent/cron success rates, a 14-day activity sparkline,
-  recent failures, and the most active repos.
-- **Schedules** — real **macOS launchd cron** for agents: run an agent on an
-  interval, at a calendar time, or via a raw cron expression — it fires even
-  when TerMinal is closed. One **global** view across every repo with a per-repo
-  filter, an **All runs** history (status / log per run), and a reconcile button
-  that removes orphaned launchd jobs.
-- **Browser** — an in-app webview for quick lookups, plus **Open in Brave**
-  (configurable) to hand the URL to a real browser with your wallet extensions.
-- **Inbox** — a **global, cross-repo HITL inbox** (`~/.config/TerMinal/hitl.json`) of
-  the things waiting on a human: approvals, credentials, decisions, hard
-  blockers. Agents file items here (via `.claude/bin/hitl`), each fires a
-  Telegram ping, and the top-right Inbox button carries a live red count. Resolve / reopen / remove
-  from one place — no need to open each repo.
-- **Activity** — a realtime feed + macOS notifications: a session finishing a
-  turn, a ticket filed, a session start. Global store, filterable to this
-  repo/session.
-- **Sessions** — the repo's working-state session docs
-  (`sessions/NNNN-slug/session.md`, the [project-template](#project-template)
-  convention): status, goal, linked tickets/branches/PRs, rendered body.
-- **Notes** — markdown editor (edit/split/preview). Repo notes live at
-  `<repo>/.TerMinal/notes.md` (auto-gitignored); Global notes span
-  everything. Both autosave.
-- **Files** — a lightweight editor: CodeMirror (real syntax highlighting,
-  find/replace), multi-file tabs, a file tree with type icons + git-ignored
-  dimming, and project-wide search (`git grep`). ⌘S save · ⌘W close · ⌘F find ·
-  ⌘⇧F project search. Open the current file/dir in your editor (Cursor by
-  default, configurable) from a button.
-- **Help** — in-app reference for the tabs, cockpit widgets, and keyboard
-  shortcuts.
+1. **File it.** A ticket lands in the repo's backlog — typed in the Tickets
+   tab, filed by an agent, or texted in via Telegram `/feature`. It gets an
+   owner agent and acceptance criteria.
+2. **An agent picks it up.** On demand, on a schedule, or via the `/factory`
+   orchestrator. The run gets its own git worktree and branch; the run record
+   starts streaming into Runs.
+3. **TDD-first implementation** (the [project-template](#project-template)
+   workflow): failing test → code → suite green → push → PR opened with the
+   ticket linked.
+4. **Review to a bar.** A code-review agent scores the diff and writes findings
+   into the repo's `.reviews/`; the MRs/PRs tab renders verdict, findings, and
+   the diff side by side. Deterministic checks and optional judges run per the
+   owning agent's contract.
+5. **You merge.** The one step no agent performs. Post-merge, ticket state
+   reconciles automatically and cycle-time metrics update.
 
-## Cockpit widgets
+Anything that stalls — a credential, an approval, a failed scheduled run —
+files itself to the inbox and pings your phone instead of dying silently in a
+log.
 
-The sidebar is a stack of widgets, each describing the attached session. Toggle
-them in the **Plugins** drawer (top-right on the Terminal tab). Defaults:
-**Session** (title/model/mode/branch/turns), **Context Window**, **Now Doing**
-(latest tool call, live), **Plan Usage**, **Todos**, **TDD / Review**, **Git**.
-Off by default but available: **Model**, **Tool Use**, **Token Burn Rate**,
-**Open PRs**.
+## The surfaces
 
-Cockpit extensions are auto-discovered locally and stay file-backed:
+Tabs are repo-aware and curated: the defaults stay focused, the rest enable in
+Settings → Tabs.
 
-- **Code plugins** — a folder under `src/renderer/src/plugins/<id>/index.tsx`.
-- **Command widgets** — declarative "run this command every N seconds", in JSON,
-  including **per-repo** widgets loaded from the attached repo.
+| Surface | What it's for |
+| --- | --- |
+| **Terminal** | The engine CLI plus the per-session cockpit. |
+| **Tickets** | Browse/filter/create; inline status edits write back to markdown. Provider per repo: local, GitHub, Linear, Obsidian. |
+| **MRs / PRs** | Live forge requests with diff, findings, CI state, and the merge button. |
+| **Agents** | The roster: definitions, model policy, contracts, run history, one-click ticket implementation. |
+| **Runs** | Every run with log, lineage, evaluation, and cost. |
+| **Schedules** | launchd/systemd/k8s-backed cadence with run history and a reconcile that surfaces dark jobs. |
+| **Factory** | The orchestrator toggle plus cross-repo health: throughput, cycle time, failures. |
+| **Observability** | The AI-spend and trace explorer — every request, priced. |
+| **CI / Browser / Files / Notes** | Forge CI page, embedded webview, a CodeMirror editor with project search, autosaving markdown notes. |
+| **Inbox** (top-right) | The global HITL queue, badge always visible. |
 
-## <a name="agents"></a>Agents
+Secondary surfaces (Activity feed, Docs, Reports, Sessions, Help, custom
+Panels) are one toggle away.
 
-Agents are the assignable unit of work across TerMinal. Classic agents are
-prompt or script definitions; persistent agents are memory-backed directories
-with durable instructions, memory, state, journal, and artifacts. Both normalize
-to one schema for ticket ownership, one-click implementation, PR review, run
-history, schedules, and evals.
+## Extending it
 
-Each agent can declare:
+Everything user-facing is a folder or a JSON file — no plugin API to learn
+beyond one object shape.
 
-- preferred engine/model plus cheap/deep/judge model policy
-- knowledge policy and output contract
-- acceptance criteria and required artifacts
-- deterministic shell checks
-- optional LLM judge configuration
-
-On-demand runs stream live into **Agents** and into the global **Runs** tab. Code
-changing runs get an isolated git worktree off the default branch unless the
-agent explicitly runs in-place. Ticket implementation records the run id back to
-the ticket, so the ticket page can embed the run log and evaluation summary.
-
-The default catalog includes general implementation (`1000x-ai-engineer`),
-factory orchestration, code review, docs, tests, security, performance,
-dependency hygiene, dead-code cleanup, CI, product/strategy audits, and emergency
-FORCE agents.
-
-Override or add your own per-repo in `.agents/agents.json` (merged by id over the
-defaults):
-
-```json
-[{ "id": "perf", "title": "Perf pass", "icon": "Zap",
-   "prompt": "/document  …or any codex prompt; commit + open a PR", "opensPr": true }]
-```
-
-## <a name="project-template"></a>Spin up new projects (project-template)
-
-TerMinal pairs with
-[project-template](https://github.com/trevormil/project-template) — a
-self-contained workflow scaffold (sessions → tickets → branches → PRs → review →
-human merge, with in-repo `.reviews/`, cadence `.checks/`, TDD gate, and the
-ticket/session schemas these tabs read). It's vendored here as a git submodule
-at `templates/project-template` and kept in sync with the upstream repo.
-
-**From the session picker** — the "New project from template" card: name it,
-pick a parent folder, hit Create. It copies the template into a **brand-new**
-directory (never overwrites an existing one), runs `git init` + a first commit,
-and opens a session there.
-
-Ticket-provider choices in this flow are covered in
-[`docs/runbooks/new-project.md`](docs/runbooks/new-project.md), including the
-Obsidian vault bootstrap path. Existing repos can switch providers from
-Settings; see
-[`docs/runbooks/obsidian-ticket-provider.md`](docs/runbooks/obsidian-ticket-provider.md).
-
-**From the terminal:**
-
-```bash
-bin/new-project my-app                  # → <your projects dir>/my-app
-bin/new-project my-app /path/to/parent  # custom parent
-```
-
-Both refresh the template to the latest upstream before copying. To bump the
-pinned submodule:
-
-```bash
-git submodule update --remote templates/project-template
-```
-
-## <a name="factory"></a>Software factory
-
-The factory surfaces turn the workflow into a continuous, observable loop —
-agents do design → ticket → branch → PR → review/CI; the **merge to
-`main`/`master` is always human-only** and never bypassed.
-
-- **`/factory`** (a project-template skill) is a continuous orchestrator: it
-  reconciles ticket state with merged PRs, runs `/stacked-mr` passes (build a
-  stack TDD-first → batch-review to the bar → handle verdicts), and repeats
-  until the in-scope backlog is dry. No budget, per-repo, claude or codex. The
-  **Factory tab** toggles it on and streams its log.
-- **Schedules** registers real **launchd** jobs so agents run on a cadence even
-  when TerMinal is closed (a headless runner ships in the app bundle and is
-  installed to `~/.config/TerMinal/bin`). A failed (not cancelled) scheduled run
-  auto-files a HITL item.
-- **Inbox** is the single place agents reach you. Items live in a global
-  `~/.config/TerMinal/hitl.json`, get a Telegram ping when filed, and show a red
-  badge until resolved — across every repo.
-- **Cycle time** is measured by linking a ticket's lifecycle events through join
-  keys (`ticket-filed{ticket}` → `pr-opened{ticket,pr}` → `pr-merged{pr}` →
-  `ticket-closed{ticket}`): median time-to-merge, the filed→open and open→merge
-  stage splits, and a 7-day funnel — all on the Factory tab. Skills emit these
-  via `.claude/bin/activity --ticket N --pr N`.
-
-All of it reads from append-only stores under `~/.config/TerMinal/`
-(`activity.jsonl`, `cron-runs/`, `hitl.json`), so the views work offline and
-anything — a CI job, a shell script — can participate by appending an event.
-
-## <a name="setup"></a>Setup & settings
-
-Most config lives in the in-app **Settings** panel (gear icon, top-right) and is
-saved to `~/.config/TerMinal/settings.json`:
-
-- **Projects & worktrees** — where the picker looks for repos; where agent
-  worktrees go; the scaffold template repo.
-- **Engines** — detected `codex`/`claude` with install/auth state; per-engine
-  path overrides; default engine.
-- **Code forge** — `auto` (gh for GitHub remotes, glab otherwise) / force
-  GitHub / force GitLab, with live install + auth readiness per CLI.
-- **Telegram** — native Bot API notifications + AFK remote control (paste a
-  BotFather token + chat id, hit **Test**). Falls back to legacy
-  `~/.claude/bin/telegram-*.sh` scripts if no token is set.
-- **Setup & integrations** — install the [`gt-notify`](docs/setup.md#5-activity-feed-hook-gt-notify)
-  activity hook, and **copy a setup prompt for Claude** to install the global
-  agent skills on a fresh machine.
-
-Full walkthrough (GitHub vs GitLab, global skills, Telegram, the activity-feed
-contract): [**`docs/setup.md`**](docs/setup.md).
-
-## Landing page
-
-The public landing page is static HTML in `landing/` and deploys to GitHub Pages
-from `main` via `.github/workflows/pages.yml`. It has no app build step: update
-`landing/index.html`, push `main`, and Pages publishes the new install copy.
-
-### Environment overrides
-
-| var                | default  | what it does                                                    |
-| ------------------ | -------- | --------------------------------------------------------------- |
-| `GT_CLAUDE_BIN`    | `claude` | the Claude binary to launch (Settings → Engines also sets this) |
-| `GT_CONTEXT_LIMIT` | auto     | context-window cap. Auto = 200k (bumps to 1M past 200k tokens). |
-
-```bash
-GT_CONTEXT_LIMIT=1000000 bun run dev   # if you run 1M-context sessions
-```
-
-## Writing a plugin
-
-A plugin is a folder under `src/renderer/src/plugins/<id>/index.tsx` that
-default-exports one object. Drop it in — it auto-registers (Vite glob), appears
-in the Plugins drawer, and mounts when toggled on.
+**A cockpit widget** is a folder under `src/renderer/src/plugins/<id>/`:
 
 ```tsx
 import { Brain } from 'lucide-react'
@@ -345,12 +212,11 @@ import type { Plugin, TranscriptStats } from '../../lib/types'
 const plugin: Plugin<TranscriptStats> = {
   id: 'context',
   title: 'Context Window',
-  icon: Brain, // a lucide-react icon component
-  blurb: "Live % of the model's context window in use.",
+  icon: Brain,
   intervalMs: 2000,
   defaultEnabled: true,
   realtime: true, // also refresh the instant the transcript changes
-  poll: (gt) => gt.transcript(), // read live state via the typed bridge
+  poll: (gt) => gt.transcript(),
   render: (d) =>
     d?.ok ? (
       <Card icon={Brain} title="Context Window">
@@ -362,25 +228,14 @@ const plugin: Plugin<TranscriptStats> = {
 export default plugin
 ```
 
-`poll` runs on `intervalMs` (and on every transcript tick if `realtime`);
-`render` draws the card. The `gt` bridge exposes the data sources
-(`gt.transcript()`, `gt.usage()`, `gt.harnessTdd()`, `gt.gitStatus()`,
-`gt.sessionTasks()`, …). New data source = extend `src/main/` + the preload
-bridge.
+**A tab** is the same idea:
+`src/renderer/src/tabs/<id>/index.tsx` exporting
+`{ id, title, icon, order, appliesTo(ctx), Component }`. `appliesTo` gates it
+per repo; an optional `badge(gt)` paints a live count.
 
-## Writing a tab
-
-Same model — a folder under `src/renderer/src/tabs/<id>/index.tsx`
-default-exporting `{ id, title, icon, order, appliesTo(ctx), Component }`.
-`appliesTo(ctx)` gates visibility on the attached repo; an optional
-`badge(gt)` paints a live count on the tab. The global Inbox count lives in the
-top-right app chrome instead of a repo tab.
-
-## Command widgets (no code)
-
-Declare a widget that runs a shell command on an interval and renders its
-output — global (`~/.config/TerMinal/widgets.json`) or per-repo
-(`<repo>/.TerMinal/widgets.json`, loaded when you attach there).
+**A command widget** needs no code at all — global
+(`~/.config/TerMinal/widgets.json`) or per-repo
+(`<repo>/.TerMinal/widgets.json`):
 
 ```json
 [
@@ -394,52 +249,79 @@ output — global (`~/.config/TerMinal/widgets.json`) or per-repo
 ]
 ```
 
-`mode` is `text` (raw stdout), `big` (first line as a number), or `kv`
-(`key: value` lines as rows). Commands run in the attached session's directory.
+> **Trust:** command widgets run shell commands, and per-repo widgets come from
+> the repo you attach to — only attach to repos you trust (same model as
+> running their npm scripts).
 
-> **Trust:** command widgets run arbitrary shell, and per-repo widgets come from
-> the repo you attach to — only attach to repos you trust (same model as running
-> their npm scripts).
+Agents integrate from the outside too: an **MCP server** (installable from
+Settings or onboarding) gives any Claude Code/Codex session cross-session views
+— tickets, runs, HITL, activity — and the append-only stores under
+`~/.config/TerMinal/` mean a CI job or shell script can join the activity feed
+by appending a line.
+
+## <a name="project-template"></a>New projects, ready-made workflow
+
+TerMinal pairs with
+[project-template](https://github.com/trevormil/project-template) — a scaffold
+carrying the whole workflow: sessions → tickets → branches → PRs → review →
+human merge, with the TDD gate, in-repo `.reviews/`, cadence checks, and the
+schemas these tabs read. It's vendored as a submodule and refreshed on use.
+
+- **From the picker:** "New project from template" — name it, pick a parent,
+  Create. Fresh directory, `git init`, first commit, session opened, per-repo
+  orientation shown. Ticket-provider choices (including the Obsidian vault
+  path): [`docs/runbooks/new-project.md`](docs/runbooks/new-project.md).
+- **From the shell:** `bin/new-project my-app [parent-dir]`.
+
+Existing repos adopt the same workflow via the in-app Bootstrap banner (or the
+per-repo orientation's Setup row) — existing files are never overwritten.
+
+## Setup & settings
+
+The gear icon covers the rest, saved to `~/.config/TerMinal/settings.json`:
+projects/worktrees paths, engine paths + default engine, forge preference,
+Telegram, ticket providers, remote SSH hosts, appearance, tab visibility. The
+full walkthrough — GitHub vs GitLab, global skills, Telegram, the
+activity-feed contract — is [`docs/setup.md`](docs/setup.md).
+
+| env var | default | what it does |
+| --- | --- | --- |
+| `GT_CLAUDE_BIN` | `claude` | Claude binary to launch (Settings → Engines also sets this) |
+| `GT_CONTEXT_LIMIT` | auto | context-window cap; auto = 200k, bumps to 1M past 200k tokens |
 
 ## How it works
 
-- **Electron** shell. `node-pty` (main) runs `claude`; **xterm.js** (renderer)
-  draws it — the same pattern VS Code's integrated terminal uses. Each session
-  tab is its own PTY, keyed in main; data IPC reads the active session.
-- The UI is **React + Tailwind v4**, built with **electron-vite**. Widgets and
-  tabs poll a typed `gt` bridge exposed via `contextBridge`.
-- **Context / burn / now-doing / todos** come from the attached session's
-  transcript (`~/.claude/projects/<cwd-hash>/<session-id>.jsonl`) and task files,
-  read by session id.
-- **Plan usage** mirrors `/usage` via `GET /api/oauth/usage` using the OAuth
-  token Claude Code stores in the macOS keychain. Cached ~2 min (rate-limited).
-- **PRs / TDD / review** read code-review artifacts from the repo's in-repo
-  `.reviews/<pr>/` (project-template) or the legacy autopilot-harness `prs/`
-  store, computing `current` vs `stale`.
-
-See [`docs/architecture.md`](docs/architecture.md) for the full map.
-
-## Repo layout
+Electron in three layers: **main** owns PTYs, filesystem, and CLI calls;
+**preload** exposes one typed `gt` bridge; the **renderer** is React 19 +
+Tailwind v4. Cockpit data comes from the session's own transcript on disk; plan
+usage mirrors the `/usage` endpoint with the OAuth token Claude Code already
+stores in your keychain; review state reads in-repo `.reviews/` artifacts.
+Scheduling routes per schedule to launchd (local), systemd, or k8s (remote
+hosts). The full map, including the loop engine and the multi-session model:
+[`docs/architecture.md`](docs/architecture.md).
 
 ```
-src/main/            Electron main: PTY spawn, IPC, fs readers (transcript, backlog, mrs, files, scaffold)
-src/preload/         the `gt` bridge (contextBridge)
+src/main/            Electron main: PTY spawn, IPC, all fs/CLI readers
+src/preload/         the typed `gt` bridge (contextBridge)
 src/renderer/src/
-  App.tsx            multi-session shell (session tab bar)
+  App.tsx            multi-session shell (workspace tab bar)
   SessionView.tsx    one session: terminal + cockpit + tabs
-  components/        Terminal (xterm), CodeEditor, MrDetail, TicketsBrowser, ui kit
   plugins/<id>/      one folder = one cockpit widget (auto-discovered)
   tabs/<id>/         one folder = one full-screen tab (auto-discovered)
-  lib/               types, badges, file-type icons, formatters
-templates/           project-template (git submodule) — scaffolding source
-bin/new-project      scaffold a new repo from the template
-build/               app icon (.icns/.png) for packaging
+bin/                 headless runners: terminal-cron, terminal-cli, MCP server, or-agent tier
+templates/           project-template (git submodule)
 ```
+
+## Landing page
+
+Static HTML in `landing/`, deployed to GitHub Pages from `main`
+(`.github/workflows/pages.yml`). Update `landing/index.html`, push, done.
 
 ## Contributing
 
-It's just code — fork it, drop a plugin or tab folder in, send a PR. `bun run
-build` type-checks the bundle; `bunx tsc --noEmit` is the full type gate.
+It's just code — fork it, drop a plugin or tab folder in, send a PR.
+`bun run test` runs the suite; `bunx tsc --noEmit` is the type gate; CI runs
+both. Merges to `main` are human-only here too.
 
 ## License
 
