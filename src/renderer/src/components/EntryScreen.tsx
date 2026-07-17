@@ -28,6 +28,7 @@ import { EngineLogo } from './EngineLogo'
 import { ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
+import { repoOrientationPendingKey } from '../lib/orientation'
 
 export type Choice = {
   mode: 'new' | 'resume'
@@ -284,7 +285,14 @@ export function EntryScreen({
           },
         })
       } else {
-        // Local: open the newly-scaffolded project.
+        // Local: open the newly-scaffolded project. The pending marker makes
+        // the per-repo orientation show on this first open even though the
+        // template seeds .agents/ + a backlog (see shouldAutoShowRepoOrientation).
+        try {
+          localStorage.setItem(repoOrientationPendingKey(r.path), '1')
+        } catch {
+          /* ignore */
+        }
         onChoose({ mode: 'new', engine, cwd: r.path })
       }
     } else {

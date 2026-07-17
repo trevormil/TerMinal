@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { firstRunPhase, repoOrientationKey, shouldAutoShowRepoOrientation } from './orientation'
+import {
+  firstRunPhase,
+  repoOrientationKey,
+  repoOrientationPendingKey,
+  shouldAutoShowRepoOrientation,
+} from './orientation'
 
 describe('firstRunPhase', () => {
   test('loading while settings have not resolved', () => {
@@ -72,6 +77,33 @@ describe('shouldAutoShowRepoOrientation', () => {
   test('dismissal is scoped per repo, not global', () => {
     const dismissed = (key: string) => key === repoOrientationKey('/Users/x/code/other')
     expect(shouldAutoShowRepoOrientation(fresh, dismissed)).toBe(true)
+  })
+
+  test('a just-created repo shows even when scaffolded with agents + backlog', () => {
+    // Template scaffolds are born with .agents/ and a backlog, so the
+    // fresh-repo heuristic alone would never fire for a new project.
+    const scaffolded = { ...fresh, hasAgents: true, hasBacklog: true }
+    expect(shouldAutoShowRepoOrientation(scaffolded, none, { justCreated: true })).toBe(true)
+  })
+
+  test('justCreated still respects an explicit dismissal', () => {
+    const dismissed = (key: string) => key === repoOrientationKey(fresh.repoRoot)
+    expect(shouldAutoShowRepoOrientation(fresh, dismissed, { justCreated: true })).toBe(false)
+  })
+
+  test('justCreated does not unlock remote or non-repo contexts', () => {
+    expect(
+      shouldAutoShowRepoOrientation({ ...fresh, remote: true }, none, { justCreated: true }),
+    ).toBe(false)
+    expect(
+      shouldAutoShowRepoOrientation({ ...fresh, repoRoot: '' }, none, { justCreated: true }),
+    ).toBe(false)
+  })
+})
+
+describe('repoOrientationPendingKey', () => {
+  test('pending and dismissed keys never collide', () => {
+    expect(repoOrientationPendingKey('/a')).not.toBe(repoOrientationKey('/a'))
   })
 })
 
