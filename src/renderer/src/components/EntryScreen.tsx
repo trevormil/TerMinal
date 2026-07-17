@@ -596,51 +596,53 @@ export function EntryScreen({
             {mode === 'single' && (
               <div className="mt-3 border-t border-[var(--gt-border)] pt-3">
                 <div
-                  className="flex items-center gap-3"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2"
                   title="Git-clones your configured template repo (Settings → Projects → templateRepo) into a new folder, then opens a session there. Needs network access."
                 >
-                  <FolderPlus
-                    size={15}
-                    strokeWidth={2}
-                    className="shrink-0 text-[var(--gt-accent-2)]"
-                  />
-                  <div className="min-w-0 shrink-0">
-                    <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
-                    <div className="truncate text-[10.5px] text-zinc-600">
-                      from your template, then opens it
+                  <div className="flex shrink-0 items-center gap-3">
+                    <FolderPlus
+                      size={15}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--gt-accent-2)]"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
+                      <div className="truncate text-[10.5px] text-zinc-600">from template</div>
                     </div>
                   </div>
-                  <input
-                    value={projName}
-                    onChange={(e) => {
-                      setProjName(e.target.value)
-                      setScaffoldErr('')
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && createProject()}
-                    placeholder="project-name"
-                    spellCheck={false}
-                    className={`${sel} min-w-0 flex-1 font-mono`}
-                  />
-                  <button
-                    onClick={pickParent}
-                    title="Choose parent directory"
-                    className={`${sel} inline-flex max-w-[220px] shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-                  >
-                    {location === 'remote' ? (
-                      <Server size={13} strokeWidth={2} />
-                    ) : (
-                      <FolderOpen size={13} strokeWidth={2} />
-                    )}
-                    <span className="truncate">{projectParentLabel}</span>
-                  </button>
-                  <button
-                    onClick={createProject}
-                    disabled={!projName.trim() || scaffoldBusy}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                    {scaffoldBusy ? 'Creating…' : 'Create'}
-                  </button>
+                  <div className="flex min-w-[300px] flex-1 items-center gap-2">
+                    <input
+                      value={projName}
+                      onChange={(e) => {
+                        setProjName(e.target.value)
+                        setScaffoldErr('')
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                      placeholder="project-name"
+                      spellCheck={false}
+                      className={`${sel} min-w-0 flex-1 font-mono`}
+                    />
+                    <button
+                      onClick={pickParent}
+                      title="Choose parent directory"
+                      className={`${sel} inline-flex max-w-[220px] shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                    >
+                      {location === 'remote' ? (
+                        <Server size={13} strokeWidth={2} />
+                      ) : (
+                        <FolderOpen size={13} strokeWidth={2} />
+                      )}
+                      <span className="truncate">{projectParentLabel}</span>
+                    </button>
+                    <button
+                      onClick={createProject}
+                      disabled={!projName.trim() || scaffoldBusy}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                    >
+                      <Plus size={14} strokeWidth={2.5} />
+                      {scaffoldBusy ? 'Creating…' : 'Create'}
+                    </button>
+                  </div>
                 </div>
                 {location !== 'remote' && projName.trim() && (
                   <div className="mt-2 space-y-1.5 text-[11px] text-zinc-500">
@@ -748,10 +750,17 @@ export function EntryScreen({
 
         <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]">
           <div className="flex items-center justify-between border-b border-[var(--gt-border)] px-4 py-3">
-            <div>
-              <div className="text-[12px] font-semibold text-zinc-100">New workspace session</div>
-              <div className="mt-0.5 text-[10.5px] text-zinc-600">
-                {daemonLabel} daemon · <span className="font-mono">{selectedWorkspaceLabel}</span>
+            <div className="flex min-w-0 items-center gap-3">
+              <FolderOpen
+                size={15}
+                strokeWidth={2}
+                className="shrink-0 text-[var(--gt-accent-2)]"
+              />
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-zinc-100">New workspace session</div>
+                <div className="mt-0.5 truncate text-[10.5px] text-zinc-600">
+                  {daemonLabel} daemon · <span className="font-mono">{selectedWorkspaceLabel}</span>
+                </div>
               </div>
             </div>
             <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-[var(--gt-accent-2)]">
