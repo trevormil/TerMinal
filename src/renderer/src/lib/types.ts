@@ -456,6 +456,11 @@ export type SessionEngine = Engine | 'local'
 export type EngineCfg = { path: string; defaultModel: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
+export type AlertsCfg = {
+  desktop: { enabled: boolean }
+  webhook: { enabled: boolean; url: string }
+}
+export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 export type InboxCfg = { completionHook: boolean; agentContextPreamble: boolean }
 export type DaemonCfg = {
   projectsDir: string
@@ -576,6 +581,7 @@ export type Settings = {
   defaultEngine: Engine
   forge: ForgePref
   telegram: TelegramCfg
+  alerts: AlertsCfg
   inbox: InboxCfg
   appearance: AppearanceCfg
   apps: AppsCfg
@@ -588,9 +594,16 @@ export type Settings = {
   openrouterApiKey: string
 }
 export type SettingsPatch = Partial<
-  Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>
+  Omit<
+    Settings,
+    'telegram' | 'alerts' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+  >
 > & {
   telegram?: Partial<TelegramCfg>
+  alerts?: {
+    desktop?: Partial<AlertsCfg['desktop']>
+    webhook?: Partial<AlertsCfg['webhook']>
+  }
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
@@ -1478,6 +1491,9 @@ export type GtApi = {
   }
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>
+  }
+  alerts: {
+    test: (channel: AlertChannelId) => Promise<{ ok: boolean; error?: string }>
   }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]

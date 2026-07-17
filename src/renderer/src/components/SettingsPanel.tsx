@@ -31,6 +31,7 @@ import {
   LayoutGrid,
   Plus,
   Trash2,
+  BellRing,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
@@ -53,6 +54,7 @@ import type {
   TicketProviderKind,
   TicketProviderTestResult,
   PinnedPanel,
+  AlertChannelId,
 } from '../lib/types'
 import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
@@ -259,6 +261,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'panels', title: 'Panels', icon: LayoutGrid },
   { id: 'inbox', title: 'Inbox', icon: Inbox },
   { id: 'suggestions', title: 'Replies', icon: Sparkles },
+  { id: 'alerts', title: 'Alerts', icon: BellRing },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
@@ -1229,6 +1232,14 @@ export function SettingsPanel({
   const testTelegram = async () => {
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
+  }
+  const [alertTest, setAlertTest] = useState<
+    Partial<Record<AlertChannelId, { busy?: boolean; ok?: boolean; error?: string }>>
+  >({})
+  const testAlert = async (channel: AlertChannelId) => {
+    setAlertTest((p) => ({ ...p, [channel]: { busy: true } }))
+    const r = await window.gt.alerts.test(channel)
+    setAlertTest((p) => ({ ...p, [channel]: r }))
   }
   const installNotify = async () => {
     setNotify({ busy: true })
@@ -2374,6 +2385,134 @@ export function SettingsPanel({
                       <span className="block text-zinc-300">Enhance / Auto</span>
                       <span>rewrite a draft prompt; auto submits one reply</span>
                     </div>
+                  </div>
+                </div>
+              </Section>
+
+              {/* Alert channels */}
+              <Section
+                id="alerts"
+                icon={BellRing}
+                title="Alert channels"
+                desc="Where completion/blocker/HITL pings go. Every enabled channel receives every alert; a failing channel never blocks the others."
+              >
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <Toggle
+                        on={s.alerts.desktop.enabled}
+                        onToggle={() =>
+                          save({ alerts: { desktop: { enabled: !s.alerts.desktop.enabled } } })
+                        }
+                        label="Desktop notifications"
+                        hint="Native macOS notification banners"
+                      />
+                      <button
+                        onClick={() => testAlert('desktop')}
+                        disabled={alertTest.desktop?.busy}
+                        className={actionButton}
+                      >
+                        {alertTest.desktop?.busy ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} strokeWidth={2} />
+                        )}
+                        Test
+                      </button>
+                    </div>
+                    {alertTest.desktop && !alertTest.desktop.busy && (
+                      <div
+                        className={`text-[11px] ${alertTest.desktop.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                      >
+                        {alertTest.desktop.ok
+                          ? '✓ Sent — check your notifications.'
+                          : alertTest.desktop.error}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Toggle
+                      on={s.alerts.webhook.enabled}
+                      onToggle={() =>
+                        save({ alerts: { webhook: { enabled: !s.alerts.webhook.enabled } } })
+                      }
+                      label="Outbound webhook"
+                      hint="POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own endpoint"
+                    />
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <label className="block min-w-0 space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          Webhook URL
+                        </span>
+                        <input
+                          defaultValue={s.alerts.webhook.url}
+                          onBlur={(e) =>
+                            e.target.value !== s.alerts.webhook.url &&
+                            save({ alerts: { webhook: { url: e.target.value.trim() } } })
+                          }
+                          placeholder="https://hooks.slack.com/services/…"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </label>
+                      <button
+                        onClick={() => testAlert('webhook')}
+                        disabled={alertTest.webhook?.busy}
+                        className={actionButton}
+                      >
+                        {alertTest.webhook?.busy ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} strokeWidth={2} />
+                        )}
+                        Test
+                      </button>
+                    </div>
+                    {alertTest.webhook && !alertTest.webhook.busy && (
+                      <div
+                        className={`text-[11px] ${alertTest.webhook.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                      >
+                        {alertTest.webhook.ok
+                          ? '✓ Sent — check the receiver.'
+                          : alertTest.webhook.error}
+                      </div>
+                    )}
+                    <div className="text-[10.5px] text-zinc-600">
+                      Payload: {'{'} source, kind (done|blocked|question|info), title, detail, refs,
+                      ts, text, content {'}'} — <span className="font-mono">text</span> renders in
+                      Slack, <span className="font-mono">content</span> in Discord.
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <Toggle
+                        on={s.telegram.notify}
+                        onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
+                        label="Telegram"
+                        hint="Bot token, chat id and AFK control live in the Telegram section below"
+                      />
+                      <button
+                        onClick={() => testAlert('telegram')}
+                        disabled={alertTest.telegram?.busy}
+                        className={actionButton}
+                      >
+                        {alertTest.telegram?.busy ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} strokeWidth={2} />
+                        )}
+                        Test
+                      </button>
+                    </div>
+                    {alertTest.telegram && !alertTest.telegram.busy && (
+                      <div
+                        className={`text-[11px] ${alertTest.telegram.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                      >
+                        {alertTest.telegram.ok
+                          ? '✓ Sent — check your chat.'
+                          : alertTest.telegram.error}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Section>
