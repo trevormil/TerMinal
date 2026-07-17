@@ -119,13 +119,29 @@ function obsidianTicketsDir(cfg) {
   return join(cfg.obsidian.vaultPath, sub)
 }
 // Read dirs (obsidian → the vault only; else the repo's backlog layouts).
+// An obsidian repo with a missing vault path exposes nothing — never the repo
+// backlog, which would leak/accept tickets the provider contract routes away.
 function backlogReadDirs(root) {
-  const dir = obsidianTicketsDir(readTicketConfig(root))
-  return dir ? (existsSync(dir) ? [dir] : []) : areaPaths(root, 'backlog')
+  const cfg = readTicketConfig(root)
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianTicketsDir(cfg)
+    return dir && existsSync(dir) ? [dir] : []
+  }
+  return areaPaths(root, 'backlog')
 }
-// Write dir (obsidian → the vault; else the repo's canonical backlog).
+// Write dir (obsidian → the vault, failing closed when unconfigured; else the
+// repo's canonical backlog).
 function backlogWriteDir(root) {
-  return obsidianTicketsDir(readTicketConfig(root)) || areaPath(root, 'backlog')
+  const cfg = readTicketConfig(root)
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianTicketsDir(cfg)
+    if (!dir)
+      throw new Error(
+        'Obsidian vault path is not configured for this repo (.TerMinal/tickets.json)',
+      )
+    return dir
+  }
+  return areaPath(root, 'backlog')
 }
 
 function pingTelegram(text, inlineKeyboard) {
