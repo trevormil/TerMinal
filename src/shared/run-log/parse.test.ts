@@ -308,8 +308,20 @@ describe('parseRunLog · multi-step runs', () => {
   it('emits step boundaries with paired exit status', () => {
     const steps = find(parsed.entries, 'step')
     expect(steps).toHaveLength(2)
-    expect(steps[0]).toMatchObject({ n: 1, total: 2, label: 'implement', status: 'ok', exitCode: 0 })
-    expect(steps[1]).toMatchObject({ n: 2, total: 2, label: 'review', status: 'failed', exitCode: 1 })
+    expect(steps[0]).toMatchObject({
+      n: 1,
+      total: 2,
+      label: 'implement',
+      status: 'ok',
+      exitCode: 0,
+    })
+    expect(steps[1]).toMatchObject({
+      n: 2,
+      total: 2,
+      label: 'review',
+      status: 'failed',
+      exitCode: 1,
+    })
   })
 
   it('keeps content between markers attached in order', () => {

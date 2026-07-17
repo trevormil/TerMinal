@@ -144,7 +144,9 @@ function handleStreamEvent(
         const output = toolResultText(item.content)
         const target =
           (typeof item.tool_use_id === 'string' && toolsById.get(item.tool_use_id)) ||
-          [...entries].reverse().find((e): e is ToolEntry => e.kind === 'tool' && e.output === undefined)
+          [...entries]
+            .reverse()
+            .find((e): e is ToolEntry => e.kind === 'tool' && e.output === undefined)
         if (target) {
           target.output = output
           target.status = item.is_error === true ? 'error' : 'ok'
