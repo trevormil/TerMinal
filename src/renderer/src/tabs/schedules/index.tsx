@@ -24,6 +24,7 @@ import {
 } from '../../lib/launch'
 import { scheduleDesignerPrompt } from '../../lib/agentPrompts'
 import { BashHighlight } from '../../components/BashHighlight'
+import { RunOutputView } from '../../components/StructuredRunLog'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import type {
@@ -1021,9 +1022,9 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                                   <X size={11} strokeWidth={2} />
                                 </button>
                               </div>
-                              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-[10.5px] leading-relaxed text-[var(--gt-text-soft)]">
-                                {log.text || '… (no output yet)'}
-                              </pre>
+                              <div className="max-h-72 overflow-auto p-2">
+                                <RunOutputView text={log.text} engine={r.engine} />
+                              </div>
                             </div>
                           )}
                         </div>

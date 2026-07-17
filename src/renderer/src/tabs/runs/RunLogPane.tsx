@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
 import { formatRunLog, type LogHighlight, type LogLineKind } from '../../lib/runLogFormat'
+import { parseRunLog } from '../../../../shared/run-log'
+import { StructuredRunLog } from '../../components/StructuredRunLog'
 
 type RunSource = 'cron' | 'agent' | 'bg' | 'session'
 
@@ -20,16 +22,21 @@ export function RunLogPane({
   runId,
   status,
   hostId,
+  engine,
   className = '',
 }: {
   source: RunSource
   runId: string
   status?: string
   hostId?: string
+  engine?: string
   className?: string
 }) {
   const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
   const [logQuery, setLogQuery] = useState('')
+  // Structured vs raw view. 'auto' resolves to structured when the parser found
+  // real structure, raw otherwise — so unparseable logs degrade gracefully.
+  const [viewPref, setViewPref] = useState<'auto' | 'structured' | 'raw'>('auto')
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -83,6 +90,8 @@ export function RunLogPane({
   }, [log?.text, logQuery])
 
   const formatted = useMemo(() => formatRunLog(visibleLog), [visibleLog])
+  const parsed = useMemo(() => parseRunLog(log?.text || '', engine), [log?.text, engine])
+  const view = viewPref === 'auto' ? (parsed.structured ? 'structured' : 'raw') : viewPref
 
   const highlightClass = (kind: LogHighlight['kind']) => {
     switch (kind) {
@@ -151,6 +160,21 @@ export function RunLogPane({
             <X size={11} strokeWidth={2} />
           </button>
         )}
+        {/* Structured/raw toggle — raw is always one click away (ticket 0020). */}
+        <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)]/60 p-0.5">
+          {(['structured', 'raw'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setViewPref(v)}
+              disabled={v === 'structured' && !parsed.entries.length}
+              className={`rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider disabled:opacity-40 ${
+                view === v ? 'bg-white/10 text-zinc-200' : 'text-zinc-600 hover:text-zinc-300'
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
         {/* Raw-log export: copy the full RAW log (pre-filter, pre-format) to the
             clipboard, or download it as <runId>.log — GitHub's "download raw logs". */}
         <button
@@ -188,7 +212,7 @@ export function RunLogPane({
               key={`${s.n}-${s.line}`}
               onClick={() =>
                 document
-                  .getElementById(`ll-${s.line}`)
+                  .getElementById(view === 'structured' ? `sr-step-${s.n}` : `ll-${s.line}`)
                   ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
               title={`${s.label}${s.exitCode != null ? ` · exit ${s.exitCode}` : ''}`}
@@ -266,17 +290,21 @@ export function RunLogPane({
             <div className="border-b border-[var(--gt-border)]/35 bg-black/10 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
               Output
             </div>
-            <div className="px-4 py-3 font-mono text-[11px] leading-relaxed">
-              {formatted.lines.map((line, i) => (
-                <div
-                  key={i}
-                  id={`ll-${i}`}
-                  className={`whitespace-pre-wrap break-words ${lineClass(line.kind)}`}
-                >
-                  {line.kind === 'blank' ? '\u00a0' : line.text}
-                </div>
-              ))}
-            </div>
+            {view === 'structured' ? (
+              <StructuredRunLog parsed={parsed} filter={logQuery} hideMeta className="px-4 py-3" />
+            ) : (
+              <div className="px-4 py-3 font-mono text-[11px] leading-relaxed">
+                {formatted.lines.map((line, i) => (
+                  <div
+                    key={i}
+                    id={`ll-${i}`}
+                    className={`whitespace-pre-wrap break-words ${lineClass(line.kind)}`}
+                  >
+                    {line.kind === 'blank' ? '\u00a0' : line.text}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

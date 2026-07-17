@@ -81,7 +81,7 @@ import type {
   PersistentArtifact,
   PersistentArtifactRead,
 } from '../../lib/types'
-import { sanitizeLog as stripAnsi } from '../../lib/sanitizeLog'
+import { RunOutputView } from '../../components/StructuredRunLog'
 
 function fmtRelative(ts: number): string {
   const s = (Date.now() - ts) / 1000
@@ -1794,7 +1794,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   }, [selAgentId])
   const [designerOpen, setDesignerOpen] = useState(false)
   const [scripts, setScripts] = useState<Record<string, { path: string; body: string } | null>>({})
-  const logRef = useRef<HTMLPreElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
 
   const reloadDefinitions = () =>
     window.gt.agents.definitions().then((defs) => {
@@ -2868,12 +2868,15 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                               </div>
                             }
                           />
-                          <pre
+                          <div
                             ref={logRef}
-                            className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--gt-text-soft)]"
+                            className="max-h-[60vh] overflow-auto rounded-lg border border-[var(--gt-border)] bg-[var(--gt-code-bg)] p-3"
                           >
-                            {stripAnsi(outputs[selectedRun.id] || '') || '…'}
-                          </pre>
+                            <RunOutputView
+                              text={outputs[selectedRun.id] || ''}
+                              engine={selectedRun.engine}
+                            />
+                          </div>
                         </section>
                       )}
                     </>
