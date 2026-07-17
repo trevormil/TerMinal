@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -83,7 +90,10 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
     )
 
     const [filed] = callTools(home, [
-      { name: 'file_ticket', arguments: { repo: repoName, title: 'Vault MCP ticket', type: 'testing' } },
+      {
+        name: 'file_ticket',
+        arguments: { repo: repoName, title: 'Vault MCP ticket', type: 'testing' },
+      },
     ])
     const ticket = toolJson(filed)
     expect(ticket.slug).toBe('0001-vault-mcp-ticket')
@@ -92,7 +102,10 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
 
     const [listed, updated, after, got] = callTools(home, [
       { name: 'list_tickets', arguments: { repo: repoName } },
-      { name: 'update_ticket', arguments: { slug: '0001-vault-mcp-ticket', status: 'closed', priority: 'high' } },
+      {
+        name: 'update_ticket',
+        arguments: { slug: '0001-vault-mcp-ticket', status: 'closed', priority: 'high' },
+      },
       { name: 'list_tickets', arguments: { repo: repoName, status: 'all' } },
       { name: 'get_ticket', arguments: { slug: '0001-vault-mcp-ticket' } },
     ])
@@ -103,7 +116,11 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
       path: join(vault, 'tickets', '0001-vault-mcp-ticket.md'),
     })
     expect(toolJson(after)).toEqual([
-      expect.objectContaining({ slug: '0001-vault-mcp-ticket', status: 'closed', priority: 'high' }),
+      expect.objectContaining({
+        slug: '0001-vault-mcp-ticket',
+        status: 'closed',
+        priority: 'high',
+      }),
     ])
     expect(toolJson(got)).toMatchObject({ slug: '0001-vault-mcp-ticket', repoRoot: repo })
     // The vault file changed; the repo backlog decoy did not, and no new
