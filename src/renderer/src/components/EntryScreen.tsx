@@ -566,31 +566,183 @@ export function EntryScreen({
         </p>
 
         {!lockedCwd && (
-          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] px-4 py-3">
-            <Zap size={15} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-zinc-100">Scratch session</div>
-              <div className="truncate text-[10.5px] text-zinc-600">
-                Throwaway — spins up in{' '}
-                <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
+          <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Zap size={15} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-2)]" />
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-zinc-100">Scratch session</div>
+                <div className="truncate text-[10.5px] text-zinc-600">
+                  Throwaway — spins up in{' '}
+                  <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
+                </div>
+              </div>
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {(['claude', 'codex', 'cursor', 'hermes', 'local'] as SessionEngine[]).map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => startScratch(e)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                  >
+                    {e === 'local' ? (
+                      <SquareTerminal size={13} strokeWidth={2} className="shrink-0" />
+                    ) : (
+                      <EngineLogo engine={e} size={13} />
+                    )}
+                    {sessionEngineLabel(e)}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              {(['claude', 'codex', 'cursor', 'hermes', 'local'] as SessionEngine[]).map((e) => (
-                <button
-                  key={e}
-                  onClick={() => startScratch(e)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+            {mode === 'single' && (
+              <div className="mt-3 border-t border-[var(--gt-border)] pt-3">
+                <div
+                  className="flex items-center gap-3"
+                  title="Git-clones your configured template repo (Settings → Projects → templateRepo) into a new folder, then opens a session there. Needs network access."
                 >
-                  {e === 'local' ? (
-                    <SquareTerminal size={13} strokeWidth={2} className="shrink-0" />
-                  ) : (
-                    <EngineLogo engine={e} size={13} />
-                  )}
-                  {sessionEngineLabel(e)}
-                </button>
-              ))}
-            </div>
+                  <FolderPlus
+                    size={15}
+                    strokeWidth={2}
+                    className="shrink-0 text-[var(--gt-accent-2)]"
+                  />
+                  <div className="min-w-0 shrink-0">
+                    <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
+                    <div className="truncate text-[10.5px] text-zinc-600">
+                      from your template, then opens it
+                    </div>
+                  </div>
+                  <input
+                    value={projName}
+                    onChange={(e) => {
+                      setProjName(e.target.value)
+                      setScaffoldErr('')
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                    placeholder="project-name"
+                    spellCheck={false}
+                    className={`${sel} min-w-0 flex-1 font-mono`}
+                  />
+                  <button
+                    onClick={pickParent}
+                    title="Choose parent directory"
+                    className={`${sel} inline-flex max-w-[220px] shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                  >
+                    {location === 'remote' ? (
+                      <Server size={13} strokeWidth={2} />
+                    ) : (
+                      <FolderOpen size={13} strokeWidth={2} />
+                    )}
+                    <span className="truncate">{projectParentLabel}</span>
+                  </button>
+                  <button
+                    onClick={createProject}
+                    disabled={!projName.trim() || scaffoldBusy}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                  >
+                    <Plus size={14} strokeWidth={2.5} />
+                    {scaffoldBusy ? 'Creating…' : 'Create'}
+                  </button>
+                </div>
+                {location !== 'remote' && projName.trim() && (
+                  <div className="mt-2 space-y-1.5 text-[11px] text-zinc-500">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-16 shrink-0 text-zinc-600">Tickets</span>
+                      {(['local', 'obsidian'] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setProjProvider(p)}
+                          className={`rounded-full border px-2.5 py-0.5 ${
+                            projProvider === p
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {p === 'local' ? 'Local backlog' : 'Obsidian vault'}
+                        </button>
+                      ))}
+                    </div>
+                    {projProvider === 'obsidian' && (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="w-16 shrink-0 text-zinc-600">Vault at</span>
+                          {(
+                            [
+                              ['in-repo', 'In repo (gitignored)'],
+                              ['sibling', 'Folder beside repo'],
+                              ['existing', 'Existing vault'],
+                            ] as const
+                          ).map(([v, label]) => (
+                            <button
+                              key={v}
+                              onClick={() => setProjVaultLoc(v)}
+                              className={`rounded-full border px-2.5 py-0.5 ${
+                                projVaultLoc === v
+                                  ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                  : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {projVaultLoc === 'existing' && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0" />
+                            <input
+                              value={projVault}
+                              onChange={(e) => setProjVault(e.target.value)}
+                              placeholder="/path/to/existing/vault"
+                              spellCheck={false}
+                              className={`${sel} min-w-0 flex-1 font-mono`}
+                            />
+                            <button
+                              onClick={async () => {
+                                const d = await window.gt.pickDir()
+                                if (d) setProjVault(d)
+                              }}
+                              title="Choose an existing vault folder"
+                              className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
+                            >
+                              <FolderOpen size={13} strokeWidth={2} />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex gap-2 text-[10px] text-zinc-600">
+                          <span className="w-16 shrink-0" />
+                          <span className="min-w-0">
+                            {projVaultLoc === 'in-repo' ? (
+                              <>
+                                Private <span className="font-mono">tickets-vault/</span> inside the
+                                repo, gitignored — never committed.
+                              </>
+                            ) : projVaultLoc === 'sibling' ? (
+                              <>
+                                A new{' '}
+                                <span className="font-mono">{`${projName.trim()}-vault`}</span>{' '}
+                                beside the repo, outside git.
+                              </>
+                            ) : (
+                              <>
+                                Reuse an existing Obsidian vault. Tickets go in its{' '}
+                                <span className="font-mono">tickets/</span> subfolder.
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {scaffoldErr && (
+                  <div className="mt-1 text-[11px] text-[var(--gt-red)]">
+                    {scaffoldErr}
+                    <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-500">
+                      Check your network/VPN and that the template repo (Settings → Projects →
+                      templateRepo) is reachable — a private repo needs your git auth.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1070,161 +1222,6 @@ export function EntryScreen({
             )}
           </div>
         </div>
-
-        {mode === 'single' && !lockedCwd && (
-          <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]">
-            <div className="flex items-center gap-3 border-b border-[var(--gt-border)] px-4 py-3">
-              <FolderPlus
-                size={15}
-                strokeWidth={2}
-                className="shrink-0 text-[var(--gt-accent-2)]"
-              />
-              <div className="min-w-0">
-                <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
-                <div className="truncate text-[10.5px] text-zinc-600">
-                  Git-clones your configured template repo (Settings → Projects → templateRepo) into
-                  a new folder, then opens a session there. Needs network access.
-                </div>
-              </div>
-            </div>
-            <div className="p-4">
-              <div>
-                <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-                  <input
-                    value={projName}
-                    onChange={(e) => {
-                      setProjName(e.target.value)
-                      setScaffoldErr('')
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && createProject()}
-                    placeholder="project-name"
-                    spellCheck={false}
-                    className={`${sel} min-w-0 font-mono`}
-                  />
-                  <button
-                    onClick={pickParent}
-                    title="Choose parent directory"
-                    className={`${sel} inline-flex max-w-[220px] shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-                  >
-                    {location === 'remote' ? (
-                      <Server size={13} strokeWidth={2} />
-                    ) : (
-                      <FolderOpen size={13} strokeWidth={2} />
-                    )}
-                    <span className="truncate">{projectParentLabel}</span>
-                  </button>
-                  <button
-                    onClick={createProject}
-                    disabled={!projName.trim() || scaffoldBusy}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                    {scaffoldBusy ? 'Creating…' : 'Create'}
-                  </button>
-                </div>
-                {location !== 'remote' && projName.trim() && (
-                  <div className="mt-2 space-y-1.5 text-[11px] text-zinc-500">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="w-16 shrink-0 text-zinc-600">Tickets</span>
-                      {(['local', 'obsidian'] as const).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setProjProvider(p)}
-                          className={`rounded-full border px-2.5 py-0.5 ${
-                            projProvider === p
-                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {p === 'local' ? 'Local backlog' : 'Obsidian vault'}
-                        </button>
-                      ))}
-                    </div>
-                    {projProvider === 'obsidian' && (
-                      <>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="w-16 shrink-0 text-zinc-600">Vault at</span>
-                          {(
-                            [
-                              ['in-repo', 'In repo (gitignored)'],
-                              ['sibling', 'Folder beside repo'],
-                              ['existing', 'Existing vault'],
-                            ] as const
-                          ).map(([v, label]) => (
-                            <button
-                              key={v}
-                              onClick={() => setProjVaultLoc(v)}
-                              className={`rounded-full border px-2.5 py-0.5 ${
-                                projVaultLoc === v
-                                  ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                                  : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {projVaultLoc === 'existing' && (
-                          <div className="flex items-center gap-2">
-                            <span className="w-16 shrink-0" />
-                            <input
-                              value={projVault}
-                              onChange={(e) => setProjVault(e.target.value)}
-                              placeholder="/path/to/existing/vault"
-                              spellCheck={false}
-                              className={`${sel} min-w-0 flex-1 font-mono`}
-                            />
-                            <button
-                              onClick={async () => {
-                                const d = await window.gt.pickDir()
-                                if (d) setProjVault(d)
-                              }}
-                              title="Choose an existing vault folder"
-                              className={`${sel} inline-flex shrink-0 items-center gap-1.5 hover:border-[var(--gt-accent)]/60`}
-                            >
-                              <FolderOpen size={13} strokeWidth={2} />
-                            </button>
-                          </div>
-                        )}
-                        <div className="flex gap-2 text-[10px] text-zinc-600">
-                          <span className="w-16 shrink-0" />
-                          <span className="min-w-0">
-                            {projVaultLoc === 'in-repo' ? (
-                              <>
-                                Private <span className="font-mono">tickets-vault/</span> inside the
-                                repo, gitignored — never committed.
-                              </>
-                            ) : projVaultLoc === 'sibling' ? (
-                              <>
-                                A new{' '}
-                                <span className="font-mono">{`${projName.trim()}-vault`}</span>{' '}
-                                beside the repo, outside git.
-                              </>
-                            ) : (
-                              <>
-                                Reuse an existing Obsidian vault. Tickets go in its{' '}
-                                <span className="font-mono">tickets/</span> subfolder.
-                              </>
-                            )}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                {scaffoldErr && (
-                  <div className="mt-1 text-[11px] text-[var(--gt-red)]">
-                    {scaffoldErr}
-                    <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-500">
-                      Check your network/VPN and that the template repo (Settings → Projects →
-                      templateRepo) is reachable — a private repo needs your git auth.
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {mode === 'single' && canResume && (
           <>
