@@ -34,6 +34,9 @@ const host = (id: string): RemoteHost => ({
 
 function fakeDeps(over: Partial<RouterDeps> = {}): RouterDeps {
   return {
+    // Pin the platform so these tests behave identically on macOS dev machines
+    // and Linux CI runners — the local-schedule branch is launchd (mac-only).
+    platform: 'darwin',
     launchdSync: mock(() => ({ ok: true })),
     launchdUnschedule: mock(() => {}),
     launchdReconcile: mock(() => ({ loaded: 1, removed: 0, failed: [] })),
@@ -66,6 +69,13 @@ describe('routeSyncSchedule', () => {
     expect(d.launchdSync).toHaveBeenCalledTimes(1)
     expect(d.systemdSync).not.toHaveBeenCalled()
     expect(d.pushRecord).not.toHaveBeenCalled()
+  })
+  test('local schedule on a non-mac platform errors instead of touching launchd', async () => {
+    const d = fakeDeps({ platform: 'linux' })
+    const r = await routeSyncSchedule(sched(), d)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('macOS')
+    expect(d.launchdSync).not.toHaveBeenCalled()
   })
   test('host schedule pushes the record AND installs the systemd timer, never launchd', async () => {
     const d = fakeDeps()
