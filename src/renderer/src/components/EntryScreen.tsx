@@ -14,6 +14,7 @@ import {
   Zap,
   Pin,
   Repeat,
+  FolderPlus,
 } from 'lucide-react'
 import type {
   Engine,
@@ -1036,13 +1037,58 @@ export function EntryScreen({
               )}
             </div>
 
-            {mode === 'single' && !lockedCwd && (
-              <div>
-                <div className={`${sectionTitle} mb-1`}>Optional · Create from template</div>
-                <div className="mb-2 text-[10.5px] leading-snug text-zinc-600">
+            {mode === 'single' ? (
+              <div className="flex items-center gap-2 border-t border-[var(--gt-border)] pt-4">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="session name (optional)"
+                  className={`${sel} min-w-0 flex-1`}
+                />
+                <button
+                  onClick={() => onChoose(buildChoice())}
+                  disabled={location === 'remote' && !remoteHost}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  New session
+                </button>
+              </div>
+            ) : (
+              <div className="border-t border-[var(--gt-border)] pt-4">
+                {loopErr && <div className="mb-2 text-[11px] text-[var(--gt-red)]">{loopErr}</div>}
+                <button
+                  onClick={() => void launchLoop()}
+                  disabled={!goal.trim() || !loopRepoRoot || loopBusy}
+                  title={!loopRepoRoot ? 'Pick a workspace first' : undefined}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  <Repeat size={14} strokeWidth={2.5} />
+                  {loopBusy ? 'Starting…' : 'Start paired loop'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {mode === 'single' && !lockedCwd && (
+          <div className="mb-5 rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-panel)]">
+            <div className="flex items-center gap-3 border-b border-[var(--gt-border)] px-4 py-3">
+              <FolderPlus
+                size={15}
+                strokeWidth={2}
+                className="shrink-0 text-[var(--gt-accent-2)]"
+              />
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
+                <div className="truncate text-[10.5px] text-zinc-600">
                   Git-clones your configured template repo (Settings → Projects → templateRepo) into
-                  a new folder. Needs network access.
+                  a new folder, then opens a session there. Needs network access.
                 </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <div>
                 <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
                   <input
                     value={projName}
@@ -1176,41 +1222,9 @@ export function EntryScreen({
                   </div>
                 )}
               </div>
-            )}
-
-            {mode === 'single' ? (
-              <div className="flex items-center gap-2 border-t border-[var(--gt-border)] pt-4">
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="session name (optional)"
-                  className={`${sel} min-w-0 flex-1`}
-                />
-                <button
-                  onClick={() => onChoose(buildChoice())}
-                  disabled={location === 'remote' && !remoteHost}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                >
-                  <Plus size={14} strokeWidth={2.5} />
-                  New session
-                </button>
-              </div>
-            ) : (
-              <div className="border-t border-[var(--gt-border)] pt-4">
-                {loopErr && <div className="mb-2 text-[11px] text-[var(--gt-red)]">{loopErr}</div>}
-                <button
-                  onClick={() => void launchLoop()}
-                  disabled={!goal.trim() || !loopRepoRoot || loopBusy}
-                  title={!loopRepoRoot ? 'Pick a workspace first' : undefined}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
-                >
-                  <Repeat size={14} strokeWidth={2.5} />
-                  {loopBusy ? 'Starting…' : 'Start paired loop'}
-                </button>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {mode === 'single' && canResume && (
           <>
