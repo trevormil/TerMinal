@@ -36,7 +36,7 @@ set -uo pipefail
 # Classify: live / idle / stale / orphan
 # Reap action: rm -rf + git worktree prune (guarded by uncommitted check)
 
-WORKTREES_ROOT="${WORKTREES_ROOT:-$HOME/CompSci/gauntlet/.worktrees}"
+WORKTREES_ROOT="${WORKTREES_ROOT:-$HOME/.worktrees}"
 [ -d "$WORKTREES_ROOT" ] || exit 0
 
 stale=0
@@ -81,7 +81,7 @@ if [ "${1:-}" = "--reap" ]; then
     fi
   done
   # Prune across every repo's git dir
-  for r in ~/CompSci/gauntlet/*/.git; do
+  for r in ~/code/*/.git; do
     git -C "$(dirname "$r")" worktree prune
   done
 fi

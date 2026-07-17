@@ -44,7 +44,7 @@ import { readCronRuns } from './cron-runs'
 import { readActivity } from './events'
 // Static, not lazy `require`: main bundles to ESM, where the createRequire shim
 // resolves relative to the emitted bundle and `require('./bg-tasks')` throws
-// MODULE_NOT_FOUND. See learnings_gauntlet_terminal_esm_main_dirname.
+// MODULE_NOT_FOUND (see the ESM-main note in CLAUDE.md).
 import { spawnBgTask, listBgTasks, cancelBgTask } from './bg-tasks'
 import { readBudgets, setDailyCap, setAgentCap, setOverride } from './budgets'
 import { summaryFor } from './ai-runs'
