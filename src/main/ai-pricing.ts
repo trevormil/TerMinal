@@ -25,7 +25,7 @@ export type ModelPrice = {
   /** Effective context window in tokens — used for headroom estimation. */
   contextWindow: number
   /** Human-friendly group for the cost-by-model chart. */
-  family: 'claude' | 'codex' | 'unknown'
+  family: 'claude' | 'codex' | 'openrouter' | 'unknown'
 }
 
 const M = 1_000_000
@@ -65,6 +65,14 @@ const TABLE: Record<string, ModelPrice> = {
     output: 75 / M,
     cacheRead: 1.5 / M,
     cacheWrite: 18.75 / M,
+    contextWindow: 1_000_000,
+    family: 'claude',
+  },
+  'claude-sonnet-5': {
+    input: 2 / M,
+    output: 10 / M,
+    cacheRead: 0.2 / M,
+    cacheWrite: 2.5 / M,
     contextWindow: 1_000_000,
     family: 'claude',
   },
@@ -118,6 +126,93 @@ const TABLE: Record<string, ModelPrice> = {
     contextWindow: 200_000,
     family: 'codex',
   },
+  'gpt-5.1-codex-mini': {
+    input: 0.25 / M,
+    output: 2 / M,
+    cacheRead: 0.025 / M,
+    contextWindow: 400_000,
+    family: 'codex',
+  },
+  'gpt-5.6-terra': {
+    input: 2.5 / M,
+    output: 15 / M,
+    cacheRead: 0.25 / M,
+    contextWindow: 1_050_000,
+    family: 'codex',
+  },
+  // --- OpenRouter catalog (the engines.ts openrouter/hermes lists). Runs
+  // record provider/model slugs; lookupPrice strips the provider prefix
+  // before matching. Rates verified against openrouter.ai/api/v1/models
+  // on 2026-07-16. ---
+  'deepseek-v4-flash': {
+    input: 0.098 / M,
+    output: 0.196 / M,
+    cacheRead: 0.0196 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
+  'deepseek-v4-pro': {
+    input: 0.435 / M,
+    output: 0.87 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
+  'qwen3-coder-next': {
+    input: 0.11 / M,
+    output: 0.8 / M,
+    cacheRead: 0.07 / M,
+    contextWindow: 262_144,
+    family: 'openrouter',
+  },
+  'glm-4.7-flash': {
+    input: 0.06 / M,
+    output: 0.4 / M,
+    cacheRead: 0.01 / M,
+    contextWindow: 202_752,
+    family: 'openrouter',
+  },
+  'minimax-m3': {
+    input: 0.3 / M,
+    output: 1.2 / M,
+    cacheRead: 0.06 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
+  'kimi-k2.7-code': {
+    input: 0.75 / M,
+    output: 3.5 / M,
+    cacheRead: 0.16 / M,
+    contextWindow: 262_144,
+    family: 'openrouter',
+  },
+  'kimi-k3': {
+    input: 3 / M,
+    output: 15 / M,
+    cacheRead: 0.3 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
+  'devstral-2512': {
+    input: 0.4 / M,
+    output: 2 / M,
+    cacheRead: 0.04 / M,
+    contextWindow: 262_144,
+    family: 'openrouter',
+  },
+  'gemini-3.1-flash-lite': {
+    input: 0.25 / M,
+    output: 1.5 / M,
+    cacheRead: 0.025 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
+  'glm-5.2': {
+    input: 1.218 / M,
+    output: 3.828 / M,
+    cacheRead: 0.2262 / M,
+    contextWindow: 1_048_576,
+    family: 'openrouter',
+  },
 }
 
 const ZERO: ModelPrice = { input: 0, output: 0, contextWindow: 0, family: 'unknown' }
@@ -128,6 +223,19 @@ const ZERO: ModelPrice = { input: 0, output: 0, contextWindow: 0, family: 'unkno
 export function lookupPrice(model: string): ModelPrice {
   if (!model) return ZERO
   const norm = model.toLowerCase().trim()
+  const direct = lookupNormalized(norm)
+  if (direct) return direct
+  // OpenRouter-style provider/model slugs ("moonshotai/kimi-k3"): the table
+  // keys bare model names, so retry with the provider prefix stripped.
+  const slash = norm.indexOf('/')
+  if (slash > 0) {
+    const bare = lookupNormalized(norm.slice(slash + 1))
+    if (bare) return bare
+  }
+  return ZERO
+}
+
+function lookupNormalized(norm: string): ModelPrice | null {
   if (TABLE[norm]) return TABLE[norm]
   // Prefix match — longest match wins
   let best: { key: string; price: ModelPrice } | null = null
@@ -136,7 +244,7 @@ export function lookupPrice(model: string): ModelPrice {
       best = { key, price }
     }
   }
-  return best?.price || ZERO
+  return best?.price || null
 }
 
 /** Cost in USD for a run with the given token shape, given a model name. */
