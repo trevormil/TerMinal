@@ -860,6 +860,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   runId={selectedRun.id}
                   status={selectedRun.status}
                   hostId={selectedRun.hostId}
+                  engine={selectedRun.engine}
                   className="flex-1"
                 />
               </>
