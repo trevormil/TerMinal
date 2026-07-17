@@ -66,3 +66,13 @@ outcome, include URLs/paths, plain text (no markdown). Never send secrets.
 `/stacked-mr` (autonomous overnight stacking) runs AFK by default and uses this
 bridge for its checkpoint pings. When the user kicks off `/stacked-mr`, arm the
 listener as part of starting it.
+
+## Relationship to the app's alert channels
+
+TerMinal's own outbound alerts are channel-agnostic: activity events fan out
+through `src/main/notify-channels.ts` to every channel enabled in Settings →
+Alert channels (Telegram, macOS desktop notification, generic outbound webhook
+for Slack/Discord — see `docs/alert-channels.md`), with the same
+done/blocked/question/info kind vocabulary as this skill. This skill's
+send/receive scripts are the **Telegram** leg plus the inbound (reply) side —
+inbound control remains Telegram-only.
