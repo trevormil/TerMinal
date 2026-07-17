@@ -22,16 +22,27 @@ export function repoOrientationKey(repoRoot: string): string {
 }
 
 /**
- * Auto-show the per-repo orientation only for a fresh local repo — one with
- * neither agents nor a backlog yet. Established repos never get nagged, and
- * the user's dismissal is respected per repo. (The palette command bypasses
- * this and shows it on demand.)
+ * One-shot marker written by the new-project scaffold flow: the next open of
+ * this repo shows the orientation even though the template seeds .agents/ and
+ * a backlog (which would otherwise read as "established" below).
+ */
+export function repoOrientationPendingKey(repoRoot: string): string {
+  return `gt.repoOrientPending.${repoRoot}`
+}
+
+/**
+ * Auto-show the per-repo orientation for a fresh local repo — one with
+ * neither agents nor a backlog yet — or for one just created via the
+ * new-project scaffold (justCreated). Established repos never get nagged,
+ * and the user's dismissal is respected per repo. (The palette command
+ * bypasses this and shows it on demand.)
  */
 export function shouldAutoShowRepoOrientation(
   ctx: { repoRoot: string; hasAgents: boolean; hasBacklog: boolean; remote?: boolean },
   isDismissed: (key: string) => boolean,
+  opts?: { justCreated?: boolean },
 ): boolean {
   if (!ctx.repoRoot || ctx.remote) return false
-  if (ctx.hasAgents || ctx.hasBacklog) return false
+  if (!opts?.justCreated && (ctx.hasAgents || ctx.hasBacklog)) return false
   return !isDismissed(repoOrientationKey(ctx.repoRoot))
 }

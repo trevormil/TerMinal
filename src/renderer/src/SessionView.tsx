@@ -32,7 +32,11 @@ import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } f
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
 import { RepoOrientation } from './components/RepoOrientation'
-import { repoOrientationKey, shouldAutoShowRepoOrientation } from './lib/orientation'
+import {
+  repoOrientationKey,
+  repoOrientationPendingKey,
+  shouldAutoShowRepoOrientation,
+} from './lib/orientation'
 import type { SessionRail, TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -457,8 +461,9 @@ export function SessionView({
   }, [active])
 
   // Per-repo orientation: auto-shows once when a fresh repo (no agents, no
-  // backlog) is opened; closing persists a per-repo dismissal. The ⌘K palette
-  // re-opens it on demand for any repo via gt.repoOrientation.show.
+  // backlog) or a just-scaffolded project (pending marker from EntryScreen)
+  // is opened; closing persists a per-repo dismissal. The ⌘K palette re-opens
+  // it on demand for any repo via gt.repoOrientation.show.
   const [repoOrient, setRepoOrient] = useState(false)
   useEffect(() => {
     if (!active || terminalTile || !ctx) return
@@ -469,8 +474,25 @@ export function SessionView({
         return false
       }
     }
-    if (shouldAutoShowRepoOrientation({ ...ctx, remote: isRemote || ctx.remote }, dismissed))
+    // Scaffolded projects arrive with .agents/ + backlog already seeded, so
+    // the fresh-repo heuristic alone would never fire — the one-shot pending
+    // marker overrides it. Consumed on show so it can't re-trigger later.
+    const pendingKey = repoOrientationPendingKey(ctx.repoRoot)
+    const justCreated = dismissed(pendingKey)
+    if (
+      shouldAutoShowRepoOrientation({ ...ctx, remote: isRemote || ctx.remote }, dismissed, {
+        justCreated,
+      })
+    ) {
+      if (justCreated) {
+        try {
+          localStorage.removeItem(pendingKey)
+        } catch {
+          /* ignore */
+        }
+      }
       setRepoOrient(true)
+    }
   }, [active, terminalTile, ctx, isRemote])
   useEffect(() => {
     if (!active) return
