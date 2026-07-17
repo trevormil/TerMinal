@@ -357,13 +357,17 @@ describe('parseRunLog · graceful degradation', () => {
     expect(find(p.entries, 'meta')).toHaveLength(1)
   })
 
-  it('hermes output falls back to text blocks but keeps generic markers', () => {
+  it('hermes prose becomes assistant entries and keeps generic markers', () => {
     const p = parseRunLog('▸ t · hermes\n\nthinking about it\n[tool] apply_patch\nall done\n')
     expect(p.engine).toBe('hermes')
+    expect(p.structured).toBe(true)
     const tools = find(p.entries, 'tool')
     expect(tools).toHaveLength(1)
     expect(tools[0].name).toBe('apply_patch')
-    expect(find(p.entries, 'text')).toHaveLength(2)
+    const assist = find(p.entries, 'assistant')
+    expect(assist).toHaveLength(2)
+    expect(assist[0].text).toBe('thinking about it')
+    expect(assist[1].text).toBe('all done')
   })
 
   it('never drops content: every input line survives somewhere', () => {
@@ -380,5 +384,157 @@ describe('parseRunLog · graceful degradation', () => {
     const p = parseRunLog('OpenAI Codex v0.99.0\n--------\nmodel: x\n--------\nuser\nhi\n')
     expect(p.engine).toBe('codex')
     expect(find(p.entries, 'prompt')).toHaveLength(1)
+  })
+})
+
+// ---- fidelity pass: fixtures modeled on real v0.142 logs --------------------
+
+const CODEX_MODERN_LOG = [
+  '▸ Smoke: log-format test · codex',
+  '▸ branch agent/smoke-1',
+  '▸ command codex exec -s danger-full-access -C /work <prompt>',
+  '',
+  'OpenAI Codex v0.142.5',
+  '--------',
+  'workdir: /work',
+  'model: gpt-5.5',
+  '--------',
+  'user',
+  'Do the read-only smoke test.',
+  'codex',
+  'Keeping this read-only.',
+  'exec',
+  "/bin/zsh -lc 'rtk read README.md' in /work",
+  'exec',
+  "/bin/zsh -lc 'rtk ls' in /work",
+  ' succeeded in 0ms:',
+  '# README',
+  'TerMinal is an app.',
+  ' succeeded in 0ms:',
+  '.agents/',
+  'bin/',
+  'codex',
+  'Done with the smoke test.',
+  'hook: Stop',
+  'hook: Stop Completed',
+  'tokens used',
+  '23,812',
+].join('\n')
+
+describe('parseRunLog · codex v0.142 (modern format)', () => {
+  const parsed = parseRunLog(CODEX_MODERN_LOG)
+
+  it('pairs batched exec results FIFO (issue order, per real batched logs)', () => {
+    const cmds = find(parsed.entries, 'command')
+    expect(cmds).toHaveLength(2)
+    expect(cmds[0].command).toBe("/bin/zsh -lc 'rtk read README.md'")
+    expect(cmds[0].output).toContain('# README')
+    expect(cmds[1].command).toBe("/bin/zsh -lc 'rtk ls'")
+    expect(cmds[1].output).toContain('.agents/')
+    expect(cmds.every((c) => c.status === 'ok' && c.durationMs === 0)).toBe(true)
+  })
+
+  it('parses the two-line tokens used summary', () => {
+    const sums = find(parsed.entries, 'summary')
+    expect(sums).toHaveLength(1)
+    expect(sums[0].tokens).toBe(23812)
+  })
+
+  it('still drops hook noise and keeps assistant sections', () => {
+    const assist = find(parsed.entries, 'assistant')
+    expect(assist.map((a) => a.text)).toEqual([
+      'Keeping this read-only.',
+      'Done with the smoke test.',
+    ])
+    expect(JSON.stringify(parsed.entries)).not.toContain('hook: Stop')
+  })
+})
+
+describe('parseRunLog · hermes (real run shape)', () => {
+  const HERMES_LOG = [
+    '▸ Smoke: log-format test · hermes',
+    '▸ branch agent/smoke-2 (off main)',
+    '▸ command hermes -z <prompt> --usage-file … --yolo --accept-hooks',
+    '',
+    '**Current date:** Fri Jul 17 06:49:25 PDT 2026',
+    '',
+    '**Repo root contents:**',
+    '- Sources: src/, bin/',
+    '',
+    '**Repository summary:**',
+    'TerMinal is a macOS Electron app.',
+  ].join('\n')
+  const parsed = parseRunLog(HERMES_LOG)
+
+  it('is structured with the prose as one assistant entry', () => {
+    expect(parsed.engine).toBe('hermes')
+    expect(parsed.structured).toBe(true)
+    const assist = find(parsed.entries, 'assistant')
+    expect(assist).toHaveLength(1)
+    expect(assist[0].text).toContain('**Current date:**')
+    expect(assist[0].text).toContain('TerMinal is a macOS Electron app.')
+    expect(find(parsed.entries, 'text')).toHaveLength(0)
+  })
+
+  it('keeps the meta header chips', () => {
+    const meta = find(parsed.entries, 'meta')
+    expect(meta).toHaveLength(1)
+    expect(meta[0].lines).toHaveLength(3)
+  })
+})
+
+describe('parseRunLog · or-agent failure', () => {
+  const parsed = parseRunLog(
+    [
+      '▸ Smoke: log-format test · openrouter',
+      '▸ branch agent/smoke-3 (off main)',
+      '▸ worktree /w',
+      '▸ command /Users/x/.config/TerMinal/bin/or-agent --dir /w --engine codex',
+      '',
+      'or-agent: OPENROUTER_API_KEY not set',
+      '',
+    ].join('\n'),
+  )
+
+  it('lifts or-agent error lines into error entries and counts as structured', () => {
+    expect(parsed.engine).toBe('openrouter')
+    expect(parsed.structured).toBe(true)
+    const errors = find(parsed.entries, 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].text).toBe('OPENROUTER_API_KEY not set')
+  })
+
+  it('does not misclassify or-agent running/done chatter as errors', () => {
+    const ok = parseRunLog(
+      '▸ t · openrouter\n\nor-agent: running codex with model x\nor-agent: done — cost $0.0012\n',
+    )
+    expect(find(ok.entries, 'error')).toHaveLength(0)
+    expect(find(ok.entries, 'banner')).toHaveLength(1)
+    expect(find(ok.entries, 'summary')).toHaveLength(1)
+  })
+})
+
+describe('parseRunLog · claude -p prose (real cron shape)', () => {
+  const parsed = parseRunLog(
+    [
+      '▸ Improve docs · claude',
+      '▸ branch cron/docs-1',
+      "▸ claude -p 'Improve docs.' --dangerously-skip-permissions",
+      '',
+      "Done. Here's the summary.",
+      '',
+      '## PR opened: [!102](https://example.com/mr/102)',
+      '',
+      '1. **Stale package count.** Fixed.',
+    ].join('\n'),
+  )
+
+  it('classifies the whole response as assistant markdown, not raw text', () => {
+    expect(parsed.engine).toBe('claude')
+    expect(parsed.structured).toBe(true)
+    const assist = find(parsed.entries, 'assistant')
+    expect(assist).toHaveLength(1)
+    expect(assist[0].text).toContain('## PR opened')
+    expect(find(parsed.entries, 'text')).toHaveLength(0)
   })
 })

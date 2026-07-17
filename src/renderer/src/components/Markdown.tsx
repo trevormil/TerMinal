@@ -18,9 +18,15 @@ function highlighted(code: string, className?: string): string {
 
 // Shared markdown renderer (ticket bodies, MR descriptions, review bodies).
 // Hand-styled with Tailwind utilities so we don't pull in the typography plugin.
-export function Markdown({ children }: { children: string }) {
+export function Markdown({
+  children,
+  className = 'text-[13px] text-[var(--gt-text-soft)]',
+}: {
+  children: string
+  className?: string
+}) {
   return (
-    <div className="text-[13px] text-[var(--gt-text-soft)]">
+    <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

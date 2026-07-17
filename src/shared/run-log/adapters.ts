@@ -63,28 +63,37 @@ function markerEntry(t: string): RunLogEntry | null {
   return null
 }
 
-// ---- generic adapter (hermes, scripts, unknown engines) ---------------------
+// ---- generic adapter (scripts, unknown engines) -----------------------------
 
 // No engine-specific transcript shape to rely on: pull out the shared markers,
-// keep everything else as ordered plain-text blocks.
-export const genericAdapter: RunLogAdapter = (lines) => {
-  const entries: RunLogEntry[] = []
-  let buf: string[] = []
-  const flush = () => {
-    const body = trimBlankEdges(buf)
-    buf = []
-    if (body.length) entries.push({ kind: 'text', text: body.join('\n') })
+// keep everything else as ordered blocks of `proseKind` entries.
+function markerProseAdapter(proseKind: 'text' | 'assistant'): RunLogAdapter {
+  return (lines) => {
+    const entries: RunLogEntry[] = []
+    let buf: string[] = []
+    const flush = () => {
+      const body = trimBlankEdges(buf)
+      buf = []
+      if (body.length) entries.push({ kind: proseKind, text: body.join('\n') })
+    }
+    for (const line of lines) {
+      const m = markerEntry(line.trim())
+      if (m) {
+        flush()
+        entries.push(m)
+      } else buf.push(line)
+    }
+    flush()
+    return entries
   }
-  for (const line of lines) {
-    const m = markerEntry(line.trim())
-    if (m) {
-      flush()
-      entries.push(m)
-    } else buf.push(line)
-  }
-  flush()
-  return entries
 }
+
+export const genericAdapter: RunLogAdapter = markerProseAdapter('text')
+
+// hermes -z prints the assistant's final markdown response (tool traffic and
+// usage go elsewhere), so free prose IS the assistant message — unlike unknown
+// engines where we can't assume that.
+export const hermesAdapter: RunLogAdapter = markerProseAdapter('assistant')
 
 // ---- claude / cursor adapter (stream-json + its decoded form) ---------------
 
@@ -238,6 +247,9 @@ const CODEX_NOISE = [
 const SECTION = /^(?:\[[^\]]*\]\s*)?(user|codex|thinking|exec)$/
 const RESULT_LINE = /^(?:\[[^\]]*\]\s*)?(?:succeeded|exited (-?\d+)) in ([0-9.]+)(ms|s):?$/
 const TOKENS_LINE = /^(?:\[[^\]]*\]\s*)?tokens used:?\s*([\d,]+)\s*$/
+// codex ≥0.14x prints the count on the following line: `tokens used\n23,812`
+const TOKENS_BARE = /^(?:\[[^\]]*\]\s*)?tokens used:?\s*$/
+const TOKENS_COUNT = /^([\d,]+)\s*$/
 const BANNER_LINE = /^(?:\[[^\]]*\]\s*)?OpenAI Codex v/
 const BANNER_DASHES = /^-{4,}$/
 const CMD_CWD = /\s+in\s+(\/\S*)$/
@@ -302,6 +314,13 @@ export const codexAdapter: RunLogAdapter = (lines) => {
       entries.push({ kind: 'summary', text: t, costUsd: m ? Number(m[1]) : undefined })
       continue
     }
+    const orErr = t.match(/^or-agent:\s*(.+)$/)
+    if (orErr) {
+      // any other or-agent line is the wrapper reporting a failure
+      flush()
+      entries.push({ kind: 'error', text: orErr[1].trim() })
+      continue
+    }
     if (BANNER_LINE.test(t)) {
       flush()
       banner = [t]
@@ -314,9 +333,27 @@ export const codexAdapter: RunLogAdapter = (lines) => {
       entries.push({ kind: 'summary', text: t, tokens: Number(tok[1].replace(/,/g, '')) })
       continue
     }
+    if (TOKENS_BARE.test(t)) {
+      const next = (lines[i + 1] || '').trim().match(TOKENS_COUNT)
+      if (next) {
+        flush()
+        entries.push({
+          kind: 'summary',
+          text: `tokens used: ${next[1]}`,
+          tokens: Number(next[1].replace(/,/g, '')),
+        })
+        i++
+        continue
+      }
+    }
     const res = t.match(RESULT_LINE)
     if (res) {
       flush()
+      // Pair with the oldest unresolved command (FIFO). When codex batches
+      // multiple execs their results print in COMPLETION order with no label,
+      // so perfect pairing is impossible from the text; FIFO matches issue
+      // order, which is correct for sequential runs and for same-duration
+      // batches (the overwhelmingly common cases).
       const target =
         entries.find(
           (e): e is CommandEntry =>
@@ -380,5 +417,6 @@ export const codexAdapter: RunLogAdapter = (lines) => {
 export function adapterFor(engine: string): RunLogAdapter {
   if (engine === 'claude' || engine === 'cursor') return claudeAdapter
   if (engine === 'codex' || engine === 'openrouter') return codexAdapter
+  if (engine === 'hermes') return hermesAdapter
   return genericAdapter
 }

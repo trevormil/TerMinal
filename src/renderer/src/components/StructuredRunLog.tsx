@@ -17,6 +17,7 @@ import {
   type ParsedRunLog,
   type RunLogEntry,
 } from '../../../shared/run-log'
+import { Markdown } from './Markdown'
 
 // Shared structured run-log transcript (ticket 0020). One renderer for every
 // surface that shows run output: RunLogPane (Runs tab — agent/cron/bg/session
@@ -63,6 +64,37 @@ function Clipped({
       >
         {clipped ? lines.slice(0, clipAt).join('\n') : text}
       </pre>
+      {lines.length > clipAt && (
+        <button
+          onClick={() => setOpen(!open)}
+          className="mt-0.5 rounded px-1 text-[10px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+        >
+          {clipped ? `Show ${lines.length - clipAt} more lines` : 'Show less'}
+        </button>
+      )}
+    </>
+  )
+}
+
+// Assistant/reasoning prose is markdown (claude -p and hermes emit full
+// markdown documents) — render it, with the same show-more clipping as Clipped.
+function MdClipped({
+  text,
+  clipAt,
+  className = '',
+}: {
+  text: string
+  clipAt: number
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const lines = text.split('\n')
+  const clipped = !open && lines.length > clipAt
+  return (
+    <>
+      <Markdown className={`text-[11.5px] leading-relaxed ${className}`}>
+        {clipped ? lines.slice(0, clipAt).join('\n') : text}
+      </Markdown>
       {lines.length > clipAt && (
         <button
           onClick={() => setOpen(!open)}
@@ -174,7 +206,7 @@ function Entry({ entry }: { entry: RunLogEntry }) {
             className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]"
           />
           <div className="min-w-0 flex-1">
-            <Clipped text={entry.text} clipAt={40} className="text-zinc-200" />
+            <MdClipped text={entry.text} clipAt={40} className="text-zinc-200" />
           </div>
         </div>
       )
@@ -189,7 +221,7 @@ function Entry({ entry }: { entry: RunLogEntry }) {
             </span>
           }
         >
-          <Clipped text={entry.text} clipAt={30} className="italic text-zinc-500" />
+          <MdClipped text={entry.text} clipAt={30} className="italic text-zinc-500" />
         </Disclosure>
       )
     case 'tool': {
@@ -249,7 +281,9 @@ function Entry({ entry }: { entry: RunLogEntry }) {
           >
             {entry.command.split('\n')[0]}
           </span>
-          {entry.durationMs != null && (
+          {/* codex reliably reports 0ms for fast commands — a 0ms badge reads
+              as a parse bug, so only show real durations */}
+          {entry.durationMs != null && entry.durationMs > 0 && (
             <span className="shrink-0 font-mono text-[9.5px] tabular-nums text-zinc-600">
               {fmtDuration(entry.durationMs)}
             </span>
@@ -327,7 +361,7 @@ function Entry({ entry }: { entry: RunLogEntry }) {
           </div>
           {entry.text && (
             <div className="mt-1">
-              <Clipped text={entry.text} clipAt={20} className="text-zinc-300" />
+              <MdClipped text={entry.text} clipAt={20} className="text-zinc-300" />
             </div>
           )}
         </div>
