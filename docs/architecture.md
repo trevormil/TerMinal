@@ -117,7 +117,10 @@ offline, survive a fresh clone):
   per a `NOTIFY` map) **and** tails the file so *external* writers — the
   project-template `.claude/bin/activity` hook, CI, any script — broadcast to the
   renderer and trigger notifications too (deduped by event id). Events carry an
-  optional `ref:{ticket?,pr?}` join key.
+  optional `ref:{ticket?,pr?}` join key. Notifications fan out through the
+  channel-agnostic alert layer (`notify-channels.ts`: Telegram, desktop,
+  outbound webhook — per-channel toggles in Settings, failure-isolated; see
+  [`docs/alert-channels.md`](./alert-channels.md)).
 - `hitl.json` — the global HITL inbox (`hitl.ts`). `fileHitl` writes the item,
   mirrors a `blocked` activity event, and fires a Telegram ping. The top-right
   Inbox button badge shows the unresolved count. HITL items filed
@@ -281,7 +284,10 @@ preserving the extensible "folder = tab" model.
 
 **Telegram** (`telegram*.ts`): native Bot API (token + a single authorized
 chat-id as the auth boundary) for notifications and inbound AFK commands, with
-the legacy `~/.claude/bin/telegram-*.sh` scripts as a fallback.
+the legacy `~/.claude/bin/telegram-*.sh` scripts as a fallback. Outbound
+notifications are one `NotifyChannel` of the alert fan-out
+(`notify-channels.ts`, [`docs/alert-channels.md`](./alert-channels.md));
+inbound control remains Telegram-only.
 
 ## Styling
 

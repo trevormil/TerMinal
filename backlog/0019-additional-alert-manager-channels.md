@@ -1,15 +1,15 @@
 ---
 id: 19
 title: "Additional alert-manager channels beyond Telegram (Slack / email / desktop / webhook)"
-status: open
+status: in-progress
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-09
-prs: []
+updated: 2026-07-17
+prs: ["https://github.com/trevormil/TerMinal/pull/90"]
 refs: []
 depends_on: []
 acceptance:

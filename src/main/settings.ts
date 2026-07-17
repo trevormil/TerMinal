@@ -34,6 +34,13 @@ export type InboxCfg = {
   completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
   agentContextPreamble: boolean // prepend capped repo docs/learnings/decisions context to prompt-style runs
 }
+// Outbound alert channels (notify-channels.ts). Telegram keeps its own block
+// above (telegram.notify is that channel's enable knob — inbound control lives
+// there too); this covers the rest of the fan-out.
+export type AlertsCfg = {
+  desktop: { enabled: boolean } // Electron Notification; on by default (historical behavior)
+  webhook: { enabled: boolean; url: string } // POST JSON; covers Slack/Discord incoming webhooks
+}
 export type AppearanceMode = 'dark' | 'light' | 'system'
 export type AppearanceTabLayout = 'horizontal' | 'sidebar'
 export type AppearanceCfg = {
@@ -78,6 +85,7 @@ export type Settings = {
   defaultEngine: EngineId
   forge: ForgePref // 'auto' picks gh/glab per-repo from the remote host
   telegram: TelegramCfg
+  alerts: AlertsCfg
   inbox: InboxCfg
   appearance: AppearanceCfg
   apps: AppsCfg
@@ -96,9 +104,16 @@ export type Settings = {
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
 export type SettingsPatch = Partial<
-  Omit<Settings, 'telegram' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'>
+  Omit<
+    Settings,
+    'telegram' | 'alerts' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+  >
 > & {
   telegram?: Partial<TelegramCfg>
+  alerts?: {
+    desktop?: Partial<AlertsCfg['desktop']>
+    webhook?: Partial<AlertsCfg['webhook']>
+  }
   inbox?: Partial<InboxCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
@@ -115,6 +130,7 @@ const SECRET_MARKER = 'terminal-secret:v1'
 const SECRET_PATHS = [
   ['telegram', 'botToken'],
   ['telegram', 'chatId'],
+  ['alerts', 'webhook', 'url'], // Slack/Discord webhook URLs embed a secret token
   ['openrouterApiKey'],
 ] as const
 
@@ -158,6 +174,7 @@ export function defaultSettings(): Settings {
     defaultEngine: daemon.defaultEngine, // codex is the default agent-run engine; claude stays selectable
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
+    alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
     inbox: { completionHook: true, agentContextPreamble: true },
     appearance: {
       mode: 'dark',
@@ -277,6 +294,13 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.telegram.control === 'boolean') s.telegram.control = r.telegram.control
     if (typeof r.telegram.botToken === 'string') s.telegram.botToken = r.telegram.botToken
     if (typeof r.telegram.chatId === 'string') s.telegram.chatId = r.telegram.chatId
+  }
+  if (r.alerts && typeof r.alerts === 'object') {
+    if (typeof r.alerts.desktop?.enabled === 'boolean')
+      s.alerts.desktop.enabled = r.alerts.desktop.enabled
+    if (typeof r.alerts.webhook?.enabled === 'boolean')
+      s.alerts.webhook.enabled = r.alerts.webhook.enabled
+    if (typeof r.alerts.webhook?.url === 'string') s.alerts.webhook.url = r.alerts.webhook.url
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
@@ -434,6 +458,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
   const legacyPatch = patch as SettingsPatch & Record<string, unknown>
   const {
     telegram,
+    alerts,
     inbox,
     appearance,
     apps,
@@ -447,6 +472,10 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     ...cur,
     ...scalarPatch,
     telegram: { ...cur.telegram, ...(telegram || {}) },
+    alerts: {
+      desktop: { ...cur.alerts.desktop, ...(alerts?.desktop || {}) },
+      webhook: { ...cur.alerts.webhook, ...(alerts?.webhook || {}) },
+    },
     inbox: { ...cur.inbox, ...(inbox || {}) },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },

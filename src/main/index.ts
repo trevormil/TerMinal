@@ -89,7 +89,15 @@ import {
   type ObservabilityIndexQueryId,
 } from './observability-index'
 import { fixPath, detectEnv, installGtNotify } from './env'
-import { emitActivity, readActivity, clearActivity, onActivity, startActivityTail } from './events'
+import {
+  emitActivity,
+  readActivity,
+  clearActivity,
+  onActivity,
+  startActivityTail,
+  testDesktopAlert,
+} from './events'
+import { testWebhook } from './notify-channels'
 import { readUsage } from './usage'
 import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
@@ -1137,6 +1145,13 @@ ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
+// One "send test alert" entry point per outbound channel (Settings → Alerts).
+ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') => {
+  if (channel === 'telegram') return testTelegram()
+  if (channel === 'desktop') return testDesktopAlert()
+  if (channel === 'webhook') return testWebhook(readSettings().alerts.webhook.url)
+  return { ok: false, error: `unknown alert channel: ${channel}` }
+})
 ipcMain.handle('settings:get', () => readSettings())
 ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   const before = readSettings()

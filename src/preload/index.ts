@@ -71,6 +71,10 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
+  alerts: {
+    test: (channel: 'telegram' | 'desktop' | 'webhook') =>
+      ipcRenderer.invoke('alerts:test', channel),
+  },
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
     model?: string
