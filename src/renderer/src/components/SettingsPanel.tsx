@@ -1826,6 +1826,20 @@ export function SettingsPanel({
                       schedules · settings · cron logs · agent state
                     </span>
                   </div>
+                  {!selectedIsRemote && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => save({ onboarded: false })}
+                        title="Re-run the first-run setup and orientation. Your other settings are untouched."
+                        className={buttonSoft}
+                      >
+                        Replay onboarding
+                      </button>
+                      <span className="text-[10.5px] text-zinc-600">
+                        first-run setup + orientation, right now
+                      </span>
+                    </div>
+                  )}
                 </div>
               </Section>
 

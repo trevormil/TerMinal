@@ -537,7 +537,16 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               {runs === null ? (
                 <div className="p-4 text-[12px] text-zinc-600">Loading runs…</div>
               ) : filtered && filtered.length === 0 ? (
-                <div className="p-4 text-[12px] text-zinc-600">No runs match these filters.</div>
+                runs.length === 0 ? (
+                  // Fresh install: say what fills this in, not just "empty".
+                  <div className="p-4 text-[12px] leading-relaxed text-zinc-600">
+                    <div className="mb-1 font-semibold text-zinc-400">No runs yet.</div>
+                    Every agent run — fired from the Agents tab or a Schedule — lands here with its
+                    full log. Trigger one from Agents to see the first.
+                  </div>
+                ) : (
+                  <div className="p-4 text-[12px] text-zinc-600">No runs match these filters.</div>
+                )
               ) : (
                 (filtered || []).map((r) => {
                   const dur = r.endedAt

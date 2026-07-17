@@ -59,7 +59,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       alive = false
     }
   }, [projectsDir])
-  const finish = async () => {
+  // "Get started" applies the choices made on this screen; "Skip for now"
+  // marks onboarding done and nothing else, leaving every setting on its
+  // stock default (skipping stays safe — Settings covers it all later).
+  const finish = async (apply: boolean) => {
     setBusy(true)
     // Reconcile the default agent engine with what's actually installed. The
     // stock default is codex, but a fresh user may have only claude (or cursor)
@@ -73,11 +76,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         : env?.cursor.found
           ? 'cursor'
           : undefined
-    await window.gt.settings.patch({
-      projectsDir: projectsDir.trim(),
-      onboarded: true,
-      ...(detectedDefault ? { defaultEngine: detectedDefault } : {}),
-    })
+    await window.gt.settings.patch(
+      apply
+        ? {
+            projectsDir: projectsDir.trim(),
+            onboarded: true,
+            ...(detectedDefault ? { defaultEngine: detectedDefault } : {}),
+          }
+        : { onboarded: true },
+    )
     onDone()
   }
 
@@ -214,11 +221,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
 
         <div className="flex items-center justify-between">
-          <button onClick={finish} className="text-[12px] text-zinc-500 hover:text-zinc-300">
+          <button
+            onClick={() => finish(false)}
+            title="Keep every default and set it up later in Settings"
+            className="text-[12px] text-zinc-500 hover:text-zinc-300"
+          >
             Skip for now
           </button>
           <button
-            onClick={finish}
+            onClick={() => finish(true)}
             disabled={busy}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-5 py-2.5 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
