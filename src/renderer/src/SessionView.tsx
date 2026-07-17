@@ -31,6 +31,8 @@ import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
+import { RepoOrientation } from './components/RepoOrientation'
+import { repoOrientationKey, shouldAutoShowRepoOrientation } from './lib/orientation'
 import type { SessionRail, TerminalLayout } from './App'
 
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -454,6 +456,39 @@ export function SessionView({
     return () => window.removeEventListener('gt.ticket-provider.changed', reload)
   }, [active])
 
+  // Per-repo orientation: auto-shows once when a fresh repo (no agents, no
+  // backlog) is opened; closing persists a per-repo dismissal. The ⌘K palette
+  // re-opens it on demand for any repo via gt.repoOrientation.show.
+  const [repoOrient, setRepoOrient] = useState(false)
+  useEffect(() => {
+    if (!active || terminalTile || !ctx) return
+    const dismissed = (key: string) => {
+      try {
+        return localStorage.getItem(key) === '1'
+      } catch {
+        return false
+      }
+    }
+    if (shouldAutoShowRepoOrientation({ ...ctx, remote: isRemote || ctx.remote }, dismissed))
+      setRepoOrient(true)
+  }, [active, terminalTile, ctx, isRemote])
+  useEffect(() => {
+    if (!active) return
+    const show = () => setRepoOrient(true)
+    window.addEventListener('gt.repoOrientation.show', show)
+    return () => window.removeEventListener('gt.repoOrientation.show', show)
+  }, [active])
+  const closeRepoOrient = () => {
+    if (ctx?.repoRoot) {
+      try {
+        localStorage.setItem(repoOrientationKey(ctx.repoRoot), '1')
+      } catch {
+        /* ignore */
+      }
+    }
+    setRepoOrient(false)
+  }
+
   // Poll tab badges (e.g. HITL count) for any tab that declares one — refresh
   // on the transcript tick and a slow interval. Initial run also deferred by
   // one frame to spread the post-switch IPC burst.
@@ -748,6 +783,9 @@ export function SessionView({
       <div className={terminalTile ? 'hidden' : undefined}>
         <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
       </div>
+      {repoOrient && ctx && active && !terminalTile && (
+        <RepoOrientation ctx={ctx} onClose={closeRepoOrient} />
+      )}
       <header
         className={`h-8 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-bg)] px-2 text-zinc-300 ${
           terminalTile ? 'hidden' : 'flex'

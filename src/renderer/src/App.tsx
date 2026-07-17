@@ -19,6 +19,8 @@ import { EntryScreen, type Choice, type PairedLoopConfig } from './components/En
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Onboarding } from './components/Onboarding'
+import { Orientation } from './components/Orientation'
+import { firstRunPhase } from './lib/orientation'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
@@ -245,10 +247,22 @@ export default function App() {
   const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => new Set(loadHiddenTabs()))
   const [appearance, setAppearance] = useState<AppearanceCfg>(defaultAppearance)
   const [onboarded, setOnboarded] = useState<boolean | null>(null) // null = loading
+  // Orientation shows exactly once, on the setup→onboarded transition in THIS
+  // session (never for a returning user). See firstRunPhase in lib/orientation.
+  const [completedThisSession, setCompletedThisSession] = useState(false)
+  const [orientationDismissed, setOrientationDismissed] = useState(false)
 
-  // first-run gate: show onboarding until the user completes (or skips) it
+  // first-run gate: show onboarding until the user completes (or skips) it.
+  // Also tracks later settings changes so Settings → "Replay onboarding"
+  // (which patches onboarded:false) re-enters the flow without a restart.
   useEffect(() => {
     window.gt.settings.get().then((s) => setOnboarded(s.onboarded))
+    const onChanged = (e: Event) => {
+      const next = (e as CustomEvent<{ onboarded?: boolean }>).detail
+      if (next && typeof next.onboarded === 'boolean') setOnboarded(next.onboarded)
+    }
+    window.addEventListener('gt.settings.changed', onChanged)
+    return () => window.removeEventListener('gt.settings.changed', onChanged)
   }, [])
 
   useEffect(() => {
@@ -1025,16 +1039,29 @@ export default function App() {
   }
   // hold the UI until we know onboarding state (avoids the entry screen flashing
   // before first-run setup)
-  if (onboarded === null)
+  const phase = firstRunPhase({ onboarded, completedThisSession, orientationDismissed })
+  if (phase === 'loading')
     return (
       <div className="flex h-full items-center justify-center bg-[var(--gt-bg)]">
         <img src={logo} alt="" draggable={false} className="h-12 w-12 animate-pulse rounded-xl" />
       </div>
     )
-  if (!onboarded)
+  if (phase === 'setup')
     return (
       <div className="h-full bg-[var(--gt-bg)]">
-        <Onboarding onDone={() => setOnboarded(true)} />
+        <Onboarding
+          onDone={() => {
+            setOnboarded(true)
+            setCompletedThisSession(true)
+            setOrientationDismissed(false)
+          }}
+        />
+      </div>
+    )
+  if (phase === 'orient')
+    return (
+      <div className="h-full bg-[var(--gt-bg)]">
+        <Orientation onDone={() => setOrientationDismissed(true)} />
       </div>
     )
 

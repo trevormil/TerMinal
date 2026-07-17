@@ -2116,7 +2116,18 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                         (d.metadata.tags || []).join(' ').toLowerCase().includes(q),
                     )
                   if (list.length === 0)
-                    return <div className="p-3 text-[11px] text-zinc-600">No agents match.</div>
+                    // Distinguish "no roster at all" (fresh repo) from "filter
+                    // matched nothing" so an empty list doesn't read as broken.
+                    return definitions.length === 0 ? (
+                      <div className="p-3 text-[11px] leading-relaxed text-zinc-600">
+                        <div className="mb-1 font-semibold text-zinc-400">No agents yet.</div>
+                        Agents own tickets and scheduled runs for this repo. Seed a starter roster
+                        with the Bootstrap banner, or define one under{' '}
+                        <span className="font-mono">.agents/</span>.
+                      </div>
+                    ) : (
+                      <div className="p-3 text-[11px] text-zinc-600">No agents match.</div>
+                    )
                   return list.map((d) => {
                     const Icon = d.kind === 'persistent' ? Brain : AGENT_ICON[d.icon || ''] || Bot
                     const on = selDefinitionId === d.id
@@ -2199,7 +2210,16 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       (a.description || '').toLowerCase().includes(q),
                   )
                 if (list.length === 0)
-                  return <div className="p-3 text-[11px] text-zinc-600">No agents match.</div>
+                  return agents.length === 0 ? (
+                    <div className="p-3 text-[11px] leading-relaxed text-zinc-600">
+                      <div className="mb-1 font-semibold text-zinc-400">No agents yet.</div>
+                      Agents own tickets and scheduled runs for this repo. Seed a starter roster
+                      with the Bootstrap banner, or define one under{' '}
+                      <span className="font-mono">.agents/</span>.
+                    </div>
+                  ) : (
+                    <div className="p-3 text-[11px] text-zinc-600">No agents match.</div>
+                  )
                 return list.map((a) => {
                   const Icon = AGENT_ICON[a.icon || ''] || Bot
                   const on = selAgentId === a.id

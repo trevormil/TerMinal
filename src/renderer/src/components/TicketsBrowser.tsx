@@ -609,9 +609,28 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           ) : ticketError ? (
             <div className="p-6 text-[12px] text-[var(--gt-red)]">{ticketError}</div>
           ) : filtered.length === 0 ? (
-            <div className="p-6 text-[12px] text-zinc-600">
-              {hitlOnly ? 'Nothing waiting on you.' : 'No tickets match.'}
-            </div>
+            tickets.length === 0 && !hitlOnly ? (
+              // Fresh repo: distinguish "backlog is empty" from "filters
+              // matched nothing" so an empty list doesn't read as broken.
+              <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
+                <div className="mb-1 font-semibold text-zinc-400">No tickets yet.</div>
+                This is the repo's backlog — agents pick work up from here. File the first one with{' '}
+                <button
+                  onClick={() => {
+                    setCreating(true)
+                    setSel(null)
+                  }}
+                  className="text-[var(--gt-accent-light)] hover:underline"
+                >
+                  New
+                </button>
+                .
+              </div>
+            ) : (
+              <div className="p-6 text-[12px] text-zinc-600">
+                {hitlOnly ? 'Nothing waiting on you.' : 'No tickets match.'}
+              </div>
+            )
           ) : (
             groups.map(({ status, items }) => {
               const isOpen = !collapsed.has(status)
