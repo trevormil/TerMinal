@@ -2,16 +2,24 @@
 
 All notable changes to TerMinal are recorded here.
 
-TerMinal ships continuously from `main` rather than tagging a semver release per
-change, so the **build stamp** (commit SHA + build time, shown top-right in
-Settings) is the source of truth for *exactly* what a given install is running.
-This file is the human-readable companion: it groups notable merged changes so
-you can map a build stamp back to what changed. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+TerMinal is released as tagged semver versions: `bun run cut-release` (human-run,
+from `main`) derives the next version from conventional commits, cuts the
+`[Unreleased]` section below into a dated release section, and pushes a `vX.Y.Z`
+tag; CI then builds the DMG and publishes a GitHub Release whose notes are that
+section (see `docs/decisions/0004-versioned-releases.md`). The **build stamp**
+(version + commit SHA + build time, shown top-right in Settings) still identifies
+*exactly* what a given install is running between releases. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); curate notable changes
+into `[Unreleased]` as they merge.
 
 ## [Unreleased]
 
 ### Added
+- Versioned releases: `bun run cut-release` (auto semver from conventional
+  commits), a tag-triggered Release workflow publishing the DMG + checksums to
+  GitHub Releases, and the app version shown in the Settings build stamp.
+- CI hardening: `bun audit` job (blocks on High/Critical), dependency-review on
+  PRs, superseded-run cancellation, and explicit workflow permissions.
 - Ctrl-C'd (or crashed) engine sessions now drop to a live local shell in the
   same cwd instead of leaving a dead "process exited" pane.
 - Cockpit Git panel is a link to Files → Changes; the Open-PRs/MRs and

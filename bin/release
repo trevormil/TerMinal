@@ -89,6 +89,9 @@ sync_latest() {
 sync_latest
 
 echo "▸ building…"
+# Clear previous distributables first — stale DMGs from older versions (or an
+# older product name) would otherwise pollute SHA256SUMS.txt below.
+rm -f dist/*.dmg dist/*.blockmap dist/SHA256SUMS.txt
 bun run dist
 
 # Emit SHA-256 checksums for the distributable(s) so a download can be verified

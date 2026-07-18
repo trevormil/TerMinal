@@ -1,0 +1,95 @@
+#!/usr/bin/env bun
+// cut-release — human-run release cut, from main.
+//
+//   bun run cut-release            # auto bump from conventional commits since last tag
+//   bun run cut-release minor      # force a bump level
+//   bun run cut-release 1.0.0      # explicit version
+//
+// Derives the next semver, updates package.json, cuts CHANGELOG [Unreleased]
+// into a dated section, commits `chore(release): vX.Y.Z`, tags, and pushes
+// main + the tag. The tag push triggers .github/workflows/release.yml, which
+// builds the DMG and publishes the GitHub Release.
+//
+// This pushes to main, so it is intentionally HUMAN-ONLY: the block-main-merge
+// hook stops agents from running it (global CLAUDE.md §8). Releasing is a
+// deliberate human act, like merging.
+import { readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import {
+  bumpFromSubjects,
+  nextVersion,
+  parseVersionArg,
+  cutChangelog,
+} from '../src/shared/release/versioning'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const sh = (cmd: string): string =>
+  execSync(cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] }).toString().trim()
+const die = (msg: string): never => {
+  console.error(`cut-release: ${msg}`)
+  process.exit(1)
+}
+
+const arg = parseVersionArg(process.argv[2])
+if (!arg) die(`unusable argument "${process.argv[2]}" — want patch|minor|major or x.y.z`)
+
+// --- Guards: releases are cut from a clean, current main. -------------------
+const branch = sh('git branch --show-current')
+if (branch !== 'main') die(`on "${branch}" — releases are cut from main`)
+if (sh('git status --porcelain') !== '') die('working tree not clean')
+sh('git fetch --quiet origin main')
+if (sh('git rev-parse HEAD') !== sh('git rev-parse origin/main'))
+  die('local main is not at origin/main — pull (or push via PR) first')
+
+// --- Derive the version. ----------------------------------------------------
+const pkgPath = join(ROOT, 'package.json')
+const pkgText = readFileSync(pkgPath, 'utf8')
+const current = (JSON.parse(pkgText) as { version: string }).version
+const lastTag = ((): string => {
+  try {
+    return execSync('git describe --abbrev=0 --tags --match "v*"', {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim()
+  } catch {
+    return ''
+  }
+})()
+const subjects = sh(`git log --format=%s ${lastTag ? `${lastTag}..HEAD` : 'HEAD'}`)
+  .split('\n')
+  .filter(Boolean)
+
+let version: string
+if (arg.kind === 'explicit') version = arg.version
+else if (arg.kind === 'bump') version = nextVersion(current, arg.bump)
+else if (!lastTag)
+  version = die('no v* tag yet — pass the first version explicitly, e.g. `bun run cut-release 0.2.0`')
+else version = nextVersion(current, bumpFromSubjects(subjects))
+
+if (lastTag && subjects.length === 0) die(`nothing new since ${lastTag}`)
+console.log(`▸ ${current} → ${version} (${subjects.length} commit(s) since ${lastTag || 'start'})`)
+
+// --- package.json + CHANGELOG. ----------------------------------------------
+const replaced = pkgText.replace(`"version": "${current}"`, `"version": "${version}"`)
+if (replaced === pkgText) die(`could not find "version": "${current}" in package.json`)
+writeFileSync(pkgPath, replaced)
+
+const changelogPath = join(ROOT, 'CHANGELOG.md')
+const date = new Date().toISOString().slice(0, 10)
+const cut = cutChangelog(readFileSync(changelogPath, 'utf8'), version, date)
+writeFileSync(changelogPath, cut.md)
+if (!cut.notes)
+  console.log('▸ CHANGELOG [Unreleased] was empty — release notes will fall back to the commit list')
+
+// --- Commit, tag, push. -------------------------------------------------------
+sh('git add package.json CHANGELOG.md')
+sh(`git commit -m "chore(release): v${version}"`)
+sh(`git tag -a v${version} -m "TerMinal v${version}"`)
+sh('git push origin main')
+sh(`git push origin v${version}`)
+console.log(`✓ v${version} tagged and pushed — the Release workflow takes it from here.`)
+console.log('  Then install locally with: bun run release')

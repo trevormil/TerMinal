@@ -21,6 +21,7 @@
     "start": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --mac",
     "release": "bin/release",
+    "cut-release": "bun bin/cut-release",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
