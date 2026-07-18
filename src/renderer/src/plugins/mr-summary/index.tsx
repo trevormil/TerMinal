@@ -52,7 +52,7 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
             type="button"
             onClick={() => setOpenIid(r.iid)}
             title={`#${r.iid} ${r.title}${r.draft ? ' (draft)' : ''} · ${r.branch}`}
-            className="flex w-full items-center gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+            className="flex w-full cursor-pointer items-center gap-1.5 rounded text-left text-[11.5px] hover:bg-white/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
           >
             <span className="shrink-0 text-[10px]">
               <Dot ci={r.ci} />
@@ -80,7 +80,7 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               <button
                 type="button"
                 onClick={() => setPages((p) => p + 1)}
-                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 +{v.overflow} more
               </button>
@@ -89,7 +89,7 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
               <button
                 type="button"
                 onClick={() => setPages(1)}
-                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 show less
               </button>

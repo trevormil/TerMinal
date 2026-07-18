@@ -42,7 +42,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
             type="button"
             onClick={() => setOpenSlug(t.slug)}
             title={`${t.key} ${t.title}`}
-            className="flex w-full items-start gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+            className="flex w-full cursor-pointer items-start gap-1.5 rounded text-left text-[11.5px] hover:bg-white/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
           >
             <span className="mt-px shrink-0 text-[10px]">
               <Dot status={t.status} />
@@ -60,7 +60,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
               <button
                 type="button"
                 onClick={() => setPages((p) => p + 1)}
-                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 +{v.overflow} more
               </button>
@@ -69,7 +69,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
               <button
                 type="button"
                 onClick={() => setPages(1)}
-                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+                className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
                 show less
               </button>
