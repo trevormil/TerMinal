@@ -43,6 +43,10 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 [`EXAMPLE.md`](./EXAMPLE.md). Counter at `.TerMinal/backlog/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
+Tickets NEVER live under `docs/` or any ad-hoc directory — always
+`.TerMinal/backlog/NNNN-slug.md` via `/ticket` (or the repo's configured
+ticket provider).
+
 ## Helper scripts (carried by this skill)
 
 ```bash

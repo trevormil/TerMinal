@@ -19,7 +19,7 @@ export type RawMr = {
   sourceBranch: string
   draft: boolean
   headShort: string // 7-char head sha, for review-artifact staleness
-  labels: string[] // forge labels (gh + glab). The 'auto-mergeable' label is the project-template convention for low-risk PRs (docs/tickets/reports only).
+  labels: string[] // forge labels (gh + glab). The 'auto-mergeable' label is the project-template convention for low-risk PRs (documentation, backlog ticket files, or reports only).
 }
 export type RawMrDetail = RawMr & { description: string; targetBranch: string; baseShort: string }
 export type CiJob = { id: number; name: string; stage: string; status: string; webUrl: string }

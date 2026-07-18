@@ -67,7 +67,10 @@ End each ticket's run with "open PR + link to ticket". Example:
 - [ ] 0012 — open PR + link PR url into ticket 0012 prs:
 ```
 
-Keep it realistic for one session; defer the rest to Follow-ups.
+Keep it realistic for one session; defer the rest to Follow-ups. If planning
+surfaces new work items that aren't ticketed yet, file them via `/ticket` into
+the canonical backlog — never as loose markdown files or an ad-hoc tickets
+directory.
 
 ### 4. Write the session doc
 

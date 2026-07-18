@@ -86,7 +86,7 @@ Discovery is off unless `--discover` is passed. When enabled:
 
 1. Run the relevant discovery/check agents.
 2. Use `list_agents({repo})` or `.claude/bin/list-agents`.
-3. File every finding as a ticket with exactly one owner and a concrete quality/eval expectation.
+3. File every finding as a ticket with exactly one owner and a concrete quality/eval expectation — via `/ticket` / `file_ticket` into the canonical backlog, never as loose markdown files or an ad-hoc tickets directory.
 4. Split multi-phase or multi-owner findings into linked tickets with `depends_on`.
 5. Loop back to `/merge-sync`.
 
