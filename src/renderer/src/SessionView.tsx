@@ -28,7 +28,7 @@ import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetToPlugin } from './lib/commandWidget'
-import { mergeWidgetOrder } from './lib/widgetOrder'
+import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
@@ -550,15 +550,16 @@ export function SessionView({
 
   const toggle = (id: string) =>
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
-  // Swap with the neighbor in the displayed list, then persist the whole
-  // arrangement so future merges are stable.
+  // Swap with the neighbor in the displayed list, then splice the new visible
+  // sequence into the full saved order — the view is a filtered subset, so
+  // persisting only the visible ids would drop engine-gated plugins' placement.
   const moveWidget = (id: string, dir: -1 | 1) => {
     const ids = orderedPlugins.map((p) => p.id)
     const i = ids.indexOf(id)
     const j = i + dir
     if (i < 0 || j < 0 || j >= ids.length) return
     ;[ids[i], ids[j]] = [ids[j], ids[i]]
-    setWidgetOrder(ids)
+    setWidgetOrder((prev) => applyVisibleOrder(prev, ids))
   }
   const activeWidgets = orderedPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)

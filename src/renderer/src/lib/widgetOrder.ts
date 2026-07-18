@@ -26,3 +26,27 @@ export function mergeWidgetOrder(
   }
   return result
 }
+
+// Splice a reordered visible sequence back into the full saved order. The
+// current view can be a subset (engine-gated / remote-filtered plugins), so
+// persisting just the visible ids would drop the rest — instead, visible slots
+// in the saved order are rewritten in the new sequence while ids not currently
+// visible stay anchored between the same neighbors. Visible ids never saved
+// before are appended; staleness is handled on read by mergeWidgetOrder.
+export function applyVisibleOrder(savedOrder: string[], newVisible: string[]): string[] {
+  const visible = new Set(newVisible)
+  const queue = [...newVisible]
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const id of savedOrder) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    if (visible.has(id)) {
+      const next = queue.shift()
+      if (next !== undefined) result.push(next)
+    } else {
+      result.push(id)
+    }
+  }
+  return [...result, ...queue]
+}
