@@ -28,6 +28,7 @@ import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetToPlugin } from './lib/commandWidget'
+import { mergeWidgetOrder } from './lib/widgetOrder'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
@@ -270,6 +271,7 @@ export function SessionView({
   const [cmdPlugins, setCmdPlugins] = useState<Plugin[]>([])
   const [enabled, setEnabled] = useState<string[]>(() => load('gt.enabled', []))
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
+  const [widgetOrder, setWidgetOrder] = useState<string[]>(() => load('gt.widgetOrder', []))
   const [drawer, setDrawer] = useState(false)
   const [cockpitCollapsed, setCockpitCollapsed] = useState(() => {
     try {
@@ -301,6 +303,12 @@ export function SessionView({
       ),
     [allPlugins, choice.engine, isRemote],
   )
+  // User-defined widget order wins over plugin `order:`; widgets absent from
+  // the saved order slot in at their default position (see mergeWidgetOrder).
+  const orderedPlugins = useMemo(() => {
+    const byId = new Map(availablePlugins.map((p) => [p.id, p]))
+    return mergeWidgetOrder(widgetOrder, availablePlugins).map((id) => byId.get(id)!)
+  }, [availablePlugins, widgetOrder])
   // Tab visibility: user can hide tabs they don't use via Settings → Tabs.
   // The hidden list lives in localStorage so a fresh window respects it
   // immediately without a settings read. ALL_TABS is the always-known set;
@@ -327,6 +335,10 @@ export function SessionView({
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
   useEffect(() => localStorage.setItem('gt.known', JSON.stringify(known)), [known])
+  useEffect(
+    () => localStorage.setItem('gt.widgetOrder', JSON.stringify(widgetOrder)),
+    [widgetOrder],
+  )
   useEffect(() => {
     try {
       localStorage.setItem('gt.cockpitCollapsed', cockpitCollapsed ? '1' : '0')
@@ -538,7 +550,17 @@ export function SessionView({
 
   const toggle = (id: string) =>
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
-  const activeWidgets = availablePlugins.filter((p) => enabled.includes(p.id))
+  // Swap with the neighbor in the displayed list, then persist the whole
+  // arrangement so future merges are stable.
+  const moveWidget = (id: string, dir: -1 | 1) => {
+    const ids = orderedPlugins.map((p) => p.id)
+    const i = ids.indexOf(id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    setWidgetOrder(ids)
+  }
+  const activeWidgets = orderedPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
   const showCockpit = !terminalTile && !isRemote && choice.engine !== 'local'
   const cockpitVisible = showCockpit && !cockpitCollapsed
@@ -1043,9 +1065,10 @@ export function SessionView({
 
           {active && showCockpit && drawer && (
             <PluginDrawer
-              plugins={availablePlugins}
+              plugins={orderedPlugins}
               enabled={enabled}
               onToggle={toggle}
+              onMove={moveWidget}
               onClose={() => setDrawer(false)}
             />
           )}
