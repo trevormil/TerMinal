@@ -85,7 +85,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     window.gt.detectEnv().then(setEnv)
-    window.gt.settings.get().then((s) => setProjectsDir(s.projectsDir))
+    window.gt.settings.get().then(async (s) => {
+      if (s.projectsDir) {
+        setProjectsDir(s.projectsDir)
+        return
+      }
+      // No saved value: pre-fill the densest detected root (e.g. ~/workspace)
+      // instead of leaving blank → home, which silently discovers zero repos
+      // for nested layouts. Falls back to blank (home) when nothing is denser.
+      const suggestion = await window.gt.settings.suggestProjectsDir().catch(() => null)
+      setProjectsDir(suggestion?.dir ?? '')
+    })
   }, [])
 
   // Seed the engine pick from detection (codex preferred, then claude, then
@@ -318,6 +328,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   className={`${fieldInput} min-w-0 flex-1`}
                 />
               </div>
+              {projectsDirValidation?.ok &&
+                typeof projectsDirValidation.repoCount === 'number' &&
+                projectsDirValidation.repoCount > 0 && (
+                  <div className="mt-2 text-[11px] text-[var(--gt-green)]">
+                    Manages {projectsDirValidation.repoCount}{' '}
+                    {projectsDirValidation.repoCount === 1 ? 'repo' : 'repos'} in this folder
+                  </div>
+                )}
               {projectsDirValidation &&
                 !projectsDirValidation.ok &&
                 projectsDirValidation.reason === 'is-repo' && (
@@ -329,6 +347,24 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                         className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
                       >
                         Use parent
+                      </button>
+                    )}
+                  </div>
+                )}
+              {projectsDirValidation &&
+                !projectsDirValidation.ok &&
+                projectsDirValidation.reason === 'no-repos-found' && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                    <span className="min-w-0 flex-1">
+                      ⚠ 0 repos found here — they may be nested one level deeper.
+                    </span>
+                    {projectsDirValidation.suggestedChild && (
+                      <button
+                        onClick={() => setProjectsDir(projectsDirValidation.suggestedChild || '')}
+                        className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                      >
+                        Use {projectsDirValidation.suggestedChild} (
+                        {projectsDirValidation.suggestedCount} repos)
                       </button>
                     )}
                   </div>

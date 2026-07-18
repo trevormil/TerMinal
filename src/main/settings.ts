@@ -585,23 +585,99 @@ export function worktreesFrom(worktreesDir: string, projectsResolved: string): s
 }
 
 export type ProjectsDirValidation =
-  | { ok: true; dir: string }
+  | { ok: true; dir: string; repoCount: number }
   | { ok: false; reason: 'is-repo'; dir: string; suggestedParent: string; message: string }
+  | {
+      ok: false
+      reason: 'no-repos-found'
+      dir: string
+      suggestedChild?: string
+      suggestedCount?: number
+      message: string
+    }
+
+// Candidate parent folders scanned when auto-detecting a default projects dir,
+// densest-first fallback. '' means the home folder itself. Keep in sync with the
+// discovery rule in `bin/terminal-mcp-server` (`knownRepoRoots`): a repo is any
+// immediate child directory containing a `.git` entry; dotfiles are skipped.
+export const CANDIDATE_ROOT_NAMES = ['', 'workspace', 'code', 'projects', 'dev', 'src']
+
+// fs-injected so it stays pure/unit-testable. Mirrors `knownRepoRoots`: one
+// level down, skip dot-prefixed names, count children that contain `.git`.
+export function countGitReposOneLevel(
+  dir: string,
+  fs: { listChildren: (d: string) => string[]; hasGitDir: (d: string) => boolean },
+): number {
+  let n = 0
+  let children: string[]
+  try {
+    children = fs.listChildren(dir)
+  } catch {
+    return 0
+  }
+  for (const name of children) {
+    if (name.startsWith('.')) continue
+    if (fs.hasGitDir(join(dir, name))) n++
+  }
+  return n
+}
+
+/** Densest candidate root (ties resolve to the earliest in `candidates`, so the
+ *  home folder wins a tie). Returns null when no candidate holds any repos. */
+export function pickDensestRoot(
+  candidates: string[],
+  countFn: (d: string) => number,
+): { root: string; count: number } | null {
+  let best: { root: string; count: number } | null = null
+  for (const root of candidates) {
+    const count = countFn(root)
+    if (count > 0 && (!best || count > best.count)) best = { root, count }
+  }
+  return best
+}
 
 export function classifyProjectsDir(
   dir: string,
-  hasGitDir: (d: string) => boolean,
+  fs: {
+    hasGitDir: (d: string) => boolean
+    listChildren: (d: string) => string[]
+    resolveHome: () => string
+    /** Absolute paths for CANDIDATE_ROOT_NAMES, home-relative ('' → home). */
+    candidateRoots?: () => string[]
+  },
 ): ProjectsDirValidation {
   const trimmed = dir.trim()
-  if (!trimmed) return { ok: true, dir: '' }
-  if (!hasGitDir(trimmed)) return { ok: true, dir: trimmed }
-  const suggestedParent = dirname(trimmed)
+  // A repo path is the rare mistake; flag it before anything else.
+  if (trimmed && fs.hasGitDir(trimmed)) {
+    const suggestedParent = dirname(trimmed)
+    return {
+      ok: false,
+      reason: 'is-repo',
+      dir: trimmed,
+      suggestedParent,
+      message: `Projects folder points at a git repo. Use its parent folder instead: ${suggestedParent}`,
+    }
+  }
+  // Blank resolves to home at read time (see resolvedProjectsDir); count there
+  // too so "leave blank" doesn't silently discover zero repos.
+  const scanDir = trimmed || fs.resolveHome()
+  const repoCount = countGitReposOneLevel(scanDir, fs)
+  if (repoCount > 0) return { ok: true, dir: trimmed, repoCount }
+
+  // Zero repos one level down — the common nested-layout failure. Suggest the
+  // densest sibling candidate (e.g. ~/workspace) if one exists.
+  const candidates = fs.candidateRoots ? fs.candidateRoots() : []
+  const denser = pickDensestRoot(
+    candidates.filter((c) => c !== scanDir),
+    (d) => countGitReposOneLevel(d, fs),
+  )
+  const base = `No git repos found directly in ${scanDir || 'this folder'} — repos may be nested one level deeper.`
   return {
     ok: false,
-    reason: 'is-repo',
+    reason: 'no-repos-found',
     dir: trimmed,
-    suggestedParent,
-    message: `Projects folder points at a git repo. Use its parent folder instead: ${suggestedParent}`,
+    ...(denser ? { suggestedChild: denser.root, suggestedCount: denser.count } : {}),
+    message: denser ? `${base} ${denser.root} holds ${denser.count} — use that instead?` : base,
   }
 }
 

@@ -1727,6 +1727,15 @@ export function SettingsPanel({
                     onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
                     onClear={() => saveDaemon({ projectsDir: '' })}
                   >
+                    {!selectedIsRemote &&
+                      projectsDirValidation?.ok &&
+                      typeof projectsDirValidation.repoCount === 'number' &&
+                      projectsDirValidation.repoCount > 0 && (
+                        <div className="mb-2 text-[10.5px] text-[var(--gt-green)]">
+                          Manages {projectsDirValidation.repoCount}{' '}
+                          {projectsDirValidation.repoCount === 1 ? 'repo' : 'repos'} in this folder
+                        </div>
+                      )}
                     {projectsDirValidation &&
                       !projectsDirValidation.ok &&
                       projectsDirValidation.reason === 'is-repo' && (
@@ -1742,6 +1751,29 @@ export function SettingsPanel({
                               className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
                             >
                               Use parent
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    {!selectedIsRemote &&
+                      projectsDirValidation &&
+                      !projectsDirValidation.ok &&
+                      projectsDirValidation.reason === 'no-repos-found' && (
+                        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+                          <span className="min-w-0 flex-1">
+                            ⚠ 0 repos found here — they may be nested one level deeper.
+                          </span>
+                          {projectsDirValidation.suggestedChild && (
+                            <button
+                              onClick={() =>
+                                saveDaemon({
+                                  projectsDir: projectsDirValidation.suggestedChild || '',
+                                })
+                              }
+                              className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                            >
+                              Use {projectsDirValidation.suggestedChild} (
+                              {projectsDirValidation.suggestedCount} repos)
                             </button>
                           )}
                         </div>
