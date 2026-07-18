@@ -32,6 +32,7 @@ import {
   Plus,
   Trash2,
   BellRing,
+  ArrowUpCircle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
@@ -55,6 +56,7 @@ import type {
   TicketProviderTestResult,
   PinnedPanel,
   AlertChannelId,
+  UpdateCheckResult,
 } from '../lib/types'
 import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
@@ -267,6 +269,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
   { id: 'presets', title: 'Presets', icon: Eye },
   { id: 'status', title: 'Status', icon: Activity },
+  { id: 'updates', title: 'Updates', icon: ArrowUpCircle },
   { id: 'rebuild', title: 'Rebuild', icon: PackageOpen },
 ]
 
@@ -485,6 +488,150 @@ function RebuildPanel() {
         scripts, snippets, widgets, schedules, inbox, and run state in
         <span className="font-mono"> ~/.config/TerMinal</span> are preserved.
       </div>
+    </div>
+  )
+}
+
+// Installed-build update status. Compares the baked build sha against
+// origin/main (main process, update-check.ts) and offers the update action —
+// which is just the existing Rebuild flow: bin/release pulls a clean main
+// checkout before building, so "Update now" == release:start.
+function UpdatesPanel() {
+  const [result, setResult] = useState<UpdateCheckResult | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const check = async () => {
+    setChecking(true)
+    try {
+      setResult(await window.gt.update.check())
+    } finally {
+      setChecking(false)
+    }
+  }
+  useEffect(() => {
+    check()
+  }, [])
+
+  const startUpdate = async () => {
+    setError(null)
+    setUpdating(true)
+    const r = await window.gt.release.start()
+    if ('error' in r) {
+      setError(r.error)
+      setUpdating(false)
+    }
+    // On success the release script quits + relaunches the app mid-flow —
+    // leave the spinner on; the Rebuild section below tails the log.
+  }
+
+  const manualCmd = `cd ${result?.repoPath || '<TerMinal repo>'} && git checkout main && git pull && bun run release`
+  const copyCmd = async () => {
+    await navigator.clipboard.writeText(manualCmd)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const status = result?.status
+  const statusText =
+    checking && !result
+      ? 'Checking…'
+      : status === 'behind'
+        ? `${result!.behindBy} commit${result!.behindBy === 1 ? '' : 's'} behind origin/main`
+        : status === 'up-to-date'
+          ? 'Up to date with origin/main'
+          : status === 'diverged'
+            ? 'Built from unmerged code (not on main) — re-release from main once it lands'
+            : `Couldn't check${result?.error ? ` — ${result.error}` : ''}`
+  const statusColor =
+    status === 'behind'
+      ? 'text-amber-400'
+      : status === 'up-to-date'
+        ? 'text-[var(--gt-green)]'
+        : 'text-zinc-500'
+  // bin/release only fast-forwards a CLEAN checkout that is ON main — warn when
+  // "Update now" would silently rebuild a branch/dirty tree instead.
+  const checkoutWarning =
+    result?.source === 'git' &&
+    (result.checkoutDirty ||
+      (result.checkoutBranch &&
+        result.checkoutBranch !== 'main' &&
+        result.checkoutBranch !== 'master'))
+      ? `The source checkout is ${result.checkoutBranch && result.checkoutBranch !== 'main' && result.checkoutBranch !== 'master' ? `on ${result.checkoutBranch}` : ''}${result.checkoutDirty ? `${result.checkoutBranch && result.checkoutBranch !== 'main' && result.checkoutBranch !== 'master' ? ' with' : ''} local changes` : ''} — Update now would rebuild it as-is instead of pulling main.`
+      : null
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+        <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-[11.5px]">
+          <span className="text-zinc-600">Installed build</span>
+          <span className="font-mono text-zinc-300">
+            {__BUILD_SHA__} on {__BUILD_BRANCH__} · {__BUILD_TIME__.slice(0, 16).replace('T', ' ')}
+          </span>
+          <span className="text-zinc-600">Latest main</span>
+          <span className="font-mono text-zinc-300">
+            {result?.latestSha || (checking ? '…' : 'unknown')}
+            {result?.source === 'github' && (
+              <span className="ml-1.5 text-[10px] text-zinc-600">(via GitHub API)</span>
+            )}
+          </span>
+          <span className="text-zinc-600">Status</span>
+          <span className={statusColor}>{statusText}</span>
+        </div>
+        {result?.buildDirty && (
+          <div className="mt-1.5 text-[10.5px] text-amber-400/80">
+            This build came from an uncommitted working tree (-dirty) — the comparison uses its base
+            commit.
+          </div>
+        )}
+        {checkoutWarning && (
+          <div className="mt-1.5 text-[10.5px] text-amber-400/80">{checkoutWarning}</div>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={check}
+          disabled={checking}
+          className="flex items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+        >
+          {checking ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RotateCcw size={14} strokeWidth={2} />
+          )}
+          Check now
+        </button>
+        <button
+          onClick={startUpdate}
+          disabled={updating || status !== 'behind'}
+          className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-2 text-left text-[12px] text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
+        >
+          {updating ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <ArrowUpCircle size={14} strokeWidth={2} />
+          )}
+          {updating ? 'Updating… (app will quit + relaunch automatically)' : 'Update now'}
+          <span className="ml-auto text-[10.5px] text-zinc-600">pull main + bun run release</span>
+        </button>
+      </div>
+      {error && <div className="text-[11px] text-amber-400">{error}</div>}
+      <button
+        onClick={copyCmd}
+        className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/40"
+      >
+        {copied ? (
+          <CircleCheck size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-green)]" />
+        ) : (
+          <ClipboardCopy size={13} strokeWidth={2} className="shrink-0 text-zinc-600" />
+        )}
+        <span className="truncate font-mono">{manualCmd}</span>
+        <span className="ml-auto shrink-0 text-[10px] text-zinc-600">
+          {copied ? 'copied' : 'copy manual update'}
+        </span>
+      </button>
     </div>
   )
 }
@@ -2785,6 +2932,17 @@ export function SettingsPanel({
                 desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
               >
                 <HarnessStatusPanel />
+              </Section>
+
+              {/* Installed-build vs origin/main — check + one-click update
+              (which reuses the Rebuild flow below). */}
+              <Section
+                id="updates"
+                icon={ArrowUpCircle}
+                title="Updates"
+                desc="Is the installed app behind main? Compares the baked build commit against origin/main (local checkout first, GitHub API fallback)."
+              >
+                <UpdatesPanel />
               </Section>
 
               {/* In-app rebuild — eats own dog food. Spawns bin/release fully

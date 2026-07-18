@@ -18,6 +18,7 @@ import {
 import { EntryScreen, type Choice, type PairedLoopConfig } from './components/EntryScreen'
 import { FleetView } from './components/FleetView'
 import { SettingsPanel } from './components/SettingsPanel'
+import { UpdateBanner } from './components/UpdateBanner'
 import { Onboarding } from './components/Onboarding'
 import { Orientation } from './components/Orientation'
 import { firstRunPhase } from './lib/orientation'
@@ -1688,6 +1689,8 @@ export default function App() {
             </div>
           )}
         </div>
+        {/* "installed app is behind main" notice — self-hiding, dismiss persists per upstream sha */}
+        <UpdateBanner onOpenSettings={() => setShowSettings(true)} />
         {showSettings && (
           <SettingsPanel
             onClose={() => setShowSettings(false)}

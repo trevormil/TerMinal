@@ -353,6 +353,14 @@ const gt = {
     tail: () => ipcRenderer.invoke('release:tail'),
     status: () => ipcRenderer.invoke('release:status'),
   },
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    onStatus: (cb: (r: unknown) => void) => {
+      const h = (_e: unknown, r: unknown) => cb(r)
+      ipcRenderer.on('update:status', h)
+      return () => ipcRenderer.removeListener('update:status', h)
+    },
+  },
   harnessStatus: () => ipcRenderer.invoke('harness:status'),
   budgets: {
     get: () => ipcRenderer.invoke('budgets:get'),

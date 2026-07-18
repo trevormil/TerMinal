@@ -103,6 +103,7 @@ import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
 import { listCustomTabs, runTabCommand } from './tabs'
 import { repoRootOf, repoForCwd } from './repo'
+import { checkForUpdate } from './update-check'
 import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
 import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
 import {
@@ -928,6 +929,16 @@ function createWindow() {
   win.webContents.on('render-process-gone', (_e, d) =>
     console.error('[gt] renderer gone:', d.reason),
   )
+  // Installed-build update check — async, delayed past first paint, and silent
+  // unless the installed app is confirmed behind origin/main (never blocks
+  // startup; offline/API failures resolve to status 'unknown' and stay quiet).
+  win.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      void runUpdateCheck().then((r) => {
+        if (r.status === 'behind') send('update:status', r)
+      })
+    }, 2500)
+  })
 
   // push activity events to the renderer; poll all sessions for turn completion
   onActivity((ev) => send('activity:event', ev))
@@ -2421,6 +2432,27 @@ ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
     })
   })
 })
+
+// Installed-build update check (update-check.ts): compares the baked build sha
+// against origin/main via the local source checkout (exact, fork-aware), else
+// the GitHub compare API. On demand from the renderer + once after startup.
+declare const __BUILD_SHA__: string
+declare const __BUILD_REPO_PATH__: string
+function runUpdateCheck() {
+  // Same discovery as release:start, plus the checkout path baked at build time
+  // (the packaged app's cwd/appPath never point at the source tree).
+  const repoPath =
+    sourceCheckoutRoot(join('bin', 'release')) ||
+    (__BUILD_REPO_PATH__ && existsSync(join(__BUILD_REPO_PATH__, 'bin', 'release'))
+      ? __BUILD_REPO_PATH__
+      : '')
+  return checkForUpdate({
+    buildStamp: __BUILD_SHA__,
+    repoPath: repoPath || undefined,
+    repoSlug: __BUILD_REPO_SLUG__ || undefined,
+  })
+}
+ipcMain.handle('update:check', () => runUpdateCheck())
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to
 // a log file the renderer can tail. The release script kills the running
