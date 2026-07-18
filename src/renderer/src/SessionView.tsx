@@ -73,6 +73,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   )
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [templateSha, setTemplateSha] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const dismissedKey = `gt.bootstrapDismissed.${repoRoot}`
   const dismissed = (() => {
@@ -103,6 +104,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
       setError(r.error)
       setState('error')
     } else {
+      setTemplateSha(r.templateSha || '')
       setState('done')
     }
   }
@@ -111,7 +113,10 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-1.5 text-[11px] text-zinc-200">
         <span className="text-[14px]">🛠</span>
         {state === 'done' ? (
-          <span className="flex-1">Bootstrapped — reload tabs to pick up .agents/ + skills.</span>
+          <span className="flex-1">
+            Bootstrapped{templateSha ? ` (template ${templateSha.slice(0, 7)})` : ''} — reload tabs
+            to pick up .agents/ + skills.
+          </span>
         ) : state === 'running' ? (
           <span className="flex-1">Running bootstrap.sh…</span>
         ) : state === 'error' ? (

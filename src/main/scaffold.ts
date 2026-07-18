@@ -11,6 +11,7 @@ import {
 } from './template'
 import { saveRepoTicketConfig, scaffoldObsidianVault } from './ticket-provider'
 import { resolveObsidianScaffold, type ScaffoldTicketProvider } from './scaffold-vault'
+import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 
 export type { ScaffoldTicketProvider } // re-exported so callers keep importing from './scaffold'
 
@@ -111,6 +112,14 @@ export function scaffoldProject(
         /* best effort */
       }
     }
+    // Template provenance (ticket 0045): stamp WHICH template version was
+    // copied, before the first commit so the stamp is tracked like the rest of
+    // .TerMinal/ state. sha prefers the actual source checkout's HEAD (local
+    // submodule or tmp clone); falls back to the build-time baked submodule sha.
+    writeBootstrapStamp(dest, {
+      sha: resolveTemplateSha(src.dir, bakedTemplateSha()),
+      stampedAt: new Date().toISOString(),
+    })
     git('init', '-q')
     git('add', '-A')
     git('commit', '-qm', 'chore: scaffold from project-template')
