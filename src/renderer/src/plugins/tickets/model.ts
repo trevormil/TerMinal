@@ -15,16 +15,18 @@ export type TicketsView = {
   rows: TicketRow[]
   /** Rows beyond the visible cap ("+N more"). */
   overflow: number
-  /** closed + icebox, collapsed to a single count row. */
+  /** Everything non-active (closed, icebox, …), collapsed to a single count row. */
   closed: number
   /** in-progress count (the numerator of "N/M active"). */
   active: number
-  /** Non-closed, non-icebox count (the denominator of "N/M active"). */
+  /** Active-status count (the denominator of "N/M active"). */
   total: number
 }
 
-const COLLAPSED = new Set(['closed', 'icebox'])
-// Unknown statuses rank with 'open' so a provider quirk never hides a ticket.
+// Allowlist, not blocklist: only active work renders as rows, so any other
+// status a provider or stray frontmatter invents collapses into the count
+// instead of cluttering the widget.
+const ACTIVE = new Set(['open', 'in-progress', 'stuck'])
 const rank = (s: string): number => (s === 'in-progress' ? 0 : s === 'stuck' ? 1 : 2)
 
 export const PAGE_SIZE = 8
@@ -35,7 +37,7 @@ export const PAGE_SIZE = 8
  * collapses back to 1.
  */
 export function ticketsView(tickets: Ticket[], pagesShown = 1, pageSize = PAGE_SIZE): TicketsView {
-  const listed = tickets.filter((t) => !COLLAPSED.has(t.status))
+  const listed = tickets.filter((t) => ACTIVE.has(t.status))
   const rows = [...listed]
     .sort((a, b) => rank(a.status) - rank(b.status))
     .map((t) => ({

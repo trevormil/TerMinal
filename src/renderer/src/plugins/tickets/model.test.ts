@@ -150,10 +150,18 @@ describe('ticketsView', () => {
     expect(v.rows[0].status).toBe('in-progress')
   })
 
-  test('unknown status is shown with the open group, not silently dropped', () => {
-    const v = ticketsView([t({ status: 'weird' }), t({ status: 'in-progress' })])
-    expect(v.rows.map((r) => r.status)).toEqual(['in-progress', 'weird'])
-    expect(v.total).toBe(2)
-    expect(v.closed).toBe(0)
+  test('only active statuses render rows; anything else collapses into the count', () => {
+    const v = ticketsView([
+      t({ status: 'dropped' }),
+      t({ status: 'weird' }),
+      t({ status: 'closed' }),
+      t({ status: 'icebox' }),
+      t({ status: 'in-progress' }),
+      t({ status: 'stuck' }),
+      t({ status: 'open' }),
+    ])
+    expect(v.rows.map((r) => r.status)).toEqual(['in-progress', 'stuck', 'open'])
+    expect(v.total).toBe(3)
+    expect(v.closed).toBe(4)
   })
 })

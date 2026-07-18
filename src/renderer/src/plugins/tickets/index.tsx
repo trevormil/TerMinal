@@ -84,7 +84,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
 }
 
 // The repo's ticket backlog, OpenCode-style: in-progress pulsing on top, then
-// stuck, then open; closed + icebox collapsed to a count. Works for every
+// stuck, then open; every other status collapsed to a count. Works for every
 // provider (local/github/linear/obsidian all normalize to the same shape).
 const plugin: Plugin<Ticket[]> = {
   id: 'tickets',
