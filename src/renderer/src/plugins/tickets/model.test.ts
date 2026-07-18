@@ -95,6 +95,61 @@ describe('ticketsView', () => {
     expect(v.overflow).toBe(3)
   })
 
+  test('page 1 is the default: one page of rows, rest reported as overflow', () => {
+    const v = ticketsView(
+      Array.from({ length: 20 }, () => t({ status: 'open' })),
+      1,
+    )
+    expect(v.rows.length).toBe(8)
+    expect(v.overflow).toBe(12)
+  })
+
+  test('mid page: each extra page reveals pageSize more rows', () => {
+    const v = ticketsView(
+      Array.from({ length: 20 }, () => t({ status: 'open' })),
+      2,
+    )
+    expect(v.rows.length).toBe(16)
+    expect(v.overflow).toBe(4)
+    expect(v.total).toBe(20)
+  })
+
+  test('last partial page: shows everything, overflow reaches zero', () => {
+    const v = ticketsView(
+      Array.from({ length: 11 }, () => t({ status: 'open' })),
+      2,
+    )
+    expect(v.rows.length).toBe(11)
+    expect(v.overflow).toBe(0)
+  })
+
+  test('pages beyond the list clamp to all rows without going negative', () => {
+    const v = ticketsView(
+      Array.from({ length: 5 }, () => t({ status: 'open' })),
+      7,
+    )
+    expect(v.rows.length).toBe(5)
+    expect(v.overflow).toBe(0)
+  })
+
+  test('collapse back to page 1 restores the original cap and overflow', () => {
+    const list = Array.from({ length: 11 }, () => t({ status: 'open' }))
+    const expanded = ticketsView(list, 2)
+    expect(expanded.rows.length).toBe(11)
+    const collapsed = ticketsView(list, 1)
+    expect(collapsed.rows.length).toBe(8)
+    expect(collapsed.overflow).toBe(3)
+  })
+
+  test('expanded pages keep the status ordering (in-progress still first)', () => {
+    const v = ticketsView(
+      [...Array.from({ length: 9 }, () => t({ status: 'open' })), t({ status: 'in-progress' })],
+      2,
+    )
+    expect(v.rows.length).toBe(10)
+    expect(v.rows[0].status).toBe('in-progress')
+  })
+
   test('unknown status is shown with the open group, not silently dropped', () => {
     const v = ticketsView([t({ status: 'weird' }), t({ status: 'in-progress' })])
     expect(v.rows.map((r) => r.status)).toEqual(['in-progress', 'weird'])

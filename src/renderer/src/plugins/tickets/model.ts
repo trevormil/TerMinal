@@ -27,7 +27,14 @@ const COLLAPSED = new Set(['closed', 'icebox'])
 // Unknown statuses rank with 'open' so a provider quirk never hides a ticket.
 const rank = (s: string): number => (s === 'in-progress' ? 0 : s === 'stuck' ? 1 : 2)
 
-export function ticketsView(tickets: Ticket[], maxRows = 8): TicketsView {
+export const PAGE_SIZE = 8
+
+/**
+ * `pagesShown` drives the see-more pagination: the widget starts at 1 page
+ * (PAGE_SIZE rows) and each "+N more" click reveals one more page; "show less"
+ * collapses back to 1.
+ */
+export function ticketsView(tickets: Ticket[], pagesShown = 1, pageSize = PAGE_SIZE): TicketsView {
   const listed = tickets.filter((t) => !COLLAPSED.has(t.status))
   const rows = [...listed]
     .sort((a, b) => rank(a.status) - rank(b.status))
@@ -37,9 +44,10 @@ export function ticketsView(tickets: Ticket[], maxRows = 8): TicketsView {
       title: t.title,
       status: t.status,
     }))
+  const cap = Math.max(1, pagesShown) * pageSize
   return {
-    rows: rows.slice(0, maxRows),
-    overflow: Math.max(0, rows.length - maxRows),
+    rows: rows.slice(0, cap),
+    overflow: Math.max(0, rows.length - cap),
     closed: tickets.length - listed.length,
     active: listed.filter((t) => t.status === 'in-progress').length,
     total: listed.length,

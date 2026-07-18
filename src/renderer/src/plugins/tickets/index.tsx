@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { Ticket as TicketIcon, CircleDot, Circle, TriangleAlert } from 'lucide-react'
 import { Card, Empty } from '../../components/ui'
-import { navigateTo } from '../../lib/nav'
 import type { Plugin, Ticket } from '../../lib/types'
 import { ticketsView } from './model'
+import { TicketModal } from './TicketModal'
 
 function Dot({ status }: { status: string }) {
   if (status === 'in-progress')
@@ -12,11 +13,74 @@ function Dot({ status }: { status: string }) {
   return <Circle size={12} strokeWidth={2.25} className="text-zinc-600" />
 }
 
-// Deep-link into the Tickets tab (replay once — the receiver mounts after the
-// tab switches; mirrors the tdd/mr-summary widgets).
-const openTicket = (slug: string) => {
-  navigateTo('tickets', { slug })
-  setTimeout(() => navigateTo('tickets', { slug }), 50)
+// Proper component (not inline render JSX) so paging + modal state survive the
+// poll-driven re-renders.
+function TicketsWidget({ data }: { data: Ticket[] | null }) {
+  const [pages, setPages] = useState(1)
+  const [openSlug, setOpenSlug] = useState<string | null>(null)
+  const v = ticketsView(data || [], pages)
+  if (!v.total && !v.closed)
+    return (
+      <Card icon={TicketIcon} title="Tickets">
+        <Empty>no tickets</Empty>
+      </Card>
+    )
+  return (
+    <Card
+      icon={TicketIcon}
+      title="Tickets"
+      right={
+        <span className="text-[9px] tabular-nums text-zinc-600">
+          {v.active}/{v.total} active
+        </span>
+      }
+    >
+      <div className="space-y-0.5">
+        {v.rows.map((t) => (
+          <button
+            key={t.slug}
+            type="button"
+            onClick={() => setOpenSlug(t.slug)}
+            title={`${t.key} ${t.title}`}
+            className="flex w-full items-start gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+          >
+            <span className="mt-px shrink-0 text-[10px]">
+              <Dot status={t.status} />
+            </span>
+            <span
+              className={`min-w-0 flex-1 truncate ${t.status === 'in-progress' ? 'text-zinc-100' : 'text-zinc-400'}`}
+            >
+              <span className="tabular-nums text-zinc-500">{t.key}</span> {t.title}
+            </span>
+          </button>
+        ))}
+        {(v.overflow > 0 || pages > 1) && (
+          <div className="flex items-center gap-2">
+            {v.overflow > 0 && (
+              <button
+                type="button"
+                onClick={() => setPages((p) => p + 1)}
+                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+              >
+                +{v.overflow} more
+              </button>
+            )}
+            {pages > 1 && (
+              <button
+                type="button"
+                onClick={() => setPages(1)}
+                className="text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+              >
+                show less
+              </button>
+            )}
+          </div>
+        )}
+        {v.closed > 0 && <div className="text-[10px] text-zinc-600">▸ {v.closed} closed</div>}
+      </div>
+      {openSlug && <TicketModal slug={openSlug} onClose={() => setOpenSlug(null)} />}
+    </Card>
+  )
 }
 
 // The repo's ticket backlog, OpenCode-style: in-progress pulsing on top, then
@@ -27,52 +91,12 @@ const plugin: Plugin<Ticket[]> = {
   title: 'Tickets',
   icon: TicketIcon,
   blurb: 'The repo ticket backlog — in-progress first, closed collapsed to a count.',
-  order: 3.5,
+  // First in the cockpit's default order — strictly below every other built-in
+  // (session is 0, command widgets default to 50). Saved user orders still win.
+  order: -1,
   intervalMs: 5000,
   defaultEnabled: true,
   poll: (gt) => gt.tickets.list(),
-  render: (d) => {
-    const v = ticketsView(d || [])
-    if (!v.total && !v.closed)
-      return (
-        <Card icon={TicketIcon} title="Tickets">
-          <Empty>no tickets</Empty>
-        </Card>
-      )
-    return (
-      <Card
-        icon={TicketIcon}
-        title="Tickets"
-        right={
-          <span className="text-[9px] tabular-nums text-zinc-600">
-            {v.active}/{v.total} active
-          </span>
-        }
-      >
-        <div className="space-y-0.5">
-          {v.rows.map((t) => (
-            <button
-              key={t.slug}
-              type="button"
-              onClick={() => openTicket(t.slug)}
-              title={`${t.key} ${t.title}`}
-              className="flex w-full items-start gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
-            >
-              <span className="mt-px shrink-0 text-[10px]">
-                <Dot status={t.status} />
-              </span>
-              <span
-                className={`min-w-0 flex-1 truncate ${t.status === 'in-progress' ? 'text-zinc-100' : 'text-zinc-400'}`}
-              >
-                <span className="tabular-nums text-zinc-500">{t.key}</span> {t.title}
-              </span>
-            </button>
-          ))}
-          {v.overflow > 0 && <div className="text-[10px] text-zinc-600">+{v.overflow} more</div>}
-          {v.closed > 0 && <div className="text-[10px] text-zinc-600">▸ {v.closed} closed</div>}
-        </div>
-      </Card>
-    )
-  },
+  render: (d) => <TicketsWidget data={d} />,
 }
 export default plugin
