@@ -41,11 +41,14 @@ export function pickTemplateSource(opts: {
     return { error: `invalid template repo: ${repo || '(empty)'}` }
   const cloned = opts.cloneToTmp(repo)
   if (!cloned) return { error: `couldn't fetch template from ${repo}` }
-  if (!existsSync(join(cloned.dir, opts.marker))) {
-    cloned.cleanup?.()
-    return { error: `template from ${repo} is missing ${opts.marker}` }
-  }
-  return cloned
+  if (existsSync(join(cloned.dir, opts.marker))) return cloned
+  // The template lives embedded in the TerMinal repo — a clone of TerMinal (or
+  // any repo carrying templates/project-template) resolves to that subdir,
+  // with cleanup still tearing down the whole clone.
+  const embedded = join(cloned.dir, 'templates', 'project-template')
+  if (existsSync(join(embedded, opts.marker))) return { dir: embedded, cleanup: cloned.cleanup }
+  cloned.cleanup?.()
+  return { error: `template from ${repo} is missing ${opts.marker}` }
 }
 
 export function cloneTemplateToTmp(repo: string): TemplateSource | null {

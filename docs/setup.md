@@ -85,8 +85,8 @@ Two ways to set them up:
 - **Let Claude do it (recommended):** Settings → **Copy global-skills setup
   prompt**, paste into a Claude session. It checks what you have and installs the
   rest from your template repo into `~/.claude/skills` (and `~/.codex/skills`).
-- **Manual:** clone your template repo (default
-  `https://github.com/trevormil/project-template`, configurable in
+- **Manual:** clone your template repo (default: the TerMinal repo itself,
+  which embeds the template at `templates/project-template`; configurable in
   **Settings → Projects & worktrees**) and follow its setup docs to symlink its
   skills into `~/.claude/skills` / `~/.codex/skills`.
 

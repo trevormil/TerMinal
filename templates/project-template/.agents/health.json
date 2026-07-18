@@ -1,0 +1,10 @@
+{
+  "id": "health",
+  "title": "Health check",
+  "description": "Runs deterministic probes first and escalates to a cheap agent only on failure.",
+  "icon": "Activity",
+  "opensPr": true,
+  "engine": "claude",
+  "model": "haiku",
+  "inPlace": false
+}

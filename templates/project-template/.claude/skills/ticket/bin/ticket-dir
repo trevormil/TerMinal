@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Resolve the absolute directory where this repo's tickets live, then print it.
+#
+# Order of resolution:
+#   1. $OBSIDIAN_TICKETS_DIR — set by TerMinal in a session whose repo uses the
+#      Obsidian ticket provider (tickets live in an external vault, not the repo).
+#   2. .TerMinal/tickets.json with provider "obsidian" — parse the vault path
+#      (works outside a TerMinal session too).
+#   3. Legacy v1 `backlog/` when present without the v2 marker.
+#   4. Default v2 `.TerMinal/backlog`.
+#
+# Keeping this in one place means every ticket op (allocate id, write, list)
+# targets the same store, so an Obsidian repo never scatters tickets into git.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# 1. TerMinal-injected env (fast path).
+if [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
+  printf '%s\n' "$OBSIDIAN_TICKETS_DIR"
+  exit 0
+fi
+
+# 2. Obsidian provider config on disk.
+CFG="$ROOT/.TerMinal/tickets.json"
+if [ -f "$CFG" ] && grep -q '"provider"[[:space:]]*:[[:space:]]*"obsidian"' "$CFG"; then
+  vault="$(grep -o '"vaultPath"[[:space:]]*:[[:space:]]*"[^"]*"' "$CFG" | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//')"
+  sub="$(grep -o '"ticketsSubdir"[[:space:]]*:[[:space:]]*"[^"]*"' "$CFG" | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//')"
+  [ -n "$sub" ] || sub="tickets"
+  if [ -n "$vault" ]; then
+    printf '%s/%s\n' "$vault" "$sub"
+    exit 0
+  fi
+fi
+
+# 3/4. Repo-local backlog (legacy v1 vs v2).
+if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
+  printf '%s\n' "$ROOT/backlog"
+else
+  printf '%s\n' "$ROOT/.TerMinal/backlog"
+fi

@@ -1,0 +1,59 @@
+# Sole-writer registry — which scheduled agent owns which paths.
+#
+# Semantics: the agent named here is the ONLY source of edits to the matching
+# paths. The agent itself still goes through the standard workflow (its own
+# worktree → branch → PR → human merge); "sole writer" means no OTHER agent
+# (factory, stacked-mr, drift-auditor, etc.) ever touches these paths. Humans
+# can edit too (no hard block) but a pre-commit hook prints a warning, and each
+# owned file carries a managed-by header so the convention is visible.
+#
+# Why this matters for parallel scheduling: agents run concurrently in their own
+# worktrees. Without sole-writer scope, two agents could both regenerate
+# CHANGELOG.md from stale bases and clobber each other on merge. The registry
+# is the cheap conflict-avoidance layer.
+#
+# Glob patterns are `git ls-files`-style.
+
+agents:
+  changelog:
+    paths:
+      - CHANGELOG.md
+    spec: .agents/changelog.md
+
+  auto-docs:
+    paths:
+      - docs/maintainer/**/*.md
+      - docs/developer/**/*.md
+      - docs/personal/**/*.md
+    spec: .agents/auto-docs.md
+    notes: |
+      Owns the tripartite docs folders. Files inside these dirs are agent-
+      regenerated; human-authored docs belong elsewhere (e.g., docs/runbooks/,
+      docs/architecture.md at the root).
+
+  drift-auditor:
+    paths:
+      - .TerMinal/reports/drift/**/*.md
+    spec: .agents/drift.md
+
+  coverage:
+    paths:
+      - .TerMinal/reports/coverage/**/*.md
+      - .agents/coverage/baseline.json
+    spec: .agents/coverage.md
+
+  deps-quality:
+    paths:
+      - .TerMinal/reports/deps-quality/**/*.md
+    spec: .agents/deps-quality.md
+
+  perf:
+    paths:
+      - .TerMinal/reports/perf/**/*.md
+      - .agents/perf/baseline.json
+    spec: .agents/perf.md
+
+  health:
+    paths:
+      - .TerMinal/reports/health/**/*.md
+    spec: .agents/health.md

@@ -4,7 +4,9 @@ dist
 *.log
 .DS_Store
 # Per-repo TerMinal runtime state (notes, widgets) — local to each checkout.
-.TerMinal/
+# Anchored to the root: templates/project-template/.TerMinal is real template
+# content and must stay tracked.
+/.TerMinal/
 backlog/.next-id.lock
 sessions/.next-id.lock
 .status.md

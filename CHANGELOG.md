@@ -32,6 +32,10 @@ into `[Unreleased]` as they merge.
   step in `docs/setup.md`.
 
 ### Changed
+- The project template is now embedded in this repo at
+  `templates/project-template` (was a standalone repo + submodule) and bundled
+  into the packaged app — scaffolding works offline, template edits go through
+  the normal PR flow. The standalone repo is archived. (ADR-0005)
 - The local automation inbox now defaults to **opt-in** (was on by default) — it
   auto-runs full-access agents on dropped files, so it must be enabled
   deliberately.

@@ -25,6 +25,10 @@ extraResources:
     to: or-spend
   - from: bin/model-routing
     to: model-routing
+  # The embedded project template — packaged so scaffolding works offline
+  # without cloning (resolution: src/main/template.ts candidates).
+  - from: templates/project-template
+    to: templates/project-template
 # node-pty and better-sqlite3 ship native .node binaries that can't live inside
 # the asar archive — unpack them so they load at runtime.
 asarUnpack:

@@ -109,6 +109,51 @@ describe('pickTemplateSource', () => {
     expect('error' in suspicious ? suspicious.error : '').toContain('invalid template repo')
   })
 
+  test('clone with the marker under templates/project-template resolves to that subdir', () => {
+    const clone = tempDir('terminal-template-monorepo-')
+    const sub = join(clone, 'templates', 'project-template')
+    mkdirSync(sub, { recursive: true })
+    marker(sub)
+    let cleanup = false
+    const picked = pickTemplateSource({
+      candidates: [],
+      marker: 'bootstrap.sh',
+      templateRepo: 'https://example.com/TerMinal.git',
+      cloneToTmp: () => ({
+        dir: clone,
+        cleanup: () => {
+          cleanup = true
+        },
+      }),
+    })
+    expect(picked).toMatchObject({ dir: sub })
+    // Cleanup must still tear down the whole clone, not just the subdir.
+    expect(cleanup).toBe(false)
+    if (!('error' in picked)) picked.cleanup?.()
+    expect(cleanup).toBe(true)
+    rmSync(clone, { recursive: true, force: true })
+  })
+
+  test('clone missing the marker at root AND subdir still errors + cleans up', () => {
+    const clone = tempDir('terminal-template-empty-monorepo-')
+    mkdirSync(join(clone, 'templates', 'project-template'), { recursive: true })
+    let cleanup = false
+    const picked = pickTemplateSource({
+      candidates: [],
+      marker: 'bootstrap.sh',
+      templateRepo: 'https://example.com/TerMinal.git',
+      cloneToTmp: () => ({
+        dir: clone,
+        cleanup: () => {
+          cleanup = true
+        },
+      }),
+    })
+    expect('error' in picked ? picked.error : '').toContain('missing bootstrap.sh')
+    expect(cleanup).toBe(true)
+    rmSync(clone, { recursive: true, force: true })
+  })
+
   test('explicit local path missing marker errors before clone', () => {
     const configured = tempDir('terminal-template-bad-config-')
     try {

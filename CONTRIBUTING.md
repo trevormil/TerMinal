@@ -20,7 +20,7 @@ Optional CLIs enable specific surfaces:
 ```bash
 git clone https://github.com/trevormil/TerMinal.git
 cd TerMinal
-git submodule update --init   # vendors project-template for scaffolding
+git submodule update --init   # optional: vendored references (vendor/)
 bun install                   # rebuilds node-pty against Electron's ABI
 bun run dev                   # launch the dev build with HMR
 ```
@@ -38,8 +38,8 @@ global skills, and fresh-machine setup notes.
 - `src/renderer/` — React + Tailwind UI. Tabs auto-discover from
   `tabs/<id>/index.tsx`; cockpit plugins from `plugins/<id>/`.
 - `bin/` — packaged helper scripts used by launchd, MCP, and agent scripts.
-- `templates/project-template/` — git submodule for the bootstrapped workflow
-  scaffold.
+- `templates/project-template/` — the embedded workflow scaffold bootstrapped
+  into new repos.
 
 ## Before Opening A PR
 

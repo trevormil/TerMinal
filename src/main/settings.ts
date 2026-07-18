@@ -125,7 +125,9 @@ export type SettingsPatch = Partial<
 const DEFAULT_EDITOR = 'Cursor'
 const DEFAULT_BROWSER = 'Brave Browser'
 
-export const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/project-template'
+// The template is embedded in the TerMinal repo (templates/project-template);
+// a clone of this repo resolves to that subdir (see pickTemplateSource).
+export const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/TerMinal'
 const SECRET_MARKER = 'terminal-secret:v1'
 const SECRET_PATHS = [
   ['telegram', 'botToken'],
