@@ -1704,7 +1704,6 @@ export type GtApi = {
   harnessTdd: () => Promise<TddInfo>
   usage: () => Promise<Usage>
   gitStatus: () => Promise<GitStatus>
-  mrSummary: () => Promise<MrSummary>
   sessionTasks: () => Promise<TaskItem[]>
   meta: () => Promise<SessionInfo>
   listCommandWidgets: () => Promise<CommandWidget[]>
@@ -1966,15 +1965,6 @@ export type GitStatus = {
   behind: number
   dirty: number
   upstream: boolean
-}
-export type MrSummary = {
-  ok: boolean
-  error?: string
-  open: number
-  approve: number
-  changes: number
-  needsReview: number
-  label: string
 }
 
 /** A full-screen tab. Auto-discovered from src/renderer/src/tabs/<id>/index.tsx. */
