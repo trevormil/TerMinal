@@ -382,28 +382,28 @@ function HarnessStatusPanel() {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-3 gap-2 text-zinc-300">
-        <Cell label="cron records" value={s.cronRunFiles} />
+        <Cell label="Cron records" value={s.cronRunFiles} />
         <Cell
-          label="cron running"
+          label="Cron running"
           value={s.cronRunsRunning}
           tone={s.cronRunsRunning > 0 ? 'blue' : 'mute'}
         />
         <Cell
-          label="in-proc running"
+          label="In-proc running"
           value={s.inProcessRunning}
           tone={s.inProcessRunning > 0 ? 'blue' : 'mute'}
         />
         <Cell
-          label="failed (24h)"
+          label="Failed (24h)"
           value={s.cronFailed24h}
           tone={s.cronFailed24h > 0 ? 'red' : 'green'}
         />
         <Cell
-          label="paused schedules"
+          label="Paused schedules"
           value={s.schedulesPaused}
           tone={s.schedulesPaused > 0 ? 'yellow' : 'mute'}
         />
-        <Cell label="cron worktrees" value={s.cronWorktrees} />
+        <Cell label="Cron worktrees" value={s.cronWorktrees} />
       </div>
       <div className="text-[10px] text-zinc-600">
         Updated live · stored in <code className="font-mono">{tilde(s.configDir)}</code>
@@ -726,7 +726,7 @@ function TicketProviderPanel() {
   const action =
     'inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-3 text-[12px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50'
   const providerChanged = JSON.stringify(saved) !== JSON.stringify(draft)
-  const repoLabel = ctx?.repoPath || ctx?.repoRoot || 'current repo'
+  const repoLabel = ctx?.repoPath || ctx?.repoRoot || 'Current repo'
 
   return (
     <div className="space-y-3">
@@ -1335,7 +1335,7 @@ export function SettingsPanel({
             {valueText(value, fallback)}
             {!value && (
               <span className="rounded border border-[var(--gt-border)] px-1 py-px text-[9.5px] text-zinc-600">
-                default
+                Default
               </span>
             )}
           </div>
@@ -1416,7 +1416,7 @@ export function SettingsPanel({
             </div>
           </div>
           <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
-            default model
+            Default model
             {engineAllowsCustomModel(e) ? (
               // hermes/openrouter take any provider/model slug — free-text, like
               // the per-run EngineModelPicker, instead of a closed menu.
@@ -2145,7 +2145,7 @@ export function SettingsPanel({
                         <input
                           value={remoteDraft.label}
                           onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
-                          placeholder="remote desktop"
+                          placeholder="Remote desktop"
                           className={`${inp} font-mono`}
                         />
                       </label>
@@ -2336,11 +2336,11 @@ export function SettingsPanel({
                   <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                       <span className="block text-zinc-300">Always on</span>
-                      <span>human blockers, cron failures, spend alerts</span>
+                      <span>Human blockers, cron failures, spend alerts</span>
                     </div>
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                       <span className="block text-zinc-300">This toggle</span>
-                      <span>post-completion review prompts only</span>
+                      <span>Post-completion review prompts only</span>
                     </div>
                   </div>
                 </div>
@@ -2375,15 +2375,15 @@ export function SettingsPanel({
                   <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                       <span className="block text-zinc-300">Rules</span>
-                      <span>deterministic suggestions only</span>
+                      <span>Deterministic suggestions only</span>
                     </div>
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                       <span className="block text-zinc-300">AI</span>
-                      <span>shows suggestions for you to choose</span>
+                      <span>Shows suggestions for you to choose</span>
                     </div>
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
                       <span className="block text-zinc-300">Enhance / Auto</span>
-                      <span>rewrite a draft prompt; auto submits one reply</span>
+                      <span>Rewrite a draft prompt; auto submits one reply</span>
                     </div>
                   </div>
                 </div>
@@ -2562,7 +2562,7 @@ export function SettingsPanel({
                           e.target.value !== s.telegram.chatId &&
                           save({ telegram: { chatId: e.target.value.trim() } })
                         }
-                        placeholder="your numeric chat id"
+                        placeholder="Your numeric chat id"
                         spellCheck={false}
                         className={`${inp} font-mono`}
                       />
@@ -2674,7 +2674,7 @@ export function SettingsPanel({
                       />
                     )}
                     Install <span className="font-mono">gt-notify</span> to ~/.local/bin
-                    <span className="ml-auto text-[10.5px] text-zinc-600">activity feed hook</span>
+                    <span className="ml-auto text-[10.5px] text-zinc-600">Activity feed hook</span>
                   </button>
                   {notify && !notify.busy && (
                     <div
@@ -2698,7 +2698,7 @@ export function SettingsPanel({
                       />
                     )}
                     Install MCP server (Claude Code + Codex)
-                    <span className="ml-auto text-[10.5px] text-zinc-600">cross-session views</span>
+                    <span className="ml-auto text-[10.5px] text-zinc-600">Cross-session views</span>
                   </button>
                   {mcpState && !mcpState.busy && (
                     <div

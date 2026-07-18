@@ -46,7 +46,7 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
         }),
         remote: meta.remote,
       })
-      setDone({ msg: 'opened instance', ok: true })
+      setDone({ msg: 'Opened instance', ok: true })
       setTimeout(() => setDone(null), 4000)
       return
     }

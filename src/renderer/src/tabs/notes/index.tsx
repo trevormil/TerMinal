@@ -615,7 +615,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   .filter(Boolean),
               })
             }
-            placeholder="tags"
+            placeholder="Tags"
             className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700"
           />
         </div>
@@ -627,28 +627,28 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
               value={item.rag?.rootDir || ''}
               onChange={(e) => updateRagConfig({ rootDir: e.target.value })}
               onBlur={() => updateItem({}, true)}
-              placeholder="auto workspace path"
+              placeholder="Auto workspace path"
               className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 font-mono text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
             <input
               value={item.rag?.category || ''}
               onChange={(e) => updateRagConfig({ category: e.target.value })}
               onBlur={() => updateItem({}, true)}
-              placeholder="category"
+              placeholder="Category"
               className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
             <input
               value={String(item.rag?.hybridAlpha ?? 0.3)}
               onChange={(e) => updateRagConfig({ hybridAlpha: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
-              placeholder="alpha"
+              placeholder="Alpha"
               className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
             <input
               value={String(item.rag?.maxResults ?? 5)}
               onChange={(e) => updateRagConfig({ maxResults: Number(e.target.value) })}
               onBlur={() => updateItem({}, true)}
-              placeholder="results"
+              placeholder="Results"
               className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
           </div>
@@ -794,19 +794,19 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <input
               value={item.thumbnailUrl || ''}
               onChange={(e) => updateItem({ thumbnailUrl: e.target.value })}
-              placeholder="thumbnail URL"
+              placeholder="Thumbnail URL"
               className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
             <input
               value={item.siteName || ''}
               onChange={(e) => updateItem({ siteName: e.target.value })}
-              placeholder="site name"
+              placeholder="Site name"
               className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
             <input
               value={item.faviconUrl || ''}
               onChange={(e) => updateItem({ faviconUrl: e.target.value })}
-              placeholder="favicon URL"
+              placeholder="Favicon URL"
               className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
             />
           </div>
@@ -941,7 +941,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addCategory()
                   }}
-                  placeholder="new category"
+                  placeholder="New category"
                   className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
                 />
                 <button

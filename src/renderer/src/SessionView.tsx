@@ -713,7 +713,7 @@ export function SessionView({
         }`}
       >
         <span
-          title={p.status === 'working' ? 'working' : p.needsAttention ? 'needs attention' : 'idle'}
+          title={p.status === 'working' ? 'Working' : p.needsAttention ? 'Needs attention' : 'Idle'}
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${
             p.status === 'working'
               ? 'bg-[var(--gt-green)] gt-pulse'

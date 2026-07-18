@@ -28,7 +28,7 @@ const plugin: Plugin<TaskItem[]> = {
     if (!tasks.length)
       return (
         <Card icon={ListChecks} title="Todos">
-          <Empty>no tasks</Empty>
+          <Empty>No tasks</Empty>
         </Card>
       )
     const done = tasks.filter((t) => t.status === 'completed').length

@@ -61,7 +61,7 @@ export function RunEvaluationPanel({
               <Badge tone={statusTone(check.status)}>{check.status}</Badge>
               <span className="min-w-0 flex-1">
                 <span className="font-semibold text-zinc-300">{check.title}</span>
-                {check.required && <span className="ml-1 text-zinc-600">required</span>}
+                {check.required && <span className="ml-1 text-zinc-600">Required</span>}
                 {check.command && (
                   <span className="ml-2 font-mono text-[10.5px] text-zinc-500">
                     {check.command}

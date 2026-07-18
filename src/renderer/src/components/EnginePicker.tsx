@@ -242,7 +242,7 @@ export function EnginePicker({
                       {engineLabel(e)}
                     </span>
                     <span className="text-[10px] text-zinc-500">
-                      {ok ? VENDOR[e] : 'not installed'}
+                      {ok ? VENDOR[e] : 'Not installed'}
                     </span>
                   </button>
                 )

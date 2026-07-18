@@ -147,7 +147,7 @@ export function EngineModelPicker({
                           : 'border-[var(--gt-border)] text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                       }`}
                     >
-                      default
+                      Default
                     </button>
                     {MODELS[e].map((m) => {
                       const selected = isActive && model === m.id

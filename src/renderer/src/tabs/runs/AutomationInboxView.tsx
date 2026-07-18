@@ -39,7 +39,7 @@ function AutomationInfoBox() {
         <Inbox size={13} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
         <span className="font-semibold text-zinc-300">Automation Inbox</span>
         <span className="text-zinc-700">/</span>
-        <span>always-on intake for scripts and integrations</span>
+        <span>Always-on intake for scripts and integrations</span>
         <span className="text-zinc-700">/</span>
         <span className="font-mono text-zinc-300">/enqueue-request</span>
         <span className="text-zinc-700">or</span>
@@ -323,7 +323,7 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                     {r.action && (
                       <span className="shrink-0 text-[10px] text-zinc-600">{r.action}</span>
                     )}
-                    {r.runId && <Badge tone="blue">run</Badge>}
+                    {r.runId && <Badge tone="blue">Run</Badge>}
                     <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
                       {reltime(r.processedAt)}
                     </span>
@@ -378,7 +378,7 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                       Outcome
                     </div>
                     <div className={selected.error ? 'text-[var(--gt-red)]' : 'text-zinc-200'}>
-                      {selected.result || selected.error || 'pending'}
+                      {selected.result || selected.error || 'Pending'}
                     </div>
                     <div className="mt-1 text-[10.5px] text-zinc-600">
                       {fmtWhen(selected.processedAt)}
@@ -388,18 +388,18 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
                 <div className="mt-3 space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[11.5px]">
                   {selected.repoRoot && (
                     <div>
-                      <span className="text-zinc-600">repo </span>
+                      <span className="text-zinc-600">Repo </span>
                       <span className="font-mono text-zinc-300">{selected.repoRoot}</span>
                     </div>
                   )}
                   {selected.id && (
                     <div>
-                      <span className="text-zinc-600">event </span>
+                      <span className="text-zinc-600">Event </span>
                       <span className="font-mono text-zinc-300">{selected.id}</span>
                     </div>
                   )}
                   <div>
-                    <span className="text-zinc-600">file </span>
+                    <span className="text-zinc-600">File </span>
                     <span className="font-mono text-zinc-300">{selected.file}</span>
                   </div>
                 </div>

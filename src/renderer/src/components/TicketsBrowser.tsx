@@ -155,7 +155,7 @@ function NewTicketModal({ ctx, onClose }: { ctx: TabContext; onClose: () => void
             onClick={onClose}
             className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
           >
-            cancel
+            Cancel
           </button>
         </div>
         <SkillHint>
@@ -347,7 +347,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
             <span className="mx-1 text-zinc-700">·</span>
             <Chip active={fType === 'all'} onClick={() => setFType('all')}>
-              any type
+              Any type
             </Chip>
             {TYPES.map((t) => (
               <Chip key={t} active={fType === t} onClick={() => setFType(t)}>
@@ -388,7 +388,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="search…"
+          placeholder="Search…"
           className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
         />
         {!hitlOnly && (
@@ -490,7 +490,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             t.depends_on.some((id) => {
                               const dep = tickets?.find((x) => x.id === id)
                               return !dep || dep.status !== 'closed'
-                            }) && <Badge tone="red">blocked</Badge>}
+                            }) && <Badge tone="red">Blocked</Badge>}
                         </div>
                         {t.prs.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[10px] text-zinc-600">

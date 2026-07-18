@@ -150,12 +150,12 @@ function reltime(ts: number): string {
 }
 
 const SOURCE: Record<string, { label: string; tone: BadgeTone }> = {
-  default: { label: 'default', tone: 'mute' },
-  'repo-override': { label: 'repo override', tone: 'yellow' },
-  'global-override': { label: 'global override', tone: 'blue' },
-  repo: { label: 'custom', tone: 'accent' },
-  global: { label: 'global', tone: 'blue' },
-  persistent: { label: 'persistent', tone: 'accent' },
+  default: { label: 'Default', tone: 'mute' },
+  'repo-override': { label: 'Repo override', tone: 'yellow' },
+  'global-override': { label: 'Global override', tone: 'blue' },
+  repo: { label: 'Custom', tone: 'accent' },
+  global: { label: 'Global', tone: 'blue' },
+  persistent: { label: 'Persistent', tone: 'accent' },
 }
 
 function SectionKicker({
@@ -213,14 +213,14 @@ function modelPolicyRows(
   return [
     {
       label: 'Default',
-      value: policy.default || definition.runtime.model || 'engine default',
+      value: policy.default || definition.runtime.model || 'Engine default',
       tone: 'blue',
     },
-    { label: 'Cheap', value: policy.cheap || 'not set', tone: 'mute' },
-    { label: 'Deep', value: policy.deep || 'not set', tone: 'accent' },
+    { label: 'Cheap', value: policy.cheap || 'Not set', tone: 'mute' },
+    { label: 'Deep', value: policy.deep || 'Not set', tone: 'accent' },
     {
       label: 'Judge',
-      value: policy.judge || definition.quality.judge?.model || 'not set',
+      value: policy.judge || definition.quality.judge?.model || 'Not set',
       tone: 'yellow',
     },
   ]
@@ -346,19 +346,19 @@ function DefinitionSummary({ definition }: { definition: AgentDefinition }) {
           </div>
           <div className="space-y-1.5 text-[11px] text-zinc-400">
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">kind</span>
+              <span className="text-zinc-600">Kind</span>
               <span className="capitalize">{definition.kind}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">mode</span>
+              <span className="text-zinc-600">Mode</span>
               <span>{definition.runtime.mode}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">scope</span>
+              <span className="text-zinc-600">Scope</span>
               <span>{definition.scope}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">engine</span>
+              <span className="text-zinc-600">Engine</span>
               <span className="inline-flex items-center gap-1">
                 <EngineLogo engine={definition.runtime.engine || 'codex'} size={10} />
                 {engineLabel(definition.runtime.engine || 'codex')}
@@ -392,15 +392,15 @@ function DefinitionSummary({ definition }: { definition: AgentDefinition }) {
           </div>
           <div className="space-y-1.5 text-[11px] text-zinc-400">
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">policy</span>
+              <span className="text-zinc-600">Policy</span>
               <span>{definition.instructions.knowledgePolicy || 'standard'}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">memory</span>
+              <span className="text-zinc-600">Memory</span>
               <span>{definition.runtime.memoryDir ? 'persistent' : 'run-local'}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-zinc-600">override</span>
+              <span className="text-zinc-600">Override</span>
               <span>
                 {definition.runtime.modelPolicy?.allowOverride === false ? 'locked' : 'allowed'}
               </span>
@@ -497,19 +497,19 @@ function AgentDesigner({
             {/* Templates — single click prefills the textarea with a starting
                 description that nudges the designer toward a specific shape. */}
             <div className="flex items-center gap-1 text-[10px] text-zinc-600">
-              <span>start from:</span>
+              <span>Start from:</span>
               {(
                 [
                   {
-                    label: 'precheck + escalate',
+                    label: 'Precheck + escalate',
                     text: 'A scheduled agent that runs a deterministic precheck first (tsc, tests, lint) and only escalates to an LLM when something fails. On failure, diagnose the failures and apply a small surgical fix if safe, else file a backlog ticket. Default model: haiku.',
                   },
                   {
-                    label: 'single LLM call',
+                    label: 'Single LLM call',
                     text: 'A simple agent that runs a single selected-engine prompt to … (fill in the task). Opens a PR with the result. Default model: sonnet.',
                   },
                   {
-                    label: 'pure deterministic',
+                    label: 'Pure deterministic',
                     text: 'A pure shell agent (no LLM) that runs … (fill in the check), files a HITL via terminal-cli only if a probe fails, and emits an activity event with the summary on success.',
                   },
                 ] as const
@@ -739,7 +739,7 @@ function AgentEditor({
             onClick={onClose}
             className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
           >
-            cancel
+            Cancel
           </button>
         </div>
         {isNew && (
@@ -1121,7 +1121,7 @@ function PersistentAgentsPanel({ ctx, headerSlot }: { ctx: TabContext; headerSlo
     const r = await window.gt.persistentAgents.files.read(detail.id, path)
     if (!r.ok) {
       setAgentFileContent('')
-      setAgentFileErr(r.reason || 'unable to read file')
+      setAgentFileErr(r.reason || 'Unable to read file')
       setAgentFileDirty(false)
       return
     }
@@ -1535,7 +1535,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                         {agentFilePath || 'Select a file'}
                       </span>
                       {agentFileDirty && (
-                        <span className="text-[10px] text-[var(--gt-yellow)]">unsaved</span>
+                        <span className="text-[10px] text-[var(--gt-yellow)]">Unsaved</span>
                       )}
                     </div>
                     {agentFileErr ? (
@@ -2144,11 +2144,11 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                             ? 'bg-[var(--gt-accent-light)]'
                             : ''
                     const dotTitle = busy
-                      ? 'run in progress'
+                      ? 'Run in progress'
                       : last
-                        ? `last run: ${last.status} · ${fmtRelative(last.startedAt)}`
+                        ? `Last run: ${last.status} · ${fmtRelative(last.startedAt)}`
                         : d.metadata.lastRunAt
-                          ? `last persistent run: ${fmtRelative(d.metadata.lastRunAt)}`
+                          ? `Last persistent run: ${fmtRelative(d.metadata.lastRunAt)}`
                           : ''
                     return (
                       <button
@@ -2235,9 +2235,9 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           ? 'bg-zinc-500'
                           : ''
                   const dotTitle = busy
-                    ? 'run in progress'
+                    ? 'Run in progress'
                     : last
-                      ? `last run: ${last.status} · ${fmtRelative(last.startedAt)}`
+                      ? `Last run: ${last.status} · ${fmtRelative(last.startedAt)}`
                       : ''
                   return (
                     <button
@@ -2293,7 +2293,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     <h2 className="text-[14px] font-bold text-zinc-100">
                       {selectedDefinition.title}
                     </h2>
-                    <Badge tone="accent">persistent</Badge>
+                    <Badge tone="accent">Persistent</Badge>
                     <Badge tone="blue">{selectedDefinition.scope}</Badge>
                     <span className="font-mono text-[10px] text-zinc-600">
                       {selectedDefinition.ref.id}
@@ -2414,7 +2414,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                             {SOURCE[selectedAgent.source].label}
                           </Badge>
                         )}
-                        {selectedAgent.hasScript && <Badge tone="blue">script</Badge>}
+                        {selectedAgent.hasScript && <Badge tone="blue">Script</Badge>}
                         <span className="font-mono text-[10px] text-zinc-600">
                           {selectedAgent.id}
                         </span>
@@ -2559,11 +2559,11 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                           meta={
                             <>
                               {script ? (
-                                <Badge tone="blue">bash script</Badge>
+                                <Badge tone="blue">Bash script</Badge>
                               ) : script === null ? (
-                                <Badge tone="mute">prompt</Badge>
+                                <Badge tone="mute">Prompt</Badge>
                               ) : (
-                                <Badge tone="mute">loading...</Badge>
+                                <Badge tone="mute">Loading...</Badge>
                               )}
                             </>
                           }
@@ -2611,7 +2611,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                   }}
                                   className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-400 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
                                 >
-                                  reset
+                                  Reset
                                 </button>
                               )}
                             </>
@@ -2652,7 +2652,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                 {sha && (
                                   <div className="flex items-center gap-2">
                                     <span className="w-28 shrink-0 text-zinc-600">
-                                      last scanned
+                                      Last scanned
                                     </span>
                                     <span className="font-mono text-zinc-200">
                                       {sha.slice(0, 12)}
@@ -2666,14 +2666,14 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                 )}
                                 {at > 0 && (
                                   <div className="flex items-center gap-2">
-                                    <span className="w-28 shrink-0 text-zinc-600">last run at</span>
+                                    <span className="w-28 shrink-0 text-zinc-600">Last run at</span>
                                     <span>{new Date(at).toLocaleString()}</span>
                                     <span className="text-zinc-600">· {relTime}</span>
                                   </div>
                                 )}
                                 {runId && (
                                   <div className="flex items-center gap-2">
-                                    <span className="w-28 shrink-0 text-zinc-600">last run id</span>
+                                    <span className="w-28 shrink-0 text-zinc-600">Last run id</span>
                                     <span className="truncate font-mono text-[10px] text-zinc-400">
                                       {runId}
                                     </span>
@@ -2681,7 +2681,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                       onClick={() => navigateTo('runs', { runId })}
                                       className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                                     >
-                                      view run
+                                      View run
                                     </button>
                                   </div>
                                 )}

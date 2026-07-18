@@ -1342,7 +1342,7 @@ export function TerminalPane({
             {suggestionBusy && (
               <span className="inline-flex items-center gap-1 text-[10.5px] text-zinc-500">
                 <Loader2 size={11} strokeWidth={2} className="animate-spin" />
-                {suggestionMode === 'auto' ? 'generating and sending' : 'reading terminal'}
+                {suggestionMode === 'auto' ? 'Generating and sending' : 'Reading terminal'}
               </span>
             )}
             {suggestionErr && (
@@ -1443,7 +1443,7 @@ export function TerminalPane({
               {suggestionBusy && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-zinc-500">
                   <Loader2 size={12} strokeWidth={2} className="animate-spin" />
-                  enhancing
+                  Enhancing
                 </span>
               )}
               <button

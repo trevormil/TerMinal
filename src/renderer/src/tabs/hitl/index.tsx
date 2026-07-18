@@ -258,7 +258,7 @@ export function InboxDrawer({
                       )}
                       {(h.terminalCwd || h.terminalKey || h.sessionId) && (
                         <div className="mt-1 truncate font-mono text-[10px] text-zinc-600">
-                          {h.terminalCwd || h.repoRoot || 'terminal session'}
+                          {h.terminalCwd || h.repoRoot || 'Terminal session'}
                         </div>
                       )}
                     </div>

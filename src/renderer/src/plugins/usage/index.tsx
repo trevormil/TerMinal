@@ -48,7 +48,7 @@ const plugin: Plugin<Usage> = {
     if (!d.ok && !d.fiveHour && !d.sevenDay)
       return (
         <Card icon={GaugeIcon} title="Plan Usage">
-          <Empty>{d.error || 'usage unavailable'}</Empty>
+          <Empty>{d.error || 'Usage unavailable'}</Empty>
         </Card>
       )
     return (
@@ -57,17 +57,17 @@ const plugin: Plugin<Usage> = {
         title="Plan Usage"
         right={
           d.stale ? (
-            <Badge tone="mute">cached</Badge>
+            <Badge tone="mute">Cached</Badge>
           ) : planLabel ? (
             <Badge tone="mute">{planLabel}</Badge>
           ) : undefined
         }
       >
         <WindowRow label="5-hour" w={d.fiveHour} />
-        <WindowRow label="weekly" w={d.sevenDay} />
+        <WindowRow label="Weekly" w={d.sevenDay} />
         {d.overagePct != null && d.overagePct > 0 && (
           <Row
-            label="overage"
+            label="Overage"
             value={<span className="text-amber-300">{d.overagePct.toFixed(0)}%</span>}
           />
         )}

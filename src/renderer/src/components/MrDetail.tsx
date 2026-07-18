@@ -627,7 +627,7 @@ export function DiffView({
               onClick={() => setAll(paths, !allViewed)}
               className="rounded px-1.5 py-0.5 text-[10px] normal-case text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
             >
-              {allViewed ? 'clear' : 'mark all'}
+              {allViewed ? 'Clear' : 'Mark all'}
             </button>
           )}
         </div>
@@ -706,7 +706,7 @@ function CiPanel({ ci }: { ci: CiInfo | null | undefined }) {
             onClick={() => window.gt.openExternal(ci.webUrl)}
             className="inline-flex items-center gap-0.5 text-[11px] text-zinc-500 hover:text-zinc-300"
           >
-            logs
+            Logs
             <ArrowUpRight size={11} strokeWidth={2} />
           </button>
         )}
@@ -773,7 +773,7 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
         {mr.reviewMeta?.stale && (
           <Badge tone="warn">
             <TriangleAlert size={9} strokeWidth={2.5} />
-            stale
+            Stale
           </Badge>
         )}
         {mr.artifactShortSha && (
@@ -824,7 +824,7 @@ function FindingCard({ f, mutedSeverity }: { f: Finding; mutedSeverity?: boolean
       {f.agent_fix_prompt && (
         <details className="mt-2 text-[11px]">
           <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
-            agent fix prompt
+            Agent fix prompt
           </summary>
           <pre className="mt-1 overflow-x-auto rounded bg-black/40 p-2 text-[11px] text-zinc-300">
             {f.agent_fix_prompt}
@@ -972,7 +972,7 @@ export function MrDetailView({
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
         <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>
-        {mr.draft && <Badge tone="warn">draft</Badge>}
+        {mr.draft && <Badge tone="warn">Draft</Badge>}
         <div className="flex items-center gap-1.5">
           <PrAgentActions pr={mr} sym={sym} />
           {mr.state === 'opened' && (

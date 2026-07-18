@@ -132,9 +132,9 @@ function WorkflowTab(_props: { ctx: TabContext }) {
     setSaving(false)
     if (ok) {
       setActive({ ...active, saved: active.content })
-      setMessage('saved')
+      setMessage('Saved')
     } else {
-      setMessage('save failed')
+      setMessage('Save failed')
     }
   }
 

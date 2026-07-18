@@ -41,13 +41,13 @@ const plugin: Plugin<GitStatus> = {
             d.dirty > 0 ? (
               <Badge tone="yellow">{d.dirty} dirty</Badge>
             ) : (
-              <Badge tone="green">clean</Badge>
+              <Badge tone="green">Clean</Badge>
             )
           }
         >
           <div className="mb-1 truncate text-[13px] font-semibold text-zinc-100">{d.branch}</div>
           <Row
-            label="vs upstream"
+            label="Vs upstream"
             value={
               d.upstream ? (
                 <span className="tabular-nums">
@@ -55,7 +55,7 @@ const plugin: Plugin<GitStatus> = {
                   <span className="text-[var(--gt-red)]">↓{d.behind}</span>
                 </span>
               ) : (
-                <span className="text-zinc-600">none</span>
+                <span className="text-zinc-600">None</span>
               )
             }
           />

@@ -432,7 +432,7 @@ export function TicketDetail({
           {selected.workedBy.length > 0 && (
             <span
               className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500"
-              title="model(s) that wrote this MR"
+              title="Model(s) that wrote this MR"
             >
               ✍ written by {selected.workedBy.join(', ')}
             </span>

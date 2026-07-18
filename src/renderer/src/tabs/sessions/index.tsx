@@ -64,7 +64,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
         {activeCount > 0 && <Badge tone="green">{activeCount} active</Badge>}
         <span className="mx-1 text-zinc-700">·</span>
         <Chip active={fStatus === 'all'} onClick={() => setFStatus('all')}>
-          all
+          All
         </Chip>
         {STATUSES.map((s) => (
           <Chip key={s} active={fStatus === s} onClick={() => setFStatus(s)}>
@@ -146,7 +146,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
               <h1 className="mb-2 text-lg font-bold text-zinc-100">{sel.title}</h1>
               {sel.goal && (
                 <div className="mb-3 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 text-[12px] text-zinc-300">
-                  <span className="text-zinc-500">goal: </span>
+                  <span className="text-zinc-500">Goal: </span>
                   {sel.goal}
                 </div>
               )}

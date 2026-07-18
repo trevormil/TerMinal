@@ -19,7 +19,7 @@ const plugin: Plugin<TranscriptStats> = {
     if (!entries.length)
       return (
         <Card icon={Wrench} title="Tool Use">
-          <Empty>none yet</Empty>
+          <Empty>None yet</Empty>
         </Card>
       )
     const total = entries.reduce((s, [, n]) => s + n, 0)

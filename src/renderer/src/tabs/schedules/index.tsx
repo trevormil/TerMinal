@@ -330,7 +330,7 @@ function ScheduleForm({
                 onClick={onCancel}
                 className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5"
               >
-                cancel
+                Cancel
               </button>
               <button
                 onClick={submitCustom}
@@ -380,7 +380,7 @@ function ScheduleForm({
               <>
                 <span className="text-[11px] text-zinc-500">on</span>
                 <select value={host} onChange={(e) => setHost(e.target.value)} className={FIELD}>
-                  <option value="">this Mac (launchd)</option>
+                  <option value="">This Mac (launchd)</option>
                   {hostOptions.map((h) => {
                     const hh = hostHealth[h.id]
                     const dot = !hh ? '' : hh.reachable ? '● ' : '○ '
@@ -398,8 +398,8 @@ function ScheduleForm({
                     onChange={(e) => setRuntime(e.target.value as 'bare' | 'container' | 'k8s')}
                     className={FIELD}
                   >
-                    <option value="bare">bare</option>
-                    <option value="container">container</option>
+                    <option value="bare">Bare</option>
+                    <option value="container">Container</option>
                     <option value="k8s">k8s (k3s CronJob)</option>
                   </select>
                 )}
@@ -421,7 +421,7 @@ function ScheduleForm({
                     : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {k === 'calendar' ? 'at a time' : 'cron'}
+                {k === 'calendar' ? 'At a time' : 'Cron'}
               </button>
             ))}
           </div>
@@ -472,7 +472,7 @@ function ScheduleForm({
           {/* Optional reliability knobs for flaky runs. Blank = runner defaults
           (2 retries · 30s base backoff · 30m timeout). */}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-            <span className="text-zinc-600">retries</span>
+            <span className="text-zinc-600">Retries</span>
             <input
               type="number"
               min={0}
@@ -481,7 +481,7 @@ function ScheduleForm({
               placeholder="2"
               className={`${FIELD} w-14`}
             />
-            <span className="text-zinc-600">backoff</span>
+            <span className="text-zinc-600">Backoff</span>
             <input
               type="number"
               min={1}
@@ -490,7 +490,7 @@ function ScheduleForm({
               placeholder="30s"
               className={`${FIELD} w-16`}
             />
-            <span className="text-zinc-600">timeout</span>
+            <span className="text-zinc-600">Timeout</span>
             <input
               type="number"
               min={1}
@@ -538,7 +538,7 @@ function ScheduleForm({
               onClick={onCancel}
               className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/5"
             >
-              cancel
+              Cancel
             </button>
           </div>
         </div>
@@ -944,7 +944,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                       <div className="flex items-center gap-1.5 px-1 text-[10px]">
                         {scriptByAgent[s.agentId] ? (
                           <>
-                            <Badge tone="blue">bash script</Badge>
+                            <Badge tone="blue">Bash script</Badge>
                             <span className="min-w-0 flex-1 truncate font-mono text-zinc-600">
                               {scriptByAgent[s.agentId]!.path}
                             </span>
@@ -953,14 +953,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                               className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
                               title="Open in your configured editor"
                             >
-                              edit
+                              Edit
                             </button>
                           </>
                         ) : (
                           <>
-                            <Badge tone="mute">prompt</Badge>
+                            <Badge tone="mute">Prompt</Badge>
                             <span className="text-zinc-700">
-                              legacy prompt — runs as a single agent call
+                              Legacy prompt — runs as a single agent call
                             </span>
                           </>
                         )}
@@ -1055,7 +1055,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                 onClick={() => setCreating(false)}
                 className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
               >
-                cancel
+                Cancel
               </button>
             </div>
             {agents.length ? (

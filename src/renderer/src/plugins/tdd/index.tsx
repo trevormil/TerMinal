@@ -39,18 +39,18 @@ const plugin: Plugin<TddInfo> = {
           d.stale ? (
             <Badge tone="warn">
               <TriangleAlert size={9} strokeWidth={2.5} />
-              stale{d.commitsBehind ? ` ${d.commitsBehind}↓` : ''}
+              Stale{d.commitsBehind ? ` ${d.commitsBehind}↓` : ''}
             </Badge>
           ) : (
-            <Badge tone="ok">current</Badge>
+            <Badge tone="ok">Current</Badge>
           )
         }
       >
         <div className="mb-2">
           <Big value={d.overall ?? '—'} sub={`${d.repo} #${d.number}`} />
         </div>
-        <Row label="verdict" value={<Badge tone={verdictTone(d.verdict)}>{d.verdict}</Badge>} />
-        <Row label="tests" value={<Badge tone={testTone(d.testStatus)}>{d.testStatus}</Badge>} />
+        <Row label="Verdict" value={<Badge tone={verdictTone(d.verdict)}>{d.verdict}</Badge>} />
+        <Row label="Tests" value={<Badge tone={testTone(d.testStatus)}>{d.testStatus}</Badge>} />
       </Card>
     )
     // Deep-link to the PR when we have its number; otherwise leave it inert.

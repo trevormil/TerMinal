@@ -24,14 +24,14 @@ export function MrMergeButton({
     const r = await window.gt.mergeMr(iid)
     setStage('idle')
     if (r.ok) onMerged?.()
-    else setErr(r.error || 'merge failed')
+    else setErr(r.error || 'Merge failed')
   }
 
   if (err)
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-amber-400" title={err}>
         <X size={12} strokeWidth={2.5} />
-        merge failed
+        Merge failed
         <button
           onClick={(e) => {
             stop(e)
@@ -39,7 +39,7 @@ export function MrMergeButton({
           }}
           className="ml-1 underline hover:text-amber-300"
         >
-          retry
+          Retry
         </button>
       </span>
     )
@@ -89,7 +89,7 @@ export function MrMergeButton({
       className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 px-2 py-1 text-[11px] text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
     >
       <GitMerge size={12} strokeWidth={2} />
-      merge
+      Merge
     </button>
   )
 }

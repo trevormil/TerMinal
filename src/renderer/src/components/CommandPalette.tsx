@@ -110,7 +110,7 @@ export function CommandPalette({
       id: 'command:workspace-search',
       group: 'Command',
       label: q.trim() ? `Search workspace for "${q.trim()}"` : 'Workspace search',
-      hint: 'files, tickets, MRs, docs, runs, snippets, activity',
+      hint: 'Files, tickets, MRs, docs, runs, snippets, activity',
       icon: Search,
       run: close(() => {
         const payload = q.trim() ? { q: q.trim() } : undefined
@@ -122,7 +122,7 @@ export function CommandPalette({
       id: 'command:paired-loop',
       group: 'Command',
       label: 'Start paired loop',
-      hint: 'two linked sessions — a worker + a driver, contract-first',
+      hint: 'Two linked sessions — a worker + a driver, contract-first',
       icon: Repeat,
       run: close(() => navigateTo('paired-loop:new')),
     })
@@ -130,7 +130,7 @@ export function CommandPalette({
       id: 'command:repo-orientation',
       group: 'Command',
       label: 'Repo orientation',
-      hint: 'what each tab does in this repo',
+      hint: 'What each tab does in this repo',
       icon: Compass,
       run: close(() => window.dispatchEvent(new Event('gt.repoOrientation.show'))),
     })

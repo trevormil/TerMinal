@@ -297,7 +297,7 @@ export function EntryScreen({
         onChoose({ mode: 'new', engine, cwd: r.path })
       }
     } else {
-      setScaffoldErr(r.error || 'scaffold failed')
+      setScaffoldErr(r.error || 'Scaffold failed')
     }
   }
   useEffect(() => {
@@ -546,7 +546,7 @@ export function EntryScreen({
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
             >
               <X size={13} strokeWidth={2} />
-              cancel
+              Cancel
             </button>
           )}
         </div>
@@ -607,7 +607,7 @@ export function EntryScreen({
                     />
                     <div className="min-w-0">
                       <div className="text-[12px] font-semibold text-zinc-100">Brand-new repo</div>
-                      <div className="truncate text-[10.5px] text-zinc-600">from template</div>
+                      <div className="truncate text-[10.5px] text-zinc-600">From template</div>
                     </div>
                   </div>
                   <div className="flex min-w-[300px] flex-1 items-center gap-2">
@@ -944,8 +944,8 @@ export function EntryScreen({
                   <div className="flex gap-2">
                     {(
                       [
-                        ['paired', 'Paired', 'two live sessions grade each other'],
-                        ['single', 'Single', 'one live generator + an auto-grader per turn'],
+                        ['paired', 'Paired', 'Two live sessions grade each other'],
+                        ['single', 'Single', 'One live generator + an auto-grader per turn'],
                       ] as const
                     ).map(([val, label, hint]) => (
                       <button
@@ -972,8 +972,8 @@ export function EntryScreen({
                       label={loopTopology === 'single' ? 'Generator' : 'Worker'}
                       hint={
                         loopTopology === 'single'
-                          ? 'writes code; a fresh grader reviews each turn'
-                          : 'writes code in the worktree'
+                          ? 'Writes code; a fresh grader reviews each turn'
+                          : 'Writes code in the worktree'
                       }
                       engine={workerEngine}
                       model={workerModel}
@@ -983,7 +983,7 @@ export function EntryScreen({
                     {loopTopology === 'paired' && (
                       <RoleCard
                         label="Driver"
-                        hint="plans + grades, in the main repo"
+                        hint="Plans + grades, in the main repo"
                         engine={driverEngine}
                         model={driverModel}
                         onEngine={setDriverEngine}
@@ -1044,7 +1044,7 @@ export function EntryScreen({
                     />
                     <span className="font-semibold text-zinc-200">Remote daemon</span>
                     <span className="truncate font-mono">
-                      {remoteHost?.sshTarget || 'no host selected'}
+                      {remoteHost?.sshTarget || 'No host selected'}
                     </span>
                   </div>
                   {lockedRemote ? (
@@ -1203,7 +1203,7 @@ export function EntryScreen({
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="session name (optional)"
+                  placeholder="Session name (optional)"
                   className={`${sel} min-w-0 flex-1`}
                 />
                 <button
@@ -1250,14 +1250,14 @@ export function EntryScreen({
                   strokeWidth={2}
                   className={isLoadingThisEngine ? 'animate-spin' : ''}
                 />
-                {sessions ? 'refresh' : 'load sessions'}
+                {sessions ? 'Refresh' : 'Load sessions'}
               </button>
               {filterDir && (
                 <button
                   onClick={() => setFilterDir('')}
                   className="text-[11px] text-[var(--gt-accent-2)] hover:underline"
                 >
-                  show all
+                  Show all
                 </button>
               )}
               {sessions && (
@@ -1270,7 +1270,7 @@ export function EntryScreen({
                   <input
                     value={sessionSearch}
                     onChange={(e) => setSessionSearch(e.target.value)}
-                    placeholder="search sessions..."
+                    placeholder="Search sessions..."
                     className="w-full rounded-md border border-[var(--gt-border)] bg-black/25 py-1 pl-6 pr-2 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60"
                   />
                 </label>
@@ -1310,7 +1310,7 @@ export function EntryScreen({
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] text-zinc-100">
                         {s.firstUserText || (
-                          <span className="italic text-zinc-500">untitled session</span>
+                          <span className="italic text-zinc-500">Untitled session</span>
                         )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-500">
