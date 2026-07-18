@@ -76,6 +76,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
     'unknown' | 'needed' | 'ok' | 'confirm' | 'running' | 'done' | 'error'
   >('unknown')
   const [bootstrapError, setBootstrapError] = useState('')
+  const [templateSha, setTemplateSha] = useState('')
   const [provider, setProvider] = useState<TicketProviderKind>(ctx.ticketProvider)
   const [providerBusy, setProviderBusy] = useState(false)
   const [defaultEngine, setDefaultEngine] = useState<Engine>('codex')
@@ -118,6 +119,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
       setBootstrapError(r.error)
       setBootstrap('error')
     } else {
+      setTemplateSha(r.templateSha || '')
       setBootstrap('done')
     }
   }
@@ -188,7 +190,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
                 bootstrap === 'ok'
                   ? 'Bootstrapped — agents, skills, and workflow files are seeded.'
                   : bootstrap === 'done'
-                    ? 'Bootstrapped — reload tabs to pick up .agents/ + skills.'
+                    ? `Bootstrapped${templateSha ? ` (template ${templateSha.slice(0, 7)})` : ''} — reload tabs to pick up .agents/ + skills.`
                     : bootstrap === 'running'
                       ? 'Running bootstrap.sh…'
                       : bootstrap === 'error'

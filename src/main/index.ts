@@ -168,6 +168,7 @@ import {
   type DaemonCfg,
 } from './settings'
 import { classifyBootstrapStatus } from './bootstrap'
+import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
   cloneTemplateToTmp,
   pickTemplateSource,
@@ -2377,14 +2378,24 @@ ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   const src = projectTemplateSource('bootstrap.sh')
   if ('error' in src) return { error: src.error }
   const script = join(src.dir, 'bootstrap.sh')
-  return new Promise<{ ok: true } | { error: string }>((resolve) => {
+  // Template provenance (ticket 0045) — resolved BEFORE the spawn because
+  // src.cleanup?.() may delete a tmp clone on exit.
+  const templateSha = resolveTemplateSha(src.dir, bakedTemplateSha())
+  return new Promise<{ ok: true; templateSha?: string } | { error: string }>((resolve) => {
     const p = cpSpawn('bash', [script, repoRoot], { stdio: 'pipe' })
     let stderr = ''
     p.stderr.on('data', (d) => (stderr += d.toString()))
     p.on('exit', (code) => {
       src.cleanup?.()
-      if (code === 0) resolve({ ok: true })
-      else
+      if (code === 0) {
+        // Best-effort: a stamp failure shouldn't fail a completed bootstrap.
+        try {
+          writeBootstrapStamp(repoRoot, { sha: templateSha, stampedAt: new Date().toISOString() })
+        } catch {
+          /* repo stays unstamped */
+        }
+        resolve({ ok: true, templateSha })
+      } else
         resolve({ error: `bootstrap exited ${code}${stderr ? `: ${stderr.slice(0, 200)}` : ''}` })
     })
     p.on('error', (e) => {

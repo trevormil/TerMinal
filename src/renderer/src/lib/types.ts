@@ -1773,7 +1773,7 @@ export type GtApi = {
   mcpInstall: () => Promise<{ ok: true; installed: string[] } | { error: string }>
   workspace: {
     isBootstrapped: (repoRoot: string) => Promise<BootstrapStatus>
-    bootstrap: (repoRoot: string) => Promise<{ ok: true } | { error: string }>
+    bootstrap: (repoRoot: string) => Promise<{ ok: true; templateSha?: string } | { error: string }>
     search: (q: string, kinds?: WorkspaceSearchKind[]) => Promise<WorkspaceSearchResponse>
   }
   release: {

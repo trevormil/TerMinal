@@ -25,11 +25,16 @@ const BUILD_TIME = new Date().toISOString()
 // '' when origin is unknown → self-update is skipped rather than guessed.
 const BUILD_REPO_SLUG =
   git('git remote get-url origin').match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/)?.[1] || ''
+// The checked-out commit of the bundled project-template submodule — the
+// template-provenance fallback stamped into repos at bootstrap (ticket 0045).
+// Baked at build time because the packaged app doesn't bundle the submodule.
+const TEMPLATE_SHA = git('git -C templates/project-template rev-parse HEAD') || 'unknown'
 const define = {
   __BUILD_SHA__: JSON.stringify(BUILD_SHA + BUILD_DIRTY),
   __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
   __BUILD_TIME__: JSON.stringify(BUILD_TIME),
   __BUILD_REPO_SLUG__: JSON.stringify(BUILD_REPO_SLUG),
+  __TEMPLATE_SHA__: JSON.stringify(TEMPLATE_SHA),
 }
 
 // Strict Content-Security-Policy for the packaged renderer — defense-in-depth so
