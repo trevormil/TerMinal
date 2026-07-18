@@ -1,14 +1,14 @@
 ---
 id: 21
 title: "External ticket providers (Linear, etc.) — remote source of truth, local mirror, frequent sync"
-status: dropped
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-10
+updated: 2026-07-18
 prs: []
 refs: []
 depends_on: []
