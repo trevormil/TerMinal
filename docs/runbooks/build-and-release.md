@@ -1,6 +1,6 @@
 ---
 title: Build & package the macOS app
-last-verified: 2026-06-01
+last-verified: 2026-07-18
 ---
 
 # Build & package (macOS)
@@ -9,19 +9,40 @@ Produce a branded, double-clickable `TerMinal.app` you can drop in
 `/Applications` and pin to the Dock. Set `TERMINAL_APP_DEST` if you want to
 install somewhere else, such as a per-user `~/Applications/TerMinal.app`.
 
+## Versioned releases (cut → tag → GitHub Release)
+
+Public releases are tagged semver versions (ADR-0004). The cut is **human-only**
+(it pushes to `main`, which the agent hook blocks):
+
+```bash
+bun run cut-release          # auto bump from conventional commits since last tag
+bun run cut-release minor    # force a bump level
+bun run cut-release 1.0.0    # explicit version (required for the very first tag)
+```
+
+The script derives the next version (feat → minor, fix/other → patch,
+`type!:` → major), updates `package.json`, cuts `CHANGELOG.md [Unreleased]` into
+a `## [x.y.z] - date` section, commits `chore(release): vX.Y.Z`, tags, and
+pushes. The tag triggers `.github/workflows/release.yml`, which builds the DMG
+on a macOS runner and publishes a GitHub Release with `SHA256SUMS.txt` and the
+changelog section as notes (commit-list fallback when `[Unreleased]` was empty).
+
+After the Release is up, install locally with `bun run release` (below) — it
+fast-forwards `main` and rebuilds, so the installed app matches the tag.
+
 ## Release discipline (PR-first) + build stamp
 
-TerMinal follows the full PR + human-merge flow (CLAUDE.md / global §8). We no
-longer release on every commit, so the installed `/Applications/TerMinal.app`
-can lag `main`. To keep them honest:
+TerMinal follows the full PR + human-merge flow (CLAUDE.md / global §8). The
+installed `/Applications/TerMinal.app` can lag `main`. To keep them honest:
 
 1. **Release from `main`, after the PR merges.** `git checkout main && git pull`,
    then `bun run release`. Don't ship the installed app from a feature branch
    (except for local testing — see below).
 2. **Check what's installed** in the app: **Settings → top-right build stamp**
-   (commit sha + build time). It's baked in at build time by
-   `electron.vite.config.ts` (`__BUILD_SHA__` / `__BUILD_BRANCH__` /
-   `__BUILD_TIME__`). Compare the sha to `git log --oneline -1 main`:
+   (version + commit sha + build time). It's baked in at build time by
+   `electron.vite.config.ts` (`__APP_VERSION__` / `__BUILD_SHA__` /
+   `__BUILD_BRANCH__` / `__BUILD_TIME__`). Compare the sha to
+   `git log --oneline -1 main`:
    - matching sha (no `-dirty`) → installed app == merged main. ✅
    - a branch name / `-dirty` suffix → you're running unmerged or uncommitted
      code; re-release from clean `main` once the work has landed.

@@ -1559,9 +1559,11 @@ export function SettingsPanel({
           </div>
           <div
             className="mr-2 shrink-0 text-right font-mono text-[9.5px] leading-tight text-zinc-600"
-            title={`Installed build — commit ${__BUILD_SHA__} on ${__BUILD_BRANCH__}, built ${__BUILD_TIME__}`}
+            title={`Installed build — v${__APP_VERSION__}, commit ${__BUILD_SHA__} on ${__BUILD_BRANCH__}, built ${__BUILD_TIME__}`}
           >
-            <div className="text-zinc-400">build {__BUILD_SHA__}</div>
+            <div className="text-zinc-400">
+              v{__APP_VERSION__} · {__BUILD_SHA__}
+            </div>
             <div>{__BUILD_TIME__.slice(0, 16).replace('T', ' ')}</div>
           </div>
           <button

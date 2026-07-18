@@ -2,6 +2,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 // Build stamp — baked in at build time so the running app can report exactly
 // which commit it was built from. Critical now that we release from main after a
@@ -29,7 +30,13 @@ const BUILD_REPO_SLUG =
 // template-provenance fallback stamped into repos at bootstrap (ticket 0045).
 // Baked at build time because the packaged app doesn't bundle the submodule.
 const TEMPLATE_SHA = git('git -C templates/project-template rev-parse HEAD') || 'unknown'
+const APP_VERSION = (
+  JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
 const define = {
+  __APP_VERSION__: JSON.stringify(APP_VERSION),
   __BUILD_SHA__: JSON.stringify(BUILD_SHA + BUILD_DIRTY),
   __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
   __BUILD_TIME__: JSON.stringify(BUILD_TIME),
