@@ -1,17 +1,21 @@
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { Plugin } from '../lib/types'
 
 // The "plugins" panel. No remote registry — entries are code
 // folders in the repo plus command widgets (global / per-repo). Toggling just
-// mounts/unmounts.
+// mounts/unmounts. Rows are listed in cockpit order; the chevrons move a
+// widget up/down and the arrangement persists.
 export function PluginDrawer({
   plugins,
   enabled,
   onToggle,
+  onMove,
   onClose,
 }: {
   plugins: Plugin[]
   enabled: string[]
   onToggle: (id: string) => void
+  onMove: (id: string, dir: -1 | 1) => void
   onClose: () => void
 }) {
   return (
@@ -40,14 +44,14 @@ export function PluginDrawer({
         </p>
 
         <div className="space-y-2">
-          {plugins.map((p) => {
+          {plugins.map((p, i) => {
             const on = enabled.includes(p.id)
             const Icon = p.icon
             return (
-              <button
+              <div
                 key={p.id}
                 onClick={() => onToggle(p.id)}
-                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
+                className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
                   on
                     ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
                     : 'border-[var(--gt-border)] bg-black/20 hover:bg-white/5'
@@ -67,14 +71,43 @@ export function PluginDrawer({
                   </div>
                   <div className="text-[11px] leading-snug text-zinc-500">{p.blurb}</div>
                 </div>
-                <span
+                <span className="flex shrink-0 flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onMove(p.id, -1)
+                    }}
+                    disabled={i === 0}
+                    title="Move up"
+                    className="flex h-4 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-25"
+                  >
+                    <ChevronUp size={12} strokeWidth={2.5} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onMove(p.id, 1)
+                    }}
+                    disabled={i === plugins.length - 1}
+                    title="Move down"
+                    className="flex h-4 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-25"
+                  >
+                    <ChevronDown size={12} strokeWidth={2.5} />
+                  </button>
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggle(p.id)
+                  }}
+                  title={on ? 'Disable' : 'Enable'}
                   className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors ${
                     on ? 'justify-end bg-[var(--gt-accent)]' : 'justify-start bg-zinc-700'
                   }`}
                 >
                   <span className="h-4 w-4 rounded-full bg-white" />
-                </span>
-              </button>
+                </button>
+              </div>
             )
           })}
         </div>
