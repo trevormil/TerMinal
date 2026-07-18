@@ -8,6 +8,8 @@ import {
   openSettingsFromDisk,
   mergeSettingsPatch,
   classifyProjectsDir,
+  countGitReposOneLevel,
+  pickDensestRoot,
   resolveEngineModel,
   resolveTelegramCreds,
   telegramSidecarPayload,
@@ -349,18 +351,98 @@ describe('telegram creds sidecar (out-of-process delivery)', () => {
   })
 })
 
+// A pure in-memory filesystem: map of dir → child names, and a set of dirs that
+// are git repos (contain `.git`). Lets us exercise the discovery rule without fs.
+function fakeFs(tree: Record<string, string[]>, repos: string[] = []) {
+  const repoSet = new Set(repos)
+  return {
+    hasGitDir: (d: string) => repoSet.has(d),
+    listChildren: (d: string) => {
+      const kids = tree[d]
+      if (!kids) throw new Error(`ENOENT ${d}`)
+      return kids
+    },
+    resolveHome: () => '/home/me',
+    candidateRoots: () => ['/home/me', '/home/me/workspace', '/home/me/code'],
+  }
+}
+
+describe('countGitReposOneLevel', () => {
+  test('counts one-level git children, skips dotfiles', () => {
+    const fs = fakeFs({ '/p': ['a', 'b', '.hidden', 'notrepo'] }, ['/p/a', '/p/b', '/p/.hidden'])
+    expect(countGitReposOneLevel('/p', fs)).toBe(2)
+  })
+
+  test('unreadable dir counts as zero', () => {
+    expect(countGitReposOneLevel('/missing', fakeFs({}))).toBe(0)
+  })
+})
+
+describe('pickDensestRoot', () => {
+  test('picks the densest, home wins ties (earliest in list)', () => {
+    const counts: Record<string, number> = {
+      '/home/me': 3,
+      '/home/me/workspace': 3,
+      '/home/me/code': 5,
+    }
+    expect(
+      pickDensestRoot(['/home/me', '/home/me/workspace', '/home/me/code'], (d) => counts[d] ?? 0),
+    ).toEqual({ root: '/home/me/code', count: 5 })
+    expect(pickDensestRoot(['/home/me', '/home/me/workspace'], (d) => counts[d] ?? 0)).toEqual({
+      root: '/home/me',
+      count: 3,
+    })
+  })
+
+  test('null when no candidate holds repos', () => {
+    expect(pickDensestRoot(['/a', '/b'], () => 0)).toBeNull()
+  })
+})
+
 describe('classifyProjectsDir', () => {
-  test('blank path is valid', () => {
-    expect(classifyProjectsDir('   ', () => true)).toEqual({ ok: true, dir: '' })
+  test('blank path scans home and reports repo count', () => {
+    const fs = fakeFs({ '/home/me': ['x', 'y'] }, ['/home/me/x', '/home/me/y'])
+    expect(classifyProjectsDir('   ', fs)).toEqual({ ok: true, dir: '', repoCount: 2 })
   })
 
-  test('valid parent trims whitespace', () => {
-    expect(classifyProjectsDir(' /projects ', () => false)).toEqual({ ok: true, dir: '/projects' })
+  test('valid parent trims whitespace and counts repos', () => {
+    const fs = fakeFs({ '/projects': ['repo1'] }, ['/projects/repo1'])
+    expect(classifyProjectsDir(' /projects ', fs)).toEqual({
+      ok: true,
+      dir: '/projects',
+      repoCount: 1,
+    })
   })
 
-  test('repo path suggests parent', () => {
-    const result = classifyProjectsDir('/projects/repo', (d) => d === '/projects/repo')
+  test('repo path suggests parent (unchanged precedence)', () => {
+    const fs = fakeFs({}, ['/projects/repo'])
+    const result = classifyProjectsDir('/projects/repo', fs)
     expect(result).toMatchObject({ ok: false, reason: 'is-repo', suggestedParent: '/projects' })
+  })
+
+  test('zero repos here but denser sibling → no-repos-found with suggestion', () => {
+    const fs = fakeFs(
+      {
+        '/home/me': ['workspace', 'Downloads'],
+        '/home/me/workspace': ['r1', 'r2'],
+        '/home/me/code': [],
+      },
+      ['/home/me/workspace/r1', '/home/me/workspace/r2'],
+    )
+    const result = classifyProjectsDir('', fs)
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'no-repos-found',
+      suggestedChild: '/home/me/workspace',
+      suggestedCount: 2,
+    })
+  })
+
+  test('zero repos anywhere → no-repos-found without suggestion', () => {
+    const fs = fakeFs({ '/home/me': ['Downloads'], '/home/me/workspace': [], '/home/me/code': [] })
+    const result = classifyProjectsDir('', fs)
+    expect(result).toMatchObject({ ok: false, reason: 'no-repos-found' })
+    expect((result as { suggestedChild?: string }).suggestedChild).toBeUndefined()
   })
 })
 

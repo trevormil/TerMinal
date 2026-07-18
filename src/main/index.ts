@@ -163,6 +163,9 @@ import {
   resolveEngineModel,
   resolvedOpenRouterKey,
   classifyProjectsDir,
+  countGitReposOneLevel,
+  pickDensestRoot,
+  CANDIDATE_ROOT_NAMES,
   type SettingsPatch,
   type RemotePlatform,
   type DaemonCfg,
@@ -1197,6 +1200,15 @@ ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
     return { ok: false, error: (e as Error).message, engines: {}, tools: {} }
   }
 })
+// Real-fs bindings for the pure projects-dir discovery helpers in settings.ts.
+function projectsDirFs() {
+  return {
+    hasGitDir: (d: string) => existsSync(join(d, '.git')),
+    listChildren: (d: string) => readdirSync(d),
+    resolveHome: () => homedir(),
+    candidateRoots: () => CANDIDATE_ROOT_NAMES.map((n) => (n ? join(homedir(), n) : homedir())),
+  }
+}
 ipcMain.handle(
   'settings:validate-projects-dir',
   async (_e, input: { dir?: string; hostId?: string }) => {
@@ -1211,9 +1223,14 @@ ipcMain.handle(
         message: (e as Error).message,
       }))
     }
-    return classifyProjectsDir(dir, (d) => existsSync(join(d, '.git')))
+    return classifyProjectsDir(dir, projectsDirFs())
   },
 )
+ipcMain.handle('settings:suggest-projects-dir', () => {
+  const fs = projectsDirFs()
+  const denser = pickDensestRoot(fs.candidateRoots(), (d) => countGitReposOneLevel(d, fs))
+  return denser ? { dir: denser.root, repoCount: denser.count } : null
+})
 ipcMain.handle('snippets:list', (_e, root?: string) =>
   listPromptSnippets(repoRootOf(root || cur().cwd)),
 )

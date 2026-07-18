@@ -632,7 +632,7 @@ export type RemoteSettingsProbe = {
   tools: Record<string, string>
 }
 export type ProjectsDirValidation =
-  | { ok: true; dir: string }
+  | { ok: true; dir: string; repoCount?: number }
   | {
       ok: false
       reason: 'is-repo' | 'error'
@@ -640,6 +640,15 @@ export type ProjectsDirValidation =
       suggestedParent?: string
       message: string
     }
+  | {
+      ok: false
+      reason: 'no-repos-found'
+      dir: string
+      suggestedChild?: string
+      suggestedCount?: number
+      message: string
+    }
+export type ProjectsDirSuggestion = { dir: string; repoCount: number } | null
 export type RemoteDirEntry = { name: string; path: string; dir: true }
 export type RemoteDirList = {
   cwd: string
@@ -1468,6 +1477,7 @@ export type GtApi = {
       dir?: string
       hostId?: string
     }) => Promise<ProjectsDirValidation>
+    suggestProjectsDir: () => Promise<ProjectsDirSuggestion>
   }
   snippets: {
     list: (repoRoot?: string) => Promise<{
