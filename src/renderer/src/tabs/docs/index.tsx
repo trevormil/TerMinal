@@ -71,13 +71,13 @@ function buildTree(items: DocEntry[], stripPrefix = ''): TreeNode[] {
 // convention); CHANGELOG.md is sole-writer-owned by the changelog agent.
 
 const CATEGORY_HINT: Record<DocCategory, string> = {
-  changelog: 'maintained by the changelog agent',
-  decisions: 'architecture decision records for durable technical choices',
-  maintainer: 'maintained by the auto-docs agent — contributor reference',
-  developer: 'maintained by the auto-docs agent — public API + integration',
-  personal: 'maintained by the auto-docs agent — what shipped + what is in flight',
-  reports: 'scheduled-agent run artifacts, grouped by kind',
-  other: 'human-authored (handbook, runbooks, architecture overview)',
+  changelog: 'Maintained by the changelog agent',
+  decisions: 'Architecture decision records for durable technical choices',
+  maintainer: 'Maintained by the auto-docs agent — contributor reference',
+  developer: 'Maintained by the auto-docs agent — public API + integration',
+  personal: 'Maintained by the auto-docs agent — what shipped + what is in flight',
+  reports: 'Scheduled-agent run artifacts, grouped by kind',
+  other: 'Human-authored (handbook, runbooks, architecture overview)',
 }
 
 function categoryStorageKey(repoRoot: string) {
@@ -230,7 +230,7 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
                             size={10}
                             strokeWidth={2}
                             className="shrink-0 text-[var(--gt-accent-light)] opacity-70"
-                            aria-label={`managed by ${n.entry.managedBy}`}
+                            aria-label={`Managed by ${n.entry.managedBy}`}
                           />
                         )}
                       </button>

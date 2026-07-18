@@ -25,16 +25,16 @@ const plugin: Plugin<TranscriptStats> = {
         <div className="mb-1 truncate text-[13px] font-semibold text-zinc-100" title={d.model}>
           {d.model}
         </div>
-        <Row label="turns" value={d.turns} />
+        <Row label="Turns" value={d.turns} />
         <Row
-          label="session"
+          label="Session"
           value={
             <CopyButton value={d.sessionId} title="Copy session id">
               {d.sessionId.slice(0, 8) || '—'}
             </CopyButton>
           }
         />
-        {d.gitBranch && <Row label="branch" value={d.gitBranch} />}
+        {d.gitBranch && <Row label="Branch" value={d.gitBranch} />}
       </Card>
     )
   },

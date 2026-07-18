@@ -457,7 +457,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     title="Filter by machine (local or a remote SSH host)"
                     className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
                   >
-                    <option value="all">all hosts</option>
+                    <option value="all">All hosts</option>
                     <option value="local">Local</option>
                     {hostOptions.map(([id, label]) => (
                       <option key={id} value={id}>
@@ -470,34 +470,34 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   value={status}
                   onChange={(v) => setStatus(v || 'all')}
                   options={statusOptions}
-                  placeholder="all status"
+                  placeholder="All status"
                 />
                 <FilterSelect
                   value={repo === '__auto__' ? '' : repo}
                   onChange={setRepoFilter}
                   options={repoOptions}
-                  placeholder="all repos"
+                  placeholder="All repos"
                 />
                 <FilterSelect
                   value={agentFilter}
                   onChange={setAgentFilter}
                   options={agentOptions}
-                  placeholder="all agents"
+                  placeholder="All agents"
                 />
                 <FilterSelect
                   value={engineFilter}
                   onChange={setEngineFilter}
                   options={engineOptions}
-                  placeholder="all engines"
+                  placeholder="All engines"
                 />
                 <select
                   value={forceFilter}
                   onChange={(e) => setForceFilter(e.target.value as typeof forceFilter)}
                   className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
                 >
-                  <option value="all">all modes</option>
-                  <option value="force">force only</option>
-                  <option value="normal">normal only</option>
+                  <option value="all">All modes</option>
+                  <option value="force">Force only</option>
+                  <option value="normal">Normal only</option>
                 </select>
                 {filtersActive && (
                   <button
@@ -704,7 +704,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                               selectedRun.id,
                               selectedRun.hostId,
                             )
-                            if (!r.ok) setRerunError(r.error || 'could not cancel')
+                            if (!r.ok) setRerunError(r.error || 'Could not cancel')
                           } else if (selectedRun.source === 'bg')
                             await window.gt.bg.cancel(selectedRun.id)
                           else await window.gt.agents.cancel(selectedRun.id)
@@ -847,7 +847,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                           )}
                           {a.ok === false && (
                             <span className="shrink-0 text-[9.5px] text-[var(--gt-red)]">
-                              failed
+                              Failed
                             </span>
                           )}
                         </button>

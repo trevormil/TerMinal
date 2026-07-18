@@ -108,7 +108,7 @@ export function FleetView({
 
                             <div className="truncate text-[11.5px] leading-snug text-zinc-400">
                               {s.aiTitle || (
-                                <span className="italic text-zinc-600">untitled session</span>
+                                <span className="italic text-zinc-600">Untitled session</span>
                               )}
                             </div>
 

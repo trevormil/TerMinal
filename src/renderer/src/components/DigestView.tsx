@@ -67,7 +67,7 @@ function FileDrilldown({
             +{file.additions} −{file.deletions}
           </span>
         ) : (
-          <span className="shrink-0 text-[10px] text-zinc-700">no diff</span>
+          <span className="shrink-0 text-[10px] text-zinc-700">No diff</span>
         )}
       </button>
       {open && file && (
@@ -169,7 +169,7 @@ function ChunkRow({
           type="checkbox"
           checked={reviewed}
           onChange={onToggleReviewed}
-          title="mark reviewed"
+          title="Mark reviewed"
           className="shrink-0 accent-[var(--gt-accent)]"
         />
       </div>
@@ -191,7 +191,7 @@ function ChunkRow({
               <FileDiff file={file} mode="unified" mechanicalHunks={chunk.hunks} />
             </div>
           ) : (
-            <div className="px-3 py-2 text-[11px] italic text-zinc-600">diff unavailable</div>
+            <div className="px-3 py-2 text-[11px] italic text-zinc-600">Diff unavailable</div>
           )}
         </div>
       )}
@@ -234,7 +234,7 @@ export function DigestView({
         window.gt.getDigest(iid).then(setDigest)
       } else {
         setRunning(false)
-        setError(s.error || 'digest failed')
+        setError(s.error || 'Digest failed')
       }
     })
     return off
@@ -257,7 +257,7 @@ export function DigestView({
     const r = await window.gt.runDigest(iid)
     if (!r.ok) {
       setRunning(false)
-      setError(r.error || 'could not start digest')
+      setError(r.error || 'Could not start digest')
     }
   }
 
@@ -267,10 +267,10 @@ export function DigestView({
         {digest && <span className="font-mono text-zinc-600">digest @ {digest.short_sha}</span>}
         {stale && (
           <span className="rounded bg-[#d6a84a]/15 px-1.5 py-0.5 text-[#d6a84a]">
-            stale · head {headShort}
+            Stale · head {headShort}
           </span>
         )}
-        {!digest && !running && <span className="text-zinc-600">no digest yet</span>}
+        {!digest && !running && <span className="text-zinc-600">No digest yet</span>}
         {error && <span className="truncate text-[var(--gt-red)]">{error}</span>}
       </div>
       <button
@@ -470,9 +470,9 @@ function DigestBody({
               <div className="flex gap-1">
                 {(
                   [
-                    ['all', `all ${digest.chunks.length}`],
-                    ['risky', `needs eyes ${s.red + s.yellow}`],
-                    ['red', `high ${s.red}`],
+                    ['all', `All ${digest.chunks.length}`],
+                    ['risky', `Needs eyes ${s.red + s.yellow}`],
+                    ['red', `High ${s.red}`],
                   ] as const
                 ).map(([f, label]) => (
                   <button
@@ -490,7 +490,7 @@ function DigestBody({
                 </span>
                 {reviewedCount > 0 && (
                   <button onClick={() => setReviewed({})} className="hover:text-zinc-300">
-                    clear
+                    Clear
                   </button>
                 )}
               </div>
@@ -506,7 +506,7 @@ function DigestBody({
               />
             ))}
             {visibleChunks.length === 0 && (
-              <div className="px-1 py-4 text-[11px] text-zinc-600">nothing at this filter.</div>
+              <div className="px-1 py-4 text-[11px] text-zinc-600">Nothing at this filter.</div>
             )}
           </div>
         )}

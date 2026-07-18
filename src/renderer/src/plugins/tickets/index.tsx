@@ -71,7 +71,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
                 onClick={() => setPages(1)}
                 className="cursor-pointer text-[10px] text-zinc-600 hover:text-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
               >
-                show less
+                Show less
               </button>
             )}
           </div>

@@ -260,7 +260,7 @@ function SummaryView({
         <EnginePill engine={session.engine} />
         <Badge tone={session.telemetry === 'ready' ? 'green' : 'yellow'}>{session.telemetry}</Badge>
         {session.model && <Badge tone="mute">{session.model}</Badge>}
-        <span className="text-[11px] text-zinc-600">{session.cwd || 'unknown cwd'}</span>
+        <span className="text-[11px] text-zinc-600">{session.cwd || 'Unknown cwd'}</span>
       </div>
       <h2 className="text-lg font-semibold leading-snug text-zinc-100">{session.title}</h2>
       {session.firstUserText && (
@@ -308,7 +308,7 @@ function SummaryView({
           <div className="truncate text-[10.5px] text-zinc-600">
             {session.lastAction
               ? `${session.lastAction.tool} · ${session.lastAction.detail}`
-              : 'no last action'}
+              : 'No last action'}
           </div>
         </div>
         <div className="rounded-md border border-[var(--gt-border)] bg-black/15 p-2">
@@ -657,7 +657,7 @@ function ToolsView({
                   onChange={(event) => setStatus(event.target.value as typeof status)}
                   className="h-8 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 text-[11px] text-zinc-300 outline-none"
                 >
-                  <option value="all">all</option>
+                  <option value="all">All</option>
                   <option value="ok">ok</option>
                   <option value="error">error</option>
                   <option value="open">open</option>
@@ -714,7 +714,7 @@ function ToolsView({
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10.5px] text-zinc-600">
-                        <span>{tool.turnId || 'no turn'}</span>
+                        <span>{tool.turnId || 'No turn'}</span>
                         {tool.skillName && (
                           <span className="text-[var(--gt-accent-light)]">
                             skill {tool.skillName}
@@ -1417,7 +1417,7 @@ function ResultGrid({
               className="h-8 max-w-[150px] rounded-md border border-[var(--gt-border)] bg-black/20 px-2 text-[11px] text-zinc-300 outline-none"
               title="Filter tool"
             >
-              <option value="all">all tools</option>
+              <option value="all">All tools</option>
               {toolOptions.map((tool) => (
                 <option key={tool} value={tool}>
                   {tool}
@@ -1432,7 +1432,7 @@ function ResultGrid({
               className="h-8 max-w-[120px] rounded-md border border-[var(--gt-border)] bg-black/20 px-2 text-[11px] text-zinc-300 outline-none"
               title="Filter status"
             >
-              <option value="all">all status</option>
+              <option value="all">All status</option>
               {statusOptions.map((status) => (
                 <option key={status} value={status}>
                   {status}
@@ -1540,7 +1540,7 @@ function ResultGrid({
                       >
                         {col === 'truncated' ? (
                           displayCell(row[col]) === '1' ? (
-                            <span className="text-[var(--gt-yellow)]">truncated</span>
+                            <span className="text-[var(--gt-yellow)]">Truncated</span>
                           ) : (
                             '—'
                           )
@@ -1599,7 +1599,7 @@ function CallFocus({
           {busy && <RefreshCw size={12} className="animate-spin text-zinc-600" />}
         </div>
         <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10.5px] text-zinc-600">
-          <span className="font-mono">{callId || 'no call selected'}</span>
+          <span className="font-mono">{callId || 'No call selected'}</span>
           {call?.line && <span>line {call.line}</span>}
           <span>{bytes(payload?.inputBytes || call?.argumentsBytes)} in</span>
           <span>{bytes(payload?.outputBytes || call?.outputBytes)} out</span>
@@ -2306,7 +2306,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
         <RadioTower size={15} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
         <span className="text-[12px] font-semibold text-zinc-100">Observability</span>
-        <Badge tone="accent">trace browser</Badge>
+        <Badge tone="accent">Trace browser</Badge>
         {indexQuery && <Badge tone="mute">{indexQuery.query.replaceAll('_', ' ')}</Badge>}
         {snap && <span className="text-[10.5px] text-zinc-600">updated {reltime(snap.ts)}</span>}
         {err && <span className="text-[11px] text-[var(--gt-red)]">{err}</span>}

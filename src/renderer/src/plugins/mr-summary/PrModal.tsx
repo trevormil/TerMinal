@@ -140,7 +140,7 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
                     {detail.title}
                   </span>
                   <Badge tone={stateTone(detail.state)}>{detail.state}</Badge>
-                  {detail.draft && <Badge tone="warn">draft</Badge>}
+                  {detail.draft && <Badge tone="warn">Draft</Badge>}
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-500">
                   <span className="inline-flex items-center gap-1 font-mono">
@@ -184,7 +184,7 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
                     )}
                   </div>
                 ) : (
-                  <Empty>not reviewed</Empty>
+                  <Empty>Not reviewed</Empty>
                 )}
               </Section>
 
@@ -227,7 +227,7 @@ export function PrModal({ iid, onClose }: { iid: number; onClose: () => void }) 
                     {detail.description}
                   </Markdown>
                 ) : (
-                  <Empty>no description</Empty>
+                  <Empty>No description</Empty>
                 )}
               </Section>
             </>

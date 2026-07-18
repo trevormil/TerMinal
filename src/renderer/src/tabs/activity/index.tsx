@@ -66,23 +66,23 @@ const ICON: Record<ActivityKind, LucideIcon> = {
 }
 
 const KIND_LABEL: Record<ActivityKind, string> = {
-  'session-start': 'session',
-  'session-end': 'session end',
-  deploy: 'deploy',
-  'ticket-filed': 'ticket',
-  'ticket-closed': 'closed',
-  'pr-opened': 'opened',
-  'pr-verdict': 'review',
-  'pr-merged': 'merged',
-  'tests-pass': 'tests',
-  'tests-fail': 'tests',
-  check: 'check',
-  doc: 'doc',
-  'agent-run': 'agent',
-  'task-complete': 'task',
-  blocked: 'blocked',
-  error: 'error',
-  info: 'info',
+  'session-start': 'Session',
+  'session-end': 'Session end',
+  deploy: 'Deploy',
+  'ticket-filed': 'Ticket',
+  'ticket-closed': 'Closed',
+  'pr-opened': 'Opened',
+  'pr-verdict': 'Review',
+  'pr-merged': 'Merged',
+  'tests-pass': 'Tests',
+  'tests-fail': 'Tests',
+  check: 'Check',
+  doc: 'Doc',
+  'agent-run': 'Agent',
+  'task-complete': 'Task',
+  blocked: 'Blocked',
+  error: 'Error',
+  info: 'Info',
 }
 
 function reltime(ts: number): string {
@@ -196,17 +196,17 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
         <span className="mr-1 text-[12px] font-semibold text-zinc-200">Activity</span>
         <span className="inline-flex items-center gap-1 text-[10px] text-zinc-600">
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--gt-green)] gt-pulse" />
-          live
+          Live
         </span>
         <span className="mx-1 text-zinc-700">·</span>
         <Chip active={scope === 'all'} onClick={() => setScope('all')}>
-          all repos
+          All repos
         </Chip>
         <Chip active={scope === 'repo'} onClick={() => setScope('repo')}>
-          this repo
+          This repo
         </Chip>
         <Chip active={scope === 'session'} onClick={() => setScope('session')}>
-          this session
+          This session
         </Chip>
         <div className="flex-1" />
         <select
@@ -214,7 +214,7 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
           onChange={(e) => setKindFilter(e.target.value)}
           className="cursor-pointer rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
         >
-          <option value="all">all kinds</option>
+          <option value="all">All kinds</option>
           {kindsPresent.map((k) => (
             <option key={k} value={k} className="bg-[var(--gt-panel)]">
               {KIND_LABEL[k as ActivityKind] || k}
@@ -230,7 +230,7 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="search…"
+            placeholder="Search…"
             className="w-28 rounded-md border border-[var(--gt-border)] bg-black/30 py-0.5 pl-5 pr-1.5 text-[11px] text-zinc-200 outline-none focus:w-40 focus:border-[var(--gt-accent)]/60"
           />
         </div>
@@ -239,7 +239,7 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
           onClick={clear}
           className="rounded-md px-2 py-0.5 text-[11px] text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
         >
-          clear
+          Clear
         </button>
       </div>
 

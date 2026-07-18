@@ -378,7 +378,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   <input
                     value={chatId}
                     onChange={(e) => setChatId(e.target.value)}
-                    placeholder="your numeric chat id"
+                    placeholder="Your numeric chat id"
                     spellCheck={false}
                     className={fieldInput}
                   />
@@ -436,7 +436,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   )}
                   Install MCP server (Claude Code + Codex)
                   <span className="ml-auto text-[10.5px] text-zinc-600">
-                    {mcp?.ok ? '✓ installed' : 'cross-session views'}
+                    {mcp?.ok ? '✓ Installed' : 'Cross-session views'}
                   </span>
                 </button>
                 {mcp?.error && <div className="text-[11px] text-amber-400">{mcp.error}</div>}
@@ -456,7 +456,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   )}
                   Install <span className="font-mono">gt-notify</span> hook
                   <span className="ml-auto text-[10.5px] text-zinc-600">
-                    {notify?.ok ? '✓ installed' : 'activity feed'}
+                    {notify?.ok ? '✓ Installed' : 'Activity feed'}
                   </span>
                 </button>
                 {notify?.error && <div className="text-[11px] text-amber-400">{notify.error}</div>}

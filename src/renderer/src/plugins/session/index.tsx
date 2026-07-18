@@ -10,11 +10,11 @@ const shortModel = (m: string) =>
     .replace(/\[1m\]/, ' 1M')
 
 const MODE: Record<string, { label: string; tone: BadgeTone }> = {
-  auto: { label: 'auto', tone: 'yellow' },
-  bypassPermissions: { label: 'auto', tone: 'yellow' },
-  acceptEdits: { label: 'accept-edits', tone: 'blue' },
-  plan: { label: 'plan', tone: 'blue' },
-  default: { label: 'normal', tone: 'mute' },
+  auto: { label: 'Auto', tone: 'yellow' },
+  bypassPermissions: { label: 'Auto', tone: 'yellow' },
+  acceptEdits: { label: 'Accept-edits', tone: 'blue' },
+  plan: { label: 'Plan', tone: 'blue' },
+  default: { label: 'Normal', tone: 'mute' },
 }
 
 // Headline card: Claude's own session title + model + permission mode + branch + turns.
@@ -52,7 +52,7 @@ const plugin: Plugin<TranscriptStats> = {
         }
       >
         <div className="mb-1.5 line-clamp-2 text-[12px] font-semibold leading-snug text-zinc-100">
-          {d.aiTitle || d.firstUserText || 'untitled session'}
+          {d.aiTitle || d.firstUserText || 'Untitled session'}
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
           <span className="font-medium text-zinc-300">{shortModel(d.model)}</span>

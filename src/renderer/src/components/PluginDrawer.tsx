@@ -41,7 +41,7 @@ export function PluginDrawer({
             onClick={onClose}
             className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-white/5"
           >
-            esc
+            Esc
           </button>
         </div>
         <p className="mb-4 text-[11px] leading-relaxed text-zinc-500">

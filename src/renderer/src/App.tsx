@@ -598,7 +598,7 @@ export default function App() {
       model: cfg.worker.model,
     })
     if (!rec || 'error' in rec)
-      return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
+      return { ok: false, error: (rec as { error?: string })?.error || 'Failed to create loop' }
     const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
     const tag = rec.id.slice(-4)
     // The generator wears the planner hat on turn one: draft the contract if
@@ -647,7 +647,7 @@ export default function App() {
       model: cfg.driver.model,
     })
     if (!rec || 'error' in rec)
-      return { ok: false, error: (rec as { error?: string })?.error || 'failed to create loop' }
+      return { ok: false, error: (rec as { error?: string })?.error || 'Failed to create loop' }
     const stateDir = `${rec.repoRoot}/.TerMinal/loops/${rec.id}`
     const tag = rec.id.slice(-4)
     // Both sessions START in the main repo (so they group into one workspace and
@@ -1122,10 +1122,10 @@ export default function App() {
                   <span
                     title={
                       anyWorking
-                        ? 'a session is working'
+                        ? 'A session is working'
                         : needsAttention
-                          ? 'needs attention'
-                          : 'idle'
+                          ? 'Needs attention'
+                          : 'Idle'
                     }
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${anyWorking ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                   />
@@ -1420,10 +1420,10 @@ export default function App() {
                             <span
                               title={
                                 status === 'working'
-                                  ? 'working'
+                                  ? 'Working'
                                   : needsAttention
-                                    ? 'needs attention'
-                                    : 'idle'
+                                    ? 'Needs attention'
+                                    : 'Idle'
                               }
                               className={`h-1.5 w-1.5 shrink-0 rounded-full ${status === 'working' ? 'bg-[var(--gt-green)] gt-pulse' : needsAttention ? 'bg-[var(--gt-yellow)]' : 'bg-[var(--gt-accent-2)]'}`}
                             />

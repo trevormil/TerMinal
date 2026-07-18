@@ -569,7 +569,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                  placeholder="search repo (Enter)"
+                  placeholder="Search repo (Enter)"
                   className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
                 />
               </div>

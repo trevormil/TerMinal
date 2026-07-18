@@ -33,11 +33,11 @@ const GROUPS: {
   toneKey: string
   match: (state: string) => boolean
 }[] = [
-  { id: 'open', label: 'open', toneKey: 'opened', match: (s) => s === 'opened' },
-  { id: 'merged', label: 'merged', toneKey: 'merged', match: (s) => s === 'merged' },
+  { id: 'open', label: 'Open', toneKey: 'opened', match: (s) => s === 'opened' },
+  { id: 'merged', label: 'Merged', toneKey: 'merged', match: (s) => s === 'merged' },
   {
     id: 'closed',
-    label: 'closed',
+    label: 'Closed',
     toneKey: 'closed',
     match: (s) => s !== 'opened' && s !== 'merged',
   },
@@ -94,7 +94,7 @@ function MrRow({
               {m.iid}
             </span>
             {m.draft && (
-              <span className="text-[10px] uppercase tracking-wide text-amber-400">draft</span>
+              <span className="text-[10px] uppercase tracking-wide text-amber-400">Draft</span>
             )}
             <span className="truncate text-[13px] text-zinc-100">{m.title}</span>
             {m.labels?.includes(AUTO_MERGEABLE_LABEL) && (
@@ -102,7 +102,7 @@ function MrRow({
                 size={12}
                 strokeWidth={2.5}
                 className="shrink-0 text-[var(--gt-green)]"
-                aria-label="auto-mergeable"
+                aria-label="Auto-mergeable"
               />
             )}
           </div>
@@ -112,7 +112,7 @@ function MrRow({
                 {r.verdict}
               </span>
             ) : (
-              <span>not reviewed</span>
+              <span>Not reviewed</span>
             )}
             {r && (
               <span
@@ -130,7 +130,7 @@ function MrRow({
             {r?.stale && (
               <span className="inline-flex items-center gap-1 text-amber-400">
                 <TriangleAlert size={10} strokeWidth={2.5} />
-                stale
+                Stale
               </span>
             )}
             <span className="inline-flex items-center gap-1">
@@ -141,7 +141,7 @@ function MrRow({
             {m.workedBy.length > 0 && (
               <span
                 className="inline-flex items-center gap-1 text-zinc-500"
-                title="model(s) that wrote this MR"
+                title="Model(s) that wrote this MR"
               >
                 ✍ {m.workedBy.join(', ')}
               </span>
@@ -169,7 +169,7 @@ function MrRow({
             onClick={() => window.gt.openExternal(m.webUrl)}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
           >
-            open
+            Open
             <ArrowUpRight size={12} strokeWidth={2} />
           </button>
         </div>
