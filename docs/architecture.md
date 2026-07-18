@@ -90,7 +90,7 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
 - `sessions.ts` — per-repo session docs `<repo>/sessions/NNNN-slug/session.md`.
 - `files.ts` — path-guarded dir/read/write/search (`git grep`), with
   `git check-ignore` marking for the dimmed tree.
-- `scaffold.ts` — new-repo scaffolding from the project-template submodule (or a
+- `scaffold.ts` — new-repo scaffolding from the embedded template (or a
   clone fallback in the packaged app).
 - `repo.ts` — `repoForCwd` (origin → host/owner/repo), `repoRootOf`, git status.
 - `settings.ts` — self-configuring persisted settings (every key has a working

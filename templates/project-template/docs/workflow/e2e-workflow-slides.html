@@ -1,0 +1,3311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Software Factory</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #15110f;
+        --paper: #fff7db;
+        --cream: #fffdf1;
+        --muted: #665b50;
+        --line: #241b17;
+        --line-soft: rgba(36, 27, 23, 0.18);
+        --teal: #00a88f;
+        --teal-soft: #c7fff2;
+        --sky: #3b82f6;
+        --sky-soft: #dbeaff;
+        --coral: #ff5f55;
+        --coral-soft: #ffd9d1;
+        --yellow: #ffd447;
+        --yellow-soft: #fff0a8;
+        --pink: #f15bb5;
+        --pink-soft: #ffd6ef;
+        --lime: #8fd14f;
+        --lime-soft: #e8ffc4;
+        --violet: #7b61ff;
+        --violet-soft: #e4ddff;
+        --shadow: 10px 10px 0 rgba(21, 17, 15, 0.18);
+        --radius: 14px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          linear-gradient(90deg, rgba(21, 17, 15, 0.06) 1px, transparent 1px),
+          linear-gradient(rgba(21, 17, 15, 0.06) 1px, transparent 1px),
+          var(--paper);
+        background-size: 28px 28px;
+        color: var(--ink);
+        font-family: "Chalkboard SE", "Marker Felt", "Avenir Next", "Trebuchet MS", sans-serif;
+      }
+
+      button {
+        color: inherit;
+        font: inherit;
+      }
+
+      .deck {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 292px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: hidden;
+        border-right: 3px solid var(--line);
+        background: var(--cream);
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+
+      .brand {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 11px;
+      }
+
+      .factory-mark {
+        width: 52px;
+        height: 41px;
+        border: 3px solid var(--line);
+        border-radius: 11px;
+        background:
+          linear-gradient(90deg, transparent 0 16px, var(--line) 16px 19px, transparent 19px),
+          linear-gradient(var(--teal) 0 42%, var(--yellow) 42% 72%, var(--coral) 72%);
+        box-shadow: 5px 5px 0 var(--sky);
+        position: relative;
+      }
+
+      .factory-mark::before {
+        content: "";
+        position: absolute;
+        left: 8px;
+        top: -13px;
+        width: 33px;
+        height: 13px;
+        border: 3px solid var(--line);
+        border-bottom: 0;
+        border-radius: 9px 9px 0 0;
+        background: var(--pink-soft);
+      }
+
+      .factory-mark::after {
+        content: "";
+        position: absolute;
+        right: -11px;
+        bottom: 7px;
+        width: 17px;
+        height: 17px;
+        border: 3px solid var(--line);
+        border-radius: 999px;
+        background: var(--cream);
+      }
+
+      .brand h1 {
+        margin: 0;
+        max-width: 185px;
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: 1.12rem;
+        line-height: 0.9;
+        letter-spacing: 0;
+      }
+
+      .brand p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.35;
+        font-size: 0.9rem;
+      }
+
+      .meter {
+        display: grid;
+        gap: 6px;
+      }
+
+      .meter-top {
+        display: flex;
+        justify-content: space-between;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.11em;
+        font-weight: 800;
+      }
+
+      .track {
+        height: 14px;
+        border: 2px solid var(--line);
+        border-radius: 999px;
+        background:
+          repeating-linear-gradient(
+            -45deg,
+            rgba(21, 17, 15, 0.12) 0 8px,
+            transparent 8px 16px
+          ),
+          var(--cream);
+        overflow: hidden;
+      }
+
+      .track span {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, var(--teal), var(--yellow), var(--coral), var(--pink));
+        transition: width 220ms ease;
+      }
+
+      .nav {
+        display: grid;
+        gap: 8px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .nav button {
+        border: 2px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        min-height: 33px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 9px;
+        text-align: left;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .nav button:hover,
+      .nav button.active {
+        border-color: var(--line);
+        background: var(--yellow-soft);
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .nav .num {
+        width: 27px;
+        height: 27px;
+        border: 2px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 27px;
+        background: var(--cream);
+        font-weight: 900;
+        font-size: 0.8rem;
+        line-height: 1;
+      }
+
+      .nav .label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1 1 auto;
+        font-size: 0.86rem;
+        font-weight: 700;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 9px;
+      }
+
+      .controls button {
+        min-height: 40px;
+        border: 3px solid var(--line);
+        border-radius: 12px;
+        background: var(--cream);
+        box-shadow: 4px 4px 0 var(--line);
+        cursor: pointer;
+        font-weight: 900;
+        font-size: 1.1rem;
+      }
+
+      .controls button:hover {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0 var(--line);
+      }
+
+      .stage {
+        min-width: 0;
+        padding: clamp(20px, 4vw, 54px);
+        display: grid;
+        align-items: center;
+      }
+
+      .slide {
+        display: none;
+        min-height: calc(100vh - clamp(40px, 8vw, 108px));
+        max-width: 1240px;
+        width: 100%;
+        margin: 0 auto;
+      }
+
+      .slide.active {
+        display: grid;
+        gap: 24px;
+        animation: pop 260ms ease-out both;
+      }
+
+      @keyframes pop {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.99);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .kicker {
+        width: fit-content;
+        border: 3px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: var(--lime-soft);
+        box-shadow: 4px 4px 0 var(--line);
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        font-size: 0.72rem;
+        font-weight: 950;
+        margin-bottom: 18px;
+      }
+
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h2 {
+        max-width: 980px;
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(2.35rem, 4.8vw, 4.9rem);
+        line-height: 1;
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+      }
+
+      h3 {
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(1.45rem, 2.5vw, 2.5rem);
+        line-height: 0.98;
+      }
+
+      .lede {
+        max-width: 780px;
+        color: var(--muted);
+        font-size: clamp(1.05rem, 1.5vw, 1.35rem);
+        line-height: 1.45;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(380px, 0.92fr);
+        gap: clamp(24px, 4vw, 58px);
+        align-items: center;
+      }
+
+      .hero-copy {
+        display: grid;
+        gap: 24px;
+      }
+
+      .toy-factory {
+        min-height: 540px;
+        border: 4px solid var(--line);
+        border-radius: 24px;
+        background:
+          linear-gradient(90deg, rgba(21, 17, 15, 0.08) 1px, transparent 1px),
+          linear-gradient(rgba(21, 17, 15, 0.08) 1px, transparent 1px),
+          var(--cream);
+        background-size: 34px 34px;
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .belt {
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        top: 52%;
+        height: 54px;
+        border: 4px solid var(--line);
+        border-radius: 999px;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            var(--line) 0 18px,
+            var(--yellow) 18px 40px,
+            var(--line) 40px 44px,
+            var(--teal-soft) 44px 70px
+          );
+      }
+
+      .chip {
+        position: absolute;
+        width: 170px;
+        min-height: 104px;
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        box-shadow: 7px 7px 0 var(--line);
+        padding: 14px;
+        display: grid;
+        align-content: center;
+        gap: 7px;
+      }
+
+      .chip strong {
+        font-size: 1.02rem;
+        font-weight: 950;
+      }
+
+      .chip span {
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.25;
+      }
+
+      .chip-a {
+        left: 8%;
+        top: 14%;
+        background: var(--sky-soft);
+      }
+
+      .chip-b {
+        left: 38%;
+        top: 37%;
+        background: var(--yellow-soft);
+        transform: rotate(-3deg);
+      }
+
+      .chip-c {
+        right: 9%;
+        top: 16%;
+        background: var(--teal-soft);
+        transform: rotate(3deg);
+      }
+
+      .chip-d {
+        right: 20%;
+        bottom: 10%;
+        background: var(--pink-soft);
+      }
+
+      .shape {
+        position: absolute;
+        border: 3px solid var(--line);
+      }
+
+      .shape.one {
+        width: 82px;
+        height: 82px;
+        background: var(--coral);
+        left: 9%;
+        bottom: 11%;
+        transform: rotate(11deg);
+      }
+
+      .shape.two {
+        width: 96px;
+        height: 96px;
+        border-radius: 999px;
+        background: var(--lime);
+        right: 11%;
+        bottom: 34%;
+      }
+
+      .shape.three {
+        width: 0;
+        height: 0;
+        border-left: 48px solid transparent;
+        border-right: 48px solid transparent;
+        border-bottom: 84px solid var(--violet);
+        border-top: 0;
+        top: 7%;
+        left: 47%;
+      }
+
+      .grid-5 {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .tile {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        min-height: 210px;
+        background: var(--cream);
+        padding: 18px;
+        box-shadow: 7px 7px 0 rgba(21, 17, 15, 0.18);
+        display: grid;
+        align-content: space-between;
+        gap: 18px;
+      }
+
+      .tile:nth-child(1) {
+        background: var(--sky-soft);
+      }
+
+      .tile:nth-child(2) {
+        background: var(--yellow-soft);
+      }
+
+      .tile:nth-child(3) {
+        background: var(--coral-soft);
+      }
+
+      .tile:nth-child(4) {
+        background: var(--teal-soft);
+      }
+
+      .tile:nth-child(5) {
+        background: var(--violet-soft);
+      }
+
+      .tile b {
+        font-size: 0.78rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .tile strong {
+        display: block;
+        font-size: 1.2rem;
+        line-height: 1.05;
+        font-weight: 950;
+      }
+
+      .tile p {
+        color: var(--muted);
+        line-height: 1.34;
+        font-size: 0.92rem;
+      }
+
+      .ticket-properties {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .ticket-prop {
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        box-shadow: 5px 5px 0 rgba(21, 17, 15, 0.16);
+        padding: 14px 15px;
+        min-height: 118px;
+        display: grid;
+        align-content: start;
+        gap: 7px;
+      }
+
+      .ticket-prop:nth-child(1),
+      .ticket-prop:nth-child(7) {
+        background: var(--sky-soft);
+      }
+
+      .ticket-prop:nth-child(2),
+      .ticket-prop:nth-child(8) {
+        background: var(--yellow-soft);
+      }
+
+      .ticket-prop:nth-child(3) {
+        background: var(--teal-soft);
+      }
+
+      .ticket-prop:nth-child(4) {
+        background: var(--coral-soft);
+      }
+
+      .ticket-prop:nth-child(5) {
+        background: var(--pink-soft);
+      }
+
+      .ticket-prop:nth-child(6) {
+        background: var(--violet-soft);
+      }
+
+      .ticket-prop:nth-child(9) {
+        background: var(--lime-soft);
+      }
+
+      .ticket-prop strong {
+        font-size: 1rem;
+        line-height: 1.05;
+        font-weight: 950;
+      }
+
+      .ticket-prop p {
+        color: var(--muted);
+        line-height: 1.26;
+        font-size: 0.86rem;
+      }
+
+      .ticket-prop code {
+        font-family: "Menlo", "Consolas", monospace;
+        color: var(--sky);
+        font-size: 0.78rem;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+        gap: 24px;
+        align-items: stretch;
+      }
+
+      .panel {
+        border: 3px solid var(--line);
+        border-radius: 20px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: clamp(18px, 2vw, 28px);
+      }
+
+      .card-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .card {
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        padding: 16px;
+        box-shadow: 5px 5px 0 rgba(21, 17, 15, 0.15);
+      }
+
+      .card.teal {
+        background: var(--teal-soft);
+      }
+
+      .card.yellow {
+        background: var(--yellow-soft);
+      }
+
+      .card.coral {
+        background: var(--coral-soft);
+      }
+
+      .card.pink {
+        background: var(--pink-soft);
+      }
+
+      .card.sky {
+        background: var(--sky-soft);
+      }
+
+      .card.lime {
+        background: var(--lime-soft);
+      }
+
+      .card strong {
+        display: block;
+        font-size: 1.05rem;
+        font-weight: 950;
+      }
+
+      .card p {
+        margin-top: 7px;
+        color: var(--muted);
+        line-height: 1.35;
+        font-size: 0.94rem;
+      }
+
+      .stat-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .stat {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 18px;
+        min-height: 150px;
+        display: grid;
+        align-content: center;
+        text-align: center;
+        box-shadow: 6px 6px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .stat b {
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(2.4rem, 6vw, 5rem);
+        line-height: 0.9;
+      }
+
+      .stat span {
+        margin-top: 9px;
+        color: var(--muted);
+        line-height: 1.2;
+        font-weight: 700;
+      }
+
+      .lifecycle-map {
+        display: grid;
+        grid-template-columns:
+          minmax(130px, 1fr) 34px minmax(170px, 1.18fr) 34px
+          minmax(170px, 1.18fr) 34px minmax(150px, 1fr);
+        grid-template-rows: auto 34px auto;
+        grid-template-areas:
+          "intent ar1 backlog ar2 roster ar3 agent"
+          ". . . . . . down"
+          "sync al3 human al2 gates al1 mr";
+        gap: 12px;
+        align-items: stretch;
+        position: relative;
+      }
+
+      .followup-loop {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .followup-loop path {
+        fill: none;
+        stroke: var(--line);
+        stroke-width: 5;
+        stroke-dasharray: 10 10;
+        stroke-linecap: round;
+      }
+
+      .followup-loop text {
+        fill: var(--line);
+        font-size: 18px;
+        font-weight: 950;
+        paint-order: stroke;
+        stroke: var(--paper);
+        stroke-width: 5px;
+        stroke-linejoin: round;
+      }
+
+      .flow-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: 7px 7px 0 rgba(21, 17, 15, 0.18);
+        padding: 16px;
+        min-height: 142px;
+        display: grid;
+        align-content: center;
+        gap: 8px;
+        position: relative;
+        z-index: 4;
+      }
+
+      .flow-card strong {
+        display: block;
+        font-size: 1.05rem;
+        font-weight: 950;
+        line-height: 1.05;
+      }
+
+      .flow-card p {
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.28;
+      }
+
+      .flow-card code {
+        color: var(--sky);
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 0.74rem;
+        word-break: break-word;
+      }
+
+      .flow-intent {
+        grid-area: intent;
+        background: var(--sky-soft);
+      }
+
+      .flow-backlog {
+        grid-area: backlog;
+        background: var(--yellow-soft);
+      }
+
+      .flow-roster {
+        grid-area: roster;
+        background: var(--teal-soft);
+      }
+
+      .flow-agent {
+        grid-area: agent;
+        background: var(--lime-soft);
+        box-shadow: 9px 9px 0 var(--line);
+      }
+
+      .flow-mr {
+        grid-area: mr;
+        background: var(--pink-soft);
+      }
+
+      .flow-gates {
+        grid-area: gates;
+        background: var(--coral-soft);
+      }
+
+      .flow-human {
+        grid-area: human;
+        background: var(--violet-soft);
+      }
+
+      .flow-sync {
+        grid-area: sync;
+        background: var(--yellow);
+      }
+
+      .ticket-strip,
+      .agent-strip {
+        display: grid;
+        gap: 6px;
+      }
+
+      .mini-row {
+        border: 2px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 253, 241, 0.72);
+        padding: 6px 8px;
+        font-size: 0.76rem;
+        font-weight: 850;
+        line-height: 1.1;
+      }
+
+      .mini-row.active {
+        background: var(--yellow);
+        box-shadow: 3px 3px 0 var(--line);
+      }
+
+      .flow-arrow {
+        position: relative;
+        align-self: center;
+        justify-self: stretch;
+        min-height: 28px;
+      }
+
+      .flow-arrow::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 4px;
+        top: 50%;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .flow-arrow::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        border-left: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .flow-arrow.left::before {
+        left: 4px;
+        right: 0;
+      }
+
+      .flow-arrow.left::after {
+        left: -1px;
+        right: auto;
+        border-left: 0;
+        border-right: 13px solid var(--line);
+      }
+
+      .flow-arrow.down {
+        grid-area: down;
+        align-self: stretch;
+        justify-self: center;
+        width: 28px;
+        min-height: 34px;
+      }
+
+      .flow-arrow.down::before {
+        left: 50%;
+        right: auto;
+        top: 0;
+        bottom: 4px;
+        width: 6px;
+        height: auto;
+        transform: translateX(-50%);
+      }
+
+      .flow-arrow.down::after {
+        left: 50%;
+        right: auto;
+        top: auto;
+        bottom: -1px;
+        border-left: 10px solid transparent;
+        border-right: 10px solid transparent;
+        border-top: 13px solid var(--line);
+        border-bottom: 0;
+        transform: translateX(-50%);
+      }
+
+      .ar1 {
+        grid-area: ar1;
+      }
+
+      .ar2 {
+        grid-area: ar2;
+      }
+
+      .ar3 {
+        grid-area: ar3;
+      }
+
+      .al1 {
+        grid-area: al1;
+      }
+
+      .al2 {
+        grid-area: al2;
+      }
+
+      .al3 {
+        grid-area: al3;
+      }
+
+      .factory-flow {
+        display: grid;
+        gap: 14px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 34px;
+        align-items: stretch;
+      }
+
+      .flow-row .flow-card {
+        min-height: 132px;
+      }
+
+      .flow-row .flow-card:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        right: -28px;
+        top: 50%;
+        width: 24px;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .flow-row .flow-card:not(:last-child)::before {
+        content: "";
+        position: absolute;
+        right: -34px;
+        top: 50%;
+        border-left: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .flow-label {
+        width: fit-content;
+        border: 3px solid var(--line);
+        border-radius: 999px;
+        background: var(--cream);
+        padding: 7px 12px;
+        font-size: 0.78rem;
+        font-weight: 950;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .followup-lane {
+        border: 3px dashed var(--line);
+        border-radius: 18px;
+        background: rgba(255, 253, 241, 0.68);
+        padding: 13px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr) 34px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+
+      .followup-card {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 12px;
+        min-height: 86px;
+        display: grid;
+        align-content: center;
+        gap: 5px;
+      }
+
+      .followup-card strong {
+        font-size: 0.98rem;
+        font-weight: 950;
+      }
+
+      .followup-card p {
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.22;
+      }
+
+      .followup-arrow {
+        position: relative;
+        min-height: 28px;
+      }
+
+      .followup-arrow::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 4px;
+        top: 50%;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .followup-arrow::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        border-left: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .assignment-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .assignment-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) 38px minmax(0, 0.85fr);
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .assignment-box {
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        box-shadow: 5px 5px 0 rgba(21, 17, 15, 0.16);
+        padding: 15px;
+        min-height: 112px;
+        display: grid;
+        align-content: center;
+        gap: 6px;
+      }
+
+      .assignment-box strong {
+        font-size: 1.03rem;
+        font-weight: 950;
+      }
+
+      .assignment-box p {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.25;
+      }
+
+      .assignment-row:nth-child(1) .assignment-box:first-child {
+        background: var(--yellow-soft);
+      }
+
+      .assignment-row:nth-child(1) .assignment-box:last-child {
+        background: var(--lime-soft);
+      }
+
+      .assignment-row:nth-child(2) .assignment-box:first-child {
+        background: var(--sky-soft);
+      }
+
+      .assignment-row:nth-child(2) .assignment-box:last-child {
+        background: var(--teal-soft);
+      }
+
+      .assignment-row:nth-child(3) .assignment-box:first-child {
+        background: var(--pink-soft);
+      }
+
+      .assignment-row:nth-child(3) .assignment-box:last-child {
+        background: var(--coral-soft);
+      }
+
+      .assignment-arrow {
+        position: relative;
+        min-height: 28px;
+        align-self: center;
+      }
+
+      .assignment-arrow::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 4px;
+        top: 50%;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .assignment-arrow::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        border-left: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .routing-diagrams {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .route-panel {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .route-panel:nth-child(1) {
+        background: var(--sky-soft);
+      }
+
+      .route-panel:nth-child(2) {
+        background: var(--yellow-soft);
+      }
+
+      .route-panel h3 {
+        font-size: clamp(1.4rem, 2vw, 2.1rem);
+      }
+
+      .route-panel > p {
+        color: var(--muted);
+        line-height: 1.28;
+        font-size: 0.94rem;
+      }
+
+      .route-chain {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1.12fr) 42px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+
+      .route-node {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 13px;
+        min-height: 90px;
+        display: grid;
+        align-content: center;
+        gap: 5px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .route-node strong {
+        font-size: 0.98rem;
+        font-weight: 950;
+      }
+
+      .route-node span {
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.18;
+      }
+
+      .route-arrow {
+        position: relative;
+        min-height: 28px;
+      }
+
+      .route-arrow::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 4px;
+        top: 50%;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .route-arrow::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        border-left: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .route-arrow.both span {
+        position: absolute;
+        left: -1px;
+        top: 50%;
+        border-right: 13px solid var(--line);
+        border-top: 10px solid transparent;
+        border-bottom: 10px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .route-return {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+
+      .route-sequence {
+        display: grid;
+        grid-template-columns:
+          minmax(0, 1fr) 38px minmax(0, 1fr) 38px
+          minmax(0, 1fr) 38px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+      }
+
+      .route-sequence .route-node {
+        min-height: 90px;
+        padding: 11px;
+      }
+
+      .route-sequence .route-node strong {
+        font-size: 0.9rem;
+      }
+
+      .route-sequence .route-node span {
+        font-size: 0.74rem;
+      }
+
+
+      .factory-map {
+        display: grid;
+        grid-template-columns: minmax(230px, 1fr) minmax(280px, 0.9fr) minmax(230px, 1fr);
+        grid-template-rows: minmax(120px, auto) minmax(190px, auto) minmax(120px, auto);
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .map-bubble {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 16px;
+        min-height: 120px;
+        box-shadow: 6px 6px 0 rgba(21, 17, 15, 0.16);
+        display: grid;
+        align-content: center;
+        position: relative;
+      }
+
+      .map-bubble strong {
+        display: block;
+        font-size: 1.08rem;
+        font-weight: 950;
+      }
+
+      .map-bubble p {
+        margin-top: 7px;
+        color: var(--muted);
+        line-height: 1.28;
+        font-size: 0.9rem;
+      }
+
+      .map-center {
+        grid-column: 2;
+        grid-row: 2;
+        min-height: 190px;
+        background: var(--yellow-soft);
+        display: grid;
+        align-content: center;
+        text-align: center;
+        box-shadow: 10px 10px 0 var(--line);
+      }
+
+      .map-center strong {
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(2.6rem, 4vw, 4.5rem);
+        line-height: 0.9;
+      }
+
+      .map-center code {
+        display: block;
+        margin-top: 14px;
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 0.85rem;
+        color: var(--sky);
+        word-break: break-word;
+      }
+
+      .map-bubble::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        width: 28px;
+        height: 6px;
+        background: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .map-left::after {
+        right: -30px;
+      }
+
+      .map-right::after {
+        left: -30px;
+      }
+
+      .map-top {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .map-top::after,
+      .map-bottom::after {
+        display: none;
+      }
+
+      .map-bottom {
+        grid-column: 2;
+        grid-row: 3;
+      }
+
+      .map {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .map-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 18px;
+        min-height: 178px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .map-card::after {
+        content: "";
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        width: 42px;
+        height: 42px;
+        border: 3px solid var(--line);
+        background: var(--yellow);
+        transform: rotate(12deg);
+      }
+
+      .map-card:nth-child(2)::after {
+        border-radius: 999px;
+        background: var(--teal);
+      }
+
+      .map-card:nth-child(3)::after {
+        background: var(--pink);
+      }
+
+      .map-card strong {
+        display: block;
+        font-size: 1.18rem;
+        font-weight: 950;
+      }
+
+      .map-card p {
+        margin-top: 8px;
+        color: var(--muted);
+        line-height: 1.35;
+        max-width: calc(100% - 38px);
+      }
+
+      .knowledge-source-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .knowledge-source-card {
+        min-height: 104px;
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: 7px 7px 0 rgba(21, 17, 15, 0.18);
+        display: grid;
+        place-items: center;
+        padding: 18px 12px;
+        text-align: center;
+        font-size: clamp(1rem, 1.6vw, 1.45rem);
+        font-weight: 950;
+        line-height: 1;
+      }
+
+      .knowledge-source-card:nth-child(6n + 1) {
+        background: var(--yellow-soft);
+      }
+
+      .knowledge-source-card:nth-child(6n + 2) {
+        background: var(--teal-soft);
+      }
+
+      .knowledge-source-card:nth-child(6n + 3) {
+        background: var(--pink-soft);
+      }
+
+      .knowledge-source-card:nth-child(6n + 4) {
+        background: var(--sky-soft);
+      }
+
+      .knowledge-source-card:nth-child(6n + 5) {
+        background: var(--lime-soft);
+      }
+
+      .knowledge-source-card:nth-child(6n) {
+        background: var(--violet-soft);
+      }
+
+      .greenfield-flow {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) 42px minmax(0, 1fr) 42px minmax(0, 1fr);
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .greenfield-card {
+        border: 3px solid var(--line);
+        border-radius: 22px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 22px;
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .greenfield-card h3 {
+        font-size: clamp(1.6rem, 2.4vw, 2.7rem);
+        line-height: 0.95;
+      }
+
+      .greenfield-card p {
+        color: var(--muted);
+        line-height: 1.3;
+        font-weight: 800;
+      }
+
+      .planning-list {
+        display: grid;
+        gap: 9px;
+      }
+
+      .planning-list span,
+      .ticket-chip {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 10px 12px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.14);
+        font-weight: 950;
+      }
+
+      .greenfield-plan {
+        background: var(--sky-soft);
+      }
+
+      .greenfield-spec {
+        background: var(--yellow-soft);
+        place-items: center;
+        text-align: center;
+      }
+
+      .greenfield-spec strong {
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(2.6rem, 5vw, 5.5rem);
+        line-height: 0.82;
+      }
+
+      .greenfield-tickets {
+        background: var(--lime-soft);
+      }
+
+      .ticket-chip-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+
+      .greenfield-arrow {
+        align-self: center;
+        height: 16px;
+        border-top: 4px solid var(--line);
+        border-bottom: 4px solid var(--line);
+        position: relative;
+      }
+
+      .greenfield-arrow::after {
+        content: "";
+        position: absolute;
+        right: -3px;
+        top: 50%;
+        border-left: 16px solid var(--line);
+        border-top: 12px solid transparent;
+        border-bottom: 12px solid transparent;
+        transform: translateY(-50%);
+      }
+
+      .factory-loop {
+        display: grid;
+        grid-template-columns: 1fr 58px 1fr 58px 1fr;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .loop-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 18px;
+        min-height: 185px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        box-shadow: 7px 7px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .loop-card:nth-child(1) {
+        background: var(--sky-soft);
+      }
+
+      .loop-card:nth-child(3) {
+        background: var(--yellow-soft);
+      }
+
+      .loop-card:nth-child(5) {
+        background: var(--teal-soft);
+      }
+
+      .arrow {
+        height: 12px;
+        border: 3px solid var(--line);
+        border-left: 0;
+        border-right: 0;
+        position: relative;
+      }
+
+      .arrow::after {
+        content: "";
+        position: absolute;
+        right: -4px;
+        top: -9px;
+        border-left: 16px solid var(--line);
+        border-top: 12px solid transparent;
+        border-bottom: 12px solid transparent;
+      }
+
+      .artifact-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .artifact {
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        padding: 15px;
+        min-height: 134px;
+        display: grid;
+        align-content: space-between;
+      }
+
+      .artifact code {
+        color: var(--sky);
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 0.78rem;
+        word-break: break-word;
+      }
+
+      .artifact span {
+        color: var(--muted);
+        line-height: 1.3;
+        font-size: 0.88rem;
+      }
+
+      .schema-card {
+        border: 3px solid var(--line);
+        border-radius: 20px;
+        background: var(--ink);
+        color: var(--cream);
+        box-shadow: var(--shadow);
+        padding: clamp(18px, 2vw, 28px);
+        overflow: auto;
+      }
+
+      .schema-card pre {
+        margin: 0;
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: clamp(0.64rem, 0.82vw, 0.78rem);
+        line-height: 1.45;
+        white-space: pre;
+      }
+
+      .schema-card code {
+        color: inherit;
+      }
+
+      .review-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .review-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 17px;
+        min-height: 142px;
+      }
+
+      .review-card:nth-child(1),
+      .review-card:nth-child(4) {
+        background: var(--sky-soft);
+      }
+
+      .review-card:nth-child(2),
+      .review-card:nth-child(5) {
+        background: var(--coral-soft);
+      }
+
+      .review-card:nth-child(3),
+      .review-card:nth-child(6) {
+        background: var(--teal-soft);
+      }
+
+      .review-card strong {
+        display: block;
+        font-size: 1.15rem;
+        font-weight: 950;
+      }
+
+      .review-card p {
+        margin-top: 8px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .hitl-diagram {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .hitl-node,
+      .hitl-inbox,
+      .hitl-action {
+        border: 3px solid var(--line);
+        border-radius: 22px;
+        box-shadow: var(--shadow);
+        padding: 22px;
+      }
+
+      .hitl-node {
+        background: var(--yellow-soft);
+        display: grid;
+        align-content: center;
+        gap: 14px;
+      }
+
+      .hitl-node strong,
+      .hitl-action strong {
+        font-size: clamp(1.6rem, 2.4vw, 2.5rem);
+        font-weight: 950;
+        line-height: 0.95;
+      }
+
+      .hitl-node p,
+      .hitl-action p {
+        color: var(--muted);
+        font-weight: 800;
+        line-height: 1.25;
+      }
+
+      .hitl-status {
+        width: fit-content;
+        border: 3px solid var(--line);
+        border-radius: 999px;
+        background: var(--coral);
+        color: var(--cream);
+        padding: 8px 12px;
+        font-size: 0.78rem;
+        font-weight: 950;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .hitl-inbox {
+        background: var(--sky-soft);
+        display: grid;
+        gap: 14px;
+      }
+
+      .hitl-inbox h3 {
+        font-size: clamp(1.7rem, 2.8vw, 3rem);
+      }
+
+      .request-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        padding: 15px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .request-card.telegram {
+        transform: rotate(-1deg);
+      }
+
+      .request-card.email {
+        transform: rotate(1deg);
+        background: var(--pink-soft);
+      }
+
+      .request-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .request-channel {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 950;
+      }
+
+      .request-icon {
+        width: 28px;
+        height: 28px;
+        border: 3px solid var(--line);
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: var(--teal);
+        color: var(--cream);
+        font-size: 0.8rem;
+        font-weight: 950;
+      }
+
+      .request-card.email .request-icon {
+        background: var(--yellow);
+        color: var(--ink);
+      }
+
+      .request-time {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      .request-card p {
+        color: var(--muted);
+        line-height: 1.28;
+        font-weight: 800;
+      }
+
+      .request-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .request-actions span {
+        border: 2px solid var(--line);
+        border-radius: 999px;
+        background: var(--lime-soft);
+        padding: 6px 10px;
+        font-size: 0.78rem;
+        font-weight: 950;
+      }
+
+      .hitl-action {
+        background: var(--lime-soft);
+        display: grid;
+        align-content: center;
+        gap: 14px;
+      }
+
+      .review-duo {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .review-panel {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 17px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+
+      .review-panel.agent {
+        background: var(--sky-soft);
+      }
+
+      .review-panel.ci {
+        background: var(--teal-soft);
+      }
+
+      .review-panel.human {
+        background: var(--yellow-soft);
+      }
+
+      .review-panel h3 {
+        font-size: clamp(1.55rem, 2.3vw, 2.45rem);
+      }
+
+      .review-panel p {
+        color: var(--muted);
+        line-height: 1.32;
+      }
+
+      .score-total {
+        border: 3px solid var(--line);
+        border-radius: 16px;
+        background: var(--cream);
+        padding: 11px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        box-shadow: 5px 5px 0 rgba(21, 17, 15, 0.16);
+      }
+
+      .score-total strong {
+        font-family: "Marker Felt", "Chalkboard SE", "Cooper Black", "Georgia", serif;
+        font-size: clamp(2.1rem, 3.4vw, 3.25rem);
+        line-height: 0.85;
+      }
+
+      .score-total span {
+        color: var(--muted);
+        font-weight: 900;
+      }
+
+      .scorecard {
+        display: grid;
+        gap: 8px;
+      }
+
+      .score-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1fr) 44px;
+        gap: 10px;
+        align-items: center;
+        font-weight: 900;
+        font-size: 0.86rem;
+      }
+
+      .score-bar {
+        height: 14px;
+        border: 2px solid var(--line);
+        border-radius: 999px;
+        background: var(--cream);
+        overflow: hidden;
+      }
+
+      .score-bar span {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, var(--teal), var(--yellow), var(--coral));
+      }
+
+      .human-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .human-list div {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 13px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.14);
+      }
+
+      .human-list strong {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 950;
+      }
+
+      .human-list span {
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.24;
+      }
+
+      .ci-checks {
+        display: grid;
+        gap: 9px;
+      }
+
+      .ci-check {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.14);
+        font-weight: 950;
+      }
+
+      .ci-check span {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .agent-roster-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .agent-pill {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.16);
+        padding: 12px;
+        min-height: 86px;
+        display: grid;
+        align-content: center;
+        gap: 5px;
+      }
+
+      .agent-pill:nth-child(5n + 1) {
+        background: var(--sky-soft);
+      }
+
+      .agent-pill:nth-child(5n + 2) {
+        background: var(--yellow-soft);
+      }
+
+      .agent-pill:nth-child(5n + 3) {
+        background: var(--teal-soft);
+      }
+
+      .agent-pill:nth-child(5n + 4) {
+        background: var(--pink-soft);
+      }
+
+      .agent-pill:nth-child(5n + 5) {
+        background: var(--coral-soft);
+      }
+
+      .agent-pill strong {
+        font-size: 0.92rem;
+        font-weight: 950;
+        line-height: 1.05;
+      }
+
+      .agent-pill span {
+        color: var(--muted);
+        font-size: 0.76rem;
+        line-height: 1.18;
+      }
+
+      .eval-board {
+        border: 3px solid var(--line);
+        border-radius: 20px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .eval-head,
+      .eval-row {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .eval-head {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        align-items: center;
+      }
+
+      .eval-agent,
+      .eval-checks {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.14);
+      }
+
+      .eval-agent {
+        background: var(--yellow-soft);
+        padding: 12px;
+        display: grid;
+        align-content: center;
+      }
+
+      .eval-agent strong {
+        font-size: 1rem;
+        font-weight: 950;
+      }
+
+      .eval-agent span {
+        color: var(--muted);
+        font-size: 0.76rem;
+        line-height: 1.18;
+      }
+
+      .eval-checks {
+        background: var(--sky-soft);
+        padding: 9px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .eval-chip {
+        border: 2px solid var(--line);
+        border-radius: 12px;
+        background: var(--cream);
+        min-height: 48px;
+        padding: 8px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-size: 0.8rem;
+        font-weight: 900;
+        line-height: 1.08;
+      }
+
+      .eval-row:nth-child(3n + 1) .eval-agent {
+        background: var(--teal-soft);
+      }
+
+      .eval-row:nth-child(3n + 2) .eval-agent {
+        background: var(--pink-soft);
+      }
+
+      .eval-row:nth-child(3n + 3) .eval-agent {
+        background: var(--coral-soft);
+      }
+
+      .eval-row:nth-child(3n + 1) .eval-checks {
+        background: var(--lime-soft);
+      }
+
+      .eval-row:nth-child(3n + 2) .eval-checks {
+        background: var(--violet-soft);
+      }
+
+      .eval-row:nth-child(3n + 3) .eval-checks {
+        background: var(--yellow-soft);
+      }
+
+      .ticket-source-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .source-flow {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .source-flow:nth-child(1) {
+        background: var(--sky-soft);
+      }
+
+      .source-flow:nth-child(2) {
+        background: var(--pink-soft);
+      }
+
+      .source-flow:nth-child(3) {
+        background: var(--yellow-soft);
+      }
+
+      .source-flow:nth-child(4) {
+        background: var(--teal-soft);
+      }
+
+      .source-flow h3 {
+        font-size: clamp(1.35rem, 2vw, 2.2rem);
+      }
+
+      .source-flow p {
+        color: var(--muted);
+        line-height: 1.26;
+        font-size: 0.9rem;
+      }
+
+      .source-step {
+        border: 3px solid var(--line);
+        border-radius: 14px;
+        background: var(--cream);
+        padding: 12px;
+        min-height: 66px;
+        display: grid;
+        align-content: center;
+        gap: 4px;
+        box-shadow: 4px 4px 0 rgba(21, 17, 15, 0.14);
+      }
+
+      .source-step strong {
+        font-size: 0.9rem;
+        font-weight: 950;
+      }
+
+      .source-step span {
+        color: var(--muted);
+        font-size: 0.72rem;
+        line-height: 1.18;
+      }
+
+      .source-arrow {
+        position: relative;
+        width: 28px;
+        min-height: 28px;
+        justify-self: center;
+      }
+
+      .source-arrow::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 4px;
+        width: 6px;
+        background: var(--line);
+        transform: translateX(-50%);
+      }
+
+      .source-arrow::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: -1px;
+        border-left: 10px solid transparent;
+        border-right: 10px solid transparent;
+        border-top: 13px solid var(--line);
+        transform: translateX(-50%);
+      }
+
+      .run-log-demo {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .log-panel {
+        border: 3px solid var(--line);
+        border-radius: 20px;
+        background: var(--ink);
+        color: var(--cream);
+        box-shadow: var(--shadow);
+        padding: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .log-panel h3 {
+        color: var(--cream);
+        font-size: clamp(1.8rem, 2.8vw, 3rem);
+      }
+
+      .log-line {
+        border: 2px solid rgba(255, 253, 241, 0.32);
+        border-radius: 12px;
+        background: rgba(255, 253, 241, 0.08);
+        padding: 10px 12px;
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+
+      .log-line b {
+        color: var(--yellow);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .log-line span {
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 0.82rem;
+        line-height: 1.3;
+      }
+
+      .log-side {
+        display: grid;
+        gap: 12px;
+      }
+
+      .log-side-card {
+        border: 3px solid var(--line);
+        border-radius: 18px;
+        background: var(--cream);
+        box-shadow: 5px 5px 0 rgba(21, 17, 15, 0.16);
+        padding: 16px;
+        display: grid;
+        align-content: center;
+        gap: 8px;
+      }
+
+      .log-side-card:nth-child(1) {
+        background: var(--sky-soft);
+      }
+
+      .log-side-card:nth-child(2) {
+        background: var(--yellow-soft);
+      }
+
+      .log-side-card:nth-child(3) {
+        background: var(--teal-soft);
+      }
+
+      .log-side-card strong {
+        font-size: 1.05rem;
+        font-weight: 950;
+      }
+
+      .log-side-card p {
+        color: var(--muted);
+        line-height: 1.25;
+        font-size: 0.9rem;
+      }
+
+      .takeaway {
+        border: 4px solid var(--line);
+        border-radius: 22px;
+        background: var(--yellow);
+        box-shadow: var(--shadow);
+        padding: clamp(20px, 3vw, 34px);
+      }
+
+      .takeaway p {
+        max-width: 980px;
+        font-size: clamp(1.25rem, 2vw, 2rem);
+        line-height: 1.25;
+        font-weight: 900;
+      }
+
+      @media (max-width: 1080px) {
+        .deck {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: relative;
+          height: auto;
+          border-right: 0;
+          border-bottom: 3px solid var(--line);
+          gap: 10px;
+          padding: 12px 16px;
+        }
+
+        .brand h1 {
+          max-width: none;
+          font-size: 1.4rem;
+          line-height: 0.9;
+        }
+
+        .factory-mark {
+          width: 54px;
+          height: 42px;
+          border-radius: 11px;
+          box-shadow: 5px 5px 0 var(--sky);
+        }
+
+        .factory-mark::before {
+          left: 8px;
+          top: -13px;
+          width: 34px;
+          height: 13px;
+          border-radius: 9px 9px 0 0;
+        }
+
+        .factory-mark::after {
+          right: -11px;
+          bottom: 7px;
+          width: 17px;
+          height: 17px;
+        }
+
+        .meter {
+          gap: 5px;
+        }
+
+        .nav {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          max-height: none;
+        }
+
+        .hero,
+        .split {
+          grid-template-columns: 1fr;
+        }
+
+        .toy-factory {
+          min-height: 460px;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .sidebar {
+          gap: 9px;
+          padding: 10px 14px;
+        }
+
+        .brand {
+          gap: 10px;
+        }
+
+        .brand h1 {
+          font-size: 1.22rem;
+        }
+
+        .meter-top {
+          font-size: 0.68rem;
+        }
+
+        .track {
+          height: 12px;
+        }
+
+        .stage {
+          padding: 22px;
+        }
+
+        .slide {
+          min-height: auto;
+        }
+
+        .grid-5,
+        .stat-row,
+        .lifecycle-map,
+        .ticket-properties,
+        .factory-map,
+        .map,
+        .artifact-grid,
+        .review-grid,
+        .agent-roster-grid,
+        .routing-diagrams,
+        .route-chain,
+        .route-return,
+        .route-sequence,
+        .review-duo,
+        .eval-head,
+        .eval-row,
+        .eval-checks,
+        .ticket-source-grid,
+        .run-log-demo,
+        .hitl-diagram,
+        .greenfield-flow,
+        .log-line {
+          grid-template-columns: 1fr;
+        }
+
+        .eval-head {
+          display: none;
+        }
+
+        .score-row {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+
+        .score-total {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .lifecycle-map {
+          display: flex;
+          flex-direction: column;
+          grid-template-areas: none;
+          grid-template-rows: none;
+          gap: 12px;
+        }
+
+        .followup-loop {
+          display: none;
+        }
+
+        .flow-card,
+        .flow-arrow {
+          grid-area: auto !important;
+        }
+
+        .flow-card {
+          width: 100%;
+          min-height: auto;
+        }
+
+        .flow-arrow,
+        .flow-arrow.left,
+        .flow-arrow.down {
+          align-self: stretch;
+          justify-self: center;
+          width: 28px;
+          min-height: 38px;
+        }
+
+        .flow-arrow::before,
+        .flow-arrow.left::before,
+        .flow-arrow.down::before {
+          left: 50%;
+          right: auto;
+          top: 0;
+          bottom: 4px;
+          width: 6px;
+          height: auto;
+          transform: translateX(-50%);
+        }
+
+        .flow-arrow::after,
+        .flow-arrow.left::after,
+        .flow-arrow.down::after {
+          left: 50%;
+          right: auto;
+          top: auto;
+          bottom: -1px;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 13px solid var(--line);
+          border-bottom: 0;
+          transform: translateX(-50%);
+        }
+
+        .followup-lane {
+          grid-template-columns: 1fr;
+        }
+
+        .followup-arrow {
+          width: 28px;
+          min-height: 38px;
+          justify-self: center;
+        }
+
+        .followup-arrow::before {
+          left: 50%;
+          right: auto;
+          top: 0;
+          bottom: 4px;
+          width: 6px;
+          height: auto;
+          transform: translateX(-50%);
+        }
+
+        .followup-arrow::after {
+          left: 50%;
+          right: auto;
+          top: auto;
+          bottom: -1px;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 13px solid var(--line);
+          border-bottom: 0;
+          transform: translateX(-50%);
+        }
+
+        .assignment-row {
+          grid-template-columns: 1fr;
+        }
+
+        .assignment-arrow {
+          width: 28px;
+          min-height: 38px;
+          justify-self: center;
+        }
+
+        .assignment-arrow::before {
+          left: 50%;
+          right: auto;
+          top: 0;
+          bottom: 4px;
+          width: 6px;
+          height: auto;
+          transform: translateX(-50%);
+        }
+
+        .assignment-arrow::after {
+          left: 50%;
+          right: auto;
+          top: auto;
+          bottom: -1px;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 13px solid var(--line);
+          border-bottom: 0;
+          transform: translateX(-50%);
+        }
+
+        .route-arrow {
+          width: 28px;
+          min-height: 38px;
+          justify-self: center;
+        }
+
+        .route-arrow::before {
+          left: 50%;
+          right: auto;
+          top: 0;
+          bottom: 4px;
+          width: 6px;
+          height: auto;
+          transform: translateX(-50%);
+        }
+
+        .route-arrow::after {
+          left: 50%;
+          right: auto;
+          top: auto;
+          bottom: -1px;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 13px solid var(--line);
+          border-bottom: 0;
+          transform: translateX(-50%);
+        }
+
+        .route-arrow.both span {
+          left: 50%;
+          top: -1px;
+          border-right: 10px solid transparent;
+          border-left: 10px solid transparent;
+          border-bottom: 13px solid var(--line);
+          border-top: 0;
+          transform: translateX(-50%);
+        }
+
+        .factory-map {
+          grid-template-rows: none;
+        }
+
+        .map-center,
+        .map-top,
+        .map-bottom {
+          grid-column: auto;
+          grid-row: auto;
+          min-height: 210px;
+          transform: none;
+        }
+
+        .map-bubble::after {
+          display: none;
+        }
+
+        .schema-card pre {
+          font-size: 0.58rem;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+
+        .nav button.active {
+          grid-column: 1 / -1;
+        }
+
+        .knowledge-source-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .knowledge-source-card {
+          min-height: 82px;
+        }
+
+        .greenfield-arrow {
+          width: 28px;
+          min-height: 38px;
+          height: auto;
+          justify-self: center;
+          border-top: 0;
+          border-bottom: 0;
+          border-left: 3px solid var(--line);
+          border-right: 3px solid var(--line);
+        }
+
+        .greenfield-arrow::after {
+          right: -9px;
+          top: auto;
+          bottom: -12px;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 14px solid var(--line);
+          border-bottom: 0;
+          transform: none;
+        }
+
+        .factory-loop {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow {
+          height: 48px;
+          width: 12px;
+          border-top: 0;
+          border-bottom: 0;
+          border-left: 3px solid var(--line);
+          border-right: 3px solid var(--line);
+          justify-self: center;
+        }
+
+        .arrow::after {
+          right: -9px;
+          top: auto;
+          bottom: -4px;
+          border-left: 12px solid transparent;
+          border-right: 12px solid transparent;
+          border-top: 16px solid var(--line);
+          border-bottom: 0;
+        }
+
+        .chip {
+          width: 142px;
+        }
+
+        .chip-b {
+          left: 28%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="deck">
+      <aside class="sidebar" aria-label="Slide navigation">
+        <div class="brand">
+          <div class="factory-mark" aria-hidden="true"></div>
+          <h1>My Software Factory</h1>
+        </div>
+
+        <div class="meter">
+          <div class="meter-top">
+            <span>Slide</span>
+            <span id="counter">1 / 14</span>
+          </div>
+          <div class="track" aria-hidden="true"><span id="progress"></span></div>
+        </div>
+
+        <nav class="nav" id="nav"></nav>
+
+        <div class="controls">
+          <button id="prev" type="button" aria-label="Previous slide">&lt;</button>
+          <button id="next" type="button" aria-label="Next slide">&gt;</button>
+        </div>
+      </aside>
+
+      <section class="stage" aria-live="polite">
+        <article class="slide active" data-title="Intro">
+          <div class="hero">
+            <div class="hero-copy">
+              <div class="kicker">Architecture Defense</div>
+              <h2>The Factory Runs On Tickets</h2>
+              <p class="lede">
+                This project-template turns software work into durable, observable,
+                reviewable units. Agents do not free-roam the repo. They pick up
+                tickets, produce artifacts, open pull requests, and leave enough state for a
+                human or another agent to understand exactly what happened.
+              </p>
+            </div>
+            <div class="toy-factory" aria-label="Software factory illustration">
+              <div class="shape one"></div>
+              <div class="shape two"></div>
+              <div class="shape three"></div>
+              <div class="belt"></div>
+              <div class="chip chip-a"><strong>Ticket</strong><span>Scope, owner, deps.</span></div>
+              <div class="chip chip-b"><strong>Agent</strong><span>Role, run, session.</span></div>
+              <div class="chip chip-c"><strong>MR</strong><span>Branch, tests, review.</span></div>
+              <div class="chip chip-d"><strong>Sync</strong><span>Merge reality back to state.</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Map">
+          <div>
+            <div class="kicker">High-Level Diagram</div>
+            <h2>Factory Flow</h2>
+          </div>
+          <div class="factory-flow" aria-label="High-level factory lifecycle">
+            <div class="lifecycle-map">
+              <div class="flow-card flow-intent">
+                <strong>Intake</strong>
+                <p>Human request, scheduled check, review finding, audit issue, or agent follow-up.</p>
+              </div>
+              <div class="flow-arrow ar1" aria-hidden="true"></div>
+              <div class="flow-card flow-backlog">
+                <strong>Ticket Backlog</strong>
+                <p>Everything becomes a clear, owned ticket.</p>
+                <div class="ticket-strip" aria-label="Ticket examples">
+                  <div class="mini-row">Docs audit</div>
+                  <div class="mini-row active">Webhook retry</div>
+                  <div class="mini-row">Review fix</div>
+                </div>
+              </div>
+              <div class="flow-arrow ar2" aria-hidden="true"></div>
+              <div class="flow-card flow-roster">
+                <strong>Agent Roster</strong>
+                <p>Every agent can see the available specialist roles.</p>
+                <div class="agent-strip" aria-label="Agent roster">
+                  <div class="mini-row">Frontend Builder</div>
+                  <div class="mini-row active">Backend Builder</div>
+                  <div class="mini-row">Security Reviewer</div>
+                </div>
+              </div>
+              <div class="flow-arrow ar3" aria-hidden="true"></div>
+              <div class="flow-card flow-agent">
+                <strong>1 Agent Per Ticket</strong>
+                <p>One specialist owns the slice, leaves a clear trail, and drives it to an artifact.</p>
+                <p>Assigned to Backend Builder</p>
+              </div>
+              <div class="flow-arrow down" aria-hidden="true"></div>
+              <div class="flow-card flow-mr">
+                <strong>Worktree + Pull Request</strong>
+                <p>The agent works in isolation and opens a reviewable pull request.</p>
+              </div>
+              <div class="flow-arrow left al1" aria-hidden="true"></div>
+              <div class="flow-card flow-gates">
+                <strong>Quality Gates / Evals</strong>
+                <p>Tests, security scan, model review, score bar, and review artifact.</p>
+              </div>
+              <div class="flow-arrow left al2" aria-hidden="true"></div>
+              <div class="flow-card flow-human">
+                <strong>Human PR Gate</strong>
+                <p>Human inspects the pull request, artifacts, and blockers. Human owns merge to main.</p>
+              </div>
+              <div class="flow-arrow left al3" aria-hidden="true"></div>
+              <div class="flow-card flow-sync">
+                <strong>Merge Update</strong>
+                <p>Observed merge reality updates ticket status, pull request links, and follow-up state.</p>
+              </div>
+            </div>
+            <div class="followup-lane" aria-label="Follow-up ticket loop">
+              <div class="followup-card" style="background: var(--pink-soft)">
+                <strong>Work uncovers more work</strong>
+                <p>Build or review reveals another slice.</p>
+              </div>
+              <div class="followup-arrow" aria-hidden="true"></div>
+              <div class="followup-card" style="background: var(--yellow-soft)">
+                <strong>New Ticket</strong>
+                <p>The slice gets an owner and clear scope.</p>
+              </div>
+              <div class="followup-arrow" aria-hidden="true"></div>
+              <div class="followup-card" style="background: var(--sky-soft)">
+                <strong>Back to Backlog</strong>
+                <p>It rejoins the same flow.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Tickets">
+          <div>
+            <div class="kicker">Core Component</div>
+            <h2>Ticket Properties</h2>
+            <p class="lede">
+              A ticket is the durable work object. It is simple enough to inspect
+              in a Markdown file, but structured enough for routing, dashboards,
+              agent runs, PR linkage, handoffs, and recovery.
+            </p>
+          </div>
+          <div class="ticket-properties">
+            <div class="ticket-prop"><strong>Identity</strong><p>Name, source, and stable place in the backlog.</p></div>
+            <div class="ticket-prop"><strong>Scope</strong><p>The smallest useful slice: clear enough to finish, narrow enough to review.</p></div>
+            <div class="ticket-prop"><strong>Kind + Urgency</strong><p>Classifies the work and how quickly the factory should treat it.</p></div>
+            <div class="ticket-prop"><strong>Status</strong><p>Tracks whether work is ready, active, blocked, deferred, or done.</p></div>
+            <div class="ticket-prop"><strong>Owner</strong><p>Exactly one agent lane owns the slice.</p></div>
+            <div class="ticket-prop"><strong>Dependencies</strong><p>Links ordered work without making one ticket own the whole project.</p></div>
+            <div class="ticket-prop"><strong>Run Trail</strong><p>Connects the ticket to the agent session that touched it.</p></div>
+            <div class="ticket-prop"><strong>PR Links</strong><p>Connects implementation output back to the control plane.</p></div>
+            <div class="ticket-prop"><strong>Artifacts</strong><p>Review reports, request notes, logs, and follow-up evidence.</p></div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Agents">
+          <div>
+            <div class="kicker">Agent Layer</div>
+            <h2>Agents Are Hyperspecific Roles</h2>
+            <p class="lede">
+              The factory does not depend on one generalist agent. It keeps a
+              broad roster of narrow specialists, and tickets route to the role
+              best shaped for that slice of work.
+            </p>
+          </div>
+          <div class="agent-roster-grid" aria-label="Example agent roster">
+            <div class="agent-pill"><strong>Ticket Triage</strong><span>shape and route work</span></div>
+            <div class="agent-pill"><strong>Feature Planner</strong><span>turn intent into slices</span></div>
+            <div class="agent-pill"><strong>Backend Builder</strong><span>server changes</span></div>
+            <div class="agent-pill"><strong>Frontend Builder</strong><span>interface changes</span></div>
+            <div class="agent-pill"><strong>API Designer</strong><span>contracts and endpoints</span></div>
+            <div class="agent-pill"><strong>Database Migrator</strong><span>schema and data movement</span></div>
+            <div class="agent-pill"><strong>Bug Reproducer</strong><span>pin down failures</span></div>
+            <div class="agent-pill"><strong>PR Fixer</strong><span>narrow review fixes</span></div>
+            <div class="agent-pill"><strong>Test Runner</strong><span>verification passes</span></div>
+            <div class="agent-pill"><strong>Integration Tester</strong><span>cross-system checks</span></div>
+            <div class="agent-pill"><strong>Code Reviewer</strong><span>quality verdicts</span></div>
+            <div class="agent-pill"><strong>Security Reviewer</strong><span>risk and dependency checks</span></div>
+            <div class="agent-pill"><strong>Performance Profiler</strong><span>speed and bottlenecks</span></div>
+            <div class="agent-pill"><strong>Accessibility Checker</strong><span>usable interfaces</span></div>
+            <div class="agent-pill"><strong>Design QA</strong><span>visual polish</span></div>
+            <div class="agent-pill"><strong>Docs Writer</strong><span>runbooks and notes</span></div>
+            <div class="agent-pill"><strong>Architecture Scribe</strong><span>decisions and structure</span></div>
+            <div class="agent-pill"><strong>Docs Auditor</strong><span>stale or broken docs</span></div>
+            <div class="agent-pill"><strong>Release Drafter</strong><span>change summaries</span></div>
+            <div class="agent-pill"><strong>Merge Watcher</strong><span>sync merged reality</span></div>
+            <div class="agent-pill"><strong>Incident Fixer</strong><span>urgent repair work</span></div>
+            <div class="agent-pill"><strong>CI Unblocker</strong><span>pipeline failures</span></div>
+            <div class="agent-pill"><strong>Refactor Scout</strong><span>find cleanup slices</span></div>
+            <div class="agent-pill"><strong>Knowledge Scout</strong><span>focused context requests</span></div>
+            <div class="agent-pill"><strong>Factory Runner</strong><span>choose next runnable work</span></div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Contract">
+          <div>
+            <div class="kicker">Ticket Contract</div>
+            <h2>One Agent, One Slice</h2>
+            <p class="lede">
+              A ticket is not a vague backlog wish. It names one concrete slice
+              and one agent responsible for moving that slice to a reviewable
+              artifact. Related work becomes another ticket.
+            </p>
+          </div>
+          <div class="assignment-grid">
+            <div class="assignment-row">
+              <div class="assignment-box">
+                <strong>Webhook retry</strong>
+                <p>Add retry behavior and tests for failed webhook delivery.</p>
+              </div>
+              <div class="assignment-arrow" aria-hidden="true"></div>
+              <div class="assignment-box">
+                <strong>Backend Builder</strong>
+                <p>Owns implementation and opens the pull request.</p>
+              </div>
+            </div>
+            <div class="assignment-row">
+              <div class="assignment-box">
+                <strong>Review failure</strong>
+                <p>Fix a correctness finding from code review.</p>
+              </div>
+              <div class="assignment-arrow" aria-hidden="true"></div>
+              <div class="assignment-box">
+                <strong>PR Fixer</strong>
+                <p>Owns the narrow fix and reruns the checks.</p>
+              </div>
+            </div>
+            <div class="assignment-row">
+              <div class="assignment-box">
+                <strong>Architecture note</strong>
+                <p>Capture a decision that should outlive the session.</p>
+              </div>
+              <div class="assignment-arrow" aria-hidden="true"></div>
+              <div class="assignment-box">
+                <strong>Documentation Writer</strong>
+                <p>Owns the write-up and links it back to the work.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Worktrees">
+          <div>
+            <div class="kicker">Build Loop</div>
+            <h2>Worktree To Pull Request</h2>
+            <p class="lede">
+              Implementation happens away from the shared checkout. Agents work in
+              isolated branches, open pull requests, and stop at the human gate:
+              main and master merges are human-only.
+            </p>
+          </div>
+          <div class="factory-loop">
+            <div class="loop-card"><div><h3>Ticket</h3><p class="lede">Agent picks one owned ticket and leaves a clear run trail.</p></div></div>
+            <div class="arrow"></div>
+            <div class="loop-card"><div><h3>Worktree</h3><p class="lede">The change happens in an isolated branch checkout.</p></div></div>
+            <div class="arrow"></div>
+            <div class="loop-card"><div><h3>Pull Request</h3><p class="lede">The output is reviewable, linked, and ready for gates.</p></div></div>
+          </div>
+          <div class="takeaway">
+            <p>Agents prepare the pull request. Humans decide when main or master changes.</p>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Code Review">
+          <div>
+            <div class="kicker">Code Review</div>
+            <h2>Code Review</h2>
+            <p class="lede">
+              Review has three layers: deterministic CI and tests, automated
+              agent review, and human judgment before anything reaches main.
+            </p>
+          </div>
+          <div class="review-duo">
+            <div class="review-panel agent">
+              <h3>Automated Review</h3>
+              <p>Agent reviewers run tests, inspect the change, score the result, and leave concrete findings.</p>
+              <div class="score-total">
+                <span>Example verdict</span>
+                <strong>84/100</strong>
+              </div>
+              <div class="scorecard" aria-label="Example automated review score breakdown">
+                <div class="score-row"><span>Correctness</span><div class="score-bar"><span style="width: 88%"></span></div><span>88</span></div>
+                <div class="score-row"><span>Security</span><div class="score-bar"><span style="width: 82%"></span></div><span>82</span></div>
+                <div class="score-row"><span>Architecture</span><div class="score-bar"><span style="width: 80%"></span></div><span>80</span></div>
+                <div class="score-row"><span>Quality</span><div class="score-bar"><span style="width: 86%"></span></div><span>86</span></div>
+                <div class="score-row"><span>Dependencies</span><div class="score-bar"><span style="width: 84%"></span></div><span>84</span></div>
+              </div>
+            </div>
+            <div class="review-panel ci">
+              <h3>CI and Tests</h3>
+              <p>Deterministic checks run before the human is asked to trust the change.</p>
+              <div class="ci-checks" aria-label="Deterministic CI and test checks">
+                <div class="ci-check">Lint <span>pass</span></div>
+                <div class="ci-check">Typecheck <span>pass</span></div>
+                <div class="ci-check">Unit Tests <span>pass</span></div>
+                <div class="ci-check">Integration Tests <span>pass</span></div>
+                <div class="ci-check">Security Scan <span>clean</span></div>
+              </div>
+            </div>
+            <div class="review-panel human">
+              <h3>Human Review</h3>
+              <p>The human sees the ticket, pull request, automated verdict, findings, and unresolved risks.</p>
+              <div class="human-list">
+                <div><strong>Inspect the evidence</strong><span>Read the diff, tests, review findings, and linked ticket context.</span></div>
+                <div><strong>Decide on risk</strong><span>Approve, request changes, or send the work back to another agent.</span></div>
+                <div><strong>Own the merge</strong><span>Main and master change only after human approval.</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Communication">
+          <div>
+            <div class="kicker">Communication Layer</div>
+            <h2>Inter-Agent Communication</h2>
+            <p class="lede">
+              Every agent knows every other agent.
+            </p>
+          </div>
+          <div class="routing-diagrams">
+            <div class="route-panel">
+              <h3>Knowledge Request</h3>
+              <p>The owning agent keeps the ticket, but collaborates with a specialist through a focused artifact.</p>
+              <div class="route-chain">
+                <div class="route-node"><strong>Owning Agent</strong><span>Needs focused help</span></div>
+                <div class="route-arrow both" aria-hidden="true"><span></span></div>
+                <div class="route-node" style="background: var(--lime-soft)"><strong>Shared Artifact</strong><span>Question, answer, finding, or recommendation</span></div>
+                <div class="route-arrow both" aria-hidden="true"><span></span></div>
+                <div class="route-node"><strong>Specialist Agent</strong><span>Answers one narrow question</span></div>
+              </div>
+            </div>
+            <div class="route-panel">
+              <h3>New Ticket Handoff</h3>
+              <p>When work reveals a different slice, the agent does not silently expand scope. It creates the next ticket.</p>
+              <div class="route-sequence">
+                <div class="route-node"><strong>Completed Slice</strong><span>Current work is done or reviewed</span></div>
+                <div class="route-arrow" aria-hidden="true"></div>
+                <div class="route-node"><strong>New Ticket</strong><span>Clear owner, scope, and reason</span></div>
+                <div class="route-arrow" aria-hidden="true"></div>
+                <div class="route-node" style="background: var(--pink-soft)"><strong>Next Agent</strong><span>Another specialist picks it up</span></div>
+                <div class="route-arrow" aria-hidden="true"></div>
+                <div class="route-node" style="background: var(--teal-soft)"><strong>Factory Continues</strong><span>The backlog stays alive</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Per-Agent Evals">
+          <div>
+            <div class="kicker">Quality Layer</div>
+            <h2>Per-Agent Evals</h2>
+            <p class="lede">
+              Hyperspecific agents make hyperspecific evaluation possible. Each
+              role can be judged against the work it is actually supposed to do,
+              instead of one generic quality checklist for every task.
+            </p>
+          </div>
+          <div class="eval-board" aria-label="Per-agent evaluation matrix">
+            <div class="eval-head"><span>Agent</span><span>Eval Rubric</span></div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Backend Builder</strong><span>server-side implementation</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Tests pass</div>
+                <div class="eval-chip">Failure paths</div>
+                <div class="eval-chip">Service fit</div>
+                <div class="eval-chip">Reviewable PR</div>
+              </div>
+            </div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Frontend Builder</strong><span>user-facing interface work</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Responsive</div>
+                <div class="eval-chip">Accessible</div>
+                <div class="eval-chip">Visual polish</div>
+                <div class="eval-chip">Workflow fit</div>
+              </div>
+            </div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Security Reviewer</strong><span>risk and abuse surfaces</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Risk map</div>
+                <div class="eval-chip">Dependencies</div>
+                <div class="eval-chip">Secrets safe</div>
+                <div class="eval-chip">Least privilege</div>
+              </div>
+            </div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Docs Writer</strong><span>durable project memory</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Accurate</div>
+                <div class="eval-chip">Findable</div>
+                <div class="eval-chip">Linked back</div>
+                <div class="eval-chip">Future-useful</div>
+              </div>
+            </div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Code Reviewer</strong><span>quality judgment</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Diff-grounded</div>
+                <div class="eval-chip">Severity clear</div>
+                <div class="eval-chip">Actionable</div>
+                <div class="eval-chip">Score stable</div>
+              </div>
+            </div>
+            <div class="eval-row">
+              <div class="eval-agent"><strong>Factory Runner</strong><span>autonomous coordination</span></div>
+              <div class="eval-checks">
+                <div class="eval-chip">Runnable work</div>
+                <div class="eval-chip">Blockers respected</div>
+                <div class="eval-chip">Handoffs filed</div>
+                <div class="eval-chip">Human merge</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Who Creates Tickets?">
+          <div>
+            <div class="kicker">Ticket Sources</div>
+            <h2>Who Creates Tickets?</h2>
+            <p class="lede">
+              Tickets enter the factory from humans, agents, and scheduled
+              maintenance. The source can vary; the control plane stays the same.
+            </p>
+          </div>
+          <div class="ticket-source-grid">
+            <div class="source-flow">
+              <h3>Humans</h3>
+              <p>Direct product intent, bugs, design changes, or architecture needs.</p>
+              <div class="source-step"><strong>Human asks</strong><span>Goal, bug, feature, or cleanup.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Ticket created</strong><span>Clear owner, scope, and priority.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Agent picks it up</strong><span>Work enters the normal factory flow.</span></div>
+            </div>
+            <div class="source-flow">
+              <h3>Agents</h3>
+              <p>Completed work often reveals the next slice for another specialist.</p>
+              <div class="source-step"><strong>Agent finishes</strong><span>Build, review, docs, or investigation.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>New ticket filed</strong><span>The next slice gets its own owner.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Another agent continues</strong><span>Handoff becomes backlog state.</span></div>
+            </div>
+            <div class="source-flow">
+              <h3>Schedules</h3>
+              <p>Recurring factory checks create work before humans have to notice.</p>
+              <div class="source-step"><strong>Morning sweeps</strong><span>Security scan, test coverage, docs health.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Findings become tickets</strong><span>Real work enters the backlog.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Factory picks them up</strong><span>Runnable tickets eventually get assigned.</span></div>
+            </div>
+            <div class="source-flow">
+              <h3>User Feedback</h3>
+              <p>Support notes, beta feedback, and usage friction become factory input.</p>
+              <div class="source-step"><strong>User signal</strong><span>Complaint, confusion, request, or repeated friction.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Feedback triaged</strong><span>Turn the signal into a concrete slice.</span></div>
+              <div class="source-arrow" aria-hidden="true"></div>
+              <div class="source-step"><strong>Ticket created</strong><span>Product work enters the backlog.</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Observability">
+          <div>
+            <div class="kicker">Observability</div>
+            <h2>Hyperspecific Observability</h2>
+            <p class="lede">
+              Because each agent is hyperspecific, the trace can be hyperspecific
+              too: model, tools, outputs, ticket movement, and evidence are all
+              shaped around the role.
+            </p>
+          </div>
+          <div class="run-log-demo">
+            <div class="log-panel" aria-label="Example agent run log">
+              <h3>Backend Builder Run</h3>
+              <div class="log-line"><b>Model</b><span>GPT-5 Codex, high reasoning</span></div>
+              <div class="log-line"><b>Ticket</b><span>Webhook retry implementation</span></div>
+              <div class="log-line"><b>Tools</b><span>search code, edit files, run tests, open pull request</span></div>
+              <div class="log-line"><b>Output</b><span>Retry logic, regression tests, linked pull request</span></div>
+              <div class="log-line"><b>Follow-up</b><span>Filed docs ticket for operational retry behavior</span></div>
+              <div class="log-line"><b>Status</b><span>Ready for code review</span></div>
+            </div>
+            <div class="log-side">
+              <div class="log-side-card"><strong>Role-shaped logs</strong><p>A builder log emphasizes files, tests, pull requests, and blockers.</p></div>
+              <div class="log-side-card"><strong>Role-shaped tools</strong><p>Each agent exposes the commands and artifacts that make sense for its job.</p></div>
+              <div class="log-side-card"><strong>Role-shaped evidence</strong><p>The reviewer sees the exact trail needed to evaluate that type of work.</p></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Codebase Knowledge">
+          <div>
+            <div class="kicker">Codebase Knowledge</div>
+            <h2>Do Not Reinvent The Wheel</h2>
+            <p class="lede">
+              Agents run inside the repository, so the repo is the memory layer.
+            </p>
+          </div>
+          <div class="knowledge-source-grid">
+            <div class="knowledge-source-card">CLAUDE.md</div>
+            <div class="knowledge-source-card">AGENTS.md</div>
+            <div class="knowledge-source-card">Documentation</div>
+            <div class="knowledge-source-card">MCPs</div>
+            <div class="knowledge-source-card">Decisions</div>
+            <div class="knowledge-source-card">Source Code</div>
+            <div class="knowledge-source-card">Tests</div>
+            <div class="knowledge-source-card">Repo CLIs</div>
+            <div class="knowledge-source-card">Tickets</div>
+            <div class="knowledge-source-card">Reviews</div>
+            <div class="knowledge-source-card">Artifacts</div>
+            <div class="knowledge-source-card">Agent Skills</div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="HITL">
+          <div>
+            <div class="kicker">HITL</div>
+            <h2>HITL Is First-Class</h2>
+            <p class="lede">
+              A blocked ticket that needs a human is a first-class citizen. The
+              factory records the blocker, sends the request, waits cleanly, and
+              resumes from the same ticket once the human decision is made.
+            </p>
+          </div>
+          <div class="hitl-diagram">
+            <div class="hitl-node">
+              <span class="hitl-status">Blocked</span>
+              <strong>Ticket Pauses</strong>
+              <p>The agent keeps the state, evidence, and exact ask attached to the ticket.</p>
+            </div>
+            <div class="hitl-inbox">
+              <h3>Human Request</h3>
+              <div class="request-card telegram">
+                <div class="request-top">
+                  <span class="request-channel"><span class="request-icon">T</span> Telegram</span>
+                  <span class="request-time">now</span>
+                </div>
+                <p>Production deploy needs approval. Review the linked run, diff, and test output.</p>
+                <div class="request-actions">
+                  <span>Resolve</span>
+                  <span>Tail run</span>
+                </div>
+              </div>
+              <div class="request-card email">
+                <div class="request-top">
+                  <span class="request-channel"><span class="request-icon">@</span> Email</span>
+                  <span class="request-time">queued</span>
+                </div>
+                <p>Security finding needs a human decision before the agent can continue.</p>
+              </div>
+            </div>
+            <div class="hitl-action">
+              <strong>Human Decides</strong>
+              <p>Approve, reject, answer, or redirect. The factory resumes without losing the trail.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="slide" data-title="Greenfield">
+          <div>
+            <div class="kicker">Greenfield</div>
+            <h2>Spec To Tickets</h2>
+            <p class="lede">
+              Greenfield planning is intentionally open-ended. Use manual
+              planning, a compound engineering stack, a design doc, or any other
+              planning phase. The factory boundary is where the spec becomes
+              owned tickets.
+            </p>
+          </div>
+          <div class="greenfield-flow" aria-label="Greenfield planning into ticket graph">
+            <div class="greenfield-card greenfield-plan">
+              <h3>Plan Any Way</h3>
+              <p>The upstream method can change by team, product, or project shape.</p>
+              <div class="planning-list">
+                <span>Manual planning</span>
+                <span>Compound engineering stack</span>
+                <span>Design document</span>
+                <span>AI planning pass</span>
+              </div>
+            </div>
+            <div class="greenfield-arrow" aria-hidden="true"></div>
+            <div class="greenfield-card greenfield-spec">
+              <strong>Spec<br />to<br />Tickets</strong>
+              <p>Convert intent into scoped, ordered, assignable slices.</p>
+            </div>
+            <div class="greenfield-arrow" aria-hidden="true"></div>
+            <div class="greenfield-card greenfield-tickets">
+              <h3>Factory Backlog</h3>
+              <p>Once work is ticketed, the same project-template loop takes over.</p>
+              <div class="ticket-chip-grid">
+                <div class="ticket-chip">Migration</div>
+                <div class="ticket-chip">API</div>
+                <div class="ticket-chip">Frontend</div>
+                <div class="ticket-chip">Tests</div>
+                <div class="ticket-chip">Config</div>
+                <div class="ticket-chip">Review</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </section>
+    </main>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const nav = document.getElementById("nav");
+      const counter = document.getElementById("counter");
+      const progress = document.getElementById("progress");
+      const prev = document.getElementById("prev");
+      const next = document.getElementById("next");
+      let current = 0;
+
+      function slug(title) {
+        return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      }
+
+      slides.forEach((slide, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.innerHTML = `<span class="num">${index + 1}</span><span class="label">${slide.dataset.title}</span>`;
+        button.addEventListener("click", () => show(index));
+        nav.appendChild(button);
+      });
+
+      const navButtons = Array.from(nav.querySelectorAll("button"));
+
+      function show(index) {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === current));
+        navButtons.forEach((button, i) => button.classList.toggle("active", i === current));
+        counter.textContent = `${current + 1} / ${slides.length}`;
+        progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+        prev.disabled = current === 0;
+        next.disabled = current === slides.length - 1;
+        history.replaceState(null, "", `#${slug(slides[current].dataset.title)}`);
+      }
+
+      prev.addEventListener("click", () => show(current - 1));
+      next.addEventListener("click", () => show(current + 1));
+
+      window.addEventListener("keydown", (event) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (event.key === "ArrowRight" || event.key === " ") {
+          event.preventDefault();
+          show(current + 1);
+        }
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          show(current - 1);
+        }
+        if (event.key === "Home") show(0);
+        if (event.key === "End") show(slides.length - 1);
+      });
+
+      const initialHash = location.hash.slice(1);
+      const initialIndex = slides.findIndex((slide) => slug(slide.dataset.title) === initialHash);
+      show(initialIndex >= 0 ? initialIndex : 0);
+    </script>
+  </body>
+</html>

@@ -15,10 +15,10 @@ import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './boo
 
 export type { ScaffoldTicketProvider } // re-exported so callers keep importing from './scaffold'
 
-// Spin up a new repo from the configured template (default:
-// github.com/trevormil/project-template). In dev the template ships as a git
-// submodule (templates/project-template); the packaged app doesn't bundle it,
-// so fall back to a shallow clone of the configured repo (always latest).
+// Spin up a new repo from the template, which is embedded in this repo at
+// templates/project-template (no standalone template repo). Resolution order:
+// configured path/URL → source checkout → packaged copy (extraResources) →
+// shallow clone of the TerMinal repo, using its templates/ subdir.
 const SKIP = new Set(['.git', '.gitmodules', 'node_modules', '.DS_Store'])
 
 export type ScaffoldResult = { ok: boolean; path?: string; error?: string }
@@ -29,19 +29,13 @@ function templateSource(): TemplateSource {
     candidates: templateCandidates({
       configured,
       appPath: app.getAppPath(),
-      sourceRoots: [process.env.GT_TERMINAL_REPO || '', process.cwd()],
+      // resourcesPath carries the packaged copy (electron-builder extraResources);
+      // the template versions with the checkout/app itself, so no upstream pull.
+      sourceRoots: [process.resourcesPath || '', process.env.GT_TERMINAL_REPO || '', process.cwd()],
     }),
     marker: 'bootstrap.sh',
     templateRepo: configured,
     cloneToTmp: cloneTemplateToTmp,
-    onLocalPick: (dir) => {
-      // refresh to the latest upstream so scaffolds track the maintained template
-      try {
-        execFileSync('git', ['-C', dir, 'pull', '--ff-only'], { stdio: 'ignore', timeout: 15_000 })
-      } catch {
-        /* offline / detached — use the pinned checkout as-is */
-      }
-    },
   })
   if ('error' in source) throw new Error(source.error)
   return source

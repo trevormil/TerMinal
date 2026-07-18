@@ -118,7 +118,7 @@ Requires [bun](https://bun.sh) and at least one engine CLI on your `PATH`
 ```bash
 git clone https://github.com/trevormil/TerMinal.git
 cd TerMinal
-git submodule update --init   # vendors project-template (for scaffolding)
+git submodule update --init   # optional: vendored references (vendor/)
 bun install                   # also rebuilds node-pty against Electron's ABI
 bun run dev
 ```
@@ -261,11 +261,11 @@ by appending a line.
 
 ## <a name="project-template"></a>New projects, ready-made workflow
 
-TerMinal pairs with
-[project-template](https://github.com/trevormil/project-template) — a scaffold
-carrying the whole workflow: sessions → tickets → branches → PRs → review →
-human merge, with the TDD gate, in-repo `.reviews/`, cadence checks, and the
-schemas these tabs read. It's vendored as a submodule and refreshed on use.
+TerMinal ships its project template embedded at `templates/project-template`
+— a scaffold carrying the whole workflow: sessions → tickets → branches → PRs
+→ review → human merge, with the TDD gate, in-repo `.reviews/`, cadence
+checks, and the schemas these tabs read. It versions with the app itself (one
+repo, one history).
 
 - **From the picker:** "New project from template" — name it, pick a parent,
   Create. Fresh directory, `git init`, first commit, session opened, per-repo
@@ -309,7 +309,7 @@ src/renderer/src/
   plugins/<id>/      one folder = one cockpit widget (auto-discovered)
   tabs/<id>/         one folder = one full-screen tab (auto-discovered)
 bin/                 headless runners: terminal-cron, terminal-cli, MCP server, or-agent tier
-templates/           project-template (git submodule)
+templates/           project-template (embedded workflow scaffold)
 ```
 
 ## Landing page
