@@ -1411,6 +1411,23 @@ export type TddInfo = {
   ts: number
 }
 
+// Installed-build update check (src/main/update-check.ts). status 'behind'
+// means the installed app's baked commit is an ancestor of origin/main with
+// commits on top; 'diverged' means it was built from unmerged/branch code.
+export type UpdateCheckResult = {
+  buildSha: string // short sha as baked, -dirty suffix stripped ('' → uncomparable)
+  buildDirty: boolean // build came from an uncommitted working tree
+  status: 'up-to-date' | 'behind' | 'diverged' | 'unknown'
+  behindBy: number
+  latestSha: string
+  source: 'git' | 'github' | 'none'
+  checkedAt: number
+  repoPath?: string
+  checkoutBranch?: string
+  checkoutDirty?: boolean
+  error?: string
+}
+
 export type GtApi = {
   listSessions: (engine?: Engine) => Promise<SessionMeta[]>
   startSession: (key: string, opts: StartOpts) => Promise<{ sessionId: string; cwd: string }>
@@ -1782,6 +1799,10 @@ export type GtApi = {
     >
     tail: () => Promise<string>
     status: () => Promise<{ running: boolean; pid?: number | null }>
+  }
+  update: {
+    check: () => Promise<UpdateCheckResult>
+    onStatus: (cb: (r: UpdateCheckResult) => void) => () => void
   }
   observability: {
     summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{

@@ -26,6 +26,10 @@ const BUILD_TIME = new Date().toISOString()
 // '' when origin is unknown → self-update is skipped rather than guessed.
 const BUILD_REPO_SLUG =
   git('git remote get-url origin').match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/)?.[1] || ''
+// Where the source checkout lived at build time. The packaged app uses it to
+// find a local clone for the update check (git is exact + fork-aware); when the
+// path is gone the check falls back to the GitHub API via BUILD_REPO_SLUG.
+const BUILD_REPO_PATH = git('git rev-parse --show-toplevel')
 // Template provenance (ticket 0045): the template is embedded in this repo, so
 // its version is the last commit that touched templates/project-template.
 const TEMPLATE_SHA = git('git log -1 --format=%H -- templates/project-template') || 'unknown'
@@ -40,6 +44,7 @@ const define = {
   __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
   __BUILD_TIME__: JSON.stringify(BUILD_TIME),
   __BUILD_REPO_SLUG__: JSON.stringify(BUILD_REPO_SLUG),
+  __BUILD_REPO_PATH__: JSON.stringify(BUILD_REPO_PATH),
   __TEMPLATE_SHA__: JSON.stringify(TEMPLATE_SHA),
 }
 
