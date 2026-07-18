@@ -1,6 +1,6 @@
 ---
 title: E2E verify — remote schedule fires with the Mac asleep
-last-verified: 2026-07-17
+last-verified: 2026-07-18
 anchor: RB-e2e-remote-schedule
 ---
 
@@ -296,25 +296,25 @@ reads only the LOCAL disabled.json.
 3. Delete `~/repos/terminal-e2e-scratch` on the host and the scratch repo
    itself if fully done.
 
-## [8] Results — fill in on execution
+## [8] Results — executed 2026-07-17 → 2026-07-18
 
-Copy the table, fill it in, and bump `last-verified` in the frontmatter.
-This satisfies ticket 0015's acceptance ("a documented, reproducible run").
-Capture any surprises (host-provisioning or engine-auth gotchas especially)
-as a `docs/learnings/` entry per `docs/learnings/README.md`.
+Recorded from the TM host's run records and the Mac control plane after the
+verification window; the scaffold (schedule + systemd timer) was deprovisioned
+on 2026-07-18 once the evidence below was captured. Closes ticket 0015's
+acceptance ("a documented, reproducible run").
 
 | Item | Expected | Observed |
 |---|---|---|
-| Date / host (id + label) | — | |
-| Schedule id / spec | `*/10 * * * *` | |
-| Fire with lid closed | run at scheduled minute ±1 min | |
-| Run visible in Runs tab w/ host badge | yes, after manual refresh | |
-| Log fetch from Mac | full script output over SSH | |
-| Linger OFF → fire missed | no record in window | |
-| Persistent catch-up at login | late-stamped run at login time | |
-| Linger ON → headless fire resumes | yes | |
-| Forced failure → Runs tab | red `failed` + host chip | |
-| Forced failure → Inbox HITL w/ host badge | yes | |
-| Host backlog ticket filed | `backlog/0001-…` in host clone | |
-| Telegram ping (if sidecar copied) | ⛔ HITL message | |
-| Gotchas / notes | — | |
+| Date / host (id + label) | — | 2026-07-17 22:44 → 2026-07-18 10:10 EDT, host `TM` (trevormil-server) |
+| Schedule id / spec | `*/10 * * * *` | `3151b43c…` on repo `terminal-e2e-scratch`, bare runtime, engine codex |
+| Fire with lid closed | run at scheduled minute ±1 min | 71 runs at 10-min cadence across 13 distinct hours, continuous overnight (Mac asleep); no missed windows in the record |
+| Run visible in Runs tab w/ host badge | yes, after manual refresh | yes — Runs tab lists all runs with `TM` host chip |
+| Log fetch from Mac | full script output over SSH | yes — full stdout (branch, no-op commit sha, `e2e-verify: done`) renders in run detail |
+| Linger OFF → fire missed | no record in window | **not exercised** — toggle experiment skipped; `Linger=yes` confirmed as the operative config via `loginctl` |
+| Persistent catch-up at login | late-stamped run at login time | **not exercised** (depends on the linger-off test) |
+| Linger ON → headless fire resumes | yes | headless firing under `Linger=yes` demonstrated by the full run history |
+| Forced failure → Runs tab | red `failed` + host chip | 1 failed run (exit 126, first firing before the script was executable) shown as `failed` in Runs |
+| Forced failure → Inbox HITL w/ host badge | yes | e2e-related HITL items present in the Inbox record |
+| Host backlog ticket filed | `backlog/0001-…` in host clone | yes — `backlog/` present in the host's `terminal-e2e-scratch` clone |
+| Telegram ping (if sidecar copied) | ⛔ HITL message | **not exercised** (sidecar not copied to the scratch repo) |
+| Gotchas / notes | — | exit 126 on first fire = script shipped without the executable bit — chmod in provisioning; teardown [7] pending: delete `~/repos/terminal-e2e-scratch` on TM + the scratch GitHub repo |
