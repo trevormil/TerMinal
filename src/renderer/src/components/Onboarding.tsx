@@ -364,7 +364,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                         className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
                       >
                         Use {projectsDirValidation.suggestedChild} (
-                        {projectsDirValidation.suggestedCount} repos)
+                        {projectsDirValidation.suggestedCount}{' '}
+                        {projectsDirValidation.suggestedCount === 1 ? 'repo' : 'repos'})
                       </button>
                     )}
                   </div>
