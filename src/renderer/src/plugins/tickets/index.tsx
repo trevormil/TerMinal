@@ -22,7 +22,7 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
   if (!v.total && !v.closed)
     return (
       <Card icon={TicketIcon} title="Tickets">
-        <Empty>no tickets</Empty>
+        <Empty>No tickets</Empty>
       </Card>
     )
   return (
