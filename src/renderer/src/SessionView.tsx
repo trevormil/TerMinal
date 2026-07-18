@@ -31,6 +31,7 @@ import { commandWidgetToPlugin } from './lib/commandWidget'
 import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
+import { reconcileFreshPlugins } from './lib/pluginVisibility'
 import { RepoOrientation } from './components/RepoOrientation'
 import {
   repoOrientationKey,
@@ -395,13 +396,11 @@ export function SessionView({
   }, [active, terminalTile, tabs])
 
   useEffect(() => {
-    const fresh = availablePlugins.filter((p) => !known.includes(p.id))
-    if (fresh.length === 0) return
-    setKnown((k) => Array.from(new Set([...k, ...fresh.map((p) => p.id)])))
-    setEnabled((e) =>
-      Array.from(new Set([...e, ...fresh.filter((p) => p.defaultEnabled).map((p) => p.id)])),
-    )
-  }, [availablePlugins, known])
+    const next = reconcileFreshPlugins(availablePlugins, known, enabled)
+    if (!next) return
+    setKnown(next.known)
+    setEnabled(next.enabled)
+  }, [availablePlugins, known, enabled])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
