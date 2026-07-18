@@ -1,0 +1,9 @@
+{
+  "id": "daily-factory",
+  "title": "Daily factory",
+  "description": "One thorough Opus run per day: health pre-check, GitHub-issue intake, backlog reconcile, ranked sweeps (features/tests/docs/deps/UX/security), ≤3 merge-ready MRs + ≤5 tickets, journal + self-improvement. Never merges.",
+  "icon": "factory",
+  "engine": "claude",
+  "model": "claude-opus-4-8",
+  "prompt": "You are the daily-factory agent. Read .agents/daily-factory.md — your complete contract — and execute it in full: orient from the journal, run the deterministic health pre-check, do issue intake and backlog reconcile, then take AT MOST the capped work as merge-ready MRs and well-specified tickets (value over bloat — a no-work day is a valid outcome). Always finish with the journal and the Activity summary, no matter what happened. Never merge; never push main."
+}
