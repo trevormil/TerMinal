@@ -4,7 +4,9 @@ import {
   routeSyncSchedule,
   routeRemoveSchedule,
   routeReconcile,
+  routeRunNow,
   type RouterDeps,
+  type RunNowDeps,
 } from './schedule-router'
 import type { Schedule } from './schedules'
 import type { RemoteHost } from './settings'
@@ -158,6 +160,78 @@ describe('routeRemoveSchedule', () => {
     const [, passed] = (d.systemdSync as ReturnType<typeof mock>).mock.calls[0]
     expect((passed as Schedule).enabled).toBe(false)
     expect(d.launchdUnschedule).not.toHaveBeenCalled()
+  })
+})
+
+// "Run now" must obey the same host binding as the trigger install (#43): a
+// host schedule fires on ITS host — never as a local terminal-cron run whose
+// host-side repoRoot doesn't exist on this machine.
+function runNowDeps(store: Schedule[], over: Partial<RunNowDeps> = {}): RunNowDeps {
+  return {
+    getSchedule: (id) => store.find((s) => s.id === id) ?? null,
+    hosts: () => [host('tm'), host('box2')],
+    hostRunNow: mock(async () => ({ ok: true }) as const),
+    localRunNow: mock(() => {}),
+    ...over,
+  }
+}
+
+describe('routeRunNow', () => {
+  test('host schedule with NO explicit hostId fires on its host, never locally (the #43 bug)', async () => {
+    const d = runNowDeps([sched({ host: 'tm' })])
+    const r = await routeRunNow('s1', undefined, d)
+    expect(r).toEqual({ ok: true })
+    expect(d.hostRunNow).toHaveBeenCalledTimes(1)
+    const [target] = (d.hostRunNow as ReturnType<typeof mock>).mock.calls[0]
+    expect((target as RemoteHost).id).toBe('tm')
+    expect(d.localRunNow).not.toHaveBeenCalled()
+  })
+  test('explicit hostId (Runs-tab re-run) fires on that host even when the schedule is not in the local store', async () => {
+    const d = runNowDeps([])
+    const r = await routeRunNow('s1', 'box2', d)
+    expect(r).toEqual({ ok: true })
+    const [target] = (d.hostRunNow as ReturnType<typeof mock>).mock.calls[0]
+    expect((target as RemoteHost).id).toBe('box2')
+    expect(d.localRunNow).not.toHaveBeenCalled()
+  })
+  test('local schedule fires the local runner, not any host', async () => {
+    const d = runNowDeps([sched()])
+    const r = await routeRunNow('s1', undefined, d)
+    expect(r).toEqual({ ok: true })
+    expect(d.localRunNow).toHaveBeenCalledTimes(1)
+    expect(d.hostRunNow).not.toHaveBeenCalled()
+  })
+  test('unknown host id → error, nothing fires anywhere', async () => {
+    const d = runNowDeps([sched({ host: 'ghost' })])
+    const r = await routeRunNow('s1', undefined, d)
+    expect('error' in r && r.error).toContain('ghost')
+    expect(d.hostRunNow).not.toHaveBeenCalled()
+    expect(d.localRunNow).not.toHaveBeenCalled()
+  })
+  test('SSH trigger failure surfaces as { error } — no throw, no local fallthrough', async () => {
+    const d = runNowDeps([sched({ host: 'tm' })], {
+      hostRunNow: mock(async () => {
+        throw new Error('ssh: connect to host tm port 22: No route to host')
+      }),
+    })
+    const r = await routeRunNow('s1', undefined, d)
+    expect('error' in r && r.error).toContain('No route to host')
+    expect(d.localRunNow).not.toHaveBeenCalled()
+  })
+  test('no local schedule + attached remote session → fires on the attached remote', async () => {
+    const attachedRunNow = mock(async () => ({ ok: true }) as const)
+    const d = runNowDeps([], { attachedRunNow })
+    const r = await routeRunNow('s1', undefined, d)
+    expect(r).toEqual({ ok: true })
+    expect(attachedRunNow).toHaveBeenCalledTimes(1)
+    expect(d.localRunNow).not.toHaveBeenCalled()
+  })
+  test("the schedule's host binding wins over an attached remote session", async () => {
+    const attachedRunNow = mock(async () => ({ ok: true }) as const)
+    const d = runNowDeps([sched({ host: 'tm' })], { attachedRunNow })
+    await routeRunNow('s1', undefined, d)
+    expect(d.hostRunNow).toHaveBeenCalledTimes(1)
+    expect(attachedRunNow).not.toHaveBeenCalled()
   })
 })
 

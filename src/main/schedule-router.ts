@@ -125,6 +125,54 @@ export async function routeRemoveSchedule(
     : deps.systemdSync(systemdHost(host), { ...s, enabled: false })
 }
 
+export type RunNowResult = { ok: true } | { error: string }
+
+// Deps are handler-context closures (activity emission, session remotes), so
+// unlike the sync/remove router there is no realDeps default — index.ts builds
+// them at the IPC boundary.
+export type RunNowDeps = {
+  getSchedule: (id: string) => Schedule | null
+  hosts: () => RemoteHost[]
+  /** Fire on the owning host — the Runs-tab re-run mechanism (remote-helper `schedules.runNow` over SSH). */
+  hostRunNow: (host: RemoteHost, id: string) => Promise<RunNowResult>
+  /** Fire on the focused session's attached remote. Absent when not attached. */
+  attachedRunNow?: (id: string) => Promise<RunNowResult>
+  /** Local launchd-layer runner (terminal-cron on this machine). */
+  localRunNow: (id: string) => void
+}
+
+// On-demand "Run now" obeys the same host binding as the trigger install (#43):
+// an explicit hostId (the Runs-tab re-run path) or the local record's `host`
+// routes the trigger to that host; only an unbound schedule may fall through to
+// the attached remote or the local runner. A host schedule must NEVER run
+// locally — its repoRoot is a host-side path — and an SSH failure comes back as
+// { error } for the UI instead of a rejected IPC.
+export async function routeRunNow(
+  id: string,
+  explicitHostId: string | undefined,
+  deps: RunNowDeps,
+): Promise<RunNowResult> {
+  const hostId = explicitHostId || deps.getSchedule(id)?.host
+  if (hostId) {
+    const h = deps.hosts().find((x) => x.id === hostId)
+    if (!h) return { error: `unknown host: ${hostId}` }
+    try {
+      return await deps.hostRunNow(h, id)
+    } catch (e) {
+      return { error: `run now on ${h.label || hostId}: ${(e as Error).message}` }
+    }
+  }
+  if (deps.attachedRunNow) {
+    try {
+      return await deps.attachedRunNow(id)
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  }
+  deps.localRunNow(id)
+  return { ok: true }
+}
+
 // Reconcile ONLY the host (systemd) trigger layers: one systemd reconcile per
 // distinct host that owns schedules. Each reconcile SSHes to its host, so this
 // is fire-and-forgettable at app launch (a slow/unreachable host mustn't block

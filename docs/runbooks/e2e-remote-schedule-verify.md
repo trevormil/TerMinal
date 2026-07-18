@@ -184,17 +184,16 @@ alias.
 ## [4] Lid-close verification (the headline test)
 
 1. Note the current time and the next two expected fire minutes.
-2. Optionally watch one fire while awake first. **Pitfall:** the Schedules
-   tab's "run now" button calls `schedules:run-now` WITHOUT a hostId, which
-   for a host schedule falls through to a LOCAL `terminal-cron` invocation
-   (whose `~/repos/…` repoRoot doesn't exist on the Mac) — don't use it here.
-   To fire on demand, start the unit on the host directly:
+2. Optionally watch one fire while awake first. The Schedules tab's "run
+   now" button routes a host schedule to its owning host (ticket 0043 —
+   `routeRunNow` in `schedule-router.ts`; it used to fall through to a local
+   `terminal-cron` run whose host-side repoRoot doesn't exist on the Mac). An
+   unreachable host surfaces as a "run now failed · …" flash, not a silent
+   local run. Manual fallback if the app path itself is in question:
    ```bash
    ssh <host> 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user start terminal-cron-<id>.service'
    ```
-   (The Runs tab's re-run button DOES route to the owning host, but needs an
-   existing host run row first.) Confirm a run row appears in the Runs tab
-   with the host chip.
+   Confirm a run row appears in the Runs tab with the host chip.
 3. **Close the Mac lid.** Leave it closed across at least one scheduled
    fire (e.g. 25 min covers two).
 4. Reopen. In the Runs tab press the refresh button (circular-arrows, top

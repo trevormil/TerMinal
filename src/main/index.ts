@@ -252,6 +252,7 @@ import {
   routeSyncSchedule,
   routeRemoveSchedule,
   routeReconcile,
+  routeRunNow,
   reconcileHosts,
 } from './schedule-router'
 import { provisionHost } from './host-provision'
@@ -1834,40 +1835,59 @@ ipcMain.handle('schedules:toggle', async (_e, id: string, enabled: boolean) => {
   }
   return ok
 })
-ipcMain.handle('schedules:run-now', async (_e, id: string, hostId?: string) => {
-  // Re-run a run on the host that owns it (hostId) — the fleet re-run path —
-  // else the attached-session remote, else local.
-  const remote = hostId ? remoteFromHostId(hostId) : curRemote()
-  if (remote) {
-    const sched = (await remoteSchedules.list(remote).catch(() => [])).find((s) => s.id === id)
-    const run = await remoteSchedules.runNow(remote, id, {
-      worktreesDir: remote.daemon?.worktreesDir,
-      enginePath: sched ? remote.daemon?.engines?.[sched.engine]?.path : undefined,
-    })
-    if (!('error' in run)) {
-      emitActivity({
-        kind: 'agent-run',
-        title: `Remote schedule run requested · ${sched?.agentTitle || id}`,
-        detail: sched ? `${sched.engine}${sched.model ? `/${sched.model}` : ''}` : id,
-        repo: sched?.repoLabel || repoLabelFor(cur().cwd),
-        sessionId: cur().sessionId,
-        runId: run.id,
-        runSource: 'cron',
-      })
-    }
-    return 'error' in run ? run : { ok: true }
-  }
-  const s = getSchedule(id)
-  runScheduleNow(id)
+// Fire a schedule's run on a remote — the same mechanism as the Runs-tab
+// re-run (remote-helper `schedules.runNow` over SSH).
+async function remoteRunNow(
+  remote: RemoteSession,
+  id: string,
+): Promise<{ ok: true } | { error: string }> {
+  const sched = (await remoteSchedules.list(remote).catch(() => [])).find((s) => s.id === id)
+  const run = await remoteSchedules.runNow(remote, id, {
+    worktreesDir: remote.daemon?.worktreesDir,
+    enginePath: sched ? remote.daemon?.engines?.[sched.engine]?.path : undefined,
+  })
+  if ('error' in run) return run
   emitActivity({
     kind: 'agent-run',
-    title: `Schedule run requested · ${s?.agentTitle || id}`,
-    detail: s ? `${s.engine}${s.model ? `/${s.model}` : ''}` : id,
-    repo: s?.repoLabel,
-    repoRoot: s?.repoRoot,
+    title: `Remote schedule run requested · ${sched?.agentTitle || id}`,
+    detail: sched ? `${sched.engine}${sched.model ? `/${sched.model}` : ''}` : id,
+    repo: sched?.repoLabel || repoLabelFor(cur().cwd),
     sessionId: cur().sessionId,
+    runId: run.id,
+    runSource: 'cron',
   })
   return { ok: true }
+}
+ipcMain.handle('schedules:run-now', (_e, id: string, hostId?: string) => {
+  // Routed by routeRunNow (#43): an explicit hostId (the Runs-tab re-run path)
+  // or the schedule's own `host` binding triggers the host-side runner over
+  // SSH; only unbound schedules fall through to the attached-session remote or
+  // the local launchd runner. A host schedule must never fire locally — its
+  // repoRoot is a host-side path.
+  const attached = curRemote()
+  return routeRunNow(id, hostId, {
+    getSchedule,
+    hosts: () => readSettings().remoteHosts,
+    hostRunNow: (host, sid) => {
+      const remote = remoteFromHostId(host.id)
+      return remote
+        ? remoteRunNow(remote, sid)
+        : Promise.resolve({ error: `unknown host: ${host.id}` })
+    },
+    attachedRunNow: attached ? (sid) => remoteRunNow(attached, sid) : undefined,
+    localRunNow: (sid) => {
+      const s = getSchedule(sid)
+      runScheduleNow(sid)
+      emitActivity({
+        kind: 'agent-run',
+        title: `Schedule run requested · ${s?.agentTitle || sid}`,
+        detail: s ? `${s.engine}${s.model ? `/${s.model}` : ''}` : sid,
+        repo: s?.repoLabel,
+        repoRoot: s?.repoRoot,
+        sessionId: cur().sessionId,
+      })
+    },
+  })
 })
 ipcMain.handle('schedules:runs', (_e, id?: string) => {
   const remote = curRemote()
