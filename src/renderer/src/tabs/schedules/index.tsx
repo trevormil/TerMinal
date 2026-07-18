@@ -910,8 +910,11 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                 </button>
                 <button
                   onClick={async () => {
-                    await window.gt.schedules.runNow(s.id)
-                    flash(`${s.agentTitle} started — see runs / Activity`)
+                    // Pass the schedule's host binding so a host schedule fires
+                    // on ITS host (systemd over SSH), never as a local run (#43).
+                    const r = await window.gt.schedules.runNow(s.id, s.host)
+                    if (r && 'error' in r) flash(`run now failed · ${r.error}`)
+                    else flash(`${s.agentTitle} started — see runs / Activity`)
                   }}
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-[var(--gt-accent-light)]"
                 >
