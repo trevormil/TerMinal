@@ -1,7 +1,40 @@
 import { test, expect, describe } from 'bun:test'
-import { reconcileFreshPlugins } from './pluginVisibility'
+import { pluginVisibleForEngine, reconcileFreshPlugins } from './pluginVisibility'
+import type { Engine } from './types'
 
 const p = (id: string, defaultEnabled: boolean) => ({ id, defaultEnabled })
+
+describe('pluginVisibleForEngine', () => {
+  const ungated = {} as { engines?: Engine[] }
+  const claudeOnly = { engines: ['claude'] as Engine[] }
+
+  test('local session shows ungated plugins (tickets/git/PRs class)', () => {
+    expect(pluginVisibleForEngine(ungated, 'local')).toBe(true)
+  })
+
+  test('local session hides engine-gated plugins (transcript/telemetry class)', () => {
+    expect(pluginVisibleForEngine(claudeOnly, 'local')).toBe(false)
+  })
+
+  test('engine sessions unchanged: gated plugin shows only on its engine', () => {
+    expect(pluginVisibleForEngine(claudeOnly, 'claude')).toBe(true)
+    expect(pluginVisibleForEngine(claudeOnly, 'codex')).toBe(false)
+    expect(pluginVisibleForEngine(claudeOnly, 'hermes')).toBe(false)
+    expect(pluginVisibleForEngine(claudeOnly, 'cursor')).toBe(false)
+    expect(pluginVisibleForEngine(claudeOnly, 'openrouter')).toBe(false)
+  })
+
+  test('engine sessions unchanged: ungated plugin shows everywhere', () => {
+    for (const e of ['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as const) {
+      expect(pluginVisibleForEngine(ungated, e)).toBe(true)
+    }
+  })
+
+  test('empty engines list means visible nowhere (explicitly unreachable)', () => {
+    expect(pluginVisibleForEngine({ engines: [] }, 'claude')).toBe(false)
+    expect(pluginVisibleForEngine({ engines: [] }, 'local')).toBe(false)
+  })
+})
 
 describe('reconcileFreshPlugins', () => {
   test('saved visibility state + unknown new id → defaultEnabled wins (widget shows up)', () => {

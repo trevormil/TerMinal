@@ -29,10 +29,10 @@ import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetToPlugin } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
-import type { AppearanceTabLayout, Engine, Plugin, SessionEngine, TabContext } from './lib/types'
+import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
-import { reconcileFreshPlugins } from './lib/pluginVisibility'
+import { pluginVisibleForEngine, reconcileFreshPlugins } from './lib/pluginVisibility'
 import { RepoOrientation } from './components/RepoOrientation'
 import {
   repoOrientationKey,
@@ -295,13 +295,7 @@ export function SessionView({
     [cmdPlugins],
   )
   const availablePlugins = useMemo(
-    () =>
-      allPlugins.filter(
-        (p) =>
-          !isRemote &&
-          choice.engine !== 'local' &&
-          (!p.engines || p.engines.includes(choice.engine as Engine)),
-      ),
+    () => allPlugins.filter((p) => !isRemote && pluginVisibleForEngine(p, choice.engine)),
     [allPlugins, choice.engine, isRemote],
   )
   // User-defined widget order wins over plugin `order:`; widgets absent from
@@ -565,7 +559,7 @@ export function SessionView({
   }
   const activeWidgets = orderedPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
-  const showCockpit = !terminalTile && !isRemote && choice.engine !== 'local'
+  const showCockpit = !terminalTile && !isRemote
   const cockpitVisible = showCockpit && !cockpitCollapsed
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
