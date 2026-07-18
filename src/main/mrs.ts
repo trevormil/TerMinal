@@ -114,55 +114,6 @@ export async function listMrs(repoRoot: string): Promise<MrListResult> {
   return { mrs }
 }
 
-export type MrSummary = {
-  ok: boolean
-  error?: string
-  open: number
-  approve: number
-  changes: number
-  needsReview: number
-  label: string // forge vocabulary for the widget ('PR' | 'MR')
-}
-// Cached (60s) MR counts for the cockpit widget — the forge CLI is slow per poll.
-// Keyed per-repo so several sessions on different repos don't evict each other.
-const summaryCache = new Map<string, { ts: number; mrs: Mr[] }>()
-export async function mrSummary(repoRoot: string): Promise<MrSummary> {
-  const now = Date.now()
-  let mrs: Mr[]
-  const hit = summaryCache.get(repoRoot)
-  if (hit && now - hit.ts < 60_000) {
-    mrs = hit.mrs
-  } else {
-    const res = await listMrs(repoRoot)
-    if (res.error) {
-      return {
-        ok: false,
-        error: res.error,
-        open: 0,
-        approve: 0,
-        changes: 0,
-        needsReview: 0,
-        label: forge.forgeFor(repoRoot).label,
-      }
-    }
-    mrs = res.mrs
-    summaryCache.set(repoRoot, { ts: now, mrs })
-  }
-  const opened = mrs.filter((m) => m.state === 'opened')
-  const approve = opened.filter((m) => m.review?.verdict === 'approve').length
-  const changes = opened.filter(
-    (m) => m.review?.verdict === 'request-changes' || m.review?.verdict === 'blocked',
-  ).length
-  return {
-    ok: true,
-    open: opened.length,
-    approve,
-    changes,
-    needsReview: opened.length - approve - changes,
-    label: forge.forgeFor(repoRoot).label,
-  }
-}
-
 // Full MR detail: forge view + the harness review body/findings/suggestions.
 export async function getMr(repoRoot: string, iid: number): Promise<MrDetail | null> {
   const d = await forge.detailRaw(repoRoot, iid)

@@ -116,7 +116,6 @@ import {
   testRepoTicketProvider,
   type RepoTicketsConfig,
 } from './ticket-provider'
-import { mrSummary } from './mrs'
 import { difftOnPath } from './forge'
 import { onDigestEvent } from './digest-run'
 import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
@@ -2087,35 +2086,6 @@ ipcMain.handle('data:git-status', () => {
   return activeDaemon().gitStatus()
 })
 ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
-ipcMain.handle('data:mr-summary', async () => {
-  const r = curRemote()
-  if (r) {
-    const res = await remoteMrs.list(r).catch((e) => ({ mrs: [], error: (e as Error).message }))
-    const label = (await remoteProbe(r).catch(() => null))?.forgeLabel || 'PR'
-    if ('error' in res && res.error) {
-      return {
-        ok: false,
-        error: res.error,
-        open: 0,
-        approve: 0,
-        changes: 0,
-        needsReview: 0,
-        label,
-      }
-    }
-    const mrs = res.mrs
-    const opened = mrs.filter((m) => m.state === 'opened')
-    return {
-      ok: true,
-      open: opened.length,
-      approve: 0,
-      changes: 0,
-      needsReview: opened.length,
-      label,
-    }
-  }
-  return mrSummary(repoRootOf(cur().cwd))
-})
 ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 
 // ---- command widgets (declarative, per-repo extensible) ----
