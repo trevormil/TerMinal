@@ -549,16 +549,19 @@ export function SessionView({
 
   const toggle = (id: string) =>
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))
-  // Swap with the neighbor in the displayed list, then splice the new visible
-  // sequence into the full saved order — the view is a filtered subset, so
-  // persisting only the visible ids would drop engine-gated plugins' placement.
+  // Splice a reordered visible sequence into the full saved order — the view
+  // is a filtered subset, so persisting only the visible ids would drop
+  // engine-gated plugins' placement. Both the chevrons and drawer drag-and-drop
+  // commit through this single path.
+  const reorderWidgets = (ids: string[]) => setWidgetOrder((prev) => applyVisibleOrder(prev, ids))
+  // Chevron fallback: swap with the neighbor in the displayed list.
   const moveWidget = (id: string, dir: -1 | 1) => {
     const ids = orderedPlugins.map((p) => p.id)
     const i = ids.indexOf(id)
     const j = i + dir
     if (i < 0 || j < 0 || j >= ids.length) return
     ;[ids[i], ids[j]] = [ids[j], ids[i]]
-    setWidgetOrder((prev) => applyVisibleOrder(prev, ids))
+    reorderWidgets(ids)
   }
   const activeWidgets = orderedPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
@@ -1069,6 +1072,7 @@ export function SessionView({
               enabled={enabled}
               onToggle={toggle}
               onMove={moveWidget}
+              onReorder={reorderWidgets}
               onClose={() => setDrawer(false)}
             />
           )}
