@@ -1,23 +1,34 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
+import { useState } from 'react'
+import { dropIndex, reorderOnDrop } from '../lib/dragReorder'
 import type { Plugin } from '../lib/types'
 
 // The "plugins" panel. No remote registry — entries are code
 // folders in the repo plus command widgets (global / per-repo). Toggling just
-// mounts/unmounts. Rows are listed in cockpit order; the chevrons move a
-// widget up/down and the arrangement persists.
+// mounts/unmounts. Rows are listed in cockpit order; drag a row (or use the
+// chevrons — the keyboard-accessible fallback) to rearrange, and the
+// arrangement persists.
 export function PluginDrawer({
   plugins,
   enabled,
   onToggle,
   onMove,
+  onReorder,
   onClose,
 }: {
   plugins: Plugin[]
   enabled: string[]
   onToggle: (id: string) => void
   onMove: (id: string, dir: -1 | 1) => void
+  onReorder: (ids: string[]) => void
   onClose: () => void
 }) {
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropAt, setDropAt] = useState<number | null>(null)
+  const endDrag = () => {
+    setDragId(null)
+    setDropAt(null)
+  }
   return (
     <div className="absolute inset-0 z-20 flex justify-end bg-black/50" onClick={onClose}>
       <div
@@ -47,16 +58,55 @@ export function PluginDrawer({
           {plugins.map((p, i) => {
             const on = enabled.includes(p.id)
             const Icon = p.icon
+            const dragging = dragId === p.id
             return (
               <div
                 key={p.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', p.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  setDragId(p.id)
+                }}
+                onDragOver={(e) => {
+                  if (!dragId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setDropAt(dropIndex(i, e.clientY < r.top + r.height / 2 ? 'top' : 'bottom'))
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (dragId && dropAt !== null) {
+                    const next = reorderOnDrop(
+                      plugins.map((x) => x.id),
+                      dragId,
+                      dropAt,
+                    )
+                    if (next) onReorder(next)
+                  }
+                  endDrag()
+                }}
+                onDragEnd={endDrag}
                 onClick={() => onToggle(p.id)}
-                className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
+                className={`relative flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
                   on
                     ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
                     : 'border-[var(--gt-border)] bg-black/20 hover:bg-white/5'
-                }`}
+                } ${dragging ? 'opacity-40' : ''}`}
               >
+                {dragId && !dragging && dropAt === i && (
+                  <span className="pointer-events-none absolute inset-x-1 -top-[5px] h-0.5 rounded-full bg-[var(--gt-accent)]" />
+                )}
+                {dragId && !dragging && i === plugins.length - 1 && dropAt === i + 1 && (
+                  <span className="pointer-events-none absolute inset-x-1 -bottom-[5px] h-0.5 rounded-full bg-[var(--gt-accent)]" />
+                )}
+                <GripVertical
+                  size={14}
+                  strokeWidth={2}
+                  className="mt-1 shrink-0 cursor-grab text-zinc-600 active:cursor-grabbing"
+                />
                 <Icon
                   size={18}
                   strokeWidth={2}
