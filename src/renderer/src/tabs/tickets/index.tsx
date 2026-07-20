@@ -50,7 +50,12 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
     void window.gt.tickets
       .providerGet()
       .then((cfg) => {
-        if (live) setViews('error' in cfg ? [] : cfg.views || [])
+        if (!live) return
+        const vs = 'error' in cfg ? [] : cfg.views || []
+        setViews(vs)
+        // A view flagged `default` opens first; index+1 since 0 is the backlog.
+        const di = vs.findIndex((v) => v.default)
+        if (di >= 0) setActive(di + 1)
       })
       .catch(() => {})
     return () => {
