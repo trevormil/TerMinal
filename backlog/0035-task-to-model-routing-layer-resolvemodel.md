@@ -9,7 +9,10 @@ type: feature
 source: manual
 created: 2026-07-20
 updated: 2026-07-20
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/116
+worked_by:
+  - claude-fable-5
 refs:
   - src/main/agents.ts:1376
   - src/main/backlog.ts:34
