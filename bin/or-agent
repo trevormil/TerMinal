@@ -7,16 +7,22 @@
 //   or-agent --model deepseek/deepseek-chat --dir ./pkg "…task…"
 //
 // - Selects the OpenRouter provider inline (leaves Codex's global default alone).
+// - OPENAI_BASE_URL set → drives Codex against that OpenAI-compatible endpoint
+//   instead (self-hosted vLLM / Ollama / LM Studio / TGI / llama.cpp), via an
+//   inline model_providers.openai-compat definition (wire_api=chat). The key is
+//   then OPENAI_API_KEY (falling back to OPENROUTER_API_KEY); --model is
+//   REQUIRED (the registry default is an OpenRouter slug your server won't know).
 // - Enforces the daily $ pool AND (when OR_SESSION is set) the per-session cap
 //   BEFORE running — both from models.json.
-// - Costs the run via OpenRouter /key usage delta (provider-accurate) → spend.jsonl.
+// - Costs the run via OpenRouter /key usage delta (provider-accurate) → spend.jsonl;
+//   custom endpoints have no /key endpoint, so their cost is logged as 0.
 // - Swallows Codex's harmless ~1MB model-catalog refresh noise against OpenRouter.
 //
 // The downgrade gate governs whether a task belongs here at all: only route work
 // with an enforced machine-checkable acceptance criterion (or an explicit user
 // request), and re-run that check afterward — escalate to your own model on fail.
 
-import { loadRegistry, logSpend } from "../model-routing/lib.ts"
+import { loadRegistry, logSpend, resolveEndpoint } from "../model-routing/lib.ts"
 
 const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
@@ -25,15 +31,27 @@ const dir = flag("--dir") ?? process.cwd()
 const task = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--model" && args[i - 1] !== "--dir").at(-1)
 const session = process.env.OR_SESSION ?? null
 
-const key = process.env.OPENROUTER_API_KEY
-if (!key) { console.error("or-agent: OPENROUTER_API_KEY not set"); process.exit(2) }
+const { baseUrl, custom, key } = resolveEndpoint(process.env)
+if (!key) {
+  console.error(custom
+    ? "or-agent: OPENAI_BASE_URL set but no OPENAI_API_KEY / OPENROUTER_API_KEY (keyless local server → OPENAI_API_KEY=none)"
+    : "or-agent: OPENROUTER_API_KEY not set")
+  process.exit(2)
+}
 if (!task) { console.error('or-agent: no task (usage: or-agent [--model X] [--dir D] "<task>")'); process.exit(2) }
 
 const reg = await loadRegistry()
-const slug = model ?? reg.defaults?.agentic
-if (!slug) { console.error("or-agent: no --model and no registry agentic default"); process.exit(2) }
+const slug = custom ? model : (model ?? reg.defaults?.agentic)
+if (!slug) {
+  console.error(custom
+    ? "or-agent: --model is required with OPENAI_BASE_URL (pass the slug your server serves)"
+    : "or-agent: no --model and no registry agentic default")
+  process.exit(2)
+}
 
+// OpenRouter-only billing probe; custom endpoints have no /key — cost stays 0.
 async function usage(): Promise<number> {
+  if (custom) return 0
   try {
     const r = await fetch("https://openrouter.ai/api/v1/key", { headers: { Authorization: `Bearer ${key}` } })
     return (await r.json())?.data?.usage ?? 0
@@ -41,12 +59,22 @@ async function usage(): Promise<number> {
 }
 
 const before = await usage()
-console.error(`or-agent: running codex on ${slug} (dir=${dir})`)
+console.error(`or-agent: running codex on ${slug} (${custom ? baseUrl : "openrouter"}, dir=${dir})`)
+
+// Custom endpoint: define an inline provider instead of the config.toml
+// `openrouter` one. wire_api=chat matches what self-hosted servers implement.
+const providerArgs = custom
+  ? ["-c", "model_provider=openai-compat",
+     "-c", "model_providers.openai-compat.name=OpenAI-compatible",
+     "-c", `model_providers.openai-compat.base_url=${baseUrl}`,
+     "-c", "model_providers.openai-compat.env_key=OPENAI_API_KEY",
+     "-c", "model_providers.openai-compat.wire_api=chat"]
+  : ["-c", "model_provider=openrouter"]
 
 const proc = Bun.spawn(
-  ["codex", "exec", "-c", "model_provider=openrouter", "-m", slug, "-C", dir,
+  ["codex", "exec", ...providerArgs, "-m", slug, "-C", dir,
    "--skip-git-repo-check", "-s", "workspace-write", task],
-  { env: { ...process.env }, stdout: "pipe", stderr: "pipe" },
+  { env: { ...process.env, ...(custom ? { OPENAI_API_KEY: key } : {}) }, stdout: "pipe", stderr: "pipe" },
 )
 
 // Stream stdout+stderr, dropping Codex's model-catalog noise (a single huge JSON
@@ -74,6 +102,6 @@ const code = await proc.exited
 
 const after = await usage()
 const cost = Math.max(0, after - before)
-await logSpend({ ts: new Date().toISOString(), harness: "codex-openrouter", model: slug, session, cost, exit: code })
+await logSpend({ ts: new Date().toISOString(), harness: custom ? "codex-openai-compat" : "codex-openrouter", model: slug, session, cost, exit: code })
 console.error(`or-agent: done — cost $${cost.toFixed(5)}, exit ${code}`)
 process.exit(code)

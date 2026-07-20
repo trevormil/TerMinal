@@ -6,6 +6,7 @@ export const ENGINE_LABEL: Record<Engine, string> = {
   cursor: 'Cursor',
   openrouter: 'OpenRouter',
   hermes: 'Hermes',
+  'openai-compat': 'Self-hosted',
 }
 
 export const SESSION_ENGINE_LABEL: Record<SessionEngine, string> = {
@@ -76,6 +77,9 @@ export const ENGINE_MODELS: Record<Engine, ModelOption[]> = {
     { id: 'deepseek/deepseek-v4-flash', label: 'deepseek-v4-flash' },
     { id: 'moonshotai/kimi-k2.7-code', label: 'kimi-k2.7-code' },
   ],
+  // Self-hosted endpoints serve whatever the operator loaded — no seed list;
+  // the model step is free-text (the slug must match the server's model name).
+  'openai-compat': [],
 }
 
 export const ENGINE_VENDOR: Record<Engine, string> = {
@@ -84,12 +88,14 @@ export const ENGINE_VENDOR: Record<Engine, string> = {
   cursor: 'Cursor Agent',
   openrouter: 'OpenRouter · Codex or Hermes harness',
   hermes: 'Nous Hermes',
+  'openai-compat': 'Self-hosted · OpenAI-compatible endpoint · Codex harness',
 }
 
 /** Engines that take an arbitrary model slug — their step shows a free-text field.
- *  OpenRouter (any OR slug) and Hermes (any provider/model slug). */
+ *  OpenRouter (any OR slug), Hermes (any provider/model slug), and self-hosted
+ *  endpoints (whatever model the server was loaded with). */
 export const engineAllowsCustomModel = (engine: Engine): boolean =>
-  engine === 'openrouter' || engine === 'hermes'
+  engine === 'openrouter' || engine === 'hermes' || engine === 'openai-compat'
 
 export function sessionEngineLabel(engine: SessionEngine | string): string {
   return SESSION_ENGINE_LABEL[engine as SessionEngine] || engine

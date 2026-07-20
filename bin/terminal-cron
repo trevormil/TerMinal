@@ -249,6 +249,19 @@ function engineDefaultModel(engine) {
     return ''
   }
 }
+
+// The openai-compat base URL is a PLAIN settings value (unlike the sealed API
+// key, which this out-of-process runner cannot decrypt — the key comes from
+// the login shell's OPENAI_API_KEY or a per-schedule env override, else the
+// 'none' placeholder that keyless local servers accept).
+function openAICompatBaseUrl() {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return (s?.engines?.['openai-compat']?.baseUrl || '').trim()
+  } catch {
+    return ''
+  }
+}
 const DISABLED_FILE = join(CFG, 'agents', 'disabled.json')
 
 // A run is "stale" if it claims status:running but no live process is attached
@@ -930,6 +943,9 @@ async function runSchedule(id) {
   // Engine → command. openrouter/hermes were previously missing here and fell
   // through to codex (a silent wrong-engine bug); they now build their real
   // commands (or-agent is bundled on the runner's PATH; hermes must be present).
+  // openai-compat = or-agent retargeted by OPENAI_BASE_URL (injected into the
+  // child env below from settings.json); guard here so an unset base URL fails
+  // loudly instead of or-agent silently falling back to OpenRouter.
   const cmd = scriptPath
     ? shq(scriptPath)
     : sched.engine === 'claude'
@@ -938,9 +954,11 @@ async function runSchedule(id) {
         ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
         : sched.engine === 'openrouter'
           ? `or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
-          : sched.engine === 'hermes'
-            ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
-            : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
+          : sched.engine === 'openai-compat'
+            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+            : sched.engine === 'hermes'
+              ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
+              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
   // zsh is macOS's default but usually absent on Linux hosts — fall back to bash there.
   const isMac = process.platform === 'darwin'
   const shell = process.env.SHELL || (isMac ? '/bin/zsh' : '/bin/bash')
@@ -968,6 +986,12 @@ async function runSchedule(id) {
     TERMINAL_ENGINE: sched.engine,
     ...(sched.model || engineDefaultModel(sched.engine)
       ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
+      : {}),
+    ...(sched.engine === 'openai-compat'
+      ? {
+          ...(openAICompatBaseUrl() ? { OPENAI_BASE_URL: openAICompatBaseUrl() } : {}),
+          OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'none',
+        }
       : {}),
     // Per-schedule env vars (Schedule.env). Spread LAST so they can
     // override TERMINAL_* if the operator really wants (rare), but the

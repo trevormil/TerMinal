@@ -1,4 +1,4 @@
-import { Waypoints } from 'lucide-react'
+import { Server, Waypoints } from 'lucide-react'
 import type { Engine } from '../lib/types'
 // `?inline` forces each logo to a base64 data: URI baked into the bundle rather
 // than an external asset file fetched at render time. The Cursor PNG (the only
@@ -11,13 +11,14 @@ import cursorLogo from '../assets/cursor.png?inline'
 import hermesLogo from '../assets/hermes.svg?inline'
 import { engineLabel } from '../lib/engines'
 
-// OpenRouter ships no wordmark asset — render a lucide glyph for it instead.
+// OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
   claude: claudeLogo,
   cursor: cursorLogo,
   openrouter: '',
   hermes: hermesLogo,
+  'openai-compat': '',
 }
 
 // Single source for the engine wordmark — anywhere we show an engine
@@ -39,6 +40,16 @@ export function EngineLogo({
         strokeWidth={2}
         className={`inline-block shrink-0 ${className}`}
         aria-label="OpenRouter"
+      />
+    )
+  }
+  if (engine === 'openai-compat') {
+    return (
+      <Server
+        size={size}
+        strokeWidth={2}
+        className={`inline-block shrink-0 ${className}`}
+        aria-label="Self-hosted"
       />
     )
   }

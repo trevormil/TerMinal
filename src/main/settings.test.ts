@@ -136,7 +136,7 @@ describe('migrate', () => {
           forge: 'gitlab',
           engines: {
             ...defaultDaemonSettings().engines,
-            claude: { path: '~/.local/bin/claude', defaultModel: 'sonnet' },
+            claude: { path: '~/.local/bin/claude', defaultModel: 'sonnet', baseUrl: '' },
           },
         },
       },
@@ -226,6 +226,30 @@ describe('settings secrets', () => {
     expect(JSON.stringify(sealed)).not.toContain('sk-or-v1-supersecret')
     const opened = migrate(openSettingsFromDisk(sealed, adapter))
     expect(opened.openrouterApiKey).toBe('sk-or-v1-supersecret')
+  })
+
+  test('openai-compat api key is sealed on disk (never cleartext) and opens back', () => {
+    const settings = migrate({ openaiCompatApiKey: 'sk-local-supersecret', projectsDir: '/p' })
+    const sealed = sealSettingsForDisk(settings, adapter)
+    expect(JSON.stringify(sealed)).not.toContain('sk-local-supersecret')
+    const opened = migrate(openSettingsFromDisk(sealed, adapter))
+    expect(opened.openaiCompatApiKey).toBe('sk-local-supersecret')
+    // No encryption available → dropped from disk, not written plaintext.
+    const dropped = sealSettingsForDisk(settings, { ...adapter, canEncrypt: () => false }) as {
+      openaiCompatApiKey?: string
+    }
+    expect(dropped.openaiCompatApiKey).toBeUndefined()
+  })
+
+  test('openai-compat base url round-trips through engines settings', () => {
+    const s = migrate({
+      engines: { 'openai-compat': { baseUrl: 'http://10.0.0.5:8000/v1 ', defaultModel: 'qwen3' } },
+    })
+    expect(s.engines['openai-compat'].baseUrl).toBe('http://10.0.0.5:8000/v1')
+    expect(s.engines['openai-compat'].defaultModel).toBe('qwen3')
+    // Absent on old settings files → defaults, no crash.
+    const legacy = migrate({ engines: { codex: { path: '/bin/codex' } } })
+    expect(legacy.engines['openai-compat']).toEqual({ path: '', defaultModel: '', baseUrl: '' })
   })
 
   test('legacy plaintext and empty secrets pass through', () => {

@@ -451,9 +451,9 @@ export type DocsTree = {
   categories: { id: DocCategory; label: string; items: DocEntry[] }[]
 }
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
 export type SessionEngine = Engine | 'local'
-export type EngineCfg = { path: string; defaultModel: string }
+export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 export type AlertsCfg = {
@@ -592,6 +592,7 @@ export type Settings = {
   templateRepo: string
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
+  openaiCompatApiKey: string
 }
 export type SettingsPatch = Partial<
   Omit<

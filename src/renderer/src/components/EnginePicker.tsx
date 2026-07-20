@@ -37,6 +37,7 @@ const VENDOR: Record<Engine, string> = {
   cursor: 'Cursor Agent',
   openrouter: 'OpenRouter · Codex or Hermes',
   hermes: 'Nous Hermes',
+  'openai-compat': 'Self-hosted · OpenAI-compatible',
 }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
@@ -119,13 +120,13 @@ export function EnginePicker({
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
-  // OpenRouter is driven by or-agent (Codex on an OR model), so its readiness
-  // tracks Codex being installed; the key is validated at run time.
+  // OpenRouter and openai-compat ride the or-agent (Codex) harness, so their
+  // readiness tracks Codex being installed; key/base URL validate at run time.
   const avail = (e: Engine) =>
     !env ||
     (e === 'hermes'
       ? true // resolved via PATH; validated at run time
-      : e === 'codex' || e === 'openrouter'
+      : e === 'codex' || e === 'openrouter' || e === 'openai-compat'
         ? env.codex.found
         : e === 'cursor'
           ? env.cursor.found
@@ -137,7 +138,7 @@ export function EnginePicker({
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const engineOrder: Engine[] = [
     defaultEngine,
-    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as Engine[]).filter(
+    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes', 'openai-compat'] as Engine[]).filter(
       (e) => e !== defaultEngine,
     ),
   ]

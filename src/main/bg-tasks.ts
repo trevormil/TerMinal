@@ -26,7 +26,15 @@ import { emitActivity } from './events'
 // bundle the old `require('./budgets')` threw and was swallowed by its own
 // catch, so the daily budget cap never actually gated a background task.
 import { gateSpawn } from './budgets'
-import { enginePath, readSettings, resolvedWorktreesDir, resolveEngineModel } from './settings'
+import {
+  enginePath,
+  readSettings,
+  resolvedWorktreesDir,
+  resolveEngineModel,
+  resolvedOpenAICompatKey,
+  openAICompatBaseUrl,
+  type EngineId,
+} from './settings'
 import { sendUrl } from './telegram-api'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
@@ -50,7 +58,7 @@ export type BgTask = {
   repo: string // basename for display
   repoRoot: string // absolute path
   prompt: string
-  engine: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes'
+  engine: EngineId
   model?: string
   worktree: string
   branch: string
@@ -119,7 +127,7 @@ export function readBgTaskLog(id: string): string {
 export type SpawnBgInput = {
   repoRoot: string
   prompt: string
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes'
+  engine?: EngineId
   model?: string
   /** Backlog ticket this task is working, if any. */
   ticketSlug?: string
@@ -141,6 +149,10 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   ensure()
   const id = randomUUID()
   const engine = input.engine || 'claude'
+  // Fail fast: a self-hosted run without an endpoint only dies later inside
+  // or-agent with a confusing codex error.
+  if (engine === 'openai-compat' && !openAICompatBaseUrl())
+    return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
   const effectiveModel = resolveEngineModel(engine, input.model)
   const repo = basename(input.repoRoot)
   const short = id.slice(0, 6)
@@ -216,10 +228,12 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
                 '--accept-hooks',
               ],
             }
-          : engine === 'openrouter'
+          : engine === 'openrouter' || engine === 'openai-compat'
             ? {
-                // or-agent = Codex driven by an OpenRouter model (default harness).
-                bin: enginePath('openrouter'),
+                // or-agent = Codex driven by an OpenRouter model (default
+                // harness); openai-compat retargets it via OPENAI_BASE_URL in
+                // the child env below.
+                bin: enginePath(engine),
                 args: [
                   '--dir',
                   worktree,
@@ -262,6 +276,12 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     TERMINAL_WORKTREE: worktree,
     TERMINAL_ENGINE: engine,
     ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
+    ...(engine === 'openai-compat'
+      ? {
+          OPENAI_BASE_URL: openAICompatBaseUrl(),
+          OPENAI_API_KEY: resolvedOpenAICompatKey() || 'none',
+        }
+      : {}),
   }
   const child = cpSpawn(command.bin, command.args, {
     cwd: worktree,
