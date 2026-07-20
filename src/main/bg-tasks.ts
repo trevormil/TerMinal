@@ -149,11 +149,16 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   ensure()
   const id = randomUUID()
   const engine = input.engine || 'claude'
-  // Fail fast: a self-hosted run without an endpoint only dies later inside
-  // or-agent with a confusing codex error.
+  // Fail fast: a self-hosted run without an endpoint or model only dies later
+  // inside or-agent with a confusing codex error.
   if (engine === 'openai-compat' && !openAICompatBaseUrl())
     return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
   const effectiveModel = resolveEngineModel(engine, input.model)
+  if (engine === 'openai-compat' && !effectiveModel)
+    return {
+      error:
+        'openai-compat: no model — pass one or set the engine default model (Settings → Engines → Self-hosted)',
+    }
   const repo = basename(input.repoRoot)
   const short = id.slice(0, 6)
   const branch = `bg/${repo}-${short}`

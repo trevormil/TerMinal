@@ -100,3 +100,12 @@ export const engineAllowsCustomModel = (engine: Engine): boolean =>
 export function sessionEngineLabel(engine: SessionEngine | string): string {
   return SESSION_ENGINE_LABEL[engine as SessionEngine] || engine
 }
+
+/** Validate an untyped engine value (nav payloads, IPC) into a SessionEngine,
+ *  falling back to 'claude'. Derived from the catalog so a newly added engine
+ *  can never be silently coerced away by a stale literal list. */
+export function coerceSessionEngine(value: unknown): SessionEngine {
+  return typeof value === 'string' && value in SESSION_ENGINE_LABEL
+    ? (value as SessionEngine)
+    : 'claude'
+}

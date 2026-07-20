@@ -103,6 +103,9 @@ export function EnginePicker({
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [defaultEngine, setDefaultEngine] = useState<Engine>('claude')
+  // Self-hosted servers have no fallback slug — "default" is only meaningful
+  // when Settings configures one, so the model step gates Continue on it.
+  const [ocDefaultModel, setOcDefaultModel] = useState('')
   useEffect(() => {
     if (showPersona) {
       window.gt.agents.personas().then((next) => {
@@ -115,7 +118,10 @@ export function EnginePicker({
     }
     if (showPipeline) window.gt.agents.pipelines().then(setPipelines)
     window.gt.detectEnv().then(setEnv)
-    window.gt.settings.get().then((s) => setDefaultEngine(s.defaultEngine))
+    window.gt.settings.get().then((s) => {
+      setDefaultEngine(s.defaultEngine)
+      setOcDefaultModel(s.engines['openai-compat']?.defaultModel || '')
+    })
   }, [showPersona, showPipeline, initialPersona])
 
   // Until detection resolves, assume available (avoids a flicker); once known,
@@ -295,12 +301,26 @@ export function EnginePicker({
             <div className="max-h-[340px] overflow-y-auto pr-0.5">
               <ModelSelect engine={engine as Engine} model={model} onChange={setModel} />
             </div>
-            <button
-              onClick={() => setModelConfirmed(true)}
-              className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
-            >
-              Continue with {model || 'the default model'}
-            </button>
+            {engine === 'openai-compat' && !model && !ocDefaultModel ? (
+              <button
+                disabled
+                className="mt-3 w-full cursor-not-allowed rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[12px] font-semibold text-zinc-600"
+                title="A self-hosted server has no fallback slug — enter the model it serves, or set the engine default in Settings → Engines → Self-hosted."
+              >
+                Enter the model your server serves
+              </button>
+            ) : (
+              <button
+                onClick={() => setModelConfirmed(true)}
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+              >
+                Continue with{' '}
+                {model ||
+                  (engine === 'openai-compat'
+                    ? `the default (${ocDefaultModel})`
+                    : 'the default model')}
+              </button>
+            )}
           </>
         )}
 

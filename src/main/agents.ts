@@ -1408,10 +1408,18 @@ type RunSpec = {
 function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } {
   if (!repoRoot) return { error: 'not a git repo' }
   if (!spec.steps.length) return { error: 'no steps' }
-  // Fail fast, not mid-run: a self-hosted run without an endpoint can only die
-  // inside or-agent with a confusing codex error.
-  if (spec.engine === 'openai-compat' && !openAICompatBaseUrl())
-    return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
+  // Fail fast, not mid-run: a self-hosted run without an endpoint or model can
+  // only die inside or-agent with a confusing codex error (there is no registry
+  // fallback slug a private server would know).
+  if (spec.engine === 'openai-compat') {
+    if (!openAICompatBaseUrl())
+      return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
+    if (!spec.model && !engineDefaultModel('openai-compat'))
+      return {
+        error:
+          'openai-compat: no model — pick one for this run or set the engine default model (Settings → Engines → Self-hosted)',
+      }
+  }
   // Concurrent-run guard: never let two runs of the same agent on the same
   // repo overlap. If one is already running, surface HITL + refuse the new
   // run rather than silently allowing duplicates to thrash on the same worktree.

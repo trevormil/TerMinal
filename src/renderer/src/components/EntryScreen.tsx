@@ -511,6 +511,7 @@ export function EntryScreen({
     'cursor',
     'openrouter',
     'hermes',
+    'openai-compat',
   ] as SessionEngine[]
   const daemonLabel =
     location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'

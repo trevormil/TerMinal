@@ -268,7 +268,7 @@ function cmdHelp() {
       '/repos · /cd <repo>',
       '',
       'RUNS · AGENTS',
-      '/runs · /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo] · /cancel <n>',
+      '/runs · /run <agent> [codex|claude|cursor|openrouter|hermes|openai-compat] [persona] [pipeline] [@repo] · /cancel <n>',
       '/agents [@repo] · /state <agent> [@repo] · /reset-state <agent> [@repo]',
       '',
       'TICKETS',
@@ -368,7 +368,9 @@ function cmdStatus() {
 
 function cmdRun(args: string[]) {
   if (!args.length)
-    return reply('Usage: /run <agent> [codex|claude|cursor] [persona] [pipeline] [@repo]')
+    return reply(
+      'Usage: /run <agent> [codex|claude|cursor|openrouter|hermes|openai-compat] [persona] [pipeline] [@repo]',
+    )
   const { agentId, engine, pipeline, repoToken, personaCandidates } = classifyRunArgs(args)
   let persona = ''
   const repo = resolveRepo(repoToken)
@@ -990,7 +992,7 @@ function cmdBudget(args: string[]) {
 function cmdBg(args: string[]) {
   if (!args.length) {
     return reply(
-      'Usage: /bg [<repo>] [claude|codex|cursor] [model] <prompt>\n' +
+      'Usage: /bg [<repo>] [claude|codex|cursor|openrouter|hermes|openai-compat] [model] <prompt>\n' +
         '       /bg list · /bg cancel <n|id>',
     )
   }
@@ -998,7 +1000,7 @@ function cmdBg(args: string[]) {
   if (args[0] === 'cancel') return cmdBgCancel(args.slice(1))
 
   // Parse repo / engine / model leading args
-  let engine: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' = 'claude'
+  let engine: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat' = 'claude'
   let model: string | undefined
   let repo: RepoCtx | null = null
   let promptStart = 0
@@ -1009,7 +1011,8 @@ function cmdBg(args: string[]) {
       tok === 'codex' ||
       tok === 'cursor' ||
       tok === 'openrouter' ||
-      tok === 'hermes'
+      tok === 'hermes' ||
+      tok === 'openai-compat'
     ) {
       engine = tok
       promptStart = i + 1
