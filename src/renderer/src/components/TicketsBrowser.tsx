@@ -80,7 +80,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors ${
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize transition-colors ${
         active
           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
           : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
@@ -341,9 +341,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     <div className="flex h-full min-h-0 flex-col">
       {/* toolbar: type/horizon filters (left) + search / New (right). Status is
           the grouping axis now, so no status chips here. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--gt-border)] px-4 py-2">
+      <div className="flex shrink-0 flex-nowrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         {!hitlOnly && (
-          <>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
             <span className="mx-1 text-zinc-700">·</span>
             <Chip active={fType === 'all'} onClick={() => setFType('all')}>
@@ -370,39 +370,40 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                 HITL
               </span>
             </Chip>
-          </>
+          </div>
         )}
-        <div className="flex-1" />
-        {!hitlOnly && (
-          <button
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }),
-              )
-            }
-            className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-          >
-            Configure
-          </button>
-        )}
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search…"
-          className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-        />
-        {!hitlOnly && (
-          <button
-            onClick={() => {
-              setCreating(true)
-              setSel(null)
-            }}
-            className="inline-flex items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            New
-          </button>
-        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!hitlOnly && (
+            <button
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }),
+                )
+              }
+              className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+            >
+              Configure
+            </button>
+          )}
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search…"
+            className="w-40 rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+          />
+          {!hitlOnly && (
+            <button
+              onClick={() => {
+                setCreating(true)
+                setSel(null)
+              }}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--gt-accent)] px-3 py-1 text-[12px] font-semibold text-white"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              New
+            </button>
+          )}
+        </div>
       </div>
 
       {/* master-detail */}
