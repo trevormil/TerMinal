@@ -77,9 +77,67 @@ describe('resolveModel', () => {
     const cross = { policy: locked, tier: 'top', engine: 'claude', policyEngine: 'codex' }
     expect(resolveModel({ ...cross, override: 'my-pick' })).toBe('my-pick')
     expect(resolveModel({ ...cross, engineDefault: 'settings-model' })).toBe('settings-model')
-    expect(resolveModel({ policy: locked, tier: 'top', engine: 'codex', policyEngine: 'codex' })).toBe(
-      'model-deep',
-    )
+    expect(
+      resolveModel({ policy: locked, tier: 'top', engine: 'codex', policyEngine: 'codex' }),
+    ).toBe('model-deep')
+  })
+})
+
+describe('ticketOwnerModelPolicy', () => {
+  test('resolves classic AND persistent ticket owners (and folds their policy)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'terminal-ticket-owner-'))
+    try {
+      const result = run(
+        home,
+        `import { mock } from 'bun:test';
+mock.module('electron', () => ({ Notification: class { static isSupported() { return false } show() {} } }));
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const repo = join('${home}', 'repo');
+mkdirSync(join(repo, '.agents'), { recursive: true });
+writeFileSync(join(repo, '.agents', 'agents.json'), JSON.stringify([{
+  id: 'classic-owner', title: 'Classic', prompt: 'p', engine: 'codex',
+  modelPolicy: { deep: 'classic-deep', allowOverride: true },
+}]));
+const persistent = join('${home}', '.config', 'TerMinal', 'persistent-agents', 'memory-owner');
+mkdirSync(persistent, { recursive: true });
+writeFileSync(join(persistent, 'agent.json'), JSON.stringify({
+  id: 'memory-owner', title: 'Memory Owner', engine: 'claude', model: 'sonnet',
+  modelPolicy: { deep: 'persistent-deep' }, tags: [], createdAt: 1, updatedAt: 1,
+}));
+writeFileSync(join(persistent, 'INSTRUCTIONS.md'), '# I');
+writeFileSync(join(persistent, 'MEMORY.md'), '# M');
+writeFileSync(join(persistent, 'STATE.md'), '# S');
+writeFileSync(join(persistent, 'JOURNAL.md'), '# J');
+const { ticketOwnerModelPolicy } = await import('./src/main/agents.ts');
+console.log(JSON.stringify({
+  classic: ticketOwnerModelPolicy(repo, { id: 'classic-owner', scope: 'repo', kind: 'classic' }),
+  persistent: ticketOwnerModelPolicy(repo, { id: 'memory-owner', scope: 'global', kind: 'persistent' }),
+  unknown: ticketOwnerModelPolicy(repo, { id: 'nobody', scope: 'repo', kind: 'classic' }),
+  none: ticketOwnerModelPolicy(repo, undefined),
+}));`,
+      )
+      expect(result.classic.policy.deep).toBe('classic-deep')
+      expect(result.classic.engine).toBe('codex')
+      expect(result.persistent.policy.deep).toBe('persistent-deep')
+      // The persistent owner's plain model folds into the policy default slot.
+      expect(result.persistent.policy.default).toBe('sonnet')
+      expect(result.persistent.engine).toBe('claude')
+      expect(result.unknown.policy).toBeUndefined()
+      expect(result.none.policy).toBeUndefined()
+      // Composes with resolveModel: a top-tier ticket owned by the persistent
+      // agent launches its deep model (same engine), per the routing seam.
+      expect(
+        resolveModel({
+          policy: result.persistent.policy,
+          tier: 'top',
+          engine: 'claude',
+          policyEngine: result.persistent.engine,
+        }),
+      ).toBe('persistent-deep')
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 })
 

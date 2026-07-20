@@ -1734,9 +1734,7 @@ export function runAgent(
     force: agent.force,
     model,
     agentModel: agent.model,
-    modelPolicy: agent.modelPolicy
-      ? modelPolicyFrom(agent.model, agent.modelPolicy)
-      : undefined,
+    modelPolicy: agent.modelPolicy ? modelPolicyFrom(agent.model, agent.modelPolicy) : undefined,
     modelPolicyEngine: agent.engine,
     openrouterHarness,
     quality: agent.quality || {
@@ -2019,6 +2017,26 @@ type TicketRunInput = {
   modelTier?: string
 }
 
+/** The declared model policy of a ticket's owner agent — classic or
+ *  persistent — folded for resolveModel, plus the engine its slugs target.
+ *  Owners without a policy resolve to undefined so ticket runs keep the
+ *  pre-policy behavior (override → engine Settings default). */
+export function ticketOwnerModelPolicy(
+  repoRoot: string,
+  agent?: TicketAgent,
+): { policy?: AgentModelPolicy; engine?: Engine } {
+  const src =
+    agent?.kind === 'classic'
+      ? readAgents(repoRoot).find((a) => a.id === agent.id)
+      : agent?.kind === 'persistent'
+        ? listPersistentAgents().find((a) => a.id === agent.id)
+        : undefined
+  return {
+    policy: src?.modelPolicy ? modelPolicyFrom(src.model, src.modelPolicy) : undefined,
+    engine: src?.engine,
+  }
+}
+
 export function runTicketAgent(
   repoRoot: string,
   ticket: TicketRunInput,
@@ -2048,10 +2066,11 @@ export function runTicketAgent(
     resolvedPersonaId,
     pipelineId,
   )
-  const owner =
+  const ownerQuality =
     ticket.agent?.kind === 'classic'
-      ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)
+      ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality
       : undefined
+  const ownerPolicy = ticketOwnerModelPolicy(repoRoot, ticket.agent)
   return runSpec(repoRoot, {
     id: lane ? `ticket-${ticket.id}-L${lane.index}` : `ticket-${ticket.id}`,
     title: lane ? `Implement ${ref} · lane ${lane.index}/${lane.total}` : `Implement ${ref}`,
@@ -2060,14 +2079,12 @@ export function runTicketAgent(
     persona,
     pipeline,
     model,
-    // Only agents that DECLARE a policy route by tier; ticket runs without one
+    // Only owners that DECLARE a policy route by tier; ticket runs without one
     // keep today's behavior (override → engine Settings default).
-    modelPolicy: owner?.modelPolicy
-      ? modelPolicyFrom(owner.model, owner.modelPolicy)
-      : undefined,
-    modelPolicyEngine: owner?.engine,
+    modelPolicy: ownerPolicy.policy,
+    modelPolicyEngine: ownerPolicy.engine,
     modelTier: ticket.modelTier,
-    quality: owner?.quality,
+    quality: ownerQuality,
     trace: { ticketSlug: ticket.slug, ticketId: ticket.id, ticketRef: ref, lane },
     // Lanes aren't individually rerunnable as the ticket (that would relaunch
     // the whole group); only solo runs carry a ticket rerun spec.
