@@ -906,7 +906,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                   ) : (
                     <ChevronRight size={12} strokeWidth={2} />
                   )}
-                  runs
+                  Runs
                 </button>
                 <button
                   onClick={async () => {
@@ -919,7 +919,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-zinc-500 hover:bg-white/5 hover:text-[var(--gt-accent-light)]"
                 >
                   <Play size={11} strokeWidth={2.5} />
-                  run now
+                  Run now
                 </button>
                 <div className="flex-1" />
                 <button

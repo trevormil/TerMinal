@@ -532,7 +532,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     onClick={commitDelete}
                     className="rounded bg-[var(--gt-red)]/20 px-1.5 py-0.5 text-[var(--gt-red)]"
                   >
-                    delete
+                    Delete
                   </button>
                   <button
                     onClick={() => setConfirmDelete(null)}

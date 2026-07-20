@@ -773,7 +773,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Play size={10} strokeWidth={2} />
-                    {rerunBusy ? 'starting…' : 'Re-run'}
+                    {rerunBusy ? 'Starting…' : 'Re-run'}
                   </button>
                   {rerunError && (
                     <span className="max-w-[220px] truncate text-[10.5px] text-[var(--gt-red)]">
