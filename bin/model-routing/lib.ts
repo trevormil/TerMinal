@@ -15,6 +15,29 @@ const BASE = existsSync(`${CLAUDE_MR}/models.json`) ? CLAUDE_MR : TERMINAL_MR
 export const REGISTRY = `${BASE}/models.json`
 export const SPEND = `${BASE}/spend.jsonl`
 
+export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+/** Resolve the OpenAI-compatible endpoint for or-exec / or-agent.
+ *  OPENAI_BASE_URL unset/blank → OpenRouter, keyed by OPENROUTER_API_KEY,
+ *  byte-for-byte today's behavior. Set → that endpoint (self-hosted vLLM /
+ *  Ollama / LM Studio / TGI / llama.cpp — anything speaking /v1/chat/completions),
+ *  keyed by OPENAI_API_KEY with OPENROUTER_API_KEY as fallback. Keyless local
+ *  servers: set OPENAI_API_KEY to any placeholder (e.g. "none") — they ignore
+ *  the Authorization header. */
+export function resolveEndpoint(env: Record<string, string | undefined>): {
+  baseUrl: string
+  custom: boolean
+  key: string
+} {
+  const raw = (env.OPENAI_BASE_URL ?? '').trim()
+  const custom = !!raw
+  const baseUrl = (custom ? raw : OPENROUTER_BASE_URL).replace(/\/+$/, '')
+  const key = custom
+    ? env.OPENAI_API_KEY || env.OPENROUTER_API_KEY || ''
+    : env.OPENROUTER_API_KEY || ''
+  return { baseUrl, custom, key }
+}
+
 export async function loadRegistry(): Promise<any> {
   return JSON.parse(await Bun.file(REGISTRY).text())
 }

@@ -72,11 +72,12 @@ const emptyDaemon = (): DaemonCfg => ({
   harnessDir: '',
   templateRepo: '',
   engines: {
-    codex: { path: '', defaultModel: '' },
-    claude: { path: '', defaultModel: '' },
-    cursor: { path: '', defaultModel: '' },
-    openrouter: { path: '', defaultModel: '' },
-    hermes: { path: '', defaultModel: '' },
+    codex: { path: '', defaultModel: '', baseUrl: '' },
+    claude: { path: '', defaultModel: '', baseUrl: '' },
+    cursor: { path: '', defaultModel: '', baseUrl: '' },
+    openrouter: { path: '', defaultModel: '', baseUrl: '' },
+    hermes: { path: '', defaultModel: '', baseUrl: '' },
+    'openai-compat': { path: '', defaultModel: '', baseUrl: '' },
   },
   defaultEngine: 'claude',
   forge: 'auto',
@@ -104,6 +105,10 @@ const mergeDaemon = (
     cursor: { ...base.engines.cursor, ...(patch.engines?.cursor || {}) },
     openrouter: { ...base.engines.openrouter, ...(patch.engines?.openrouter || {}) },
     hermes: { ...base.engines.hermes, ...(patch.engines?.hermes || {}) },
+    'openai-compat': {
+      ...base.engines['openai-compat'],
+      ...(patch.engines?.['openai-compat'] || {}),
+    },
   },
 })
 
@@ -1512,11 +1517,11 @@ export function SettingsPanel({
   )
 
   // Which engines the local machine actually has (for readiness indicators).
-  // OpenRouter (or-agent) rides on Codex being present, so track codex.
+  // OpenRouter and openai-compat (or-agent) ride on Codex being present.
   const localEngineFound = (e: Engine): boolean =>
     !env
       ? true
-      : e === 'codex' || e === 'openrouter'
+      : e === 'codex' || e === 'openrouter' || e === 'openai-compat'
         ? env.codex.found
         : e === 'cursor'
           ? env.cursor.found
@@ -1533,7 +1538,7 @@ export function SettingsPanel({
     const detPath = selectedIsRemote
       ? remoteDetected
       : env
-        ? e === 'codex' || e === 'openrouter'
+        ? e === 'codex' || e === 'openrouter' || e === 'openai-compat'
           ? env.codex.path
           : e === 'cursor'
             ? env.cursor.path
@@ -1596,6 +1601,22 @@ export function SettingsPanel({
             )}
           </label>
         </div>
+        {e === 'openai-compat' && (
+          <label className="mt-2 block text-[10.5px] text-zinc-500">
+            Base URL — an OpenAI-compatible /v1 endpoint (vLLM, Ollama, LM Studio, TGI, …)
+            <input
+              key={`${profile}-${e}-baseurl-${selectedDaemon.engines[e].baseUrl}`}
+              defaultValue={selectedDaemon.engines[e].baseUrl}
+              onBlur={(ev) =>
+                ev.target.value.trim() !== selectedDaemon.engines[e].baseUrl &&
+                saveDaemon({ engines: { [e]: { baseUrl: ev.target.value.trim() } } })
+              }
+              placeholder="http://10.0.0.5:8000/v1"
+              spellCheck={false}
+              className={`${inp} mt-1 font-mono`}
+            />
+          </label>
+        )}
         <EditDetails label="Override binary path">
           <input
             key={`${profile}-${e}-path-${overridePath}`}
@@ -2162,6 +2183,7 @@ export function SettingsPanel({
                   {engineRow('cursor')}
                   {!selectedIsRemote && engineRow('openrouter')}
                   {!selectedIsRemote && engineRow('hermes')}
+                  {!selectedIsRemote && engineRow('openai-compat')}
                 </div>
                 {!selectedIsRemote && (
                   <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
@@ -2181,6 +2203,31 @@ export function SettingsPanel({
                         save({ openrouterApiKey: ev.target.value.trim() })
                       }
                       placeholder="sk-or-v1-…"
+                      spellCheck={false}
+                      autoComplete="off"
+                      className={`${inp} mt-1.5 font-mono`}
+                    />
+                  </div>
+                )}
+                {!selectedIsRemote && (
+                  <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                    <label className="block text-[11px] font-medium text-zinc-300">
+                      Self-hosted API key
+                    </label>
+                    <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                      Stored in your OS keychain. Sent to the self-hosted (openai-compat) endpoint.
+                      Empty → falls back to the shell&apos;s OPENAI_API_KEY; keyless local servers
+                      need no real value.
+                    </div>
+                    <input
+                      key={`oc-key-${s?.openaiCompatApiKey ? 'set' : 'unset'}`}
+                      type="password"
+                      defaultValue={s?.openaiCompatApiKey || ''}
+                      onBlur={(ev) =>
+                        ev.target.value !== (s?.openaiCompatApiKey || '') &&
+                        save({ openaiCompatApiKey: ev.target.value.trim() })
+                      }
+                      placeholder="sk-… (or any placeholder for keyless servers)"
                       spellCheck={false}
                       autoComplete="off"
                       className={`${inp} mt-1.5 font-mono`}

@@ -163,6 +163,8 @@ import {
   engineDefaultModel,
   resolveEngineModel,
   resolvedOpenRouterKey,
+  resolvedOpenAICompatKey,
+  openAICompatBaseUrl,
   classifyProjectsDir,
   countGitReposOneLevel,
   pickDensestRoot,
@@ -566,6 +568,31 @@ function startSession(key: string, opts: StartOpts) {
       args.push('-c', 'model_provider=openrouter', '-s', 'danger-full-access', '-a', 'never')
       if (defaultModel) args.push('-m', defaultModel)
     }
+  } else if (engine === 'openai-compat') {
+    // Interactive self-hosted endpoint: the Codex TUI with an inline
+    // OpenAI-compatible provider (mirrors or-agent's one-shot definition; the
+    // one-shot or-agent binary itself is not usable interactively).
+    const baseUrl = openAICompatBaseUrl()
+    if (!baseUrl)
+      throw new Error('openai-compat: no base URL configured (Settings → Engines → Self-hosted)')
+    sessionId = opts.sessionId || randomUUID()
+    args.push(
+      '-c',
+      'model_provider=openai-compat',
+      '-c',
+      'model_providers.openai-compat.name=OpenAI-compatible',
+      '-c',
+      `model_providers.openai-compat.base_url=${baseUrl}`,
+      '-c',
+      'model_providers.openai-compat.env_key=OPENAI_API_KEY',
+      '-c',
+      'model_providers.openai-compat.wire_api=chat',
+      '-s',
+      'danger-full-access',
+      '-a',
+      'never',
+    )
+    if (defaultModel) args.push('-m', defaultModel)
   } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
@@ -575,14 +602,23 @@ function startSession(key: string, opts: StartOpts) {
     if (opts.name) args.push('--name', opts.name)
   }
   if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
-  // hermes/openrouter push their own `-m` above; everyone else takes --model.
-  if (defaultModel && engine !== 'local' && engine !== 'hermes' && engine !== 'openrouter')
+  // hermes/openrouter/openai-compat push their own `-m` above; everyone else takes --model.
+  if (
+    defaultModel &&
+    engine !== 'local' &&
+    engine !== 'hermes' &&
+    engine !== 'openrouter' &&
+    engine !== 'openai-compat'
+  )
     args.push('--model', defaultModel)
-  // For interactive OpenRouter the binary is the harness (codex/hermes), not or-agent.
+  // For interactive OpenRouter/openai-compat the binary is the harness (codex/
+  // hermes), not the one-shot or-agent.
   const openrouterLaunchBin =
     engine === 'openrouter'
       ? enginePath((opts.openrouterHarness || 'codex') === 'hermes' ? 'hermes' : 'codex')
-      : undefined
+      : engine === 'openai-compat'
+        ? enginePath('codex')
+        : undefined
   const remoteEnginePath =
     remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
   const repoRoot = remote ? '' : repoRootOf(cwd)
@@ -618,6 +654,9 @@ function startSession(key: string, opts: StartOpts) {
     const orKey = resolvedOpenRouterKey()
     if (orKey) env.OPENROUTER_API_KEY = orKey
   }
+  // Self-hosted endpoint: codex reads the key via the inline provider's
+  // env_key=OPENAI_API_KEY. 'none' placeholder for keyless local servers.
+  if (engine === 'openai-compat') env.OPENAI_API_KEY = resolvedOpenAICompatKey() || 'none'
   // Strip inherited Claude Code session-context markers. If TerMinal itself was
   // launched from inside a Claude Code session (e.g. `claude` in the terminal
   // that ran it), its env carries CLAUDE_CODE_CHILD_SESSION=1 + the parent's
@@ -1304,7 +1343,11 @@ function remoteSteps(
 // OpenRouter (or-agent) and Hermes are local-only harnesses — a remote host has
 // neither, so coerce them to a universally-present engine for remote dispatch.
 function localOnlyToRemote(engine: Engine): Engine {
-  return engine === 'openrouter' || engine === 'hermes' ? 'claude' : engine
+  // openrouter/openai-compat ride the local or-agent harness + local Settings
+  // (base URL, sealed keys); hermes is a local install. None dispatch remotely.
+  return engine === 'openrouter' || engine === 'hermes' || engine === 'openai-compat'
+    ? 'claude'
+    : engine
 }
 
 function remoteEngineModel(

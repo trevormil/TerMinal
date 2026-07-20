@@ -1359,7 +1359,7 @@ function listHermesSessions(): SessionMeta[] {
 
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
 export function listSessions(
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes',
+  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat',
 ): SessionMeta[] {
   const out =
     engine === 'claude'
@@ -1370,9 +1370,10 @@ export function listSessions(
           ? listCursorSessions()
           : engine === 'hermes'
             ? listHermesSessions()
-            : // openrouter is one-shot with no resumable local store — an explicit
-              // request returns none rather than leaking the other engines' lists.
-              engine === 'openrouter'
+            : // openrouter/openai-compat have no resumable local store of their
+              // own — an explicit request returns none rather than leaking the
+              // other engines' lists.
+              engine === 'openrouter' || engine === 'openai-compat'
               ? []
               : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
   return out.sort((a, b) => b.mtime - a.mtime)

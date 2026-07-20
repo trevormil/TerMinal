@@ -37,6 +37,7 @@ const VENDOR: Record<Engine, string> = {
   cursor: 'Cursor Agent',
   openrouter: 'OpenRouter · Codex or Hermes',
   hermes: 'Nous Hermes',
+  'openai-compat': 'Self-hosted · OpenAI-compatible',
 }
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
@@ -102,6 +103,9 @@ export function EnginePicker({
   const [pipelines, setPipelines] = useState<PipelineInfo[]>([])
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [defaultEngine, setDefaultEngine] = useState<Engine>('claude')
+  // Self-hosted servers have no fallback slug — "default" is only meaningful
+  // when Settings configures one, so the model step gates Continue on it.
+  const [ocDefaultModel, setOcDefaultModel] = useState('')
   useEffect(() => {
     if (showPersona) {
       window.gt.agents.personas().then((next) => {
@@ -114,18 +118,21 @@ export function EnginePicker({
     }
     if (showPipeline) window.gt.agents.pipelines().then(setPipelines)
     window.gt.detectEnv().then(setEnv)
-    window.gt.settings.get().then((s) => setDefaultEngine(s.defaultEngine))
+    window.gt.settings.get().then((s) => {
+      setDefaultEngine(s.defaultEngine)
+      setOcDefaultModel(s.engines['openai-compat']?.defaultModel || '')
+    })
   }, [showPersona, showPipeline, initialPersona])
 
   // Until detection resolves, assume available (avoids a flicker); once known,
   // disable engines that aren't installed and auto-pick when only one exists.
-  // OpenRouter is driven by or-agent (Codex on an OR model), so its readiness
-  // tracks Codex being installed; the key is validated at run time.
+  // OpenRouter and openai-compat ride the or-agent (Codex) harness, so their
+  // readiness tracks Codex being installed; key/base URL validate at run time.
   const avail = (e: Engine) =>
     !env ||
     (e === 'hermes'
       ? true // resolved via PATH; validated at run time
-      : e === 'codex' || e === 'openrouter'
+      : e === 'codex' || e === 'openrouter' || e === 'openai-compat'
         ? env.codex.found
         : e === 'cursor'
           ? env.cursor.found
@@ -137,7 +144,7 @@ export function EnginePicker({
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
   const engineOrder: Engine[] = [
     defaultEngine,
-    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes'] as Engine[]).filter(
+    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes', 'openai-compat'] as Engine[]).filter(
       (e) => e !== defaultEngine,
     ),
   ]
@@ -294,12 +301,26 @@ export function EnginePicker({
             <div className="max-h-[340px] overflow-y-auto pr-0.5">
               <ModelSelect engine={engine as Engine} model={model} onChange={setModel} />
             </div>
-            <button
-              onClick={() => setModelConfirmed(true)}
-              className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
-            >
-              Continue with {model || 'the default model'}
-            </button>
+            {engine === 'openai-compat' && !model && !ocDefaultModel ? (
+              <button
+                disabled
+                className="mt-3 w-full cursor-not-allowed rounded-xl border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-[12px] font-semibold text-zinc-600"
+                title="A self-hosted server has no fallback slug — enter the model it serves, or set the engine default in Settings → Engines → Self-hosted."
+              >
+                Enter the model your server serves
+              </button>
+            ) : (
+              <button
+                onClick={() => setModelConfirmed(true)}
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+              >
+                Continue with{' '}
+                {model ||
+                  (engine === 'openai-compat'
+                    ? `the default (${ocDefaultModel})`
+                    : 'the default model')}
+              </button>
+            )}
           </>
         )}
 

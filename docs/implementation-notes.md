@@ -3,6 +3,39 @@
 Human-facing running log of non-obvious decisions and deviations, per
 CLAUDE.md §2. Newest first.
 
+## 2026-07-20 — Ticket #36: openai-compat engine (self-hosted models)
+
+- **The ticket's "sealed key never returned to the renderer" claim doesn't
+  match the existing pattern**: `settings:get` returns the full decrypted
+  Settings (including `openrouterApiKey`) to the renderer for the Settings
+  input fields. The new `openaiCompatApiKey` follows the actual
+  `openrouterApiKey` pattern — sealed at rest (tested), decrypted in-process,
+  visible to the renderer's Settings panel. Hardening the IPC surface for ALL
+  sealed keys would be its own change; deliberately not invented here for one
+  key.
+- **Interactive sessions shipped too** (ticket allowed one-shot-only): the
+  Codex TUI accepts the same inline `model_providers.openai-compat.*` overrides
+  or-agent uses, so interactive support was ~15 lines. `wire_api = chat`
+  because self-hosted servers implement chat completions, not the responses
+  API.
+- **or-agent requires `--model` with a custom base URL** — the registry
+  `defaults.agentic` is an OpenRouter slug a private server won't know; failing
+  fast beats a confusing 404 from vLLM.
+- **Cron runs**: base URL is plain in settings.json so the headless runner
+  reads it, but the sealed key is not decryptable out-of-process (same
+  constraint that created the telegram sidecar). Keyed servers need
+  OPENAI_API_KEY in the shell profile or per-schedule env; the command guard
+  fails loudly when the base URL is unconfigured rather than letting or-agent
+  silently fall back to OpenRouter.
+- **EngineModelPicker shows only "Default" for this engine** (empty catalog by
+  design); the full free-text slug input lives in the run dialog's model step.
+  Set the engine default model in Settings for pickers without free-text.
+- Engine cost attribution: `openai-compat` joined cursor/openrouter/hermes in
+  the `recordRunnerInvocation` exclusion — there is no cloud spend to record.
+- **Composes with #35's resolver:** the missing-model fail-fast consults the
+  full resolveModel chain (override → owner policy/tier → agent model → engine
+  default), so a policy-supplied model satisfies it.
+
 ## 2026-07-20 — Ticket #35: resolveModel() — tier→model routing seam
 
 - **No catalog validation.** `resolveModel` returns the policy string as-is;

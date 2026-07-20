@@ -8,11 +8,19 @@ import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 // read time" (e.g. projectsDir → your home dir). Legacy files in the old
 // { telegram, telegramControl } shape are migrated on read.
 
-export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
-export const ENGINE_IDS: EngineId[] = ['codex', 'claude', 'cursor', 'openrouter', 'hermes']
+export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
+export const ENGINE_IDS: EngineId[] = [
+  'codex',
+  'claude',
+  'cursor',
+  'openrouter',
+  'hermes',
+  'openai-compat',
+]
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
+  baseUrl: string // openai-compat only: the self-hosted /v1 endpoint ('' elsewhere)
 }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type DaemonCfg = {
@@ -100,6 +108,7 @@ export type Settings = {
   templateRepo: string // scaffold source
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
+  openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -134,6 +143,7 @@ const SECRET_PATHS = [
   ['telegram', 'chatId'],
   ['alerts', 'webhook', 'url'], // Slack/Discord webhook URLs embed a secret token
   ['openrouterApiKey'],
+  ['openaiCompatApiKey'],
 ] as const
 
 export type SettingsSecretStorage = {
@@ -155,11 +165,12 @@ export function defaultDaemonSettings(): DaemonCfg {
     harnessDir: '',
     templateRepo: '',
     engines: {
-      codex: { path: '', defaultModel: '' },
-      claude: { path: '', defaultModel: '' },
-      cursor: { path: '', defaultModel: '' },
-      openrouter: { path: '', defaultModel: '' },
-      hermes: { path: '', defaultModel: '' },
+      codex: { path: '', defaultModel: '', baseUrl: '' },
+      claude: { path: '', defaultModel: '', baseUrl: '' },
+      cursor: { path: '', defaultModel: '', baseUrl: '' },
+      openrouter: { path: '', defaultModel: '', baseUrl: '' },
+      hermes: { path: '', defaultModel: '', baseUrl: '' },
+      'openai-compat': { path: '', defaultModel: '', baseUrl: '' },
     },
     defaultEngine: 'codex',
     forge: 'auto',
@@ -199,15 +210,17 @@ export function defaultSettings(): Settings {
     templateRepo: daemon.templateRepo,
     pinnedPanels: [],
     openrouterApiKey: '',
+    openaiCompatApiKey: '',
   }
 }
 
 function engineCfg(raw: unknown): EngineCfg {
-  const out: EngineCfg = { path: '', defaultModel: '' }
+  const out: EngineCfg = { path: '', defaultModel: '', baseUrl: '' }
   if (!raw || typeof raw !== 'object') return out
   const r = raw as Record<string, unknown>
   if (typeof r.path === 'string') out.path = r.path
   if (typeof r.defaultModel === 'string') out.defaultModel = r.defaultModel
+  if (typeof r.baseUrl === 'string') out.baseUrl = r.baseUrl.trim()
   return out
 }
 
@@ -340,6 +353,7 @@ export function migrate(raw: unknown): Settings {
     s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
+  if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
   if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
     s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
@@ -487,6 +501,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       cursor: { ...cur.engines.cursor, ...(engines?.cursor || {}) },
       openrouter: { ...cur.engines.openrouter, ...(engines?.openrouter || {}) },
       hermes: { ...cur.engines.hermes, ...(engines?.hermes || {}) },
+      'openai-compat': { ...cur.engines['openai-compat'], ...(engines?.['openai-compat'] || {}) },
     },
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
     noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
@@ -706,10 +721,11 @@ export function enginePath(engine: EngineId): string {
   if (engine === 'claude' && process.env.GT_CLAUDE_BIN) return process.env.GT_CLAUDE_BIN
   if (engine === 'cursor' && process.env.GT_CURSOR_BIN) return process.env.GT_CURSOR_BIN
   if (engine === 'cursor') return 'cursor-agent'
-  // OpenRouter is driven by the or-agent harness (Codex on an OR model). Prefer
-  // TerMinal's bundled copy, then a globally-installed one (~/.claude/bin), else
-  // bare 'or-agent' (resolved on PATH).
-  if (engine === 'openrouter') {
+  // OpenRouter AND openai-compat are driven by the or-agent harness (Codex on a
+  // provider model; openai-compat points it at a custom base URL via env).
+  // Prefer TerMinal's bundled copy, then a globally-installed one
+  // (~/.claude/bin), else bare 'or-agent' (resolved on PATH).
+  if (engine === 'openrouter' || engine === 'openai-compat') {
     const candidates = [
       join(homedir(), '.config', 'TerMinal', 'bin', 'or-agent'),
       join(homedir(), '.claude', 'bin', 'or-agent'),
@@ -729,6 +745,18 @@ export function engineDefaultModel(engine: EngineId): string {
  *  a shell-inherited env var. '' → not configured (OpenRouter runs will fail). */
 export function resolvedOpenRouterKey(): string {
   return readSettings().openrouterApiKey || process.env.OPENROUTER_API_KEY || ''
+}
+
+/** The openai-compat endpoint's key: sealed Setting, then shell env. '' is fine
+ *  for keyless local servers — or-agent then requires a placeholder, which the
+ *  runner injects (see agents.ts). */
+export function resolvedOpenAICompatKey(): string {
+  return readSettings().openaiCompatApiKey || process.env.OPENAI_API_KEY || ''
+}
+
+/** The openai-compat base URL from Settings ('' = not configured). */
+export function openAICompatBaseUrl(): string {
+  return readSettings().engines['openai-compat']?.baseUrl?.trim() || ''
 }
 
 export function resolveEngineModel(engine: EngineId, model?: string, daemon?: DaemonCfg): string {

@@ -56,6 +56,12 @@ describe('classifyRunArgs', () => {
     expect(r.engine).toBe('cursor')
   })
 
+  test('classifies openai-compat as an engine, not a persona candidate', () => {
+    const r = classifyRunArgs(['docs', 'openai-compat', 'security'])
+    expect(r.engine).toBe('openai-compat')
+    expect(r.personaCandidates).toEqual(['security'])
+  })
+
   test('unrecognized tokens become persona candidates', () => {
     expect(classifyRunArgs(['docs', 'wizard', 'ninja']).personaCandidates).toEqual([
       'wizard',

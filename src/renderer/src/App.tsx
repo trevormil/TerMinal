@@ -30,6 +30,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
+import { coerceSessionEngine } from './lib/engines'
 import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 import { applyTheme } from './lib/themes'
 import { loadHiddenTabs } from './lib/tabVisibility'
@@ -480,16 +481,7 @@ export default function App() {
         }
         if (ev.tabId === 'terminal:new') {
           const payload = ev.payload || {}
-          const eng = payload.engine
-          const engine: SessionEngine =
-            eng === 'codex' ||
-            eng === 'claude' ||
-            eng === 'cursor' ||
-            eng === 'local' ||
-            eng === 'openrouter' ||
-            eng === 'hermes'
-              ? eng
-              : 'claude'
+          const engine: SessionEngine = coerceSessionEngine(payload.engine)
           const remotePayload = payload.remote as unknown
           const remote =
             remotePayload &&

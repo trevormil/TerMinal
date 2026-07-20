@@ -8,12 +8,18 @@
 //   echo "…" | or-exec                     # uses registry raw default
 //   or-exec --model <slug> --allow-expensive --prompt "…"
 //
+// Endpoint: OPENAI_BASE_URL unset → OpenRouter (unchanged behavior). Set it to
+// any OpenAI-compatible /v1 base (vLLM, Ollama, LM Studio, TGI, llama.cpp
+// server, …) to target a self-hosted / network model instead; the key is then
+// OPENAI_API_KEY (falling back to OPENROUTER_API_KEY). Keyless local servers:
+// pass any placeholder, e.g. OPENAI_API_KEY=none.
+//
 // Budget: enforces the daily $ pool AND, when OR_SESSION is set, the per-session
 // cap (both from ~/.claude/model-routing/models.json). Every call is logged to
 // spend.jsonl. Exhaustion exits non-zero (use your own model) — never overspends.
 // See skill: outsource. The downgrade gate still governs *whether* to route here.
 
-import { loadRegistry, readSpend, logSpend, summarize, budgetBlock } from "../model-routing/lib.ts"
+import { loadRegistry, readSpend, logSpend, summarize, budgetBlock, resolveEndpoint } from "../model-routing/lib.ts"
 
 const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
@@ -25,8 +31,13 @@ const allowExpensive = has("--allow-expensive")
 const maxTokens = Number(flag("--max-tokens") ?? reg.budget?.perCallMaxTokens ?? 8000)
 const session = process.env.OR_SESSION ?? null
 
-const key = process.env.OPENROUTER_API_KEY
-if (!key) { console.error("or-exec: OPENROUTER_API_KEY not set"); process.exit(2) }
+const { baseUrl, custom, key } = resolveEndpoint(process.env)
+if (!key) {
+  console.error(custom
+    ? "or-exec: OPENAI_BASE_URL set but no OPENAI_API_KEY / OPENROUTER_API_KEY (keyless local server → OPENAI_API_KEY=none)"
+    : "or-exec: OPENROUTER_API_KEY not set")
+  process.exit(2)
+}
 if (!model) { console.error("or-exec: no --model and no registry raw default"); process.exit(2) }
 
 // Footgun guard: this tier is for near-free models.
@@ -46,7 +57,7 @@ prompt = (prompt ?? "").trim()
 if (!prompt) { console.error("or-exec: no prompt (pass --prompt or pipe via stdin)"); process.exit(2) }
 
 const started = performance.now()
-const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+const res = await fetch(`${baseUrl}/chat/completions`, {
   method: "POST",
   headers: {
     Authorization: `Bearer ${key}`,
@@ -59,7 +70,7 @@ const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 
 if (!res.ok) {
   const body = await res.text()
-  console.error(`or-exec: OpenRouter ${res.status} — ${body.slice(0, 500)}`)
+  console.error(`or-exec: ${custom ? baseUrl : "OpenRouter"} ${res.status} — ${body.slice(0, 500)}`)
   process.exit(1)
 }
 
@@ -67,7 +78,7 @@ const data: any = await res.json()
 const ms = Math.round(performance.now() - started)
 const text = data?.choices?.[0]?.message?.content ?? ""
 const usage = data?.usage ?? {}
-const meta = { ts: new Date().toISOString(), harness: "openrouter", model, session, tokensIn: usage.prompt_tokens ?? null, tokensOut: usage.completion_tokens ?? null, cost: usage.cost ?? 0, ms }
+const meta = { ts: new Date().toISOString(), harness: custom ? "openai-compat" : "openrouter", model, session, tokensIn: usage.prompt_tokens ?? null, tokensOut: usage.completion_tokens ?? null, cost: usage.cost ?? 0, ms }
 
 await logSpend(meta)
 console.error(JSON.stringify(meta))

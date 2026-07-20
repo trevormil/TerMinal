@@ -27,7 +27,9 @@ export const engineInstanceLabel = (engine: Engine): string =>
         ? 'Hermes'
         : engine === 'openrouter'
           ? 'OpenRouter'
-          : 'Codex'
+          : engine === 'openai-compat'
+            ? 'Self-hosted'
+            : 'Codex'
 
 export function openPromptInTerminal(input: {
   engine: Engine

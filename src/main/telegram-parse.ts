@@ -29,7 +29,14 @@ export function classifyRunArgs(args: string[]): RunArgs {
   const personaCandidates: string[] = []
   for (const tok of args.slice(1)) {
     const t = tok.toLowerCase()
-    if (t === 'codex' || t === 'claude' || t === 'cursor' || t === 'openrouter' || t === 'hermes')
+    if (
+      t === 'codex' ||
+      t === 'claude' ||
+      t === 'cursor' ||
+      t === 'openrouter' ||
+      t === 'hermes' ||
+      t === 'openai-compat'
+    )
       engine = t
     else if (t.startsWith('@')) repoToken = tok
     else if (PIPELINE_IDS.has(t)) pipeline = t

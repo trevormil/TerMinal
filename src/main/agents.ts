@@ -24,6 +24,8 @@ import {
   readSettings,
   resolvedWorktreesDir,
   resolvedOpenRouterKey,
+  resolvedOpenAICompatKey,
+  openAICompatBaseUrl,
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
@@ -46,7 +48,7 @@ import type { TicketAgent } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes'
+export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
 
 export type AgentModelPolicy = {
   default?: string
@@ -983,7 +985,9 @@ export function engineLabel(engine: Engine): string {
       ? 'Codex'
       : engine === 'openrouter'
         ? 'OpenRouter'
-        : 'Cursor Agent'
+        : engine === 'openai-compat'
+          ? 'Self-hosted'
+          : 'Cursor Agent'
 }
 
 // Prepended to OpenRouter (or-agent) task prompts. codex exec is a
@@ -1070,6 +1074,12 @@ export function buildCmd(
     // non-interactive preamble keeps weaker OR models from stopping to ask.
     return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
   }
+  if (engine === 'openai-compat') {
+    // Self-hosted endpoint: same or-agent harness as openrouter, retargeted by
+    // OPENAI_BASE_URL (+ OPENAI_API_KEY), which the runner injects into the
+    // spawn env from Settings. --model is required by or-agent in this mode.
+    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
+  }
   return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
 }
 
@@ -1097,6 +1107,9 @@ function displayCmd(
       return `${enginePath('hermes')} -z <prompt> --provider openrouter${model ? ` -m ${model}` : ''} --usage-file … --yolo`
     }
     return `${bin} --dir ${worktree}${modelFlag} <prompt>`
+  }
+  if (engine === 'openai-compat') {
+    return `OPENAI_BASE_URL=${openAICompatBaseUrl() || '<unset>'} ${bin} --dir ${worktree}${modelFlag} <prompt>`
   }
   return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
 }
@@ -1406,6 +1419,29 @@ type RunSpec = {
 function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } {
   if (!repoRoot) return { error: 'not a git repo' }
   if (!spec.steps.length) return { error: 'no steps' }
+  // Fail fast, not mid-run: a self-hosted run without an endpoint or model can
+  // only die inside or-agent with a confusing codex error (there is no registry
+  // fallback slug a private server would know). The model check runs the same
+  // pure resolveModel chain used at launch, so a model supplied by the owner
+  // agent's policy/tier (or agent model) satisfies it.
+  if (spec.engine === 'openai-compat') {
+    if (!openAICompatBaseUrl())
+      return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
+    const predictedModel = resolveModel({
+      override: spec.model,
+      policy: spec.modelPolicy,
+      tier: spec.modelTier,
+      model: spec.agentModel,
+      engineDefault: engineDefaultModel(spec.engine),
+      engine: spec.engine,
+      policyEngine: spec.modelPolicyEngine,
+    })
+    if (!predictedModel)
+      return {
+        error:
+          'openai-compat: no model — pick one for this run or set the engine default model (Settings → Engines → Self-hosted)',
+      }
+  }
   // Concurrent-run guard: never let two runs of the same agent on the same
   // repo overlap. If one is already running, surface HITL + refuse the new
   // run rather than silently allowing duplicates to thrash on the same worktree.
@@ -1565,7 +1601,13 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     try {
       // cursor has no parseable usage; openrouter + hermes report their own cost
       // via run.costUsd, so they must NOT be mis-parsed as a claude-p run.
-      if (spec.engine !== 'cursor' && spec.engine !== 'openrouter' && spec.engine !== 'hermes') {
+      // openai-compat (self-hosted) has no cloud billing to attribute at all.
+      if (
+        spec.engine !== 'cursor' &&
+        spec.engine !== 'openrouter' &&
+        spec.engine !== 'hermes' &&
+        spec.engine !== 'openai-compat'
+      ) {
         recordRunnerInvocation({
           source: spec.engine === 'codex' ? 'codex-exec' : 'claude-p',
           output: run.output,
@@ -1624,6 +1666,15 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
       // OpenRouter (or-agent) reads this; sealed Setting first, else inherited env.
       ...(resolvedOpenRouterKey() ? { OPENROUTER_API_KEY: resolvedOpenRouterKey() } : {}),
+      // Self-hosted endpoint: retarget or-agent via OPENAI_BASE_URL. Keyless
+      // local servers still need a placeholder ('none') — or-agent requires a
+      // key value and the server ignores the Authorization header.
+      ...(spec.engine === 'openai-compat'
+        ? {
+            OPENAI_BASE_URL: openAICompatBaseUrl(),
+            OPENAI_API_KEY: resolvedOpenAICompatKey() || 'none',
+          }
+        : {}),
       // FORCE-MODE: passes the block-main-merge hook's env-var carve-out.
       // Only set when the agent has `force: true`; never inherited from the
       // parent process (a normal launch of TerMinal never has this var set).
