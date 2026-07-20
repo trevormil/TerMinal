@@ -2088,15 +2088,14 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
               ) : (
                 (() => {
                   const q = agentSearch.trim().toLowerCase()
-                  const list = definitions
-                    .filter(
-                      (d) =>
-                        !q ||
-                        d.ref.id.toLowerCase().includes(q) ||
-                        d.title.toLowerCase().includes(q) ||
-                        (d.description || '').toLowerCase().includes(q) ||
-                        (d.metadata.tags || []).join(' ').toLowerCase().includes(q),
-                    )
+                  const list = definitions.filter(
+                    (d) =>
+                      !q ||
+                      d.ref.id.toLowerCase().includes(q) ||
+                      d.title.toLowerCase().includes(q) ||
+                      (d.description || '').toLowerCase().includes(q) ||
+                      (d.metadata.tags || []).join(' ').toLowerCase().includes(q),
+                  )
                   if (list.length === 0)
                     // Distinguish "no roster at all" (fresh repo) from "filter
                     // matched nothing" so an empty list doesn't read as broken.
