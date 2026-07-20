@@ -80,7 +80,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors ${
         active
           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
           : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'

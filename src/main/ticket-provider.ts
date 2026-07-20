@@ -64,6 +64,9 @@ export type ObsidianTicketConfig = {
 export type TicketView = {
   label: string
   url: string
+  // When true, the Tickets tab opens on this view instead of the local backlog.
+  // First flagged view wins; the Backlog sub-tab stays one click away.
+  default?: boolean
 }
 
 export type RepoTicketsConfig = {
@@ -216,7 +219,7 @@ function sanitizeViews(raw: unknown): TicketView[] {
     }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue
     const label = String((v as TicketView)?.label ?? '').trim()
-    out.push({ label: label || url, url })
+    out.push({ label: label || url, url, ...((v as TicketView)?.default ? { default: true } : {}) })
   }
   return out
 }

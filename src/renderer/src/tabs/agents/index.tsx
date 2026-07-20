@@ -1757,11 +1757,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   const [agentFilter, setAgentFilter] = useState<'all' | 'generic' | 'per-repo'>(
     () => (localStorage.getItem('gt.agents.filter') as 'all' | 'generic' | 'per-repo') || 'all',
   )
-  const [definitionFilter, setDefinitionFilter] = useState<'all' | 'classic' | 'persistent'>(
-    () =>
-      (localStorage.getItem('gt.agents.definitionFilter') as 'all' | 'classic' | 'persistent') ||
-      'all',
-  )
   const [agentSearch, setAgentSearch] = useState<string>(
     () => localStorage.getItem('gt.agents.search') || '',
   )
@@ -1775,9 +1770,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
   useEffect(() => {
     localStorage.setItem('gt.agents.filter', agentFilter)
   }, [agentFilter])
-  useEffect(() => {
-    localStorage.setItem('gt.agents.definitionFilter', definitionFilter)
-  }, [definitionFilter])
   useEffect(() => {
     localStorage.setItem('gt.agents.mode', agentMode)
   }, [agentMode])
@@ -2068,35 +2060,26 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 New
               </button>
             </div>
-            <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] bg-black/15 p-0.5">
-              {agentMode === 'all'
-                ? (['all', 'classic', 'persistent'] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setDefinitionFilter(f)}
-                      className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
-                        definitionFilter === f
-                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  ))
-                : (['all', 'generic', 'per-repo'] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setAgentFilter(f)}
-                      className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
-                        agentFilter === f
-                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      {f === 'per-repo' ? 'per-repo' : f}
-                    </button>
-                  ))}
-            </div>
+            {/* Kind (all/classic/persistent) lives solely on the top mode toggle;
+                in 'all' mode the roster shows every kind, so only the scope
+                filter renders — and only in the classic layout. */}
+            {agentMode !== 'all' && (
+              <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] bg-black/15 p-0.5">
+                {(['all', 'generic', 'per-repo'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setAgentFilter(f)}
+                    className={`flex-1 rounded-sm px-1.5 py-0.5 text-[10px] capitalize ${
+                      agentFilter === f
+                        ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {f === 'per-repo' ? 'per-repo' : f}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto">
             {agentMode === 'all' ? (
@@ -2106,7 +2089,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                 (() => {
                   const q = agentSearch.trim().toLowerCase()
                   const list = definitions
-                    .filter((d) => definitionFilter === 'all' || d.kind === definitionFilter)
                     .filter(
                       (d) =>
                         !q ||

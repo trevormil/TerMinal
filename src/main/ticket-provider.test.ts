@@ -275,6 +275,26 @@ describe('repo ticket views', () => {
     expect(saved.obsidian?.vaultPath).toBe('/v/V')
   })
 
+  test('a view can be flagged default — the flag round-trips, only when truthy', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    const saved = saveRepoTicketConfig(repo, {
+      provider: 'local',
+      views: [
+        { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active', default: true },
+        { label: 'Jira', url: 'https://acme.atlassian.net/board/1' },
+      ],
+    })
+    // Linear carries the flag; Jira (unset) stays a plain view, no `default: false` noise.
+    expect(saved.views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active', default: true },
+      { label: 'Jira', url: 'https://acme.atlassian.net/board/1' },
+    ])
+    expect(readRepoTicketConfig(repo).views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme/team/ENG/active', default: true },
+      { label: 'Jira', url: 'https://acme.atlassian.net/board/1' },
+    ])
+  })
+
   test('rejects non-http(s) view urls — they get loaded into a real webview', () => {
     const repo = repoWithTicketConfig({ provider: 'local' })
     const saved = saveRepoTicketConfig(repo, {

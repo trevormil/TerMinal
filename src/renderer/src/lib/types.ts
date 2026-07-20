@@ -428,7 +428,7 @@ export type TicketProviderConfig = {
 // A read-only embedded web view of an external ticket platform, rendered as a
 // source sub-tab in the Tickets tab. Independent of `provider` — see
 // `TicketView` in src/main/ticket-provider.ts for the full contract.
-export type TicketView = { label: string; url: string }
+export type TicketView = { label: string; url: string; default?: boolean }
 export type TicketProviderTestResult = {
   ok: boolean
   provider: TicketProviderKind
