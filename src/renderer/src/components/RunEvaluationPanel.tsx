@@ -20,7 +20,7 @@ export function RunEvaluationPanel({
 }) {
   if (compact) {
     return (
-      <div className="border-b border-[var(--gt-border)]/60 bg-black/15 px-3 py-2">
+      <div className="border-b border-[var(--gt-border)]/60 bg-black/15 px-5 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
             Evaluation
