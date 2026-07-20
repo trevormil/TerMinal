@@ -332,7 +332,7 @@ function TabsVisibilityPanel() {
             }`}
           >
             <span className="truncate">{t.title}</span>
-            <span className="text-[9.5px] text-zinc-600">{off ? 'hidden' : 'shown'}</span>
+            <span className="text-[9.5px] text-zinc-600">{off ? 'Hidden' : 'Shown'}</span>
           </button>
         )
       })}
@@ -629,7 +629,7 @@ function UpdatesPanel() {
         )}
         <span className="truncate font-mono">{manualCmd}</span>
         <span className="ml-auto shrink-0 text-[10px] text-zinc-600">
-          {copied ? 'copied' : 'copy manual update'}
+          {copied ? 'Copied' : 'Copy manual update'}
         </span>
       </button>
     </div>

@@ -982,7 +982,7 @@ export function MrDetailView({
             onClick={() => window.gt.openExternal(mr.webUrl)}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
           >
-            open
+            Open
             <ArrowUpRight size={12} strokeWidth={2} />
           </button>
         </div>

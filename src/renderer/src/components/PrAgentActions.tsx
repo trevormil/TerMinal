@@ -81,8 +81,8 @@ export function PrAgentActions({ pr, sym = '!' }: { pr: PrLite; sym?: string }) 
         </span>
       ) : (
         <>
-          {btn('review', Eye, 'review')}
-          {btn('iterate', Repeat2, 'iterate')}
+          {btn('review', Eye, 'Review')}
+          {btn('iterate', Repeat2, 'Iterate')}
         </>
       )}
       {kind && (

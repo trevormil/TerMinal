@@ -149,10 +149,10 @@ function AcceptanceSection({
           className="ml-1 inline-flex items-center gap-0.5 rounded border border-[var(--gt-border)] px-1 py-0.5 text-[10px] normal-case text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
         >
           {criteria.length ? (
-            'edit'
+            'Edit'
           ) : (
             <>
-              <Plus size={10} strokeWidth={2.5} /> add
+              <Plus size={10} strokeWidth={2.5} /> Add
             </>
           )}
         </button>
