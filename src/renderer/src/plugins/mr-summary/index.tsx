@@ -52,13 +52,13 @@ function PrsWidget({ data }: { data: MrListResult | null }) {
             type="button"
             onClick={() => setOpenIid(r.iid)}
             title={`#${r.iid} ${r.title}${r.draft ? ' (draft)' : ''} · ${r.branch}`}
-            className="group flex w-full cursor-pointer items-center gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+            className="group/row flex w-full cursor-pointer items-center gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
           >
             <span className="shrink-0 text-[10px]">
               <Dot ci={r.ci} />
             </span>
             <span
-              className={`min-w-0 flex-1 truncate ${r.draft ? 'text-zinc-500 group-hover:text-zinc-300' : 'text-zinc-100 group-hover:text-white'}`}
+              className={`min-w-0 flex-1 truncate transition-colors ${r.draft ? 'text-zinc-500 group-hover/row:text-zinc-300' : 'text-zinc-100 group-hover/row:text-white'}`}
             >
               <span className="tabular-nums text-zinc-500">#{r.iid}</span> {r.title}
             </span>

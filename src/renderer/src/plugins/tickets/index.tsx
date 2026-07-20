@@ -42,13 +42,13 @@ function TicketsWidget({ data }: { data: Ticket[] | null }) {
             type="button"
             onClick={() => setOpenSlug(t.slug)}
             title={`${t.key} ${t.title}`}
-            className="group flex w-full cursor-pointer items-center gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
+            className="group/row flex w-full cursor-pointer items-center gap-1.5 text-left text-[11.5px] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--gt-accent-2)]"
           >
             <span className="shrink-0 text-[10px]">
               <Dot status={t.status} />
             </span>
             <span
-              className={`min-w-0 flex-1 truncate ${t.status === 'in-progress' ? 'text-zinc-100 group-hover:text-white' : 'text-zinc-400 group-hover:text-zinc-100'}`}
+              className={`min-w-0 flex-1 truncate transition-colors ${t.status === 'in-progress' ? 'text-zinc-100 group-hover/row:text-white' : 'text-zinc-400 group-hover/row:text-zinc-100'}`}
             >
               <span className="tabular-nums text-zinc-500">{t.key}</span> {t.title}
             </span>
