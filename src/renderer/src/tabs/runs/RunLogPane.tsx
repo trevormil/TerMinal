@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircle2,
+  ChevronRight,
   Copy,
   Download,
   ExternalLink,
@@ -37,6 +38,9 @@ export function RunLogPane({
   // Structured vs raw view. 'auto' resolves to structured when the parser found
   // real structure, raw otherwise — so unparseable logs degrade gracefully.
   const [viewPref, setViewPref] = useState<'auto' | 'structured' | 'raw'>('auto')
+  // Metadata (branch/worktree/command chips) is reference detail, not something
+  // you read while scanning output — collapsed by default so the log starts high.
+  const [metaOpen, setMetaOpen] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -236,20 +240,31 @@ export function RunLogPane({
         ) : (
           <div className="min-w-full">
             {formatted.meta.length > 0 && (
-              <div className="border-b border-[var(--gt-border)]/45 bg-[var(--gt-panel)]/35 px-4 py-3">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
+              <div className="border-b border-[var(--gt-border)]/45 bg-[var(--gt-panel)]/35 px-4 py-2">
+                <button
+                  onClick={() => setMetaOpen((o) => !o)}
+                  className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600 hover:text-zinc-400"
+                >
+                  <ChevronRight
+                    size={11}
+                    strokeWidth={2.5}
+                    className={`transition-transform ${metaOpen ? 'rotate-90' : ''}`}
+                  />
                   Metadata
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {formatted.meta.map((line, i) => (
-                    <span
-                      key={`${line}-${i}`}
-                      className="inline-flex max-w-full items-center rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 font-mono text-[10.5px] text-zinc-300"
-                    >
-                      <span className="truncate">{line}</span>
-                    </span>
-                  ))}
-                </div>
+                  <span className="text-zinc-700">· {formatted.meta.length}</span>
+                </button>
+                {metaOpen && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {formatted.meta.map((line, i) => (
+                      <span
+                        key={`${line}-${i}`}
+                        className="inline-flex max-w-full items-center rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 font-mono text-[10.5px] text-zinc-300"
+                      >
+                        <span className="truncate">{line}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {formatted.highlights.length > 0 && (

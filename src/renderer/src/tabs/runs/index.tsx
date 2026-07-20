@@ -616,7 +616,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               </div>
             ) : (
               <>
-                <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2.5">
+                <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-5 py-2">
                   <Badge tone={statusTone(selectedRun.status)}>{selectedRun.status}</Badge>
                   <Badge tone={sourceTone(selectedRun.source)}>{selectedRun.source}</Badge>
                   {selectedRun.force && <ForceChip size="md" />}
@@ -793,37 +793,35 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     {selectedRun.error}
                   </div>
                 )}
-                {(selectedRun.trace || selectedRun.evaluation) && (
-                  <div className="shrink-0 space-y-2 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-3">
-                    {selectedRun.trace && (
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                          Trace
+                {selectedRun.trace && (
+                  <div className="shrink-0 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-2">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                        Trace
+                      </span>
+                      {selectedRun.trace.ticketRef && (
+                        <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                      )}
+                      {selectedRun.trace.ticketSlug && (
+                        <span className="font-mono text-[10.5px] text-zinc-500">
+                          {selectedRun.trace.ticketSlug}
                         </span>
-                        {selectedRun.trace.ticketRef && (
-                          <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
-                        )}
-                        {selectedRun.trace.ticketSlug && (
-                          <span className="font-mono text-[10.5px] text-zinc-500">
-                            {selectedRun.trace.ticketSlug}
-                          </span>
-                        )}
-                        {selectedRun.trace.prIid !== undefined && (
-                          <Badge tone="accent">
-                            {selectedRun.trace.prKind || 'pr'} #{selectedRun.trace.prIid}
-                          </Badge>
-                        )}
-                        {selectedRun.trace.sourceBranch && (
-                          <span className="font-mono text-[10.5px] text-zinc-500">
-                            {selectedRun.trace.sourceBranch}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {selectedRun.evaluation && (
-                      <RunEvaluationPanel evaluation={selectedRun.evaluation} />
-                    )}
+                      )}
+                      {selectedRun.trace.prIid !== undefined && (
+                        <Badge tone="accent">
+                          {selectedRun.trace.prKind || 'pr'} #{selectedRun.trace.prIid}
+                        </Badge>
+                      )}
+                      {selectedRun.trace.sourceBranch && (
+                        <span className="font-mono text-[10.5px] text-zinc-500">
+                          {selectedRun.trace.sourceBranch}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                )}
+                {selectedRun.evaluation && (
+                  <RunEvaluationPanel evaluation={selectedRun.evaluation} compact />
                 )}
                 {artifacts.length > 0 && (
                   <div className="shrink-0 space-y-1 border-b border-[var(--gt-border)]/60 bg-[var(--gt-panel)]/30 px-5 py-2.5">
