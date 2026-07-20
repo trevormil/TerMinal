@@ -28,6 +28,7 @@ import {
   openAICompatBaseUrl,
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
+import { resolveModel } from './resolve-model'
 import { readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
@@ -1396,8 +1397,18 @@ type RunSpec = {
   inPlace?: boolean
   /** FORCE-MODE: spawn the child with TERMINAL_FORCE_MAIN=1 and prepend FORCE_PREAMBLE. */
   force?: boolean
-  /** Optional per-engine model alias passed to the CLI as `--model <name>`. */
+  /** Explicit per-run model pick (run dialog / rerun) — the top-priority input
+   *  to resolveModel; the policy's allowOverride: false can veto it. */
   model?: string
+  /** The agent's plain configured model — the fallback below the policy. */
+  agentModel?: string
+  /** Owner agent's model policy — serves modelTier and the override lock. */
+  modelPolicy?: AgentModelPolicy
+  /** The engine the policy's model slugs target (the agent's own engine) —
+   *  resolveModel drops the policy when the run engine differs. */
+  modelPolicyEngine?: string
+  /** The driving ticket's model_tier (auto | top | cheap-agentic | cheap-raw). */
+  modelTier?: string
   /** For engine 'openrouter': which harness runs the slug (default 'codex'). */
   openrouterHarness?: 'codex' | 'hermes'
   quality?: AgentQuality
@@ -1410,11 +1421,22 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   if (!spec.steps.length) return { error: 'no steps' }
   // Fail fast, not mid-run: a self-hosted run without an endpoint or model can
   // only die inside or-agent with a confusing codex error (there is no registry
-  // fallback slug a private server would know).
+  // fallback slug a private server would know). The model check runs the same
+  // pure resolveModel chain used at launch, so a model supplied by the owner
+  // agent's policy/tier (or agent model) satisfies it.
   if (spec.engine === 'openai-compat') {
     if (!openAICompatBaseUrl())
       return { error: 'openai-compat: no base URL configured (Settings → Engines → Self-hosted)' }
-    if (!spec.model && !engineDefaultModel('openai-compat'))
+    const predictedModel = resolveModel({
+      override: spec.model,
+      policy: spec.modelPolicy,
+      tier: spec.modelTier,
+      model: spec.agentModel,
+      engineDefault: engineDefaultModel(spec.engine),
+      engine: spec.engine,
+      policyEngine: spec.modelPolicyEngine,
+    })
+    if (!predictedModel)
       return {
         error:
           'openai-compat: no model — pick one for this run or set the engine default model (Settings → Engines → Self-hosted)',
@@ -1479,7 +1501,15 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   }
   const repoLabel = repoForCwd(repoRoot)?.path || basename(repoRoot)
   const launchScriptPath = locateScript(repoRoot, spec.id)
-  const launchModel = spec.model || engineDefaultModel(spec.engine) || ''
+  const launchModel = resolveModel({
+    override: spec.model,
+    policy: spec.modelPolicy,
+    tier: spec.modelTier,
+    model: spec.agentModel,
+    engineDefault: engineDefaultModel(spec.engine),
+    engine: spec.engine,
+    policyEngine: spec.modelPolicyEngine,
+  })
   const baseLine = spec.prRef
     ? `▸ on ${forgeFor(repoRoot).label} ${forgeFor(repoRoot).sym}${spec.prRef.iid} · branch ${branch}`
     : `▸ branch ${branch} (off ${defaultBase(repoRoot)})`
@@ -1493,7 +1523,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     agentId: spec.id,
     agentTitle: spec.title,
     engine: spec.engine,
-    model: spec.model,
+    // Record the RESOLVED model (not just the raw override) so the Runs tab and
+    // the rerun fallback reflect what actually launched.
+    model: launchModel || undefined,
     persona: spec.persona,
     pipeline: spec.pipeline,
     rerun: spec.rerun,
@@ -1585,7 +1617,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
           startedAt: run.startedAt,
           endedAt: run.endedAt!,
           exitCode: exitCode ?? -1,
-          modelHint: spec.model || engineDefaultModel(spec.engine) || undefined,
+          modelHint: launchModel || undefined,
         })
       }
     } catch {
@@ -1728,7 +1760,6 @@ export function runAgent(
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
   const resolvedEngine = engine || agent.engine || 'codex'
-  const resolvedModel = model ?? agent.model
   const provider = repoTicketProvider(repoRoot)
   const ticketContext =
     provider.kind === 'local'
@@ -1752,7 +1783,10 @@ export function runAgent(
     pipeline,
     inPlace: agent.inPlace,
     force: agent.force,
-    model: resolvedModel,
+    model,
+    agentModel: agent.model,
+    modelPolicy: agent.modelPolicy ? modelPolicyFrom(agent.model, agent.modelPolicy) : undefined,
+    modelPolicyEngine: agent.engine,
     openrouterHarness,
     quality: agent.quality || {
       acceptanceCriteria: agent.acceptanceCriteria,
@@ -1764,7 +1798,9 @@ export function runAgent(
       engine: resolvedEngine,
       personaId,
       pipelineId,
-      model: resolvedModel,
+      // Record only the explicit override — a rerun re-resolves the rest from
+      // the agent's current policy/config.
+      model,
     },
   })
 }
@@ -2027,6 +2063,29 @@ type TicketRunInput = {
   externalKey?: string
   url?: string
   agent?: TicketAgent
+  /** The ticket's model_tier frontmatter — mapped through the owner agent's
+   *  modelPolicy by resolveModel at spawn time. */
+  modelTier?: string
+}
+
+/** The declared model policy of a ticket's owner agent — classic or
+ *  persistent — folded for resolveModel, plus the engine its slugs target.
+ *  Owners without a policy resolve to undefined so ticket runs keep the
+ *  pre-policy behavior (override → engine Settings default). */
+export function ticketOwnerModelPolicy(
+  repoRoot: string,
+  agent?: TicketAgent,
+): { policy?: AgentModelPolicy; engine?: Engine } {
+  const src =
+    agent?.kind === 'classic'
+      ? readAgents(repoRoot).find((a) => a.id === agent.id)
+      : agent?.kind === 'persistent'
+        ? listPersistentAgents().find((a) => a.id === agent.id)
+        : undefined
+  return {
+    policy: src?.modelPolicy ? modelPolicyFrom(src.model, src.modelPolicy) : undefined,
+    engine: src?.engine,
+  }
 }
 
 export function runTicketAgent(
@@ -2062,6 +2121,7 @@ export function runTicketAgent(
     ticket.agent?.kind === 'classic'
       ? readAgents(repoRoot).find((a) => a.id === ticket.agent?.id)?.quality
       : undefined
+  const ownerPolicy = ticketOwnerModelPolicy(repoRoot, ticket.agent)
   return runSpec(repoRoot, {
     id: lane ? `ticket-${ticket.id}-L${lane.index}` : `ticket-${ticket.id}`,
     title: lane ? `Implement ${ref} · lane ${lane.index}/${lane.total}` : `Implement ${ref}`,
@@ -2070,6 +2130,11 @@ export function runTicketAgent(
     persona,
     pipeline,
     model,
+    // Only owners that DECLARE a policy route by tier; ticket runs without one
+    // keep today's behavior (override → engine Settings default).
+    modelPolicy: ownerPolicy.policy,
+    modelPolicyEngine: ownerPolicy.engine,
+    modelTier: ticket.modelTier,
     quality: ownerQuality,
     trace: { ticketSlug: ticket.slug, ticketId: ticket.id, ticketRef: ref, lane },
     // Lanes aren't individually rerunnable as the ticket (that would relaunch
@@ -2278,6 +2343,7 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
             externalKey: t.externalKey,
             url: t.url,
             agent: t.agent,
+            modelTier: t.modelTier,
           },
           spec.engine,
           spec.personaId,
