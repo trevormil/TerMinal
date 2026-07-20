@@ -1521,6 +1521,7 @@ ipcMain.handle(
       externalKey: t.externalKey,
       url: t.url,
       agent: t.agent,
+      modelTier: t.modelTier,
     }
     const res = runTicketLanes(
       root,

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
+import { resolveModel } from './resolve-model'
 
 const run = (home: string, code: string) => {
   const result = spawnSync(process.execPath, ['--eval', code], {
@@ -13,6 +14,74 @@ const run = (home: string, code: string) => {
   if (result.status !== 0) throw new Error(result.stderr || result.stdout)
   return JSON.parse(result.stdout)
 }
+
+describe('resolveModel', () => {
+  const policy = {
+    default: 'model-default',
+    cheap: 'model-cheap',
+    deep: 'model-deep',
+    judge: 'model-judge',
+    allowOverride: true,
+  }
+
+  test('maps each modelTier through the agent policy', () => {
+    expect(resolveModel({ policy, tier: 'top' })).toBe('model-deep')
+    expect(resolveModel({ policy, tier: 'cheap-agentic' })).toBe('model-cheap')
+    expect(resolveModel({ policy, tier: 'cheap-raw' })).toBe('model-cheap')
+    expect(resolveModel({ policy, tier: 'auto' })).toBe('model-default')
+    expect(resolveModel({ policy })).toBe('model-default')
+  })
+
+  test('unknown tier behaves like auto', () => {
+    expect(resolveModel({ policy, tier: 'nonsense' })).toBe('model-default')
+  })
+
+  test('explicit per-run override wins over the policy-selected model', () => {
+    expect(resolveModel({ override: 'my-pick', policy, tier: 'top' })).toBe('my-pick')
+  })
+
+  test('allowOverride: false blocks an override from superseding the policy model', () => {
+    const locked = { ...policy, allowOverride: false }
+    expect(resolveModel({ override: 'my-pick', policy: locked, tier: 'top' })).toBe('model-deep')
+    expect(resolveModel({ override: 'my-pick', policy: locked })).toBe('model-default')
+  })
+
+  test('allowOverride: false still honors the override when the policy selects nothing', () => {
+    const locked = { allowOverride: false }
+    expect(resolveModel({ override: 'my-pick', policy: locked, tier: 'top' })).toBe('my-pick')
+  })
+
+  test('an empty mapped tier falls through to the next priority step', () => {
+    const sparse = { default: 'model-default', deep: '' }
+    expect(resolveModel({ policy: sparse, tier: 'top', model: 'agent-model' })).toBe('agent-model')
+    expect(resolveModel({ policy: sparse, tier: 'top', engineDefault: 'settings-model' })).toBe(
+      'settings-model',
+    )
+  })
+
+  test('missing policy keeps the legacy fallback chain unchanged', () => {
+    expect(resolveModel({ override: 'my-pick', model: 'agent-model' })).toBe('my-pick')
+    expect(resolveModel({ model: 'agent-model', engineDefault: 'settings-model' })).toBe(
+      'agent-model',
+    )
+    expect(resolveModel({ engineDefault: 'settings-model' })).toBe('settings-model')
+    expect(resolveModel({})).toBe('')
+  })
+
+  test('never returns whitespace-only output (no empty --model flag)', () => {
+    expect(resolveModel({ policy: { default: '  ' }, model: ' ', engineDefault: '' })).toBe('')
+  })
+
+  test('a policy written for another engine is ignored, including its override lock', () => {
+    const locked = { ...policy, allowOverride: false }
+    const cross = { policy: locked, tier: 'top', engine: 'claude', policyEngine: 'codex' }
+    expect(resolveModel({ ...cross, override: 'my-pick' })).toBe('my-pick')
+    expect(resolveModel({ ...cross, engineDefault: 'settings-model' })).toBe('settings-model')
+    expect(resolveModel({ policy: locked, tier: 'top', engine: 'codex', policyEngine: 'codex' })).toBe(
+      'model-deep',
+    )
+  })
+})
 
 describe('readAgentRunContexts', () => {
   test('lists classic and persistent agents as selectable run contexts', () => {

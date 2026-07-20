@@ -3,6 +3,28 @@
 Human-facing running log of non-obvious decisions and deviations, per
 CLAUDE.md §2. Newest first.
 
+## 2026-07-20 — Ticket #35: resolveModel() — tier→model routing seam
+
+- **No catalog validation.** `resolveModel` returns the policy string as-is;
+  `ENGINE_MODELS` lives renderer-side only (`src/renderer/src/lib/engines.ts`),
+  so validating resolved slugs against real options would need the catalog
+  shared into main. Deliberately deferred to a follow-up ticket — a bad slug
+  fails loudly at engine launch, which is acceptable for v1.
+- **Cross-engine guard (not in the original ticket).** Policy slugs are
+  engine-specific (`gpt-5-codex`), but the run dialog can relaunch a ticket on
+  a different engine. `resolveModel` therefore drops the policy (and its
+  `allowOverride` lock) when the run engine differs from the agent's own
+  engine, instead of emitting e.g. `claude --model gpt-5-codex`.
+- **Intended behavior changes** (the point of the ticket): agents that declare
+  a `modelPolicy` now launch with `policy.default` even when the per-engine
+  Settings default differs; `allowOverride: false` is enforced for the first
+  time. Agents without a policy resolve exactly as before. `AgentRun.model` now
+  records the *resolved* model rather than the raw override, so the Runs tab
+  shows what actually launched.
+- `cheap-agentic` and `cheap-raw` both map to the policy's single `cheap` slot
+  (documented in `TIER_TO_POLICY`); remote-host daemon ticket runs don't thread
+  `modelTier` yet (separate protocol surface).
+
 ## 2026-07-07 — Ticket #14: Structural (difftastic) diff mode
 
 - **Content source is the forge API, not local git.** difft needs both full
