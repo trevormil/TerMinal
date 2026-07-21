@@ -462,6 +462,9 @@ export type AlertsCfg = {
 }
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 export type InboxCfg = { completionHook: boolean; agentContextPreamble: boolean }
+// Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
+// settings.json — see src/main/bridge/identity.ts.
+export type BridgeCfg = { enabled: boolean; port: number }
 export type DaemonCfg = {
   projectsDir: string
   worktreesDir: string
@@ -583,6 +586,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  bridge: BridgeCfg
   appearance: AppearanceCfg
   apps: AppsCfg
   suggestions: SuggestionsCfg
@@ -597,7 +601,7 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -606,6 +610,7 @@ export type SettingsPatch = Partial<
     webhook?: Partial<AlertsCfg['webhook']>
   }
   inbox?: Partial<InboxCfg>
+  bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
@@ -1090,6 +1095,23 @@ export type CronRun = {
 }
 
 export type ListenerDir = 'new' | 'processing' | 'done' | 'failed' | 'dead-letter'
+// Mobile bridge (TerMinal Remote for iOS). The pairing payload carries the
+// bearer token, so it is fetched on demand for the Settings pane only.
+export type BridgeStatus = {
+  enabled: boolean
+  listening: boolean
+  port: number
+  error?: string
+}
+export type BridgePairing = {
+  v: 1
+  n: string // Mac display name
+  p: number // port
+  h: string[] // candidate hosts, tailnet first
+  t: string // bearer token
+  fp: string // base64 SHA-256 of the DER cert, pinned by the client
+}
+
 export type ListenerStatus = {
   enabled: boolean
   inboxDir: string
@@ -1690,6 +1712,11 @@ export type GtApi = {
     disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
+  }
+  bridge: {
+    status: () => Promise<BridgeStatus>
+    pairing: () => Promise<BridgePairing>
+    rotateToken: () => Promise<BridgePairing>
   }
   listeners: {
     status: () => Promise<ListenerStatus>

@@ -228,6 +228,11 @@ const gt = {
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
     design: (text: string, engine: string) => ipcRenderer.invoke('schedules:design', text, engine),
   },
+  bridge: {
+    status: () => ipcRenderer.invoke('bridge:status'),
+    pairing: () => ipcRenderer.invoke('bridge:pairing'),
+    rotateToken: () => ipcRenderer.invoke('bridge:rotate-token'),
+  },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
     process: () => ipcRenderer.invoke('listeners:process'),

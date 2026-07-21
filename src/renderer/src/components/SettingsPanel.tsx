@@ -15,6 +15,8 @@ import {
   GitPullRequest,
   AppWindow,
   Inbox,
+  Smartphone,
+  RefreshCw,
   MessageCircle,
   Sparkles,
   PlugZap,
@@ -57,7 +59,10 @@ import type {
   PinnedPanel,
   AlertChannelId,
   UpdateCheckResult,
+  BridgePairing,
+  BridgeStatus,
 } from '../lib/types'
+import qrcode from 'qrcode-generator'
 import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
@@ -181,6 +186,174 @@ function Toggle({
   )
 }
 
+// Pairing pane for the mobile bridge (TerMinal Remote for iOS). The QR carries
+// the bearer token and the pinned cert fingerprint, so it is rendered on demand
+// and never persisted anywhere the renderer can leak it. The copyable text form
+// exists because the iOS Simulator has no camera.
+function MobileSection({
+  cfg,
+  save,
+  buttonClass,
+}: {
+  cfg: Settings['bridge']
+  save: (patch: SettingsPatch) => void
+  buttonClass: string
+}) {
+  const [status, setStatus] = useState<BridgeStatus | null>(null)
+  const [pairing, setPairing] = useState<BridgePairing | null>(null)
+  const [revealed, setRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const refresh = () => {
+    void window.gt.bridge.status().then(setStatus)
+    if (cfg.enabled) void window.gt.bridge.pairing().then(setPairing)
+    else setPairing(null)
+  }
+  // Poll while enabled: a bind failure (port already taken) surfaces
+  // asynchronously and would otherwise leave the pane claiming success.
+  useEffect(() => {
+    refresh()
+    if (!cfg.enabled) return
+    const t = setInterval(() => void window.gt.bridge.status().then(setStatus), 3000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.enabled, cfg.port])
+
+  const payload = pairing ? JSON.stringify(pairing) : ''
+  const qrSvg = (() => {
+    if (!payload) return ''
+    try {
+      // typeNumber 0 = autosize; 'L' keeps the module count low enough for a
+      // phone camera to lock on at this physical size.
+      const qr = qrcode(0, 'L')
+      qr.addData(payload)
+      qr.make()
+      return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true })
+    } catch {
+      return ''
+    }
+  })()
+
+  return (
+    <Section
+      id="mobile"
+      icon={Smartphone}
+      title="Mobile"
+      desc="Drive your live terminals from the TerMinal Remote iOS app. Scan the code to pair a phone. Nothing binds a port until this is on."
+    >
+      <div className="space-y-3">
+        <Toggle
+          on={cfg.enabled}
+          onToggle={() => save({ bridge: { enabled: !cfg.enabled } })}
+          label="Enable mobile bridge"
+          hint="Serves your live sessions over HTTPS on your LAN and tailnet. Every request needs the paired token."
+        />
+
+        {status?.error && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-400">
+            {status.error}
+          </div>
+        )}
+
+        {cfg.enabled && status?.listening && pairing && (
+          <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+            <div
+              className="h-[168px] w-[168px] shrink-0 rounded-md bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: qrSvg }}
+            />
+            <div className="min-w-0 space-y-2">
+              <div className="text-[11px] text-zinc-400">
+                Listening on port {status.port} as{' '}
+                <span className="text-zinc-200">{pairing.n}</span>
+              </div>
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                  Reachable at
+                </span>
+                {pairing.h.length ? (
+                  pairing.h.map((h) => (
+                    <div key={h} className="font-mono text-[11px] text-zinc-300">
+                      {h}:{status.port}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-[11px] text-amber-400">
+                    No network interface — connect to Wi-Fi or start Tailscale.
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  className={buttonClass}
+                  onClick={() => {
+                    void window.gt.clipboardWrite(payload)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  }}
+                >
+                  <ClipboardCopy size={13} strokeWidth={2} />
+                  {copied ? 'Copied' : 'Copy pairing code'}
+                </button>
+                <button className={buttonClass} onClick={() => setRevealed((v) => !v)}>
+                  <Eye size={13} strokeWidth={2} />
+                  {revealed ? 'Hide' : 'Show'} code
+                </button>
+                <button
+                  className={buttonClass}
+                  onClick={() => {
+                    void window.gt.bridge.rotateToken().then((next) => {
+                      setPairing(next)
+                      setRevealed(false)
+                    })
+                  }}
+                >
+                  <RefreshCw size={13} strokeWidth={2} />
+                  Rotate token
+                </button>
+              </div>
+              {revealed && (
+                <textarea
+                  readOnly
+                  value={payload}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="h-20 w-full resize-none rounded-md border border-[var(--gt-border)] bg-black/40 p-2 font-mono text-[10px] text-zinc-400"
+                />
+              )}
+              <div className="text-[10.5px] leading-relaxed text-zinc-600">
+                The code contains the bearer token — treat it like a password. Rotating it
+                disconnects every paired device.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+          <label className="block space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              Port
+            </span>
+            <input
+              type="number"
+              defaultValue={cfg.port}
+              onBlur={(e) => {
+                const port = Number(e.target.value)
+                if (Number.isInteger(port) && port >= 1024 && port <= 65535 && port !== cfg.port) {
+                  save({ bridge: { port } })
+                }
+              }}
+              className="h-8 w-28 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 font-mono text-[12px] text-zinc-200"
+            />
+          </label>
+          <div className="text-[10.5px] leading-relaxed text-zinc-600">
+            Terminals only — the phone mirrors your desktop geometry and never resizes a session.
+            Ask the agent itself about tickets, PRs, and CI.
+          </div>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // Editor for the Panels tab's pinned web dashboards. Local rows while editing;
 // persists the cleaned list (rows with a URL) on blur / add / remove. The tab
 // itself appears once at least one panel has a URL.
@@ -267,6 +440,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'apps', title: 'Apps', icon: AppWindow },
   { id: 'panels', title: 'Panels', icon: LayoutGrid },
   { id: 'inbox', title: 'Inbox', icon: Inbox },
+  { id: 'mobile', title: 'Mobile', icon: Smartphone },
   { id: 'suggestions', title: 'Replies', icon: Sparkles },
   { id: 'alerts', title: 'Alerts', icon: BellRing },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
@@ -2574,6 +2748,9 @@ export function SettingsPanel({
                   </div>
                 </div>
               </Section>
+
+              {/* Mobile bridge */}
+              <MobileSection cfg={s.bridge} save={save} buttonClass={actionButton} />
 
               {/* Suggested replies */}
               <Section

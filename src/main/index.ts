@@ -278,6 +278,16 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
+import {
+  bridgeBroadcast,
+  bridgeBroadcastExit,
+  bridgeStatus,
+  startBridge,
+  stopBridge,
+  type BridgeDeps,
+  type BridgeSession,
+} from './bridge/server'
+import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
@@ -741,9 +751,11 @@ function startSession(key: string, opts: StartOpts) {
   proc.onData((d) => {
     send('pty:data', key, d)
     appendSessionRunLog(sessionId, d)
+    bridgeBroadcast(key, d) // third consumer: an attached phone (no-op when none)
   })
   proc.onExit(({ exitCode }) => {
     send('pty:exit', key, exitCode)
+    bridgeBroadcastExit(key, exitCode)
     unregisterLoopSession(key)
     const status = exitCode === 0 ? 'done' : 'failed'
     const endedAt = Date.now()
@@ -1080,7 +1092,7 @@ ipcMain.handle('session:setActive', (_e, key: string) => setActiveSession(key))
 ipcMain.handle('session:stop', (_e, key: string) => stopSession(key))
 // Fleet snapshot: a summary of every live session (for the cross-session
 // overview + the live status dots on the session tabs).
-ipcMain.handle('fleet:list', () => {
+function fleetSnapshot() {
   const out = []
   for (const [key, s] of sessions) {
     const sid = s.pinned.sessionId
@@ -1116,6 +1128,87 @@ ipcMain.handle('fleet:list', () => {
     })
   }
   return out
+}
+ipcMain.handle('fleet:list', () => fleetSnapshot())
+
+// ---- mobile bridge (TerMinal Remote for iOS) --------------------------------
+// A second transport over the SAME live ptys the desktop drives — never a
+// parallel session store. Terminals only: a phone attached to a live agent can
+// ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
+const MAX_REPLAY_BYTES = 256 * 1024
+
+const bridgeDeps: BridgeDeps = {
+  sessions: () =>
+    fleetSnapshot().map((f): BridgeSession => {
+      const pty = sessions.get(f.key)?.pty
+      return {
+        key: f.key,
+        sessionId: f.sessionId || '',
+        name: f.name,
+        cwd: f.cwd,
+        repo: f.repo,
+        branch: f.branch || '',
+        model: f.model || '',
+        status: f.status,
+        // The phone MIRRORS the desktop's geometry and never resizes the pty —
+        // a reflow here would disrupt the terminal the human is looking at.
+        cols: pty?.cols ?? 80,
+        rows: pty?.rows ?? 30,
+      }
+    }),
+  write: (key, data) => {
+    const s = sessions.get(key)
+    if (!s) return false
+    s.pty.write(data.toString('utf8'))
+    return true
+  },
+  // Tail of the log the session already writes, so an attaching phone lands on
+  // the current screen. Alt-screen TUIs redraw within a frame or two.
+  replay: (key) => {
+    const sid = sessions.get(key)?.pinned.sessionId
+    if (!sid) return ''
+    const log = readSessionRunLog(sid)
+    return log.length > MAX_REPLAY_BYTES ? log.slice(-MAX_REPLAY_BYTES) : log
+  },
+}
+
+async function applyBridgeSetting(): Promise<void> {
+  const cfg = readSettings().bridge
+  if (!cfg.enabled) {
+    await stopBridge()
+    return
+  }
+  const status = await startBridge(bridgeDeps, { port: cfg.port })
+  emitActivity({
+    kind: status.listening ? 'info' : 'error',
+    title: status.listening
+      ? `Mobile bridge listening on :${status.port}`
+      : `Mobile bridge failed to start`,
+    detail: status.error || `${bridgeHosts().join(', ') || 'no network interface'}`,
+  })
+}
+
+ipcMain.handle('bridge:status', () => {
+  const cfg = readSettings().bridge
+  const status = bridgeStatus()
+  return { ...status, enabled: cfg.enabled, port: cfg.enabled ? status.port : cfg.port }
+})
+// The pairing payload carries the bearer token, so it is only ever produced on
+// demand for the Settings pane — never returned from a bridge HTTP route.
+ipcMain.handle('bridge:pairing', () => {
+  const cfg = readSettings().bridge
+  const identity = ensureIdentity()
+  return pairingPayload({ port: cfg.port, identity })
+})
+ipcMain.handle('bridge:rotate-token', () => {
+  const cfg = readSettings().bridge
+  const identity = rotateToken()
+  emitActivity({
+    kind: 'info',
+    title: 'Mobile bridge token rotated',
+    detail: 'Every paired device must scan the new code',
+  })
+  return pairingPayload({ port: cfg.port, identity })
 })
 ipcMain.handle('dirs:projects', () => {
   const base = resolvedProjectsDir()
@@ -1225,6 +1318,11 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
       title: `Activity notifications ${next.telegram.notify ? 'enabled' : 'disabled'}`,
       detail: 'Settings updated',
     })
+  }
+  // Bind/unbind the mobile bridge the moment the toggle or port changes, so the
+  // listening socket always matches what Settings claims.
+  if (next.bridge.enabled !== before.bridge.enabled || next.bridge.port !== before.bridge.port) {
+    void applyBridgeSetting()
   }
   return next
 })
@@ -2982,9 +3080,15 @@ app.whenReady().then(() => {
   // Local automation listener inbox — processes JSON files dropped into
   // ~/.config/TerMinal/automation-inbox/new while the app is running.
   startListenerInboxWatcher()
+  // Mobile bridge — binds a port ONLY when the setting is on.
+  void applyBridgeSetting()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('will-quit', () => {
+  void stopBridge() // never leave the port bound after the app goes away
 })
 
 app.on('window-all-closed', () => {
