@@ -18,7 +18,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
-import type { ChatMessage } from '../../src/main/chat/messages'
+import { sessionMessages, type ChatEngine, type ChatMessage } from '../../src/main/chat/messages'
 import {
   bridgeBroadcast,
   bridgeBroadcastExit,
@@ -30,6 +30,18 @@ import {
 const PORT = 8791 // not 8790: never collide with a real running TerMinal
 const KEY = 'e2e-session'
 const selftest = process.argv.includes('--selftest')
+
+// `--real <sessionId> <engine>` serves an ACTUAL transcript from disk instead
+// of the scripted one, so the chat client can be exercised against real agent
+// output without running the desktop app against your live config.
+const realIndex = process.argv.indexOf('--real')
+const real =
+  realIndex >= 0
+    ? {
+        sessionId: process.argv[realIndex + 1] || '',
+        engine: (process.argv[realIndex + 2] || 'claude') as ChatEngine,
+      }
+    : null
 
 const COLS = 100
 const ROWS = 30
@@ -159,6 +171,9 @@ const deps: BridgeDeps = {
   // Every prompt sent from the phone is appended, and the "agent" answers, so
   // the round trip is real even though the content is canned.
   messages: (key, opts) => {
+    if (real && !key.startsWith('past:')) {
+      return sessionMessages(real.sessionId, real.engine, opts)
+    }
     const log = key.startsWith('past:') ? historyLog : chatLog
     const after = Math.max(0, opts.after ?? 0)
     return { messages: log.slice(after), unsupported: false, total: log.length }
@@ -167,10 +182,10 @@ const deps: BridgeDeps = {
   threads: () => [
     {
       key: KEY,
-      name: 'harness session',
+      name: real ? `real · ${real.engine}` : 'harness session',
       repo: 'TerMinal',
       branch: 'feat/ios-remote-terminal',
-      engine: 'codex',
+      engine: real ? real.engine : 'codex',
       status: 'idle',
       needsInput: true,
       live: true,
@@ -260,6 +275,13 @@ if (!selftest) {
   printQR(JSON.stringify(payload))
   console.log('\n=== or copy this pairing code ===')
   console.log(JSON.stringify(payload))
+  if (real) {
+    const t = sessionMessages(real.sessionId, real.engine)
+    console.log(
+      `\nserving REAL transcript ${real.sessionId} (${real.engine}) — ` +
+        `${t.total} messages${t.unsupported ? ' [engine unsupported]' : ''}`,
+    )
+  }
   console.log(`\nlistening on https://127.0.0.1:${PORT} — Ctrl-C to stop\n`)
   process.on('SIGINT', async () => {
     proc.kill()
