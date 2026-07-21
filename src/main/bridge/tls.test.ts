@@ -23,6 +23,7 @@ const deps: BridgeDeps = {
       branch: 'main',
       model: '',
       status: 'idle',
+      engine: 'codex',
       cols: 80,
       rows: 24,
     },

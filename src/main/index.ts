@@ -288,6 +288,7 @@ import {
   type BridgeSession,
 } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
+import { sessionMessages, type ChatEngine } from './chat/messages'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
@@ -1150,6 +1151,7 @@ const bridgeDeps: BridgeDeps = {
         branch: f.branch || '',
         model: f.model || '',
         status: f.status,
+        engine: sessions.get(f.key)?.pinned.engine || '',
         // The phone MIRRORS the desktop's geometry and never resizes the pty —
         // a reflow here would disrupt the terminal the human is looking at.
         cols: pty?.cols ?? 80,
@@ -1169,6 +1171,68 @@ const bridgeDeps: BridgeDeps = {
     if (!sid) return ''
     const log = readSessionRunLog(sid)
     return log.length > MAX_REPLAY_BYTES ? log.slice(-MAX_REPLAY_BYTES) : log
+  },
+
+  // ---- chat surface ----
+  // The phone's primary view. Same sessions, rendered as a conversation from
+  // the engine's own transcript rather than from pty bytes.
+  messages: (key, opts) => {
+    const pinned = sessions.get(key)?.pinned
+    if (!pinned?.sessionId) return { messages: [], unsupported: false, total: 0 }
+    return sessionMessages(pinned.sessionId, (pinned.engine || 'claude') as ChatEngine, opts)
+  },
+  hitl: () =>
+    readHitl()
+      .filter((h) => h.status === 'open')
+      .map((h) => ({
+        id: h.id,
+        title: h.title,
+        detail: h.detail,
+        action: h.action,
+        repo: h.repo,
+        source: h.source,
+        createdAt: h.createdAt,
+        sessionId: h.sessionId,
+        terminalKey: h.terminalKey,
+      })),
+  // Routes through the app's own resolve path — never a parallel write.
+  resolveHitl: (id, resolved) => resolveHitl(id, resolved),
+  repos: () => {
+    const base = resolvedProjectsDir()
+    try {
+      return readdirSync(base)
+        .filter((n) => !n.startsWith('.'))
+        .map((n) => ({ name: n, path: join(base, n) }))
+        .filter((d) => {
+          try {
+            return statSync(d.path).isDirectory()
+          } catch {
+            return false
+          }
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+    } catch {
+      return []
+    }
+  },
+  startSession: (input) => {
+    const engine = (input.engine || readSettings().defaultEngine) as Engine
+    // Phone-started sessions get their own key so they appear as a new tab on
+    // the desktop rather than hijacking an existing one.
+    const key = `phone-${randomUUID().slice(0, 8)}`
+    try {
+      startSession(key, {
+        mode: 'new',
+        engine,
+        cwd: input.cwd,
+        name: input.name,
+        cols: 100,
+        rows: 30,
+      })
+      return { key }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
   },
 }
 

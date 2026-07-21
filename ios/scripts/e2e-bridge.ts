@@ -95,6 +95,7 @@ const deps: BridgeDeps = {
       branch: 'feat/ios-remote-terminal',
       model: '',
       status: 'idle',
+      engine: 'codex',
       cols: COLS,
       rows: ROWS,
     },

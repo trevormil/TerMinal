@@ -1,6 +1,7 @@
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { DEFAULT_BRIDGE_PORT, ensureIdentity, tokenMatches, type BridgeIdentity } from './identity'
+import type { ChatTranscript } from '../chat/messages'
 
 // The mobile bridge: a SECOND transport over the live pty sessions the desktop
 // already owns, not a new backend. Terminals only — once a phone can drive a
@@ -21,10 +22,29 @@ export type BridgeSession = {
   repo: string
   branch: string
   model: string
+  /** 'working' while the agent is mid-turn, 'idle' when it is waiting on you. */
   status: string
+  engine: string
   cols: number
   rows: number
 }
+
+/** A HITL item, as the phone sees it. Mirrors the fields the UI renders. */
+export type BridgeHitl = {
+  id: string
+  title: string
+  detail?: string
+  action?: string
+  repo?: string
+  source: string
+  createdAt: number
+  sessionId?: string
+  terminalKey?: string
+}
+
+export type BridgeRepo = { name: string; path: string }
+
+export type StartSessionInput = { cwd: string; engine?: string; name?: string }
 
 export type BridgeDeps = {
   sessions(): BridgeSession[]
@@ -32,6 +52,18 @@ export type BridgeDeps = {
   write(key: string, data: Buffer): boolean
   /** Recent output so an attaching phone lands on the current screen. */
   replay(key: string): string
+
+  // ---- chat surface (optional so the e2e harness can omit it) ----
+  /** Normalized conversation for a session. */
+  messages?(key: string, opts: { after?: number; limit?: number }): ChatTranscript
+  /** Open human-in-the-loop items, newest first. */
+  hitl?(): BridgeHitl[]
+  /** Resolve one HITL item through the app's existing write path. */
+  resolveHitl?(id: string, resolved: boolean): boolean
+  /** Repos the phone may start a session in. */
+  repos?(): BridgeRepo[]
+  /** Start a session on the Mac. */
+  startSession?(input: StartSessionInput): { key: string } | { error: string }
 }
 
 export type BridgeStatus = {
@@ -184,6 +216,144 @@ export function createBridgeHandler(
     if (req.method === 'GET' && url.pathname === '/v1/sessions') {
       json(res, 200, { sessions: deps.sessions() })
       return
+    }
+
+    // ---- chat surface -------------------------------------------------
+    // The phone's primary UI. Terminals stay available underneath; these
+    // routes render the SAME sessions as a conversation instead of a screen.
+
+    if (req.method === 'GET' && url.pathname === '/v1/chats') {
+      const threads = deps.sessions().map((s) => ({
+        key: s.key,
+        name: s.name,
+        repo: s.repo,
+        branch: s.branch,
+        engine: s.engine,
+        status: s.status,
+        // 'idle' means the agent finished its turn and is waiting on a human.
+        needsInput: s.status !== 'working',
+        chat: !!deps.messages,
+      }))
+      json(res, 200, { threads, hitl: deps.hitl?.() ?? [] })
+      return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/v1/hitl') {
+      json(res, 200, { items: deps.hitl?.() ?? [] })
+      return
+    }
+
+    if (req.method === 'POST' && parts[0] === 'v1' && parts[1] === 'hitl' && parts.length === 3) {
+      if (!deps.resolveHitl) {
+        json(res, 501, { error: 'hitl not available' })
+        return
+      }
+      const id = decodeURIComponent(parts[2])
+      readBody(req)
+        .then((raw) => {
+          let resolved = true
+          try {
+            const parsed = JSON.parse(raw || '{}') as { resolved?: unknown }
+            if (typeof parsed.resolved === 'boolean') resolved = parsed.resolved
+          } catch {
+            /* an empty or malformed body means the default: resolved */
+          }
+          const ok = deps.resolveHitl!(id, resolved)
+          json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such item' })
+        })
+        .catch((e: Error) => json(res, 413, { error: e.message }))
+      return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/v1/repos') {
+      json(res, 200, { repos: deps.repos?.() ?? [] })
+      return
+    }
+
+    // Start a session from the phone, so the app is not merely a viewer of
+    // sessions you started at the desk.
+    if (req.method === 'POST' && url.pathname === '/v1/sessions') {
+      if (!deps.startSession) {
+        json(res, 501, { error: 'starting sessions not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          let input: StartSessionInput
+          try {
+            const parsed = JSON.parse(raw) as Partial<StartSessionInput>
+            if (typeof parsed.cwd !== 'string' || !parsed.cwd) throw new Error('cwd is required')
+            input = {
+              cwd: parsed.cwd,
+              engine: typeof parsed.engine === 'string' ? parsed.engine : undefined,
+              name: typeof parsed.name === 'string' ? parsed.name : undefined,
+            }
+          } catch (e) {
+            json(res, 400, { error: (e as Error).message })
+            return
+          }
+          const result = deps.startSession!(input)
+          if ('error' in result) json(res, 400, result)
+          else json(res, 200, result)
+        })
+        .catch((e: Error) => json(res, 413, { error: e.message }))
+      return
+    }
+
+    // /v1/chats/:key/(messages|send|interrupt)
+    if (parts[0] === 'v1' && parts[1] === 'chats' && parts.length === 4) {
+      const key = decodeURIComponent(parts[2])
+      const session = deps.sessions().find((s) => s.key === key)
+      if (!session) {
+        json(res, 404, { error: 'no such session' })
+        return
+      }
+
+      if (req.method === 'GET' && parts[3] === 'messages') {
+        if (!deps.messages) {
+          json(res, 501, { error: 'chat not available' })
+          return
+        }
+        const after = Number(url.searchParams.get('after') || 0)
+        const limit = Number(url.searchParams.get('limit') || 0)
+        json(res, 200, {
+          ...deps.messages(key, {
+            after: Number.isFinite(after) ? after : 0,
+            limit: Number.isFinite(limit) ? limit : 0,
+          }),
+          status: session.status,
+        })
+        return
+      }
+
+      // A chat "send" is a prompt typed at the agent's prompt, so it carries
+      // the newline the terminal route deliberately does not.
+      if (req.method === 'POST' && parts[3] === 'send') {
+        readBody(req)
+          .then((raw) => {
+            let text: string
+            try {
+              const parsed = JSON.parse(raw) as { text?: unknown }
+              if (typeof parsed.text !== 'string' || !parsed.text.trim()) {
+                throw new Error('text is required')
+              }
+              text = parsed.text
+            } catch (e) {
+              json(res, 400, { error: (e as Error).message })
+              return
+            }
+            const ok = deps.write(key, Buffer.from(text.replace(/\r?\n/g, ' ') + '\r', 'utf8'))
+            json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
+          })
+          .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
+
+      if (req.method === 'POST' && parts[3] === 'interrupt') {
+        const ok = deps.write(key, Buffer.from([0x03]))
+        json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
+        return
+      }
     }
 
     // /v1/sessions/:key/(stream|input)

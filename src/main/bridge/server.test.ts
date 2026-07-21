@@ -23,6 +23,7 @@ function session(over: Partial<BridgeSession> = {}): BridgeSession {
     branch: 'main',
     model: 'opus',
     status: 'working',
+    engine: 'claude',
     cols: 120,
     rows: 40,
     ...over,
@@ -330,6 +331,179 @@ describe('bridgeBroadcast', () => {
     off()
     off2()
     expect(bridgeSubscriberCount('boom')).toBe(0)
+  })
+})
+
+describe('chat surface', () => {
+  const chatDeps = (over: Partial<BridgeDeps> = {}): Partial<BridgeDeps> => ({
+    messages: () => ({
+      messages: [
+        { kind: 'user', at: 1, text: 'run the tests' },
+        { kind: 'assistant', at: 2, text: 'All green.' },
+        { kind: 'tool', at: 3, name: 'Bash', summary: 'bun test', status: 'ok' },
+      ],
+      unsupported: false,
+      total: 3,
+    }),
+    hitl: () => [
+      {
+        id: 'h1',
+        title: 'Approve deploy',
+        source: 'agent',
+        createdAt: 100,
+        repo: 'TerMinal',
+      },
+    ],
+    resolveHitl: () => true,
+    repos: () => [{ name: 'TerMinal', path: '/repos/TerMinal' }],
+    startSession: (input) => ({ key: `phone-${input.cwd.length}` }),
+    ...over,
+  })
+
+  it('lists threads with a needs-you flag derived from session status', async () => {
+    const h = await harness({
+      ...chatDeps(),
+      sessions: () => [session({ status: 'working' }), session({ key: 'b', status: 'idle' })],
+    })
+    const body = await (await fetch(`${h.url}/v1/chats`, { headers: auth })).json()
+    expect(body.threads.map((t: { needsInput: boolean }) => t.needsInput)).toEqual([false, true])
+    expect(body.threads[0].chat).toBe(true)
+    expect(body.hitl[0].id).toBe('h1')
+  })
+
+  it('serves the normalized conversation for a session', async () => {
+    const h = await harness(chatDeps())
+    const body = await (await fetch(`${h.url}/v1/chats/sess-1/messages`, { headers: auth })).json()
+    expect(body.messages.map((m: { kind: string }) => m.kind)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+    ])
+    expect(body.total).toBe(3)
+    expect(body.status).toBe('working')
+  })
+
+  it('404s messages for an unknown session', async () => {
+    const h = await harness(chatDeps())
+    expect((await fetch(`${h.url}/v1/chats/ghost/messages`, { headers: auth })).status).toBe(404)
+  })
+
+  it('reports 501 rather than pretending when an engine has no chat', async () => {
+    const h = await harness({ ...chatDeps(), messages: undefined })
+    expect((await fetch(`${h.url}/v1/chats/sess-1/messages`, { headers: auth })).status).toBe(501)
+  })
+
+  it('send appends a carriage return so the agent actually receives the prompt', async () => {
+    const h = await harness(chatDeps())
+    const res = await fetch(`${h.url}/v1/chats/sess-1/send`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ text: 'ship it' }),
+    })
+    expect(res.status).toBe(200)
+    expect(h.written[0].data.toString('utf8')).toBe('ship it\r')
+  })
+
+  it('flattens newlines so a multi-line draft cannot submit early', async () => {
+    // Each newline would otherwise be a separate Enter, firing the first line
+    // as a prompt and leaving the rest as stray input.
+    const h = await harness(chatDeps())
+    await fetch(`${h.url}/v1/chats/sess-1/send`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ text: 'line one\nline two' }),
+    })
+    expect(h.written[0].data.toString('utf8')).toBe('line one line two\r')
+  })
+
+  it('rejects an empty or missing send body', async () => {
+    const h = await harness(chatDeps())
+    for (const body of ['{}', '{"text":""}', '{"text":"   "}', 'nonsense']) {
+      const res = await fetch(`${h.url}/v1/chats/sess-1/send`, {
+        method: 'POST',
+        headers: auth,
+        body,
+      })
+      expect(res.status).toBe(400)
+    }
+    expect(h.written).toHaveLength(0)
+  })
+
+  it('interrupt sends a real Ctrl-C byte', async () => {
+    const h = await harness(chatDeps())
+    const res = await fetch(`${h.url}/v1/chats/sess-1/interrupt`, { method: 'POST', headers: auth })
+    expect(res.status).toBe(200)
+    expect([...h.written[0].data]).toEqual([0x03])
+  })
+
+  it('resolves a HITL item through the app write path', async () => {
+    // Object holder: control-flow analysis narrows a null-initialised `let` to
+    // `null` when it is only assigned inside a closure.
+    const seen: { args?: [string, boolean] } = {}
+    const h = await harness({
+      ...chatDeps(),
+      resolveHitl: (id, resolved) => {
+        seen.args = [id, resolved]
+        return true
+      },
+    })
+    const res = await fetch(`${h.url}/v1/hitl/h1`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ resolved: false }),
+    })
+    expect(res.status).toBe(200)
+    expect(seen.args).toEqual(['h1', false])
+  })
+
+  it('defaults a HITL resolve with no body to resolved', async () => {
+    const seen: { resolved?: boolean } = {}
+    const h = await harness({
+      ...chatDeps(),
+      resolveHitl: (_id, resolved) => {
+        seen.resolved = resolved
+        return true
+      },
+    })
+    await fetch(`${h.url}/v1/hitl/h1`, { method: 'POST', headers: auth })
+    expect(seen.resolved).toBe(true)
+  })
+
+  it('starts a session from the phone', async () => {
+    const h = await harness(chatDeps())
+    const res = await fetch(`${h.url}/v1/sessions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ cwd: '/repos/TerMinal', engine: 'codex' }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).key).toMatch(/^phone-/)
+  })
+
+  it('refuses to start a session with no cwd', async () => {
+    const h = await harness(chatDeps())
+    const res = await fetch(`${h.url}/v1/sessions`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ engine: 'codex' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('requires a token on every chat route', async () => {
+    const h = await harness(chatDeps())
+    for (const [path, init] of [
+      ['/v1/chats', {}],
+      ['/v1/hitl', {}],
+      ['/v1/repos', {}],
+      ['/v1/chats/sess-1/messages', {}],
+      ['/v1/chats/sess-1/send', { method: 'POST', body: '{"text":"x"}' }],
+      ['/v1/chats/sess-1/interrupt', { method: 'POST' }],
+      ['/v1/sessions', { method: 'POST', body: '{"cwd":"/x"}' }],
+    ] as const) {
+      expect((await fetch(`${h.url}${path}`, init as RequestInit)).status).toBe(401)
+    }
+    expect(h.written).toHaveLength(0)
   })
 })
 
