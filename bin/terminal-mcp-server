@@ -655,6 +655,7 @@ function fileTicket(args) {
     priority = 'medium',
     status = 'open',
     source = 'mcp',
+    modelTier = 'auto',
   } = args
   if (!title) throw new Error('title is required')
   const repoRoot = findRepoRoot(repo)
@@ -692,6 +693,7 @@ updated: ${today}
 prs: []
 refs: []
 depends_on: []
+model_tier: ${modelTier}
 agent_id: ${agent.id}
 agent_scope: ${agent.scope}
 agent_kind: ${agent.kind}
@@ -756,6 +758,7 @@ function updateTicket(args) {
   }
   if (status) setField('status', status)
   if (priority) setField('priority', priority)
+  if (args.modelTier) setField('model_tier', args.modelTier)
   if (args.agentId || args.agentScope || args.agentKind) {
     const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || 'feature').trim())
     setField('agent_id', agent.id)
@@ -1751,6 +1754,12 @@ const TOOLS = [
         },
         agentScope: { type: 'string', enum: ['repo', 'global'] },
         agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+        modelTier: {
+          type: 'string',
+          enum: ['auto', 'top', 'cheap-agentic', 'cheap-raw'],
+          description:
+            'Routing tier resolved against the owner agent modelPolicy at spawn: top→deep, cheap-agentic/cheap-raw→cheap, auto→default. Defaults to auto.',
+        },
       },
     },
   },
@@ -1778,6 +1787,12 @@ const TOOLS = [
         sessionId: { type: 'string' },
         runStartedAt: { type: 'string' },
         runStatus: { type: 'string' },
+        modelTier: {
+          type: 'string',
+          enum: ['auto', 'top', 'cheap-agentic', 'cheap-raw'],
+          description:
+            'Routing tier resolved against the owner agent modelPolicy at spawn. Only written when passed.',
+        },
       },
     },
   },

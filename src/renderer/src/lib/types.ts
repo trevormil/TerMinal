@@ -405,6 +405,8 @@ export type NewTicket = {
   status: string
   body: string
   agent?: Partial<TicketAgent>
+  /** Routing tier: auto | top | cheap-agentic | cheap-raw. Omitted → 'auto'. */
+  modelTier?: string
 }
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
 export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
@@ -1765,6 +1767,7 @@ export type GtApi = {
         acceptance?: string[]
         agent?: Partial<TicketAgent>
         run?: Partial<TicketRunLink>
+        modelTier?: string
       },
     ) => Promise<boolean>
     spawn: (
