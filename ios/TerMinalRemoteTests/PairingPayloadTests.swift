@@ -54,6 +54,16 @@ final class PairingPayloadTests: XCTestCase {
         }
     }
 
+    /// appendingPathComponent percent-encodes "?", which silently 404s every
+    /// route with a query string. Pin the shape the client relies on.
+    func testBaseURLConcatenationKeepsAQueryString() throws {
+        let payload = try PairingPayload.decode(valid)
+        let base = "https://\(payload.h[0]):\(payload.p)/"
+        let url = URL(string: base + "v1/chats/abc/messages?after=12")
+        XCTAssertEqual(url?.query, "after=12")
+        XCTAssertEqual(url?.path, "/v1/chats/abc/messages")
+    }
+
     func testBuildsTheBaseURL() throws {
         let payload = try PairingPayload.decode(valid)
         XCTAssertEqual(

@@ -20,7 +20,7 @@ KEY_ID=$(basename "$KEY_SRC" | sed -n 's/^AuthKey_\([A-Z0-9]*\)\.p8$/\1/p')
 [ -n "$KEY_ID" ] || { echo "expected a file named AuthKey_<KEYID>.p8" >&2; exit 1; }
 
 cd "$(dirname "$0")/.."
-TEAM_ID=$(sed -n 's/.*DEVELOPMENT_TEAM: .\(.*\).$/\1/p' project.yml | tr -d "'\"")
+TEAM_ID=$(sed -n "s/.*DEVELOPMENT_TEAM: ['\"]\(.*\)['\"].*/\1/p" project.yml)
 BUNDLE_ID=$(sed -n 's/.*PRODUCT_BUNDLE_IDENTIFIER: \(.*\)$/\1/p' project.yml | head -1 | tr -d "'\" ")
 [ -n "$TEAM_ID" ] || { echo "could not read DEVELOPMENT_TEAM from project.yml" >&2; exit 1; }
 [ -n "$BUNDLE_ID" ] || { echo "could not read PRODUCT_BUNDLE_IDENTIFIER from project.yml" >&2; exit 1; }

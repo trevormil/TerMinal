@@ -63,7 +63,10 @@ final class BridgeClient {
     }
 
     private func request(_ path: String, host: String, method: String = "GET") -> URLRequest {
-        var req = URLRequest(url: pairing.baseURL(host: host)!.appendingPathComponent(path))
+        // String concatenation, NOT appendingPathComponent: that percent-encodes
+        // a "?" into the path, so any route with a query string 404s.
+        let base = "https://\(host):\(pairing.p)/"
+        var req = URLRequest(url: URL(string: base + path)!)
         req.httpMethod = method
         req.setValue("Bearer \(pairing.t)", forHTTPHeaderField: "Authorization")
         return req
