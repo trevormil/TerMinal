@@ -16,8 +16,8 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             if let pairing {
-                SessionListView(
-                    model: SessionListViewModel(client: BridgeClient(pairing: pairing)),
+                ChatListView(
+                    model: ChatListViewModel(client: BridgeClient(pairing: pairing)),
                     onUnpair: {
                         PairingStore.clear()
                         self.pairing = nil

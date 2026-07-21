@@ -10,6 +10,7 @@ struct BridgeSession: Codable, Identifiable, Hashable {
     let branch: String
     let model: String
     let status: String
+    let engine: String
     let cols: Int
     let rows: Int
 
@@ -157,6 +158,89 @@ final class BridgeClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    // ---- chat surface -------------------------------------------------
+
+    /// Threads plus the HITL queue, in one round trip — the chat list needs both.
+    func chats() async throws -> (threads: [ChatThread], hitl: [HitlItem]) {
+        struct Envelope: Decodable {
+            let threads: [ChatThread]
+            let hitl: [HitlItem]
+        }
+        let data = try await get("v1/chats")
+        let env = try JSONDecoder().decode(Envelope.self, from: data)
+        return (env.threads, env.hitl)
+    }
+
+    /// One session's conversation. `after` is an index into the full list, so
+    /// polling for new messages doesn't re-transfer the whole transcript.
+    func messages(key: String, after: Int) async throws -> ChatTranscriptPage {
+        struct Meta: Decodable {
+            let unsupported: Bool
+            let total: Int
+            let status: String
+        }
+        let data = try await get("v1/chats/\(key)/messages?after=\(after)")
+        let meta = try JSONDecoder().decode(Meta.self, from: data)
+        return ChatTranscriptPage(
+            messages: try ChatMessage.decode(data, startIndex: after),
+            unsupported: meta.unsupported,
+            total: meta.total,
+            status: meta.status
+        )
+    }
+
+    /// Send a prompt. The Mac appends the carriage return.
+    func sendPrompt(key: String, text: String) async throws {
+        try await post("v1/chats/\(key)/send", body: ["text": text])
+    }
+
+    func interrupt(key: String) async throws {
+        try await post("v1/chats/\(key)/interrupt", body: nil)
+    }
+
+    func resolveHitl(id: String, resolved: Bool) async throws {
+        try await post("v1/hitl/\(id)", body: ["resolved": resolved])
+    }
+
+    func repos() async throws -> [RepoOption] {
+        struct Envelope: Decodable { let repos: [RepoOption] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/repos")).repos
+    }
+
+    /// Start a session on the Mac. Returns its key so the UI can open it.
+    func startSession(cwd: String, engine: String?, name: String?) async throws -> String {
+        struct Started: Decodable { let key: String }
+        var body: [String: String] = ["cwd": cwd]
+        if let engine { body["engine"] = engine }
+        if let name { body["name"] = name }
+        let data = try await post("v1/sessions", body: body)
+        return try JSONDecoder().decode(Started.self, from: data).key
+    }
+
+    // ---- plumbing -------------------------------------------------------
+
+    private func get(_ path: String) async throws -> Data {
+        guard let host = await resolveHost() else { throw BridgeError.unreachable }
+        guard let (data, response) = try? await session.data(for: request(path, host: host)) else {
+            throw BridgeError.unreachable
+        }
+        try Self.check(response)
+        return data
+    }
+
+    @discardableResult
+    private func post(_ path: String, body: (any Encodable)?) async throws -> Data {
+        guard let host = await resolveHost() else { throw BridgeError.unreachable }
+        var req = request(path, host: host, method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let body { req.httpBody = try JSONEncoder().encode(AnyEncodable(body)) }
+        guard let (data, response) = try? await session.data(for: req) else {
+            throw BridgeError.unreachable
+        }
+        try Self.check(response)
+        return data
     }
 
     private static func check(_ response: URLResponse) throws {

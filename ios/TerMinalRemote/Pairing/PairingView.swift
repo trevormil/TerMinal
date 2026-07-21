@@ -8,17 +8,20 @@ struct PairingView: View {
     @State private var error: String?
 
     var body: some View {
+        ZStack {
+        GT.bg.ignoresSafeArea()
         VStack(spacing: 24) {
             Spacer()
             Image(systemName: "terminal.fill")
                 .font(.system(size: 52))
-                .foregroundStyle(.green)
+                .foregroundStyle(GT.gradient)
             VStack(spacing: 8) {
                 Text("Pair with your Mac")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(GT.sans(22, .semibold))
+                    .foregroundStyle(GT.text)
                 Text("On your Mac, open TerMinal → Settings → Mobile and turn on the bridge.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .font(GT.sans(14))
+                    .foregroundStyle(GT.textMuted)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
@@ -40,7 +43,7 @@ struct PairingView: View {
                         .frame(maxWidth: .infinity, minHeight: 46)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .tint(GT.accent)
 
                 // No intermediate editor sheet: pasting IS the action. Use
                 // "Copy pairing code" on the Mac, then tap this — one step, and
@@ -54,10 +57,12 @@ struct PairingView: View {
                     }
                     accept(clip)
                 }
-                .font(.system(size: 14))
+                .font(GT.sans(14))
+                .foregroundStyle(GT.accentLight)
             }
             .padding(.horizontal, 32)
             Spacer()
+        }
         }
         .sheet(isPresented: $scanning) {
             NavigationStack {

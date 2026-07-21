@@ -18,6 +18,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
+import type { ChatMessage } from '../../src/main/chat/messages'
 import {
   bridgeBroadcast,
   bridgeBroadcastExit,
@@ -57,6 +58,34 @@ const proc = Bun.spawn(
 )
 
 let scrollback = ''
+
+// ---- scripted chat state ----
+const now = () => 1_784_000_000_000 + chatLog.length * 1000
+const chatLog: ChatMessage[] = [
+  { kind: 'user', at: 1_784_000_000_000, text: 'run the test suite' },
+  {
+    kind: 'assistant',
+    at: 1_784_000_001_000,
+    text: 'Running it now — I will report the first failure rather than the whole log.',
+  },
+  { kind: 'tool', at: 1_784_000_002_000, name: 'Bash', summary: 'bun test', status: 'ok' },
+  {
+    kind: 'assistant',
+    at: 1_784_000_003_000,
+    text: '844 pass, 0 fail. Anything you want me to pick up next?',
+  },
+]
+let hitlQueue = [
+  {
+    id: 'h1',
+    title: 'Approve release to production',
+    detail: 'The release script wants to publish v0.4.0 from main.',
+    action: 'bun run release',
+    repo: 'TerMinal',
+    source: 'agent',
+    createdAt: 1_784_000_004_000,
+  },
+]
 const pump = async (stream: ReadableStream<Uint8Array>) => {
   const decoder = new TextDecoder()
   for await (const chunk of stream) {
@@ -102,9 +131,40 @@ const deps: BridgeDeps = {
   ],
   write: (key, data) => {
     if (key !== KEY) return false
-    return type(data.toString('utf8'))
+    const text = data.toString('utf8')
+    // A chat send arrives as "<prompt>\r"; record both sides so the thread
+    // behaves like a real conversation.
+    if (text.endsWith('\r') && text.length > 1 && !text.includes('\u0003')) {
+      const prompt = text.slice(0, -1)
+      chatLog.push({ kind: 'user', at: now(), text: prompt })
+      chatLog.push({
+        kind: 'assistant',
+        at: now(),
+        text: `Got it — "${prompt}". (scripted harness reply)`,
+      })
+    }
+    return type(text)
   },
   replay: () => scrollback,
+
+  // A scripted conversation so the chat UI can be driven without a live agent.
+  // Every prompt sent from the phone is appended, and the "agent" answers, so
+  // the round trip is real even though the content is canned.
+  messages: (_key, opts) => {
+    const after = Math.max(0, opts.after ?? 0)
+    return { messages: chatLog.slice(after), unsupported: false, total: chatLog.length }
+  },
+  hitl: () => hitlQueue,
+  resolveHitl: (id) => {
+    const before = hitlQueue.length
+    hitlQueue = hitlQueue.filter((h) => h.id !== id)
+    return hitlQueue.length < before
+  },
+  repos: () => [
+    { name: 'TerMinal', path: '/repos/TerMinal' },
+    { name: 'beacon', path: '/repos/beacon' },
+  ],
+  startSession: (input) => ({ key: `phone-${input.cwd.split('/').pop()}` }),
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'gt-bridge-e2e-'))
