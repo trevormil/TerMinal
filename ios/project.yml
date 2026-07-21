@@ -42,6 +42,15 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # IBM Plex, the same pairing the desktop renderer uses. Vendored under
+        # the OFL (see Fonts/LICENSE.txt) because node_modules ships woff only,
+        # which iOS cannot load.
+        UIAppFonts:
+          - IBMPlexSans-Regular.ttf
+          - IBMPlexSans-Medium.ttf
+          - IBMPlexSans-SemiBold.ttf
+          - IBMPlexMono-Regular.ttf
+          - IBMPlexMono-Medium.ttf
         # The bridge is a self-signed HTTPS server on a private address. The
         # client pins its certificate fingerprint (see PinnedTrust.swift), which
         # is strictly stronger than chain validation against a public CA — but

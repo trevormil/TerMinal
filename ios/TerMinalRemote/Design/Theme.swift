@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// TerMinal's design tokens, lifted verbatim from the desktop renderer
 /// (`src/renderer/src/index.css`). The phone should look like the same product,
@@ -41,14 +42,40 @@ enum GT {
         endPoint: .bottomTrailing
     )
 
-    // IBM Plex isn't bundled (only woff ships in node_modules, which iOS can't
-    // load), so the system faces stand in: SF Pro for chrome, SF Mono for
-    // anything that must align or read as code.
+    // IBM Plex — the same pairing the desktop uses: Sans for chrome, Mono for
+    // anything that must align or read as code. Vendored as TTF under the OFL
+    // because node_modules ships woff only, which iOS cannot load.
+    //
+    // Falls back to the system face if a font ever fails to register, so a
+    // packaging mistake degrades instead of rendering nothing.
     static func sans(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight)
+        let name: String
+        switch weight {
+        // PostScript names, NOT filenames — IBM abbreviates them, and a wrong
+        // name here fails silently back to the system face.
+        case .semibold, .bold, .heavy, .black: name = "IBMPlexSans-SmBld"
+        case .medium: name = "IBMPlexSans-Medm"
+        default: name = "IBMPlexSans"
+        }
+        return registered(name) ? .custom(name, size: size) : .system(size: size, weight: weight)
     }
+
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        let name = weight == .regular ? "IBMPlexMono" : "IBMPlexMono-Medm"
+        return registered(name)
+            ? .custom(name, size: size)
+            : .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    /// Every PostScript name this theme asks for. Pinned by a test, because a
+    /// mismatch degrades silently rather than failing.
+    static let fontNames = [
+        "IBMPlexSans", "IBMPlexSans-Medm", "IBMPlexSans-SmBld",
+        "IBMPlexMono", "IBMPlexMono-Medm",
+    ]
+
+    static func registered(_ name: String) -> Bool {
+        UIFont(name: name, size: 12) != nil
     }
 }
 
