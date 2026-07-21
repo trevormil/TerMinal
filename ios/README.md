@@ -70,6 +70,20 @@ xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemote \
 
 All offline — no network, no camera, no simulator entitlements needed.
 
+## Testing without rebuilding the desktop app
+
+`ios/scripts/e2e-bridge.ts` starts the same bridge against a real bash pty and
+prints a scannable QR in the terminal, so you can drive a live shell from the
+phone without touching your installed TerMinal:
+
+```sh
+bun ios/scripts/e2e-bridge.ts     # scan the QR it prints
+bun ios/scripts/e2e-bridge.ts --selftest   # assert the round trip, then exit
+```
+
+It advertises the tailnet address first, then the LAN one, then 127.0.0.1 for
+the Simulator. Port 8791, never 8790, so it can't collide with a real TerMinal.
+
 ## Pairing in the Simulator
 
 The Simulator has no camera, so the scanner reports "No camera available". Use

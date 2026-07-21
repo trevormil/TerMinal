@@ -13,6 +13,7 @@
  * Everything lives in a temp identity dir, so it never disturbs the pairing of
  * a phone already paired with the real app.
  */
+import qrcode from 'qrcode-generator'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -113,17 +114,46 @@ if (!status.listening) {
   process.exit(1)
 }
 
-// 127.0.0.1 so the iOS Simulator (which shares the host network stack) can
-// reach it; the LAN/tailnet addresses follow for a physical device.
+// Real addresses first so a physical phone connects immediately; 127.0.0.1 is
+// appended as a fallback for the Simulator, which shares the host network.
 const payload = pairingPayload({
   port: PORT,
   identity,
   name: 'e2e harness',
-  hosts: ['127.0.0.1', ...pairingPayload({ port: PORT, identity }).h],
+  hosts: [...pairingPayload({ port: PORT, identity }).h, '127.0.0.1'],
 })
 
+/**
+ * Render the pairing payload as a QR in the terminal, so a physical phone can
+ * scan it straight off the screen. Half-blocks pack two module rows per text
+ * row, which keeps a 49-module code inside a normal terminal window.
+ */
+function printQR(text: string): void {
+  const qr = qrcode(0, 'L')
+  qr.addData(text)
+  qr.make()
+  const n = qr.getModuleCount()
+  const quiet = 2
+  const dark = (r: number, c: number) => r >= 0 && r < n && c >= 0 && c < n && qr.isDark(r, c)
+  // Inverted (dark background, light modules) reads reliably in a dark
+  // terminal; scanners handle either polarity.
+  const lines: string[] = []
+  for (let r = -quiet; r < n + quiet; r += 2) {
+    let line = ''
+    for (let c = -quiet; c < n + quiet; c++) {
+      const top = dark(r, c)
+      const bottom = dark(r + 1, c)
+      line += top && bottom ? ' ' : top ? '\u2584' : bottom ? '\u2580' : '\u2588'
+    }
+    lines.push(line)
+  }
+  console.log(lines.join('\n'))
+}
+
 if (!selftest) {
-  console.log('\n=== pairing code (paste into the app) ===')
+  console.log('\n=== scan this with TerMinal Remote ===\n')
+  printQR(JSON.stringify(payload))
+  console.log('\n=== or copy this pairing code ===')
   console.log(JSON.stringify(payload))
   console.log(`\nlistening on https://127.0.0.1:${PORT} — Ctrl-C to stop\n`)
   process.on('SIGINT', async () => {
