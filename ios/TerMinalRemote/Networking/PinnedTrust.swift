@@ -28,11 +28,28 @@ enum PinnedTrust {
 }
 
 /// URLSession delegate that accepts the pinned certificate and nothing else.
-final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
+///
+/// Conforms to BOTH `URLSessionDelegate` and `URLSessionTaskDelegate` on
+/// purpose. `data(for:)` routes its auth challenge to the session-level method,
+/// but `bytes(for:)` — the one the SSE stream uses — consults the TASK-level
+/// method instead. Implementing only the session-level one meant every plain
+/// request authenticated fine while the stream silently failed its TLS
+/// handshake with NSURLErrorServerCertificateUntrusted (-1202), so the bridge
+/// never even saw the request.
+final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let fingerprint: String
 
     init(fingerprint: String) {
         self.fingerprint = fingerprint
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        urlSession(session, didReceive: challenge, completionHandler: completionHandler)
     }
 
     func urlSession(

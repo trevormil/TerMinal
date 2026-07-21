@@ -1,5 +1,11 @@
 import Foundation
+import OSLog
 import SwiftUI
+
+/// Diagnostics for the one thing that can't be reproduced on a Simulator: a
+/// real phone talking to a real Mac. Read with
+/// `xcrun devicectl device console --device <id>`.
+let bridgeLog = Logger(subsystem: "com.trevormil.terminal", category: "bridge")
 
 /// Drives one attached terminal: opens the stream, replays the current screen,
 /// pumps live output into the mirror, and forwards keystrokes back.
@@ -35,12 +41,16 @@ final class SessionViewModel {
 
     func start() {
         guard streamTask == nil else { return }
-        streamTask = Task { [weak self] in
-            guard let self else { return }
+        // Strong self on purpose. With [weak self] the task silently bailed
+        // whenever this model was released — which happened on every list
+        // refresh, so the stream request was never even sent. stop() cancels
+        // the task on disappear, so the retain cycle is bounded.
+        streamTask = Task {
             do {
                 for try await event in client.stream(key: session.key) {
                     await MainActor.run { self.handle(event) }
                 }
+bridgeLog.info("stream ended for \(self.session.key, privacy: .public)")
                 // The stream closed without an explicit exit frame — the Mac
                 // went away rather than the pty finishing.
                 await MainActor.run {
@@ -49,6 +59,7 @@ final class SessionViewModel {
             } catch is CancellationError {
                 // Leaving the screen; nothing to report.
             } catch {
+bridgeLog.error("stream failed: \(error.localizedDescription, privacy: .public)")
                 await MainActor.run {
                     self.state = .failed(error.localizedDescription)
                 }

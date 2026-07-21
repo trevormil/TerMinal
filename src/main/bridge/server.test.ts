@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { createServer, type Server } from 'node:http'
 import {
+  KEEPALIVE_MS,
   bridgeBroadcast,
   bridgeBroadcastExit,
   bridgeSubscribe,
@@ -36,7 +37,11 @@ type Harness = {
 
 const servers: Server[] = []
 
-async function harness(over: Partial<BridgeDeps> = {}, token = TOKEN): Promise<Harness> {
+async function harness(
+  over: Partial<BridgeDeps> = {},
+  token = TOKEN,
+  opts: { keepaliveMs?: number } = {},
+): Promise<Harness> {
   const written: { key: string; data: Buffer }[] = []
   const deps: BridgeDeps = {
     sessions: () => [session()],
@@ -48,7 +53,7 @@ async function harness(over: Partial<BridgeDeps> = {}, token = TOKEN): Promise<H
     replay: () => 'previous screen',
     ...over,
   }
-  const s = createServer(createBridgeHandler(deps, () => token))
+  const s = createServer(createBridgeHandler(deps, () => token, opts))
   servers.push(s)
   await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()))
   const port = (s.address() as { port: number }).port
@@ -280,6 +285,29 @@ describe('GET /v1/sessions/:key/stream', () => {
     const h = await harness()
     const res = await fetch(`${h.url}/v1/sessions/ghost/stream`, { headers: auth })
     expect(res.status).toBe(404)
+  })
+
+  it('keeps an idle stream alive with comment frames', async () => {
+    // Regression: an idle agent emits nothing for minutes. The client's
+    // inactivity timer kills the connection unless the server speaks first, so
+    // a silent stream must still produce traffic.
+    const h = await harness({}, TOKEN, { keepaliveMs: 60 })
+    const res = await fetch(`${h.url}/v1/sessions/sess-1/stream`, { headers: auth })
+    const reader = res.body!.getReader()
+    await reader.read() // hello
+
+    // Nothing is broadcast — the only thing that can arrive is a keepalive.
+    const frame = new TextDecoder().decode((await reader.read()).value)
+    expect(frame).toContain(': keepalive')
+    await reader.cancel()
+  })
+
+  it("keeps the keepalive well inside the client's inactivity budget", () => {
+    // The iOS client allows 60s of silence (BridgeClient.stream sets
+    // timeoutInterval = 60). Raising this constant past that budget silently
+    // breaks every idle session, which is exactly the bug this pins.
+    const CLIENT_INACTIVITY_BUDGET_MS = 60_000
+    expect(KEEPALIVE_MS).toBeLessThanOrEqual(CLIENT_INACTIVITY_BUDGET_MS / 4)
   })
 
   it('requires a token', async () => {

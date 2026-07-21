@@ -108,7 +108,16 @@ const deps: BridgeDeps = {
 
 const dir = mkdtempSync(join(tmpdir(), 'gt-bridge-e2e-'))
 const identity = ensureIdentity(dir)
-const status = await startBridge(deps, { port: PORT, dir })
+const status = await startBridge(deps, {
+  port: PORT,
+  dir,
+  // Show every client request, so a phone that "just spins" can be diagnosed
+  // from this side instead of guessed at.
+  onRequest: selftest
+    ? undefined
+    : (method, path, code) =>
+        console.log(code ? `[req] ${method} ${path} -> ${code}` : `[req] ${method} ${path} …`),
+})
 if (!status.listening) {
   console.error('bridge failed to start:', status.error)
   process.exit(1)

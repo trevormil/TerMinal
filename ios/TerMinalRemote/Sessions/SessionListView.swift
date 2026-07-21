@@ -43,12 +43,11 @@ struct SessionListView: View {
             }
             Section {
                 ForEach(model.sessions) { session in
-                    NavigationLink {
-                        TerminalScreen(
-                            model: SessionViewModel(session: session, client: model.client))
-                    } label: {
-                        row(session)
-                    }
+                    // Value-based navigation on purpose. With the closure form,
+                    // every 4s list refresh rebuilt the destination — and with
+                    // it a fresh SessionViewModel — so the model backing an
+                    // open terminal was released out from under its stream.
+                    NavigationLink(value: session) { row(session) }
                 }
             } header: {
                 Text(model.sessions.isEmpty ? "" : "Live sessions")
@@ -58,6 +57,9 @@ struct SessionListView: View {
                         .font(.system(size: 12))
                 }
             }
+        }
+        .navigationDestination(for: BridgeSession.self) { session in
+            TerminalScreen(model: SessionViewModel(session: session, client: model.client))
         }
         .navigationTitle(model.client.pairing.n)
         .navigationBarTitleDisplayMode(.inline)

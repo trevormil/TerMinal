@@ -92,7 +92,15 @@ export function bridgeBroadcastExit(key: string, code: number | null): void {
 // ---- router ----------------------------------------------------------------
 
 const MAX_BODY = 64 * 1024
-const KEEPALIVE_MS = 15_000
+/**
+ * How often an idle stream emits a comment frame.
+ *
+ * This MUST stay comfortably below the client's inactivity timeout, or an idle
+ * agent session — which emits nothing for minutes — is torn down as if it had
+ * failed. The iOS client allows 60s of silence on a stream
+ * (BridgeClient.stream), so this leaves a 6x margin.
+ */
+export const KEEPALIVE_MS = 10_000
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
@@ -139,8 +147,24 @@ function sseFrame(event: string, data: string): string {
 export function createBridgeHandler(
   deps: BridgeDeps,
   getToken: () => string,
+  opts: {
+    keepaliveMs?: number
+    onRequest?: (method: string, path: string, status: number) => void
+  } = {},
 ): (req: IncomingMessage, res: ServerResponse) => void {
+  const keepaliveMs = opts.keepaliveMs ?? KEEPALIVE_MS
   return (req, res) => {
+    // Access hook — used by the e2e harness to show what a client actually
+    // asked for. Never wired up by the app itself (no silent narration).
+    if (opts.onRequest) {
+      const method = req.method || '?'
+      const path = req.url || '/'
+      // Logged on ARRIVAL, not on close. A stream stays open for the life of
+      // the session, so close-time logging hides exactly the request you most
+      // want to see. Status is 0 until the handler sets it.
+      opts.onRequest(method, path, 0)
+      res.on('close', () => opts.onRequest!(method, path, res.statusCode))
+    }
     const url = new URL(req.url || '/', 'http://bridge.invalid')
     const parts = url.pathname.split('/').filter(Boolean)
 
@@ -171,7 +195,7 @@ export function createBridgeHandler(
         return
       }
       if (req.method === 'GET' && parts[3] === 'stream') {
-        streamSession(deps, session, req, res)
+        streamSession(deps, session, req, res, keepaliveMs)
         return
       }
       if (req.method === 'POST' && parts[3] === 'input') {
@@ -203,6 +227,7 @@ function streamSession(
   session: BridgeSession,
   req: IncomingMessage,
   res: ServerResponse,
+  keepaliveMs: number,
 ): void {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
@@ -231,11 +256,11 @@ function streamSession(
       res.end()
     }
   })
-  // Idle agent sessions emit nothing for minutes; without this the OS or an
-  // intermediary quietly drops the connection and the phone looks frozen.
+  // Idle agent sessions emit nothing for minutes; without this the client's
+  // inactivity timer fires and the phone reports a dead connection.
   const keepalive = setInterval(() => {
     if (!res.writableEnded) res.write(': keepalive\n\n')
-  }, KEEPALIVE_MS)
+  }, keepaliveMs)
 
   let done = false
   function cleanup(): void {
@@ -270,7 +295,11 @@ export function bridgeIdentity(): BridgeIdentity | null {
 
 export async function startBridge(
   deps: BridgeDeps,
-  opts: { port?: number; dir?: string } = {},
+  opts: {
+    port?: number
+    dir?: string
+    onRequest?: (method: string, path: string, status: number) => void
+  } = {},
 ): Promise<BridgeStatus> {
   await stopBridge()
   const port = opts.port || DEFAULT_BRIDGE_PORT
@@ -280,7 +309,9 @@ export async function startBridge(
     status = { listening: false, port, error: `pairing setup failed: ${(e as Error).message}` }
     return bridgeStatus()
   }
-  const handler = createBridgeHandler(deps, () => identity?.token || '')
+  const handler = createBridgeHandler(deps, () => identity?.token || '', {
+    onRequest: opts.onRequest,
+  })
   return new Promise((resolve) => {
     const s = createHttpsServer({ cert: identity!.certPem, key: identity!.keyPem }, handler)
     s.on('error', (e: Error) => {

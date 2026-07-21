@@ -1,7 +1,7 @@
 import Foundation
 
 /// A live pty on the Mac, as the bridge reports it.
-struct BridgeSession: Codable, Identifiable, Equatable {
+struct BridgeSession: Codable, Identifiable, Hashable {
     let key: String
     let sessionId: String
     let name: String
@@ -51,6 +51,8 @@ final class BridgeClient {
         self.pairing = pairing
         self.delegate = PinnedSessionDelegate(fingerprint: pairing.fp)
         let config = URLSessionConfiguration.ephemeral
+        // Applies to the gap BETWEEN packets, not the whole request. Fine for
+        // the small JSON calls; the stream raises it (see `stream`).
         config.timeoutIntervalForRequest = 10
         // An SSE stream is open indefinitely; without this the OS tears it down
         // mid-session and the terminal appears to freeze.
@@ -116,12 +118,32 @@ final class BridgeClient {
             let task = Task {
                 do {
                     guard let host = await resolveHost() else { throw BridgeError.unreachable }
-                    let (bytes, response) = try await session.bytes(
-                        for: request("v1/sessions/\(key)/stream", host: host))
+                    var req = request("v1/sessions/\(key)/stream", host: host)
+                    // An idle agent emits nothing for minutes, and this timeout
+                    // measures the gap between packets — at the default 10s the
+                    // stream is killed before the server's 10s keepalive lands,
+                    // so every quiet session looked like a dead connection.
+                    // 6x the keepalive interval leaves room for a missed one.
+                    req.timeoutInterval = 60
+                    let (bytes, response) = try await session.bytes(for: req)
                     try Self.check(response)
 
+                    // Hand-rolled line splitting, NOT `bytes.lines`.
+                    // AsyncLineSequence drops empty lines, and an empty line is
+                    // exactly how SSE terminates a frame — so with `.lines` the
+                    // parser never sees a frame end and no event is ever
+                    // emitted, even though the connection is healthy and data
+                    // is flowing. That produced a permanent "connecting" spinner.
                     var parser = SSEParser()
-                    for try await line in bytes.lines {
+                    var buffer: [UInt8] = []
+                    for try await byte in bytes {
+                        guard byte == 0x0A else {
+                            buffer.append(byte)
+                            continue
+                        }
+                        if buffer.last == 0x0D { buffer.removeLast() }
+                        let line = String(decoding: buffer, as: UTF8.self)
+                        buffer.removeAll(keepingCapacity: true)
                         guard let frame = parser.push(line),
                               let event = TerminalEvent.from(frame)
                         else { continue }
