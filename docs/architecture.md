@@ -37,6 +37,34 @@ Each `SessionView` mounts:
   active, so backgrounded sessions don't poll).
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
 
+## Mobile bridge (TerMinal Remote for iOS)
+
+`src/main/bridge/` serves the live ptys to a paired iPhone. It is a **second
+transport over the same sessions**, never a parallel session store: the pump in
+`startSession` fans `proc.onData` out to three consumers — the renderer
+(`pty:data`), the session log (`appendSessionRunLog`), and `bridgeBroadcast`,
+which is a Map miss when no phone is attached.
+
+- **Off by default.** Nothing binds a port until `settings.bridge.enabled`;
+  `will-quit` releases it.
+- **HTTPS, self-signed, pinned.** The pairing QR carries base64 SHA-256 of the
+  DER certificate and the client accepts only that one. Token, cert and key
+  live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
+  whose `safeStorage` sealing drops secrets outright when OS encryption is
+  unavailable — which would silently unpair a phone in dev builds.
+- **Three routes**, all bearer-authenticated except `/v1/health`:
+  `GET /v1/sessions`, `GET /v1/sessions/:key/stream` (SSE), and
+  `POST /v1/sessions/:key/input`. Terminals only — an attached agent answers
+  questions about tickets and PRs itself.
+- **Replay on attach** tails the existing session log, so the bridge holds no
+  scrollback of its own.
+- **Geometry is mirrored, never driven.** The phone renders at the desktop's
+  cols×rows; resizing the pty would rewrap the human's own screen.
+
+The client lives at [`ios/`](../ios/README.md). Design record:
+[ADR-0006](decisions/0006-mobile-terminal-bridge.md); shipping path:
+[runbooks/ios-testflight.md](runbooks/ios-testflight.md).
+
 ## Plugins & tabs (auto-discovery)
 
 Both are "just a folder" discovered with Vite `import.meta.glob`:

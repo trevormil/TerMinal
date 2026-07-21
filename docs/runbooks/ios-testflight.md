@@ -1,0 +1,98 @@
+# Runbook — TerMinal Remote to internal TestFlight
+
+The repo side is done: XcodeGen project, icon, privacy manifest, store-ready
+Info.plist, tests, archive scheme, and an upload script. Below is the human-only
+path. Internal TestFlight needs **no App Review**, so a build is testable as
+soon as Apple finishes processing it (~15–60 min).
+
+Design rationale for the bridge lives in
+[`docs/decisions/0006-mobile-terminal-bridge.md`](../decisions/0006-mobile-terminal-bridge.md).
+
+## Prerequisites (once)
+
+- Apple Developer Program membership on the account that owns the app.
+  Already true — team `8UWQ486J94`, set in `ios/project.yml`.
+- Xcode signed in to that account (Settings → Accounts).
+- `brew install xcodegen`.
+- App Store Connect API key at
+  `~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8`. Already present.
+
+> **The key's role must be Admin.** App Manager can upload builds but *cannot*
+> create the cloud-managed distribution certificate, so the first export fails
+> with a misleading `No profiles for 'com.trevormil.terminal' were found`. The
+> real cause only appears in `IDEDistributionProvisioning.log` (path is printed
+> in the failure output): Apple returns `403 FORBIDDEN_ERROR — you haven't been
+> given access to cloud-managed distribution certificates`. A key's role cannot
+> be edited; revoke it and issue a new one.
+
+## 1. App Store Connect record (once)
+
+appstoreconnect.apple.com → Apps → **+ New App**:
+
+- Platform **iOS**, Name **TerMinal Remote**
+- Primary language English (U.S.)
+- Bundle ID `com.trevormil.terminal` — register it under Certificates →
+  Identifiers if it is not offered in the dropdown
+- SKU `terminal-remote-ios`, Full access
+
+Then TestFlight → **Internal Testing** → new group → add yourself. Internal
+testers see builds as soon as processing completes.
+
+## 2. Verify before uploading
+
+```sh
+cd ios
+xcodegen generate
+xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemote \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test    # must be green
+```
+
+Worth running the live check too — it exercises pinning and auth against a real
+bridge, which the offline tests cannot:
+
+```sh
+cd ios && ./scripts/e2e-app.sh
+```
+
+## 3. Archive + upload
+
+```sh
+cd ios
+cp .testflight.env.example .testflight.env   # once: ASC_KEY_ID + ASC_ISSUER_ID
+./scripts/testflight.sh --bump               # tests → archive → upload
+```
+
+`--bump` increments `CURRENT_PROJECT_VERSION` first (build numbers must
+strictly increase per upload); `--dry-run` stops after export. Team ID is read
+from `project.yml`, so that file is the single source of truth.
+
+## 4. Export compliance
+
+`ITSAppUsesNonExemptEncryption` is `false` in the Info.plist. That is correct
+here: the app uses only standard TLS from the OS. No questionnaire appears.
+
+## 5. Install and smoke-test on device
+
+1. Accept the TestFlight invite, install the build.
+2. On the Mac: **TerMinal → Settings → Mobile**, toggle the bridge on.
+3. Phone and Mac on the same Wi-Fi (or both on the tailnet).
+4. Scan the QR.
+5. Walk the checklist:
+   - Session list shows every live terminal with the right repo and branch.
+   - Opening one lands on the current screen, in colour, correctly wrapped.
+   - Typing a prompt reaches the agent and the reply streams back.
+   - `^C` from the key bar interrupts it.
+   - **The Mac's terminal never reflows or resizes.**
+   - Quitting the session on the Mac shows "Session ended" on the phone.
+   - Toggling the bridge off drops the phone cleanly.
+   - "Rotate token" forces a re-pair.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Phone can't reach the Mac | Bridge toggle off, Mac asleep, or different network. Settings → Mobile lists the addresses it is reachable at. |
+| "This device is no longer paired" | Token was rotated, or the config dir was wiped. Re-scan. |
+| Connects, then immediately drops | Certificate changed (bridge identity regenerated). Re-scan — pinning is working as intended. |
+| Nothing in the session list | No live sessions on the Mac. Start one in TerMinal. |
+| Bridge won't start, "port in use" | Something else holds the port. Change it in Settings → Mobile. |
