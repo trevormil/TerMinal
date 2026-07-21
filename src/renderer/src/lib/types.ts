@@ -1103,6 +1103,14 @@ export type BridgeStatus = {
   port: number
   error?: string
 }
+// Push readiness for the Settings pane. `configured` flips once an APNs key
+// has been dropped next to the bridge identity.
+export type BridgePushStatus = {
+  configured: boolean
+  devices: number
+  config: string
+  key: string
+}
 export type BridgePairing = {
   v: 1
   n: string // Mac display name
@@ -1716,6 +1724,7 @@ export type GtApi = {
   bridge: {
     status: () => Promise<BridgeStatus>
     pairing: () => Promise<BridgePairing>
+    pushStatus: () => Promise<BridgePushStatus>
     rotateToken: () => Promise<BridgePairing>
   }
   listeners: {

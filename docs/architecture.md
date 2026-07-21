@@ -52,18 +52,28 @@ which is a Map miss when no phone is attached.
   live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
   whose `safeStorage` sealing drops secrets outright when OS encryption is
   unavailable — which would silently unpair a phone in dev builds.
-- **Three routes**, all bearer-authenticated except `/v1/health`:
-  `GET /v1/sessions`, `GET /v1/sessions/:key/stream` (SSE), and
-  `POST /v1/sessions/:key/input`. Terminals only — an attached agent answers
-  questions about tickets and PRs itself.
+- **Two surfaces over the same sessions.** Terminal: `GET /v1/sessions`,
+  `GET /v1/sessions/:key/stream` (SSE), `POST /v1/sessions/:key/input`. Chat:
+  `GET /v1/chats`, `GET /v1/chats/:key/messages`, `POST /v1/chats/:key/send`,
+  `POST /v1/chats/:key/interrupt`, plus `/v1/hitl`, `/v1/repos`,
+  `POST /v1/sessions` (start one) and `POST /v1/devices` (push token). All
+  bearer-authenticated except `/v1/health`. Tickets and PRs still get no
+  endpoints — ask the agent.
+- **`src/main/chat/messages.ts` normalizes transcripts** (claude + codex JSONL)
+  into one `ChatMessage` shape. It is the only place engine-specific parsing
+  lives; an engine with no adapter reports `unsupported`.
+- **Push is an alert channel.** `createPushChannel` sits alongside
+  telegram/desktop/webhook in `dispatchAlert`, and `src/main/bridge/push.ts`
+  signs an ES256 JWT and posts to APNs directly from this Mac.
 - **Replay on attach** tails the existing session log, so the bridge holds no
   scrollback of its own.
 - **Geometry is mirrored, never driven.** The phone renders at the desktop's
   cols×rows; resizing the pty would rewrap the human's own screen.
 
-The client lives at [`ios/`](../ios/README.md). Design record:
-[ADR-0006](decisions/0006-mobile-terminal-bridge.md); shipping path:
-[runbooks/ios-testflight.md](runbooks/ios-testflight.md).
+The client lives at [`ios/`](../ios/README.md). Design records:
+[ADR-0006](decisions/0006-mobile-terminal-bridge.md) (transport) and
+[ADR-0007](decisions/0007-chat-first-mobile-client.md) (chat surface); shipping
+path: [runbooks/ios-testflight.md](runbooks/ios-testflight.md).
 
 ## Plugins & tabs (auto-discovery)
 

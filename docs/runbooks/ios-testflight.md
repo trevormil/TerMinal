@@ -71,6 +71,34 @@ from `project.yml`, so that file is the single source of truth.
 `ITSAppUsesNonExemptEncryption` is `false` in the Info.plist. That is correct
 here: the app uses only standard TLS from the OS. No questionnaire appears.
 
+## 4b. Push notifications (optional, once)
+
+Push is what makes the app genuinely AFK: alerts that reach Telegram reach the
+phone too, and tapping one opens that session's thread. The Mac talks to Apple
+directly — there is no relay and nothing to pay for.
+
+APNs auth keys cannot be minted through any API, so this step is manual:
+
+1. developer.apple.com → Certificates, Identifiers & Profiles → **Keys** → **+**
+2. Name it (e.g. "TerMinal Remote push"), tick **Apple Push Notifications
+   service (APNs)**, Continue → Register.
+3. Download `AuthKey_<KEYID>.p8`. **It downloads exactly once.**
+4. File it:
+   ```sh
+   cd ios && ./scripts/setup-push.sh ~/Downloads/AuthKey_<KEYID>.p8
+   ```
+   That copies the key to `~/.config/TerMinal/bridge/apns.p8` (0600) and writes
+   `apns.json` with the key id plus the team and bundle ids read from
+   `project.yml`.
+5. Restart TerMinal, then open the app on the phone once so it registers its
+   device token. **Settings → Mobile** then shows the device count.
+
+The environment matters: a Debug build registers against APNs **sandbox**, a
+TestFlight build against **production**. Both are recorded per device, so the
+same Mac can serve a dev build and a TestFlight build at once. A mismatch is a
+silent non-delivery, not an error — if pushes vanish after moving to TestFlight,
+this is the first thing to check.
+
 ## 5. Install and smoke-test on device
 
 1. Accept the TestFlight invite, install the build.
@@ -86,6 +114,13 @@ here: the app uses only standard TLS from the OS. No questionnaire appears.
    - Quitting the session on the Mac shows "Session ended" on the phone.
    - Toggling the bridge off drops the phone cleanly.
    - "Rotate token" forces a re-pair.
+6. Chat surface:
+   - Threads list every live session, with "your turn" when the agent is idle.
+   - A finished session appears under **Recent**, read-only.
+   - Sending a prompt reaches the agent; the stop button interrupts it.
+   - A HITL item appears in **Needs you** and resolving it unblocks the agent.
+   - With push configured: lock the phone, let an agent finish a turn, and the
+     notification should arrive and open that thread.
 
 ## Troubleshooting
 

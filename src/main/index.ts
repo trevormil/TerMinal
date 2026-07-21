@@ -273,6 +273,7 @@ import {
   readCronRuns,
   readCronRunLog,
   readSessionRunLog,
+  readSessionRuns,
   listAllRuns,
   runTrends,
   sweepStaleCronRuns,
@@ -288,7 +289,8 @@ import {
   type BridgeSession,
 } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
-import { sessionMessages, type ChatEngine } from './chat/messages'
+import { chatSupportsEngine, sessionMessages, type ChatEngine } from './chat/messages'
+import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
@@ -1137,6 +1139,8 @@ ipcMain.handle('fleet:list', () => fleetSnapshot())
 // parallel session store. Terminals only: a phone attached to a live agent can
 // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
 const MAX_REPLAY_BYTES = 256 * 1024
+/** How many finished sessions stay browsable in the chat list. */
+const HISTORY_THREADS = 25
 
 const bridgeDeps: BridgeDeps = {
   sessions: () =>
@@ -1177,9 +1181,52 @@ const bridgeDeps: BridgeDeps = {
   // The phone's primary view. Same sessions, rendered as a conversation from
   // the engine's own transcript rather than from pty bytes.
   messages: (key, opts) => {
+    // `past:<sessionId>` addresses a finished session, whose engine comes from
+    // its run record rather than a live pty.
+    if (key.startsWith('past:')) {
+      const sessionId = key.slice('past:'.length)
+      const run = readSessionRuns(200).find((r) => r.sessionId === sessionId)
+      if (!run) return { messages: [], unsupported: false, total: 0 }
+      return sessionMessages(sessionId, (run.engine || 'claude') as ChatEngine, opts)
+    }
     const pinned = sessions.get(key)?.pinned
     if (!pinned?.sessionId) return { messages: [], unsupported: false, total: 0 }
     return sessionMessages(pinned.sessionId, (pinned.engine || 'claude') as ChatEngine, opts)
+  },
+  // Live sessions first, then recently finished ones. Past threads need no
+  // storage of their own: the engine's transcript is still on disk, so
+  // sessionMessages can read it long after the pty is gone.
+  threads: () => {
+    const live = bridgeDeps.sessions().map((s) => ({
+      key: s.key,
+      name: s.name,
+      repo: s.repo,
+      branch: s.branch,
+      engine: s.engine,
+      status: s.status,
+      needsInput: s.status !== 'working',
+      live: true,
+      chat: chatSupportsEngine((s.engine || 'claude') as ChatEngine),
+    }))
+    const liveSessionIds = new Set(
+      [...sessions.values()].map((s) => s.pinned.sessionId).filter(Boolean),
+    )
+    const past = readSessionRuns(60)
+      .filter((r) => r.status !== 'running' && r.sessionId && !liveSessionIds.has(r.sessionId))
+      .slice(0, HISTORY_THREADS)
+      .map((r) => ({
+        key: `past:${r.sessionId}`,
+        name: r.agentTitle || r.repoLabel || 'session',
+        repo: r.repoLabel || '',
+        branch: r.branch || '',
+        engine: r.engine || '',
+        status: r.status,
+        needsInput: false,
+        live: false,
+        chat: chatSupportsEngine((r.engine || 'claude') as ChatEngine),
+        endedAt: r.endedAt,
+      }))
+    return [...live, ...past]
   },
   hitl: () =>
     readHitl()
@@ -1197,6 +1244,14 @@ const bridgeDeps: BridgeDeps = {
       })),
   // Routes through the app's own resolve path — never a parallel write.
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
+  registerDevice: (token, environment) => {
+    registerDevice(token, environment)
+    emitActivity({
+      kind: 'info',
+      title: 'Phone registered for notifications',
+      detail: `${environment} · alerts will now reach TerMinal Remote`,
+    })
+  },
   repos: () => {
     const base = resolvedProjectsDir()
     try {
@@ -1264,6 +1319,7 @@ ipcMain.handle('bridge:pairing', () => {
   const identity = ensureIdentity()
   return pairingPayload({ port: cfg.port, identity })
 })
+ipcMain.handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
 ipcMain.handle('bridge:rotate-token', () => {
   const cfg = readSettings().bridge
   const identity = rotateToken()

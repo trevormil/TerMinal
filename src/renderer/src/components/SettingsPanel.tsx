@@ -60,6 +60,7 @@ import type {
   AlertChannelId,
   UpdateCheckResult,
   BridgePairing,
+  BridgePushStatus,
   BridgeStatus,
 } from '../lib/types'
 import qrcode from 'qrcode-generator'
@@ -201,13 +202,19 @@ function MobileSection({
 }) {
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [pairing, setPairing] = useState<BridgePairing | null>(null)
+  const [push, setPush] = useState<BridgePushStatus | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const refresh = () => {
     void window.gt.bridge.status().then(setStatus)
-    if (cfg.enabled) void window.gt.bridge.pairing().then(setPairing)
-    else setPairing(null)
+    if (cfg.enabled) {
+      void window.gt.bridge.pairing().then(setPairing)
+      void window.gt.bridge.pushStatus().then(setPush)
+    } else {
+      setPairing(null)
+      setPush(null)
+    }
   }
   // Poll while enabled: a bind failure (port already taken) surfaces
   // asynchronously and would otherwise leave the pane claiming success.
@@ -324,6 +331,32 @@ function MobileSection({
                 disconnects every paired device.
               </div>
             </div>
+          </div>
+        )}
+
+        {cfg.enabled && push && (
+          <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-zinc-300">Push notifications</span>
+              <span
+                className={`text-[10.5px] ${push.configured ? 'text-[var(--gt-green)]' : 'text-zinc-500'}`}
+              >
+                {push.configured
+                  ? `${push.devices} device${push.devices === 1 ? '' : 's'} registered`
+                  : 'not configured'}
+              </span>
+            </div>
+            <div className="mt-1 text-[10.5px] leading-relaxed text-zinc-600">
+              {push.configured
+                ? 'Alerts that reach Telegram also reach a paired iPhone.'
+                : 'Create an APNs key in the Apple developer portal, then drop it next to the bridge identity.'}
+            </div>
+            {!push.configured && (
+              <div className="mt-1.5 space-y-0.5 font-mono text-[10px] text-zinc-500">
+                <div>{push.key}</div>
+                <div>{push.config}</div>
+              </div>
+            )}
           </div>
         )}
 

@@ -75,6 +75,14 @@ const chatLog: ChatMessage[] = [
     text: '844 pass, 0 fail. Anything you want me to pick up next?',
   },
 ]
+const historyLog: ChatMessage[] = [
+  { kind: 'user', at: 1_783_899_000_000, text: 'review the open PRs overnight' },
+  {
+    kind: 'assistant',
+    at: 1_783_899_500_000,
+    text: 'Reviewed 3 PRs. #117 is merge-ready; #118 needs a rebase.',
+  },
+]
 let hitlQueue = [
   {
     id: 'h1',
@@ -150,10 +158,37 @@ const deps: BridgeDeps = {
   // A scripted conversation so the chat UI can be driven without a live agent.
   // Every prompt sent from the phone is appended, and the "agent" answers, so
   // the round trip is real even though the content is canned.
-  messages: (_key, opts) => {
+  messages: (key, opts) => {
+    const log = key.startsWith('past:') ? historyLog : chatLog
     const after = Math.max(0, opts.after ?? 0)
-    return { messages: chatLog.slice(after), unsupported: false, total: chatLog.length }
+    return { messages: log.slice(after), unsupported: false, total: log.length }
   },
+  // One live thread plus a finished one, so history renders in the harness too.
+  threads: () => [
+    {
+      key: KEY,
+      name: 'harness session',
+      repo: 'TerMinal',
+      branch: 'feat/ios-remote-terminal',
+      engine: 'codex',
+      status: 'idle',
+      needsInput: true,
+      live: true,
+      chat: true,
+    },
+    {
+      key: 'past:harness-history',
+      name: 'overnight review',
+      repo: 'TerMinal',
+      branch: 'main',
+      engine: 'claude',
+      status: 'done',
+      needsInput: false,
+      live: false,
+      chat: true,
+      endedAt: 1_783_900_000_000,
+    },
+  ],
   hitl: () => hitlQueue,
   resolveHitl: (id) => {
     const before = hitlQueue.length

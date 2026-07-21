@@ -204,6 +204,11 @@ final class BridgeClient {
         try await post("v1/hitl/\(id)", body: ["resolved": resolved])
     }
 
+    /// Hand this device's APNs token to the Mac so alerts can reach it.
+    func registerDevice(token: String, environment: String) async throws {
+        try await post("v1/devices", body: ["token": token, "environment": environment])
+    }
+
     func repos() async throws -> [RepoOption] {
         struct Envelope: Decodable { let repos: [RepoOption] }
         return try JSONDecoder().decode(Envelope.self, from: try await get("v1/repos")).repos

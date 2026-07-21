@@ -4,9 +4,10 @@ A native SwiftUI client (iOS 17+) that mirrors and drives the live terminal
 sessions running in TerMinal on your Mac. Point it at the Mac, pick a session,
 watch the agent work, and type back.
 
-**Terminals only, on purpose.** Once you can talk to a live Claude Code / Codex
-session from your phone, you can ask *it* about tickets, PRs, and CI. The app
-has no bespoke screens for those, and the bridge has no endpoints for them.
+**Chat first, terminal underneath.** The home screen is one conversation per
+session — the Telegram AFK experience, except per-session and in the app where
+you can act. The mirrored terminal is one tap away for anything the chat cannot
+express. There are still no bespoke screens for tickets or PRs: ask the agent.
 
 ## How it connects
 
@@ -34,7 +35,11 @@ the human is looking at on the desktop.
 
 ```
 TerMinalRemote/
-  App/          TerMinalRemoteApp + RootView (paired ? sessions : pairing)
+  App/          TerMinalRemoteApp + RootView (paired ? chats : pairing),
+                PushRegistrar (APNs token → the Mac)
+  Chat/         ChatListView (threads + HITL queue), ChatThreadView,
+                NewSessionSheet, ChatModels
+  Design/       Theme.swift — TerMinal's tokens, ported from index.css
   Pairing/      PairingPayload (validated QR contents), PairingStore (Keychain),
                 PairingView (scan or paste), QRScannerView (AVFoundation)
   Networking/   BridgeClient (async/await, host racing), PinnedTrust

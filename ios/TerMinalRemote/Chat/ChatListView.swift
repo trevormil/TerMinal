@@ -26,6 +26,9 @@ final class ChatListViewModel {
         }
     }
 
+    var live: [ChatThread] { threads.filter(\.live) }
+    var past: [ChatThread] { threads.filter { !$0.live } }
+
     @MainActor
     func resolve(_ item: HitlItem, approved: Bool) async {
         // Optimistic: the queue should feel instant, and the next poll
@@ -41,6 +44,7 @@ struct ChatListView: View {
     @State var model: ChatListViewModel
     let onUnpair: () -> Void
     @State private var startingNew = false
+    @State private var opened: ChatThread?
 
     var body: some View {
         ZStack {
@@ -64,17 +68,26 @@ struct ChatListView: View {
                         }
                     }
 
-                    section("Sessions", count: model.threads.count, tint: GT.textFaint)
-                    if model.threads.isEmpty && !model.loading {
+                    section("Sessions", count: model.live.count, tint: GT.textFaint)
+                    if model.live.isEmpty && !model.loading {
                         GTPanel {
                             Text("No sessions running. Start one below, or from TerMinal on your Mac.")
                                 .font(GT.sans(12))
                                 .foregroundStyle(GT.textMuted)
                         }
                     }
-                    ForEach(model.threads) { thread in
+                    ForEach(model.live) { thread in
                         NavigationLink(value: thread) { ThreadRow(thread: thread) }
                             .buttonStyle(.plain)
+                    }
+
+                    if !model.past.isEmpty {
+                        section("Recent", count: model.past.count, tint: GT.textFaint)
+                            .padding(.top, 6)
+                        ForEach(model.past) { thread in
+                            NavigationLink(value: thread) { ThreadRow(thread: thread) }
+                                .buttonStyle(.plain)
+                        }
                     }
 
                     Button { startingNew = true } label: {
@@ -89,6 +102,11 @@ struct ChatListView: View {
                 }
                 .padding(14)
             }
+        }
+        // A tapped notification names a thread; open it once the list knows
+        // about it, then clear so it doesn't re-open on every refresh.
+        .navigationDestination(item: $opened) { thread in
+            ChatThreadView(model: ChatThreadViewModel(thread: thread, client: model.client))
         }
         .navigationDestination(for: ChatThread.self) { thread in
             ChatThreadView(
@@ -108,8 +126,10 @@ struct ChatListView: View {
             while !Task.isCancelled {
                 await model.refresh()
                 try? await Task.sleep(for: .seconds(4))
+                openPendingThreadIfAny()
             }
         }
+        .onAppear { openPendingThreadIfAny() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -119,6 +139,14 @@ struct ChatListView: View {
                 }
             }
         }
+    }
+
+    private func openPendingThreadIfAny() {
+        guard let key = PushRegistrar.shared.pendingThreadKey,
+            let thread = model.threads.first(where: { $0.key == key })
+        else { return }
+        PushRegistrar.shared.pendingThreadKey = nil
+        opened = thread
     }
 
     private func section(_ title: String, count: Int, tint: Color) -> some View {
@@ -156,7 +184,11 @@ private struct ThreadRow: View {
                     .lineLimit(1)
                 }
                 Spacer(minLength: 6)
-                if thread.needsInput {
+                if !thread.live {
+                    Text(thread.status)
+                        .font(GT.sans(10))
+                        .foregroundStyle(GT.textFaint)
+                } else if thread.needsInput {
                     Text("your turn")
                         .font(GT.sans(10, .semibold))
                         .foregroundStyle(GT.accent2)

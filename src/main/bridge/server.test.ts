@@ -490,6 +490,49 @@ describe('chat surface', () => {
     expect(res.status).toBe(400)
   })
 
+  it('serves a finished session read-only', async () => {
+    // History needs no storage of its own — the transcript is still on disk —
+    // but a dead pty has nowhere to put a keystroke.
+    const h = await harness({
+      ...chatDeps(),
+      threads: () => [
+        {
+          key: 'past:abc',
+          name: 'overnight run',
+          repo: 'TerMinal',
+          branch: 'main',
+          engine: 'claude',
+          status: 'done',
+          needsInput: false,
+          live: false,
+          chat: true,
+          endedAt: 999,
+        },
+      ],
+    })
+    expect((await fetch(`${h.url}/v1/chats/past:abc/messages`, { headers: auth })).status).toBe(200)
+
+    const send = await fetch(`${h.url}/v1/chats/past:abc/send`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ text: 'hello?' }),
+    })
+    expect(send.status).toBe(409)
+    const stop = await fetch(`${h.url}/v1/chats/past:abc/interrupt`, {
+      method: 'POST',
+      headers: auth,
+    })
+    expect(stop.status).toBe(409)
+    expect(h.written).toHaveLength(0)
+  })
+
+  it('falls back to live sessions when no thread source is provided', async () => {
+    const h = await harness({ ...chatDeps(), threads: undefined })
+    const body = await (await fetch(`${h.url}/v1/chats`, { headers: auth })).json()
+    expect(body.threads[0].key).toBe('sess-1')
+    expect(body.threads[0].live).toBe(true)
+  })
+
   it('requires a token on every chat route', async () => {
     const h = await harness(chatDeps())
     for (const [path, init] of [

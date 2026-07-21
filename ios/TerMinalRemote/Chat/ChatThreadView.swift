@@ -84,7 +84,11 @@ struct ChatThreadView: View {
             GT.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 transcript
-                composer
+                if model.thread.live {
+                    composer
+                } else {
+                    endedBanner
+                }
             }
         }
         .navigationTitle(model.thread.name)
@@ -148,6 +152,21 @@ struct ChatThreadView: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
+    }
+
+    /// A finished session is a transcript. Say so rather than showing a
+    /// composer whose messages would go nowhere.
+    private var endedBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 11))
+            Text("Session ended · \(model.thread.status)")
+                .font(GT.sans(12))
+        }
+        .foregroundStyle(GT.textFaint)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(GT.panel)
     }
 
     private var composer: some View {

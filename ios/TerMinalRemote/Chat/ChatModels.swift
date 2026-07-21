@@ -86,8 +86,11 @@ struct ChatThread: Codable, Identifiable, Hashable {
     let status: String
     /// The agent finished its turn and is waiting on a human.
     let needsInput: Bool
+    /// False for a finished session: read-only transcript, no composer.
+    let live: Bool
     /// False when this engine has no transcript adapter — offer the terminal.
     let chat: Bool
+    let endedAt: Double?
 
     var id: String { key }
 }

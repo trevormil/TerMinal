@@ -44,6 +44,27 @@ export type BridgeHitl = {
 
 export type BridgeRepo = { name: string; path: string }
 
+/**
+ * A chat thread. Live threads are backed by a running pty; past ones are
+ * finished sessions whose transcript is still on disk, so scrolling back
+ * through what an agent did overnight needs no extra storage.
+ */
+export type BridgeThread = {
+  key: string
+  name: string
+  repo: string
+  branch: string
+  engine: string
+  status: string
+  /** The agent finished its turn and is waiting on a human. */
+  needsInput: boolean
+  /** False for a finished session: read-only, no composer. */
+  live: boolean
+  /** False when this engine has no transcript adapter. */
+  chat: boolean
+  endedAt?: number
+}
+
 export type StartSessionInput = { cwd: string; engine?: string; name?: string }
 
 export type BridgeDeps = {
@@ -60,6 +81,10 @@ export type BridgeDeps = {
   hitl?(): BridgeHitl[]
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
+  /** Chat threads: live sessions plus recent finished ones. */
+  threads?(): BridgeThread[]
+  /** Remember a phone's APNs token so alerts can reach it. */
+  registerDevice?(token: string, environment: 'sandbox' | 'production'): void
   /** Repos the phone may start a session in. */
   repos?(): BridgeRepo[]
   /** Start a session on the Mac. */
@@ -168,6 +193,25 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
+/**
+ * Threads for the chat list. Falls back to deriving them from live sessions so
+ * a deps implementation that only cares about terminals still works.
+ */
+function threadList(deps: BridgeDeps): BridgeThread[] {
+  if (deps.threads) return deps.threads()
+  return deps.sessions().map((s) => ({
+    key: s.key,
+    name: s.name,
+    repo: s.repo,
+    branch: s.branch,
+    engine: s.engine,
+    status: s.status,
+    needsInput: s.status !== 'working',
+    live: true,
+    chat: !!deps.messages,
+  }))
+}
+
 function sseFrame(event: string, data: string): string {
   return `event: ${event}\ndata: ${data}\n\n`
 }
@@ -223,18 +267,7 @@ export function createBridgeHandler(
     // routes render the SAME sessions as a conversation instead of a screen.
 
     if (req.method === 'GET' && url.pathname === '/v1/chats') {
-      const threads = deps.sessions().map((s) => ({
-        key: s.key,
-        name: s.name,
-        repo: s.repo,
-        branch: s.branch,
-        engine: s.engine,
-        status: s.status,
-        // 'idle' means the agent finished its turn and is waiting on a human.
-        needsInput: s.status !== 'working',
-        chat: !!deps.messages,
-      }))
-      json(res, 200, { threads, hitl: deps.hitl?.() ?? [] })
+      json(res, 200, { threads: threadList(deps), hitl: deps.hitl?.() ?? [] })
       return
     }
 
@@ -260,6 +293,31 @@ export function createBridgeHandler(
           }
           const ok = deps.resolveHitl!(id, resolved)
           json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such item' })
+        })
+        .catch((e: Error) => json(res, 413, { error: e.message }))
+      return
+    }
+
+    // The phone hands over its APNs device token here, on the already
+    // authenticated bridge — no separate enrolment channel.
+    if (req.method === 'POST' && url.pathname === '/v1/devices') {
+      if (!deps.registerDevice) {
+        json(res, 501, { error: 'push not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          try {
+            const parsed = JSON.parse(raw) as { token?: unknown; environment?: unknown }
+            if (typeof parsed.token !== 'string' || !parsed.token) {
+              throw new Error('token is required')
+            }
+            const environment = parsed.environment === 'production' ? 'production' : 'sandbox'
+            deps.registerDevice!(parsed.token, environment)
+            json(res, 200, { ok: true })
+          } catch (e) {
+            json(res, 400, { error: (e as Error).message })
+          }
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
@@ -303,9 +361,15 @@ export function createBridgeHandler(
     // /v1/chats/:key/(messages|send|interrupt)
     if (parts[0] === 'v1' && parts[1] === 'chats' && parts.length === 4) {
       const key = decodeURIComponent(parts[2])
-      const session = deps.sessions().find((s) => s.key === key)
+      const session = threadList(deps).find((t) => t.key === key)
       if (!session) {
         json(res, 404, { error: 'no such session' })
+        return
+      }
+      // A finished session is a transcript, not a terminal: reading is fine,
+      // writing has nowhere to go.
+      if (!session.live && parts[3] !== 'messages') {
+        json(res, 409, { error: 'session has ended' })
         return
       }
 

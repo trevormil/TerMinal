@@ -7,6 +7,9 @@ Date: 2026-07-21
 Accepted
 
 Supersedes the PWA framing in `backlog/0034-mobile-remote-control-pwa.md`.
+Amended by [ADR-0007](0007-chat-first-mobile-client.md), which keeps every
+transport and security decision here but makes chat — not the terminal mirror —
+the phone's primary surface.
 
 ## Context
 
@@ -36,7 +39,8 @@ contains secrets, and accepts input that executes commands.
   in one commit. Distributed via internal TestFlight; no App Store submission.
 - **Terminals only.** The bridge exposes exactly three authenticated routes:
   list sessions, stream one session, write to one session. HITL, tickets, and
-  PRs get no endpoints — ask the agent.
+  PRs get no endpoints — ask the agent. *(ADR-0007 later added a chat surface
+  over the same sessions; tickets and PRs still have no endpoints.)*
 - **A second transport, never a second backend.** `bridgeBroadcast()` hangs off
   the existing `proc.onData` in `src/main/index.ts` alongside the renderer send
   and the session log. The bridge owns no session state.

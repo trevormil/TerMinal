@@ -231,6 +231,7 @@ const gt = {
   bridge: {
     status: () => ipcRenderer.invoke('bridge:status'),
     pairing: () => ipcRenderer.invoke('bridge:pairing'),
+    pushStatus: () => ipcRenderer.invoke('bridge:push-status'),
     rotateToken: () => ipcRenderer.invoke('bridge:rotate-token'),
   },
   listeners: {

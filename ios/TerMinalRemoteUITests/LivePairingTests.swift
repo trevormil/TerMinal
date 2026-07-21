@@ -18,7 +18,7 @@ final class LivePairingTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testPairsAndListsLiveSessions() throws {
+    func testPairsAndListsChats() throws {
         let app = XCUIApplication()
         app.launch()
 
@@ -44,11 +44,16 @@ final class LivePairingTests: XCTestCase {
             app.navigationBars["e2e harness"].waitForExistence(timeout: 15),
             "never reached the session list — pairing failed")
 
-        // A row means a certificate-pinned, token-authenticated HTTPS request
-        // reached the bridge and its response decoded into a session.
+        // The harness session's thread proves a certificate-pinned,
+        // token-authenticated HTTPS request reached the bridge and decoded.
         XCTAssertTrue(
-            app.cells.element(boundBy: 0).waitForExistence(timeout: 20),
-            "session list never loaded a session from the bridge")
+            app.staticTexts["harness session"].waitForExistence(timeout: 20),
+            "chat list never loaded a thread from the bridge")
+
+        // …and the HITL queue renders from the same payload.
+        XCTAssertTrue(
+            app.staticTexts["Approve release to production"].exists,
+            "the needs-you queue did not render")
 
         XCTAssertFalse(
             app.staticTexts["This device is no longer paired. Scan the code again."].exists,

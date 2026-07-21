@@ -25,7 +25,7 @@ export type NotifyRefs = {
   hitlId?: string
   repo?: string
 }
-export type NotifyChannelId = 'telegram' | 'desktop' | 'webhook'
+export type NotifyChannelId = 'telegram' | 'desktop' | 'webhook' | 'push'
 export type NotifyChannel = {
   id: NotifyChannelId
   enabled(): boolean
@@ -173,6 +173,39 @@ export function createDesktopChannel(
     enabled: () => getSettings().alerts.desktop.enabled,
     send(_kind, title, detail) {
       show(title, detail || '')
+    },
+  }
+}
+
+// --- push (TerMinal Remote for iOS) ------------------------------------------
+
+/**
+ * The phone is another alert channel, not a parallel notification path: every
+ * alert Telegram would get, a paired iPhone gets too. `threadKey` lets the
+ * notification deep-link into the session it is about.
+ */
+export function createPushChannel(
+  isConfigured: () => boolean,
+  send: (input: {
+    title: string
+    body: string
+    threadKey?: string
+    badge?: number
+  }) => void | Promise<void>,
+  openHitlCount: () => number,
+): NotifyChannel {
+  return {
+    id: 'push',
+    enabled: isConfigured,
+    send(kind, title, detail, refs) {
+      return send({
+        title: `${KIND_EMOJI[kind]} ${title}`,
+        body: detail || '',
+        // A run id doubles as the session key for session-sourced alerts, which
+        // is what the app routes on.
+        threadKey: refs.runId,
+        badge: openHitlCount(),
+      })
     },
   }
 }
