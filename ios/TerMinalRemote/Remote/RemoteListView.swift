@@ -213,7 +213,7 @@ struct RemoteListView: View {
     }
 }
 
-private struct SessionRow: View {
+struct SessionRow: View {
     let session: RemoteSession
 
     var body: some View {

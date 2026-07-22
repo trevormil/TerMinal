@@ -14,35 +14,45 @@ struct TerMinalRemoteApp: App {
 
 struct RootView: View {
     @State private var pairing: PairingPayload? = PairingStore.load()
-    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $path) {
-            if let pairing {
-                RemoteListView(
-                    model: RemoteListViewModel(client: BridgeClient(pairing: pairing)),
-                    onUnpair: {
-                        PairingStore.clear()
-                        self.pairing = nil
-                    }
-                )
-                // Re-key on the token so unpair/re-pair rebuilds the client and
-                // its pinned session rather than reusing stale credentials.
-                .id(pairing.t)
-                .task {
-                    // Only ask for notifications once there is a Mac to send
-                    // the token to — a permission prompt before pairing has
-                    // nothing to offer.
-                    PushRegistrar.shared.client = BridgeClient(pairing: pairing)
-                    await PushRegistrar.shared.requestAuthorization()
-                    PushRegistrar.shared.resend()
-                }
-            } else {
-                PairingView { payload in
-                    PairingStore.save(payload)
-                    self.pairing = payload
-                }
+        if let pairing {
+            paired(pairing)
+        } else {
+            PairingView { payload in
+                PairingStore.save(payload)
+                self.pairing = payload
             }
+        }
+    }
+
+    private func paired(_ pairing: PairingPayload) -> some View {
+        let client = BridgeClient(pairing: pairing)
+        let onUnpair = {
+            PairingStore.clear()
+            self.pairing = nil
+        }
+        return TabView {
+            NavigationStack {
+                WorkspacesView(model: WorkspacesViewModel(client: client), onUnpair: onUnpair)
+            }
+            .tabItem { Label("Workspaces", systemImage: "folder") }
+
+            NavigationStack {
+                InboxView(model: InboxViewModel(client: client))
+            }
+            .tabItem { Label("Inbox", systemImage: "tray") }
+        }
+        .tint(GT.accentLight)
+        // Re-key on the token so unpair/re-pair rebuilds the client and its
+        // pinned session rather than reusing stale credentials.
+        .id(pairing.t)
+        .task {
+            // Only ask for notifications once there is a Mac to send the token
+            // to — a permission prompt before pairing has nothing to offer.
+            PushRegistrar.shared.client = client
+            await PushRegistrar.shared.requestAuthorization()
+            PushRegistrar.shared.resend()
         }
     }
 }

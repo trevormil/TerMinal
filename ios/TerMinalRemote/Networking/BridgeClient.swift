@@ -160,6 +160,47 @@ final class BridgeClient {
         return try JSONDecoder().decode(Envelope.self, from: try await get("v1/repos")).repos
     }
 
+    // ---- workspaces (per-repo cockpit, read-only) -----------------------
+
+    /// The repo list — same data as repos(), under the workspace route.
+    func workspaces() async throws -> [RepoOption] {
+        struct Envelope: Decodable { let workspaces: [RepoOption] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/workspaces")).workspaces
+    }
+
+    func tickets(repo: String) async throws -> [WsTicket] {
+        struct Envelope: Decodable { let tickets: [WsTicket] }
+        return try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/workspaces/tickets?repo=\(Self.q(repo))")
+        ).tickets
+    }
+
+    func prs(repo: String) async throws -> [WsPr] {
+        struct Envelope: Decodable { let prs: [WsPr] }
+        return try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/workspaces/prs?repo=\(Self.q(repo))")
+        ).prs
+    }
+
+    func runs(repo: String) async throws -> [WsRun] {
+        struct Envelope: Decodable { let runs: [WsRun] }
+        return try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/workspaces/runs?repo=\(Self.q(repo))")
+        ).runs
+    }
+
+    func schedules(repo: String) async throws -> [WsSchedule] {
+        struct Envelope: Decodable { let schedules: [WsSchedule] }
+        return try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/workspaces/schedules?repo=\(Self.q(repo))")
+        ).schedules
+    }
+
+    /// Percent-encode a repo path for a query value (slashes and all).
+    private static func q(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
+    }
+
     /// Start a session on the Mac. Returns the remote thread id, which exists
     /// before the agent finishes booting, so the phone can open it at once.
     func spawn(cwd: String, engine: String?, task: String?) async throws -> String {
