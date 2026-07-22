@@ -32,9 +32,15 @@ done
 # No CLI that understands `remote` — nothing to listen with.
 [ -n "${CLI:-}" ] || exit 0
 
-# --cwd scopes the lookup to a session registered from this directory, so with
-# several registrations the wrong session's replies never get delivered here.
-REPLIES=$("$CLI" remote check --quiet --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null || true)
+# The session_id in the hook input is THIS session's precise identity — the
+# engine-agnostic routing key stored at register time (see the store's
+# agentSessionId). Passing it stops a reply reaching a different session in the
+# same repo; --cwd is only a fallback for a session registered before the id
+# was recorded.
+SESSION_ID=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null || true)
+REPLIES=$("$CLI" remote check --quiet \
+  --agent-session "$SESSION_ID" \
+  --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null || true)
 [ -n "$REPLIES" ] || exit 0
 
 # Block the stop and feed the message back as the reason, which Claude Code

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import {
   askQuestion,
   imagePath,
+  remoteSessionForAgent,
   saveImage,
   currentRemoteSession,
   endRemoteSession,
@@ -207,6 +208,33 @@ describe('images', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
     expect(saveImage(s.id, Buffer.from([1]), 'exe', dir)).toMatch(/\.png$/)
+  })
+})
+
+describe('routing by host agent session id', () => {
+  it('finds the exact session an agent registered, even when repo is shared', () => {
+    const dir = tmp()
+    // Two sessions, same repo/cwd, different host-agent ids.
+    registerRemoteSession({ id: 'ra', title: 'A', cwd: '/repo', agentSessionId: 'sess-A' }, dir)
+    registerRemoteSession({ id: 'rb', title: 'B', cwd: '/repo', agentSessionId: 'sess-B' }, dir)
+
+    expect(remoteSessionForAgent('sess-A', dir)?.id).toBe('ra')
+    expect(remoteSessionForAgent('sess-B', dir)?.id).toBe('rb')
+  })
+
+  it('returns null for an unknown or empty agent id', () => {
+    const dir = tmp()
+    registerRemoteSession({ id: 'ra', agentSessionId: 'sess-A' }, dir)
+    expect(remoteSessionForAgent('sess-Z', dir)).toBeNull()
+    expect(remoteSessionForAgent('', dir)).toBeNull()
+  })
+
+  it('carries the agent session id through a re-register', () => {
+    const dir = tmp()
+    registerRemoteSession({ id: 'ra', agentSessionId: 'sess-A' }, dir)
+    // A later register without the id (e.g. adopting via --id) keeps it.
+    registerRemoteSession({ id: 'ra', title: 'renamed' }, dir)
+    expect(remoteSessionForAgent('sess-A', dir)?.title).toBe('renamed')
   })
 })
 

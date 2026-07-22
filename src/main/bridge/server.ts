@@ -67,6 +67,14 @@ export type BridgeDeps = {
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
 
+  /**
+   * Tailnet auto-pairing. Given the peer's address, return the pairing payload
+   * (token + cert fingerprint + name) if that peer is the same tailnet user
+   * that owns the Mac, else null. The bridge itself does no Tailscale work —
+   * the app injects this so the bridge module stays dependency-free.
+   */
+  tailscalePair?(peerAddress: string): { token: string; fp: string; name: string } | null
+
   /** Repos the phone may start a session in. */
   repos?(): BridgeRepo[]
   /**
@@ -156,6 +164,31 @@ export function createBridgeHandler(
     // pairing QR. Reveals nothing but "a TerMinal bridge is here".
     if (req.method === 'GET' && url.pathname === '/v1/health') {
       json(res, 200, { ok: true, app: 'TerMinal' })
+      return
+    }
+
+    // Tailnet auto-pairing. Deliberately BEFORE the token check: the caller
+    // has no token yet. It is gated instead by `tailscalePair`, which only
+    // succeeds when Tailscale confirms the peer is the same tailnet user that
+    // owns this Mac. The request rides inside the WireGuard tunnel, so it needs
+    // no prior shared secret. Everything after pairing uses the token normally.
+    if (req.method === 'GET' && url.pathname === '/v1/pair') {
+      if (!deps.tailscalePair) {
+        json(res, 501, { error: 'tailnet pairing not available' })
+        return
+      }
+      // The peer address the socket saw — trusted because it is the kernel's
+      // view of who connected, not anything the client claimed.
+      const peer =
+        (req.socket.remoteAddress || '').replace(/^::ffff:/, '') +
+        ':' +
+        (req.socket.remotePort || 0)
+      const result = deps.tailscalePair(peer)
+      if (!result) {
+        json(res, 403, { error: 'not a recognised tailnet peer' })
+        return
+      }
+      json(res, 200, result)
       return
     }
 

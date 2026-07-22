@@ -5,6 +5,9 @@ struct PairingView: View {
     let onPaired: (PairingPayload) -> Void
 
     @State private var scanning = false
+    @State private var tailscaling = false
+    @State private var tailscaleHost = ""
+    @State private var busy = false
     @State private var error: String?
 
     var body: some View {
@@ -45,6 +48,16 @@ struct PairingView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(GT.accent)
 
+                Button {
+                    error = nil
+                    tailscaling = true
+                } label: {
+                    Label("Pair over Tailscale", systemImage: "network")
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                }
+                .buttonStyle(.bordered)
+                .tint(GT.accent2)
+
                 // No intermediate editor sheet: pasting IS the action. Use
                 // "Copy pairing code" on the Mac, then tap this — one step, and
                 // nobody ever wants to hand-edit the JSON.
@@ -64,6 +77,7 @@ struct PairingView: View {
             Spacer()
         }
         }
+        .sheet(isPresented: $tailscaling) { tailscaleSheet }
         .sheet(isPresented: $scanning) {
             NavigationStack {
                 QRScanner(
@@ -82,6 +96,83 @@ struct PairingView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var tailscaleSheet: some View {
+        NavigationStack {
+            ZStack {
+                GT.bg.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(
+                        "Both devices need Tailscale, signed in to the same account. "
+                            + "Enter your Mac's Tailscale name — it's shown in "
+                            + "TerMinal → Settings → Mobile."
+                    )
+                    .font(GT.sans(13))
+                    .foregroundStyle(GT.textMuted)
+
+                    TextField("mac-name.tailnet.ts.net", text: $tailscaleHost)
+                        .font(GT.mono(14))
+                        .foregroundStyle(GT.text)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(GT.border, lineWidth: 1))
+
+                    if let error {
+                        Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow)
+                    }
+
+                    Button {
+                        Task { await pairTailscale() }
+                    } label: {
+                        HStack {
+                            if busy { ProgressView().tint(.white).scaleEffect(0.8) }
+                            Text(busy ? "Pairing…" : "Pair")
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(GT.accent2)
+                    .disabled(busy || tailscaleHost.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    Spacer()
+                }
+                .padding(16)
+            }
+            .navigationTitle("Pair over Tailscale")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(GT.panel, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { tailscaling = false }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func pairTailscale() async {
+        error = nil
+        busy = true
+        defer { busy = false }
+        let host = tailscaleHost.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "/", with: "")
+        do {
+            // 8790 is the bridge default; the QR carries the real port, but a
+            // tailnet pair has to assume it, and the default is near-universal.
+            let payload = try await TailscalePairing.pair(host: host, port: 8790)
+            tailscaling = false
+            onPaired(payload)
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 

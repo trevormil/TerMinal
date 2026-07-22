@@ -282,6 +282,7 @@ import {
 } from './cron-runs'
 import { bridgeStatus, startBridge, stopBridge, type BridgeDeps } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
+import { tailscalePeerAllowed, tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
 import {
   imagePath,
@@ -1276,6 +1277,21 @@ const bridgeDeps: BridgeDeps = {
       detail: `${environment} · alerts will now reach TerMinal Remote`,
     })
   },
+
+  // Hand the pairing payload to a verified same-user tailnet peer. The identity
+  // check is in tailscale.ts; here we just turn a yes into the token.
+  tailscalePair: (peerAddress) => {
+    const { ok, peer } = tailscalePeerAllowed(peerAddress)
+    if (!ok) return null
+    const identity = ensureIdentity()
+    const payload = pairingPayload({ port: readSettings().bridge.port, identity })
+    emitActivity({
+      kind: 'info',
+      title: 'Phone paired over Tailscale',
+      detail: peer?.node || peer?.login || 'tailnet peer',
+    })
+    return { token: payload.t, fp: payload.fp, name: payload.n }
+  },
 }
 
 async function applyBridgeSetting(): Promise<void> {
@@ -1307,6 +1323,10 @@ ipcMain.handle('bridge:pairing', () => {
   return pairingPayload({ port: cfg.port, identity })
 })
 ipcMain.handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
+ipcMain.handle('bridge:tailscale', () => {
+  const self = tailscaleSelf()
+  return self ? { available: true, dnsName: self.dnsName, login: self.login } : { available: false }
+})
 ipcMain.handle('bridge:rotate-token', () => {
   const cfg = readSettings().bridge
   const identity = rotateToken()

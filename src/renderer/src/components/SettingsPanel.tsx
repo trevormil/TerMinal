@@ -62,6 +62,7 @@ import type {
   BridgePairing,
   BridgePushStatus,
   BridgeStatus,
+  BridgeTailscale,
 } from '../lib/types'
 import qrcode from 'qrcode-generator'
 import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
@@ -203,6 +204,7 @@ function MobileSection({
   const [status, setStatus] = useState<BridgeStatus | null>(null)
   const [pairing, setPairing] = useState<BridgePairing | null>(null)
   const [push, setPush] = useState<BridgePushStatus | null>(null)
+  const [tailscale, setTailscale] = useState<BridgeTailscale | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -211,9 +213,11 @@ function MobileSection({
     if (cfg.enabled) {
       void window.gt.bridge.pairing().then(setPairing)
       void window.gt.bridge.pushStatus().then(setPush)
+      void window.gt.bridge.tailscale().then(setTailscale)
     } else {
       setPairing(null)
       setPush(null)
+      setTailscale(null)
     }
   }
   // Poll while enabled: a bind failure (port already taken) surfaces
@@ -277,6 +281,19 @@ function MobileSection({
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                   Reachable at
                 </span>
+                {tailscale?.available && (
+                  <div className="rounded-md border border-[var(--gt-accent-2)]/25 bg-[var(--gt-accent-2)]/5 px-2 py-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--gt-accent-2)]">
+                      Tailscale — pair with no QR
+                    </div>
+                    <div className="mt-0.5 font-mono text-[11px] text-zinc-300">
+                      {tailscale.dnsName}
+                    </div>
+                    <div className="text-[10px] text-zinc-600">
+                      On the phone: Pair over Tailscale → this name.
+                    </div>
+                  </div>
+                )}
                 {pairing.h.length ? (
                   pairing.h.map((h) => (
                     <div key={h} className="font-mono text-[11px] text-zinc-300">

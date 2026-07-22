@@ -17,9 +17,11 @@ phone. Nothing is scraped from the terminal — you decide what is worth sending
 terminal-cli remote register "<short title for the phone>"
 ```
 
-It prints a session id. **Remember it** and pass `--id <id>` on every later
-call. With exactly one session registered you may omit `--id`, but pass it
-whenever more than one might be running.
+It prints a session id. **Remember it and pass `--id <id>` on every later
+call** — `post`, `ask`, `check`, `end`. That id is the precise, engine-agnostic
+routing key: it guarantees your messages go to your thread and no other, even
+when several sessions run in the same repo. Only omit `--id` for a one-off in a
+machine with a single registered session.
 
 Tell the human the session is now on their phone.
 

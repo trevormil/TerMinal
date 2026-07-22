@@ -1110,6 +1110,10 @@ export type BridgeStatus = {
 }
 // Push readiness for the Settings pane. `configured` flips once an APNs key
 // has been dropped next to the bridge identity.
+// The Mac's own tailnet identity, shown in Settings so the phone knows the name
+// to pair against.
+export type BridgeTailscale =
+  { available: true; dnsName: string; login: string } | { available: false }
 export type BridgePushStatus = {
   configured: boolean
   devices: number
@@ -1731,6 +1735,7 @@ export type GtApi = {
     status: () => Promise<BridgeStatus>
     pairing: () => Promise<BridgePairing>
     pushStatus: () => Promise<BridgePushStatus>
+    tailscale: () => Promise<BridgeTailscale>
     rotateToken: () => Promise<BridgePairing>
   }
   listeners: {

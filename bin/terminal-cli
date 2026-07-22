@@ -1180,7 +1180,7 @@ function remoteList() {
  * several sessions registered across repos, "most recent anywhere" would hand
  * one session's replies to another.
  */
-function resolveRemoteId(flagId, cwd, { quiet = false } = {}) {
+function resolveRemoteId(flagId, cwd, { quiet = false, agentSessionId = '' } = {}) {
   if (flagId) {
     if (!readRemote(flagId)) {
       if (quiet) return ''
@@ -1190,8 +1190,18 @@ function resolveRemoteId(flagId, cwd, { quiet = false } = {}) {
     return flagId
   }
   const active = remoteList().filter((s) => s.status !== 'ended')
+  // Exact match on the host agent's session id first: two sessions can share a
+  // cwd, so cwd alone could deliver a reply to the wrong one. Fall back to cwd,
+  // then most-recent, only when no session id is known.
+  const sid =
+    agentSessionId ||
+    process.env.CLAUDE_CODE_SESSION_ID ||
+    process.env.CODEX_SESSION_ID ||
+    process.env.TERMINAL_REMOTE_AGENT_SESSION ||
+    ''
+  const byAgent = sid ? active.find((s) => s.agentSessionId === sid) : null
   const here = cwd ? active.find((s) => s.cwd === cwd) : null
-  const current = here || active[0]
+  const current = byAgent || here || active[0]
   if (!current) {
     if (quiet) return ''
     console.error('no registered remote session — run: terminal-cli remote register')
@@ -1233,6 +1243,7 @@ function remoteCommand(sub, rest) {
   let id = ''
   let cwdFlag = ''
   let imageFlag = ''
+  let agentSessionFlag = ''
   const positional = []
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--id') {
@@ -1256,6 +1267,10 @@ function remoteCommand(sub, rest) {
       imageFlag = rest[++i] || ''
       continue
     }
+    if (rest[i] === '--agent-session') {
+      agentSessionFlag = rest[++i] || ''
+      continue
+    }
     positional.push(rest[i])
   }
   const timeoutFlag = rest.findIndex((a) => a === '--timeout')
@@ -1274,6 +1289,15 @@ function remoteCommand(sub, rest) {
         branch,
         cwd,
         engine: process.env.TERMINAL_ENGINE || existing?.engine || '',
+        // The host agent's own session id — the precise routing key so a reply
+        // can never reach a different session sharing this repo. Engine-agnostic:
+        // each engine exposes its own, and the returned --id works regardless.
+        agentSessionId:
+          process.env.CLAUDE_CODE_SESSION_ID ||
+          process.env.CODEX_SESSION_ID ||
+          process.env.TERMINAL_REMOTE_AGENT_SESSION ||
+          existing?.agentSessionId ||
+          undefined,
         status: 'working',
         registeredAt: existing?.registeredAt || Date.now(),
         lastSeenAt: Date.now(),
@@ -1330,7 +1354,10 @@ function remoteCommand(sub, rest) {
       // silent with no registration, because the Stop hook calls it on EVERY
       // turn — including in sessions that never registered.
       const quiet = rest.includes('--quiet')
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { quiet })
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
+        quiet,
+        agentSessionId: agentSessionFlag,
+      })
       if (!sessionId) break
       const replies = takeRemoteReplies(sessionId)
       if (replies.length) console.log(replies.join('\n'))

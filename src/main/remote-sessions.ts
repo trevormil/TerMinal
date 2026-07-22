@@ -38,6 +38,10 @@ export type RemoteSession = {
   branch: string
   cwd: string
   engine: string
+  /** The host agent's own session id (CLAUDE_CODE_SESSION_ID / hook session_id).
+   *  The precise routing key: cwd can be shared by two sessions in one repo,
+   *  this cannot, so replies never cross sessions. */
+  agentSessionId?: string
   status: RemoteStatus
   registeredAt: number
   lastSeenAt: number
@@ -102,6 +106,7 @@ export function registerRemoteSession(
     cwd?: string
     engine?: string
     id?: string
+    agentSessionId?: string
   },
   dir: string = REMOTE_DIR,
 ): RemoteSession {
@@ -115,6 +120,7 @@ export function registerRemoteSession(
     branch: input.branch || existing?.branch || '',
     cwd: input.cwd || existing?.cwd || '',
     engine: input.engine || existing?.engine || '',
+    agentSessionId: input.agentSessionId || existing?.agentSessionId,
     // Re-registering an existing session resumes it rather than wiping its log.
     status: 'working',
     registeredAt: existing?.registeredAt || now,
@@ -261,6 +267,15 @@ export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSe
  * recently active one that hasn't ended. Convenient for the common case of a
  * single registered session; with several running, the skill passes `--id`.
  */
+/** The session a specific host agent registered, by its own session id. */
+export function remoteSessionForAgent(
+  agentSessionId: string,
+  dir: string = REMOTE_DIR,
+): RemoteSession | null {
+  if (!agentSessionId) return null
+  return listRemoteSessions(dir).find((s) => s.agentSessionId === agentSessionId) || null
+}
+
 export function currentRemoteSession(dir: string = REMOTE_DIR): RemoteSession | null {
   return listRemoteSessions(dir).filter((s) => s.status !== 'ended')[0] || null
 }

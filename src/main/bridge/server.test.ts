@@ -111,6 +111,34 @@ describe('auth', () => {
   })
 })
 
+describe('GET /v1/pair (tailnet)', () => {
+  it('hands the payload to a verified peer without a token', async () => {
+    const seen: string[] = []
+    const h = await harness({
+      tailscalePair: (peer) => {
+        seen.push(peer)
+        return { token: 'tok', fp: 'fp', name: 'MacBook' }
+      },
+    })
+    // No Authorization header — pairing runs before the phone has a token.
+    const res = await fetch(`${h.url}/v1/pair`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ token: 'tok', fp: 'fp', name: 'MacBook' })
+    // The peer address came from the socket, not the client.
+    expect(seen[0]).toMatch(/^127\.0\.0\.1:\d+$/)
+  })
+
+  it('403s a peer the tailnet does not vouch for', async () => {
+    const h = await harness({ tailscalePair: () => null })
+    expect((await fetch(`${h.url}/v1/pair`)).status).toBe(403)
+  })
+
+  it('501s when tailnet pairing is not wired', async () => {
+    const h = await harness()
+    expect((await fetch(`${h.url}/v1/pair`)).status).toBe(501)
+  })
+})
+
 describe('GET /v1/health', () => {
   it('answers without a token and leaks nothing', async () => {
     const h = await harness()
