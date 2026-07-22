@@ -44,11 +44,7 @@ export type BridgeHitl = {
 
 export type BridgeRepo = { name: string; path: string }
 
-/**
- * A chat thread. Live threads are backed by a running pty; past ones are
- * finished sessions whose transcript is still on disk, so scrolling back
- * through what an agent did overnight needs no extra storage.
- */
+/** A chat thread — one per running pty. */
 export type BridgeThread = {
   key: string
   name: string
@@ -58,34 +54,11 @@ export type BridgeThread = {
   status: string
   /** The agent finished its turn and is waiting on a human. */
   needsInput: boolean
-  /** False for a finished session: read-only, no composer. */
-  live: boolean
   /** False when this engine has no transcript adapter. */
   chat: boolean
-  endedAt?: number
 }
 
 export type StartSessionInput = { cwd: string; engine?: string; name?: string }
-
-/** A repo with resumable sessions on disk. */
-export type BridgeWorkspace = {
-  repo: string
-  path: string
-  count: number
-  lastAt: number
-}
-
-/** A resumable session — a transcript the Mac can restart. */
-export type BridgeHistorySession = {
-  key: string // `past:<sessionId>`
-  sessionId: string
-  title: string
-  repo: string
-  branch: string
-  engine: string
-  turns: number
-  at: number
-}
 
 export type BridgeDeps = {
   sessions(): BridgeSession[]
@@ -105,14 +78,12 @@ export type BridgeDeps = {
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
-  /** Live chat threads (running ptys). History comes from `history`. */
+  /** Chat threads — one per running pty. */
   threads?(): BridgeThread[]
-  /** Repos that have resumable sessions on disk. */
-  workspaces?(): BridgeWorkspace[]
-  /** Resumable sessions, optionally filtered to a workspace or a search. */
-  history?(opts: { workspace?: string; q?: string; limit?: number }): BridgeHistorySession[]
-  /** Restart a finished session on the Mac. Returns its new live key. */
-  resume?(sessionId: string): { key: string } | { error: string }
+  /** Stop a running session on the Mac. */
+  stopSession?(key: string): boolean
+  /** Bring a session to the front on the desktop. */
+  focusSession?(key: string): boolean
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
   /** Repos the phone may start a session in. */
@@ -237,28 +208,8 @@ function threadList(deps: BridgeDeps): BridgeThread[] {
     engine: s.engine,
     status: s.status,
     needsInput: s.status !== 'working',
-    live: true,
     chat: !!deps.messages,
   }))
-}
-
-/** Resolve a `past:<sessionId>` key against the resumable sessions on disk. */
-function historyThread(deps: BridgeDeps, key: string): BridgeThread | undefined {
-  const sessionId = key.slice('past:'.length)
-  const found = deps.history?.({ limit: 0 })?.find((h) => h.sessionId === sessionId)
-  if (!found) return undefined
-  return {
-    key,
-    name: found.title,
-    repo: found.repo,
-    branch: found.branch,
-    engine: found.engine,
-    status: 'ended',
-    needsInput: false,
-    live: false,
-    chat: true,
-    endedAt: found.at,
-  }
 }
 
 function sseFrame(event: string, data: string): string {
@@ -317,29 +268,8 @@ export function createBridgeHandler(
 
     if (req.method === 'GET' && url.pathname === '/v1/chats') {
       Promise.resolve(deps.hitl?.() ?? [])
-        .then((hitl) =>
-          json(res, 200, {
-            threads: threadList(deps),
-            hitl,
-            workspaces: deps.workspaces?.() ?? [],
-          }),
-        )
+        .then((hitl) => json(res, 200, { threads: threadList(deps), hitl }))
         .catch((e: Error) => json(res, 500, { error: e.message }))
-      return
-    }
-
-    // Resumable sessions. Kept off /v1/chats because enumerating every
-    // transcript on disk is far too slow and large for a poll.
-    if (req.method === 'GET' && url.pathname === '/v1/history') {
-      const limit = Number(url.searchParams.get('limit') || 50)
-      json(res, 200, {
-        sessions:
-          deps.history?.({
-            workspace: url.searchParams.get('workspace') || undefined,
-            q: url.searchParams.get('q') || undefined,
-            limit: Number.isFinite(limit) ? limit : 50,
-          }) ?? [],
-      })
       return
     }
 
@@ -437,33 +367,21 @@ export function createBridgeHandler(
       const key = decodeURIComponent(parts[2])
       // A `past:` key addresses a transcript on disk, which is never in the
       // live thread list — resolve it without requiring a running pty.
-      const session =
-        threadList(deps).find((t) => t.key === key) ??
-        (key.startsWith('past:') ? historyThread(deps, key) : undefined)
+      const session = threadList(deps).find((t) => t.key === key)
       if (!session) {
         json(res, 404, { error: 'no such session' })
         return
       }
-      // Restarting a finished session is the one write it DOES accept: it is
-      // how the phone picks work back up rather than only reading about it.
-      if (req.method === 'POST' && parts[3] === 'resume') {
-        if (!deps.resume) {
-          json(res, 501, { error: 'resume not available' })
-          return
-        }
-        if (session.live) {
-          json(res, 409, { error: 'session is already running' })
-          return
-        }
-        const result = deps.resume(key.replace(/^past:/, ''))
-        json(res, 'error' in result ? 400 : 200, result)
+      // Stop it, or bring it to the front on the desktop — the phone is a
+      // remote control for the Mac, not only a window onto it.
+      if (req.method === 'POST' && parts[3] === 'stop') {
+        const ok = deps.stopSession?.(key) ?? false
+        json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
         return
       }
-
-      // Otherwise a finished session is a transcript, not a terminal: reading
-      // is fine, writing has nowhere to go.
-      if (!session.live && parts[3] !== 'messages') {
-        json(res, 409, { error: 'session has ended' })
+      if (req.method === 'POST' && parts[3] === 'focus') {
+        const ok = deps.focusSession?.(key) ?? false
+        json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
         return
       }
 

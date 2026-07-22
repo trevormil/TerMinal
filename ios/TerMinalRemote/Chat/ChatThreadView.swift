@@ -9,10 +9,8 @@ final class ChatThreadViewModel {
     private(set) var loading = true
     private(set) var sending = false
 
-    /// Swapped for the live thread once a finished session is resumed.
-    private(set) var thread: ChatThread
+    let thread: ChatThread
     let client: BridgeClient
-    private(set) var resuming = false
     private var poll: Task<Void, Never>?
 
     var isWorking: Bool { status == "working" }
@@ -75,27 +73,6 @@ final class ChatThreadViewModel {
         await refresh()
     }
 
-    /// Restart a finished session on the Mac and continue in the same thread —
-    /// same sessionId, so the conversation carries on rather than starting over.
-    @MainActor
-    func resume() async {
-        guard !thread.live, !resuming else { return }
-        resuming = true
-        defer { resuming = false }
-        do {
-            let key = try await client.resume(key: thread.key)
-            thread = ChatThread(
-                key: key, name: thread.name, repo: thread.repo, branch: thread.branch,
-                engine: thread.engine, status: "idle", needsInput: true, live: true,
-                chat: thread.chat, endedAt: nil)
-            status = "idle"
-            // The live session re-reads the same transcript from the top.
-            messages = []
-            await refresh()
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
 }
 
 struct ChatThreadView: View {
@@ -108,11 +85,7 @@ struct ChatThreadView: View {
             GT.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 transcript
-                if model.thread.live {
-                    composer
-                } else {
-                    endedBanner
-                }
+                composer
             }
         }
         .navigationTitle(model.thread.name)
@@ -164,8 +137,13 @@ struct ChatThreadView: View {
                             }
                         }
                     }
-                    ForEach(model.messages) { message in
-                        MessageRow(message: message).id(message.id)
+                    ForEach(ChatDigest.build(model.messages)) { entry in
+                        switch entry {
+                        case .message(let message):
+                            MessageRow(message: message).id(entry.id)
+                        case .work(_, _, let steps, let failed):
+                            WorkRow(steps: steps, failed: failed).id(entry.id)
+                        }
                     }
                     if model.isWorking { WorkingIndicator() }
                     Color.clear.frame(height: 1).id("bottom")
@@ -176,48 +154,6 @@ struct ChatThreadView: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
-    }
-
-    /// A finished session is a transcript — but it can be picked back up. This
-    /// is what makes the phone a control surface rather than a log viewer.
-    private var endedBanner: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 11))
-                Text("Session ended")
-                    .font(GT.sans(12))
-            }
-            .foregroundStyle(GT.textFaint)
-
-            Button {
-                Task { await model.resume() }
-            } label: {
-                HStack(spacing: 7) {
-                    if model.resuming {
-                        ProgressView().tint(.white).scaleEffect(0.7)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    Text(model.resuming ? "Resuming…" : "Resume on the Mac")
-                }
-                .font(GT.sans(14, .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .frame(height: 40)
-                .background(GT.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .disabled(model.resuming)
-            .accessibilityIdentifier("resume-session")
-
-            if let error = model.error {
-                Text(error).font(GT.sans(11)).foregroundStyle(GT.yellow)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(GT.panel)
     }
 
     private var composer: some View {
@@ -348,6 +284,44 @@ extension ChatMessage.ToolStatus {
         case .ok: return GT.green
         case .error: return GT.red
         }
+    }
+}
+
+/// A run of tool calls, collapsed. Tap to see what it actually did.
+private struct WorkRow: View {
+    let steps: [ChatMessage]
+    let failed: Int
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                    Image(systemName: failed > 0 ? "exclamationmark.triangle" : "wrench.and.screwdriver")
+                        .font(.system(size: 10))
+                    Text(ChatDigest.summarize(steps))
+                        .font(GT.sans(12))
+                    if failed > 0 {
+                        Text("· \(failed) failed")
+                            .font(GT.sans(12))
+                            .foregroundStyle(GT.red)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(failed > 0 ? GT.yellow : GT.textFaint)
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                ForEach(steps) { step in MessageRow(message: step) }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(GT.codeBg)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }
 

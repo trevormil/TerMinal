@@ -19,8 +19,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { sessionMessages, type ChatEngine, type ChatMessage } from '../../src/main/chat/messages'
-import { listSessions } from '../../src/main/data'
-import { repoRootOf } from '../../src/main/repo'
 import {
   bridgeBroadcast,
   bridgeBroadcastExit,
@@ -71,18 +69,6 @@ const proc = Bun.spawn(
   },
 )
 
-// Enumerating every transcript costs ~600ms, so cache it like the app does.
-let sessionCacheAt = 0
-let sessionCacheValue: ReturnType<typeof listSessions> = []
-function realSessions() {
-  if (Date.now() - sessionCacheAt < 20_000) return sessionCacheValue
-  sessionCacheValue = listSessions()
-  sessionCacheAt = Date.now()
-  return sessionCacheValue
-}
-const workspaceOf = (cwd: string) =>
-  (repoRootOf(cwd) || cwd || '').replace(/\/$/, '').split('/').pop() || 'unknown'
-
 let scrollback = ''
 
 // ---- scripted chat state ----
@@ -99,14 +85,6 @@ const chatLog: ChatMessage[] = [
     kind: 'assistant',
     at: 1_784_000_003_000,
     text: '844 pass, 0 fail. Anything you want me to pick up next?',
-  },
-]
-const historyLog: ChatMessage[] = [
-  { kind: 'user', at: 1_783_899_000_000, text: 'review the open PRs overnight' },
-  {
-    kind: 'assistant',
-    at: 1_783_899_500_000,
-    text: 'Reviewed 3 PRs. #117 is merge-ready; #118 needs a rebase.',
   },
 ]
 let hitlQueue = [
@@ -185,18 +163,35 @@ const deps: BridgeDeps = {
   // Every prompt sent from the phone is appended, and the "agent" answers, so
   // the round trip is real even though the content is canned.
   messages: (key, opts) => {
-    if (key.startsWith('past:')) {
-      // A real resumable session: read its actual transcript.
-      const sessionId = key.slice('past:'.length)
-      const meta = realSessions().find((s) => s.id === sessionId)
-      if (meta) return sessionMessages(sessionId, meta.engine as ChatEngine, opts)
-      const after = Math.max(0, opts.after ?? 0)
-      return { messages: historyLog.slice(after), unsupported: false, total: historyLog.length }
-    }
     if (real) return sessionMessages(real.sessionId, real.engine, opts)
     const after = Math.max(0, opts.after ?? 0)
     return { messages: chatLog.slice(after), unsupported: false, total: chatLog.length }
   },
+  threads: () => [
+    {
+      key: KEY,
+      name: real ? `real · ${real.engine}` : 'harness session',
+      repo: 'TerMinal',
+      branch: 'feat/ios-remote-terminal',
+      engine: real ? real.engine : 'codex',
+      status: 'idle',
+      needsInput: true,
+      chat: true,
+    },
+  ],
+  stopSession: (key) => key === KEY,
+  focusSession: (key) => key === KEY,
+  hitl: () => hitlQueue,
+  resolveHitl: (id) => {
+    const before = hitlQueue.length
+    hitlQueue = hitlQueue.filter((h) => h.id !== id)
+    return hitlQueue.length < before
+  },
+  repos: () => [
+    { name: 'TerMinal', path: '/repos/TerMinal' },
+    { name: 'beacon', path: '/repos/beacon' },
+  ],
+
   // One live thread plus a finished one, so history renders in the harness too.
   threads: () => [
     {
@@ -258,7 +253,7 @@ const deps: BridgeDeps = {
     for (const s of realSessions()) {
       const repo = workspaceOf(s.cwd)
       if (workspace && repo !== workspace) continue
-      const title = (s.firstUserText || '').trim() || 'session'
+      const title = ((s.firstUserText || '').trim() || 'session').slice(0, 200)
       if (needle && !`${title} ${repo} ${s.gitBranch}`.toLowerCase().includes(needle)) continue
       out.push({
         key: `past:${s.id}`,
