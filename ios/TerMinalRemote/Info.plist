@@ -28,8 +28,6 @@
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>TerMinal uses the camera only to scan the pairing QR code shown in TerMinal's Settings on your Mac.</string>

@@ -51,8 +51,15 @@ function writeSecret(path: string, contents: string): void {
 
 /**
  * Generate a self-signed cert with the system openssl. The client pins the
- * fingerprint rather than validating the chain, so the subject is cosmetic —
- * but a 10-year lifetime keeps re-pairing from becoming a surprise chore.
+ * fingerprint rather than validating the chain, so the subject is cosmetic.
+ *
+ * EC P-256, not RSA-2048: the whole cert is ~280 bytes of DER vs ~1200, which
+ * keeps the TLS server flight inside one packet on the Tailscale tunnel's
+ * 1280-byte MTU. An RSA handshake spilled across two segments was being
+ * black-holed over the tunnel and failing on the phone with -1200, while the
+ * LAN path (1500 MTU) worked. `ec_param_enc:named_curve` is required — the
+ * default explicit-parameter encoding from LibreSSL is rejected by BoringSSL
+ * (Bun, and the pinning client). 800 days stays under Apple's ATS 825-day cap.
  */
 function generateCert(dir: string): { certPem: string; keyPem: string } {
   const certPath = p(dir, 'cert.pem')
@@ -63,10 +70,14 @@ function generateCert(dir: string): { certPem: string; keyPem: string } {
       'req',
       '-x509',
       '-newkey',
-      'rsa:2048',
+      'ec',
+      '-pkeyopt',
+      'ec_paramgen_curve:prime256v1',
+      '-pkeyopt',
+      'ec_param_enc:named_curve',
       '-nodes',
       '-days',
-      '3650',
+      '800',
       '-subj',
       '/CN=TerMinal',
       '-keyout',
