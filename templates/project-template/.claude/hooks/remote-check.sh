@@ -16,10 +16,12 @@ set -uo pipefail
 
 INPUT=$(cat)
 
-# How long to park waiting for the next phone message before allowing the turn
-# to stop. Kept just under the Stop-hook timeout in settings.json so the CLI
-# exits cleanly rather than being killed. Override with the env var.
+# How long to park waiting for the next phone message before the heartbeat
+# re-park. Kept just under the Stop-hook timeout in settings.json so the CLI
+# exits cleanly rather than being killed. Override with the env var. Floored at
+# 60s so a misconfigured tiny value can't turn the heartbeat into a turn storm.
 WAIT_TIMEOUT="${TERMINAL_REMOTE_WAIT_TIMEOUT:-3540}"
+if ! [ "$WAIT_TIMEOUT" -ge 60 ] 2>/dev/null; then WAIT_TIMEOUT=3540; fi
 
 # Prefer the repo's copy, then one on PATH, then the installed one. The installed
 # copy under ~/.config/TerMinal/bin is synced at release, so in a repo whose bin/
