@@ -24,22 +24,26 @@ Living list for the iOS remote app. Check items off as they land; add freely.
       the repo+global double-registration; timeout 3600 in all settings.json;
       synced to global `~/.claude` and the template. Does not trust the agent to
       re-arm.
+- [x] **Never-die is truly unbounded** — on the Stop-hook timeout the hook now
+      re-parks via a heartbeat block instead of dying. 59 min is a heartbeat, not
+      a death. (Claude Code hook timeout has no documented max; default 600s.)
+- [x] **Unpair / switch-Mac** — already shipped: the ⋯ menu unpairs and returns
+      to the pairing screen, which lists remembered Macs for a one-tap switch.
 
 ## Backlog
 
-- [ ] **Unpair / switch-Mac button** in the app (today you can only re-pair from
-      the unpaired state)
-- [ ] **Global hook install on first run** — the app should install
-      `remote-check.sh` + its Stop-hook registration into `~/.claude/settings.json`
-      so a fresh machine gets never-die in every repo without manual setup
-      (currently synced by hand for this machine).
-- [ ] **Park duration** — capped at ~59 min per hook run (Claude Code hook
-      timeout). After that the session sleeps; a launchd watcher (like the
-      Telegram bridge) could re-wake a truly-idle session if we want > 1h.
+- [ ] **Global hook install** — DEFERRED as auto-install: the app deliberately
+      avoids writing to `~/.claude` (see the OpenRouter "no global dotfiles"
+      note), so silently editing `~/.claude/settings.json` on startup is out.
+      Covered instead by: the repo/template ships the Stop hook, and
+      `docs/runbooks/remote-never-die-hook.md` documents the one-line global
+      registration for full cross-repo coverage.
 - [ ] **APNs push** — dormant until the APNs key is created
       (`ios/scripts/setup-push.sh`)
-- [ ] **Full tailnet fleet picker** — show ALL your Macs (via the Mac's
-      `tailscale status`), not only ones you've paired with. Bigger: needs a
-      tailnet-gated `/v1/tailnet` endpoint + a bootstrap for the first machine.
-- [ ] Auto-scroll the selected repo into view in New Session (minor polish)
+- [ ] **Full tailnet fleet picker** — show ALL your Macs via the *currently
+      paired* Mac's `tailscale status` (a "Switch to…" list in the ⋯ menu). This
+      sidesteps the bootstrap problem since you're already paired with one Mac.
+      Needs an authenticated `/v1/tailnet` endpoint + iOS UI.
 - [ ] Harness `spawn` only simulates a launch; real desktop tab happens in the app
+- [ ] Heartbeat turns accumulate in the spawned terminal over long idle (~1/hr);
+      harmless but could be quieted with app-side pty re-injection later
