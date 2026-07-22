@@ -1146,15 +1146,21 @@ const MAX_REPLAY_BYTES = 256 * 1024
  * correct it.
  */
 function spawnPrompt(remoteId: string, task?: string): string {
+  // Absolute path to THIS app's terminal-cli, which always has the `remote`
+  // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
+  // the repo's own bin/ may be on a branch that predates `remote` — the agent
+  // otherwise burns several turns guessing. Quote it in case the path has spaces.
+  const cli = `"${cliSrcPath()}"`
   const lines = [
     `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
     `report through the phone, not the terminal.`,
     ``,
-    `A remote thread is already registered for you. Adopt it, then use it:`,
+    `A remote thread is already registered for you. Adopt it, then use it`,
+    `(use this exact path — bare terminal-cli is not on PATH):`,
     ``,
-    `    terminal-cli remote register --id ${remoteId} "<short title>"`,
-    `    terminal-cli remote post --id ${remoteId} "<update>"`,
-    `    terminal-cli remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
+    `    ${cli} remote register --id ${remoteId} "<short title>"`,
+    `    ${cli} remote post --id ${remoteId} "<update>"`,
+    `    ${cli} remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
     ``,
     `Follow the remote-terminal skill for when to post vs ask. Post at real`,
     `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
