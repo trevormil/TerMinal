@@ -9,8 +9,10 @@ final class ChatThreadViewModel {
     private(set) var loading = true
     private(set) var sending = false
 
-    let thread: ChatThread
+    /// Swapped for the live thread once a finished session is resumed.
+    private(set) var thread: ChatThread
     let client: BridgeClient
+    private(set) var resuming = false
     private var poll: Task<Void, Never>?
 
     var isWorking: Bool { status == "working" }
@@ -71,6 +73,28 @@ final class ChatThreadViewModel {
     func interrupt() async {
         try? await client.interrupt(key: thread.key)
         await refresh()
+    }
+
+    /// Restart a finished session on the Mac and continue in the same thread —
+    /// same sessionId, so the conversation carries on rather than starting over.
+    @MainActor
+    func resume() async {
+        guard !thread.live, !resuming else { return }
+        resuming = true
+        defer { resuming = false }
+        do {
+            let key = try await client.resume(key: thread.key)
+            thread = ChatThread(
+                key: key, name: thread.name, repo: thread.repo, branch: thread.branch,
+                engine: thread.engine, status: "idle", needsInput: true, live: true,
+                chat: thread.chat, endedAt: nil)
+            status = "idle"
+            // The live session re-reads the same transcript from the top.
+            messages = []
+            await refresh()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 
@@ -154,16 +178,43 @@ struct ChatThreadView: View {
         }
     }
 
-    /// A finished session is a transcript. Say so rather than showing a
-    /// composer whose messages would go nowhere.
+    /// A finished session is a transcript — but it can be picked back up. This
+    /// is what makes the phone a control surface rather than a log viewer.
     private var endedBanner: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 11))
-            Text("Session ended · \(model.thread.status)")
-                .font(GT.sans(12))
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 11))
+                Text("Session ended")
+                    .font(GT.sans(12))
+            }
+            .foregroundStyle(GT.textFaint)
+
+            Button {
+                Task { await model.resume() }
+            } label: {
+                HStack(spacing: 7) {
+                    if model.resuming {
+                        ProgressView().tint(.white).scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    Text(model.resuming ? "Resuming…" : "Resume on the Mac")
+                }
+                .font(GT.sans(14, .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .frame(height: 40)
+                .background(GT.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .disabled(model.resuming)
+            .accessibilityIdentifier("resume-session")
+
+            if let error = model.error {
+                Text(error).font(GT.sans(11)).foregroundStyle(GT.yellow)
+            }
         }
-        .foregroundStyle(GT.textFaint)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(GT.panel)

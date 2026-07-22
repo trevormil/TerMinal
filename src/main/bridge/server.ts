@@ -67,6 +67,26 @@ export type BridgeThread = {
 
 export type StartSessionInput = { cwd: string; engine?: string; name?: string }
 
+/** A repo with resumable sessions on disk. */
+export type BridgeWorkspace = {
+  repo: string
+  path: string
+  count: number
+  lastAt: number
+}
+
+/** A resumable session — a transcript the Mac can restart. */
+export type BridgeHistorySession = {
+  key: string // `past:<sessionId>`
+  sessionId: string
+  title: string
+  repo: string
+  branch: string
+  engine: string
+  turns: number
+  at: number
+}
+
 export type BridgeDeps = {
   sessions(): BridgeSession[]
   /** Bytes → the pty's stdin. False when the key is unknown. */
@@ -77,12 +97,22 @@ export type BridgeDeps = {
   // ---- chat surface (optional so the e2e harness can omit it) ----
   /** Normalized conversation for a session. */
   messages?(key: string, opts: { after?: number; limit?: number }): ChatTranscript
-  /** Open human-in-the-loop items, newest first. */
-  hitl?(): BridgeHitl[]
+  /**
+   * Open human-in-the-loop items, newest first. May be async: the Mac fans out
+   * to configured remote hosts so an agent blocked on another machine still
+   * reaches the phone.
+   */
+  hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
-  /** Chat threads: live sessions plus recent finished ones. */
+  /** Live chat threads (running ptys). History comes from `history`. */
   threads?(): BridgeThread[]
+  /** Repos that have resumable sessions on disk. */
+  workspaces?(): BridgeWorkspace[]
+  /** Resumable sessions, optionally filtered to a workspace or a search. */
+  history?(opts: { workspace?: string; q?: string; limit?: number }): BridgeHistorySession[]
+  /** Restart a finished session on the Mac. Returns its new live key. */
+  resume?(sessionId: string): { key: string } | { error: string }
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
   /** Repos the phone may start a session in. */
@@ -212,6 +242,25 @@ function threadList(deps: BridgeDeps): BridgeThread[] {
   }))
 }
 
+/** Resolve a `past:<sessionId>` key against the resumable sessions on disk. */
+function historyThread(deps: BridgeDeps, key: string): BridgeThread | undefined {
+  const sessionId = key.slice('past:'.length)
+  const found = deps.history?.({ limit: 0 })?.find((h) => h.sessionId === sessionId)
+  if (!found) return undefined
+  return {
+    key,
+    name: found.title,
+    repo: found.repo,
+    branch: found.branch,
+    engine: found.engine,
+    status: 'ended',
+    needsInput: false,
+    live: false,
+    chat: true,
+    endedAt: found.at,
+  }
+}
+
 function sseFrame(event: string, data: string): string {
   return `event: ${event}\ndata: ${data}\n\n`
 }
@@ -267,12 +316,37 @@ export function createBridgeHandler(
     // routes render the SAME sessions as a conversation instead of a screen.
 
     if (req.method === 'GET' && url.pathname === '/v1/chats') {
-      json(res, 200, { threads: threadList(deps), hitl: deps.hitl?.() ?? [] })
+      Promise.resolve(deps.hitl?.() ?? [])
+        .then((hitl) =>
+          json(res, 200, {
+            threads: threadList(deps),
+            hitl,
+            workspaces: deps.workspaces?.() ?? [],
+          }),
+        )
+        .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    // Resumable sessions. Kept off /v1/chats because enumerating every
+    // transcript on disk is far too slow and large for a poll.
+    if (req.method === 'GET' && url.pathname === '/v1/history') {
+      const limit = Number(url.searchParams.get('limit') || 50)
+      json(res, 200, {
+        sessions:
+          deps.history?.({
+            workspace: url.searchParams.get('workspace') || undefined,
+            q: url.searchParams.get('q') || undefined,
+            limit: Number.isFinite(limit) ? limit : 50,
+          }) ?? [],
+      })
       return
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/hitl') {
-      json(res, 200, { items: deps.hitl?.() ?? [] })
+      Promise.resolve(deps.hitl?.() ?? [])
+        .then((items) => json(res, 200, { items }))
+        .catch((e: Error) => json(res, 500, { error: e.message }))
       return
     }
 
@@ -361,13 +435,33 @@ export function createBridgeHandler(
     // /v1/chats/:key/(messages|send|interrupt)
     if (parts[0] === 'v1' && parts[1] === 'chats' && parts.length === 4) {
       const key = decodeURIComponent(parts[2])
-      const session = threadList(deps).find((t) => t.key === key)
+      // A `past:` key addresses a transcript on disk, which is never in the
+      // live thread list — resolve it without requiring a running pty.
+      const session =
+        threadList(deps).find((t) => t.key === key) ??
+        (key.startsWith('past:') ? historyThread(deps, key) : undefined)
       if (!session) {
         json(res, 404, { error: 'no such session' })
         return
       }
-      // A finished session is a transcript, not a terminal: reading is fine,
-      // writing has nowhere to go.
+      // Restarting a finished session is the one write it DOES accept: it is
+      // how the phone picks work back up rather than only reading about it.
+      if (req.method === 'POST' && parts[3] === 'resume') {
+        if (!deps.resume) {
+          json(res, 501, { error: 'resume not available' })
+          return
+        }
+        if (session.live) {
+          json(res, 409, { error: 'session is already running' })
+          return
+        }
+        const result = deps.resume(key.replace(/^past:/, ''))
+        json(res, 'error' in result ? 400 : 200, result)
+        return
+      }
+
+      // Otherwise a finished session is a transcript, not a terminal: reading
+      // is fine, writing has nowhere to go.
       if (!session.live && parts[3] !== 'messages') {
         json(res, 409, { error: 'session has ended' })
         return

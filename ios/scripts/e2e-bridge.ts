@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { sessionMessages, type ChatEngine, type ChatMessage } from '../../src/main/chat/messages'
+import { listSessions } from '../../src/main/data'
+import { repoRootOf } from '../../src/main/repo'
 import {
   bridgeBroadcast,
   bridgeBroadcastExit,
@@ -68,6 +70,18 @@ const proc = Bun.spawn(
     env: { ...process.env, PS1: 'e2e$ ', TERM: 'xterm-256color' },
   },
 )
+
+// Enumerating every transcript costs ~600ms, so cache it like the app does.
+let sessionCacheAt = 0
+let sessionCacheValue: ReturnType<typeof listSessions> = []
+function realSessions() {
+  if (Date.now() - sessionCacheAt < 20_000) return sessionCacheValue
+  sessionCacheValue = listSessions()
+  sessionCacheAt = Date.now()
+  return sessionCacheValue
+}
+const workspaceOf = (cwd: string) =>
+  (repoRootOf(cwd) || cwd || '').replace(/\/$/, '').split('/').pop() || 'unknown'
 
 let scrollback = ''
 
@@ -171,12 +185,17 @@ const deps: BridgeDeps = {
   // Every prompt sent from the phone is appended, and the "agent" answers, so
   // the round trip is real even though the content is canned.
   messages: (key, opts) => {
-    if (real && !key.startsWith('past:')) {
-      return sessionMessages(real.sessionId, real.engine, opts)
+    if (key.startsWith('past:')) {
+      // A real resumable session: read its actual transcript.
+      const sessionId = key.slice('past:'.length)
+      const meta = realSessions().find((s) => s.id === sessionId)
+      if (meta) return sessionMessages(sessionId, meta.engine as ChatEngine, opts)
+      const after = Math.max(0, opts.after ?? 0)
+      return { messages: historyLog.slice(after), unsupported: false, total: historyLog.length }
     }
-    const log = key.startsWith('past:') ? historyLog : chatLog
+    if (real) return sessionMessages(real.sessionId, real.engine, opts)
     const after = Math.max(0, opts.after ?? 0)
-    return { messages: log.slice(after), unsupported: false, total: log.length }
+    return { messages: chatLog.slice(after), unsupported: false, total: chatLog.length }
   },
   // One live thread plus a finished one, so history renders in the harness too.
   threads: () => [
@@ -214,6 +233,49 @@ const deps: BridgeDeps = {
     { name: 'TerMinal', path: '/repos/TerMinal' },
     { name: 'beacon', path: '/repos/beacon' },
   ],
+
+  // Real workspaces and history off disk, so the grouped/searchable list can be
+  // exercised against the hundreds of sessions a real machine accumulates.
+  workspaces: () => {
+    const byRepo = new Map<string, { path: string; count: number; lastAt: number }>()
+    for (const s of realSessions()) {
+      const repo = workspaceOf(s.cwd)
+      const e = byRepo.get(repo) || { path: s.cwd, count: 0, lastAt: 0 }
+      e.count++
+      if (s.mtime > e.lastAt) {
+        e.lastAt = s.mtime
+        e.path = repoRootOf(s.cwd) || s.cwd
+      }
+      byRepo.set(repo, e)
+    }
+    return [...byRepo.entries()]
+      .map(([repo, e]) => ({ repo, path: e.path, count: e.count, lastAt: e.lastAt }))
+      .sort((a, b) => b.lastAt - a.lastAt)
+  },
+  history: ({ workspace, q, limit }) => {
+    const needle = (q || '').trim().toLowerCase()
+    const out = []
+    for (const s of realSessions()) {
+      const repo = workspaceOf(s.cwd)
+      if (workspace && repo !== workspace) continue
+      const title = (s.firstUserText || '').trim() || 'session'
+      if (needle && !`${title} ${repo} ${s.gitBranch}`.toLowerCase().includes(needle)) continue
+      out.push({
+        key: `past:${s.id}`,
+        sessionId: s.id,
+        title,
+        repo,
+        branch: s.gitBranch || '',
+        engine: s.engine,
+        turns: s.turns,
+        at: s.mtime,
+      })
+      if (limit && limit > 0 && out.length >= limit) break
+    }
+    return out
+  },
+  // Resuming for real would spawn a pty this harness does not own.
+  resume: () => ({ error: 'the harness cannot resume — try it against the real app' }),
   startSession: (input) => ({ key: `phone-${input.cwd.split('/').pop()}` }),
 }
 

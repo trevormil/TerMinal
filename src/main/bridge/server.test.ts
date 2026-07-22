@@ -533,6 +533,94 @@ describe('chat surface', () => {
     expect(body.threads[0].live).toBe(true)
   })
 
+  it('lists workspaces so history is reachable per repo', async () => {
+    const h = await harness({
+      ...chatDeps(),
+      workspaces: () => [
+        { repo: 'TerMinal', path: '/repos/TerMinal', count: 41, lastAt: 300 },
+        { repo: 'beacon', path: '/repos/beacon', count: 8, lastAt: 200 },
+      ],
+    })
+    const body = await (await fetch(`${h.url}/v1/chats`, { headers: auth })).json()
+    expect(body.workspaces.map((w: { repo: string }) => w.repo)).toEqual(['TerMinal', 'beacon'])
+  })
+
+  it('serves resumable sessions filtered by workspace and search', async () => {
+    const seen: { workspace?: string; q?: string; limit?: number }[] = []
+    const h = await harness({
+      ...chatDeps(),
+      history: (opts) => {
+        seen.push(opts)
+        return [
+          {
+            key: 'past:s1',
+            sessionId: 's1',
+            title: 'fix the deploy',
+            repo: 'TerMinal',
+            branch: 'main',
+            engine: 'claude',
+            turns: 12,
+            at: 100,
+          },
+        ]
+      },
+    })
+    const body = await (
+      await fetch(`${h.url}/v1/history?workspace=TerMinal&q=deploy&limit=10`, { headers: auth })
+    ).json()
+    expect(body.sessions[0].sessionId).toBe('s1')
+    expect(seen[0]).toEqual({ workspace: 'TerMinal', q: 'deploy', limit: 10 })
+  })
+
+  it('resumes a finished session and returns its new live key', async () => {
+    const resumed: string[] = []
+    const h = await harness({
+      ...chatDeps(),
+      threads: () => [],
+      history: () => [
+        {
+          key: 'past:s1',
+          sessionId: 's1',
+          title: 'fix the deploy',
+          repo: 'TerMinal',
+          branch: 'main',
+          engine: 'claude',
+          turns: 12,
+          at: 100,
+        },
+      ],
+      resume: (id) => {
+        resumed.push(id)
+        return { key: 'phone-abc' }
+      },
+    })
+    // A past key is addressable even though no pty is running for it.
+    expect((await fetch(`${h.url}/v1/chats/past:s1/messages`, { headers: auth })).status).toBe(200)
+
+    const res = await fetch(`${h.url}/v1/chats/past:s1/resume`, { method: 'POST', headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).key).toBe('phone-abc')
+    expect(resumed).toEqual(['s1'])
+  })
+
+  it('refuses to resume a session that is already running', async () => {
+    const h = await harness({ ...chatDeps(), resume: () => ({ key: 'x' }) })
+    const res = await fetch(`${h.url}/v1/chats/sess-1/resume`, { method: 'POST', headers: auth })
+    expect(res.status).toBe(409)
+  })
+
+  it('awaits an async hitl source so remote hosts can be folded in', async () => {
+    const h = await harness({
+      ...chatDeps(),
+      hitl: async () => [
+        { id: 'local', title: 'here', source: 'agent', createdAt: 2 },
+        { id: 'remote', title: 'on tm', source: 'agent', createdAt: 1, repo: 'TM · beacon' },
+      ],
+    })
+    const body = await (await fetch(`${h.url}/v1/chats`, { headers: auth })).json()
+    expect(body.hitl.map((i: { id: string }) => i.id)).toEqual(['local', 'remote'])
+  })
+
   it('requires a token on every chat route', async () => {
     const h = await harness(chatDeps())
     for (const [path, init] of [

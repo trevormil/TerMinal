@@ -108,6 +108,35 @@ struct HitlItem: Codable, Identifiable, Hashable {
     let terminalKey: String?
 }
 
+/// A repo with resumable sessions on disk.
+struct Workspace: Codable, Identifiable, Hashable {
+    let repo: String
+    let path: String
+    let count: Int
+    let lastAt: Double
+    var id: String { repo }
+}
+
+/// A resumable session — a transcript the Mac can restart.
+struct HistorySession: Codable, Identifiable, Hashable {
+    let key: String
+    let sessionId: String
+    let title: String
+    let repo: String
+    let branch: String
+    let engine: String
+    let turns: Int
+    let at: Double
+    var id: String { key }
+
+    /// Presented as a read-only thread until it is resumed.
+    var thread: ChatThread {
+        ChatThread(
+            key: key, name: title, repo: repo, branch: branch, engine: engine,
+            status: "ended", needsInput: false, live: false, chat: true, endedAt: at)
+    }
+}
+
 struct RepoOption: Codable, Identifiable, Hashable {
     let name: String
     let path: String

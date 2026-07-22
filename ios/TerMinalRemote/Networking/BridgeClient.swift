@@ -165,15 +165,45 @@ final class BridgeClient {
 
     // ---- chat surface -------------------------------------------------
 
-    /// Threads plus the HITL queue, in one round trip — the chat list needs both.
-    func chats() async throws -> (threads: [ChatThread], hitl: [HitlItem]) {
+    /// Live threads, the HITL queue, and workspace summaries in one round trip.
+    /// Resumable sessions are deliberately NOT here: enumerating every
+    /// transcript on disk is far too slow and large for a poll.
+    func chats() async throws -> (
+        threads: [ChatThread], hitl: [HitlItem], workspaces: [Workspace]
+    ) {
         struct Envelope: Decodable {
             let threads: [ChatThread]
             let hitl: [HitlItem]
+            let workspaces: [Workspace]
         }
         let data = try await get("v1/chats")
         let env = try JSONDecoder().decode(Envelope.self, from: data)
-        return (env.threads, env.hitl)
+        return (env.threads, env.hitl, env.workspaces)
+    }
+
+    /// Resumable sessions, for one workspace or across all of them.
+    func history(workspace: String? = nil, query: String = "", limit: Int = 50) async throws
+        -> [HistorySession]
+    {
+        struct Envelope: Decodable { let sessions: [HistorySession] }
+        var parts = ["limit=\(limit)"]
+        if let workspace, !workspace.isEmpty {
+            parts.append("workspace=\(urlEncoded(workspace))")
+        }
+        if !query.isEmpty { parts.append("q=\(urlEncoded(query))") }
+        let data = try await get("v1/history?" + parts.joined(separator: "&"))
+        return try JSONDecoder().decode(Envelope.self, from: data).sessions
+    }
+
+    /// Restart a finished session on the Mac. Returns its new live key.
+    func resume(key: String) async throws -> String {
+        struct Resumed: Decodable { let key: String }
+        let data = try await post("v1/chats/\(key)/resume", body: nil)
+        return try JSONDecoder().decode(Resumed.self, from: data).key
+    }
+
+    private func urlEncoded(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? s
     }
 
     /// One session's conversation. `after` is an index into the full list, so

@@ -4,8 +4,15 @@ import SwiftUI
 final class ChatListViewModel {
     private(set) var threads: [ChatThread] = []
     private(set) var hitl: [HitlItem] = []
+    private(set) var workspaces: [Workspace] = []
     private(set) var error: String?
     private(set) var loading = true
+
+    /// Sessions for the workspace the user has expanded, or search results.
+    private(set) var history: [HistorySession] = []
+    private(set) var openWorkspace: String?
+    private(set) var searching = false
+    var query = "" 
 
     let client: BridgeClient
 
@@ -17,9 +24,10 @@ final class ChatListViewModel {
     func refresh() async {
         defer { loading = false }
         do {
-            let (threads, hitl) = try await client.chats()
+            let (threads, hitl, workspaces) = try await client.chats()
             self.threads = threads
             self.hitl = hitl
+            self.workspaces = workspaces
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -27,7 +35,33 @@ final class ChatListViewModel {
     }
 
     var live: [ChatThread] { threads.filter(\.live) }
-    var past: [ChatThread] { threads.filter { !$0.live } }
+
+    /// Expand a workspace (or collapse it). Sessions load lazily — the Mac has
+    /// hundreds and enumerating them is slow.
+    @MainActor
+    func toggle(_ workspace: Workspace) async {
+        if openWorkspace == workspace.repo {
+            openWorkspace = nil
+            history = []
+            return
+        }
+        openWorkspace = workspace.repo
+        history = []
+        history = (try? await client.history(workspace: workspace.repo)) ?? []
+    }
+
+    @MainActor
+    func search() async {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else {
+            searching = false
+            history = []
+            return
+        }
+        searching = true
+        openWorkspace = nil
+        history = (try? await client.history(query: q)) ?? []
+    }
 
     @MainActor
     func resolve(_ item: HitlItem, approved: Bool) async {
@@ -81,12 +115,36 @@ struct ChatListView: View {
                             .buttonStyle(.plain)
                     }
 
-                    if !model.past.isEmpty {
-                        section("Recent", count: model.past.count, tint: GT.textFaint)
-                            .padding(.top, 6)
-                        ForEach(model.past) { thread in
-                            NavigationLink(value: thread) { ThreadRow(thread: thread) }
+                    searchField
+
+                    if model.searching || model.openWorkspace != nil {
+                        section(
+                            model.searching ? "Results" : (model.openWorkspace ?? ""),
+                            count: model.history.count, tint: GT.textFaint
+                        )
+                        ForEach(model.history) { session in
+                            NavigationLink(value: session.thread) { HistoryRow(session: session) }
                                 .buttonStyle(.plain)
+                        }
+                        if model.history.isEmpty {
+                            Text("Nothing here.")
+                                .font(GT.sans(12))
+                                .foregroundStyle(GT.textFaint)
+                        }
+                    }
+
+                    if !model.searching {
+                        section("Workspaces", count: model.workspaces.count, tint: GT.textFaint)
+                            .padding(.top, 6)
+                        ForEach(model.workspaces) { workspace in
+                            Button {
+                                Task { await model.toggle(workspace) }
+                            } label: {
+                                WorkspaceRow(
+                                    workspace: workspace,
+                                    open: model.openWorkspace == workspace.repo)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -139,6 +197,37 @@ struct ChatListView: View {
                 }
             }
         }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(GT.textFaint)
+            TextField("Search every session", text: $model.query)
+                .font(GT.sans(14))
+                .foregroundStyle(GT.text)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .onSubmit { Task { await model.search() } }
+            if !model.query.isEmpty {
+                Button {
+                    model.query = ""
+                    Task { await model.search() }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(GT.textFaint)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Color.black.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(GT.border, lineWidth: 1))
+        .padding(.top, 4)
     }
 
     private func openPendingThreadIfAny() {
@@ -255,6 +344,52 @@ struct HitlCard: View {
                         .background(GT.green)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
+            }
+        }
+    }
+}
+
+/// A repo with resumable sessions. Tapping it loads them lazily.
+private struct WorkspaceRow: View {
+    let workspace: Workspace
+    let open: Bool
+
+    var body: some View {
+        GTPanel(padding: 11) {
+            HStack(spacing: 10) {
+                Image(systemName: open ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(GT.textFaint)
+                Text(workspace.repo)
+                    .font(GT.sans(14, .medium))
+                    .foregroundStyle(GT.text)
+                Spacer()
+                Text("\(workspace.count)")
+                    .font(GT.mono(11))
+                    .foregroundStyle(GT.textFaint)
+            }
+        }
+    }
+}
+
+private struct HistoryRow: View {
+    let session: HistorySession
+
+    var body: some View {
+        GTPanel(padding: 11) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.title)
+                    .font(GT.sans(14))
+                    .foregroundStyle(GT.textSoft)
+                    .lineLimit(2)
+                HStack(spacing: 5) {
+                    Text(session.engine)
+                    if !session.branch.isEmpty { Text("· \(session.branch)") }
+                    Text("· \(session.turns) turns")
+                }
+                .font(GT.mono(10.5))
+                .foregroundStyle(GT.textFaint)
+                .lineLimit(1)
             }
         }
     }

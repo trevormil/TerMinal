@@ -73,6 +73,7 @@ import {
   readTranscriptStats,
   readHarnessTdd,
   listSessions,
+  type SessionMeta,
   findSessionFile,
   readSessionTasks,
   lastAssistantTurn,
@@ -1141,6 +1142,25 @@ ipcMain.handle('fleet:list', () => fleetSnapshot())
 const MAX_REPLAY_BYTES = 256 * 1024
 /** How many finished sessions stay browsable in the chat list. */
 const HISTORY_THREADS = 25
+/**
+ * Enumerating every transcript on disk costs ~600ms and ~370KB across 800+
+ * sessions, so the phone's 4s poll must never trigger it. Cache briefly and
+ * serve workspace summaries from the cache; the full list is fetched only when
+ * a workspace is opened.
+ */
+const SESSION_CACHE_MS = 20_000
+let sessionCache: { at: number; sessions: SessionMeta[] } | null = null
+function cachedSessions(): SessionMeta[] {
+  if (sessionCache && Date.now() - sessionCache.at < SESSION_CACHE_MS) return sessionCache.sessions
+  const sessions = listSessions()
+  sessionCache = { at: Date.now(), sessions }
+  return sessions
+}
+
+/** Repo label for a session's cwd, which is all listSessions gives us. */
+function workspaceOf(cwd: string): string {
+  return repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || cwd || '') || 'unknown'
+}
 
 const bridgeDeps: BridgeDeps = {
   sessions: () =>
@@ -1208,28 +1228,81 @@ const bridgeDeps: BridgeDeps = {
       live: true,
       chat: chatSupportsEngine((s.engine || 'claude') as ChatEngine),
     }))
+    return live
+  },
+
+  // Every repo with resumable sessions, so the phone can reach work started in
+  // any workspace rather than only what is running right now.
+  workspaces: () => {
+    const byRepo = new Map<string, { path: string; count: number; lastAt: number }>()
+    for (const s of cachedSessions()) {
+      const repo = workspaceOf(s.cwd)
+      const entry = byRepo.get(repo) || { path: s.cwd, count: 0, lastAt: 0 }
+      entry.count++
+      if (s.mtime > entry.lastAt) {
+        entry.lastAt = s.mtime
+        entry.path = repoRootOf(s.cwd) || s.cwd
+      }
+      byRepo.set(repo, entry)
+    }
+    return [...byRepo.entries()]
+      .map(([repo, e]) => ({ repo, path: e.path, count: e.count, lastAt: e.lastAt }))
+      .sort((a, b) => b.lastAt - a.lastAt)
+  },
+
+  history: ({ workspace, q, limit }) => {
     const liveSessionIds = new Set(
       [...sessions.values()].map((s) => s.pinned.sessionId).filter(Boolean),
     )
-    const past = readSessionRuns(60)
-      .filter((r) => r.status !== 'running' && r.sessionId && !liveSessionIds.has(r.sessionId))
-      .slice(0, HISTORY_THREADS)
-      .map((r) => ({
-        key: `past:${r.sessionId}`,
-        name: r.agentTitle || r.repoLabel || 'session',
-        repo: r.repoLabel || '',
-        branch: r.branch || '',
-        engine: r.engine || '',
-        status: r.status,
-        needsInput: false,
-        live: false,
-        chat: chatSupportsEngine((r.engine || 'claude') as ChatEngine),
-        endedAt: r.endedAt,
-      }))
-    return [...live, ...past]
+    const needle = (q || '').trim().toLowerCase()
+    const out = []
+    for (const s of cachedSessions()) {
+      // A session that is already running belongs in Live, not in history.
+      if (liveSessionIds.has(s.id)) continue
+      const repo = workspaceOf(s.cwd)
+      if (workspace && repo !== workspace) continue
+      const title = (s.firstUserText || '').trim() || 'session'
+      if (needle && !`${title} ${repo} ${s.gitBranch}`.toLowerCase().includes(needle)) continue
+      out.push({
+        key: `past:${s.id}`,
+        sessionId: s.id,
+        title,
+        repo,
+        branch: s.gitBranch || '',
+        engine: s.engine,
+        turns: s.turns,
+        at: s.mtime,
+      })
+      if (limit && limit > 0 && out.length >= limit) break
+    }
+    return out
   },
-  hitl: () =>
-    readHitl()
+
+  // Restart a finished session in place. Same sessionId, so the transcript
+  // continues rather than starting a new conversation.
+  resume: (sessionId) => {
+    const meta = cachedSessions().find((s) => s.id === sessionId)
+    if (!meta) return { error: 'no such session' }
+    const key = `phone-${randomUUID().slice(0, 8)}`
+    try {
+      startSession(key, {
+        mode: 'resume',
+        sessionId,
+        engine: meta.engine as Engine,
+        cwd: meta.cwd,
+        name: workspaceOf(meta.cwd),
+        cols: 100,
+        rows: 30,
+      })
+      return { key }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  },
+  // Local items plus every configured host's. An agent blocked on `tm` pages
+  // nobody otherwise, which defeats the whole point of an AFK remote.
+  hitl: async () => {
+    const local = readHitl()
       .filter((h) => h.status === 'open')
       .map((h) => ({
         id: h.id,
@@ -1241,7 +1314,31 @@ const bridgeDeps: BridgeDeps = {
         createdAt: h.createdAt,
         sessionId: h.sessionId,
         terminalKey: h.terminalKey,
-      })),
+      }))
+    const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
+    if (!hosts.length) return local
+    // Best-effort: an unreachable host contributes nothing, never a failure —
+    // the local queue must still render.
+    const remote = await collectRemoteHitl(hosts, async (h) => {
+      const ref = remoteFromHostId(h.id)
+      return ref ? remoteHitl.list(ref) : []
+    }).catch(() => null)
+    const mapped = (remote?.items ?? [])
+      .filter((h) => h.status === 'open')
+      .map((h) => ({
+        id: h.id,
+        title: h.title,
+        detail: h.detail,
+        action: h.action,
+        // Label which machine is blocked, or the queue is ambiguous.
+        repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
+        source: h.source,
+        createdAt: h.createdAt,
+        sessionId: h.sessionId,
+        terminalKey: h.terminalKey,
+      }))
+    return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
+  },
   // Routes through the app's own resolve path — never a parallel write.
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
   registerDevice: (token, environment) => {
