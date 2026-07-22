@@ -8,11 +8,33 @@ import type { AgentModelPolicy } from './agents'
 /** Ticket tier → which slot of the agent's model policy serves it. The
  *  cheap-agentic / cheap-raw distinction collapses to `cheap` for now — the
  *  policy has a single cheap slot; revisit if the slots ever diverge. */
-const TIER_TO_POLICY: Record<string, keyof Omit<AgentModelPolicy, 'allowOverride'>> = {
+const TIER_TO_POLICY = {
   auto: 'default',
   top: 'deep',
   'cheap-agentic': 'cheap',
   'cheap-raw': 'cheap',
+} as const satisfies Record<string, keyof Omit<AgentModelPolicy, 'allowOverride'>>
+
+/** The tiers a ticket may declare. The single source of truth — writers
+ *  validate against this so a tier that resolveModel cannot route never
+ *  reaches a ticket file. */
+export type ModelTier = keyof typeof TIER_TO_POLICY
+export const MODEL_TIERS = Object.keys(TIER_TO_POLICY) as ModelTier[]
+
+export function isModelTier(value: unknown): value is ModelTier {
+  return typeof value === 'string' && (MODEL_TIERS as string[]).includes(value)
+}
+
+/**
+ * Coerce a caller-supplied tier to one resolveModel can actually route.
+ *
+ * Unknown tiers fall through to the `default` policy slot, which is the
+ * EXPENSIVE model — so persisting a typo like 'cheep-raw' silently bills at
+ * top rate while the ticket claims to be cheap. Normalising at the write
+ * boundary keeps the file honest.
+ */
+export function normalizeModelTier(value: unknown): ModelTier {
+  return isModelTier(value) ? value : 'auto'
 }
 
 export type ResolveModelInput = {
@@ -42,7 +64,9 @@ export type ResolveModelInput = {
 export function resolveModel(input: ResolveModelInput): string {
   const crossEngine = !!input.engine && !!input.policyEngine && input.engine !== input.policyEngine
   const policy = crossEngine ? undefined : input.policy
-  const slot = TIER_TO_POLICY[input.tier || 'auto'] || 'default'
+  // Same normalisation the writers apply, so a tier that somehow reached a
+  // ticket file still routes predictably instead of by index-miss.
+  const slot = TIER_TO_POLICY[normalizeModelTier(input.tier)]
   const policyModel = (policy?.[slot] || '').trim()
   const override = (input.override || '').trim()
   const overrideAllowed = policy?.allowOverride !== false

@@ -186,4 +186,20 @@ describe('terminal-cli mcp — ticket tools route to the obsidian vault', () => 
     expect(existsSync(filed.path)).toBe(true)
     expect(repoBacklogFiles(repo)).toEqual([])
   })
+
+  test('writes a model_tier line, honoring an explicit tier and rejecting junk', () => {
+    // The third ticket writer: without this line its frontmatter disagreed with
+    // backlog.ts and the MCP server, and a script could never pick a tier.
+    const { home, repo } = setup()
+    runCli(['ticket', 'Default tier', 'body'], home, repo)
+    runCli(['ticket', 'Cheap tier', 'body', 'cheap-raw'], home, repo)
+    runCli(['ticket', 'Typo tier', 'body', 'cheep-raw'], home, repo)
+
+    const files = repoBacklogFiles(repo).map((f) => readFileSync(f, 'utf8'))
+    expect(files.find((f) => f.includes('Default tier'))).toContain('model_tier: auto')
+    expect(files.find((f) => f.includes('Cheap tier'))).toContain('model_tier: cheap-raw')
+    // An unroutable tier must not persist — it would bill at the default slot.
+    expect(files.find((f) => f.includes('Typo tier'))).toContain('model_tier: auto')
+    expect(files.join('')).not.toContain('cheep-raw')
+  })
 })
