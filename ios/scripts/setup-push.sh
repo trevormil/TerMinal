@@ -20,10 +20,12 @@ KEY_ID=$(basename "$KEY_SRC" | sed -n 's/^AuthKey_\([A-Z0-9]*\)\.p8$/\1/p')
 [ -n "$KEY_ID" ] || { echo "expected a file named AuthKey_<KEYID>.p8" >&2; exit 1; }
 
 cd "$(dirname "$0")/.."
-TEAM_ID=$(sed -n "s/.*DEVELOPMENT_TEAM: ['\"]\(.*\)['\"].*/\1/p" project.yml)
-BUNDLE_ID=$(sed -n 's/.*PRODUCT_BUNDLE_IDENTIFIER: \(.*\)$/\1/p' project.yml | head -1 | tr -d "'\" ")
-[ -n "$TEAM_ID" ] || { echo "could not read DEVELOPMENT_TEAM from project.yml" >&2; exit 1; }
-[ -n "$BUNDLE_ID" ] || { echo "could not read PRODUCT_BUNDLE_IDENTIFIER from project.yml" >&2; exit 1; }
+# From .xcodegen.env (gitignored), the single source of Apple identifiers.
+[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
+TEAM_ID="${DEVELOPMENT_TEAM:-}"
+BUNDLE_ID="${PRODUCT_BUNDLE_ID:-}"
+[ -n "$TEAM_ID" ] || { echo "set DEVELOPMENT_TEAM in ios/.xcodegen.env (see .xcodegen.env.example)" >&2; exit 1; }
+[ -n "$BUNDLE_ID" ] || { echo "set PRODUCT_BUNDLE_ID in ios/.xcodegen.env" >&2; exit 1; }
 
 DIR="$HOME/.config/TerMinal/bridge"
 mkdir -p "$DIR"

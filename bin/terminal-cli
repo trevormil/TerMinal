@@ -1149,11 +1149,21 @@ function remoteMessages(id) {
     return []
   }
 }
-function remoteAppend(id, from, text) {
+function remoteAppend(id, from, text, images) {
   mkdirSync(REMOTE_DIR, { recursive: true, mode: 0o700 })
-  appendFileSync(remoteLog(id), JSON.stringify({ at: Date.now(), from, text }) + '\n', {
-    mode: 0o600,
-  })
+  const msg = { at: Date.now(), from, text }
+  if (images && images.length) msg.images = images
+  appendFileSync(remoteLog(id), JSON.stringify(msg) + '\n', { mode: 0o600 })
+}
+// Copy an image file into the session's store, returning the stored name.
+function remoteSaveImage(id, srcPath) {
+  const ext = (srcPath.split('.').pop() || 'png').toLowerCase()
+  const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/.test(ext) ? ext : 'png'
+  const fdir = join(REMOTE_DIR, `${id}.files`)
+  mkdirSync(fdir, { recursive: true, mode: 0o700 })
+  const name = `${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.${safeExt}`
+  writeFileSync(join(fdir, name), readFileSync(srcPath), { mode: 0o600 })
+  return name
 }
 function remoteList() {
   if (!existsSync(REMOTE_DIR)) return []
@@ -1222,6 +1232,7 @@ function remoteCommand(sub, rest) {
   // --id may appear anywhere; everything else is positional.
   let id = ''
   let cwdFlag = ''
+  let imageFlag = ''
   const positional = []
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--id') {
@@ -1239,6 +1250,10 @@ function remoteCommand(sub, rest) {
     if (rest[i] === '--quiet') continue
     if (rest[i] === '--timeout') {
       i++
+      continue
+    }
+    if (rest[i] === '--image') {
+      imageFlag = rest[++i] || ''
       continue
     }
     positional.push(rest[i])
@@ -1270,13 +1285,13 @@ function remoteCommand(sub, rest) {
     case 'post': {
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
       const text = positional.join(' ').trim()
-      if (!text) {
-        console.error('usage: terminal-cli remote post "<message>"')
+      const images = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : []
+      if (!text && !images.length) {
+        console.error('usage: terminal-cli remote post "<message>" [--image <path>]')
         process.exit(2)
       }
-      remoteAppend(sessionId, 'agent', text)
-      const session = readRemote(sessionId)
-      writeRemote({ ...session, lastSeenAt: Date.now() })
+      remoteAppend(sessionId, 'agent', text, images)
+      writeRemote({ ...readRemote(sessionId), lastSeenAt: Date.now() })
       break
     }
     case 'ask': {
@@ -1396,7 +1411,7 @@ switch (cmd) {
         '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
         '  inbox status|dir|example                  inspect automation inbox helpers\n' +
         '  remote register "<title>"                register this session for the phone\n' +
-        '  remote post "<message>"                  send an update to the phone\n' +
+        '  remote post "<message>" [--image <path>]  send an update (+ optional image)\n' +
         '  remote ask "<question>" [--timeout N]     ask and BLOCK until the phone replies\n' +
         '  remote check                             collect replies queued while working\n' +
         '  remote end                               mark the session finished\n' +

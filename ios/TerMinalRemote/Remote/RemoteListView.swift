@@ -46,6 +46,7 @@ struct RemoteListView: View {
     @State var model: RemoteListViewModel
     let onUnpair: () -> Void
     @State private var opened: RemoteSession?
+    @State private var startingNew = false
 
     var body: some View {
         ZStack {
@@ -87,6 +88,16 @@ struct RemoteListView: View {
                             .buttonStyle(.plain)
                     }
 
+                    Button { startingNew = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus")
+                            Text("New session")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .gtSecondaryButton()
+                    }
+                    .padding(.top, 4)
+
                     if !model.finished.isEmpty {
                         section("Finished", count: model.finished.count, tint: GT.textFaint)
                             .padding(.top, 6)
@@ -105,6 +116,14 @@ struct RemoteListView: View {
         // A tapped notification names a session; open it once the list knows it.
         .navigationDestination(item: $opened) { session in
             RemoteThreadView(model: RemoteThreadViewModel(session: session, client: model.client))
+        }
+        .sheet(isPresented: $startingNew) {
+            NewSessionSheet(client: model.client) { newId in
+                await model.refresh()
+                // Open the freshly-started thread; it registered before the
+                // agent booted, so it's already in the list.
+                await MainActor.run { opened = model.sessions.first { $0.id == newId } }
+            }
         }
         .navigationTitle(model.client.pairing.n)
         .navigationBarTitleDisplayMode(.inline)

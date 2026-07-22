@@ -25,9 +25,10 @@ set -a; . ./.testflight.env; set +a
 : "${ASC_KEY_ID:?set in .testflight.env}"
 : "${ASC_ISSUER_ID:?set in .testflight.env}"
 
-# Team id lives in project.yml (not a secret) so Xcode and this script agree.
-DEVELOPMENT_TEAM=$(sed -n "s/.*DEVELOPMENT_TEAM: ['\"]\(.*\)['\"].*/\1/p" project.yml)
-[ -n "$DEVELOPMENT_TEAM" ] || { echo "set DEVELOPMENT_TEAM in project.yml" >&2; exit 1; }
+# Apple identifiers come from .xcodegen.env (gitignored) so nothing is baked
+# into the committed project. Same source generate.sh uses.
+[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
+[ -n "${DEVELOPMENT_TEAM:-}" ] || { echo "set DEVELOPMENT_TEAM in ios/.xcodegen.env (see .xcodegen.env.example)" >&2; exit 1; }
 
 KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8}"
 [ -f "$KEY_PATH" ] || { echo "missing App Store Connect API key at $KEY_PATH" >&2; exit 1; }
@@ -47,7 +48,7 @@ BUILD=$(sed -n "s/.*CURRENT_PROJECT_VERSION: ['\"]\(.*\)['\"].*/\1/p" project.ym
 echo "==> TerMinal Remote $VERSION ($BUILD), team $DEVELOPMENT_TEAM"
 
 echo "==> generating project"
-xcodegen generate
+"$(dirname "$0")/generate.sh"
 
 echo "==> tests"
 xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemote \

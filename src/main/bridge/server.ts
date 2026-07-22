@@ -1,5 +1,6 @@
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createReadStream, existsSync } from 'node:fs'
 import { DEFAULT_BRIDGE_PORT, ensureIdentity, tokenMatches, type BridgeIdentity } from './identity'
 
 // The mobile bridge: a small authenticated JSON API over the sessions that have
@@ -32,6 +33,8 @@ export type BridgeMessage = {
   at: number
   from: 'agent' | 'user'
   text: string
+  /** Filenames served from /v1/remote/:id/image/:name. */
+  images?: string[]
 }
 
 /** A human-in-the-loop item — the cross-repo "something is blocked" queue. */
@@ -51,7 +54,11 @@ export type BridgeDeps = {
   /** One session's conversation. */
   messages(id: string, opts: { after?: number }): BridgeMessage[]
   /** Queue a reply for the agent to collect. False when the id is unknown. */
-  reply(id: string, text: string): boolean
+  reply(id: string, text: string, images?: string[]): boolean
+  /** Store an uploaded image; returns its filename, or null. */
+  saveImage?(id: string, data: Buffer, ext: string): string | null
+  /** Absolute path of a stored image, for serving it back. */
+  imagePath?(id: string, name: string): string | null
 
   /** Open HITL items. May be async: the Mac fans out to remote hosts. */
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
@@ -59,6 +66,26 @@ export type BridgeDeps = {
   resolveHitl?(id: string, resolved: boolean): boolean
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
+
+  /** Repos the phone may start a session in. */
+  repos?(): BridgeRepo[]
+  /**
+   * Start a session on the Mac, already wired to a remote thread. Returns the
+   * new session's remote id so the phone can open it immediately — the thread
+   * exists before the agent has finished booting.
+   */
+  spawn?(input: SpawnInput): { id: string } | { error: string }
+}
+
+/** A repo the phone may start a session in. */
+export type BridgeRepo = { name: string; path: string }
+
+export type SpawnInput = {
+  /** Absolute repo path, chosen from `repos()`. */
+  cwd: string
+  engine?: string
+  /** What the new agent should do first. Optional — omit for a bare session. */
+  task?: string
 }
 
 export type BridgeStatus = {
@@ -67,7 +94,7 @@ export type BridgeStatus = {
   error?: string
 }
 
-const MAX_BODY = 64 * 1024
+const MAX_BODY = 12 * 1024 * 1024 // room for a screenshot or two
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
@@ -201,8 +228,42 @@ export function createBridgeHandler(
       return
     }
 
-    // /v1/remote/:id/(messages|reply)
-    if (parts[0] === 'v1' && parts[1] === 'remote' && parts.length === 4) {
+    if (req.method === 'GET' && url.pathname === '/v1/repos') {
+      json(res, 200, { repos: deps.repos?.() ?? [] })
+      return
+    }
+
+    // Start a session from the phone. The thread is registered before the
+    // agent boots, so the phone can open it straight away.
+    if (req.method === 'POST' && url.pathname === '/v1/remote/new') {
+      if (!deps.spawn) {
+        json(res, 501, { error: 'starting sessions not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          let input: SpawnInput
+          try {
+            const parsed = JSON.parse(raw) as Partial<SpawnInput>
+            if (typeof parsed.cwd !== 'string' || !parsed.cwd) throw new Error('cwd is required')
+            input = {
+              cwd: parsed.cwd,
+              engine: typeof parsed.engine === 'string' ? parsed.engine : undefined,
+              task: typeof parsed.task === 'string' ? parsed.task.trim() || undefined : undefined,
+            }
+          } catch (e) {
+            json(res, 400, { error: (e as Error).message })
+            return
+          }
+          const result = deps.spawn!(input)
+          json(res, 'error' in result ? 409 : 200, result)
+        })
+        .catch((e: Error) => json(res, 413, { error: e.message }))
+      return
+    }
+
+    // /v1/remote/:id/(messages|reply|image/:name)
+    if (parts[0] === 'v1' && parts[1] === 'remote' && parts.length >= 4) {
       const id = decodeURIComponent(parts[2])
       const session = deps.sessions().find((s) => s.id === id)
       if (!session) {
@@ -224,20 +285,47 @@ export function createBridgeHandler(
         readBody(req)
           .then((raw) => {
             let text: string
+            let images: { ext: string; data: string }[] = []
             try {
-              const parsed = JSON.parse(raw) as { text?: unknown }
-              if (typeof parsed.text !== 'string' || !parsed.text.trim()) {
-                throw new Error('text is required')
+              const parsed = JSON.parse(raw) as {
+                text?: unknown
+                images?: { ext?: unknown; data?: unknown }[]
               }
-              text = parsed.text.trim()
+              text = typeof parsed.text === 'string' ? parsed.text.trim() : ''
+              if (Array.isArray(parsed.images)) {
+                images = parsed.images
+                  .filter((i) => typeof i?.data === 'string')
+                  .map((i) => ({ ext: String(i.ext || 'png'), data: String(i.data) }))
+              }
+              // A message must carry something.
+              if (!text && images.length === 0) throw new Error('text or an image is required')
             } catch (e) {
               json(res, 400, { error: (e as Error).message })
               return
             }
-            const ok = deps.reply(id, text)
+            const names: string[] = []
+            for (const img of images) {
+              const name = deps.saveImage?.(id, Buffer.from(img.data, 'base64'), img.ext)
+              if (name) names.push(name)
+            }
+            const ok = deps.reply(id, text, names)
             json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
           })
           .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
+
+      // Serve an attached image back to the phone.
+      if (req.method === 'GET' && parts[3] === 'image' && parts.length === 5) {
+        const path = deps.imagePath?.(id, decodeURIComponent(parts[4]))
+        if (!path || !existsSync(path)) {
+          json(res, 404, { error: 'no such image' })
+          return
+        }
+        const ext = path.split('.').pop()?.toLowerCase() || 'png'
+        const type = ext === 'jpg' ? 'jpeg' : ext
+        res.writeHead(200, { 'content-type': `image/${type}`, 'cache-control': 'max-age=86400' })
+        createReadStream(path).pipe(res)
         return
       }
     }

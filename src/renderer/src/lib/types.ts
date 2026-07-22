@@ -1726,6 +1726,7 @@ export type GtApi = {
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
   }
+  onRemoteOpenSession: (cb: (payload: Record<string, unknown>) => void) => () => void
   bridge: {
     status: () => Promise<BridgeStatus>
     pairing: () => Promise<BridgePairing>

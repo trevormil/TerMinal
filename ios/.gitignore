@@ -4,3 +4,4 @@
 build/
 .testflight.env
 DerivedData/
+.xcodegen.env

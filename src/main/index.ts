@@ -283,7 +283,15 @@ import {
 import { bridgeStatus, startBridge, stopBridge, type BridgeDeps } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
-import { listRemoteSessions, messageCount, postMessage, readMessages } from './remote-sessions'
+import {
+  imagePath,
+  listRemoteSessions,
+  messageCount,
+  postMessage,
+  readMessages,
+  registerRemoteSession,
+  saveImage,
+} from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
@@ -1130,6 +1138,32 @@ ipcMain.handle('fleet:list', () => fleetSnapshot())
 // parallel session store. Terminals only: a phone attached to a live agent can
 // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
 const MAX_REPLAY_BYTES = 256 * 1024
+/**
+ * The first thing a phone-started session is told. It has to do three jobs:
+ * adopt the thread that is already waiting for it, learn the reporting
+ * contract, and get on with the work — with no human at the keyboard to
+ * correct it.
+ */
+function spawnPrompt(remoteId: string, task?: string): string {
+  const lines = [
+    `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
+    `report through the phone, not the terminal.`,
+    ``,
+    `A remote thread is already registered for you. Adopt it, then use it:`,
+    ``,
+    `    terminal-cli remote register --id ${remoteId} "<short title>"`,
+    `    terminal-cli remote post --id ${remoteId} "<update>"`,
+    `    terminal-cli remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
+    ``,
+    `Follow the remote-terminal skill for when to post vs ask. Post at real`,
+    `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
+    `the safe default and say so in a post.`,
+  ]
+  if (task) lines.push(``, `Your task:`, ``, task)
+  else lines.push(``, `No task was given. Post that you are ready and ask what is needed.`)
+  return lines.join('\n')
+}
+
 const bridgeDeps: BridgeDeps = {
   // Only sessions that opted in via the remote-terminal skill. Nothing is
   // scraped from a pty, so this is identical for every engine.
@@ -1148,7 +1182,9 @@ const bridgeDeps: BridgeDeps = {
   messages: (id, opts) => readMessages(id, opts),
   // Queued, not delivered: the agent collects it at its next check, so a reply
   // sent while it is busy is never lost.
-  reply: (id, text) => !!postMessage(id, 'user', text),
+  reply: (id, text, images) => !!postMessage(id, 'user', text, images ?? []),
+  saveImage: (id, data, ext) => saveImage(id, data, ext),
+  imagePath: (id, name) => imagePath(id, name),
 
   // Local items plus every configured host's. An agent blocked on `tm` pages
   // nobody otherwise, which defeats the whole point of an AFK remote.
@@ -1186,6 +1222,52 @@ const bridgeDeps: BridgeDeps = {
     return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
   },
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
+  repos: () => {
+    const base = resolvedProjectsDir()
+    try {
+      return readdirSync(base)
+        .filter((n) => !n.startsWith('.'))
+        .map((n) => ({ name: n, path: join(base, n) }))
+        .filter((d) => {
+          try {
+            return statSync(d.path).isDirectory()
+          } catch {
+            return false
+          }
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+    } catch {
+      return []
+    }
+  },
+
+  // Start a session from the phone. The remote thread is registered up front so
+  // the phone can open it immediately, then the RENDERER is asked to open the
+  // terminal — spawning the pty from main directly would leave an orphan with
+  // no tab on the desktop, and would skip initialInput delivery entirely.
+  spawn: ({ cwd, engine, task }) => {
+    if (!win) return { error: 'TerMinal is not running' }
+    const repo = repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || cwd)
+    const session = registerRemoteSession({
+      title: task ? task.slice(0, 60) : `${repo} · from phone`,
+      repo,
+      cwd,
+      engine: engine || readSettings().defaultEngine,
+    })
+    postMessage(
+      session.id,
+      'agent',
+      `Starting a ${engine || readSettings().defaultEngine} session in ${repo}…`,
+    )
+    win.webContents.send('remote:open-session', {
+      cwd,
+      engine: engine || readSettings().defaultEngine,
+      remoteId: session.id,
+      initialInput: spawnPrompt(session.id, task),
+    })
+    return { id: session.id }
+  },
+
   registerDevice: (token, environment) => {
     registerDevice(token, environment)
     emitActivity({

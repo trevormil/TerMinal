@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 @Observable
@@ -55,13 +56,14 @@ final class RemoteThreadViewModel {
     }
 
     @MainActor
-    func send(_ text: String) async {
+    func send(_ text: String, image: Data? = nil) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || image != nil else { return }
         sending = true
         defer { sending = false }
         do {
-            try await client.reply(id: session.id, text: trimmed)
+            let images: [(ext: String, data: Data)] = image.map { [("jpg", $0)] } ?? []
+            try await client.reply(id: session.id, text: trimmed, images: images)
             // Don't echo locally: the Mac's log is the source of truth, and the
             // next poll picks the message up.
             await refresh()
@@ -74,6 +76,8 @@ final class RemoteThreadViewModel {
 struct RemoteThreadView: View {
     @State var model: RemoteThreadViewModel
     @State private var draft = ""
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var pendingImage: Data?
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -98,7 +102,9 @@ struct RemoteThreadView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(model.messages) { message in
-                        MessageBubble(message: message).id(message.id)
+                        MessageBubble(
+                            message: message, sessionId: model.session.id, client: model.client
+                        ).id(message.id)
                     }
                     if model.isAwaiting, let question = model.question {
                         AwaitingBanner(question: question)
@@ -112,6 +118,8 @@ struct RemoteThreadView: View {
             }
         }
     }
+
+    private var canSend: Bool { !draft.isEmpty || pendingImage != nil }
 
     private var endedBanner: some View {
         HStack(spacing: 6) {
@@ -127,7 +135,37 @@ struct RemoteThreadView: View {
     private var composer: some View {
         VStack(spacing: 0) {
             Divider().overlay(GT.border)
+            if let pending = pendingImage, let ui = UIImage(data: pending) {
+                HStack(spacing: 8) {
+                    Image(uiImage: ui)
+                        .resizable().scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    Text("Image attached").font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                    Spacer()
+                    Button {
+                        pendingImage = nil
+                        pickerItem = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(GT.textFaint)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            }
             HStack(spacing: 8) {
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    Image(systemName: "photo").font(.system(size: 20)).foregroundStyle(GT.textMuted)
+                }
+                .onChange(of: pickerItem) {
+                    Task {
+                        // Re-encode to JPEG so a HEIC screenshot renders anywhere.
+                        if let data = try? await pickerItem?.loadTransferable(type: Data.self),
+                            let ui = UIImage(data: data) {
+                            pendingImage = ui.jpegData(compressionQuality: 0.8)
+                        }
+                    }
+                }
                 TextField(
                     model.isAwaiting ? "Answer the agent" : "Send a message",
                     text: $draft,
@@ -151,14 +189,17 @@ struct RemoteThreadView: View {
 
                 Button {
                     let text = draft
+                    let image = pendingImage
                     draft = ""
-                    Task { await model.send(text) }
+                    pendingImage = nil
+                    pickerItem = nil
+                    Task { await model.send(text, image: image) }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 27))
-                        .foregroundStyle(draft.isEmpty ? GT.textFaint : GT.accent)
+                        .foregroundStyle(canSend ? GT.accent : GT.textFaint)
                 }
-                .disabled(draft.isEmpty || model.sending)
+                .disabled(!canSend || model.sending)
                 .accessibilityLabel("Send")
             }
             .padding(.horizontal, 12)
@@ -192,23 +233,71 @@ private struct AwaitingBanner: View {
 
 private struct MessageBubble: View {
     let message: RemoteMessage
+    let sessionId: String
+    let client: BridgeClient
 
     var body: some View {
         HStack {
             if !message.isAgent { Spacer(minLength: 40) }
-            Text(message.text)
-                .font(GT.sans(14))
-                .foregroundStyle(message.isAgent ? GT.textSoft : GT.text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(message.isAgent ? GT.panel2 : GT.accent.opacity(0.22))
-                .clipShape(RoundedRectangle(cornerRadius: 13))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 13)
-                        .stroke(message.isAgent ? GT.border : GT.accent.opacity(0.35), lineWidth: 1)
-                )
-                .textSelection(.enabled)
+            VStack(alignment: message.isAgent ? .leading : .trailing, spacing: 6) {
+                if let images = message.images, !images.isEmpty {
+                    ForEach(images, id: \.self) { name in
+                        RemoteImage(sessionId: sessionId, name: name, client: client)
+                    }
+                }
+                if !message.text.isEmpty {
+                    Group {
+                        if message.isAgent {
+                            // The agent's prose may be Markdown; yours is plain.
+                            MarkdownText(raw: message.text)
+                        } else {
+                            Text(message.text).font(GT.sans(14)).foregroundStyle(GT.text)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(message.isAgent ? GT.panel2 : GT.accent.opacity(0.22))
+                    .clipShape(RoundedRectangle(cornerRadius: 13))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13)
+                            .stroke(
+                                message.isAgent ? GT.border : GT.accent.opacity(0.35), lineWidth: 1)
+                    )
+                }
+            }
             if message.isAgent { Spacer(minLength: 40) }
+        }
+    }
+}
+
+/// An attached image, fetched over the pinned, authenticated session.
+private struct RemoteImage: View {
+    let sessionId: String
+    let name: String
+    let client: BridgeClient
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 260, maxHeight: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(GT.border, lineWidth: 1))
+            } else {
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(GT.panel2)
+                    .frame(width: 160, height: 120)
+                    .overlay(ProgressView().tint(GT.textFaint))
+            }
+        }
+        .task {
+            if let data = await client.imageData(id: sessionId, name: name) {
+                image = UIImage(data: data)
+            }
         }
     }
 }

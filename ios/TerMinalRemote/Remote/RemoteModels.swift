@@ -24,10 +24,12 @@ struct RemoteMessage: Codable, Identifiable, Hashable {
     let at: Double
     let from: String
     let text: String
+    /// Filenames served from /v1/remote/:id/image/:name.
+    let images: [String]?
 
     var isAgent: Bool { from == "agent" }
     /// The log is append-only, so position is a stable identity.
-    var id: String { "\(at)-\(from)-\(text.hashValue)" }
+    var id: String { "\(at)-\(from)-\(text.hashValue)-\(images?.count ?? 0)" }
 }
 
 /// A human-in-the-loop item — the cross-repo "something is blocked" queue.
@@ -40,3 +42,11 @@ struct HitlItem: Codable, Identifiable, Hashable {
     let source: String
     let createdAt: Double
 }
+
+/// A repo the phone may start a session in.
+struct RepoOption: Codable, Identifiable, Hashable {
+    let name: String
+    let path: String
+    var id: String { path }
+}
+

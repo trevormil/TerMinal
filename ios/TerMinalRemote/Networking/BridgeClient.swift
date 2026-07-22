@@ -104,13 +104,57 @@ final class BridgeClient {
     }
 
     /// Queue a reply. The agent collects it at its next check, so this works
-    /// whether or not it is currently blocked asking.
-    func reply(id: String, text: String) async throws {
-        try await post("v1/remote/\(id)/reply", body: ["text": text])
+    /// whether or not it is currently blocked asking. Images ride as base64.
+    func reply(id: String, text: String, images: [(ext: String, data: Data)] = []) async throws {
+        struct Img: Encodable {
+            let ext: String
+            let data: String
+        }
+        struct Body: Encodable {
+            let text: String
+            let images: [Img]
+        }
+        let body = Body(
+            text: text,
+            images: images.map { Img(ext: $0.ext, data: $0.data.base64EncodedString()) })
+        try await post("v1/remote/\(id)/reply", body: body)
+    }
+
+    /// Authenticated URL for an attached image, loaded via `imageData`.
+    func imageURL(id: String, name: String) async -> URL? {
+        guard let host = await resolveHost() else { return nil }
+        return URL(string: "https://\(host):\(pairing.p)/v1/remote/\(id)/image/\(name)")
+    }
+
+    /// Fetch an image's bytes (bearer + pinned, like everything else).
+    func imageData(id: String, name: String) async -> Data? {
+        guard let host = await resolveHost() else { return nil }
+        guard let (data, response) = try? await session.data(
+            for: request("v1/remote/\(id)/image/\(name)", host: host))
+        else { return nil }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return data
     }
 
     func resolveHitl(id: String, resolved: Bool) async throws {
         try await post("v1/hitl/\(id)", body: ["resolved": resolved])
+    }
+
+    /// Repos the phone may start a session in.
+    func repos() async throws -> [RepoOption] {
+        struct Envelope: Decodable { let repos: [RepoOption] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/repos")).repos
+    }
+
+    /// Start a session on the Mac. Returns the remote thread id, which exists
+    /// before the agent finishes booting, so the phone can open it at once.
+    func spawn(cwd: String, engine: String?, task: String?) async throws -> String {
+        struct Started: Decodable { let id: String }
+        var body: [String: String] = ["cwd": cwd]
+        if let engine { body["engine"] = engine }
+        if let task, !task.isEmpty { body["task"] = task }
+        let data = try await post("v1/remote/new", body: body)
+        return try JSONDecoder().decode(Started.self, from: data).id
     }
 
     /// Hand this device's APNs token to the Mac so alerts can reach it.

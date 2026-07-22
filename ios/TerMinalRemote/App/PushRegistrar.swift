@@ -6,7 +6,10 @@ import UserNotifications
 /// Diagnostics for the one thing that can't be reproduced on a Simulator: a
 /// real phone talking to a real Mac. Read with
 /// `xcrun devicectl device process launch --console`.
-let bridgeLog = Logger(subsystem: "com.trevormil.terminal", category: "bridge")
+// Subsystem derives from the bundle id so a fork's logs land under its own id
+// rather than a hardcoded one.
+let bridgeLog = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "terminal", category: "bridge")
 
 /// Registers this device for push and hands the token to the paired Mac.
 ///

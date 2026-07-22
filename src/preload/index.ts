@@ -228,6 +228,14 @@ const gt = {
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
     design: (text: string, engine: string) => ipcRenderer.invoke('schedules:design', text, engine),
   },
+  // Main asks the renderer to open a session (phone-initiated spawn). Routed
+  // through the renderer so the new session gets a real tab and the normal
+  // initialInput delivery, instead of an orphan pty.
+  onRemoteOpenSession: (cb: (payload: Record<string, unknown>) => void) => {
+    const h = (_e: unknown, payload: Record<string, unknown>) => cb(payload)
+    ipcRenderer.on('remote:open-session', h)
+    return () => ipcRenderer.removeListener('remote:open-session', h)
+  },
   bridge: {
     status: () => ipcRenderer.invoke('bridge:status'),
     pairing: () => ipcRenderer.invoke('bridge:pairing'),

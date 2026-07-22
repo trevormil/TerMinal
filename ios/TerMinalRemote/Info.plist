@@ -33,6 +33,8 @@
 	<string>TerMinal uses the camera only to scan the pairing QR code shown in TerMinal's Settings on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TerMinal connects to the Mac running TerMinal on your local network to mirror your terminal sessions.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TerMinal lets you send a screenshot or photo to an agent session.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>IBMPlexSans-Regular.ttf</string>

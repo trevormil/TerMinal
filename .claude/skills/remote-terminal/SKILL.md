@@ -35,6 +35,9 @@ Write these like a text message to a colleague, not like a log line:
   a failure you're about to work around, a PR opened.
 - **Don't** post every command, file read, or intermediate thought. The phone is
   a digest, not a transcript.
+- **Markdown renders** on the phone — use backticks for code, `**bold**`, lists.
+- **Attach an image** with `--image <path>` to show a diff, a chart, or a
+  screenshot: `terminal-cli remote post --id <id> "the failing UI" --image /tmp/shot.png`
 - Aim for a handful of posts across a long task, not dozens.
 - Include the outcome, not just the activity: "8 tests failing, all in the auth
   suite" beats "ran the tests".
@@ -73,6 +76,9 @@ terminal-cli remote check --id <id>
 ```
 
 Non-blocking, prints one message per line, silent when there is nothing.
+
+When the human sends a **screenshot**, its reply arrives as `[image: /path]` —
+Read that path to see what they sent.
 
 ## 5. Finish
 

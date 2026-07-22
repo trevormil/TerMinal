@@ -46,6 +46,6 @@ echo "==> harness up on $(echo "$PAIRING" | sed 's/.*"p":\([0-9]*\).*/port \1/')
 printf '%s' "$PAIRING" | xcrun simctl pbcopy "$SIM"
 
 echo "==> running the live pairing test"
-xcodegen generate
+"$(dirname "$0")/generate.sh"
 xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemoteLive \
   -destination "platform=iOS Simulator,name=$SIM" test 2>&1 | tail -30

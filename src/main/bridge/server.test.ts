@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { createServer, type Server } from 'node:http'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createBridgeHandler, type BridgeDeps, type BridgeRemoteSession } from './server'
 
 const TOKEN = 'test-token-value'
@@ -169,6 +172,70 @@ describe('GET /v1/remote/:id/messages', () => {
   })
 })
 
+describe('images', () => {
+  it('accepts a base64 image on reply and stores it', async () => {
+    const saved: { id: string; ext: string; bytes: number }[] = []
+    const replies: { id: string; text: string; images?: string[] }[] = []
+    const h = await harness({
+      saveImage: (id, data, ext) => {
+        saved.push({ id, ext, bytes: data.length })
+        return `stored.${ext}`
+      },
+      reply: (id, text, images) => {
+        replies.push({ id, text, images })
+        return id === 'sess-1'
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/sess-1/reply`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        text: 'look',
+        images: [{ ext: 'png', data: Buffer.from([1, 2, 3]).toString('base64') }],
+      }),
+    })
+    expect(res.status).toBe(200)
+    expect(saved).toEqual([{ id: 'sess-1', ext: 'png', bytes: 3 }])
+    expect(replies[0].images).toEqual(['stored.png'])
+  })
+
+  it('allows an image-only reply', async () => {
+    const replies: { images?: string[] }[] = []
+    const h = await harness({
+      saveImage: () => 'x.png',
+      reply: (_id, _text, images) => {
+        replies.push({ images })
+        return true
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/sess-1/reply`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ images: [{ ext: 'png', data: 'AQID' }] }),
+    })
+    expect(res.status).toBe(200)
+    expect(replies[0].images).toEqual(['x.png'])
+  })
+
+  it('serves a stored image with an image content-type', async () => {
+    const tmpImg = mkdtempSync(join(tmpdir(), 'gt-img-'))
+    const file = join(tmpImg, 'a.png')
+    writeFileSync(file, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    const h = await harness({ imagePath: () => file })
+    const res = await fetch(`${h.url}/v1/remote/sess-1/image/a.png`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/png')
+    expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(0x89)
+  })
+
+  it('404s an image the session does not have', async () => {
+    const h = await harness({ imagePath: () => null })
+    expect(
+      (await fetch(`${h.url}/v1/remote/sess-1/image/none.png`, { headers: auth })).status,
+    ).toBe(404)
+  })
+})
+
 describe('POST /v1/remote/:id/reply', () => {
   it('queues a reply for the agent to collect', async () => {
     const h = await harness()
@@ -266,6 +333,92 @@ describe('hitl + devices', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('spawning sessions from the phone', () => {
+  it('lists repos the phone may start a session in', async () => {
+    const h = await harness({
+      repos: () => [
+        { name: 'alpha', path: '/repos/alpha' },
+        { name: 'beta', path: '/repos/beta' },
+      ],
+    })
+    const body = await (await fetch(`${h.url}/v1/repos`, { headers: auth })).json()
+    expect(body.repos.map((r: { name: string }) => r.name)).toEqual(['alpha', 'beta'])
+  })
+
+  it('spawns a session and returns the remote thread id', async () => {
+    const seen: unknown[] = []
+    const h = await harness({
+      spawn: (input) => {
+        seen.push(input)
+        return { id: 'thread-1' }
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ cwd: '/repos/alpha', engine: 'claude', task: 'fix the tests' }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).id).toBe('thread-1')
+    expect(seen).toEqual([{ cwd: '/repos/alpha', engine: 'claude', task: 'fix the tests' }])
+  })
+
+  it('requires a cwd and rejects a blank task down to undefined', async () => {
+    const seen: unknown[] = []
+    const h = await harness({
+      spawn: (input) => {
+        seen.push(input)
+        return { id: 'x' }
+      },
+    })
+    const bad = await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ engine: 'claude' }),
+    })
+    expect(bad.status).toBe(400)
+
+    await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ cwd: '/repos/alpha', task: '   ' }),
+    })
+    expect(seen).toEqual([{ cwd: '/repos/alpha', engine: undefined, task: undefined }])
+  })
+
+  it('surfaces a spawn failure as an error, not a fake id', async () => {
+    const h = await harness({ spawn: () => ({ error: 'TerMinal is not running' }) })
+    const res = await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ cwd: '/repos/alpha' }),
+    })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('TerMinal is not running')
+  })
+
+  it('501s when spawning is not wired, and requires a token', async () => {
+    const h = await harness()
+    expect(
+      (
+        await fetch(`${h.url}/v1/remote/new`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({ cwd: '/x' }),
+        })
+      ).status,
+    ).toBe(501)
+    expect(
+      (
+        await fetch(`${h.url}/v1/remote/new`, {
+          method: 'POST',
+          body: JSON.stringify({ cwd: '/x' }),
+        })
+      ).status,
+    ).toBe(401)
   })
 })
 

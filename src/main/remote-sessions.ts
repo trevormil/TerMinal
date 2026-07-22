@@ -55,10 +55,21 @@ export type RemoteMessage = {
   at: number
   from: 'agent' | 'user'
   text: string
+  /** Image filenames stored next to the log, under <id>.files/. Lets you send
+   *  the agent a screenshot, and the agent read it — without bloating the log
+   *  with base64. */
+  images?: string[]
 }
 
 const metaPath = (id: string, dir: string) => join(dir, `${id}.json`)
 const logPath = (id: string, dir: string) => join(dir, `${id}.jsonl`)
+const filesDir = (id: string, dir: string) => join(dir, `${id}.files`)
+
+/** Absolute path of an image attached to a session. null if it escapes. */
+export function imagePath(id: string, name: string, dir: string = REMOTE_DIR): string | null {
+  if (!isValidRemoteId(id) || !/^[\w.-]{1,128}$/.test(name)) return null
+  return join(filesDir(id, dir), name)
+}
 
 /** Reject anything that could escape the remote directory. */
 export function isValidRemoteId(id: unknown): id is string {
@@ -165,22 +176,42 @@ function touch(id: string, patch: Partial<RemoteSession>, dir: string): RemoteSe
   return next
 }
 
-/** Append a message. Returns the session, or null when it isn't registered. */
+/** Save an image for a session; returns the stored filename, or null. */
+export function saveImage(
+  id: string,
+  data: Buffer,
+  ext: string,
+  dir: string = REMOTE_DIR,
+): string | null {
+  if (!isValidRemoteId(id) || !data.length) return null
+  const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/i.test(ext) ? ext.toLowerCase() : 'png'
+  const fdir = filesDir(id, dir)
+  mkdirSync(fdir, { recursive: true, mode: 0o700 })
+  // A short random name avoids collisions without another counter.
+  const name = `${Date.now().toString(36)}-${randomUUID().slice(0, 6)}.${safeExt}`
+  writeFileSync(join(fdir, name), data, { mode: 0o600 })
+  return name
+}
+
+/**
+ * Append a message. Returns the session, or null when it isn't registered.
+ * Either text or at least one image must be present.
+ */
 export function postMessage(
   id: string,
   from: RemoteMessage['from'],
   text: string,
+  images: string[] = [],
   dir: string = REMOTE_DIR,
 ): RemoteSession | null {
-  if (!isValidRemoteId(id) || !text.trim()) return null
+  if (!isValidRemoteId(id)) return null
+  if (!text.trim() && images.length === 0) return null
   const session = readRemoteSession(id, dir)
   if (!session) return null
   ensure(dir)
-  appendFileSync(
-    logPath(id, dir),
-    JSON.stringify({ at: Date.now(), from, text } satisfies RemoteMessage) + '\n',
-    { mode: 0o600 },
-  )
+  const message: RemoteMessage = { at: Date.now(), from, text }
+  if (images.length) message.images = images
+  appendFileSync(logPath(id, dir), JSON.stringify(message) + '\n', { mode: 0o600 })
   return touch(id, {}, dir)
 }
 
@@ -190,7 +221,7 @@ export function askQuestion(
   question: string,
   dir: string = REMOTE_DIR,
 ): RemoteSession | null {
-  if (!postMessage(id, 'agent', question, dir)) return null
+  if (!postMessage(id, 'agent', question, [], dir)) return null
   return touch(id, { status: 'awaiting', question }, dir)
 }
 
@@ -208,7 +239,17 @@ export function takeReplies(id: string, dir: string = REMOTE_DIR): string[] {
   const fresh = all.slice(session.deliveredUpTo).filter((m) => m.from === 'user')
   if (!fresh.length) return []
   touch(id, { deliveredUpTo: all.length, status: 'working', question: undefined }, dir)
-  return fresh.map((m) => m.text)
+  // An attached image is handed over as an absolute path the agent can Read,
+  // so "look at this screenshot" actually works.
+  return fresh.map((m) => {
+    if (!m.images?.length) return m.text
+    const paths = m.images
+      .map((n) => imagePath(id, n, dir))
+      .filter((p): p is string => !!p)
+      .map((p) => `[image: ${p}]`)
+      .join(' ')
+    return m.text ? `${m.text}\n${paths}` : paths
+  })
 }
 
 export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSession | null {

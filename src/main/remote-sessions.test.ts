@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   askQuestion,
+  imagePath,
+  saveImage,
   currentRemoteSession,
   endRemoteSession,
   isValidRemoteId,
@@ -36,7 +38,7 @@ describe('registration', () => {
   it('re-registering resumes rather than wiping the conversation', () => {
     const dir = tmp()
     registerRemoteSession({ id: 'aaa', title: 'one' }, dir)
-    postMessage('aaa', 'agent', 'progress', dir)
+    postMessage('aaa', 'agent', 'progress', [], dir)
     const again = registerRemoteSession({ id: 'aaa' }, dir)
     expect(again.title).toBe('one')
     expect(readMessages('aaa', {}, dir)).toHaveLength(1)
@@ -45,7 +47,7 @@ describe('registration', () => {
   it('keeps session files owner-only — they carry work context', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'agent', 'hello', dir)
+    postMessage(s.id, 'agent', 'hello', [], dir)
     expect(statSync(join(dir, `${s.id}.json`)).mode & 0o077).toBe(0)
     expect(statSync(join(dir, `${s.id}.jsonl`)).mode & 0o077).toBe(0)
   })
@@ -66,8 +68,8 @@ describe('messages', () => {
   it('records both sides in order', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'agent', 'tests green', dir)
-    postMessage(s.id, 'user', 'merge it', dir)
+    postMessage(s.id, 'agent', 'tests green', [], dir)
+    postMessage(s.id, 'user', 'merge it', [], dir)
     expect(readMessages(s.id, {}, dir).map((m) => [m.from, m.text])).toEqual([
       ['agent', 'tests green'],
       ['user', 'merge it'],
@@ -77,23 +79,23 @@ describe('messages', () => {
   it('paginates with after, so the phone fetches only what is new', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'agent', 'one', dir)
-    postMessage(s.id, 'agent', 'two', dir)
+    postMessage(s.id, 'agent', 'one', [], dir)
+    postMessage(s.id, 'agent', 'two', [], dir)
     expect(readMessages(s.id, { after: 1 }, dir).map((m) => m.text)).toEqual(['two'])
   })
 
   it('ignores empty text and unknown sessions', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    expect(postMessage(s.id, 'agent', '   ', dir)).toBeNull()
-    expect(postMessage('nope', 'agent', 'hi', dir)).toBeNull()
+    expect(postMessage(s.id, 'agent', '   ', [], dir)).toBeNull()
+    expect(postMessage('nope', 'agent', 'hi', [], dir)).toBeNull()
     expect(readMessages(s.id, {}, dir)).toHaveLength(0)
   })
 
   it('survives a torn final line, since the log is appended to live', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'agent', 'one', dir)
+    postMessage(s.id, 'agent', 'one', [], dir)
     writeFileSync(join(dir, `${s.id}.jsonl`), readMessagesRaw(dir, s.id) + '{"at":1,"fr')
     expect(readMessages(s.id, {}, dir).map((m) => m.text)).toEqual(['one'])
   })
@@ -118,7 +120,7 @@ describe('ask and reply delivery', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
     askQuestion(s.id, 'merge it?', dir)
-    postMessage(s.id, 'user', 'yes, squash', dir)
+    postMessage(s.id, 'user', 'yes, squash', [], dir)
 
     expect(takeReplies(s.id, dir)).toEqual(['yes, squash'])
     // Consumed: a second check must not replay it as if it were new.
@@ -129,7 +131,7 @@ describe('ask and reply delivery', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
     // Never asked — you just left a note mid-work.
-    postMessage(s.id, 'user', 'also bump the version', dir)
+    postMessage(s.id, 'user', 'also bump the version', [], dir)
     expect(readRemoteSession(s.id, dir)!.status).toBe('working')
     expect(takeReplies(s.id, dir)).toEqual(['also bump the version'])
   })
@@ -138,7 +140,7 @@ describe('ask and reply delivery', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
     askQuestion(s.id, 'merge it?', dir)
-    postMessage(s.id, 'user', 'yes', dir)
+    postMessage(s.id, 'user', 'yes', [], dir)
     takeReplies(s.id, dir)
     const after = readRemoteSession(s.id, dir)!
     expect(after.status).toBe('working')
@@ -148,16 +150,63 @@ describe('ask and reply delivery', () => {
   it('never hands the agent its own messages back', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'agent', 'thinking out loud', dir)
+    postMessage(s.id, 'agent', 'thinking out loud', [], dir)
     expect(takeReplies(s.id, dir)).toEqual([])
   })
 
   it('delivers several queued replies in order', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)
-    postMessage(s.id, 'user', 'first', dir)
-    postMessage(s.id, 'user', 'second', dir)
+    postMessage(s.id, 'user', 'first', [], dir)
+    postMessage(s.id, 'user', 'second', [], dir)
     expect(takeReplies(s.id, dir)).toEqual(['first', 'second'])
+  })
+})
+
+describe('images', () => {
+  it('saves an image and attaches it to a message', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    const name = saveImage(s.id, Buffer.from([0x89, 0x50, 0x4e, 0x47]), 'png', dir)!
+    expect(name).toMatch(/\.png$/)
+    postMessage(s.id, 'user', 'look at this', [name], dir)
+    const msg = readMessages(s.id, {}, dir).at(-1)!
+    expect(msg.images).toEqual([name])
+    expect(imagePath(s.id, name, dir)).toContain(`${s.id}.files`)
+  })
+
+  it('hands the agent an image as a readable path', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    const name = saveImage(s.id, Buffer.from([1, 2, 3]), 'png', dir)!
+    postMessage(s.id, 'user', 'this error', [name], dir)
+    const delivered = takeReplies(s.id, dir)
+    expect(delivered).toHaveLength(1)
+    expect(delivered[0]).toContain('this error')
+    // The agent gets an absolute path it can Read, not base64.
+    expect(delivered[0]).toContain(`[image: `)
+    expect(delivered[0]).toContain(`${s.id}.files`)
+  })
+
+  it('allows an image-only message', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    const name = saveImage(s.id, Buffer.from([1]), 'jpg', dir)!
+    expect(postMessage(s.id, 'user', '', [name], dir)).not.toBeNull()
+    expect(readMessages(s.id, {}, dir).at(-1)?.images).toEqual([name])
+  })
+
+  it('refuses a traversing image name', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    expect(imagePath(s.id, '../../etc/passwd', dir)).toBeNull()
+    expect(imagePath(s.id, 'a/b.png', dir)).toBeNull()
+  })
+
+  it('coerces an unknown extension to png rather than trusting it', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    expect(saveImage(s.id, Buffer.from([1]), 'exe', dir)).toMatch(/\.png$/)
   })
 })
 
