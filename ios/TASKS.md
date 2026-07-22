@@ -18,11 +18,14 @@ Live scratchpad so nothing thrown my way gets dropped. Newest asks at the bottom
 - [x] **Inbox revamp** — ALL items, read/unread + Unread/Open/Resolved/All
       filters + severity (push/normal), desktop AND phone; badge = unread.
 
-## In progress
-- [ ] **Seamless desktop ↔ remote handoff** (this PR)
-  - Move between a desktop session and a remote/listener session and back with
-    no friction. Fix flakiness: turning listeners on/off, delete/remove,
-    unregister. Whole lifecycle: register → run → go remote → come back → stop.
+- [x] **Seamless desktop ↔ remote handoff** — lifecycle is idempotent + never
+      crashes a turn. post→soft-skip, ask→safe-default, end/off→idempotent,
+      status verb, re-register resumes. ADR-0010 + skill (×4). The delete-crash
+      was the root flakiness.
+
+## Pending (not code)
+- [ ] Install build 24 (inbox revamp) to the phone — device was offline; auto
+      when it reconnects. Handoff fixes are Mac-side, already live.
 
 ## Parked / needs human
 - [ ] APNs key: created once in Apple portal (no API). Push is inert until the
