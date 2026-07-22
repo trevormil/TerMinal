@@ -11,15 +11,15 @@ import Foundation
 /// request after pairing pins normally.
 enum TailscalePairing {
     enum Failure: LocalizedError {
-        case unreachable
+        case detailed(String)
         case refused
         case notAvailable
         case badResponse
 
         var errorDescription: String? {
             switch self {
-            case .unreachable:
-                return "Couldn't reach that Mac on your tailnet. Is it on and is the name right?"
+            case .detailed(let why):
+                return why
             case .refused:
                 return "That Mac didn't recognise this device as the same Tailscale account."
             case .notAvailable:
@@ -38,19 +38,28 @@ enum TailscalePairing {
         comps.host = host
         comps.port = port
         comps.path = "/v1/pair"
-        guard let url = comps.url else { throw Failure.unreachable }
+        guard let url = comps.url else { throw Failure.detailed("bad host") }
 
-        // Accept the self-signed cert for THIS request only — see the type doc.
+        // Per-task delegate (iOS 15+): attach the trust handler directly to the
+        // request. A session-level delegate wasn't being consulted for this
+        // one-off async call, so the self-signed cert failed the handshake
+        // (-1200); this form routes the challenge to our delegate reliably.
         let delegate = AcceptOnceDelegate()
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-
+        let session = URLSession(configuration: config)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(from: url)
+            (data, response) = try await session.data(for: request, delegate: delegate)
+        } catch let urlError as URLError {
+            // Report the actual reason — "unreachable" hid TLS and DNS failures.
+            throw Failure.detailed(
+                "\(url.host ?? "host"):\(port) — \(urlError.localizedDescription) "
+                    + "[\(urlError.code.rawValue)]")
         } catch {
-            throw Failure.unreachable
+            throw Failure.detailed(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else { throw Failure.badResponse }
         switch http.statusCode {
@@ -77,7 +86,18 @@ enum TailscalePairing {
 
 /// Accepts any server cert. Used ONLY for the bootstrap pair request, which
 /// runs inside the WireGuard tunnel before a fingerprint is known.
-private final class AcceptOnceDelegate: NSObject, URLSessionDelegate {
+private final class AcceptOnceDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+    // Both levels, like PinnedSessionDelegate: data(from:) uses the session
+    // method, but keep the task one so no code path is left unhandled.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        urlSession(session, didReceive: challenge, completionHandler: completionHandler)
+    }
+
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,

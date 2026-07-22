@@ -7,7 +7,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: '1.0'
-    CURRENT_PROJECT_VERSION: '13'
+    CURRENT_PROJECT_VERSION: '16'
     SWIFT_VERSION: '5.9'
     # Apple Developer team id. Also read by scripts/testflight.sh, which
     # generates ExportOptions.plist from it — keep this the only copy.
@@ -50,7 +50,12 @@ targets:
         # is strictly stronger than chain validation against a public CA — but
         # ATS still needs local networking allowed to reach a bare IP.
         NSAppTransportSecurity:
+          # The bridge is always self-signed and reached by IP (LAN or the
+          # tailnet's 100.64/10, which ATS does NOT count as local). Security
+          # comes from certificate pinning in the app, not ATS, so allow the
+          # loads and let the pinning delegate gate every connection.
           NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: >-
           TerMinal connects to the Mac running TerMinal on your local network to
           mirror your terminal sessions.
