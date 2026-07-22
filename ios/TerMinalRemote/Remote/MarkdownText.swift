@@ -1,18 +1,20 @@
 import SwiftUI
 
-/// Renders an agent message as Markdown — bold, italic, inline code, links,
-/// and fenced code blocks — without a third-party dependency.
+/// Renders an agent message as Markdown — headings, paragraphs, bullets, bold,
+/// italic, inline code, links, and fenced code blocks — without a third-party
+/// dependency.
 ///
-/// SwiftUI's `Text(AttributedString(markdown:))` handles inline styling but
-/// collapses newlines and cannot lay out a fenced code block. So paragraphs and
-/// ``` blocks are split out here; each paragraph is rendered as inline Markdown,
-/// each code block as a monospace panel.
+/// Structure is parsed HERE rather than handed to the Markdown parser whole.
+/// `AttributedString(markdown:)` follows Markdown's soft-break rule and folds a
+/// single newline into a space, which turned every message into one long
+/// paragraph. So we split into blocks (blank line = paragraph, `#` = heading,
+/// ``` = code) and only use the parser for INLINE styling within a line.
 struct MarkdownText: View {
     let raw: String
     var textColor: Color = GT.textSoft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .code(let code):
@@ -24,10 +26,16 @@ struct MarkdownText: View {
                         .background(GT.codeBg)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .textSelection(.enabled)
+                case .heading(let text):
+                    Text(attributed(text))
+                        .font(GT.sans(15, .semibold))
+                        .foregroundStyle(GT.text)
+                        .textSelection(.enabled)
                 case .prose(let text):
-                    Text(inline(text))
+                    Text(attributed(text))
                         .font(GT.sans(14))
                         .foregroundStyle(textColor)
+                        .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
             }
@@ -36,37 +44,79 @@ struct MarkdownText: View {
 
     private enum Block {
         case prose(String)
+        case heading(String)
         case code(String)
     }
 
-    /// Split on ``` fences. Even segments are prose, odd are code.
+    /// Split on ``` fences (even segments prose, odd code), then break the prose
+    /// into headings and blank-line-separated paragraphs.
     private var blocks: [Block] {
-        let parts = raw.components(separatedBy: "```")
         var out: [Block] = []
-        for (i, part) in parts.enumerated() {
+        for (i, part) in raw.components(separatedBy: "```").enumerated() {
             if i.isMultiple(of: 2) {
-                let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty { out.append(.prose(trimmed)) }
+                out.append(contentsOf: proseBlocks(part))
             } else {
-                // Drop an optional language tag on the opening fence line.
-                var body = part
-                if let nl = body.firstIndex(of: "\n") {
-                    let firstLine = body[..<nl].trimmingCharacters(in: .whitespaces)
-                    if !firstLine.contains(" ") && firstLine.count < 20 {
-                        body = String(body[body.index(after: nl)...])
-                    }
-                }
-                out.append(.code(body.trimmingCharacters(in: .newlines)))
+                out.append(.code(codeBody(part)))
             }
         }
         return out.isEmpty ? [.prose(raw)] : out
     }
 
-    /// Inline Markdown for one paragraph. Falls back to plain text if the
-    /// parser rejects it, so a stray character never blanks the message.
-    private func inline(_ text: String) -> AttributedString {
+    private func proseBlocks(_ segment: String) -> [Block] {
+        var out: [Block] = []
+        var buffer: [String] = []
+        func flush() {
+            let joined = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !joined.isEmpty { out.append(.prose(joined)) }
+            buffer.removeAll()
+        }
+        for line in segment.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                flush()
+            } else if let hash = trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+                flush()
+                out.append(.heading(String(trimmed[hash.upperBound...])))
+            } else {
+                buffer.append(bulletized(line))
+            }
+        }
+        flush()
+        return out
+    }
+
+    /// Drop an optional language tag on the opening fence line.
+    private func codeBody(_ part: String) -> String {
+        var body = part
+        if let nl = body.firstIndex(of: "\n") {
+            let first = body[..<nl].trimmingCharacters(in: .whitespaces)
+            if !first.contains(" ") && first.count < 20 {
+                body = String(body[body.index(after: nl)...])
+            }
+        }
+        return body.trimmingCharacters(in: .newlines)
+    }
+
+    /// `- item` / `* item` → `• item`, keeping any indent.
+    private func bulletized(_ line: String) -> String {
+        guard let m = line.range(of: #"^(\s*)[-*]\s+"#, options: .regularExpression) else {
+            return line
+        }
+        let indent = line[..<m.lowerBound] + String(repeating: " ", count: 0)
+        return "\(indent)• \(line[m.upperBound...])"
+    }
+
+    /// Inline Markdown per LINE, rejoined with real newlines so line breaks
+    /// survive. Falls back to plain text so a stray character never blanks a
+    /// message.
+    private func attributed(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        var out = AttributedString()
+        for (i, line) in text.components(separatedBy: "\n").enumerated() {
+            if i > 0 { out.append(AttributedString("\n")) }
+            out.append((try? AttributedString(markdown: line, options: options)) ?? AttributedString(line))
+        }
+        return out
     }
 }

@@ -253,6 +253,7 @@ private struct MessageBubble: View {
                         } else {
                             Text(message.text).font(GT.sans(14)).foregroundStyle(GT.text)
                                 .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -264,6 +265,14 @@ private struct MessageBubble: View {
                             .stroke(
                                 message.isAgent ? GT.border : GT.accent.opacity(0.35), lineWidth: 1)
                     )
+                    // Selection only ever works inside ONE Text, so it can't copy
+                    // a whole multi-block message. Long-press gives a reliable
+                    // copy of the entire message, code fences and all.
+                    .contextMenu {
+                        Button("Copy message", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = message.text
+                        }
+                    }
                 }
             }
             if message.isAgent { Spacer(minLength: 40) }
