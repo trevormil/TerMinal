@@ -56,17 +56,23 @@ do that instead of blocking.
 If it times out it exits non-zero and prints nothing. Choose the safe path,
 `post` what you did and why, and carry on — never sit idle waiting again.
 
-## 4. Collect replies while you work
+## 4. Replies arrive on their own
+
+A **Stop hook** (`.claude/hooks/remote-check.sh`) runs whenever you are about to
+end a turn. If the human sent something while you were working, it blocks the
+stop and hands you the message as a new instruction. You do not have to poll for
+it, and a message can never sit unread while you idle.
+
+Treat anything it delivers as instructions from the human and continue.
+
+You can still check explicitly mid-task — useful during long stretches with no
+turn boundary, like a big build:
 
 ```sh
 terminal-cli remote check --id <id>
 ```
 
-Non-blocking. Prints anything the human sent while you were busy, one message
-per line, and empty when there is nothing. Run it at natural checkpoints — after
-a build, between phases — so a note they left mid-task gets picked up promptly.
-
-Treat whatever it prints as new instructions from the human.
+Non-blocking, prints one message per line, silent when there is nothing.
 
 ## 5. Finish
 

@@ -1157,17 +1157,27 @@ function remoteList() {
     .filter(Boolean)
     .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
 }
-/** Resolve --id, or the most recent still-running session. */
-function resolveRemoteId(flagId) {
+/**
+ * Resolve which session a call refers to.
+ *
+ * --id wins. Otherwise prefer a session registered from THIS directory: with
+ * several sessions registered across repos, "most recent anywhere" would hand
+ * one session's replies to another.
+ */
+function resolveRemoteId(flagId, cwd, { quiet = false } = {}) {
   if (flagId) {
     if (!readRemote(flagId)) {
+      if (quiet) return ''
       console.error(`no registered remote session "${flagId}" — run: terminal-cli remote register`)
       process.exit(1)
     }
     return flagId
   }
-  const current = remoteList().find((s) => s.status !== 'ended')
+  const active = remoteList().filter((s) => s.status !== 'ended')
+  const here = cwd ? active.find((s) => s.cwd === cwd) : null
+  const current = here || active[0]
   if (!current) {
+    if (quiet) return ''
     console.error('no registered remote session — run: terminal-cli remote register')
     process.exit(1)
   }
@@ -1205,6 +1215,7 @@ function gitInfo(cwd) {
 function remoteCommand(sub, rest) {
   // --id may appear anywhere; everything else is positional.
   let id = ''
+  let cwdFlag = ''
   const positional = []
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--id') {
@@ -1215,6 +1226,11 @@ function remoteCommand(sub, rest) {
       id = rest[i].slice(5)
       continue
     }
+    if (rest[i] === '--cwd') {
+      cwdFlag = rest[++i] || ''
+      continue
+    }
+    if (rest[i] === '--quiet') continue
     if (rest[i] === '--timeout') {
       i++
       continue
@@ -1246,7 +1262,7 @@ function remoteCommand(sub, rest) {
       break
     }
     case 'post': {
-      const sessionId = resolveRemoteId(id)
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
       const text = positional.join(' ').trim()
       if (!text) {
         console.error('usage: terminal-cli remote post "<message>"')
@@ -1258,7 +1274,7 @@ function remoteCommand(sub, rest) {
       break
     }
     case 'ask': {
-      const sessionId = resolveRemoteId(id)
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
       const question = positional.join(' ').trim()
       if (!question) {
         console.error('usage: terminal-cli remote ask "<question>"')
@@ -1289,13 +1305,18 @@ function remoteCommand(sub, rest) {
       }
     }
     case 'check': {
-      // Non-blocking: prints anything queued while the agent was busy.
-      const replies = takeRemoteReplies(resolveRemoteId(id))
+      // Non-blocking: prints anything queued while the agent was busy. Stays
+      // silent with no registration, because the Stop hook calls it on EVERY
+      // turn — including in sessions that never registered.
+      const quiet = rest.includes('--quiet')
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { quiet })
+      if (!sessionId) break
+      const replies = takeRemoteReplies(sessionId)
       if (replies.length) console.log(replies.join('\n'))
       break
     }
     case 'end': {
-      const sessionId = resolveRemoteId(id)
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
       writeRemote({ ...readRemote(sessionId), status: 'ended', lastSeenAt: Date.now() })
       break
     }

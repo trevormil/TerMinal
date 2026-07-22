@@ -39,6 +39,18 @@ if (!listRemoteSessions().some((s) => s.id === DEMO_ID)) {
   postMessage(DEMO_ID, 'agent', '844 tests green — opening the PR now.')
 }
 
+let hitlQueue = [
+  {
+    id: 'h1',
+    title: 'Approve release to production',
+    detail: 'The release script wants to publish v0.4.0 from main.',
+    action: 'bun run release',
+    repo: 'TerMinal',
+    source: 'agent',
+    createdAt: 1_784_000_004_000,
+  },
+]
+
 const deps: BridgeDeps = {
   sessions: () =>
     listRemoteSessions().map((s) => ({
@@ -54,18 +66,14 @@ const deps: BridgeDeps = {
     })),
   messages: (id, opts) => readMessages(id, opts),
   reply: (id, text) => !!postMessage(id, 'user', text),
-  hitl: () => [
-    {
-      id: 'h1',
-      title: 'Approve release to production',
-      detail: 'The release script wants to publish v0.4.0 from main.',
-      action: 'bun run release',
-      repo: 'TerMinal',
-      source: 'agent',
-      createdAt: 1_784_000_004_000,
-    },
-  ],
-  resolveHitl: () => true,
+  hitl: () => hitlQueue,
+  // Actually remove it: a static list made Resolve flash and then reappear on
+  // the next poll, which reads as a broken button.
+  resolveHitl: (id) => {
+    const before = hitlQueue.length
+    hitlQueue = hitlQueue.filter((h) => h.id !== id)
+    return hitlQueue.length < before
+  },
   registerDevice: () => {},
 }
 
