@@ -58,19 +58,26 @@ fi
 echo $$ >"$LOCK/pid"
 trap 'rm -rf "$LOCK" 2>/dev/null || true' EXIT
 
-# Park until the phone sends something (or the session ends / times out). No
-# stop_hook_active guard on purpose: after a message is delivered and the agent
-# acts, we WANT to park again for the next one. This never busy-loops — it only
-# returns a block when a real message arrives.
+# Park until the phone sends something, the session ends, or the wait times out.
+# No stop_hook_active guard on purpose: after a message is delivered and the
+# agent acts, we WANT to park again for the next one. This never busy-loops — it
+# blocks inside the CLI and only returns when there is real news.
+#
+# Exit codes from `remote check --wait`:
+#   0 + output → a phone message; block and hand it over
+#   0 + no output → session ended (or none) → allow the stop
+#   3 → timed out with nothing new → re-park with a heartbeat so the SESSION
+#       never dies even though a single hook run is capped by the Stop-hook
+#       timeout. The turn ends and this hook immediately fires again.
 REPLIES=$("$CLI" remote check --wait --quiet \
   --timeout "$WAIT_TIMEOUT" \
   --agent-session "$SESSION_ID" \
-  --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null || true)
-[ -n "$REPLIES" ] || exit 0
+  --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null)
+RC=$?
 
-# Block the stop and feed the message back as the reason, which Claude Code
-# surfaces to the model as new input.
-python3 - "$REPLIES" <<'PY'
+if [ -n "$REPLIES" ]; then
+  # Block the stop and feed the message back as the reason.
+  python3 - "$REPLIES" <<'PY'
 import json, sys
 replies = sys.argv[1]
 print(json.dumps({
@@ -80,3 +87,19 @@ print(json.dumps({
               "live and you'll be handed the next message automatically:\n\n" + replies,
 }))
 PY
+elif [ "$RC" = "3" ]; then
+  # Heartbeat: no message this window. End the turn silently so the hook re-fires
+  # and parks again — the session stays alive indefinitely. Keep the agent inert.
+  python3 - <<'PY'
+import json
+print(json.dumps({
+    "decision": "block",
+    "reason": "TerMinal Remote heartbeat — no new message from the phone. Do NOT take any "
+              "action and do NOT run any command. Immediately end your turn with a brief "
+              "acknowledgement. The session stays live; the next phone message will be handed "
+              "to you automatically when it arrives.",
+}))
+PY
+else
+  exit 0
+fi

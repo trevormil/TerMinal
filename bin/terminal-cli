@@ -1371,14 +1371,17 @@ function remoteCommand(sub, rest) {
       const deadline = Date.now() + timeoutSec * 1000
       for (;;) {
         const session = readRemote(sessionId)
-        // Ended from the phone/app → let the turn stop for good.
+        // Ended from the phone/app → exit 0 so the hook lets the turn stop.
         if (!session || session.status === 'ended') break
         const replies = takeRemoteReplies(sessionId)
         if (replies.length) {
           console.log(replies.join('\n'))
           break
         }
-        if (Date.now() > deadline) break // idle past the window → allow the stop
+        // Timed out with nothing new. Exit 3 (distinct from ended) so the hook
+        // re-parks with a heartbeat instead of letting the session die — the
+        // wait is bounded by the Stop-hook timeout, but the SESSION is not.
+        if (Date.now() > deadline) process.exit(3)
         execSync('sleep 2')
       }
       break
