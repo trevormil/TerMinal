@@ -280,7 +280,11 @@ export function openHitlCount(): number {
   try {
     const raw = JSON.parse(readFileSync(join(BRIDGE_DIR, '..', 'hitl.json'), 'utf8')) as unknown
     if (!Array.isArray(raw)) return 0
-    return raw.filter((h) => (h as { status?: string })?.status === 'open').length
+    // The app badge should nag about what you HAVEN'T SEEN, not everything open —
+    // a read-but-unresolved item shouldn't keep the red dot burning.
+    return raw.filter(
+      (h) => (h as { status?: string })?.status === 'open' && !(h as { readAt?: number })?.readAt,
+    ).length
   } catch {
     return 0
   }

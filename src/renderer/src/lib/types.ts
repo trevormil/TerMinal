@@ -975,6 +975,10 @@ export type HitlItem = {
   repoRoot?: string
   source: HitlSource
   status: 'open' | 'resolved'
+  /** 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as 'push'. */
+  severity?: 'push' | 'normal'
+  /** When first seen; absent ⇒ unread. */
+  readAt?: number
   createdAt: number
   resolvedAt?: number
   runId?: string
@@ -1758,6 +1762,8 @@ export type GtApi = {
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
+    markRead: (ids: string[]) => Promise<number>
+    markAllRead: () => Promise<number>
   }
   factory: {
     health: () => Promise<FactoryHealth>

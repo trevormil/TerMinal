@@ -7,6 +7,7 @@ import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
 import { hitlRecurrenceKey } from './hitl-recurrence'
+import { defaultSeverity, itemSeverity, type HitlSeverity } from './hitl-severity'
 import {
   hitlActivityKind,
   hitlNotifyKind,
@@ -30,6 +31,8 @@ export type HitlSource =
   | 'listener'
   | 'completion-hook'
   | 'review-pattern'
+export { itemSeverity, type HitlSeverity } from './hitl-severity'
+
 export type HitlItem = {
   id: string
   title: string
@@ -39,6 +42,13 @@ export type HitlItem = {
   repoRoot?: string
   source: HitlSource
   status: 'open' | 'resolved'
+  /** Alert loudness — see HitlSeverity. Absent on legacy items ⇒ treated as
+   *  'push' so nothing that used to notify goes silent after the upgrade. */
+  severity?: HitlSeverity
+  /** When you first saw it. Absent ⇒ unread. Independent of resolve: an item
+   *  can be read-but-open (you saw it, haven't acted) or unread-and-resolved
+   *  (auto-resolved before you looked). */
+  readAt?: number
   createdAt: number
   resolvedAt?: number
   // Optional pointer back to the run that produced this HITL. Lets the HITL
@@ -87,6 +97,36 @@ function write(list: HitlItem[]): void {
 
 export function openCount(): number {
   return readHitl().filter((h) => h.status === 'open').length
+}
+
+/** Open items you haven't seen yet — the badge that should actually nag you. */
+export function unreadCount(): number {
+  return readHitl().filter((h) => h.status === 'open' && !h.readAt).length
+}
+
+/** Mark items read (viewed). Returns how many changed. */
+export function markHitlRead(ids: string[]): number {
+  const set = new Set(ids)
+  const list = readHitl()
+  let changed = 0
+  const next = list.map((h) => {
+    if (set.has(h.id) && !h.readAt) {
+      changed++
+      return { ...h, readAt: Date.now() }
+    }
+    return h
+  })
+  if (changed) write(next)
+  return changed
+}
+
+/** Mark every open item read — the inbox "mark all read" sweep. */
+export function markAllHitlRead(): number {
+  return markHitlRead(
+    readHitl()
+      .filter((h) => !h.readAt)
+      .map((h) => h.id),
+  )
 }
 
 // HITL usually means "I need attention", but deterministic completion-hook
@@ -168,10 +208,14 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     ...input,
     id: randomUUID(),
     status: 'open',
+    severity: input.severity ?? defaultSeverity(input.source),
     createdAt: Date.now(),
     occurrenceCount: 1,
   }
   write([item, ...readHitl()])
+  // Severity is the alert gate: 'push' notifies (macOS/Telegram/phone), 'normal'
+  // just sits in the inbox for your next sweep.
+  const loud = itemSeverity(item) === 'push'
   emitActivity(
     {
       kind: hitlActivityKind(item.source),
@@ -187,11 +231,11 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
       sessionId: item.sessionId,
       suppressTelegram: true,
     },
-    { notify: true },
+    { notify: loud },
   )
-  // Belt-and-suspenders: HITL ALWAYS pings Telegram when configured, even if
-  // the general activity-feed notify toggle is off.
-  alwaysPingTelegram(item)
+  // HITL pings Telegram when configured even if the general feed toggle is off —
+  // but only for 'push' severity. A 'normal' item is inbox-only.
+  if (loud) alwaysPingTelegram(item)
   return item
 }
 

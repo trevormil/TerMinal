@@ -356,7 +356,15 @@ import {
   noteLoopTurnComplete,
   noteSingleLoopTurn,
 } from './loop-listener'
-import { readHitl, fileHitl, resolveHitl, removeHitl, type HitlItem } from './hitl'
+import {
+  readHitl,
+  fileHitl,
+  resolveHitl,
+  removeHitl,
+  markHitlRead,
+  markAllHitlRead,
+  type HitlItem,
+} from './hitl'
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun, type ScheduleSpec } from './cron'
 import { composeSteps, pipelineLabel } from './pipelines'
@@ -2634,6 +2642,10 @@ ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
   }
   return removeHitl(id)
 })
+// Read-state is LOCAL to whichever surface you're looking at — it says "I've
+// seen this", not "resolve it on the host". So mark-read never routes to a host.
+ipcMain.handle('hitl:mark-read', (_e, ids: string[]) => markHitlRead(ids))
+ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.
 ipcMain.handle('factory:health', () => factoryHealth())
 ipcMain.handle('factory:start', (_e, engine: Engine) => {
