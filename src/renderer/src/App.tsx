@@ -413,6 +413,8 @@ export default function App() {
         cwd: typeof payload.cwd === 'string' ? payload.cwd : '',
         engine: typeof payload.engine === 'string' ? payload.engine : undefined,
         initialInput: typeof payload.initialInput === 'string' ? payload.initialInput : '',
+        // No one is at the Mac — submit the prompt for it, or it just sits.
+        autoSubmit: true,
       })
     })
     return off
@@ -511,6 +513,7 @@ export default function App() {
             (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
+          const autoSubmit = payload.autoSubmit === true
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const model = typeof payload.model === 'string' ? payload.model : undefined
           const openrouterHarness =
@@ -528,6 +531,7 @@ export default function App() {
                 cwd,
                 name,
                 initialInput,
+                autoSubmit,
                 ticketSlug,
                 remote,
                 model,
