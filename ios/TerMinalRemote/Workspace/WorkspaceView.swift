@@ -116,11 +116,36 @@ struct WorkspaceView: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
-        case .sessions: sessionsTab
-        case .tickets: list(model.tickets, empty: "No tickets") { TicketRow(t: $0) }
-        case .prs: list(model.prs, empty: "No open PRs") { PrRow(pr: $0) }
-        case .runs: list(model.runs, empty: "No runs yet") { RunRow(run: $0) }
-        case .schedules: list(model.schedules, empty: "No schedules") { ScheduleRow(s: $0) }
+        case .sessions:
+            sessionsTab
+        case .tickets:
+            list(model.tickets, empty: "No tickets") { t in
+                NavigationLink {
+                    TicketDetailView(client: model.client, repo: model.repo.path, slug: t.slug)
+                } label: { TicketRow(t: t) }
+                .buttonStyle(.plain)
+            }
+        case .prs:
+            list(model.prs, empty: "No open PRs") { pr in
+                NavigationLink {
+                    PrDetailView(client: model.client, repo: model.repo.path, iid: pr.iid)
+                } label: { PrRow(pr: pr) }
+                .buttonStyle(.plain)
+            }
+        case .runs:
+            list(model.runs, empty: "No runs yet") { run in
+                NavigationLink {
+                    RunDetailView(client: model.client, run: run)
+                } label: { RunRow(run: run) }
+                .buttonStyle(.plain)
+            }
+        case .schedules:
+            list(model.schedules, empty: "No schedules") { s in
+                NavigationLink {
+                    ScheduleDetailView(client: model.client, repo: model.repo.path, id: s.id)
+                } label: { ScheduleRow(s: s) }
+                .buttonStyle(.plain)
+            }
         }
     }
 

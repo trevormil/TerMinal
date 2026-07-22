@@ -196,6 +196,38 @@ final class BridgeClient {
         ).schedules
     }
 
+    // ---- drill-downs: full readable content -----------------------------
+
+    func ticket(repo: String, slug: String) async throws -> WsTicketDetail {
+        try JSONDecoder().decode(
+            WsTicketDetail.self,
+            from: try await get("v1/workspace/ticket?repo=\(Self.q(repo))&slug=\(Self.q(slug))"))
+    }
+
+    func pr(repo: String, iid: Int) async throws -> WsPrDetail {
+        try JSONDecoder().decode(
+            WsPrDetail.self, from: try await get("v1/workspace/pr?repo=\(Self.q(repo))&iid=\(iid)"))
+    }
+
+    func prDiff(repo: String, iid: Int) async throws -> WsText {
+        try JSONDecoder().decode(
+            WsText.self,
+            from: try await get("v1/workspace/pr-diff?repo=\(Self.q(repo))&iid=\(iid)"))
+    }
+
+    /// `source` comes from the run row — the log store can't be derived from the id.
+    func runLog(id: String, source: String, hostId: String?) async throws -> WsText {
+        var path = "v1/workspace/run-log?id=\(Self.q(id))&source=\(Self.q(source))"
+        if let hostId, !hostId.isEmpty { path += "&host=\(Self.q(hostId))" }
+        return try JSONDecoder().decode(WsText.self, from: try await get(path))
+    }
+
+    func schedule(repo: String, id: String) async throws -> WsScheduleDetail {
+        try JSONDecoder().decode(
+            WsScheduleDetail.self,
+            from: try await get("v1/workspace/schedule?repo=\(Self.q(repo))&id=\(Self.q(id))"))
+    }
+
     /// Percent-encode a repo path for a query value (slashes and all).
     private static func q(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
