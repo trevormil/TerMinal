@@ -9,6 +9,8 @@ struct PairingView: View {
     @State private var tailscaleHost = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var recents: [RecentHost] = []
+    @FocusState private var hostFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -102,7 +104,7 @@ struct PairingView: View {
     private var tailscaleSheet: some View {
         NavigationStack {
             ZStack {
-                GT.bg.ignoresSafeArea()
+                GT.bg.ignoresSafeArea().onTapGesture { hostFieldFocused = false }
                 VStack(alignment: .leading, spacing: 14) {
                     Text(
                         "Both devices need Tailscale, signed in to the same account. "
@@ -112,12 +114,32 @@ struct PairingView: View {
                     .font(GT.sans(13))
                     .foregroundStyle(GT.textMuted)
 
+                    // Machines paired before: one tap, no typing.
+                    if !recents.isEmpty {
+                        Text("YOUR MACS")
+                            .font(GT.sans(10, .semibold))
+                            .tracking(0.8)
+                            .foregroundStyle(GT.textFaint)
+                        VStack(spacing: 8) {
+                            ForEach(recents) { host in
+                                recentRow(host)
+                            }
+                        }
+                        Text("or enter another")
+                            .font(GT.sans(11))
+                            .foregroundStyle(GT.textFaint)
+                            .padding(.top, 2)
+                    }
+
                     TextField("mac-name.tailnet.ts.net[:port]", text: $tailscaleHost)
                         .font(GT.mono(14))
                         .foregroundStyle(GT.text)
+                        .focused($hostFieldFocused)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
+                        .submitLabel(.go)
+                        .onSubmit { Task { await pairTailscale() } }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(Color.black.opacity(0.35))
@@ -153,29 +175,86 @@ struct PairingView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { tailscaling = false }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hostFieldFocused = false }
+                }
             }
+            .onAppear { recents = RecentHostsStore.all() }
         }
         .preferredColorScheme(.dark)
     }
 
-    private func pairTailscale() async {
+    private func recentRow(_ host: RecentHost) -> some View {
+        Button {
+            hostFieldFocused = false
+            Task { await pairTailscale(host: host.host, port: host.port) }
+        } label: {
+            GTPanel(padding: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "desktopcomputer")
+                        .font(.system(size: 15))
+                        .foregroundStyle(GT.accentLight)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(host.name.isEmpty ? host.host : host.name)
+                            .font(GT.sans(14, .medium))
+                            .foregroundStyle(GT.text)
+                        Text(host.display)
+                            .font(GT.mono(11))
+                            .foregroundStyle(GT.textFaint)
+                    }
+                    Spacer()
+                    if busy {
+                        ProgressView().tint(GT.accentLight).scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "arrow.right.circle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(GT.textFaint)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+        .contextMenu {
+            Button("Remove", role: .destructive) {
+                RecentHostsStore.forget(host.id)
+                recents = RecentHostsStore.all()
+            }
+        }
+    }
+
+    /// Pass an explicit host/port to pair with a remembered machine; otherwise
+    /// it parses the text field (accepting an optional `:port`).
+    private func pairTailscale(host explicitHost: String? = nil, port explicitPort: Int? = nil)
+        async
+    {
         error = nil
         busy = true
         defer { busy = false }
-        var host = tailscaleHost.trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "/", with: "")
-        // Accept an optional :port — the bridge default is 8790, but Settings
-        // may run it elsewhere, and a tailnet pair can't read the QR's port.
-        var port = 8790
-        if let colon = host.lastIndex(of: ":"),
-            let p = Int(host[host.index(after: colon)...])
-        {
-            port = p
-            host = String(host[..<colon])
+        var host: String
+        var port: Int
+        if let explicitHost {
+            host = explicitHost
+            port = explicitPort ?? 8790
+        } else {
+            host = tailscaleHost.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "https://", with: "")
+                .replacingOccurrences(of: "/", with: "")
+            // Accept an optional :port — the bridge default is 8790, but Settings
+            // may run it elsewhere, and a tailnet pair can't read the QR's port.
+            port = 8790
+            if let colon = host.lastIndex(of: ":"),
+                let p = Int(host[host.index(after: colon)...])
+            {
+                port = p
+                host = String(host[..<colon])
+            }
         }
         do {
             let payload = try await TailscalePairing.pair(host: host, port: port)
+            // Remember it so next time it's a tap, not a retype.
+            RecentHostsStore.remember(RecentHost(host: host, port: port, name: payload.n))
             tailscaling = false
             onPaired(payload)
         } catch {
