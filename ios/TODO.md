@@ -30,6 +30,19 @@ Living list for the iOS remote app. Check items off as they land; add freely.
 - [x] **Unpair / switch-Mac** — already shipped: the ⋯ menu unpairs and returns
       to the pairing screen, which lists remembered Macs for a one-tap switch.
 
+- [x] **Per-repo workspaces** — Workspaces tab → repo → Sessions/Tickets/PRs/
+      Runs/Schedules, plus a global Inbox tab
+- [x] **Terminate / delete sessions** from the phone (long-press; Clear finished)
+- [x] **Chat UX** — real paragraphs/headings/bullets (Markdown's soft-break rule
+      was folding every newline into a space) and long-press "Copy message"
+      (selection only ever works inside one Text, so it could never copy a whole
+      multi-block message)
+- [x] **Drill-downs, full content** — ticket body + acceptance, PR
+      description/review/findings/CI/diff, run logs (sanitized, tail-first),
+      schedule prompts. Logs and diffs are capped and flagged `truncated`.
+- [x] **Stop hook no longer hangs ordinary sessions** — strict agent-session
+      match + only phone-spawned sessions park
+
 ## Backlog
 
 - [ ] **Global hook install** — DEFERRED as auto-install: the app deliberately
