@@ -191,3 +191,69 @@ describe('terminal-mcp-server ticket tools — obsidian provider routing', () =>
     expect(toolJson(listed).map((t: { slug: string }) => t.slug)).toEqual(['0001-local-fallback'])
   })
 })
+
+describe('terminal-mcp-server ticket tools — model tier write path', () => {
+  test('file_ticket writes the tier it was given, and defaults to auto', () => {
+    const { home, repo, repoName } = setup()
+    const [tiered, plain] = callTools(home, [
+      {
+        name: 'file_ticket',
+        arguments: { repo: repoName, title: 'Cheap work', modelTier: 'cheap-agentic' },
+      },
+      { name: 'file_ticket', arguments: { repo: repoName, title: 'Unspecified' } },
+    ])
+    expect(toolJson(tiered).path).toBeTruthy()
+    expect(toolJson(plain).path).toBeTruthy()
+
+    const files = repoBacklogFiles(repo).map((f) => readFileSync(f, 'utf8'))
+    const cheap = files.find((f) => f.includes('Cheap work'))!
+    const auto = files.find((f) => f.includes('Unspecified'))!
+    expect(cheap).toContain('model_tier: cheap-agentic')
+    // Omitting it must reproduce exactly what every ticket got before the
+    // field was settable.
+    expect(auto).toContain('model_tier: auto')
+  })
+
+  test('update_ticket sets the tier, and leaves it alone when not mentioned', () => {
+    const { home, repo, repoName } = setup()
+    const [filed] = callTools(home, [
+      { name: 'file_ticket', arguments: { repo: repoName, title: 'Retier me' } },
+    ])
+    const slug = basename(toolJson(filed).path as string).replace(/\.md$/, '')
+
+    callTools(home, [
+      { name: 'update_ticket', arguments: { repo: repoName, slug, modelTier: 'top' } },
+    ])
+    const afterSet = repoBacklogFiles(repo)
+      .map((f) => readFileSync(f, 'utf8'))
+      .join('')
+    expect(afterSet).toContain('model_tier: top')
+
+    // A patch that says nothing about the tier must not reset it.
+    callTools(home, [
+      { name: 'update_ticket', arguments: { repo: repoName, slug, status: 'in-progress' } },
+    ])
+    const afterOther = repoBacklogFiles(repo)
+      .map((f) => readFileSync(f, 'utf8'))
+      .join('')
+    expect(afterOther).toContain('model_tier: top')
+    expect(afterOther).toContain('status: in-progress')
+  })
+
+  test('an unroutable tier is rejected rather than written', () => {
+    // resolveModel routes an unknown tier through the default (expensive)
+    // slot, so a typo must never reach the file claiming to be cheap.
+    const { home, repo, repoName } = setup()
+    callTools(home, [
+      {
+        name: 'file_ticket',
+        arguments: { repo: repoName, title: 'Typo tier', modelTier: 'cheep-raw' },
+      },
+    ])
+    const files = repoBacklogFiles(repo)
+      .map((f) => readFileSync(f, 'utf8'))
+      .join('')
+    expect(files).not.toContain('cheep-raw')
+    if (files.includes('Typo tier')) expect(files).toContain('model_tier: auto')
+  })
+})

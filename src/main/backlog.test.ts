@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
@@ -160,6 +160,63 @@ describe('listTickets', () => {
       // Clearing writes an empty list.
       expect(updateTicket(v2, t.slug, { acceptance: [] })).toBe(true)
       expect(listTickets(v2)[0].acceptance).toEqual([])
+    } finally {
+      rmSync(v2, { recursive: true, force: true })
+    }
+  })
+
+  test('model tier is settable on create and update without disturbing existing tickets', () => {
+    const v2 = mkdtempSync(join(tmpdir(), 'gt-backlog-tier-'))
+    try {
+      mkdirSync(join(v2, '.TerMinal'), { recursive: true })
+      writeFileSync(join(v2, '.TerMinal', 'template.json'), '{"version":2}\n')
+      const read = (slug: string) =>
+        readFileSync(join(v2, '.TerMinal', 'backlog', `${slug}.md`), 'utf8')
+      const base = { type: 'feature', priority: 'medium', status: 'open', body: '' }
+
+      // Back-compat: callers that omit the tier still get today's exact value.
+      const plain = createTicket(v2, { ...base, title: 'No tier given' })
+      expect(plain.modelTier).toBe('auto')
+      expect(read(plain.slug)).toContain('model_tier: auto')
+
+      // New: an explicit tier round-trips through create.
+      const cheap = createTicket(v2, { ...base, title: 'Cheap tier', modelTier: 'cheap-agentic' })
+      expect(cheap.modelTier).toBe('cheap-agentic')
+      expect(listTickets(v2).find((x) => x.slug === cheap.slug)?.modelTier).toBe('cheap-agentic')
+
+      // New: update replaces an existing model_tier line.
+      expect(updateTicket(v2, cheap.slug, { modelTier: 'top' })).toBe(true)
+      expect(listTickets(v2).find((x) => x.slug === cheap.slug)?.modelTier).toBe('top')
+
+      // A patch that doesn't mention the tier must leave it untouched.
+      expect(updateTicket(v2, cheap.slug, { status: 'in-progress' })).toBe(true)
+      expect(listTickets(v2).find((x) => x.slug === cheap.slug)?.modelTier).toBe('top')
+
+      // An unroutable tier is normalised rather than persisted: resolveModel
+      // would route it through the default (expensive) slot while the ticket
+      // claimed to be cheap.
+      const typo = createTicket(v2, {
+        ...base,
+        title: 'Typo tier',
+        modelTier: 'cheep-raw' as never,
+      })
+      expect(typo.modelTier).toBe('auto')
+      expect(read(typo.slug)).toContain('model_tier: auto')
+      expect(read(typo.slug)).not.toContain('cheep-raw')
+
+      updateTicket(v2, typo.slug, { modelTier: 'nonsense' as never })
+      expect(listTickets(v2).find((x) => x.slug === typo.slug)?.modelTier).toBe('auto')
+
+      // Legacy ticket with NO model_tier line: reads as auto, and setting the
+      // tier inserts the line rather than failing.
+      writeFileSync(
+        join(v2, '.TerMinal', 'backlog', '0900-legacy.md'),
+        '---\nid: 900\ntitle: "Legacy"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n',
+      )
+      expect(listTickets(v2).find((x) => x.slug === '0900-legacy')?.modelTier).toBe('auto')
+      expect(updateTicket(v2, '0900-legacy', { modelTier: 'cheap-raw' })).toBe(true)
+      expect(read('0900-legacy')).toContain('model_tier: cheap-raw')
+      expect(listTickets(v2).find((x) => x.slug === '0900-legacy')?.modelTier).toBe('cheap-raw')
     } finally {
       rmSync(v2, { recursive: true, force: true })
     }
