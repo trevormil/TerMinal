@@ -686,6 +686,220 @@ function classifyCommand(kind, args) {
 const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
 const normalizeModelTier = (value) => (MODEL_TIERS.includes(value) ? value : 'auto')
 
+// --- model-tier routing explainer -----------------------------------------
+//
+// `terminal-cli routing` answers "which model would this ticket actually launch
+// with?" WITHOUT spawning a run — the only way to check tier routing that costs
+// nothing and is deterministic.
+//
+// This file is SELF-CONTAINED (it is copied to ~/.config/TerMinal/bin and has no
+// access to the app bundle), so the resolution below MIRRORS three things in
+// src/main: TIER_TO_POLICY + resolveModel (resolve-model.ts) and
+// modelPolicyFrom + ticketOwnerModelPolicy (agents.ts). A mirror of the thing
+// under test is a useless oracle if it drifts, so terminal-cli-routing.test.ts
+// asserts this agrees with the real resolveModel() across a tier × policy ×
+// override × engine matrix. Change one side, that test fails.
+
+/** Ticket tier → the modelPolicy slot serving it. Mirrors TIER_TO_POLICY. */
+const TIER_TO_POLICY = {
+  auto: 'default',
+  top: 'deep',
+  'cheap-agentic': 'cheap',
+  'cheap-raw': 'cheap',
+}
+
+/** Mirrors resolveModel() in src/main/resolve-model.ts — same priority order:
+ *  override → tier through the policy → agent model → engine default → ''. */
+function resolveModelMirror({ override, policy, tier, model, engineDefault, engine, policyEngine }) {
+  const crossEngine = !!engine && !!policyEngine && engine !== policyEngine
+  const effective = crossEngine ? undefined : policy
+  const slot = TIER_TO_POLICY[normalizeModelTier(tier)]
+  const policyModel = ((effective && effective[slot]) || '').trim()
+  const pick = (override || '').trim()
+  const overrideAllowed = !effective || effective.allowOverride !== false
+  if (pick && (overrideAllowed || !policyModel)) return pick
+  if (policyModel) return policyModel
+  return (model || '').trim() || (engineDefault || '').trim() || ''
+}
+
+/** Mirrors modelPolicyFrom() — the agent's plain `model` backfills the default
+ *  slot, so an agent with a policy that omits `default` still routes `auto`. */
+function modelPolicyFromMirror(model, policy) {
+  if (!policy) return undefined
+  return {
+    default: policy.default || model || undefined,
+    cheap: policy.cheap,
+    deep: policy.deep,
+    judge: policy.judge,
+    allowOverride: policy.allowOverride ?? true,
+  }
+}
+
+/** Merge the agent layers this script can actually see, in readAgents() order:
+ *  global json → global scripts → repo json → repo scripts (later wins by id).
+ *  The app's compiled-in DEFAULT_AGENTS are NOT visible here — routing() says so
+ *  rather than reporting a confident "no policy" it cannot stand behind. */
+function readRoutingAgents(root) {
+  const byId = new Map()
+  const merge = (a, layer) => {
+    if (!a || !a.id) return
+    const prev = byId.get(a.id)
+    byId.set(a.id, { ...(prev || {}), ...a, layer })
+  }
+  const fromJson = (file, layer) => {
+    try {
+      if (!existsSync(file)) return
+      const parsed = JSON.parse(readFileSync(file, 'utf8'))
+      const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.agents) ? parsed.agents : []
+      for (const a of list) merge(a, layer)
+    } catch {
+      /* malformed registry — treat as absent, same as readAgents */
+    }
+  }
+  const fromScripts = (dir, layer) => {
+    try {
+      if (!existsSync(dir)) return
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith('.sh')) continue
+        const id = f.slice(0, -3)
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) continue
+        const sidecar = join(dir, `${id}.json`)
+        let meta = {}
+        if (existsSync(sidecar)) {
+          try {
+            meta = JSON.parse(readFileSync(sidecar, 'utf8'))
+          } catch {
+            /* malformed sidecar — defaults, same as readScriptAgents */
+          }
+        }
+        merge({ ...meta, id }, layer)
+      }
+    } catch {
+      /* unreadable dir — skip the layer */
+    }
+  }
+  fromJson(join(CFG, 'agents', 'global.json'), 'global')
+  fromScripts(join(CFG, 'scripts'), 'global')
+  if (root) fromJson(join(root, '.agents', 'agents.json'), 'repo')
+  if (root) fromScripts(join(root, '.agents'), 'repo')
+  return byId
+}
+
+/** Parse the frontmatter fields routing cares about out of a ticket file. */
+function readRoutingTicket(root, ref) {
+  const dir = areaPath(root, 'backlog')
+  if (!existsSync(dir)) return null
+  const wanted = String(ref).replace(/^#/, '')
+  const files = readdirSync(dir).filter((f) => /^\d{4}-.*\.md$/.test(f))
+  const padded = /^\d+$/.test(wanted) ? wanted.padStart(4, '0') : ''
+  const file =
+    files.find((f) => f === `${wanted}.md` || f.slice(0, -3) === wanted) ||
+    (padded && files.find((f) => f.startsWith(`${padded}-`))) ||
+    files.find((f) => f.includes(wanted))
+  if (!file) return null
+  const text = readFileSync(join(dir, file), 'utf8')
+  const fm = /^---\n([\s\S]*?)\n---/.exec(text)
+  const field = (name) => {
+    const m = fm && new RegExp(`^${name}:\\s*(.*)$`, 'm').exec(fm[1])
+    if (!m) return ''
+    return m[1].trim().replace(/^["'](.*)["']$/, '$1')
+  }
+  return {
+    file,
+    id: field('id'),
+    title: field('title'),
+    // Absent model_tier reads as auto — legacy tickets predate the field.
+    modelTier: field('model_tier') || 'auto',
+    agentId: field('agent_id'),
+    agentKind: field('agent_kind') || 'classic',
+  }
+}
+
+/** Explain which model a ticket would launch with, per tier. Read-only. */
+function routingCommand(args) {
+  const flags = {}
+  const positional = []
+  for (const a of args) {
+    const m = /^--([a-z-]+)(?:=(.*))?$/.exec(a)
+    if (m) flags[m[1]] = m[2] ?? 'true'
+    else positional.push(a)
+  }
+  const target = positional[0] || repo || process.cwd()
+  const root = existsSync(join(target, '.git'))
+    ? target
+    : join(readSettings().projectsDir || join(homedir(), 'workspace'), target)
+  if (!existsSync(root)) {
+    console.error(`terminal-cli routing: no such repo — ${root}`)
+    process.exit(2)
+  }
+
+  const ticket = positional[1] ? readRoutingTicket(root, positional[1]) : null
+  if (positional[1] && !ticket) {
+    console.error(`terminal-cli routing: no ticket matching "${positional[1]}" in ${root}`)
+    process.exit(2)
+  }
+
+  const agents = readRoutingAgents(root)
+  const agentId_ = flags.agent || ticket?.agentId || ''
+  const agent = agentId_ ? agents.get(agentId_) : undefined
+  // ticketOwnerModelPolicy only consults classic/persistent owners; a persistent
+  // owner's registry is not a file this script can read, so say so.
+  const persistent = (ticket?.agentKind || 'classic') === 'persistent'
+  const policy = persistent ? undefined : modelPolicyFromMirror(agent?.model, agent?.modelPolicy)
+  const engine = flags.engine || agent?.engine || 'claude'
+  const engineDefault = (readSettings().engines?.[engine]?.defaultModel || '').trim()
+  const override = flags.override || ''
+
+  const resolveTier = (tier) =>
+    resolveModelMirror({
+      override,
+      policy,
+      tier,
+      model: agent?.model,
+      engineDefault,
+      engine,
+      policyEngine: agent?.engine,
+    })
+
+  const out = []
+  out.push(`repo          ${root}`)
+  if (ticket) out.push(`ticket        ${ticket.file} — ${ticket.title}`)
+  out.push(
+    `owner agent   ${agentId_ || '(none)'}${agent ? ` [${agent.layer}]` : agentId_ ? ' [NOT FOUND in global/repo files]' : ''}`,
+  )
+  out.push(`engine        ${engine}${flags.engine ? ' (--engine)' : agent?.engine ? '' : ' (assumed)'}`)
+  out.push(`engine default${engineDefault ? `  ${engineDefault}` : '  (unset)'}`)
+  if (override) out.push(`override      ${override}`)
+  out.push(`policy        ${policy ? JSON.stringify(policy) : '(none — routing falls through to agent model / engine default)'}`)
+  out.push('')
+  out.push('tier           slot     -> model')
+  for (const tier of MODEL_TIERS) {
+    const model = resolveTier(tier)
+    const mark = ticket && normalizeModelTier(ticket.modelTier) === tier ? ' <- this ticket' : ''
+    out.push(
+      `${tier.padEnd(15)}${TIER_TO_POLICY[tier].padEnd(9)}-> ${model || '(engine picks its own default)'}${mark}`,
+    )
+  }
+  if (ticket) {
+    out.push('')
+    const declared = ticket.modelTier
+    const normalized = normalizeModelTier(declared)
+    if (declared !== normalized)
+      out.push(`ticket declares: ${declared}  !! not a routable tier — treated as ${normalized}`)
+    else out.push(`ticket declares: ${declared}`)
+    out.push(`WOULD LAUNCH:    ${resolveTier(declared) || '(engine picks its own default)'}`)
+  }
+  if (agentId_ && !agent)
+    out.push(
+      `\nnote: "${agentId_}" is not in ~/.config/TerMinal/agents/global.json or ${root}/.agents/ —` +
+        `\n      if it is one of the app's built-in agents its modelPolicy is compiled into` +
+        `\n      TerMinal and invisible here, so the table above may understate the routing.`,
+    )
+  if (persistent)
+    out.push(`\nnote: owner is a persistent agent — its policy lives outside the files this command reads.`)
+  console.log(out.join('\n'))
+}
+
 function fileTicket(title, body, modelTier) {
   if (!repo) {
     console.error(
@@ -1155,9 +1369,12 @@ switch (cmd) {
   case 'classify':
     classifyCommand(args[0], args.slice(1))
     break
+  case 'routing':
+    routingCommand(args)
+    break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify|routing> [args...]\n' +
         '  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO\n' +
         '                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
@@ -1168,7 +1385,9 @@ switch (cmd) {
         '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
         '  inbox status|dir|example                  inspect automation inbox helpers\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
-        '                                           persist per-(repo, agent) JSON sidecar\n',
+        '                                           persist per-(repo, agent) JSON sidecar\n' +
+        '  routing [<repo>] [<ticket>] [--agent=id] [--engine=e] [--override=model]\n' +
+        '                                           dry-run: which model each model_tier would launch\n',
     )
     process.exit(2)
 }

@@ -152,3 +152,40 @@ silent degradations in other subsystems, so they fail soft):
 
 Worth a follow-up ticket; a lint rule banning `require('./` under `src/main`
 would prevent regressions.
+
+## 2026-07-22 — `terminal-cli routing`: a dry-run explainer for model_tier
+
+Added `terminal-cli routing [<repo>] [<ticket>]`, which prints which model each
+`model_tier` would resolve to for a ticket without spawning a run. Motivated by
+#120: the write path shipped, but there was no way to confirm a tier actually
+changes anything short of launching a real agent and reading the run log.
+
+**Decision — mirror rather than import.** `bin/terminal-cli` is copied to
+`~/.config/TerMinal/bin` and is deliberately self-contained (see its header), so
+it cannot import `src/main/resolve-model.ts`. `routing` therefore mirrors
+`TIER_TO_POLICY` + `resolveModel` + `modelPolicyFrom`, the same tradeoff the file
+already made for `MODEL_TIERS`.
+
+A mirror of the code under test is a useless oracle if it drifts, so the mirror
+is pinned by `src/main/terminal-cli-routing.test.ts`: 32 parity cases
+(4 policies × 4 tiers × override/no-override) assert the CLI's `WOULD LAUNCH`
+line equals the real `resolveModel()`. Verified non-vacuous by mutation —
+flipping `top: 'deep'` to `top: 'cheap'` in the CLI fails 3 cases.
+
+**Known fidelity gap, surfaced rather than hidden.** `readAgents()` merges five
+layers; this script can read four of them (global `agents/global.json`, global
+scripts, repo `.agents/agents.json`, repo `.agents/*.json`). The app's
+compiled-in `DEFAULT_AGENTS` are invisible, and two of them
+(`1000x-ai-engineer`, `code-review`) carry a `modelPolicy`. When the owner agent
+is not found in a readable layer, `routing` prints `NOT FOUND in global/repo
+files` plus a note that the table may understate the routing, rather than
+reporting a confident "no policy". On this machine both agents also exist in
+`agents/global.json`, so the gap is narrow in practice.
+
+Persistent-kind owners are likewise reported as out of reach.
+
+**Follow-ups (not in this branch):**
+- No UI affordance sets `model_tier` — `TicketsBrowser.tsx:486` only renders a
+  badge. A human still cannot pick a tier in the app.
+- `ticket-provider.ts:361,563` hardcode `modelTier: 'auto'` for GitHub/Linear
+  tickets, so tier routing is inert for those repos.
