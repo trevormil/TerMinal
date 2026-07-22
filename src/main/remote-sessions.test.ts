@@ -65,6 +65,19 @@ describe('registration', () => {
     expect(readMessages('../escape', {}, dir)).toEqual([])
   })
 
+  it("defaults origin to 'local' and only marks 'phone' when spawned there", () => {
+    const dir = tmp()
+    // A /remote-terminal registration is local — the Stop hook must never park
+    // on it, because a human is sitting at that Mac.
+    const local = registerRemoteSession({ id: 'loc', title: 'local' }, dir)
+    expect(local.origin).toBe('local')
+    // Spawned from the phone: the one case parking is correct.
+    const phone = registerRemoteSession({ id: 'ph', title: 'phone', origin: 'phone' }, dir)
+    expect(phone.origin).toBe('phone')
+    // Re-registering (the agent adopting its thread) must not downgrade it.
+    expect(registerRemoteSession({ id: 'ph' }, dir).origin).toBe('phone')
+  })
+
   it('deletes a session and its files for good', () => {
     const dir = tmp()
     const s = registerRemoteSession({ title: 'x' }, dir)

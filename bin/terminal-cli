@@ -1224,6 +1224,30 @@ function takeRemoteReplies(id) {
   })
   return fresh.map((m) => m.text)
 }
+/**
+ * Park until the phone sends something for THIS session, it ends, or we time
+ * out. Only ever called with a session id matched exactly to the host agent's
+ * own session id — never a cwd/most-recent guess — so an unrelated Claude
+ * session can't be made to block here.
+ *   reply  → print it, exit 0 (hook blocks the stop and hands it over)
+ *   ended  → exit 0 (hook lets the turn stop)
+ *   timeout→ exit 3 (hook re-parks with a heartbeat)
+ */
+function waitForReplies(sessionId, timeoutSec) {
+  const deadline = Date.now() + timeoutSec * 1000
+  for (;;) {
+    const session = readRemote(sessionId)
+    if (!session || session.status === 'ended') return
+    const replies = takeRemoteReplies(sessionId)
+    if (replies.length) {
+      console.log(replies.join('\n'))
+      return
+    }
+    if (Date.now() > deadline) process.exit(3)
+    execSync('sleep 2')
+  }
+}
+
 function gitInfo(cwd) {
   const run = (cmdline) => {
     try {
@@ -1298,6 +1322,10 @@ function remoteCommand(sub, rest) {
           process.env.TERMINAL_REMOTE_AGENT_SESSION ||
           existing?.agentSessionId ||
           undefined,
+        // 'phone' only when the session was SPAWNED from the phone (nobody at
+        // this Mac) — that is the only case the Stop hook may park on. A local
+        // /remote-terminal registration stays 'local' so it never blocks you.
+        origin: rest.includes('--origin=phone') ? 'phone' : existing?.origin || 'local',
         status: 'working',
         registeredAt: existing?.registeredAt || Date.now(),
         lastSeenAt: Date.now(),
@@ -1358,32 +1386,39 @@ function remoteCommand(sub, rest) {
       // registration, because the hook calls it on EVERY turn of EVERY session.
       const quiet = rest.includes('--quiet')
       const wait = rest.includes('--wait')
+
+      // BLOCKING path: resolve STRICTLY by the host agent's own session id — no
+      // cwd or most-recent fallback. Those fallbacks are fine for post/ask (the
+      // agent means "my session"), but here they were catastrophic: the Stop
+      // hook runs in EVERY Claude session on the machine, so a fallback made an
+      // unrelated session adopt some other registered thread and park for the
+      // whole timeout — hanging normal sessions. No exact match ⇒ this session
+      // is not a remote session ⇒ exit 0 immediately and let it stop.
+      if (wait) {
+        const sid = agentSessionFlag || process.env.CLAUDE_CODE_SESSION_ID || ''
+        const mine = sid
+          ? remoteList().find((s) => s.agentSessionId === sid && s.status !== 'ended')
+          : null
+        if (!mine) break
+        // Only PHONE-SPAWNED sessions park. A session you registered with
+        // /remote-terminal while sitting at this Mac must never block — you are
+        // right here, and holding the turn for the timeout just hangs your work.
+        // Those still get their queued replies, non-blocking.
+        if (mine.origin !== 'phone') {
+          const queued = takeRemoteReplies(mine.id)
+          if (queued.length) console.log(queued.join('\n'))
+          break
+        }
+        return waitForReplies(mine.id, timeoutSec)
+      }
+
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
         quiet,
         agentSessionId: agentSessionFlag,
       })
       if (!sessionId) break
-      if (!wait) {
-        const replies = takeRemoteReplies(sessionId)
-        if (replies.length) console.log(replies.join('\n'))
-        break
-      }
-      const deadline = Date.now() + timeoutSec * 1000
-      for (;;) {
-        const session = readRemote(sessionId)
-        // Ended from the phone/app → exit 0 so the hook lets the turn stop.
-        if (!session || session.status === 'ended') break
-        const replies = takeRemoteReplies(sessionId)
-        if (replies.length) {
-          console.log(replies.join('\n'))
-          break
-        }
-        // Timed out with nothing new. Exit 3 (distinct from ended) so the hook
-        // re-parks with a heartbeat instead of letting the session die — the
-        // wait is bounded by the Stop-hook timeout, but the SESSION is not.
-        if (Date.now() > deadline) process.exit(3)
-        execSync('sleep 2')
-      }
+      const replies = takeRemoteReplies(sessionId)
+      if (replies.length) console.log(replies.join('\n'))
       break
     }
     case 'end': {

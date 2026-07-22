@@ -43,6 +43,10 @@ export type RemoteSession = {
    *  The precise routing key: cwd can be shared by two sessions in one repo,
    *  this cannot, so replies never cross sessions. */
   agentSessionId?: string
+  /** 'phone' when spawned from the phone (nobody at the Mac) — the ONLY case
+   *  the Stop hook may park on. A local /remote-terminal registration is
+   *  'local' and must never block the human sitting there. */
+  origin?: 'phone' | 'local'
   status: RemoteStatus
   registeredAt: number
   lastSeenAt: number
@@ -108,6 +112,7 @@ export function registerRemoteSession(
     engine?: string
     id?: string
     agentSessionId?: string
+    origin?: 'phone' | 'local'
   },
   dir: string = REMOTE_DIR,
 ): RemoteSession {
@@ -122,6 +127,7 @@ export function registerRemoteSession(
     cwd: input.cwd || existing?.cwd || '',
     engine: input.engine || existing?.engine || '',
     agentSessionId: input.agentSessionId || existing?.agentSessionId,
+    origin: input.origin || existing?.origin || 'local',
     // Re-registering an existing session resumes it rather than wiping its log.
     status: 'working',
     registeredAt: existing?.registeredAt || now,

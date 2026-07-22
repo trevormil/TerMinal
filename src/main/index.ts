@@ -1340,6 +1340,7 @@ const bridgeDeps: BridgeDeps = {
       repo,
       cwd,
       engine: engine || readSettings().defaultEngine,
+      origin: 'phone',
     })
     postMessage(
       session.id,

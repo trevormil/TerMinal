@@ -222,6 +222,7 @@ const deps: BridgeDeps = {
       title: `${input.engine ?? 'claude'} · ${repo}`,
       repo,
       engine: input.engine,
+      origin: 'phone',
     })
     postMessage(
       id,
