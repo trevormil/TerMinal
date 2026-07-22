@@ -492,6 +492,59 @@ describe('terminate and delete', () => {
   })
 })
 
+describe('workspaces', () => {
+  it('lists workspaces from repos()', async () => {
+    const h = await harness({ repos: () => [{ name: 'TerMinal', path: '/r/TerMinal' }] })
+    const body = await (await fetch(`${h.url}/v1/workspaces`, { headers: auth })).json()
+    expect(body.workspaces).toEqual([{ name: 'TerMinal', path: '/r/TerMinal' }])
+  })
+
+  it('returns per-workspace tickets for the requested repo', async () => {
+    const seen: string[] = []
+    const h = await harness({
+      workspaceTickets: (repo) => {
+        seen.push(repo)
+        return [
+          {
+            slug: 's',
+            id: 1,
+            title: 't',
+            status: 'todo',
+            priority: 'high',
+            type: 'bug',
+            hitl: false,
+          },
+        ]
+      },
+    })
+    const res = await fetch(`${h.url}/v1/workspaces/tickets?repo=${encodeURIComponent('/r/x')}`, {
+      headers: auth,
+    })
+    const body = await res.json()
+    expect(seen).toEqual(['/r/x'])
+    expect(body.tickets).toHaveLength(1)
+  })
+
+  it('400s without a repo, 501 when the dep is absent, 404 for an unknown kind', async () => {
+    const h = await harness({ workspacePrs: () => [] })
+    expect((await fetch(`${h.url}/v1/workspaces/prs`, { headers: auth })).status).toBe(400)
+    // runs dep absent → 501
+    expect((await fetch(`${h.url}/v1/workspaces/runs?repo=/r/x`, { headers: auth })).status).toBe(
+      501,
+    )
+    // unknown kind → 404
+    expect((await fetch(`${h.url}/v1/workspaces/nope?repo=/r/x`, { headers: auth })).status).toBe(
+      404,
+    )
+  })
+
+  it('requires auth', async () => {
+    const h = await harness({ repos: () => [] })
+    expect((await fetch(`${h.url}/v1/workspaces`)).status).toBe(401)
+    expect((await fetch(`${h.url}/v1/workspaces/tickets?repo=/r/x`)).status).toBe(401)
+  })
+})
+
 describe('unknown routes', () => {
   it('404s', async () => {
     const h = await harness()

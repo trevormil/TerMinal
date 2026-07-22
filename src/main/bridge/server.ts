@@ -79,8 +79,14 @@ export type BridgeDeps = {
    */
   tailscalePair?(peerAddress: string): { token: string; fp: string; name: string } | null
 
-  /** Repos the phone may start a session in. */
+  /** Repos the phone may start a session in — also the workspace list. */
   repos?(): BridgeRepo[]
+  /** Read-only per-workspace data for the mobile cockpit. Each takes a repo
+   *  path (from repos()). May be async — they resolve a workspace daemon. */
+  workspaceTickets?(repoPath: string): Promise<BridgeTicket[]> | BridgeTicket[]
+  workspacePrs?(repoPath: string): Promise<BridgePr[]> | BridgePr[]
+  workspaceRuns?(repoPath: string): Promise<BridgeRun[]> | BridgeRun[]
+  workspaceSchedules?(repoPath: string): Promise<BridgeSchedule[]> | BridgeSchedule[]
   /**
    * Start a session on the Mac, already wired to a remote thread. Returns the
    * new session's remote id so the phone can open it immediately — the thread
@@ -91,6 +97,45 @@ export type BridgeDeps = {
 
 /** A repo the phone may start a session in. */
 export type BridgeRepo = { name: string; path: string }
+
+// Compact, read-only projections of the desktop cockpit's data — just what a
+// phone list needs, so the bridge never ships a full daemon payload.
+export type BridgeTicket = {
+  slug: string
+  id: number
+  title: string
+  status: string
+  priority: string
+  type: string
+  hitl: boolean
+}
+export type BridgePr = {
+  iid: number
+  title: string
+  state: string
+  draft: boolean
+  author: string
+  url: string
+  labels: string[]
+  verdict?: string
+  score?: number
+}
+export type BridgeRun = {
+  id: string
+  title: string
+  engine: string
+  status: string
+  startedAt: number
+  endedAt?: number
+  branch: string
+}
+export type BridgeSchedule = {
+  id: string
+  title: string
+  describe: string
+  nextRun?: number
+  enabled: boolean
+}
 
 export type SpawnInput = {
   /** Absolute repo path, chosen from `repos()`. */
@@ -212,6 +257,37 @@ export function createBridgeHandler(
     if (req.method === 'GET' && url.pathname === '/v1/hitl') {
       Promise.resolve(deps.hitl?.() ?? [])
         .then((items) => json(res, 200, { items }))
+        .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    // Workspaces: the repo list, and per-repo read-only cockpit data. `repo` is
+    // an absolute path from /v1/workspaces, passed as a query param so a path
+    // with slashes needs no segment gymnastics.
+    if (req.method === 'GET' && url.pathname === '/v1/workspaces') {
+      json(res, 200, { workspaces: deps.repos?.() ?? [] })
+      return
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/v1/workspaces/')) {
+      const kind = url.pathname.slice('/v1/workspaces/'.length)
+      const repo = url.searchParams.get('repo') || ''
+      const fetcher: Record<string, ((p: string) => unknown) | undefined> = {
+        tickets: deps.workspaceTickets && ((p) => deps.workspaceTickets!(p)),
+        prs: deps.workspacePrs && ((p) => deps.workspacePrs!(p)),
+        runs: deps.workspaceRuns && ((p) => deps.workspaceRuns!(p)),
+        schedules: deps.workspaceSchedules && ((p) => deps.workspaceSchedules!(p)),
+      }
+      const fn = fetcher[kind]
+      if (!fn) {
+        json(res, kind in fetcher ? 501 : 404, { error: `no workspace ${kind}` })
+        return
+      }
+      if (!repo) {
+        json(res, 400, { error: 'repo is required' })
+        return
+      }
+      Promise.resolve(fn(repo))
+        .then((items) => json(res, 200, { [kind]: items }))
         .catch((e: Error) => json(res, 500, { error: e.message }))
       return
     }

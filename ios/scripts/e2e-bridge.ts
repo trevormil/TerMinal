@@ -109,6 +109,108 @@ const deps: BridgeDeps = {
   // rather than machine-specific: TERMINAL_PROJECTS_DIR wins, else a couple of
   // common roots, else just this checkout.
   repos: () => scanRepos(),
+  // Demo per-workspace data so the mobile cockpit tabs render without the app.
+  // The real app resolves live daemons; here we just want plausible shapes.
+  workspaceTickets: (repo) => {
+    const name = repo.split('/').filter(Boolean).pop() || 'repo'
+    return [
+      {
+        slug: '0042-fix-login',
+        id: 42,
+        title: `Harden auth in ${name}`,
+        status: 'in_progress',
+        priority: 'high',
+        type: 'feature',
+        hitl: false,
+      },
+      {
+        slug: '0043-flaky-test',
+        id: 43,
+        title: 'Flaky e2e on CI',
+        status: 'todo',
+        priority: 'medium',
+        type: 'bug',
+        hitl: true,
+      },
+      {
+        slug: '0038-docs',
+        id: 38,
+        title: 'Update architecture doc',
+        status: 'done',
+        priority: 'low',
+        type: 'chore',
+        hitl: false,
+      },
+    ]
+  },
+  workspacePrs: () => [
+    {
+      iid: 120,
+      title: 'feat: model tier routing',
+      state: 'open',
+      draft: false,
+      author: 'trevormil',
+      url: 'https://github.com/x/y/pull/120',
+      labels: ['feature'],
+      verdict: 'approve',
+      score: 92,
+    },
+    {
+      iid: 119,
+      title: 'feat: TerMinal Remote',
+      state: 'open',
+      draft: true,
+      author: 'trevormil',
+      url: 'https://github.com/x/y/pull/119',
+      labels: ['wip'],
+      verdict: undefined,
+      score: undefined,
+    },
+  ],
+  workspaceRuns: () => [
+    {
+      id: 'run-1',
+      title: 'nightly-audit',
+      engine: 'codex',
+      status: 'success',
+      startedAt: 1_784_000_000_000,
+      endedAt: 1_784_000_180_000,
+      branch: 'main',
+    },
+    {
+      id: 'run-2',
+      title: 'ticket-sweep',
+      engine: 'claude',
+      status: 'running',
+      startedAt: 1_784_000_300_000,
+      branch: 'feat/x',
+    },
+    {
+      id: 'run-3',
+      title: 'error-alerts',
+      engine: 'codex',
+      status: 'error',
+      startedAt: 1_783_990_000_000,
+      endedAt: 1_783_990_060_000,
+      branch: 'main',
+    },
+  ],
+  workspaceSchedules: () => [
+    {
+      id: 'sch-1',
+      title: 'nightly-audit',
+      describe: 'every day at 2:00 AM',
+      nextRun: 1_784_050_000_000,
+      enabled: true,
+    },
+    {
+      id: 'sch-2',
+      title: 'ticket-sweep',
+      describe: 'every 4 hours',
+      nextRun: 1_784_010_000_000,
+      enabled: false,
+    },
+  ],
   // The harness can't launch a real desktop tab, so it does what the app's
   // spawn ultimately does from the phone's side: create the remote thread up
   // front and return its id, so the phone opens it immediately.

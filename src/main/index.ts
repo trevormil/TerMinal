@@ -1261,6 +1261,73 @@ const bridgeDeps: BridgeDeps = {
     }
   },
 
+  // Per-workspace read-only cockpit data. Each resolves a local daemon for the
+  // requested repo path (the same machinery the desktop tabs use), then projects
+  // to the compact shape the phone lists. Best-effort: a repo without tickets/a
+  // gh auth issue returns an empty list rather than failing the request.
+  workspaceTickets: async (repoPath) => {
+    try {
+      const tickets = await createLocalWorkspaceDaemon(repoPath).ticketsList()
+      return tickets.map((t) => ({
+        slug: t.slug,
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        type: t.type,
+        hitl: t.hitl,
+      }))
+    } catch {
+      return []
+    }
+  },
+  workspacePrs: async (repoPath) => {
+    try {
+      const { mrs } = await createLocalWorkspaceDaemon(repoPath).mrsList()
+      return mrs.map((m) => ({
+        iid: m.iid,
+        title: m.title,
+        state: m.state,
+        draft: m.draft,
+        author: m.author,
+        url: m.webUrl,
+        labels: m.labels,
+        verdict: m.review?.verdict,
+        score: m.review?.overall ?? undefined,
+      }))
+    } catch {
+      return []
+    }
+  },
+  workspaceRuns: (repoPath) => {
+    const root = repoRootOf(repoPath) || repoPath
+    return listAllRuns()
+      .filter((r) => r.repoRoot === root || r.repoLabel === basename(repoPath))
+      .slice(0, 60)
+      .map((r) => ({
+        id: r.id,
+        title: r.agentTitle,
+        engine: r.engine,
+        status: r.status,
+        startedAt: r.startedAt,
+        endedAt: r.endedAt,
+        branch: r.branch,
+      }))
+  },
+  workspaceSchedules: (repoPath) => {
+    const root = repoRootOf(repoPath) || repoPath
+    const now = Date.now()
+    return readSchedules(now)
+      .filter((s) => s.repoRoot === root || s.repoLabel === basename(repoPath))
+      .map((s) => ({
+        id: s.id,
+        title: s.agentTitle,
+        describe: describeSpec(s.spec),
+        nextRun: nextRun(s.spec, now) ?? undefined,
+        enabled: s.enabled,
+      }))
+  },
+
   // Start a session from the phone. The remote thread is registered up front so
   // the phone can open it immediately, then the RENDERER is asked to open the
   // terminal — spawning the pty from main directly would leave an orphan with
