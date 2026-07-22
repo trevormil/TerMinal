@@ -192,6 +192,21 @@ describe('listTickets', () => {
       expect(updateTicket(v2, cheap.slug, { status: 'in-progress' })).toBe(true)
       expect(listTickets(v2).find((x) => x.slug === cheap.slug)?.modelTier).toBe('top')
 
+      // An unroutable tier is normalised rather than persisted: resolveModel
+      // would route it through the default (expensive) slot while the ticket
+      // claimed to be cheap.
+      const typo = createTicket(v2, {
+        ...base,
+        title: 'Typo tier',
+        modelTier: 'cheep-raw' as never,
+      })
+      expect(typo.modelTier).toBe('auto')
+      expect(read(typo.slug)).toContain('model_tier: auto')
+      expect(read(typo.slug)).not.toContain('cheep-raw')
+
+      updateTicket(v2, typo.slug, { modelTier: 'nonsense' as never })
+      expect(listTickets(v2).find((x) => x.slug === typo.slug)?.modelTier).toBe('auto')
+
       // Legacy ticket with NO model_tier line: reads as auto, and setting the
       // tier inserts the line rather than failing.
       writeFileSync(

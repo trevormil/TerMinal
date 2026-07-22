@@ -681,7 +681,12 @@ function classifyCommand(kind, args) {
   process.exit(2)
 }
 
-function fileTicket(title, body) {
+// Mirrors ModelTier in src/main/resolve-model.ts. An unroutable tier resolves
+// through the default (expensive) policy slot, so normalise rather than trust.
+const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
+const normalizeModelTier = (value) => (MODEL_TIERS.includes(value) ? value : 'auto')
+
+function fileTicket(title, body, modelTier) {
   if (!repo) {
     console.error(
       'terminal-cli ticket: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
@@ -726,6 +731,7 @@ type: feature
 source: script
 created: ${today}
 updated: ${today}
+model_tier: ${normalizeModelTier(modelTier)}
 agent_id: ${assignedAgent}
 agent_scope: ${agentId ? 'repo' : 'global'}
 agent_kind: classic
@@ -1118,7 +1124,7 @@ switch (cmd) {
     loopCommand(args[0], args.slice(1))
     break
   case 'ticket':
-    fileTicket(args[0], args[1])
+    fileTicket(args[0], args[1], args[2])
     break
   case 'hitl':
     fileHitl(args[0], args[1])
@@ -1152,7 +1158,8 @@ switch (cmd) {
   default:
     console.error(
       'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify> [args...]\n' +
-        '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
+        '  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO\n' +
+        '                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +

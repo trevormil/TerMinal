@@ -646,6 +646,14 @@ function ticketAgentFromMeta(meta) {
 
 // --- file_ticket ----------------------------------------------------------
 
+// Mirrors ModelTier in src/main/resolve-model.ts. The tool schema's `enum` is
+// advisory — MCP clients are not obliged to enforce it — so the server
+// validates too. An unroutable tier resolves through the default (expensive)
+// policy slot, so a typo would silently bill at top rate while the ticket
+// claimed to be cheap.
+const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
+const normalizeModelTier = (value) => (MODEL_TIERS.includes(value) ? value : 'auto')
+
 function fileTicket(args) {
   const {
     repo,
@@ -693,7 +701,7 @@ updated: ${today}
 prs: []
 refs: []
 depends_on: []
-model_tier: ${modelTier}
+model_tier: ${normalizeModelTier(modelTier)}
 agent_id: ${agent.id}
 agent_scope: ${agent.scope}
 agent_kind: ${agent.kind}
@@ -758,7 +766,7 @@ function updateTicket(args) {
   }
   if (status) setField('status', status)
   if (priority) setField('priority', priority)
-  if (args.modelTier) setField('model_tier', args.modelTier)
+  if (args.modelTier) setField('model_tier', normalizeModelTier(args.modelTier))
   if (args.agentId || args.agentScope || args.agentKind) {
     const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || 'feature').trim())
     setField('agent_id', agent.id)

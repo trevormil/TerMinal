@@ -405,9 +405,12 @@ export type NewTicket = {
   status: string
   body: string
   agent?: Partial<TicketAgent>
-  /** Routing tier: auto | top | cheap-agentic | cheap-raw. Omitted → 'auto'. */
-  modelTier?: string
+  /** Routing tier. Omitted → 'auto'. */
+  modelTier?: ModelTier
 }
+/** Mirrors ModelTier in src/main/resolve-model.ts — the renderer cannot import
+ *  from main, so the union is restated here and must stay in step. */
+export type ModelTier = 'auto' | 'top' | 'cheap-agentic' | 'cheap-raw'
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
 export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
 export type TicketProviderConfig = {
@@ -1767,7 +1770,7 @@ export type GtApi = {
         acceptance?: string[]
         agent?: Partial<TicketAgent>
         run?: Partial<TicketRunLink>
-        modelTier?: string
+        modelTier?: ModelTier
       },
     ) => Promise<boolean>
     spawn: (

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
+import { normalizeModelTier, type ModelTier } from './resolve-model'
 import {
   ensureProjectArea,
   existingProjectAreaPaths,
@@ -76,7 +77,7 @@ export type TicketPatch = {
   run?: Partial<TicketRunLink>
   /** Routing tier consumed by resolveModel at spawn. Only written when the
    *  caller passes it, so patches that don't mention it leave it untouched. */
-  modelTier?: string
+  modelTier?: ModelTier
 }
 
 export type NewTicket = {
@@ -89,7 +90,7 @@ export type NewTicket = {
   agent?: Partial<TicketAgent>
   /** Routing tier: auto | top | cheap-agentic | cheap-raw. Omitted → 'auto',
    *  which is exactly the value every ticket got before this was settable. */
-  modelTier?: string
+  modelTier?: ModelTier
 }
 
 export type TicketAgentRecommendationInput = {
@@ -400,7 +401,9 @@ export function updateTicket(
   }
   if (patch.status) setField('status', patch.status)
   if (patch.priority) setField('priority', patch.priority)
-  if (patch.modelTier) setField('model_tier', patch.modelTier)
+  // Normalised, not trusted: an unroutable tier would resolve to the default
+  // (expensive) policy slot while the file claimed otherwise.
+  if (patch.modelTier) setField('model_tier', normalizeModelTier(patch.modelTier))
   if (patch.acceptance) setListField('acceptance', patch.acceptance)
   if (patch.prs) setListField('prs', patch.prs)
   if (patch.agent) {
@@ -473,7 +476,7 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     refs: [],
     depends_on: [],
     acceptance: input.acceptance || [],
-    modelTier: input.modelTier || 'auto',
+    modelTier: normalizeModelTier(input.modelTier),
     workedBy: [],
     agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
     run: undefined,
