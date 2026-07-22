@@ -1275,9 +1275,30 @@ const bridgeDeps: BridgeDeps = {
   },
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
   repos: () => {
-    const base = resolvedProjectsDir()
+    // Most recent activity per repo, so the phone can surface what you actually
+    // work in instead of an alphabetical wall. Desktop pins/recents live in
+    // renderer localStorage, which main can't read — this is derived from data
+    // main owns (runs + registered sessions) and is honest on any machine.
+    const lastUsed = new Map<string, number>()
+    const bump = (root: string, at: number) => {
+      if (!root) return
+      if ((lastUsed.get(root) ?? 0) < at) lastUsed.set(root, at)
+    }
     try {
-      return readdirSync(base)
+      for (const r of listAllRuns()) bump(r.repoRoot, r.startedAt)
+    } catch {
+      /* runs unreadable — ordering just degrades to alphabetical */
+    }
+    try {
+      for (const s of listRemoteSessions()) bump(repoRootOf(s.cwd) || s.cwd, s.lastSeenAt)
+    } catch {
+      /* same */
+    }
+
+    const base = resolvedProjectsDir()
+    let repos: { name: string; path: string; lastUsedAt?: number; scratch?: boolean }[] = []
+    try {
+      repos = readdirSync(base)
         .filter((n) => !n.startsWith('.'))
         .map((n) => ({ name: n, path: join(base, n) }))
         .filter((d) => {
@@ -1287,11 +1308,32 @@ const bridgeDeps: BridgeDeps = {
             return false
           }
         })
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path) }))
+        // Recently used first; everything else alphabetical behind it.
+        .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name))
     } catch {
-      return []
+      repos = []
     }
+    // The throwaway workspace always rides along, so a repo-less session is
+    // one tap away exactly like the desktop's Scratch panel.
+    const scratch = join(homedir(), '.config', 'TerMinal', 'scratch')
+    return [
+      { name: 'Scratch', path: scratch, scratch: true, lastUsedAt: lastUsed.get(scratch) },
+      ...repos,
+    ]
   },
+
+  // Every engine the desktop can launch, labelled the way the desktop labels
+  // them — the phone should never render a bare lowercase "codex".
+  engines: () => [
+    { id: 'claude', label: 'Claude' },
+    { id: 'codex', label: 'Codex' },
+    { id: 'cursor', label: 'Cursor' },
+    { id: 'openrouter', label: 'OpenRouter' },
+    { id: 'hermes', label: 'Hermes' },
+    { id: 'openai-compat', label: 'Self-hosted' },
+    { id: 'local', label: 'Local' },
+  ],
 
   // Per-workspace read-only cockpit data. Each resolves a local daemon for the
   // requested repo path (the same machinery the desktop tabs use), then projects
@@ -1473,6 +1515,15 @@ const bridgeDeps: BridgeDeps = {
   // no tab on the desktop, and would skip initialInput delivery entirely.
   spawn: ({ cwd, engine, task }) => {
     if (!win) return { error: 'TerMinal is not running' }
+    // The scratch workspace is app-owned and may not exist yet on a fresh
+    // machine — create it on demand, exactly like the scratch:dir handler.
+    if (cwd === join(homedir(), '.config', 'TerMinal', 'scratch')) {
+      try {
+        mkdirSync(cwd, { recursive: true })
+      } catch {
+        /* already exists / race */
+      }
+    }
     const repo = repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || cwd)
     const session = registerRemoteSession({
       title: task ? task.slice(0, 60) : `${repo} · from phone`,

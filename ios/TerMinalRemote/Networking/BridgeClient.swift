@@ -196,6 +196,13 @@ final class BridgeClient {
         ).schedules
     }
 
+    /// Engines available for a new session, already display-cased by the Mac.
+    func engines() async throws -> [WsEngine] {
+        struct Envelope: Decodable { let engines: [WsEngine] }
+        let list = try JSONDecoder().decode(Envelope.self, from: try await get("v1/engines")).engines
+        return list.isEmpty ? WsEngine.fallback : list
+    }
+
     // ---- drill-downs: full readable content -----------------------------
 
     func ticket(repo: String, slug: String) async throws -> WsTicketDetail {

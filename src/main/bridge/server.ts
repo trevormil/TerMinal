@@ -81,6 +81,9 @@ export type BridgeDeps = {
 
   /** Repos the phone may start a session in — also the workspace list. */
   repos?(): BridgeRepo[]
+  /** Engines available for a new session, labelled the way the desktop shows
+   *  them ("Codex", not "codex"). */
+  engines?(): BridgeEngine[]
   /** Read-only per-workspace data for the mobile cockpit. Each takes a repo
    *  path (from repos()). May be async — they resolve a workspace daemon. */
   workspaceTickets?(repoPath: string): Promise<BridgeTicket[]> | BridgeTicket[]
@@ -113,7 +116,18 @@ export type BridgeDeps = {
 }
 
 /** A repo the phone may start a session in. */
-export type BridgeRepo = { name: string; path: string }
+export type BridgeRepo = {
+  name: string
+  path: string
+  /** Most recent activity in this repo (run or session), for recent-first
+   *  ordering on the phone. Absent when nothing has ever run there. */
+  lastUsedAt?: number
+  /** The app-owned throwaway workspace — no repo attached. */
+  scratch?: boolean
+}
+
+/** An engine the phone may start a session with, already display-cased. */
+export type BridgeEngine = { id: string; label: string }
 
 // Compact, read-only projections of the desktop cockpit's data — just what a
 // phone list needs, so the bridge never ships a full daemon payload.
@@ -326,6 +340,10 @@ export function createBridgeHandler(
     // with slashes needs no segment gymnastics.
     if (req.method === 'GET' && url.pathname === '/v1/workspaces') {
       json(res, 200, { workspaces: deps.repos?.() ?? [] })
+      return
+    }
+    if (req.method === 'GET' && url.pathname === '/v1/engines') {
+      json(res, 200, { engines: deps.engines?.() ?? [] })
       return
     }
     // Drill-downs: the full readable content behind a row. Separate from the

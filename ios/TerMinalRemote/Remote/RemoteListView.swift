@@ -220,6 +220,7 @@ struct SessionRow: View {
         GTPanel {
             HStack(spacing: 10) {
                 GTStatusDot(status: session.hasEnded ? "ended" : "working")
+                if !session.engine.isEmpty { EngineLogo(engine: session.engine, size: 13) }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.title)
                         .font(GT.sans(15, .medium))

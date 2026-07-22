@@ -21,8 +21,9 @@ struct NewSessionSheet: View {
     private enum Field { case task, filter }
     @FocusState private var focus: Field?
 
-    // Engines TerMinal can launch. Kept in step with EngineId in settings.ts.
-    private let engines = ["claude", "codex", "cursor", "local"]
+    // Fetched from the Mac so the list and its casing always match the desktop
+    // (Codex, Self-hosted, …) instead of a stale hardcoded set.
+    @State private var engines: [WsEngine] = WsEngine.fallback
 
     private var shown: [RepoOption] {
         filter.isEmpty
@@ -36,10 +37,31 @@ struct NewSessionSheet: View {
                 // Tapping empty space drops the keyboard.
                 GT.bg.ignoresSafeArea().onTapGesture { focus = nil }
                 VStack(alignment: .leading, spacing: 12) {
-                    Picker("Engine", selection: $engine) {
-                        ForEach(engines, id: \.self) { Text($0).tag($0) }
+                    // A scrolling chip row, not a segmented control: there are
+                    // seven engines and segments would be unreadable slivers.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(engines) { e in
+                                Button { engine = e.id } label: {
+                                    HStack(spacing: 5) {
+                                        EngineLogo(engine: e.id, size: 13)
+                                        Text(e.label).font(GT.sans(13, .medium))
+                                    }
+                                    .foregroundStyle(engine == e.id ? GT.text : GT.textMuted)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 7)
+                                    .background(engine == e.id ? GT.accent.opacity(0.22) : GT.panel2)
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule().stroke(
+                                            engine == e.id ? GT.accent : GT.border, lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 1)
                     }
-                    .pickerStyle(.segmented)
 
                     TextField("What should it do? (optional)", text: $task, axis: .vertical)
                         .lineLimit(1...4)
@@ -111,6 +133,8 @@ struct NewSessionSheet: View {
                 do { repos = try await client.repos() } catch {
                     self.error = error.localizedDescription
                 }
+                // Best-effort: keep the built-in list if the Mac can't serve one.
+                if let live = try? await client.engines(), !live.isEmpty { engines = live }
             }
         }
         .preferredColorScheme(.dark)

@@ -47,6 +47,12 @@ struct HitlItem: Codable, Identifiable, Hashable {
 struct RepoOption: Codable, Identifiable, Hashable {
     let name: String
     let path: String
+    /// Most recent activity in this repo, for recent-first ordering.
+    let lastUsedAt: Double?
+    /// The app-owned throwaway workspace — no repo attached.
+    let scratch: Bool?
+
     var id: String { path }
+    var isScratch: Bool { scratch == true }
 }
 
