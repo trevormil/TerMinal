@@ -11,26 +11,31 @@ Living list for the iOS remote app. Check items off as they land; add freely.
 - [x] Chat renders Markdown + accepts images/screenshots
 - [x] Registration model: a session opts in via `/remote-terminal`, engine-agnostic
 
-## In progress
+## Done (this session, cont.)
 
-- [ ] **New Session end-to-end** — renderer now subscribes to `remote:open-session`
-      (was unwired: spawn registered a thread but never launched an agent, so
-      nothing replied). Verify against the REAL app that a spawned agent actually
-      registers the remote id, runs the task, and posts back. The harness cannot
-      run a real agent — New Session must be tested against `bun run dev` or the
-      installed app.
+- [x] **New Session end-to-end** — renderer subscribes to `remote:open-session`
+      (was unwired); spawned agent gets a real tab + auto-submitted prompt
+- [x] **Auto-submit the phone-spawned prompt** — was sitting unsubmitted in the
+      TUI; `Choice.autoSubmit` sends the Enter
+- [x] **`terminal-cli` absolute path in spawnPrompt** — bare name isn't on PATH
+      and the repo bin may predate `remote`; inject `cliSrcPath()`
+- [x] **Never-die listener** — Stop hook now BLOCK-parks (`remote check --wait`)
+      until the next phone message instead of ending the turn; PID-locked against
+      the repo+global double-registration; timeout 3600 in all settings.json;
+      synced to global `~/.claude` and the template. Does not trust the agent to
+      re-arm.
 
 ## Backlog
 
 - [ ] **Unpair / switch-Mac button** in the app (today you can only re-pair from
       the unpaired state)
-- [ ] **Reply-delivery hook reachability** — the `remote-check.sh` Stop hook must
-      be active in ANY repo a session is spawned in, not just the TerMinal repo,
-      or phone→agent replies won't reach sessions started elsewhere. Likely needs
-      the hook installed globally (`~/.claude/settings.json`).
-- [ ] **`terminal-cli` on PATH for spawned sessions** — spawnPrompt calls bare
-      `terminal-cli`; confirm it resolves inside an arbitrary repo (helios, etc.),
-      else the agent can't post.
+- [ ] **Global hook install on first run** — the app should install
+      `remote-check.sh` + its Stop-hook registration into `~/.claude/settings.json`
+      so a fresh machine gets never-die in every repo without manual setup
+      (currently synced by hand for this machine).
+- [ ] **Park duration** — capped at ~59 min per hook run (Claude Code hook
+      timeout). After that the session sleeps; a launchd watcher (like the
+      Telegram bridge) could re-wake a truly-idle session if we want > 1h.
 - [ ] **APNs push** — dormant until the APNs key is created
       (`ios/scripts/setup-push.sh`)
 - [ ] **Full tailnet fleet picker** — show ALL your Macs (via the Mac's

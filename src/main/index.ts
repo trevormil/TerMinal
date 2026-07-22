@@ -1165,9 +1165,18 @@ function spawnPrompt(remoteId: string, task?: string): string {
     `Follow the remote-terminal skill for when to post vs ask. Post at real`,
     `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
     `the safe default and say so in a post.`,
+    ``,
+    `This session stays live between turns — a Stop hook parks it waiting for the`,
+    `next phone message. So when you finish a task, post the result and just stop;`,
+    `you'll be handed the next instruction automatically. You do NOT need to keep`,
+    `an ask open to stay reachable.`,
   ]
   if (task) lines.push(``, `Your task:`, ``, task)
-  else lines.push(``, `No task was given. Post that you are ready and ask what is needed.`)
+  else
+    lines.push(
+      ``,
+      `No task was given — post that you are ready and stop; wait for the first message.`,
+    )
   return lines.join('\n')
 }
 

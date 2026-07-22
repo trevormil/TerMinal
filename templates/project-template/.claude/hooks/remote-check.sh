@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
 # Stop hook — the always-on listener for TerMinal Remote.
 #
-# Runs when the agent is about to end its turn. If the phone sent something
-# while it was working, this blocks the stop and hands the message over, so a
-# reply is picked up automatically rather than depending on the agent
-# remembering to poll.
+# Runs when the agent is about to end its turn. For a registered remote session
+# it BLOCKS here, parking the turn until the phone sends the next instruction —
+# so the conversation never dies just because the agent finished a task and
+# stopped. When a message arrives it blocks the stop and hands it over; when the
+# session is ended (from the phone/app) or nothing comes for a long while, it
+# lets the turn stop.
+#
+# This is the enforcement mechanism: it does NOT depend on the agent remembering
+# to poll. The blocking wait lives in `terminal-cli remote check --wait`.
 #
 # Silent and exit 0 in any session that never registered, which is most of them.
 set -uo pipefail
 
 INPUT=$(cat)
 
-# Claude Code sets stop_hook_active when it is already re-running because of a
-# previous block. Bailing here is what stops an infinite turn loop.
-if printf '%s' "$INPUT" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then
-  exit 0
-fi
+# How long to park waiting for the next phone message before allowing the turn
+# to stop. Kept just under the Stop-hook timeout in settings.json so the CLI
+# exits cleanly rather than being killed. Override with the env var.
+WAIT_TIMEOUT="${TERMINAL_REMOTE_WAIT_TIMEOUT:-3540}"
 
-# Prefer the repo's copy: the installed one under ~/.config/TerMinal/bin is
-# synced at release time, so during development it can predate `remote` and
-# would fail silently.
+# Prefer the repo's copy, then one on PATH, then the installed one. The installed
+# copy under ~/.config/TerMinal/bin is synced at release, so in a repo whose bin/
+# predates `remote` we fall through to it.
+CLI=""
 for candidate in \
   "${CLAUDE_PROJECT_DIR:-$PWD}/bin/terminal-cli" \
   "$(command -v terminal-cli 2>/dev/null || true)" \
@@ -29,16 +34,36 @@ for candidate in \
     break
   fi
 done
-# No CLI that understands `remote` — nothing to listen with.
 [ -n "${CLI:-}" ] || exit 0
 
-# The session_id in the hook input is THIS session's precise identity — the
-# engine-agnostic routing key stored at register time (see the store's
-# agentSessionId). Passing it stops a reply reaching a different session in the
-# same repo; --cwd is only a fallback for a session registered before the id
-# was recorded.
+# This session's precise identity — the engine-agnostic routing key stored at
+# register time — so a reply can never reach a different session in the same
+# repo. --cwd is only a fallback for a session registered before the id existed.
 SESSION_ID=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null || true)
-REPLIES=$("$CLI" remote check --quiet \
+
+# The repo AND the global settings.json both register this hook, so on a repo
+# that has it, two copies fire at once. A PID lock keyed on the session lets only
+# one park; the other returns immediately (allowing the stop) instead of both
+# blocking and one stalling the turn for the full timeout. Reclaimed if the
+# previous waiter was killed (Claude Code hook timeout) without cleaning up.
+LOCK="${TMPDIR:-/tmp}/tm-remote-wait.${SESSION_ID:-$$}.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  OLDPID=$(cat "$LOCK/pid" 2>/dev/null || true)
+  if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
+    exit 0
+  fi
+  rm -rf "$LOCK" 2>/dev/null || true
+  mkdir "$LOCK" 2>/dev/null || exit 0
+fi
+echo $$ >"$LOCK/pid"
+trap 'rm -rf "$LOCK" 2>/dev/null || true' EXIT
+
+# Park until the phone sends something (or the session ends / times out). No
+# stop_hook_active guard on purpose: after a message is delivered and the agent
+# acts, we WANT to park again for the next one. This never busy-loops — it only
+# returns a block when a real message arrives.
+REPLIES=$("$CLI" remote check --wait --quiet \
+  --timeout "$WAIT_TIMEOUT" \
   --agent-session "$SESSION_ID" \
   --cwd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null || true)
 [ -n "$REPLIES" ] || exit 0
@@ -51,6 +76,7 @@ replies = sys.argv[1]
 print(json.dumps({
     "decision": "block",
     "reason": "Message from your phone via TerMinal Remote — treat this as a new instruction "
-              "from the human and continue:\n\n" + replies,
+              "from the human and continue. When you finish, just stop; this session stays "
+              "live and you'll be handed the next message automatically:\n\n" + replies,
 }))
 PY

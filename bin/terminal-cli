@@ -1350,17 +1350,37 @@ function remoteCommand(sub, rest) {
       }
     }
     case 'check': {
-      // Non-blocking: prints anything queued while the agent was busy. Stays
-      // silent with no registration, because the Stop hook calls it on EVERY
-      // turn — including in sessions that never registered.
+      // Non-blocking (default): prints anything queued while the agent was busy.
+      // With --wait: BLOCKS, parking the turn until the phone sends something,
+      // the session ends, or --timeout elapses. The Stop hook uses --wait so a
+      // remote session never goes idle — it waits inside the hook for the next
+      // instruction instead of ending the turn and dying. Silent with no
+      // registration, because the hook calls it on EVERY turn of EVERY session.
       const quiet = rest.includes('--quiet')
+      const wait = rest.includes('--wait')
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
         quiet,
         agentSessionId: agentSessionFlag,
       })
       if (!sessionId) break
-      const replies = takeRemoteReplies(sessionId)
-      if (replies.length) console.log(replies.join('\n'))
+      if (!wait) {
+        const replies = takeRemoteReplies(sessionId)
+        if (replies.length) console.log(replies.join('\n'))
+        break
+      }
+      const deadline = Date.now() + timeoutSec * 1000
+      for (;;) {
+        const session = readRemote(sessionId)
+        // Ended from the phone/app → let the turn stop for good.
+        if (!session || session.status === 'ended') break
+        const replies = takeRemoteReplies(sessionId)
+        if (replies.length) {
+          console.log(replies.join('\n'))
+          break
+        }
+        if (Date.now() > deadline) break // idle past the window → allow the stop
+        execSync('sleep 2')
+      }
       break
     }
     case 'end': {
