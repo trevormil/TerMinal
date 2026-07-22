@@ -82,14 +82,30 @@ Non-blocking, prints one message per line, silent when there is nothing.
 When the human sends a **screenshot**, its reply arrives as `[image: /path]` —
 Read that path to see what they sent.
 
-## 5. Finish
+## 5. Switch back to the desktop, or finish
+
+The human moves between the desktop and the phone freely — this is ONE session
+with two surfaces, not two sessions. You never have to manage that handoff:
 
 ```sh
-terminal-cli remote end --id <id>
+terminal-cli remote off --id <id>      # stop being remote, keep the history
+terminal-cli remote status --id <id>   # working | awaiting | ended | none
 ```
 
-Post a closing summary first, so the last thing on their phone says where you
-left things.
+`off` (alias `end`) is how you come back to the desktop: it stops the phone
+listener but leaves the thread readable. Post a closing summary first, so the
+last thing on their phone says where you left things.
+
+**Handoff is forgiving by design — nothing here can crash your turn:**
+
+- If the human **deletes** the thread from the phone while you keep working, a
+  later `post` is silently skipped (`no active session … post skipped`, exit 0)
+  and an `ask` behaves like a timeout — pick your safe default and carry on. You
+  are not remote anymore; that is fine.
+- `off` / `end` on an already-ended or already-deleted session succeeds
+  silently. Toggling remote off is never an error.
+- Re-running `register --id <id>` turns the listener back ON and resumes the
+  same thread — go remote again mid-session whenever you need to.
 
 ## Rules
 

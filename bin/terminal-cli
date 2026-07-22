@@ -1180,10 +1180,15 @@ function remoteList() {
  * several sessions registered across repos, "most recent anywhere" would hand
  * one session's replies to another.
  */
-function resolveRemoteId(flagId, cwd, { quiet = false, agentSessionId = '' } = {}) {
+function resolveRemoteId(flagId, cwd, { quiet = false, soft = false, agentSessionId = '' } = {}) {
+  // quiet → return '' silently (the Stop hook, on every session).
+  // soft  → return '' but let the caller print a graceful notice. Used by
+  //         post/ask/end so that deleting a session from the phone, or ending
+  //         it, degrades to "no longer remote" instead of crashing the agent's
+  //         command with exit 1. Switching desktop⇄remote must never throw.
   if (flagId) {
     if (!readRemote(flagId)) {
-      if (quiet) return ''
+      if (quiet || soft) return ''
       console.error(`no registered remote session "${flagId}" — run: terminal-cli remote register`)
       process.exit(1)
     }
@@ -1203,7 +1208,7 @@ function resolveRemoteId(flagId, cwd, { quiet = false, agentSessionId = '' } = {
   const here = cwd ? active.find((s) => s.cwd === cwd) : null
   const current = byAgent || here || active[0]
   if (!current) {
-    if (quiet) return ''
+    if (quiet || soft) return ''
     console.error('no registered remote session — run: terminal-cli remote register')
     process.exit(1)
   }
@@ -1335,23 +1340,35 @@ function remoteCommand(sub, rest) {
       break
     }
     case 'post': {
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true })
       const text = positional.join(' ').trim()
       const images = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : []
       if (!text && !images.length) {
         console.error('usage: terminal-cli remote post "<message>" [--image <path>]')
         process.exit(2)
       }
+      // Deleted from the phone / never registered: this session simply isn't
+      // remote. Drop the post with a soft notice — never crash the turn.
+      if (!sessionId) {
+        console.error('remote: no active session (unregistered or removed) — post skipped')
+        break
+      }
       remoteAppend(sessionId, 'agent', text, images)
       writeRemote({ ...readRemote(sessionId), lastSeenAt: Date.now() })
       break
     }
     case 'ask': {
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true })
       const question = positional.join(' ').trim()
       if (!question) {
         console.error('usage: terminal-cli remote ask "<question>"')
         process.exit(2)
+      }
+      // No remote session to answer — behave like a timeout: no stdout, non-zero,
+      // so the agent picks its safe default and carries on (per the skill).
+      if (!sessionId) {
+        console.error('remote: no active session to ask — proceed with a safe default')
+        process.exit(3)
       }
       remoteAppend(sessionId, 'agent', question)
       writeRemote({
@@ -1421,9 +1438,28 @@ function remoteCommand(sub, rest) {
       if (replies.length) console.log(replies.join('\n'))
       break
     }
-    case 'end': {
-      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd())
-      writeRemote({ ...readRemote(sessionId), status: 'ended', lastSeenAt: Date.now() })
+    // 'end' / 'off' — come back to the desktop: stop being remote, keep the
+    // history. Idempotent: ending an already-ended or already-deleted session
+    // succeeds silently, so toggling off is never an error.
+    case 'end':
+    case 'off': {
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
+        soft: true,
+        agentSessionId: agentSessionFlag,
+      })
+      const session = sessionId ? readRemote(sessionId) : null
+      if (session) writeRemote({ ...session, status: 'ended', lastSeenAt: Date.now() })
+      break
+    }
+    // 'status' — is this session still on the phone? Prints working|awaiting|
+    // ended|none so a human or agent can tell where a handoff stands.
+    case 'status': {
+      const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), {
+        soft: true,
+        agentSessionId: agentSessionFlag,
+      })
+      const session = sessionId ? readRemote(sessionId) : null
+      console.log(session ? session.status : 'none')
       break
     }
     case 'list':
@@ -1431,7 +1467,7 @@ function remoteCommand(sub, rest) {
       break
     default:
       console.error(
-        'usage: terminal-cli remote <register|post|ask|check|end|list> [--id <id>] [args...]',
+        'usage: terminal-cli remote <register|post|ask|check|end|off|status|list> [--id <id>] [args...]',
       )
       process.exit(2)
   }
