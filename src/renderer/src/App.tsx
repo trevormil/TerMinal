@@ -402,6 +402,22 @@ export default function App() {
     return offExit
   }, [])
 
+  // A session started from the phone (bridge spawn) lands here: main asks the
+  // renderer to open it so it gets a real tab and normal initialInput delivery,
+  // rather than an orphan pty with nothing driving it. Without this, the phone's
+  // "New session" registers a thread but never launches an agent — nothing ever
+  // replies. Routes through the same terminal:new path as any new session.
+  useEffect(() => {
+    const off = window.gt.onRemoteOpenSession((payload) => {
+      navigateTo('terminal:new', {
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : '',
+        engine: typeof payload.engine === 'string' ? payload.engine : undefined,
+        initialInput: typeof payload.initialInput === 'string' ? payload.initialInput : '',
+      })
+    })
+    return off
+  }, [])
+
   useEffect(() => {
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind !== 'task-complete' || !ev.sessionId) return
