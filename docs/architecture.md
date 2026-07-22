@@ -37,14 +37,31 @@ Each `SessionView` mounts:
   active, so backgrounded sessions don't poll).
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
 
-## Mobile bridge (TerMinal Remote for iOS)
+## Remote sessions (TerMinal Remote for iOS)
 
-`src/main/bridge/` serves the live ptys to a paired iPhone. It is a **second
-transport over the same sessions**, never a parallel session store: the pump in
-`startSession` fans `proc.onData` out to three consumers — the renderer
-(`pty:data`), the session log (`appendSessionRunLog`), and `bridgeBroadcast`,
-which is a Map miss when no phone is attached.
+A session **opts in** by running the `/remote-terminal` skill; nothing is
+scraped and the phone never touches a pty. The agent posts what it wants you to
+see and reads what you send back, so this is identical for claude, codex, or
+anything else that can run a shell command.
 
+- **`src/main/remote-sessions.ts`** is the store: two files per session under
+  `~/.config/TerMinal/remote/` — a JSON record and an append-only JSONL log.
+  Plain files on purpose, so `bin/terminal-cli` can read and write them without
+  importing the app.
+- **`bin/terminal-cli remote`** is the agent's side: `register`, `post`,
+  `ask` (blocks until the phone replies, printing it on stdout), `check`
+  (non-blocking), `end`.
+- **Replies queue behind a delivery cursor**, so a message sent while the agent
+  is busy is handed over at its next check — exactly once — rather than needing
+  the agent to be blocked at that moment.
+- **`.claude/hooks/remote-check.sh`** is the always-on listener: a Stop hook
+  that blocks the turn ending when something is waiting, so replies arrive
+  without the agent polling. Silent and exit 0 wherever no session is
+  registered, which is most sessions.
+- **`src/main/bridge/`** is a small authenticated JSON API — no streaming:
+  `GET /v1/remote` (sessions + HITL), `GET /v1/remote/:id/messages`,
+  `POST /v1/remote/:id/reply`, `GET|POST /v1/hitl`, `POST /v1/devices`. All
+  bearer-authenticated except `GET /v1/health`.
 - **Off by default.** Nothing binds a port until `settings.bridge.enabled`;
   `will-quit` releases it.
 - **HTTPS, self-signed, pinned.** The pairing QR carries base64 SHA-256 of the
@@ -52,28 +69,18 @@ which is a Map miss when no phone is attached.
   live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
   whose `safeStorage` sealing drops secrets outright when OS encryption is
   unavailable — which would silently unpair a phone in dev builds.
-- **Two surfaces over the same sessions.** Terminal: `GET /v1/sessions`,
-  `GET /v1/sessions/:key/stream` (SSE), `POST /v1/sessions/:key/input`. Chat:
-  `GET /v1/chats`, `GET /v1/chats/:key/messages`, `POST /v1/chats/:key/send`,
-  `POST /v1/chats/:key/interrupt`, plus `/v1/hitl`, `/v1/repos`,
-  `POST /v1/sessions` (start one) and `POST /v1/devices` (push token). All
-  bearer-authenticated except `/v1/health`. Tickets and PRs still get no
-  endpoints — ask the agent.
-- **`src/main/chat/messages.ts` normalizes transcripts** (claude + codex JSONL)
-  into one `ChatMessage` shape. It is the only place engine-specific parsing
-  lives; an engine with no adapter reports `unsupported`.
+- **HITL fans out to remote hosts**, so an agent blocked on `tm` still reaches
+  the phone.
 - **Push is an alert channel.** `createPushChannel` sits alongside
   telegram/desktop/webhook in `dispatchAlert`, and `src/main/bridge/push.ts`
   signs an ES256 JWT and posts to APNs directly from this Mac.
-- **Replay on attach** tails the existing session log, so the bridge holds no
-  scrollback of its own.
-- **Geometry is mirrored, never driven.** The phone renders at the desktop's
-  cols×rows; resizing the pty would rewrap the human's own screen.
 
 The client lives at [`ios/`](../ios/README.md). Design records:
-[ADR-0006](decisions/0006-mobile-terminal-bridge.md) (transport) and
-[ADR-0007](decisions/0007-chat-first-mobile-client.md) (chat surface); shipping
-path: [runbooks/ios-testflight.md](runbooks/ios-testflight.md).
+[ADR-0006](decisions/0006-mobile-terminal-bridge.md) (transport, pairing,
+pinning) and [ADR-0008](decisions/0008-remote-sessions-register-themselves.md)
+(the registration model, superseding the terminal-mirror and transcript-chat
+designs); shipping path:
+[runbooks/ios-testflight.md](runbooks/ios-testflight.md).
 
 ## Plugins & tabs (auto-discovery)
 

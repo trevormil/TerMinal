@@ -4,7 +4,11 @@ Date: 2026-07-21
 
 ## Status
 
-Accepted
+Superseded by [ADR-0008](0008-remote-sessions-register-themselves.md)
+
+Kept for the reasoning, not as current design. Chat was right; deriving it by
+scraping the engine's transcript was not — 0008 has the agent report for itself,
+and the transcript adapters described below no longer exist.
 
 Amends [ADR-0006](0006-mobile-terminal-bridge.md): the transport, pairing, and
 security decisions there stand unchanged. What changes is what the phone shows.

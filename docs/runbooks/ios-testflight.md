@@ -5,8 +5,10 @@ Info.plist, tests, archive scheme, and an upload script. Below is the human-only
 path. Internal TestFlight needs **no App Review**, so a build is testable as
 soon as Apple finishes processing it (~15–60 min).
 
-Design rationale for the bridge lives in
-[`docs/decisions/0006-mobile-terminal-bridge.md`](../decisions/0006-mobile-terminal-bridge.md).
+Design rationale: [ADR-0006](../decisions/0006-mobile-terminal-bridge.md) for
+the transport and pairing, and
+[ADR-0008](../decisions/0008-remote-sessions-register-themselves.md) for the
+registration model.
 
 ## Prerequisites (once)
 
@@ -106,20 +108,16 @@ this is the first thing to check.
 3. Phone and Mac on the same Wi-Fi (or both on the tailnet).
 4. Scan the QR.
 5. Walk the checklist:
-   - Session list shows every live terminal with the right repo and branch.
-   - Opening one lands on the current screen, in colour, correctly wrapped.
-   - Typing a prompt reaches the agent and the reply streams back.
-   - `^C` from the key bar interrupts it.
-   - **The Mac's terminal never reflows or resizes.**
-   - Quitting the session on the Mac shows "Session ended" on the phone.
-   - Toggling the bridge off drops the phone cleanly.
-   - "Rotate token" forces a re-pair.
-6. Chat surface:
-   - Threads list every live session, with "your turn" when the agent is idle.
-   - A finished session appears under **Recent**, read-only.
-   - Sending a prompt reaches the agent; the stop button interrupts it.
-   - A HITL item appears in **Needs you** and resolving it unblocks the agent.
-   - With push configured: lock the phone, let an agent finish a turn, and the
+   - On the Mac, run `/remote-terminal` in a session. It appears on the phone.
+   - The agent's `post` updates show up in that thread.
+   - When it runs `ask`, the row shows **asking** and the thread shows
+     "Waiting on your answer".
+   - Replying unblocks the agent — `ask` prints your text on its stdout.
+   - Replying while it is busy queues; it arrives at the agent's next turn
+     boundary via the Stop hook, without anyone polling.
+   - A HITL item appears under **Needs you**, and Resolve makes it stay gone.
+   - Register a second session: both appear, and replies go to the right one.
+   - With push configured: lock the phone, let an agent `ask`, and the
      notification should arrive and open that thread.
 
 ## Troubleshooting
@@ -129,5 +127,6 @@ this is the first thing to check.
 | Phone can't reach the Mac | Bridge toggle off, Mac asleep, or different network. Settings → Mobile lists the addresses it is reachable at. |
 | "This device is no longer paired" | Token was rotated, or the config dir was wiped. Re-scan. |
 | Connects, then immediately drops | Certificate changed (bridge identity regenerated). Re-scan — pinning is working as intended. |
-| Nothing in the session list | No live sessions on the Mac. Start one in TerMinal. |
+| Nothing in the session list | No session has registered. Run `/remote-terminal` in one. |
+| A reply never reaches the agent | The Stop hook resolves `terminal-cli` from the repo, then PATH, then `~/.config/TerMinal/bin` — that last copy only syncs at release, so on an unreleased branch it can predate `remote` and no-op silently. |
 | Bridge won't start, "port in use" | Something else holds the port. Change it in Settings → Mobile. |
