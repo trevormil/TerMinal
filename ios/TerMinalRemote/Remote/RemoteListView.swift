@@ -1,8 +1,8 @@
 import SwiftUI
 
 @Observable
-final class ChatListViewModel {
-    private(set) var threads: [ChatThread] = []
+final class RemoteListViewModel {
+    private(set) var sessions: [RemoteSession] = []
     private(set) var hitl: [HitlItem] = []
     private(set) var error: String?
     private(set) var loading = true
@@ -13,28 +13,22 @@ final class ChatListViewModel {
         self.client = client
     }
 
+    /// Ended sessions stay listed until they age out of the Mac's store, but
+    /// they belong below the ones still running.
+    var active: [RemoteSession] { sessions.filter { !$0.hasEnded } }
+    var finished: [RemoteSession] { sessions.filter(\.hasEnded) }
+
     @MainActor
     func refresh() async {
         defer { loading = false }
         do {
-            let (threads, hitl) = try await client.chats()
-            self.threads = threads
+            let (sessions, hitl) = try await client.remote()
+            self.sessions = sessions
             self.hitl = hitl
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
-    }
-
-    @MainActor
-    func stop(_ thread: ChatThread) async {
-        try? await client.stop(key: thread.key)
-        await refresh()
-    }
-
-    @MainActor
-    func focus(_ thread: ChatThread) async {
-        try? await client.focus(key: thread.key)
     }
 
     @MainActor
@@ -47,12 +41,11 @@ final class ChatListViewModel {
     }
 }
 
-/// The app's home: every live session as a conversation, plus the blocked queue.
-struct ChatListView: View {
-    @State var model: ChatListViewModel
+/// Home: every session that registered itself, plus the blocked queue.
+struct RemoteListView: View {
+    @State var model: RemoteListViewModel
     let onUnpair: () -> Void
-    @State private var startingNew = false
-    @State private var opened: ChatThread?
+    @State private var opened: RemoteSession?
 
     var body: some View {
         ZStack {
@@ -61,9 +54,7 @@ struct ChatListView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     if let error = model.error {
                         GTPanel {
-                            Text(error)
-                                .font(GT.sans(12))
-                                .foregroundStyle(GT.yellow)
+                            Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow)
                         }
                     }
 
@@ -76,48 +67,44 @@ struct ChatListView: View {
                         }
                     }
 
-                    section("Sessions", count: model.threads.count, tint: GT.textFaint)
-                    if model.threads.isEmpty && !model.loading {
+                    section("Sessions", count: model.active.count, tint: GT.textFaint)
+                    if model.active.isEmpty && !model.loading {
                         GTPanel {
-                            Text("No sessions running. Start one below, or from TerMinal on your Mac.")
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("No sessions registered")
+                                    .font(GT.sans(13, .medium))
+                                    .foregroundStyle(GT.text)
+                                Text(
+                                    "In a session on your Mac, run /remote-terminal and it will appear here."
+                                )
                                 .font(GT.sans(12))
                                 .foregroundStyle(GT.textMuted)
+                            }
                         }
                     }
-                    ForEach(model.threads) { thread in
-                        NavigationLink(value: thread) { ThreadRow(thread: thread) }
+                    ForEach(model.active) { session in
+                        NavigationLink(value: session) { SessionRow(session: session) }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button {
-                                    Task { await model.focus(thread) }
-                                } label: { Label("Show on the Mac", systemImage: "macwindow") }
-                                Button(role: .destructive) {
-                                    Task { await model.stop(thread) }
-                                } label: { Label("Stop session", systemImage: "stop.circle") }
-                            }
                     }
 
-                    Button { startingNew = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus")
-                            Text("New session")
+                    if !model.finished.isEmpty {
+                        section("Finished", count: model.finished.count, tint: GT.textFaint)
+                            .padding(.top, 6)
+                        ForEach(model.finished) { session in
+                            NavigationLink(value: session) { SessionRow(session: session) }
+                                .buttonStyle(.plain)
                         }
-                        .frame(maxWidth: .infinity)
-                        .gtSecondaryButton()
                     }
-                    .padding(.top, 4)
                 }
                 .padding(14)
             }
         }
-        // A tapped notification names a thread; open it once the list knows
-        // about it, then clear so it doesn't re-open on every refresh.
-        .navigationDestination(item: $opened) { thread in
-            ChatThreadView(model: ChatThreadViewModel(thread: thread, client: model.client))
+        .navigationDestination(for: RemoteSession.self) { session in
+            RemoteThreadView(model: RemoteThreadViewModel(session: session, client: model.client))
         }
-        .navigationDestination(for: ChatThread.self) { thread in
-            ChatThreadView(
-                model: ChatThreadViewModel(thread: thread, client: model.client))
+        // A tapped notification names a session; open it once the list knows it.
+        .navigationDestination(item: $opened) { session in
+            RemoteThreadView(model: RemoteThreadViewModel(session: session, client: model.client))
         }
         .navigationTitle(model.client.pairing.n)
         .navigationBarTitleDisplayMode(.inline)
@@ -126,17 +113,13 @@ struct ChatListView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
         .refreshable { await model.refresh() }
-        .sheet(isPresented: $startingNew) {
-            NewSessionSheet(client: model.client) { await model.refresh() }
-        }
         .task {
             while !Task.isCancelled {
                 await model.refresh()
+                openPendingIfAny()
                 try? await Task.sleep(for: .seconds(4))
-                openPendingThreadIfAny()
             }
         }
-        .onAppear { openPendingThreadIfAny() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -148,12 +131,12 @@ struct ChatListView: View {
         }
     }
 
-    private func openPendingThreadIfAny() {
-        guard let key = PushRegistrar.shared.pendingThreadKey,
-            let thread = model.threads.first(where: { $0.key == key })
+    private func openPendingIfAny() {
+        guard let id = PushRegistrar.shared.pendingThreadKey,
+            let session = model.sessions.first(where: { $0.id == id })
         else { return }
         PushRegistrar.shared.pendingThreadKey = nil
-        opened = thread
+        opened = session
     }
 
     private func section(_ title: String, count: Int, tint: Color) -> some View {
@@ -162,47 +145,44 @@ struct ChatListView: View {
                 .font(GT.sans(10, .semibold))
                 .tracking(0.8)
                 .foregroundStyle(tint)
-            Text("\(count)")
-                .font(GT.mono(10))
-                .foregroundStyle(GT.textFaint)
+            Text("\(count)").font(GT.mono(10)).foregroundStyle(GT.textFaint)
             Spacer()
         }
     }
 }
 
-private struct ThreadRow: View {
-    let thread: ChatThread
+private struct SessionRow: View {
+    let session: RemoteSession
 
     var body: some View {
         GTPanel {
             HStack(spacing: 10) {
-                GTStatusDot(status: thread.status)
+                GTStatusDot(status: session.hasEnded ? "ended" : "working")
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(thread.name)
+                    Text(session.title)
                         .font(GT.sans(15, .medium))
                         .foregroundStyle(GT.text)
+                        .lineLimit(1)
                     HStack(spacing: 5) {
-                        if !thread.repo.isEmpty { Text(thread.repo) }
-                        if !thread.branch.isEmpty { Text("· \(thread.branch)") }
-                        Text("· \(thread.engine)")
+                        if !session.repo.isEmpty { Text(session.repo) }
+                        if !session.branch.isEmpty { Text("· \(session.branch)") }
+                        Text("· \(session.messages) msg")
                     }
                     .font(GT.mono(11))
                     .foregroundStyle(GT.textFaint)
                     .lineLimit(1)
                 }
                 Spacer(minLength: 6)
-                if thread.needsInput {
-                    Text("your turn")
+                if session.isAwaiting {
+                    Text("asking")
                         .font(GT.sans(10, .semibold))
                         .foregroundStyle(GT.accent2)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(GT.accent2.opacity(0.12))
                         .clipShape(Capsule())
-                } else {
-                    Text("working")
-                        .font(GT.sans(10))
-                        .foregroundStyle(GT.textFaint)
+                } else if session.hasEnded {
+                    Text("done").font(GT.sans(10)).foregroundStyle(GT.textFaint)
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
@@ -224,15 +204,10 @@ struct HitlCard: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(GT.yellow)
-                    Text(item.title)
-                        .font(GT.sans(14, .medium))
-                        .foregroundStyle(GT.text)
+                    Text(item.title).font(GT.sans(14, .medium)).foregroundStyle(GT.text)
                 }
                 if let detail = item.detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(GT.sans(12))
-                        .foregroundStyle(GT.textMuted)
-                        .lineLimit(6)
+                    Text(detail).font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(6)
                 }
                 if let action = item.action, !action.isEmpty {
                     Text(action)
@@ -248,8 +223,7 @@ struct HitlCard: View {
                         Text(repo).font(GT.mono(10)).foregroundStyle(GT.textFaint)
                     }
                     Spacer()
-                    Button("Dismiss") { onResolve(false) }
-                        .gtSecondaryButton()
+                    Button("Dismiss") { onResolve(false) }.gtSecondaryButton()
                     Button("Resolve") { onResolve(true) }
                         .font(GT.sans(13, .semibold))
                         .foregroundStyle(.black)

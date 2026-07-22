@@ -1,6 +1,12 @@
 import Foundation
+import OSLog
 import UIKit
 import UserNotifications
+
+/// Diagnostics for the one thing that can't be reproduced on a Simulator: a
+/// real phone talking to a real Mac. Read with
+/// `xcrun devicectl device process launch --console`.
+let bridgeLog = Logger(subsystem: "com.trevormil.terminal", category: "bridge")
 
 /// Registers this device for push and hands the token to the paired Mac.
 ///

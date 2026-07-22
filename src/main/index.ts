@@ -280,18 +280,10 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
-import {
-  bridgeBroadcast,
-  bridgeBroadcastExit,
-  bridgeStatus,
-  startBridge,
-  stopBridge,
-  type BridgeDeps,
-  type BridgeSession,
-} from './bridge/server'
+import { bridgeStatus, startBridge, stopBridge, type BridgeDeps } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
-import { chatSupportsEngine, sessionMessages, type ChatEngine } from './chat/messages'
 import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
+import { listRemoteSessions, messageCount, postMessage, readMessages } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl } from './url-safety'
@@ -755,11 +747,9 @@ function startSession(key: string, opts: StartOpts) {
   proc.onData((d) => {
     send('pty:data', key, d)
     appendSessionRunLog(sessionId, d)
-    bridgeBroadcast(key, d) // third consumer: an attached phone (no-op when none)
   })
   proc.onExit(({ exitCode }) => {
     send('pty:exit', key, exitCode)
-    bridgeBroadcastExit(key, exitCode)
     unregisterLoopSession(key)
     const status = exitCode === 0 ? 'done' : 'failed'
     const endedAt = Date.now()
@@ -1141,64 +1131,24 @@ ipcMain.handle('fleet:list', () => fleetSnapshot())
 // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
 const MAX_REPLAY_BYTES = 256 * 1024
 const bridgeDeps: BridgeDeps = {
+  // Only sessions that opted in via the remote-terminal skill. Nothing is
+  // scraped from a pty, so this is identical for every engine.
   sessions: () =>
-    fleetSnapshot().map((f): BridgeSession => {
-      const pty = sessions.get(f.key)?.pty
-      return {
-        key: f.key,
-        sessionId: f.sessionId || '',
-        name: f.name,
-        cwd: f.cwd,
-        repo: f.repo,
-        branch: f.branch || '',
-        model: f.model || '',
-        status: f.status,
-        engine: sessions.get(f.key)?.pinned.engine || '',
-        // The phone MIRRORS the desktop's geometry and never resizes the pty —
-        // a reflow here would disrupt the terminal the human is looking at.
-        cols: pty?.cols ?? 80,
-        rows: pty?.rows ?? 30,
-      }
-    }),
-  write: (key, data) => {
-    const s = sessions.get(key)
-    if (!s) return false
-    s.pty.write(data.toString('utf8'))
-    return true
-  },
-  // Tail of the log the session already writes, so an attaching phone lands on
-  // the current screen. Alt-screen TUIs redraw within a frame or two.
-  replay: (key) => {
-    const sid = sessions.get(key)?.pinned.sessionId
-    if (!sid) return ''
-    const log = readSessionRunLog(sid)
-    return log.length > MAX_REPLAY_BYTES ? log.slice(-MAX_REPLAY_BYTES) : log
-  },
-
-  // ---- chat surface ----
-  // The phone's primary view. Same sessions, rendered as a conversation from
-  // the engine's own transcript rather than from pty bytes.
-  messages: (key, opts) => {
-    const pinned = sessions.get(key)?.pinned
-    if (!pinned?.sessionId) return { messages: [], unsupported: false, total: 0 }
-    return sessionMessages(pinned.sessionId, (pinned.engine || 'claude') as ChatEngine, opts)
-  },
-  // Live sessions first, then recently finished ones. Past threads need no
-  // storage of their own: the engine's transcript is still on disk, so
-  // sessionMessages can read it long after the pty is gone.
-  threads: () => {
-    const live = bridgeDeps.sessions().map((s) => ({
-      key: s.key,
-      name: s.name,
+    listRemoteSessions().map((s) => ({
+      id: s.id,
+      title: s.title,
       repo: s.repo,
       branch: s.branch,
       engine: s.engine,
       status: s.status,
-      needsInput: s.status !== 'working',
-      chat: chatSupportsEngine((s.engine || 'claude') as ChatEngine),
-    }))
-    return live
-  },
+      question: s.question,
+      lastSeenAt: s.lastSeenAt,
+      messages: messageCount(s.id),
+    })),
+  messages: (id, opts) => readMessages(id, opts),
+  // Queued, not delivered: the agent collects it at its next check, so a reply
+  // sent while it is busy is never lost.
+  reply: (id, text) => !!postMessage(id, 'user', text),
 
   // Local items plus every configured host's. An agent blocked on `tm` pages
   // nobody otherwise, which defeats the whole point of an AFK remote.
@@ -1213,13 +1163,10 @@ const bridgeDeps: BridgeDeps = {
         repo: h.repo,
         source: h.source,
         createdAt: h.createdAt,
-        sessionId: h.sessionId,
-        terminalKey: h.terminalKey,
       }))
     const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
     if (!hosts.length) return local
-    // Best-effort: an unreachable host contributes nothing, never a failure —
-    // the local queue must still render.
+    // Best-effort: an unreachable host contributes nothing, never a failure.
     const remote = await collectRemoteHitl(hosts, async (h) => {
       const ref = remoteFromHostId(h.id)
       return ref ? remoteHitl.list(ref) : []
@@ -1235,24 +1182,9 @@ const bridgeDeps: BridgeDeps = {
         repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
         source: h.source,
         createdAt: h.createdAt,
-        sessionId: h.sessionId,
-        terminalKey: h.terminalKey,
       }))
     return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
   },
-  // Full remote control of a running session, not just a window onto it.
-  stopSession: (key) => {
-    if (!sessions.has(key)) return false
-    stopSession(key)
-    return true
-  },
-  focusSession: (key) => {
-    if (!sessions.has(key)) return false
-    setActiveSession(key)
-    win?.show()
-    return true
-  },
-  // Routes through the app's own resolve path — never a parallel write.
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
   registerDevice: (token, environment) => {
     registerDevice(token, environment)
@@ -1261,43 +1193,6 @@ const bridgeDeps: BridgeDeps = {
       title: 'Phone registered for notifications',
       detail: `${environment} · alerts will now reach TerMinal Remote`,
     })
-  },
-  repos: () => {
-    const base = resolvedProjectsDir()
-    try {
-      return readdirSync(base)
-        .filter((n) => !n.startsWith('.'))
-        .map((n) => ({ name: n, path: join(base, n) }))
-        .filter((d) => {
-          try {
-            return statSync(d.path).isDirectory()
-          } catch {
-            return false
-          }
-        })
-        .sort((a, b) => a.name.localeCompare(b.name))
-    } catch {
-      return []
-    }
-  },
-  startSession: (input) => {
-    const engine = (input.engine || readSettings().defaultEngine) as Engine
-    // Phone-started sessions get their own key so they appear as a new tab on
-    // the desktop rather than hijacking an existing one.
-    const key = `phone-${randomUUID().slice(0, 8)}`
-    try {
-      startSession(key, {
-        mode: 'new',
-        engine,
-        cwd: input.cwd,
-        name: input.name,
-        cols: 100,
-        rows: 30,
-      })
-      return { key }
-    } catch (e) {
-      return { error: (e as Error).message }
-    }
   },
 }
 

@@ -35,7 +35,7 @@ final class ScreenshotTests: XCTestCase {
         // Tap the BUTTON, not its label: a NavigationLink with .buttonStyle(.plain)
         // does not forward a tap landing on its inner Text.
         let row = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS 'real' OR label CONTAINS 'harness'")
+            NSPredicate(format: "label CONTAINS 'harness'")
         ).firstMatch
         _ = row.waitForExistence(timeout: 20)
         Thread.sleep(forTimeInterval: 3)

@@ -1106,6 +1106,210 @@ function applyProfileCli(repo, profile) {
   console.log('seeded [' + profile + ']: ' + ids.join(', '))
 }
 
+// ---- remote sessions (the phone) -------------------------------------------
+// Self-contained on purpose: this file is a standalone Bun script the runner
+// injects into agent scripts, so it cannot import from src/main.
+const REMOTE_DIR = join(homedir(), '.config', 'TerMinal', 'remote')
+const remoteMeta = (id) => join(REMOTE_DIR, `${id}.json`)
+const remoteLog = (id) => join(REMOTE_DIR, `${id}.jsonl`)
+const validRemoteId = (id) => typeof id === 'string' && /^[\w-]{1,64}$/.test(id)
+
+function readRemote(id) {
+  if (!validRemoteId(id)) return null
+  try {
+    return JSON.parse(readFileSync(remoteMeta(id), 'utf8'))
+  } catch {
+    return null
+  }
+}
+function writeRemote(session) {
+  mkdirSync(REMOTE_DIR, { recursive: true, mode: 0o700 })
+  writeFileSync(remoteMeta(session.id), JSON.stringify(session, null, 2), { mode: 0o600 })
+}
+function remoteMessages(id) {
+  try {
+    return readFileSync(remoteLog(id), 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => {
+        try {
+          return JSON.parse(l)
+        } catch {
+          return null
+        }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+function remoteAppend(id, from, text) {
+  mkdirSync(REMOTE_DIR, { recursive: true, mode: 0o700 })
+  appendFileSync(remoteLog(id), JSON.stringify({ at: Date.now(), from, text }) + '\n', {
+    mode: 0o600,
+  })
+}
+function remoteList() {
+  if (!existsSync(REMOTE_DIR)) return []
+  return readdirSync(REMOTE_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => readRemote(f.slice(0, -5)))
+    .filter(Boolean)
+    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+}
+/** Resolve --id, or the most recent still-running session. */
+function resolveRemoteId(flagId) {
+  if (flagId) {
+    if (!readRemote(flagId)) {
+      console.error(`no registered remote session "${flagId}" — run: terminal-cli remote register`)
+      process.exit(1)
+    }
+    return flagId
+  }
+  const current = remoteList().find((s) => s.status !== 'ended')
+  if (!current) {
+    console.error('no registered remote session — run: terminal-cli remote register')
+    process.exit(1)
+  }
+  return current.id
+}
+function takeRemoteReplies(id) {
+  const session = readRemote(id)
+  if (!session) return []
+  const all = remoteMessages(id)
+  const fresh = all.slice(session.deliveredUpTo || 0).filter((m) => m.from === 'user')
+  if (!fresh.length) return []
+  writeRemote({
+    ...session,
+    deliveredUpTo: all.length,
+    status: 'working',
+    question: undefined,
+    lastSeenAt: Date.now(),
+  })
+  return fresh.map((m) => m.text)
+}
+function gitInfo(cwd) {
+  const run = (cmdline) => {
+    try {
+      return execSync(cmdline, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim()
+    } catch {
+      return ''
+    }
+  }
+  const root = run('git rev-parse --show-toplevel')
+  return { repo: root ? basename(root) : basename(cwd), branch: run('git branch --show-current') }
+}
+
+function remoteCommand(sub, rest) {
+  // --id may appear anywhere; everything else is positional.
+  let id = ''
+  const positional = []
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--id') {
+      id = rest[++i] || ''
+      continue
+    }
+    if (rest[i].startsWith('--id=')) {
+      id = rest[i].slice(5)
+      continue
+    }
+    if (rest[i] === '--timeout') {
+      i++
+      continue
+    }
+    positional.push(rest[i])
+  }
+  const timeoutFlag = rest.findIndex((a) => a === '--timeout')
+  const timeoutSec = timeoutFlag >= 0 ? Number(rest[timeoutFlag + 1]) || 900 : 900
+
+  switch (sub) {
+    case 'register': {
+      const cwd = process.cwd()
+      const { repo, branch } = gitInfo(cwd)
+      const sessionId = validRemoteId(id) ? id : randomUUID().slice(0, 8)
+      const existing = readRemote(sessionId)
+      writeRemote({
+        id: sessionId,
+        title: positional[0] || existing?.title || repo || 'session',
+        repo,
+        branch,
+        cwd,
+        engine: process.env.TERMINAL_ENGINE || existing?.engine || '',
+        status: 'working',
+        registeredAt: existing?.registeredAt || Date.now(),
+        lastSeenAt: Date.now(),
+        deliveredUpTo: existing?.deliveredUpTo ?? 0,
+      })
+      console.log(sessionId)
+      break
+    }
+    case 'post': {
+      const sessionId = resolveRemoteId(id)
+      const text = positional.join(' ').trim()
+      if (!text) {
+        console.error('usage: terminal-cli remote post "<message>"')
+        process.exit(2)
+      }
+      remoteAppend(sessionId, 'agent', text)
+      const session = readRemote(sessionId)
+      writeRemote({ ...session, lastSeenAt: Date.now() })
+      break
+    }
+    case 'ask': {
+      const sessionId = resolveRemoteId(id)
+      const question = positional.join(' ').trim()
+      if (!question) {
+        console.error('usage: terminal-cli remote ask "<question>"')
+        process.exit(2)
+      }
+      remoteAppend(sessionId, 'agent', question)
+      writeRemote({
+        ...readRemote(sessionId),
+        status: 'awaiting',
+        question,
+        lastSeenAt: Date.now(),
+      })
+      // Block until the phone answers. Polling a file keeps this dependency-free
+      // and survives the app restarting underneath us.
+      const deadline = Date.now() + timeoutSec * 1000
+      for (;;) {
+        const replies = takeRemoteReplies(sessionId)
+        if (replies.length) {
+          console.log(replies.join('\n'))
+          return
+        }
+        if (Date.now() > deadline) {
+          writeRemote({ ...readRemote(sessionId), status: 'working', question: undefined })
+          console.error(`no reply within ${timeoutSec}s`)
+          process.exit(3)
+        }
+        execSync('sleep 2')
+      }
+    }
+    case 'check': {
+      // Non-blocking: prints anything queued while the agent was busy.
+      const replies = takeRemoteReplies(resolveRemoteId(id))
+      if (replies.length) console.log(replies.join('\n'))
+      break
+    }
+    case 'end': {
+      const sessionId = resolveRemoteId(id)
+      writeRemote({ ...readRemote(sessionId), status: 'ended', lastSeenAt: Date.now() })
+      break
+    }
+    case 'list':
+      console.log(JSON.stringify(remoteList(), null, 2))
+      break
+    default:
+      console.error(
+        'usage: terminal-cli remote <register|post|ask|check|end|list> [--id <id>] [args...]',
+      )
+      process.exit(2)
+  }
+}
+
 const [, , cmd, ...args] = process.argv
 switch (cmd) {
   case 'seed-module':
@@ -1149,9 +1353,12 @@ switch (cmd) {
   case 'classify':
     classifyCommand(args[0], args.slice(1))
     break
+  case 'remote':
+    remoteCommand(args[0], args.slice(1))
+    break
   default:
     console.error(
-      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify> [args...]\n' +
+      'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]\n' +
         '  ticket "<title>" "<body>"                file a backlog ticket on TERMINAL_REPO\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
@@ -1160,6 +1367,11 @@ switch (cmd) {
         '  notify "<message>"                       send a Telegram message (raw)\n' +
         '  inbox enqueue <json|--flags>              queue a local automation inbox request\n' +
         '  inbox status|dir|example                  inspect automation inbox helpers\n' +
+        '  remote register "<title>"                register this session for the phone\n' +
+        '  remote post "<message>"                  send an update to the phone\n' +
+        '  remote ask "<question>" [--timeout N]     ask and BLOCK until the phone replies\n' +
+        '  remote check                             collect replies queued while working\n' +
+        '  remote end                               mark the session finished\n' +
         '  state [get [key] | get-sha | set <k> <v> | set-sha <sha> | mark-main]\n' +
         '                                           persist per-(repo, agent) JSON sidecar\n',
     )

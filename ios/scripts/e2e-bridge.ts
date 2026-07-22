@@ -1,16 +1,15 @@
 #!/usr/bin/env bun
 /**
- * End-to-end harness for the mobile bridge, against a REAL pty.
+ * End-to-end harness for the mobile bridge.
  *
- * Starts the same bridge the Electron main process starts, backed by an actual
- * shell, and prints a pairing code pointing at 127.0.0.1 (which the iOS
- * Simulator shares with the host). Use it to exercise the whole client without
- * running the desktop app or touching your real TerMinal config.
+ * Serves the REAL remote-session store (~/.config/TerMinal/remote), so anything
+ * registered with `terminal-cli remote register` shows up on the phone without
+ * running the desktop app. Prints a scannable pairing QR.
  *
  *   bun ios/scripts/e2e-bridge.ts            # run until Ctrl-C
  *   bun ios/scripts/e2e-bridge.ts --selftest # assert the round trip, then exit
  *
- * Everything lives in a temp identity dir, so it never disturbs the pairing of
+ * The bridge identity lives in a temp dir, so it never disturbs the pairing of
  * a phone already paired with the real app.
  */
 import qrcode from 'qrcode-generator'
@@ -18,260 +17,56 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
-import { sessionMessages, type ChatEngine, type ChatMessage } from '../../src/main/chat/messages'
+import { startBridge, stopBridge, type BridgeDeps } from '../../src/main/bridge/server'
 import {
-  bridgeBroadcast,
-  bridgeBroadcastExit,
-  startBridge,
-  stopBridge,
-  type BridgeDeps,
-} from '../../src/main/bridge/server'
+  listRemoteSessions,
+  messageCount,
+  postMessage,
+  readMessages,
+  registerRemoteSession,
+  takeReplies,
+} from '../../src/main/remote-sessions'
 
 const PORT = 8791 // not 8790: never collide with a real running TerMinal
-const KEY = 'e2e-session'
 const selftest = process.argv.includes('--selftest')
 
-// `--real <sessionId> <engine>` serves an ACTUAL transcript from disk instead
-// of the scripted one, so the chat client can be exercised against real agent
-// output without running the desktop app against your live config.
-const realIndex = process.argv.indexOf('--real')
-const real =
-  realIndex >= 0
-    ? {
-        sessionId: process.argv[realIndex + 1] || '',
-        engine: (process.argv[realIndex + 2] || 'claude') as ChatEngine,
-      }
-    : null
-
-const COLS = 100
-const ROWS = 30
-
-// node-pty is built against Electron's ABI and can't load under Bun, so this
-// harness allocates a real pty via ptyrelay.py instead. Same fidelity for what
-// is under test: a genuine terminal on the other end of the bridge.
-const proc = Bun.spawn(
-  [
-    'python3',
-    new URL('./ptyrelay.py', import.meta.url).pathname,
-    String(COLS),
-    String(ROWS),
-    '/bin/bash',
-    '--norc',
-    '--noprofile',
-    '-i',
-  ],
-  {
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
-    cwd: process.cwd(),
-    env: { ...process.env, PS1: 'e2e$ ', TERM: 'xterm-256color' },
-  },
-)
-
-let scrollback = ''
-
-// ---- scripted chat state ----
-const now = () => 1_784_000_000_000 + chatLog.length * 1000
-const chatLog: ChatMessage[] = [
-  { kind: 'user', at: 1_784_000_000_000, text: 'run the test suite' },
-  {
-    kind: 'assistant',
-    at: 1_784_000_001_000,
-    text: 'Running it now — I will report the first failure rather than the whole log.',
-  },
-  { kind: 'tool', at: 1_784_000_002_000, name: 'Bash', summary: 'bun test', status: 'ok' },
-  {
-    kind: 'assistant',
-    at: 1_784_000_003_000,
-    text: '844 pass, 0 fail. Anything you want me to pick up next?',
-  },
-]
-let hitlQueue = [
-  {
-    id: 'h1',
-    title: 'Approve release to production',
-    detail: 'The release script wants to publish v0.4.0 from main.',
-    action: 'bun run release',
-    repo: 'TerMinal',
-    source: 'agent',
-    createdAt: 1_784_000_004_000,
-  },
-]
-const pump = async (stream: ReadableStream<Uint8Array>) => {
-  const decoder = new TextDecoder()
-  for await (const chunk of stream) {
-    const text = decoder.decode(chunk)
-    scrollback = (scrollback + text).slice(-256 * 1024)
-    bridgeBroadcast(KEY, text)
-  }
+// A demo session so the app has something to show on a fresh machine. Real
+// registrations from `terminal-cli remote register` appear alongside it.
+const DEMO_ID = 'harness-demo'
+if (!listRemoteSessions().some((s) => s.id === DEMO_ID)) {
+  registerRemoteSession({ id: DEMO_ID, title: 'harness demo', repo: 'TerMinal' })
+  postMessage(DEMO_ID, 'agent', 'Registered. This is what an update looks like.')
+  postMessage(DEMO_ID, 'agent', '844 tests green — opening the PR now.')
 }
-void pump(proc.stdout)
-void pump(proc.stderr)
-void proc.exited.then((code) => bridgeBroadcastExit(KEY, code))
-
-const writer = proc.stdin
-const type = (text: string) => {
-  try {
-    writer.write(text)
-    writer.flush()
-    return true
-  } catch {
-    return false // the shell exited from under us
-  }
-}
-
-// Let the relay allocate the pty and bash print its first prompt before typing.
-// Geometry is set by the relay itself via TIOCSWINSZ.
-await new Promise((r) => setTimeout(r, 600))
 
 const deps: BridgeDeps = {
-  sessions: () => [
+  sessions: () =>
+    listRemoteSessions().map((s) => ({
+      id: s.id,
+      title: s.title,
+      repo: s.repo,
+      branch: s.branch,
+      engine: s.engine,
+      status: s.status,
+      question: s.question,
+      lastSeenAt: s.lastSeenAt,
+      messages: messageCount(s.id),
+    })),
+  messages: (id, opts) => readMessages(id, opts),
+  reply: (id, text) => !!postMessage(id, 'user', text),
+  hitl: () => [
     {
-      key: KEY,
-      sessionId: 'e2e',
-      name: 'harness session',
-      cwd: process.cwd(),
+      id: 'h1',
+      title: 'Approve release to production',
+      detail: 'The release script wants to publish v0.4.0 from main.',
+      action: 'bun run release',
       repo: 'TerMinal',
-      branch: 'feat/ios-remote-terminal',
-      model: '',
-      status: 'idle',
-      engine: 'codex',
-      cols: COLS,
-      rows: ROWS,
+      source: 'agent',
+      createdAt: 1_784_000_004_000,
     },
   ],
-  write: (key, data) => {
-    if (key !== KEY) return false
-    const text = data.toString('utf8')
-    // A chat send arrives as "<prompt>\r"; record both sides so the thread
-    // behaves like a real conversation.
-    if (text.endsWith('\r') && text.length > 1 && !text.includes('\u0003')) {
-      const prompt = text.slice(0, -1)
-      chatLog.push({ kind: 'user', at: now(), text: prompt })
-      chatLog.push({
-        kind: 'assistant',
-        at: now(),
-        text: `Got it — "${prompt}". (scripted harness reply)`,
-      })
-    }
-    return type(text)
-  },
-  replay: () => scrollback,
-
-  // A scripted conversation so the chat UI can be driven without a live agent.
-  // Every prompt sent from the phone is appended, and the "agent" answers, so
-  // the round trip is real even though the content is canned.
-  messages: (key, opts) => {
-    if (real) return sessionMessages(real.sessionId, real.engine, opts)
-    const after = Math.max(0, opts.after ?? 0)
-    return { messages: chatLog.slice(after), unsupported: false, total: chatLog.length }
-  },
-  threads: () => [
-    {
-      key: KEY,
-      name: real ? `real · ${real.engine}` : 'harness session',
-      repo: 'TerMinal',
-      branch: 'feat/ios-remote-terminal',
-      engine: real ? real.engine : 'codex',
-      status: 'idle',
-      needsInput: true,
-      chat: true,
-    },
-  ],
-  stopSession: (key) => key === KEY,
-  focusSession: (key) => key === KEY,
-  hitl: () => hitlQueue,
-  resolveHitl: (id) => {
-    const before = hitlQueue.length
-    hitlQueue = hitlQueue.filter((h) => h.id !== id)
-    return hitlQueue.length < before
-  },
-  repos: () => [
-    { name: 'TerMinal', path: '/repos/TerMinal' },
-    { name: 'beacon', path: '/repos/beacon' },
-  ],
-
-  // One live thread plus a finished one, so history renders in the harness too.
-  threads: () => [
-    {
-      key: KEY,
-      name: real ? `real · ${real.engine}` : 'harness session',
-      repo: 'TerMinal',
-      branch: 'feat/ios-remote-terminal',
-      engine: real ? real.engine : 'codex',
-      status: 'idle',
-      needsInput: true,
-      live: true,
-      chat: true,
-    },
-    {
-      key: 'past:harness-history',
-      name: 'overnight review',
-      repo: 'TerMinal',
-      branch: 'main',
-      engine: 'claude',
-      status: 'done',
-      needsInput: false,
-      live: false,
-      chat: true,
-      endedAt: 1_783_900_000_000,
-    },
-  ],
-  hitl: () => hitlQueue,
-  resolveHitl: (id) => {
-    const before = hitlQueue.length
-    hitlQueue = hitlQueue.filter((h) => h.id !== id)
-    return hitlQueue.length < before
-  },
-  repos: () => [
-    { name: 'TerMinal', path: '/repos/TerMinal' },
-    { name: 'beacon', path: '/repos/beacon' },
-  ],
-
-  // Real workspaces and history off disk, so the grouped/searchable list can be
-  // exercised against the hundreds of sessions a real machine accumulates.
-  workspaces: () => {
-    const byRepo = new Map<string, { path: string; count: number; lastAt: number }>()
-    for (const s of realSessions()) {
-      const repo = workspaceOf(s.cwd)
-      const e = byRepo.get(repo) || { path: s.cwd, count: 0, lastAt: 0 }
-      e.count++
-      if (s.mtime > e.lastAt) {
-        e.lastAt = s.mtime
-        e.path = repoRootOf(s.cwd) || s.cwd
-      }
-      byRepo.set(repo, e)
-    }
-    return [...byRepo.entries()]
-      .map(([repo, e]) => ({ repo, path: e.path, count: e.count, lastAt: e.lastAt }))
-      .sort((a, b) => b.lastAt - a.lastAt)
-  },
-  history: ({ workspace, q, limit }) => {
-    const needle = (q || '').trim().toLowerCase()
-    const out = []
-    for (const s of realSessions()) {
-      const repo = workspaceOf(s.cwd)
-      if (workspace && repo !== workspace) continue
-      const title = ((s.firstUserText || '').trim() || 'session').slice(0, 200)
-      if (needle && !`${title} ${repo} ${s.gitBranch}`.toLowerCase().includes(needle)) continue
-      out.push({
-        key: `past:${s.id}`,
-        sessionId: s.id,
-        title,
-        repo,
-        branch: s.gitBranch || '',
-        engine: s.engine,
-        turns: s.turns,
-        at: s.mtime,
-      })
-      if (limit && limit > 0 && out.length >= limit) break
-    }
-    return out
-  },
-  // Resuming for real would spawn a pty this harness does not own.
-  resume: () => ({ error: 'the harness cannot resume — try it against the real app' }),
-  startSession: (input) => ({ key: `phone-${input.cwd.split('/').pop()}` }),
+  resolveHitl: () => true,
+  registerDevice: () => {},
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'gt-bridge-e2e-'))
@@ -279,8 +74,6 @@ const identity = ensureIdentity(dir)
 const status = await startBridge(deps, {
   port: PORT,
   dir,
-  // Show every client request, so a phone that "just spins" can be diagnosed
-  // from this side instead of guessed at.
   onRequest: selftest
     ? undefined
     : (method, path, code) =>
@@ -303,7 +96,7 @@ const payload = pairingPayload({
 /**
  * Render the pairing payload as a QR in the terminal, so a physical phone can
  * scan it straight off the screen. Half-blocks pack two module rows per text
- * row, which keeps a 49-module code inside a normal terminal window.
+ * row, which keeps the code inside a normal terminal window.
  */
 function printQR(text: string): void {
   const qr = qrcode(0, 'L')
@@ -312,8 +105,6 @@ function printQR(text: string): void {
   const n = qr.getModuleCount()
   const quiet = 2
   const dark = (r: number, c: number) => r >= 0 && r < n && c >= 0 && c < n && qr.isDark(r, c)
-  // Inverted (dark background, light modules) reads reliably in a dark
-  // terminal; scanners handle either polarity.
   const lines: string[] = []
   for (let r = -quiet; r < n + quiet; r += 2) {
     let line = ''
@@ -332,16 +123,9 @@ if (!selftest) {
   printQR(JSON.stringify(payload))
   console.log('\n=== or copy this pairing code ===')
   console.log(JSON.stringify(payload))
-  if (real) {
-    const t = sessionMessages(real.sessionId, real.engine)
-    console.log(
-      `\nserving REAL transcript ${real.sessionId} (${real.engine}) — ` +
-        `${t.total} messages${t.unsupported ? ' [engine unsupported]' : ''}`,
-    )
-  }
-  console.log(`\nlistening on https://127.0.0.1:${PORT} — Ctrl-C to stop\n`)
+  console.log(`\nserving ${listRemoteSessions().length} registered session(s)`)
+  console.log(`listening on https://127.0.0.1:${PORT} — Ctrl-C to stop\n`)
   process.on('SIGINT', async () => {
-    proc.kill()
     await stopBridge()
     process.exit(0)
   })
@@ -357,60 +141,33 @@ async function runSelftest(): Promise<void> {
 
   const fail = (msg: string) => {
     console.error('FAIL:', msg)
-    proc.kill()
     void stopBridge().then(() => process.exit(1))
   }
 
-  // 1. the stream opens and replays
-  const res = await fetchTLS(`/v1/sessions/${KEY}/stream`, { headers: auth })
-  if (res.status !== 200) return fail(`stream status ${res.status}`)
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder()
-  const first = decoder.decode((await reader.read()).value)
-  if (!first.includes('event: hello')) return fail('no hello frame')
-  const hello = JSON.parse(first.split('data: ')[1].split('\n')[0])
-  if (hello.cols !== COLS || hello.rows !== ROWS)
-    return fail(`geometry ${hello.cols}x${hello.rows}`)
-  console.log(`✓ hello frame — geometry ${hello.cols}x${hello.rows} mirrored from the pty`)
+  const list = await (await fetchTLS('/v1/remote', { headers: auth })).json()
+  if (!list.sessions.some((s: { id: string }) => s.id === DEMO_ID)) {
+    return fail('registered session missing from /v1/remote')
+  }
+  console.log(`✓ /v1/remote lists ${list.sessions.length} registered session(s)`)
 
-  // 2. input typed on the "phone" reaches the real shell
-  const marker = `E2E_MARKER_${Date.now()}`
-  await fetchTLS(`/v1/sessions/${KEY}/input`, {
+  const before = await (await fetchTLS(`/v1/remote/${DEMO_ID}/messages`, { headers: auth })).json()
+  console.log(`✓ transcript reads back (${before.messages.length} messages)`)
+
+  // A reply from the "phone" must reach the agent exactly once.
+  const marker = `selftest-${Date.now()}`
+  const posted = await fetchTLS(`/v1/remote/${DEMO_ID}/reply`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ data: Buffer.from(`echo ${marker}\r`).toString('base64') }),
+    body: JSON.stringify({ text: marker }),
   })
+  if (posted.status !== 200) return fail(`reply POST status ${posted.status}`)
 
-  // 3. the shell's response streams back over SSE
-  const deadline = Date.now() + 15_000
-  let seen = ''
-  let buffered = '' // SSE frames can split across read() boundaries
-  while (Date.now() < deadline) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffered += decoder.decode(value, { stream: true })
-    const lines = buffered.split('\n')
-    buffered = lines.pop() ?? ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      seen += Buffer.from(line.slice(6).trim(), 'base64').toString('utf8')
-    }
-    // The echoed command line and the command's output each contain the
-    // marker; seeing it twice proves the shell actually RAN it rather than
-    // just echoing our keystrokes back.
-    if (seen.split(marker).length > 2) break
-  }
-  if (seen.split(marker).length <= 2) {
-    console.error('--- stream contents ---')
-    console.error(JSON.stringify(seen.slice(-600)))
-    return fail(`shell never echoed ${marker}`)
-  }
-  console.log('✓ input POSTed from the client ran in the real shell')
-  console.log('✓ its output streamed back over SSE')
+  const delivered = takeReplies(DEMO_ID)
+  if (!delivered.includes(marker)) return fail(`agent never received the reply: ${delivered}`)
+  if (takeReplies(DEMO_ID).includes(marker)) return fail('reply was delivered twice')
+  console.log('✓ reply queued, delivered to the agent exactly once')
 
-  await reader.cancel()
-  proc.kill()
   await stopBridge()
-  console.log('\nE2E PASSED — real pty ⇄ HTTPS bridge ⇄ client round trip\n')
+  console.log('\nE2E PASSED — phone ⇄ bridge ⇄ registered session\n')
   process.exit(0)
 }

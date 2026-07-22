@@ -47,8 +47,8 @@ final class LivePairingTests: XCTestCase {
         // The harness session's thread proves a certificate-pinned,
         // token-authenticated HTTPS request reached the bridge and decoded.
         XCTAssertTrue(
-            app.staticTexts["harness session"].waitForExistence(timeout: 20),
-            "chat list never loaded a thread from the bridge")
+            app.staticTexts["harness demo"].waitForExistence(timeout: 20),
+            "session list never loaded a registered session")
 
         // …and the HITL queue renders from the same payload.
         XCTAssertTrue(

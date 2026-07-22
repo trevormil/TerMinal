@@ -24,119 +24,55 @@ final class LiveBridgeTests: XCTestCase {
         return payload
     }
 
-    func testSessionsListLoadsFromTheLiveBridge() async throws {
-        let client = BridgeClient(pairing: try livePairing())
-        guard await client.resolveHost() != nil else {
-            throw XCTSkip("harness not reachable")
-        }
-        let sessions = try await client.sessions()
-        XCTAssertEqual(sessions.count, 1)
-        XCTAssertEqual(sessions.first?.key, "e2e-session")
-    }
-
-    /// The regression that mattered: the phone listed sessions fine but the
-    /// bridge never saw a stream request at all.
-    func testStreamDeliversAHelloFrame() async throws {
-        let pairing = try livePairing()
-        let client = BridgeClient(pairing: pairing)
-        guard await client.resolveHost() != nil else {
-            throw XCTSkip("harness not reachable")
-        }
-
-        var received: TerminalEvent?
-        let deadline = Date().addingTimeInterval(20)
-        for try await event in client.stream(key: "e2e-session") {
-            received = event
-            break
-        }
-        XCTAssertLessThan(Date(), deadline, "stream took too long to produce a frame")
-
-        guard case .hello(let cols, let rows, _, _) = received else {
-            return XCTFail("expected a hello frame, got \(String(describing: received))")
-        }
-        XCTAssertEqual(cols, 100)
-        XCTAssertEqual(rows, 30)
-    }
-
-    // MARK: - chat surface
-
-    func testChatsListsThreadsAndTheHitlQueue() async throws {
+    func testRemoteListLoadsRegisteredSessions() async throws {
         let client = BridgeClient(pairing: try livePairing())
         guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
-
-        let (threads, hitl) = try await client.chats()
-        XCTAssertTrue(threads.contains { $0.key == "e2e-session" })
-        // Not asserted against a specific id: another test in this file may have
-        // already drained the harness queue, and test order is not guaranteed.
-        XCTAssertNotNil(threads.first?.engine)
-        _ = hitl
+        let (sessions, _) = try await client.remote()
+        XCTAssertFalse(sessions.isEmpty, "no registered sessions returned")
     }
 
-    func testSendingAPromptAppearsInTheTranscript() async throws {
+    func testTranscriptDecodesAndPaginates() async throws {
         let client = BridgeClient(pairing: try livePairing())
         guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
+        guard let session = try await client.remote().sessions.first else {
+            throw XCTSkip("no registered session")
+        }
+        let all = try await client.messages(id: session.id, after: 0)
+        XCTAssertFalse(all.messages.isEmpty)
 
-        let before = try await client.messages(key: "e2e-session", after: 0)
+        // The same incremental path the thread view polls with.
+        let tail = try await client.messages(id: session.id, after: all.messages.count - 1)
+        XCTAssertEqual(tail.messages.count, 1)
+    }
+
+    /// The regression that matters: a reply must reach the agent, and the
+    /// transcript must show it.
+    func testReplyLandsInTheTranscript() async throws {
+        let client = BridgeClient(pairing: try livePairing())
+        guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
+        guard let session = try await client.remote().sessions.first else {
+            throw XCTSkip("no registered session")
+        }
+        let before = try await client.messages(id: session.id, after: 0)
         let marker = "uitest-\(Int(Date().timeIntervalSince1970))"
-        try await client.sendPrompt(key: "e2e-session", text: marker)
+        try await client.reply(id: session.id, text: marker)
 
-        // Fetch only what is new — the same incremental path the thread view
-        // uses, so a broken `after` shows up here.
-        let after = try await client.messages(key: "e2e-session", after: before.total)
-        XCTAssertGreaterThan(after.total, before.total)
-        let texts = after.messages.compactMap { message -> String? in
-            if case .user(_, _, let text) = message { return text }
-            if case .assistant(_, _, let text) = message { return text }
-            return nil
-        }
-        XCTAssertTrue(texts.contains { $0.contains(marker) }, "the prompt never landed: \(texts)")
+        let after = try await client.messages(id: session.id, after: before.messages.count)
+        XCTAssertTrue(
+            after.messages.contains { $0.text == marker && !$0.isAgent },
+            "the reply never landed in the transcript")
     }
 
-    func testResolvingAHitlItemClearsIt() async throws {
+    func testUnknownSessionIsRejected() async throws {
         let client = BridgeClient(pairing: try livePairing())
         guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
-        guard let item = try await client.chats().hitl.first else {
-            throw XCTSkip("harness queue already drained")
+        do {
+            _ = try await client.messages(id: "no-such-session", after: 0)
+            XCTFail("expected an error for an unregistered session")
+        } catch {
+            // sessionGone is the mapped 404 — anything else means the bridge
+            // answered for a session it should not know about.
+            XCTAssertEqual(error as? BridgeError, .sessionGone)
         }
-        try await client.resolveHitl(id: item.id, resolved: true)
-        let remaining = try await client.chats().hitl
-        XCTAssertFalse(remaining.contains { $0.id == item.id })
-    }
-
-    func testReposAreOfferedForStartingASession() async throws {
-        let client = BridgeClient(pairing: try livePairing())
-        guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
-        let repos = try await client.repos()
-        XCTAssertFalse(repos.isEmpty)
-        XCTAssertTrue(repos.contains { $0.name == "TerMinal" })
-    }
-
-    /// An idle session must stay open past the client's old 10s inactivity
-    /// timeout — the bug that made every quiet terminal look dead.
-    func testIdleStreamSurvivesPastTheOldTimeout() async throws {
-        let client = BridgeClient(pairing: try livePairing())
-        guard await client.resolveHost() != nil else { throw XCTSkip("harness not reachable") }
-
-        // Race the stream against a clock rather than iterating for a while:
-        // an idle session emits only keepalive COMMENTS, which yield no events,
-        // so a `for await` loop would block instead of re-checking the time.
-        let survived = await withTaskGroup(of: Bool.self) { group -> Bool in
-            group.addTask {
-                do {
-                    for try await _ in client.stream(key: "e2e-session") {}
-                    return false  // the stream ended on its own — that's the bug
-                } catch {
-                    return false
-                }
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(16))
-                return true  // still open past the old 10s timeout
-            }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
-        }
-        XCTAssertTrue(survived, "the stream closed before 16s of silence")
     }
 }

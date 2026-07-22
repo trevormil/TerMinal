@@ -1,23 +1,6 @@
 import Foundation
 
-/// A live pty on the Mac, as the bridge reports it.
-struct BridgeSession: Codable, Identifiable, Hashable {
-    let key: String
-    let sessionId: String
-    let name: String
-    let cwd: String
-    let repo: String
-    let branch: String
-    let model: String
-    let status: String
-    let engine: String
-    let cols: Int
-    let rows: Int
-
-    var id: String { key }
-}
-
-enum BridgeError: LocalizedError {
+enum BridgeError: LocalizedError, Equatable {
     case unreachable
     case unauthorized
     case sessionGone
@@ -30,7 +13,7 @@ enum BridgeError: LocalizedError {
         case .unauthorized:
             return "This device is no longer paired. Scan the code again."
         case .sessionGone:
-            return "That session has ended."
+            return "That session is no longer registered."
         case .http(let code):
             return "The bridge returned an unexpected error (\(code))."
         }
@@ -93,127 +76,37 @@ final class BridgeClient {
         return (response as? HTTPURLResponse)?.statusCode == 200
     }
 
-    func sessions() async throws -> [BridgeSession] {
-        guard let host = await resolveHost() else { throw BridgeError.unreachable }
-        guard let (data, response) = try? await session.data(for: request("v1/sessions", host: host))
-        else { throw BridgeError.unreachable }
-        try Self.check(response)
-        struct Envelope: Decodable { let sessions: [BridgeSession] }
-        return (try? JSONDecoder().decode(Envelope.self, from: data))?.sessions ?? []
-    }
+    // ---- remote sessions ------------------------------------------------
 
-    /// Send keystrokes to the session's stdin. Control bytes ride through
-    /// unchanged, so Ctrl-C from the key bar really interrupts the agent.
-    func send(key: String, bytes: Data) async throws {
-        guard let host = await resolveHost() else { throw BridgeError.unreachable }
-        var req = request("v1/sessions/\(key)/input", host: host, method: "POST")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(["data": bytes.base64EncodedString()])
-        guard let (_, response) = try? await session.data(for: req) else {
-            throw BridgeError.unreachable
-        }
-        try Self.check(response)
-    }
-
-    /// Live output for one session. The stream ends when the pty exits, the
-    /// phone disconnects, or the task is cancelled.
-    func stream(key: String) -> AsyncThrowingStream<TerminalEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    guard let host = await resolveHost() else { throw BridgeError.unreachable }
-                    var req = request("v1/sessions/\(key)/stream", host: host)
-                    // An idle agent emits nothing for minutes, and this timeout
-                    // measures the gap between packets — at the default 10s the
-                    // stream is killed before the server's 10s keepalive lands,
-                    // so every quiet session looked like a dead connection.
-                    // 6x the keepalive interval leaves room for a missed one.
-                    req.timeoutInterval = 60
-                    let (bytes, response) = try await session.bytes(for: req)
-                    try Self.check(response)
-
-                    // Hand-rolled line splitting, NOT `bytes.lines`.
-                    // AsyncLineSequence drops empty lines, and an empty line is
-                    // exactly how SSE terminates a frame — so with `.lines` the
-                    // parser never sees a frame end and no event is ever
-                    // emitted, even though the connection is healthy and data
-                    // is flowing. That produced a permanent "connecting" spinner.
-                    var parser = SSEParser()
-                    var buffer: [UInt8] = []
-                    for try await byte in bytes {
-                        guard byte == 0x0A else {
-                            buffer.append(byte)
-                            continue
-                        }
-                        if buffer.last == 0x0D { buffer.removeLast() }
-                        let line = String(decoding: buffer, as: UTF8.self)
-                        buffer.removeAll(keepingCapacity: true)
-                        guard let frame = parser.push(line),
-                              let event = TerminalEvent.from(frame)
-                        else { continue }
-                        continuation.yield(event)
-                        if case .exit = event { break }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
-
-    // ---- chat surface -------------------------------------------------
-
-    /// Live threads, the HITL queue, and workspace summaries in one round trip.
-    /// Resumable sessions are deliberately NOT here: enumerating every
-    /// transcript on disk is far too slow and large for a poll.
-    func chats() async throws -> (threads: [ChatThread], hitl: [HitlItem]) {
+    /// Registered sessions plus the blocked queue, in one round trip.
+    func remote() async throws -> (sessions: [RemoteSession], hitl: [HitlItem]) {
         struct Envelope: Decodable {
-            let threads: [ChatThread]
+            let sessions: [RemoteSession]
             let hitl: [HitlItem]
         }
-        let data = try await get("v1/chats")
-        let env = try JSONDecoder().decode(Envelope.self, from: data)
-        return (env.threads, env.hitl)
+        let env = try JSONDecoder().decode(Envelope.self, from: try await get("v1/remote"))
+        return (env.sessions, env.hitl)
     }
 
-    /// Stop a session on the Mac.
-    func stop(key: String) async throws {
-        try await post("v1/chats/\(key)/stop", body: nil)
-    }
-
-    /// Bring a session to the front on the desktop — the phone drives the Mac,
-    /// not just observes it.
-    func focus(key: String) async throws {
-        try await post("v1/chats/\(key)/focus", body: nil)
-    }
-
-    /// One session's conversation. `after` is an index into the full list, so
-    /// polling for new messages doesn't re-transfer the whole transcript.
-    func messages(key: String, after: Int) async throws -> ChatTranscriptPage {
-        struct Meta: Decodable {
-            let unsupported: Bool
-            let total: Int
+    /// One session's conversation. `after` is an index, so polling transfers
+    /// only what is new.
+    func messages(id: String, after: Int) async throws -> (
+        messages: [RemoteMessage], status: String, question: String?
+    ) {
+        struct Envelope: Decodable {
+            let messages: [RemoteMessage]
             let status: String
+            let question: String?
         }
-        let data = try await get("v1/chats/\(key)/messages?after=\(after)")
-        let meta = try JSONDecoder().decode(Meta.self, from: data)
-        return ChatTranscriptPage(
-            messages: try ChatMessage.decode(data, startIndex: after),
-            unsupported: meta.unsupported,
-            total: meta.total,
-            status: meta.status
-        )
+        let env = try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/remote/\(id)/messages?after=\(after)"))
+        return (env.messages, env.status, env.question)
     }
 
-    /// Send a prompt. The Mac appends the carriage return.
-    func sendPrompt(key: String, text: String) async throws {
-        try await post("v1/chats/\(key)/send", body: ["text": text])
-    }
-
-    func interrupt(key: String) async throws {
-        try await post("v1/chats/\(key)/interrupt", body: nil)
+    /// Queue a reply. The agent collects it at its next check, so this works
+    /// whether or not it is currently blocked asking.
+    func reply(id: String, text: String) async throws {
+        try await post("v1/remote/\(id)/reply", body: ["text": text])
     }
 
     func resolveHitl(id: String, resolved: Bool) async throws {
@@ -223,21 +116,6 @@ final class BridgeClient {
     /// Hand this device's APNs token to the Mac so alerts can reach it.
     func registerDevice(token: String, environment: String) async throws {
         try await post("v1/devices", body: ["token": token, "environment": environment])
-    }
-
-    func repos() async throws -> [RepoOption] {
-        struct Envelope: Decodable { let repos: [RepoOption] }
-        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/repos")).repos
-    }
-
-    /// Start a session on the Mac. Returns its key so the UI can open it.
-    func startSession(cwd: String, engine: String?, name: String?) async throws -> String {
-        struct Started: Decodable { let key: String }
-        var body: [String: String] = ["cwd": cwd]
-        if let engine { body["engine"] = engine }
-        if let name { body["name"] = name }
-        let data = try await post("v1/sessions", body: body)
-        return try JSONDecoder().decode(Started.self, from: data).key
     }
 
     // ---- plumbing -------------------------------------------------------
