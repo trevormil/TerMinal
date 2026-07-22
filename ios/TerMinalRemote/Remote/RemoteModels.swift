@@ -41,6 +41,16 @@ struct HitlItem: Codable, Identifiable, Hashable {
     let repo: String?
     let source: String
     let createdAt: Double
+    /// 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as push.
+    let severity: String?
+    /// 'open' | 'resolved'. Absent ⇒ open.
+    let status: String?
+    /// When first seen; absent ⇒ unread.
+    let readAt: Double?
+
+    var isNormal: Bool { severity == "normal" }
+    var isResolved: Bool { status == "resolved" }
+    var isUnread: Bool { !isResolved && readAt == nil }
 }
 
 /// A repo the phone may start a session in.

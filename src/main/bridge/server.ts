@@ -46,6 +46,12 @@ export type BridgeHitl = {
   repo?: string
   source: string
   createdAt: number
+  /** 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as 'push'. */
+  severity?: string
+  /** Open unless resolved — the phone can show all, filtered. */
+  status?: string
+  /** When first seen; absent ⇒ unread. */
+  readAt?: number
 }
 
 export type BridgeDeps = {
@@ -68,6 +74,8 @@ export type BridgeDeps = {
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
+  /** Mark HITL items read (viewed on the phone). */
+  markHitlRead?(ids: string[]): number
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
 
@@ -332,6 +340,30 @@ export function createBridgeHandler(
       Promise.resolve(deps.hitl?.() ?? [])
         .then((items) => json(res, 200, { items }))
         .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    // Mark inbox items read (viewed on the phone).
+    if (req.method === 'POST' && url.pathname === '/v1/hitl/read') {
+      if (!deps.markHitlRead) {
+        json(res, 501, { error: 'read state not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          const ids = (() => {
+            try {
+              const p = JSON.parse(raw || '{}') as { ids?: unknown }
+              return Array.isArray(p.ids)
+                ? p.ids.filter((x): x is string => typeof x === 'string')
+                : []
+            } catch {
+              return []
+            }
+          })()
+          json(res, 200, { marked: deps.markHitlRead!(ids) })
+        })
+        .catch((e: Error) => json(res, 413, { error: e.message }))
       return
     }
 

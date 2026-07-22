@@ -76,6 +76,18 @@ let hitlQueue = [
     repo: 'TerMinal',
     source: 'agent',
     createdAt: 1_784_000_004_000,
+    severity: 'push',
+    status: 'open',
+  },
+  {
+    id: 'h2',
+    title: 'Nightly digest ready to skim',
+    detail: 'A normal-severity item — inbox only, no push.',
+    repo: 'TerMinal',
+    source: 'completion-hook',
+    createdAt: 1_784_000_002_000,
+    severity: 'normal',
+    status: 'open',
   },
 ]
 
@@ -100,9 +112,20 @@ const deps: BridgeDeps = {
   // Actually remove it: a static list made Resolve flash and then reappear on
   // the next poll, which reads as a broken button.
   resolveHitl: (id) => {
-    const before = hitlQueue.length
-    hitlQueue = hitlQueue.filter((h) => h.id !== id)
-    return hitlQueue.length < before
+    const found = hitlQueue.some((h) => h.id === id)
+    hitlQueue = hitlQueue.map((h) => (h.id === id ? { ...h, status: 'resolved' } : h))
+    return found
+  },
+  markHitlRead: (ids) => {
+    let n = 0
+    hitlQueue = hitlQueue.map((h) => {
+      if (ids.includes(h.id) && !h.readAt) {
+        n++
+        return { ...h, readAt: 1_784_000_000_000 }
+      }
+      return h
+    })
+    return n
   },
   registerDevice: () => {},
   // Real git repos so the New Session sheet is exercisable. Env-overridable

@@ -1249,8 +1249,11 @@ const bridgeDeps: BridgeDeps = {
   // Local items plus every configured host's. An agent blocked on `tm` pages
   // nobody otherwise, which defeats the whole point of an AFK remote.
   hitl: async () => {
+    // ALL local items (open + resolved), so the phone can show read/unread and
+    // filter — capped newest-first so a long resolved history stays wire-cheap.
     const local = readHitl()
-      .filter((h) => h.status === 'open')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 200)
       .map((h) => ({
         id: h.id,
         title: h.title,
@@ -1259,6 +1262,9 @@ const bridgeDeps: BridgeDeps = {
         repo: h.repo,
         source: h.source,
         createdAt: h.createdAt,
+        severity: h.severity ?? 'push',
+        status: h.status,
+        readAt: h.readAt,
       }))
     const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
     if (!hosts.length) return local
@@ -1278,10 +1284,15 @@ const bridgeDeps: BridgeDeps = {
         repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
         source: h.source,
         createdAt: h.createdAt,
+        // Host blocks are always "look at me"; host read-state isn't tracked here.
+        severity: h.severity ?? 'push',
+        status: h.status ?? 'open',
+        readAt: h.readAt,
       }))
     return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
   },
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
+  markHitlRead: (ids) => markHitlRead(ids),
   repos: () => {
     // Most recent activity per repo, so the phone can surface what you actually
     // work in instead of an alphabetical wall. Desktop pins/recents live in

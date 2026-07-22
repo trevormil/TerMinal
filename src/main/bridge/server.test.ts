@@ -545,6 +545,34 @@ describe('workspaces', () => {
   })
 })
 
+describe('inbox read-state', () => {
+  it('POST /v1/hitl/read marks the given ids and returns the count', async () => {
+    const seen: string[][] = []
+    const h = await harness({
+      markHitlRead: (ids) => {
+        seen.push(ids)
+        return ids.length
+      },
+    })
+    const res = await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['a', 'b'] }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).marked).toBe(2)
+    expect(seen).toEqual([['a', 'b']])
+  })
+
+  it('501s when read-state is unavailable, and requires auth', async () => {
+    const h = await harness()
+    expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST', headers: auth })).status).toBe(
+      501,
+    )
+    expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST' })).status).toBe(401)
+  })
+})
+
 describe('workspace drill-downs', () => {
   it('returns a ticket detail for the requested repo+slug', async () => {
     const seen: string[] = []
