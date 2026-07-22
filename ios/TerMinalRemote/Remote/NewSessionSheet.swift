@@ -17,6 +17,10 @@ struct NewSessionSheet: View {
     @State private var busy = false
     @State private var error: String?
 
+    // Which text field owns the keyboard, so any of them can be dismissed.
+    private enum Field { case task, filter }
+    @FocusState private var focus: Field?
+
     // Engines TerMinal can launch. Kept in step with EngineId in settings.ts.
     private let engines = ["claude", "codex", "cursor", "local"]
 
@@ -29,7 +33,8 @@ struct NewSessionSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                GT.bg.ignoresSafeArea()
+                // Tapping empty space drops the keyboard.
+                GT.bg.ignoresSafeArea().onTapGesture { focus = nil }
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Engine", selection: $engine) {
                         ForEach(engines, id: \.self) { Text($0).tag($0) }
@@ -38,6 +43,7 @@ struct NewSessionSheet: View {
 
                     TextField("What should it do? (optional)", text: $task, axis: .vertical)
                         .lineLimit(1...4)
+                        .focused($focus, equals: .task)
                         .font(GT.sans(14))
                         .foregroundStyle(GT.text)
                         .padding(.horizontal, 12)
@@ -52,6 +58,7 @@ struct NewSessionSheet: View {
                         .foregroundStyle(GT.textFaint)
 
                     TextField("Filter", text: $filter)
+                        .focused($focus, equals: .filter)
                         .font(GT.sans(13))
                         .foregroundStyle(GT.text)
                         .autocorrectionDisabled()
@@ -61,38 +68,27 @@ struct NewSessionSheet: View {
                         .background(Color.black.opacity(0.35))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    if let error {
-                        Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow)
-                    }
-
                     ScrollView {
                         LazyVStack(spacing: 8) {
                             ForEach(shown) { repo in
                                 Button {
+                                    focus = nil
                                     selected = repo
-                                    Task { await start(repo) }
                                 } label: {
-                                    GTPanel(padding: 11) {
-                                        HStack {
-                                            Text(repo.name)
-                                                .font(GT.sans(14, .medium))
-                                                .foregroundStyle(GT.text)
-                                            Spacer()
-                                            if busy && selected == repo {
-                                                ProgressView().tint(GT.accentLight).scaleEffect(0.7)
-                                            } else {
-                                                Image(systemName: "arrow.up.forward.app")
-                                                    .font(.system(size: 12))
-                                                    .foregroundStyle(GT.textFaint)
-                                            }
-                                        }
-                                    }
+                                    repoRow(repo)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(busy)
                             }
                         }
                     }
+                    .scrollDismissesKeyboard(.immediately)
+
+                    if let error {
+                        Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow)
+                    }
+
+                    startButton
                 }
                 .padding(14)
             }
@@ -105,6 +101,11 @@ struct NewSessionSheet: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
+                // Standard iOS "Done" above the keyboard — always reachable.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focus = nil }
+                }
             }
             .task {
                 do { repos = try await client.repos() } catch {
@@ -113,6 +114,50 @@ struct NewSessionSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private func repoRow(_ repo: RepoOption) -> some View {
+        let isSelected = selected == repo
+        return GTPanel(padding: 11) {
+            HStack {
+                Text(repo.name)
+                    .font(GT.sans(14, .medium))
+                    .foregroundStyle(isSelected ? GT.accentLight : GT.text)
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? GT.accentLight : GT.textFaint)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isSelected ? GT.accent : .clear, lineWidth: 1.5)
+        )
+    }
+
+    private var startButton: some View {
+        Button {
+            guard let repo = selected else { return }
+            Task { await start(repo) }
+        } label: {
+            HStack(spacing: 8) {
+                if busy {
+                    ProgressView().tint(.white).scaleEffect(0.8)
+                }
+                Text(
+                    busy
+                        ? "Starting…"
+                        : (selected.map { "Start \($0.name)" } ?? "Select a repo")
+                )
+                .font(GT.sans(15, .semibold))
+                .foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(selected == nil ? GT.borderStrong : GT.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .disabled(selected == nil || busy)
     }
 
     private func start(_ repo: RepoOption) async {

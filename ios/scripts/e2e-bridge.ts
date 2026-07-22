@@ -13,8 +13,8 @@
  * a phone already paired with the real app.
  */
 import qrcode from 'qrcode-generator'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { startBridge, stopBridge, type BridgeDeps } from '../../src/main/bridge/server'
@@ -32,6 +32,29 @@ import {
 // PORT=8790 to exercise tailnet pairing, which assumes the bridge default.
 const PORT = Number(process.env.PORT) || 8791
 const selftest = process.argv.includes('--selftest')
+
+/** Git repos the phone may start a session in — real dirs, so the flow works. */
+function scanRepos(): { name: string; path: string }[] {
+  const roots = [
+    process.env.TERMINAL_PROJECTS_DIR,
+    join(homedir(), 'CompSci/gauntlet'),
+    join(homedir(), 'CompSci'),
+    join(homedir(), 'code'),
+    join(homedir(), 'projects'),
+  ].filter((r): r is string => !!r && existsSync(r))
+  for (const root of roots) {
+    try {
+      const repos = readdirSync(root, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && existsSync(join(root, d.name, '.git')))
+        .slice(0, 40)
+        .map((d) => ({ name: d.name, path: join(root, d.name) }))
+      if (repos.length) return repos
+    } catch {
+      /* unreadable root — try the next */
+    }
+  }
+  return [{ name: 'TerMinal', path: process.cwd() }]
+}
 
 // A demo session so the app has something to show on a fresh machine. Real
 // registrations from `terminal-cli remote register` appear alongside it.
@@ -78,6 +101,31 @@ const deps: BridgeDeps = {
     return hitlQueue.length < before
   },
   registerDevice: () => {},
+  // Real git repos so the New Session sheet is exercisable. Env-overridable
+  // rather than machine-specific: TERMINAL_PROJECTS_DIR wins, else a couple of
+  // common roots, else just this checkout.
+  repos: () => scanRepos(),
+  // The harness can't launch a real desktop tab, so it does what the app's
+  // spawn ultimately does from the phone's side: create the remote thread up
+  // front and return its id, so the phone opens it immediately.
+  spawn: (input) => {
+    const repo = input.cwd.split('/').filter(Boolean).pop() || 'session'
+    const id = `spawn-${Date.now().toString(36)}`
+    registerRemoteSession({
+      id,
+      title: `${input.engine ?? 'claude'} · ${repo}`,
+      repo,
+      engine: input.engine,
+    })
+    postMessage(
+      id,
+      'agent',
+      input.task?.trim()
+        ? `Starting on your phone's request:\n\n> ${input.task.trim()}`
+        : 'Session started from your phone. Send me something to do.',
+    )
+    return { id }
+  },
   tailscalePair: (peer) => {
     const { ok } = tailscalePeerAllowed(peer)
     if (!ok) return null
