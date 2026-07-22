@@ -545,6 +545,100 @@ describe('workspaces', () => {
   })
 })
 
+describe('workspace drill-downs', () => {
+  it('returns a ticket detail for the requested repo+slug', async () => {
+    const seen: string[] = []
+    const h = await harness({
+      workspaceTicket: (repo, slug) => {
+        seen.push(`${repo}|${slug}`)
+        return {
+          slug,
+          id: 7,
+          title: 'ship it',
+          status: 'todo',
+          priority: 'high',
+          type: 'feature',
+          hitl: false,
+          body: '# Full body\n\nwith markdown',
+          acceptance: ['tests pass'],
+        }
+      },
+    })
+    const res = await fetch(
+      `${h.url}/v1/workspace/ticket?repo=${encodeURIComponent('/r/x')}&slug=0007-ship`,
+      { headers: auth },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(seen).toEqual(['/r/x|0007-ship'])
+    expect(body.body).toContain('Full body')
+    expect(body.acceptance).toEqual(['tests pass'])
+  })
+
+  it('passes the numeric iid through for a PR and its diff', async () => {
+    const iids: number[] = []
+    const h = await harness({
+      workspacePr: (_r, iid) => {
+        iids.push(iid)
+        return {
+          iid,
+          title: 'feat',
+          state: 'open',
+          draft: false,
+          author: 'me',
+          url: 'u',
+          labels: [],
+          description: 'body',
+          findings: [{ severity: 'high', title: 'bug', file: 'a.ts', line: 3 }],
+        }
+      },
+      workspacePrDiff: (_r, iid) => ({ text: `diff for ${iid}`, truncated: false }),
+    })
+    const d = await (
+      await fetch(`${h.url}/v1/workspace/pr?repo=/r/x&iid=120`, { headers: auth })
+    ).json()
+    expect(d.findings[0].file).toBe('a.ts')
+    const diff = await (
+      await fetch(`${h.url}/v1/workspace/pr-diff?repo=/r/x&iid=120`, { headers: auth })
+    ).json()
+    expect(diff.text).toBe('diff for 120')
+    expect(iids).toEqual([120])
+  })
+
+  it('requires the run source, since it cannot be derived from the id', async () => {
+    const calls: string[] = []
+    const h = await harness({
+      workspaceRunLog: (id, source, host) => {
+        calls.push(`${id}|${source}|${host ?? '-'}`)
+        return { text: 'log tail', truncated: true }
+      },
+    })
+    // No source → refused rather than guessing the wrong log store.
+    expect((await fetch(`${h.url}/v1/workspace/run-log?id=r1`, { headers: auth })).status).toBe(400)
+    const ok = await (
+      await fetch(`${h.url}/v1/workspace/run-log?id=r1&source=cron&host=tm`, { headers: auth })
+    ).json()
+    expect(ok.truncated).toBe(true)
+    expect(calls).toEqual(['r1|cron|tm'])
+  })
+
+  it('404s a missing detail and 400s an unwired one', async () => {
+    const h = await harness({ workspaceTicket: () => null })
+    expect(
+      (await fetch(`${h.url}/v1/workspace/ticket?repo=/r/x&slug=nope`, { headers: auth })).status,
+    ).toBe(404)
+    // schedule dep absent
+    expect(
+      (await fetch(`${h.url}/v1/workspace/schedule?repo=/r/x&id=s1`, { headers: auth })).status,
+    ).toBe(400)
+  })
+
+  it('requires auth', async () => {
+    const h = await harness({ workspaceTicket: () => null })
+    expect((await fetch(`${h.url}/v1/workspace/ticket?repo=/r/x&slug=a`)).status).toBe(401)
+  })
+})
+
 describe('unknown routes', () => {
   it('404s', async () => {
     const h = await harness()

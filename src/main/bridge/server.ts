@@ -87,6 +87,23 @@ export type BridgeDeps = {
   workspacePrs?(repoPath: string): Promise<BridgePr[]> | BridgePr[]
   workspaceRuns?(repoPath: string): Promise<BridgeRun[]> | BridgeRun[]
   workspaceSchedules?(repoPath: string): Promise<BridgeSchedule[]> | BridgeSchedule[]
+
+  /** Drill-downs — the full readable content behind a list row. */
+  workspaceTicket?(
+    repoPath: string,
+    slug: string,
+  ): Promise<BridgeTicketDetail | null> | BridgeTicketDetail | null
+  workspacePr?(
+    repoPath: string,
+    iid: number,
+  ): Promise<BridgePrDetail | null> | BridgePrDetail | null
+  workspacePrDiff?(repoPath: string, iid: number): Promise<BridgeText> | BridgeText
+  /** `source` picks the log store; it comes from the run row. */
+  workspaceRunLog?(runId: string, source: string, hostId?: string): Promise<BridgeText> | BridgeText
+  workspaceSchedule?(
+    repoPath: string,
+    id: string,
+  ): Promise<BridgeScheduleDetail | null> | BridgeScheduleDetail | null
   /**
    * Start a session on the Mac, already wired to a remote thread. Returns the
    * new session's remote id so the phone can open it immediately — the thread
@@ -128,6 +145,11 @@ export type BridgeRun = {
   startedAt: number
   endedAt?: number
   branch: string
+  /** Which on-disk log store holds this run. REQUIRED to fetch its log — it
+   *  cannot be derived from the id. */
+  source: string
+  /** Remote host the run came from; absent for local. */
+  hostId?: string
 }
 export type BridgeSchedule = {
   id: string
@@ -136,6 +158,44 @@ export type BridgeSchedule = {
   nextRun?: number
   enabled: boolean
 }
+
+// Drill-down payloads. The phone is a READER: these carry the full content
+// (ticket body, PR description + review + diff, run log, schedule prompt) so
+// you can read anything from your pocket. Large text is capped by the caller.
+export type BridgeTicketDetail = BridgeTicket & {
+  /** Full markdown body of the ticket. */
+  body: string
+  acceptance?: string[]
+  prs?: string[]
+}
+export type BridgeFinding = {
+  severity?: string
+  title?: string
+  file?: string
+  line?: number
+  text?: string
+}
+export type BridgePrDetail = BridgePr & {
+  /** The PR description / body. */
+  description: string
+  branch?: string
+  testStatus?: string
+  riskTier?: string
+  /** The code-review artifact's markdown, when one exists. */
+  reviewNotes?: string
+  findings?: BridgeFinding[]
+  ci?: string
+}
+export type BridgeScheduleDetail = BridgeSchedule & {
+  engine?: string
+  model?: string
+  /** The agent prompt this schedule runs. */
+  prompt: string
+  host?: string
+  runtime?: string
+}
+/** Big text (diff / log) plus whether it was cut short for the wire. */
+export type BridgeText = { text: string; truncated: boolean }
 
 export type SpawnInput = {
   /** Absolute repo path, chosen from `repos()`. */
@@ -268,6 +328,54 @@ export function createBridgeHandler(
       json(res, 200, { workspaces: deps.repos?.() ?? [] })
       return
     }
+    // Drill-downs: the full readable content behind a row. Separate from the
+    // list routes because each takes its own identifier.
+    if (req.method === 'GET' && url.pathname.startsWith('/v1/workspace/')) {
+      const kind = url.pathname.slice('/v1/workspace/'.length)
+      const repo = url.searchParams.get('repo') || ''
+      const detail = (): unknown | undefined => {
+        switch (kind) {
+          case 'ticket': {
+            const slug = url.searchParams.get('slug') || ''
+            if (!deps.workspaceTicket || !repo || !slug) return undefined
+            return deps.workspaceTicket(repo, slug)
+          }
+          case 'pr': {
+            const iid = Number(url.searchParams.get('iid'))
+            if (!deps.workspacePr || !repo || !Number.isFinite(iid)) return undefined
+            return deps.workspacePr(repo, iid)
+          }
+          case 'pr-diff': {
+            const iid = Number(url.searchParams.get('iid'))
+            if (!deps.workspacePrDiff || !repo || !Number.isFinite(iid)) return undefined
+            return deps.workspacePrDiff(repo, iid)
+          }
+          case 'run-log': {
+            const id = url.searchParams.get('id') || ''
+            const source = url.searchParams.get('source') || ''
+            if (!deps.workspaceRunLog || !id || !source) return undefined
+            return deps.workspaceRunLog(id, source, url.searchParams.get('host') || undefined)
+          }
+          case 'schedule': {
+            const id = url.searchParams.get('id') || ''
+            if (!deps.workspaceSchedule || !repo || !id) return undefined
+            return deps.workspaceSchedule(repo, id)
+          }
+          default:
+            return undefined
+        }
+      }
+      const pending = detail()
+      if (pending === undefined) {
+        json(res, 400, { error: `bad or unavailable workspace detail: ${kind}` })
+        return
+      }
+      Promise.resolve(pending)
+        .then((value) => json(res, value ? 200 : 404, value ?? { error: 'not found' }))
+        .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
     if (req.method === 'GET' && url.pathname.startsWith('/v1/workspaces/')) {
       const kind = url.pathname.slice('/v1/workspaces/'.length)
       const repo = url.searchParams.get('repo') || ''

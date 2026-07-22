@@ -280,7 +280,13 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
-import { bridgeStatus, startBridge, stopBridge, type BridgeDeps } from './bridge/server'
+import {
+  bridgeStatus,
+  startBridge,
+  stopBridge,
+  type BridgeDeps,
+  type BridgeText,
+} from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { tailscalePeerAllowed, tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
@@ -370,6 +376,7 @@ import {
   remoteTickets,
 } from './remote'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
+import { sanitizeLog } from '../shared/run-log/sanitize'
 import { processSpawnCwd } from './spawn-cwd'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -1147,6 +1154,31 @@ const MAX_REPLAY_BYTES = 256 * 1024
  * contract, and get on with the work — with no human at the keyboard to
  * correct it.
  */
+/** Cap oversized text for the wire. Logs keep the TAIL (where failures are);
+ *  diffs keep the head. */
+function capText(s: string, max: number, opts: { keepTail?: boolean } = {}): BridgeText {
+  if (s.length <= max) return { text: s, truncated: false }
+  return {
+    text: opts.keepTail ? s.slice(s.length - max) : s.slice(0, max),
+    truncated: true,
+  }
+}
+
+/**
+ * One run's log, routed the same way the runs:log IPC does — EXCEPT it never
+ * falls back to the focused session's remote. A phone request carries its own
+ * host on the run row; inheriting whatever terminal happens to be focused would
+ * silently read a different machine's log.
+ */
+function readRunLogFor(source: string, runId: string, hostId?: string): string | Promise<string> {
+  const remote = hostId ? remoteFromHostId(hostId) : null
+  if (remote) return remoteRuns.log(remote, runId).catch(() => '')
+  if (source === 'cron') return readCronRunLog(runId)
+  if (source === 'session') return readSessionRunLog(runId)
+  if (source === 'bg') return readBgTaskLog(runId)
+  return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+}
+
 function spawnPrompt(remoteId: string, task?: string): string {
   // Absolute path to THIS app's terminal-cli, which always has the `remote`
   // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
@@ -1312,7 +1344,114 @@ const bridgeDeps: BridgeDeps = {
         startedAt: r.startedAt,
         endedAt: r.endedAt,
         branch: r.branch,
+        // Required to fetch the log — the store can't be derived from the id.
+        source: r.source,
+        hostId: r.hostId,
       }))
+  },
+
+  // ---- drill-downs: the full readable content behind a row ----------------
+  workspaceTicket: async (repoPath, slug) => {
+    try {
+      const t = await createLocalWorkspaceDaemon(repoPath).ticketGet(slug)
+      if (!t) return null
+      return {
+        slug: t.slug,
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        type: t.type,
+        hitl: t.hitl,
+        // The whole markdown body, plus acceptance criteria — which live
+        // OUTSIDE the body and would otherwise be invisible on the phone.
+        body: t.body || '',
+        acceptance: t.acceptance,
+        prs: t.prs,
+      }
+    } catch {
+      return null
+    }
+  },
+  workspacePr: async (repoPath, iid) => {
+    try {
+      const daemon = createLocalWorkspaceDaemon(repoPath)
+      const [d, ci] = await Promise.all([
+        daemon.mrGet(iid),
+        Promise.resolve(daemon.mrCi(iid)).catch(() => null),
+      ])
+      if (!d) return null
+      return {
+        iid: d.iid,
+        title: d.title,
+        state: d.state,
+        draft: d.draft,
+        author: d.author,
+        url: d.webUrl,
+        // MrDetail carries no labels — those are a list-row field.
+        labels: [],
+        verdict: d.reviewMeta?.verdict,
+        score: d.reviewMeta?.overall ?? undefined,
+        description: d.description || '',
+        branch: d.sourceBranch,
+        testStatus: d.reviewMeta?.testStatus,
+        riskTier: d.reviewMeta?.riskTier,
+        reviewNotes: capText(d.reviewMd || '', 120_000).text,
+        findings: (d.findings || []).slice(0, 60).map((f) => ({
+          severity: f.severity,
+          title: f.title,
+          file: f.file,
+          line: f.line,
+          text: f.text || f.body,
+        })),
+        // Overall status plus any failing job names — the part worth reading
+        // on a phone when CI is red.
+        ci: ci
+          ? [ci.status, ...ci.jobs.filter((j) => /fail|error/i.test(j.status)).map((j) => j.name)]
+              .filter(Boolean)
+              .join(' · ') || undefined
+          : undefined,
+      }
+    } catch {
+      return null
+    }
+  },
+  workspacePrDiff: async (repoPath, iid) => {
+    try {
+      return capText(await createLocalWorkspaceDaemon(repoPath).mrDiff(iid), 400_000)
+    } catch {
+      return { text: '', truncated: false }
+    }
+  },
+  // Logs come back whole and ANSI-laden with no pagination, so cap + strip here
+  // rather than shipping megabytes of escape codes to a phone. Keep the TAIL —
+  // that is where a failure is.
+  workspaceRunLog: async (runId, source, hostId) => {
+    try {
+      const raw = await Promise.resolve(readRunLogFor(source, runId, hostId))
+      return capText(sanitizeLog(raw || ''), 200_000, { keepTail: true })
+    } catch {
+      return { text: '', truncated: false }
+    }
+  },
+  workspaceSchedule: (repoPath, id) => {
+    const s = getSchedule(id)
+    if (!s) return null
+    const now = Date.now()
+    return {
+      id: s.id,
+      title: s.agentTitle,
+      describe: describeSpec(s.spec),
+      nextRun: nextRun(s.spec, now) ?? undefined,
+      enabled: s.enabled,
+      engine: s.engine,
+      model: s.model,
+      // The snapshot of the agent prompt this schedule actually runs — the
+      // thing you'd want to read from your phone.
+      prompt: s.prompt || '',
+      host: s.host,
+      runtime: s.runtime,
+    }
   },
   workspaceSchedules: (repoPath) => {
     const root = repoRootOf(repoPath) || repoPath
