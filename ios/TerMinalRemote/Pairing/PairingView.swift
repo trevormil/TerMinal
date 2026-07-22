@@ -112,7 +112,7 @@ struct PairingView: View {
                     .font(GT.sans(13))
                     .foregroundStyle(GT.textMuted)
 
-                    TextField("mac-name.tailnet.ts.net", text: $tailscaleHost)
+                    TextField("mac-name.tailnet.ts.net[:port]", text: $tailscaleHost)
                         .font(GT.mono(14))
                         .foregroundStyle(GT.text)
                         .autocorrectionDisabled()
@@ -162,13 +162,20 @@ struct PairingView: View {
         error = nil
         busy = true
         defer { busy = false }
-        let host = tailscaleHost.trimmingCharacters(in: .whitespaces)
+        var host = tailscaleHost.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "https://", with: "")
             .replacingOccurrences(of: "/", with: "")
+        // Accept an optional :port — the bridge default is 8790, but Settings
+        // may run it elsewhere, and a tailnet pair can't read the QR's port.
+        var port = 8790
+        if let colon = host.lastIndex(of: ":"),
+            let p = Int(host[host.index(after: colon)...])
+        {
+            port = p
+            host = String(host[..<colon])
+        }
         do {
-            // 8790 is the bridge default; the QR carries the real port, but a
-            // tailnet pair has to assume it, and the default is near-universal.
-            let payload = try await TailscalePairing.pair(host: host, port: 8790)
+            let payload = try await TailscalePairing.pair(host: host, port: port)
             tailscaling = false
             onPaired(payload)
         } catch {

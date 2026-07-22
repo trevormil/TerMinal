@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { startBridge, stopBridge, type BridgeDeps } from '../../src/main/bridge/server'
+import { tailscalePeerAllowed } from '../../src/main/bridge/tailscale'
 import {
   listRemoteSessions,
   messageCount,
@@ -27,7 +28,9 @@ import {
   takeReplies,
 } from '../../src/main/remote-sessions'
 
-const PORT = 8791 // not 8790: never collide with a real running TerMinal
+// 8791 by default (never collide with a real TerMinal on 8790); override with
+// PORT=8790 to exercise tailnet pairing, which assumes the bridge default.
+const PORT = Number(process.env.PORT) || 8791
 const selftest = process.argv.includes('--selftest')
 
 // A demo session so the app has something to show on a fresh machine. Real
@@ -75,6 +78,12 @@ const deps: BridgeDeps = {
     return hitlQueue.length < before
   },
   registerDevice: () => {},
+  tailscalePair: (peer) => {
+    const { ok } = tailscalePeerAllowed(peer)
+    if (!ok) return null
+    const pl = pairingPayload({ port: PORT, identity })
+    return { token: pl.t, fp: pl.fp, name: pl.n }
+  },
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'gt-bridge-e2e-'))
