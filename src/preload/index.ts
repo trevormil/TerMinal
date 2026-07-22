@@ -328,6 +328,7 @@ const gt = {
   getStructuralDiff: (iid: number, path: string, width?: number) =>
     ipcRenderer.invoke('mrs:structural-diff', iid, path, width),
   difftAvailable: () => ipcRenderer.invoke('difft:available'),
+  cursorModels: () => ipcRenderer.invoke('cursor:models'),
   getDigest: (iid: number, short?: string) => ipcRenderer.invoke('digest:get', iid, short),
   runDigest: (iid: number) => ipcRenderer.invoke('digest:run', iid),
   digestStatus: (iid: number) => ipcRenderer.invoke('digest:status', iid),

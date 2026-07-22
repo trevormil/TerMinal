@@ -36,7 +36,10 @@ export const ENGINE_MODELS: Record<Engine, ModelOption[]> = {
     { id: 'o4-mini', label: 'o4-mini' },
   ],
   cursor: [
-    { id: 'auto', label: 'auto' },
+    // `auto` is the Cursor Router entry point (routes each request to the model
+    // it judges best). The live catalog from cursor-agent replaces this list
+    // when available; this is the offline fallback.
+    { id: 'auto', label: 'auto · Router' },
     { id: 'composer-2.5-fast', label: 'composer-2.5-fast' },
     { id: 'composer-2.5', label: 'composer-2.5' },
     { id: 'gpt-5.3-codex', label: 'gpt-5.3-codex' },
