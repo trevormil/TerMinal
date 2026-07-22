@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   askQuestion,
+  deleteRemoteSession,
   imagePath,
   remoteSessionForAgent,
   saveImage,
@@ -62,6 +63,19 @@ describe('registration', () => {
     const dir = tmp()
     expect(readRemoteSession('../escape', dir)).toBeNull()
     expect(readMessages('../escape', {}, dir)).toEqual([])
+  })
+
+  it('deletes a session and its files for good', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    postMessage(s.id, 'agent', 'hello', [], dir)
+    saveImage(s.id, Buffer.from('img'), 'png', dir)
+    expect(deleteRemoteSession(s.id, dir)).toBe(true)
+    expect(readRemoteSession(s.id, dir)).toBeNull()
+    expect(listRemoteSessions(dir)).toHaveLength(0)
+    // Idempotent + refuses a traversal id.
+    expect(deleteRemoteSession(s.id, dir)).toBe(false)
+    expect(deleteRemoteSession('../escape', dir)).toBe(false)
   })
 })
 

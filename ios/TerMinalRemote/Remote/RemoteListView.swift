@@ -39,6 +39,30 @@ final class RemoteListViewModel {
         try? await client.resolveHitl(id: item.id, resolved: approved)
         await refresh()
     }
+
+    /// Terminate a running session — it drops to Finished.
+    @MainActor
+    func terminate(_ session: RemoteSession) async {
+        try? await client.endSession(id: session.id)
+        await refresh()
+    }
+
+    /// Remove a session for good — optimistically drop it from the list.
+    @MainActor
+    func delete(_ session: RemoteSession) async {
+        sessions.removeAll { $0.id == session.id }
+        try? await client.deleteSession(id: session.id)
+        await refresh()
+    }
+
+    /// Delete every finished session at once.
+    @MainActor
+    func clearFinished() async {
+        let ids = finished.map(\.id)
+        sessions.removeAll { $0.hasEnded }
+        for id in ids { try? await client.deleteSession(id: id) }
+        await refresh()
+    }
 }
 
 /// Home: every session that registered itself, plus the blocked queue.
@@ -86,6 +110,14 @@ struct RemoteListView: View {
                     ForEach(model.active) { session in
                         NavigationLink(value: session) { SessionRow(session: session) }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Terminate", systemImage: "stop.circle") {
+                                    Task { await model.terminate(session) }
+                                }
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    Task { await model.delete(session) }
+                                }
+                            }
                     }
 
                     Button { startingNew = true } label: {
@@ -99,11 +131,22 @@ struct RemoteListView: View {
                     .padding(.top, 4)
 
                     if !model.finished.isEmpty {
-                        section("Finished", count: model.finished.count, tint: GT.textFaint)
-                            .padding(.top, 6)
+                        HStack {
+                            section("Finished", count: model.finished.count, tint: GT.textFaint)
+                            Spacer()
+                            Button("Clear") { Task { await model.clearFinished() } }
+                                .font(GT.sans(12, .medium))
+                                .foregroundStyle(GT.textMuted)
+                        }
+                        .padding(.top, 6)
                         ForEach(model.finished) { session in
                             NavigationLink(value: session) { SessionRow(session: session) }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                        Task { await model.delete(session) }
+                                    }
+                                }
                         }
                     }
                 }

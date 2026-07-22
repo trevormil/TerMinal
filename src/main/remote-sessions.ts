@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -260,6 +261,29 @@ export function takeReplies(id: string, dir: string = REMOTE_DIR): string[] {
 
 export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSession | null {
   return touch(id, { status: 'ended' }, dir)
+}
+
+/**
+ * Remove a session entirely — meta, log, and any attached images. Terminating
+ * (endRemoteSession) leaves the thread readable; deleting drops it from the
+ * phone for good. Returns true if anything was removed. Id-validated so a call
+ * can never reach outside the remote directory.
+ */
+export function deleteRemoteSession(id: string, dir: string = REMOTE_DIR): boolean {
+  if (!isValidRemoteId(id)) return false
+  let removed = false
+  for (const p of [metaPath(id, dir), logPath(id, dir)]) {
+    if (existsSync(p)) {
+      rmSync(p, { force: true })
+      removed = true
+    }
+  }
+  const files = filesDir(id, dir)
+  if (existsSync(files)) {
+    rmSync(files, { recursive: true, force: true })
+    removed = true
+  }
+  return removed
 }
 
 /**

@@ -450,6 +450,48 @@ describe('spawning sessions from the phone', () => {
   })
 })
 
+describe('terminate and delete', () => {
+  it('POST /:id/end terminates via endRemote', async () => {
+    const ended: string[] = []
+    const h = await harness({ endRemote: (id) => (ended.push(id), true) })
+    const res = await fetch(`${h.url}/v1/remote/sess-1/end`, { method: 'POST', headers: auth })
+    expect(res.status).toBe(200)
+    expect(ended).toEqual(['sess-1'])
+  })
+
+  it('POST /:id/end 404s for an unknown session', async () => {
+    const h = await harness({ endRemote: () => true })
+    const res = await fetch(`${h.url}/v1/remote/ghost/end`, { method: 'POST', headers: auth })
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /:id removes via deleteRemote', async () => {
+    const deleted: string[] = []
+    const h = await harness({ deleteRemote: (id) => (deleted.push(id), true) })
+    const res = await fetch(`${h.url}/v1/remote/sess-1`, { method: 'DELETE', headers: auth })
+    expect(res.status).toBe(200)
+    expect(deleted).toEqual(['sess-1'])
+  })
+
+  it('DELETE /:id 404s when nothing was removed', async () => {
+    const h = await harness({ deleteRemote: () => false })
+    const res = await fetch(`${h.url}/v1/remote/sess-1`, { method: 'DELETE', headers: auth })
+    expect(res.status).toBe(404)
+  })
+
+  it('DELETE /:id 501s when the dep is absent', async () => {
+    const h = await harness()
+    const res = await fetch(`${h.url}/v1/remote/sess-1`, { method: 'DELETE', headers: auth })
+    expect(res.status).toBe(501)
+  })
+
+  it('end and delete require auth', async () => {
+    const h = await harness({ endRemote: () => true, deleteRemote: () => true })
+    expect((await fetch(`${h.url}/v1/remote/sess-1/end`, { method: 'POST' })).status).toBe(401)
+    expect((await fetch(`${h.url}/v1/remote/sess-1`, { method: 'DELETE' })).status).toBe(401)
+  })
+})
+
 describe('unknown routes', () => {
   it('404s', async () => {
     const h = await harness()

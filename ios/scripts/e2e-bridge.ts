@@ -20,6 +20,8 @@ import { ensureIdentity, pairingPayload } from '../../src/main/bridge/identity'
 import { startBridge, stopBridge, type BridgeDeps } from '../../src/main/bridge/server'
 import { tailscalePeerAllowed } from '../../src/main/bridge/tailscale'
 import {
+  deleteRemoteSession,
+  endRemoteSession,
   listRemoteSessions,
   messageCount,
   postMessage,
@@ -92,6 +94,8 @@ const deps: BridgeDeps = {
     })),
   messages: (id, opts) => readMessages(id, opts),
   reply: (id, text) => !!postMessage(id, 'user', text),
+  endRemote: (id) => !!endRemoteSession(id),
+  deleteRemote: (id) => deleteRemoteSession(id),
   hitl: () => hitlQueue,
   // Actually remove it: a static list made Resolve flash and then reappear on
   // the next poll, which reads as a broken button.

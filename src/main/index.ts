@@ -285,6 +285,8 @@ import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './brid
 import { tailscalePeerAllowed, tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
 import {
+  deleteRemoteSession,
+  endRemoteSession,
   imagePath,
   listRemoteSessions,
   messageCount,
@@ -1199,6 +1201,8 @@ const bridgeDeps: BridgeDeps = {
   // Queued, not delivered: the agent collects it at its next check, so a reply
   // sent while it is busy is never lost.
   reply: (id, text, images) => !!postMessage(id, 'user', text, images ?? []),
+  endRemote: (id) => !!endRemoteSession(id),
+  deleteRemote: (id) => deleteRemoteSession(id),
   saveImage: (id, data, ext) => saveImage(id, data, ext),
   imagePath: (id, name) => imagePath(id, name),
 

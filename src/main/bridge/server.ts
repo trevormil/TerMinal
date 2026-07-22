@@ -55,6 +55,10 @@ export type BridgeDeps = {
   messages(id: string, opts: { after?: number }): BridgeMessage[]
   /** Queue a reply for the agent to collect. False when the id is unknown. */
   reply(id: string, text: string, images?: string[]): boolean
+  /** Terminate a session (mark it ended). The thread stays readable. */
+  endRemote?(id: string): boolean
+  /** Remove a session for good — meta, log, images. */
+  deleteRemote?(id: string): boolean
   /** Store an uploaded image; returns its filename, or null. */
   saveImage?(id: string, data: Buffer, ext: string): string | null
   /** Absolute path of a stored image, for serving it back. */
@@ -295,7 +299,23 @@ export function createBridgeHandler(
       return
     }
 
-    // /v1/remote/:id/(messages|reply|image/:name)
+    // DELETE /v1/remote/:id — remove a session entirely.
+    if (
+      req.method === 'DELETE' &&
+      parts[0] === 'v1' &&
+      parts[1] === 'remote' &&
+      parts.length === 3
+    ) {
+      if (!deps.deleteRemote) {
+        json(res, 501, { error: 'delete not available' })
+        return
+      }
+      const ok = deps.deleteRemote(decodeURIComponent(parts[2]))
+      json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such session' })
+      return
+    }
+
+    // /v1/remote/:id/(messages|reply|image/:name|end)
     if (parts[0] === 'v1' && parts[1] === 'remote' && parts.length >= 4) {
       const id = decodeURIComponent(parts[2])
       const session = deps.sessions().find((s) => s.id === id)
@@ -345,6 +365,13 @@ export function createBridgeHandler(
             json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
           })
           .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
+
+      // Terminate a session — it stays in the list, marked ended.
+      if (req.method === 'POST' && parts[3] === 'end') {
+        const ok = deps.endRemote?.(id) ?? false
+        json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
         return
       }
 

@@ -140,6 +140,20 @@ final class BridgeClient {
         try await post("v1/hitl/\(id)", body: ["resolved": resolved])
     }
 
+    /// Terminate a session — it stays listed, marked ended.
+    func endSession(id: String) async throws {
+        try await post("v1/remote/\(id)/end", body: nil)
+    }
+
+    /// Remove a session for good.
+    func deleteSession(id: String) async throws {
+        guard let host = await resolveHost() else { throw BridgeError.unreachable }
+        guard let (_, response) = try? await session.data(
+            for: request("v1/remote/\(id)", host: host, method: "DELETE"))
+        else { throw BridgeError.unreachable }
+        try Self.check(response)
+    }
+
     /// Repos the phone may start a session in.
     func repos() async throws -> [RepoOption] {
         struct Envelope: Decodable { let repos: [RepoOption] }
