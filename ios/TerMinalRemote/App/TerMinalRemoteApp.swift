@@ -41,6 +41,7 @@ private struct PairedView: View {
     let onUnpair: () -> Void
 
     @State private var client: BridgeClient
+    @State private var feed: RemoteFeed
     @State private var active: ActiveSessionsViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
@@ -48,10 +49,13 @@ private struct PairedView: View {
     init(pairing: PairingPayload, onUnpair: @escaping () -> Void) {
         self.pairing = pairing
         self.onUnpair = onUnpair
-        // One client shared across tabs so a single pinned session is reused.
+        // One client shared across tabs so a single pinned session is reused,
+        // and one feed so every tab reads the same poll.
         let c = BridgeClient(pairing: pairing)
+        let f = RemoteFeed(client: c)
         _client = State(initialValue: c)
-        _active = State(initialValue: ActiveSessionsViewModel(client: c))
+        _feed = State(initialValue: f)
+        _active = State(initialValue: ActiveSessionsViewModel(feed: f))
     }
 
     var body: some View {
@@ -68,7 +72,7 @@ private struct PairedView: View {
             .tabItem { Label("Workspaces", systemImage: "folder") }
 
             NavigationStack {
-                InboxView(model: InboxViewModel(client: client))
+                InboxView(model: InboxViewModel(feed: feed))
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
         }
@@ -93,11 +97,12 @@ private struct PairedView: View {
             PushRegistrar.shared.resend()
         }
         .task {
-            // Poll here, not inside the tab, so the Active badge stays live even
-            // while you're on Workspaces or Inbox.
+            // The app's ONE poll of /v1/remote: feeds the Active list, the
+            // Inbox, and both badges from any tab. The interval stretches when
+            // the Mac is unreachable (see RemoteFeed.pollInterval).
             while !Task.isCancelled {
-                await active.refresh()
-                try? await Task.sleep(for: .seconds(5))
+                await feed.refresh()
+                try? await Task.sleep(for: feed.pollInterval)
             }
         }
         .onChange(of: push.pendingThreadKey) { _, key in
@@ -110,6 +115,12 @@ private struct PairedView: View {
     /// Resolve a tapped notification's thread key to a live session and present
     /// it. Best-effort: if the id isn't a known registered session, do nothing.
     private func openThread(_ id: String) async {
+        // The feed usually already knows the session; fall back to a fetch for
+        // a notification that arrives ahead of the next poll tick.
+        if let match = feed.sessions.first(where: { $0.id == id }) {
+            await MainActor.run { deepLinked = match }
+            return
+        }
         guard let (sessions, _) = try? await client.remote() else { return }
         if let match = sessions.first(where: { $0.id == id }) {
             await MainActor.run { deepLinked = match }

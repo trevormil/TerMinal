@@ -39,4 +39,22 @@ final class ActiveSessionsTests: XCTestCase {
         ])
         XCTAssertEqual(ranked.map(\.id), ["new", "mid", "old"])
     }
+
+    func testAwaitingCountExcludesEndedAndZerosWhenStale() {
+        let sessions = [
+            session("a", status: "awaiting", lastSeenAt: 1),
+            session("b", status: "ended", lastSeenAt: 2),
+            session("c", status: "working", lastSeenAt: 3),
+        ]
+        XCTAssertEqual(ActiveSessionsViewModel.awaitingCount(sessions, stale: false), 1)
+        // A dead bridge must not keep showing a confident badge.
+        XCTAssertEqual(ActiveSessionsViewModel.awaitingCount(sessions, stale: true), 0)
+    }
+
+    func testPollIntervalStretchesAfterRepeatedFailures() {
+        XCTAssertEqual(RemoteFeed.interval(afterFailures: 0), .seconds(5))
+        XCTAssertEqual(RemoteFeed.interval(afterFailures: 2), .seconds(5))
+        XCTAssertEqual(RemoteFeed.interval(afterFailures: 3), .seconds(30))
+        XCTAssertEqual(RemoteFeed.interval(afterFailures: 10), .seconds(30))
+    }
 }

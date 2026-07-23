@@ -2,19 +2,20 @@ import SwiftUI
 
 @Observable
 final class ActiveSessionsViewModel {
-    let client: BridgeClient
-    private(set) var sessions: [RemoteSession] = []
-    private(set) var error: String?
-    var loading = true
+    let feed: RemoteFeed
+    var client: BridgeClient { feed.client }
+    var error: String? { feed.error }
+    var loading: Bool { feed.loading }
 
-    init(client: BridgeClient) { self.client = client }
+    init(feed: RemoteFeed) { self.feed = feed }
 
     /// Everything still live, anywhere — the whole point of this tab is the
     /// cross-workspace glance you'd otherwise reconstruct by opening each repo.
-    var active: [RemoteSession] { Self.rank(sessions) }
+    var active: [RemoteSession] { Self.rank(feed.sessions) }
 
-    /// Agents blocked on you, for the tab badge.
-    var awaitingCount: Int { sessions.filter { !$0.hasEnded && $0.isAwaiting }.count }
+    /// Agents blocked on you, for the tab badge. Zero once the feed goes stale
+    /// so a dead bridge doesn't keep showing a confident count.
+    var awaitingCount: Int { Self.awaitingCount(feed.sessions, stale: feed.isStale) }
 
     /// Pure so it's unit-testable without a bridge: drop ended sessions, float
     /// the ones awaiting you to the top, then most-recently-seen first.
@@ -27,15 +28,12 @@ final class ActiveSessionsViewModel {
             }
     }
 
-    @MainActor
-    func refresh() async {
-        defer { loading = false }
-        do {
-            let (fresh, _) = try await client.remote()
-            sessions = fresh
-            error = nil
-        } catch { self.error = error.localizedDescription }
+    static func awaitingCount(_ sessions: [RemoteSession], stale: Bool) -> Int {
+        stale ? 0 : rank(sessions).filter(\.isAwaiting).count
     }
+
+    @MainActor
+    func refresh() async { await feed.refresh() }
 }
 
 /// Global, cross-workspace: every live session at a glance so you don't have to
