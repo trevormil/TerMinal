@@ -252,6 +252,9 @@ const gt = {
   remote: {
     active: () => ipcRenderer.invoke('remote:active'),
   },
+  checks: {
+    list: () => ipcRenderer.invoke('checks:list'),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),

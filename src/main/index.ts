@@ -174,6 +174,7 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
+import { listChecks } from './checks'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -1354,6 +1355,9 @@ const bridgeDeps: BridgeDeps = {
       ...repos,
     ]
   },
+
+  // Latest health-check statuses for the phone's health surface.
+  checks: () => listChecks(),
 
   // Every engine the desktop can launch, labelled the way the desktop labels
   // them — the phone should never render a bare lowercase "codex". The Mac's
@@ -2669,6 +2673,7 @@ ipcMain.handle('remote:active', () =>
     })),
 )
 ipcMain.handle('hitl:list', () => readHitl())
+ipcMain.handle('checks:list', () => listChecks())
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
 // hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
 // an unreachable host contributes an error, not a failed view.

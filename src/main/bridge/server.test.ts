@@ -665,6 +665,26 @@ describe('inbox read-state', () => {
   })
 })
 
+describe('checks', () => {
+  it('GET /v1/checks returns the latest statuses and requires auth', async () => {
+    const h = await harness({
+      checks: () => [{ kind: 'fleet-health', status: 'warn', summary: '1 pod issue' }],
+    })
+    expect((await fetch(`${h.url}/v1/checks`)).status).toBe(401)
+    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).checks).toEqual([
+      { kind: 'fleet-health', status: 'warn', summary: '1 pod issue' },
+    ])
+  })
+
+  it('empty when no checks dep is wired', async () => {
+    const h = await harness()
+    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
+    expect((await res.json()).checks).toEqual([])
+  })
+})
+
 describe('workspace path authorization', () => {
   // The bearer token authenticates the device; it must NOT authorize an
   // arbitrary path. Every repo/cwd route is fenced to the advertised repos().

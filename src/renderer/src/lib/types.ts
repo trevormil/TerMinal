@@ -979,6 +979,22 @@ export type RemoteActiveSession = {
   cwd: string
   status: string
 }
+/** Latest health-check status per (scope, kind) — written headless by
+ *  `terminal-cli check-status`, read-only in the app. Mirror of
+ *  src/main/checks.ts CheckStatus. */
+export type CheckStatus = {
+  kind: string
+  scope: string
+  repoLabel: string
+  status: 'ok' | 'warn' | 'fail'
+  summary: string
+  metrics?: Record<string, unknown>
+  detail?: Record<string, unknown>
+  updatedAt: number
+  since: number
+  lastTransition: { from: string; to: string; at: number } | null
+  history: { at: number; status: string }[]
+}
 export type HitlItem = {
   id: string
   title: string
@@ -1768,6 +1784,9 @@ export type GtApi = {
   }
   remote: {
     active: () => Promise<RemoteActiveSession[]>
+  }
+  checks: {
+    list: () => Promise<CheckStatus[]>
   }
   hitl: {
     list: () => Promise<HitlItem[]>

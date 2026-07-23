@@ -204,21 +204,25 @@ function emitDeploy(env, sha, detail) {
   emitActivity('deploy', `Deploy · ${target}`, [version, extra].filter(Boolean).join(' · '))
 }
 
-function fileHitl(title, action) {
+const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
+
+function fileHitl(title, action, opts = {}) {
   let list = []
   try {
     const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
     if (Array.isArray(a)) list = a
   } catch {}
+  const severity = SEVERITY_RANK[opts.severity] ? opts.severity : undefined
   const item = {
     id: randomUUID(),
     title: title || 'untitled',
     action: action || '',
     repo: repoLabel,
     repoRoot: repo,
-    source: 'skill',
+    source: opts.source || 'skill',
     status: 'open',
     createdAt: Date.now(),
+    ...(severity ? { severity } : {}),
     ...(runId ? { runId, runSource: 'cron' } : {}),
     sessionId: process.env.GT_TERMINAL_SESSION_ID || '',
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
@@ -226,12 +230,96 @@ function fileHitl(title, action) {
   }
   writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
   emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
-  // HITL ALWAYS pings Telegram when configured — matches the app's policy.
-  pingTelegram(
-    `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
-    hitlButtons(item),
-  )
+  // Without an explicit severity, HITL always pings Telegram (legacy policy).
+  // With one, the ping honors the same inbox.notifyThreshold gate the desktop
+  // applies, so e.g. a 'normal' digest lands in the inbox without a ping.
+  const threshold = readSettings()?.inbox?.notifyThreshold
+  const loud = !severity || (SEVERITY_RANK[severity] || 3) >= (SEVERITY_RANK[threshold] || 3)
+  if (loud)
+    pingTelegram(
+      `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
+      hitlButtons(item),
+    )
   console.log(item.id)
+}
+
+// ── check-status ─────────────────────────────────────────────────────────────
+// One-liner status contract for check agents:
+//   terminal-cli check-status <kind> <ok|warn|fail> [--summary=…]
+//     [--metrics-json=…|@file] [--detail-json=@file] [--scope=global] [--no-hitl]
+// Persists the latest status per (scope, kind) and files HITL ONLY on a state
+// transition — fail→urgent, warn→normal, recovery→low — so an ongoing outage
+// alerts once and a healthy check never nags.
+
+const CHECKS_DIR = join(CFG, 'checks')
+const CHECK_STATUSES = ['ok', 'warn', 'fail']
+const CHECK_SEVERITY = { fail: 'urgent', warn: 'normal', ok: 'low' }
+
+function readJsonArg(raw) {
+  if (!raw) return undefined
+  const text = raw.startsWith('@') ? readFileSync(raw.slice(1), 'utf8') : raw
+  try {
+    const v = JSON.parse(text)
+    return v && typeof v === 'object' ? v : undefined
+  } catch {
+    console.error(`check-status: invalid JSON in ${raw.startsWith('@') ? raw : 'argument'}`)
+    process.exit(2)
+  }
+}
+
+function checkStatus(kind, status, flags) {
+  if (!kind || !/^[\w-]{1,64}$/.test(kind)) {
+    console.error('check-status: kind must be [A-Za-z0-9_-]{1,64}')
+    process.exit(2)
+  }
+  if (!CHECK_STATUSES.includes(status)) {
+    console.error(`check-status: status must be one of ${CHECK_STATUSES.join('|')}`)
+    process.exit(2)
+  }
+  const global = flags.scope === 'global' || (!repo && !flags.scope)
+  const scopeSlug = global ? 'global' : safeBasename(repo)
+  mkdirSync(CHECKS_DIR, { recursive: true })
+  const file = join(CHECKS_DIR, `${scopeSlug}--${kind}.json`)
+
+  let prev = null
+  try {
+    prev = JSON.parse(readFileSync(file, 'utf8'))
+  } catch {}
+  const now = Date.now()
+  // A first-ever report is compared against 'ok' so a check that is born
+  // failing still alerts, while a healthy first run stays silent.
+  const prevStatus = CHECK_STATUSES.includes(prev?.status) ? prev.status : 'ok'
+  const changed = prevStatus !== status
+
+  const rec = {
+    kind,
+    scope: global ? 'global' : repo,
+    repoLabel: global ? '' : repoLabel,
+    status,
+    summary: flags.summary || '',
+    metrics: readJsonArg(flags.metricsJson) || undefined,
+    detail: readJsonArg(flags.detailJson) || undefined,
+    updatedAt: now,
+    since: changed ? now : prev?.since || now,
+    lastTransition: changed
+      ? { from: prevStatus, to: status, at: now }
+      : prev?.lastTransition || null,
+    history: [{ at: now, status }, ...(Array.isArray(prev?.history) ? prev.history : [])].slice(
+      0,
+      50,
+    ),
+  }
+  writeFileSync(file, JSON.stringify(rec, null, 2))
+
+  if (changed && !flags.noHitl) {
+    const label = global ? kind : `${repoLabel} · ${kind}`
+    const title =
+      status === 'ok' ? `Check recovered · ${label}` : `Check ${status} · ${label}`
+    const body = flags.summary || `${prevStatus} → ${status}`
+    fileHitl(title, body, { severity: CHECK_SEVERITY[status], source: 'agent' })
+  } else {
+    console.log(`${scopeSlug}/${kind}: ${status}${changed ? '' : ' (unchanged)'}`)
+  }
 }
 
 function readSettings() {
@@ -1487,9 +1575,25 @@ switch (cmd) {
   case 'ticket':
     fileTicket(args[0], args[1], args[2])
     break
-  case 'hitl':
-    fileHitl(args[0], args[1])
+  case 'hitl': {
+    const sevFlag = args.find((a) => a.startsWith('--severity='))
+    const rest = args.filter((a) => !a.startsWith('--severity='))
+    fileHitl(rest[0], rest[1], { severity: sevFlag?.slice('--severity='.length) })
     break
+  }
+  case 'check-status': {
+    const pos = args.filter((a) => !a.startsWith('--'))
+    const flag = (name) =>
+      args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
+    checkStatus(pos[0], pos[1], {
+      summary: flag('summary'),
+      metricsJson: flag('metrics-json'),
+      detailJson: flag('detail-json'),
+      scope: args.includes('--global') ? 'global' : flag('scope'),
+      noHitl: args.includes('--no-hitl'),
+    })
+    break
+  }
   case 'completion-hitl':
     completionHitl(args[0] || 'Agent')
     break
