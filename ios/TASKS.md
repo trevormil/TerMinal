@@ -27,5 +27,5 @@ Live scratchpad so nothing thrown my way gets dropped. Newest asks at the bottom
 - [x] Install build 25 (inbox revamp + handoff) to the phone
 
 ## Parked / needs human
-- [ ] APNs key: created once in Apple portal (no API). Push is inert until the
-      .p8 + apns.json are dropped in ~/.config/TerMinal/bridge/. (ios/scripts/setup-push.sh)
+- [x] APNs key installed (AuthKey_Z63G85LJTK) + verified end-to-end: real
+      sendPush → APNs sandbox → phone lock screen (sent:1, failed:0).
