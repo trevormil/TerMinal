@@ -31,14 +31,14 @@ Live scratchpad so nothing thrown my way gets dropped. Newest asks at the bottom
       sendPush → APNs sandbox → phone lock screen (sent:1, failed:0).
 
 ## Queued (newest)
-- [ ] Fix medium review regression: WorkspaceView/New Session + push tap didn't
+- [x] Fix medium review regression: WorkspaceView/New Session + push tap didn't
       open the thread after the RootView TabView restructure (in progress).
-- [ ] Inbox = real email UX (desktop + phone): drop the dashboard/filter feel,
+- [x] Inbox = real email UX (desktop + phone): drop the dashboard/filter feel,
       subject-only list → click/hover for full body, render markdown/line breaks.
-- [ ] Severity tags in the email UX + CONFIGURABLE notify rules in Settings:
+- [x] Severity tags in the email UX + CONFIGURABLE notify rules in Settings:
       urgent/emergency always pings; normal+low are email-style (async). Add a
       notify-threshold setting. 3-tier: urgent | normal | low.
-- [ ] Clear the app icon badge when the inbox is read (iOS keeps it until the app resets it via setBadgeCount).
+- [x] Clear the app icon badge when the inbox is read (iOS keeps it until the app resets it via setBadgeCount).
 - [x] GENERICITY PASS: audit everything for machine-specific hardcoding (Trevor's
       paths/names/hosts). Make settings customizable where needed so any TerMinal
       user can download + use it. (harness scanRepos root, any hardcoded paths, etc.)
