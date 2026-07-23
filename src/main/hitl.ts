@@ -7,7 +7,7 @@ import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
 import { hitlRecurrenceKey } from './hitl-recurrence'
-import { defaultSeverity, itemSeverity, type HitlSeverity } from './hitl-severity'
+import { defaultSeverity, itemSeverity, shouldNotify, type HitlSeverity } from './hitl-severity'
 import {
   hitlActivityKind,
   hitlNotifyKind,
@@ -213,9 +213,10 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     occurrenceCount: 1,
   }
   write([item, ...readHitl()])
-  // Severity is the alert gate: 'push' notifies (macOS/Telegram/phone), 'normal'
-  // just sits in the inbox for your next sweep.
-  const loud = itemSeverity(item) === 'push'
+  // Severity + the configurable threshold are the alert gate. At or above the
+  // threshold notifies (macOS/Telegram/phone); below it, the item just waits in
+  // the inbox for your next sweep. Default threshold 'urgent' → only urgent pings.
+  const loud = shouldNotify(itemSeverity(item), readSettings().inbox.notifyThreshold)
   emitActivity(
     {
       kind: hitlActivityKind(item.source),

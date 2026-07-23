@@ -42,6 +42,9 @@ export type TelegramCfg = {
 export type InboxCfg = {
   completionHook: boolean // Claude/Codex/Cursor completion hooks file Inbox items by default
   agentContextPreamble: boolean // prepend capped repo docs/learnings/decisions context to prompt-style runs
+  // Minimum severity that fires a notification (push/Telegram/desktop). Below it,
+  // items are inbox-only — email you sweep once or twice a day. Default 'urgent'.
+  notifyThreshold: 'urgent' | 'normal' | 'low'
 }
 // Outbound alert channels (notify-channels.ts). Telegram keeps its own block
 // above (telegram.notify is that channel's enable knob — inbound control lives
@@ -198,7 +201,7 @@ export function defaultSettings(): Settings {
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
-    inbox: { completionHook: true, agentContextPreamble: true },
+    inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'urgent' },
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
     appearance: {
       mode: 'dark',

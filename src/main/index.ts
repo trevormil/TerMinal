@@ -356,6 +356,7 @@ import {
   noteLoopTurnComplete,
   noteSingleLoopTurn,
 } from './loop-listener'
+import { itemSeverity } from './hitl-severity'
 import {
   readHitl,
   fileHitl,
@@ -1274,7 +1275,7 @@ const bridgeDeps: BridgeDeps = {
         repo: h.repo,
         source: h.source,
         createdAt: h.createdAt,
-        severity: h.severity ?? 'push',
+        severity: itemSeverity(h),
         status: h.status,
         readAt: h.readAt,
       }))
@@ -1297,7 +1298,7 @@ const bridgeDeps: BridgeDeps = {
         source: h.source,
         createdAt: h.createdAt,
         // Host blocks are always "look at me"; host read-state isn't tracked here.
-        severity: h.severity ?? 'push',
+        severity: itemSeverity(h),
         status: h.status ?? 'open',
         readAt: h.readAt,
       }))

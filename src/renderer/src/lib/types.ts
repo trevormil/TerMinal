@@ -466,7 +466,12 @@ export type AlertsCfg = {
   webhook: { enabled: boolean; url: string }
 }
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
-export type InboxCfg = { completionHook: boolean; agentContextPreamble: boolean }
+export type InboxCfg = {
+  completionHook: boolean
+  agentContextPreamble: boolean
+  /** Minimum severity that fires a notification; below it, items are inbox-only. */
+  notifyThreshold: 'urgent' | 'normal' | 'low'
+}
 // Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
 // settings.json — see src/main/bridge/identity.ts.
 export type BridgeCfg = { enabled: boolean; port: number }
