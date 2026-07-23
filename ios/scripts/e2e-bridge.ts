@@ -35,14 +35,17 @@ import {
 const PORT = Number(process.env.PORT) || 8791
 const selftest = process.argv.includes('--selftest')
 
-/** Git repos the phone may start a session in — real dirs, so the flow works. */
+/** Git repos the phone may start a session in — real dirs, so the flow works.
+ *  Generic: TERMINAL_PROJECTS_DIR wins, then common code roots, then the parent
+ *  of this checkout. No machine-specific paths. */
 function scanRepos(): { name: string; path: string }[] {
   const roots = [
     process.env.TERMINAL_PROJECTS_DIR,
-    join(homedir(), 'CompSci/gauntlet'),
-    join(homedir(), 'CompSci'),
     join(homedir(), 'code'),
     join(homedir(), 'projects'),
+    join(homedir(), 'src'),
+    join(homedir(), 'Developer'),
+    join(process.cwd(), '..'),
   ].filter((r): r is string => !!r && existsSync(r))
   for (const root of roots) {
     try {

@@ -5,7 +5,10 @@ import Security
 /// full control of the Mac's terminals, so UserDefaults would be the wrong
 /// home for it — this is the one genuinely sensitive thing the app stores.
 enum PairingStore {
-    private static let service = "com.trevormil.terminal.pairing"
+    // Derive from the running bundle id so a fork under its own identifier gets
+    // its own Keychain namespace (for Trevor's build this resolves to the same
+    // "com.trevormil.terminal.pairing", so nothing re-pairs).
+    private static let service = (Bundle.main.bundleIdentifier ?? "terminal") + ".pairing"
     private static let account = "default"
 
     static func save(_ payload: PairingPayload) {

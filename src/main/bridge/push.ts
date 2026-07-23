@@ -10,8 +10,10 @@ import { BRIDGE_DIR } from './identity'
 // could need you, so it can sign its own APNs JWT and post to Apple directly.
 // The phone hands us its device token over the already-authenticated bridge.
 //
-// Configuration lives in ~/.config/TerMinal/bridge/apns.json:
-//   { "keyId": "ABC1234567", "teamId": "8UWQ486J94", "bundleId": "com.trevormil.terminal" }
+// Configuration lives in ~/.config/TerMinal/bridge/apns.json (all placeholders —
+// use your own Apple team id / app bundle id; ios/scripts/setup-push.sh writes
+// this for you from ios/.xcodegen.env):
+//   { "keyId": "ABC1234567", "teamId": "YOUR_TEAM_ID", "bundleId": "com.example.terminal" }
 // alongside the private key at ~/.config/TerMinal/bridge/apns.p8
 // The key is created once by a human in the Apple developer portal — there is
 // no API for minting APNs auth keys.
