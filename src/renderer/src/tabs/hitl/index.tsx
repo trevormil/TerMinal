@@ -9,6 +9,7 @@ import {
   RotateCcw,
   ListChecks,
   SquareTerminal,
+  Ticket,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
@@ -154,19 +155,34 @@ export function InboxDrawer({
   const unread = all.filter(isUnread)
   const shown = filter === 'archive' ? resolved : open
 
+  // Group ids by owning host — a remote item's readAt must persist on the host
+  // that owns it (like resolve), or the 15s reload flips it back to unread.
+  const byHost = (hs: HitlItem[]) => {
+    const groups = new Map<string | undefined, string[]>()
+    for (const h of hs) groups.set(h.hostId, [...(groups.get(h.hostId) || []), h.id])
+    return groups
+  }
   const markRead = (ids: string[]) => {
-    const fresh = ids.filter((id) => all.find((h) => h.id === id && !h.readAt))
+    const fresh = all.filter((h) => ids.includes(h.id) && !h.readAt)
     if (!fresh.length) return
     // Optimistic: flip local read-state now, persist in the background.
+    const freshIds = fresh.map((h) => h.id)
     setItems((prev) =>
-      (prev || []).map((h) => (fresh.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
+      (prev || []).map((h) => (freshIds.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
     )
-    void window.gt.hitl.markRead(fresh)
+    for (const [hostId, hostIds] of byHost(fresh))
+      void window.gt.hitl.markRead(hostIds, hostId).catch(() => 0)
   }
   const markAllRead = async () => {
     if (!unread.length) return
+    const remoteUnread = unread.filter((h) => h.hostId)
     setItems((prev) => (prev || []).map((h) => (isUnread(h) ? { ...h, readAt: Date.now() } : h)))
-    await window.gt.hitl.markAllRead()
+    await Promise.all([
+      window.gt.hitl.markAllRead(),
+      ...[...byHost(remoteUnread)].map(([hostId, ids]) =>
+        window.gt.hitl.markRead(ids, hostId).catch(() => 0),
+      ),
+    ])
   }
   const resolveAll = async () => {
     if (open.length === 0 || resolvingAll) return
@@ -351,7 +367,7 @@ export function InboxDrawer({
                             }
                             className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
                           >
-                            <ListChecks size={11} strokeWidth={2} />
+                            <Ticket size={11} strokeWidth={2} />
                             Ticket
                           </button>
                         )}

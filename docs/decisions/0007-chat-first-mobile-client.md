@@ -67,6 +67,9 @@ The pty is a rendering of that conversation, not the source of it.
 - Push needs a human step exactly once: APNs auth keys cannot be minted through
   any API. `ios/scripts/setup-push.sh` files the key and derives the config from
   `project.yml`. Until then the channel reports itself disabled and stays inert.
+  *(Correction 2026-07-23: since the identifier-env refactor the script derives
+  the team and bundle ids from the gitignored `ios/.xcodegen.env`, not
+  `project.yml`.)*
 - Debug builds must talk to APNs sandbox and TestFlight builds to production.
   The environment is recorded per registered device, because getting it wrong is
   a silent delivery failure rather than an error.

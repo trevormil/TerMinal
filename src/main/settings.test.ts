@@ -283,6 +283,19 @@ describe('settings secrets', () => {
     expect(next.telegram).toEqual({ notify: true, control: false, botToken: 'bot', chatId: 'chat' })
   })
 
+  test('an invalid bridge port in a patch keeps the current value', () => {
+    const cur = migrate({ bridge: { enabled: true, port: 9123 } })
+    for (const bad of [80, 0, -1, 65536, 1.5, NaN, 'nope']) {
+      const next = mergeSettingsPatch(cur, { bridge: { port: bad } } as any)
+      expect(next.bridge).toEqual({ enabled: true, port: 9123 })
+    }
+    // A valid port still applies, and preserves siblings.
+    expect(mergeSettingsPatch(cur, { bridge: { port: 9200 } }).bridge).toEqual({
+      enabled: true,
+      port: 9200,
+    })
+  })
+
   test('legacy third-party model settings are ignored on migrate and patch', () => {
     const removedKey = 'open' + 'router'
     const cur = migrate({ [removedKey]: { apiKey: 'or-secret', defaultModel: 'model-a' } })

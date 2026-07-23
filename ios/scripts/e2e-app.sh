@@ -14,6 +14,11 @@ cd "$(dirname "$0")/.."
 SIM="${1:-iPhone 17}"
 REPO_ROOT="$(cd .. && pwd)"
 
+# Apple identifiers come from ios/.xcodegen.env (gitignored), same as
+# generate.sh; without it, the fork-safe placeholder bundle id is used.
+[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
+PRODUCT_BUNDLE_ID="${PRODUCT_BUNDLE_ID:-com.example.terminal}"
+
 cleanup() {
   [ -n "${HARNESS_PID:-}" ] && kill "$HARNESS_PID" 2>/dev/null || true
 }
@@ -27,7 +32,7 @@ xcrun simctl bootstatus "$SIM" >/dev/null 2>&1 || true
 # simctl uninstall does NOT clear — so reset that too, or the test launches
 # straight into the session list and never sees the pairing screen.
 echo "==> removing any previous install + pairing"
-xcrun simctl uninstall "$SIM" com.trevormil.terminal 2>/dev/null || true
+xcrun simctl uninstall "$SIM" "$PRODUCT_BUNDLE_ID" 2>/dev/null || true
 xcrun simctl keychain "$SIM" reset 2>/dev/null || true
 
 echo "==> starting the bridge harness"

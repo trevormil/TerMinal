@@ -512,6 +512,13 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     ...scalarPatch
   } = legacyPatch
   delete (scalarPatch as Record<string, unknown>)['open' + 'router']
+  // Same fence as migrate(): a bad port would leave the bridge unable to bind —
+  // an invalid patch keeps the current value instead of persisting it.
+  const bridgePatch = { ...(bridge || {}) }
+  if (bridgePatch.port !== undefined) {
+    const port = Number(bridgePatch.port)
+    if (!(Number.isInteger(port) && port >= 1024 && port <= 65535)) delete bridgePatch.port
+  }
   return {
     ...cur,
     ...scalarPatch,
@@ -521,7 +528,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       webhook: { ...cur.alerts.webhook, ...(alerts?.webhook || {}) },
     },
     inbox: { ...cur.inbox, ...(inbox || {}) },
-    bridge: { ...cur.bridge, ...(bridge || {}) },
+    bridge: { ...cur.bridge, ...bridgePatch },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },
     engines: {

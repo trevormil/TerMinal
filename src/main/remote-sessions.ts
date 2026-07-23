@@ -76,7 +76,10 @@ const filesDir = (id: string, dir: string) => join(dir, `${id}.files`)
 
 /** Absolute path of an image attached to a session. null if it escapes. */
 export function imagePath(id: string, name: string, dir: string = REMOTE_DIR): string | null {
-  if (!isValidRemoteId(id) || !/^[\w.-]{1,128}$/.test(name)) return null
+  // The charset allows dots, so ban the two names that traverse instead of name.
+  if (!isValidRemoteId(id) || !/^[\w.-]{1,128}$/.test(name) || name === '.' || name === '..') {
+    return null
+  }
   return join(filesDir(id, dir), name)
 }
 

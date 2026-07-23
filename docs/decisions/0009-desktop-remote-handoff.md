@@ -1,4 +1,4 @@
-# 10. One session, two surfaces: desktop ⇄ remote handoff is forgiving
+# 9. One session, two surfaces: desktop ⇄ remote handoff is forgiving
 
 Date: 2026-07-22
 

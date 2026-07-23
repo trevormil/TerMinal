@@ -8,6 +8,10 @@ what stops a session from going idle and "dying" after it finishes a task.
 
 - Script: `.claude/hooks/remote-check.sh` (source of truth in this repo; mirrored
   into `templates/project-template/.claude/hooks/`).
+- Only **phone-spawned** sessions park (`origin: phone`, set by registering
+  with `--origin=phone`). A session registered locally via `/remote-terminal`
+  stays `origin: local`: the hook hands it any queued replies and returns
+  immediately, so it never blocks someone working at the Mac.
 - It runs `terminal-cli remote check --wait`, which **blocks** polling the
   session's message log until:
   - a phone message arrives → the hook emits `{"decision":"block","reason":…}` so
@@ -71,7 +75,11 @@ For full cross-repo coverage, register the hook **globally**, once, by hand.
 
 ```sh
 # Register a throwaway session, then confirm the wait blocks and delivers.
-CLAUDE_CODE_SESSION_ID=probe terminal-cli remote register --id probe "probe" >/dev/null
+# --origin=phone is required: the hook only PARKS phone-spawned sessions. A
+# plain (local) registration makes the hook drain any queued replies and
+# return immediately — it never blocks someone sitting at the Mac — so
+# without the flag this probe exits at once instead of parking.
+CLAUDE_CODE_SESSION_ID=probe terminal-cli remote register --id probe --origin=phone "probe" >/dev/null
 # In another shell, after a few seconds, post a user message via the bridge/app,
 # then:
 printf '{"session_id":"probe"}' | ~/.claude/hooks/remote-check.sh

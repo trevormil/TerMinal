@@ -229,6 +229,9 @@ describe('images', () => {
     const s = registerRemoteSession({ title: 'x' }, dir)
     expect(imagePath(s.id, '../../etc/passwd', dir)).toBeNull()
     expect(imagePath(s.id, 'a/b.png', dir)).toBeNull()
+    // The charset allows dots, so the two bare traversal names need their own ban.
+    expect(imagePath(s.id, '..', dir)).toBeNull()
+    expect(imagePath(s.id, '.', dir)).toBeNull()
   })
 
   it('coerces an unknown extension to png rather than trusting it', () => {

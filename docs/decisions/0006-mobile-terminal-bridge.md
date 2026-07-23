@@ -8,8 +8,10 @@ Accepted
 
 Supersedes the PWA framing in `backlog/0034-mobile-remote-control-pwa.md`.
 Amended by [ADR-0007](0007-chat-first-mobile-client.md), then by
-[ADR-0008](0008-remote-sessions-register-themselves.md). Every transport,
-pairing and security decision below still holds. The terminal decisions do not:
+[ADR-0008](0008-remote-sessions-register-themselves.md), then on 2026-07-23
+by the tailnet auto-pair amendment below (a second unauthenticated route,
+`/v1/pair`). Every transport, pairing and security decision below still
+holds. The terminal decisions do not:
 0008 removed pty access entirely in favour of sessions that register
 themselves.
 
@@ -80,3 +82,27 @@ contains secrets, and accepts input that executes commands.
   rotation.
 - Off the tailnet and off the LAN, nothing works. There is no relay, and adding
   one would change the security model entirely — it would need its own ADR.
+
+## Amended 2026-07-23 — tailnet auto-pair route
+
+"Bearer token on every route but `/v1/health`" gains one deliberate second
+exception: **`GET /v1/pair`**, the tailnet auto-pairing bootstrap.
+
+- **Why it cannot be bearer-authenticated:** the whole point of the route is to
+  hand the token to a phone that does not have one yet. Requiring the token
+  would be circular; requiring the QR would defeat zero-QR pairing.
+- **What gates it instead:**
+  - the request must arrive over the tailnet — the socket's remote address is
+    pre-checked against the CGNAT range (100.64.0.0/10) Tailscale uses, using
+    the kernel's view of the peer, not anything the client claims;
+  - `tailscale whois` must identify the peer as a node owned by the **same
+    tailnet user that owns this Mac** (`tailscalePeerAllowed` in
+    `src/main/bridge/tailscale.ts`). Any failure — unknown peer, tailnet down,
+    different user — is a refusal, never an accidental grant;
+  - the route is rate-limited, so it cannot be used as a probe or brute-force
+    surface.
+- **Why this is sound:** the request rides inside the WireGuard tunnel, which
+  is already encrypted and mutually authenticated — the tailnet identity *is*
+  the shared secret. Everything after pairing uses the bearer token normally.
+- When Tailscale is unavailable the route answers 501 and QR pairing remains
+  the only path. The pinning, token, and storage decisions above are unchanged.

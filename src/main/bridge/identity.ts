@@ -153,9 +153,14 @@ export function tokenMatches(presented: string, expected: string): boolean {
   return timingSafeEqual(a, b)
 }
 
-const isTailscale = (ip: string) => {
-  const [a, b] = ip.split('.').map(Number)
-  return a === 100 && b >= 64 && b <= 127 // 100.64.0.0/10 (CGNAT, what tailnets use)
+/** Is this address in 100.64.0.0/10 (CGNAT, what tailnets use)? Accepts the
+ *  IPv4-mapped `::ffff:` form Node reports on dual-stack sockets. */
+export const isTailscaleIp = (ip: string): boolean => {
+  const [a, b] = ip
+    .replace(/^::ffff:/i, '')
+    .split('.')
+    .map(Number)
+  return a === 100 && b >= 64 && b <= 127
 }
 
 /**
@@ -172,7 +177,7 @@ export function bridgeHosts(
       if (!out.includes(a.address)) out.push(a.address)
     }
   }
-  return out.sort((x, y) => Number(isTailscale(y)) - Number(isTailscale(x)))
+  return out.sort((x, y) => Number(isTailscaleIp(y)) - Number(isTailscaleIp(x)))
 }
 
 export type PairingPayload = {

@@ -2,7 +2,13 @@ import { createServer as createHttpsServer, type Server as HttpsServer } from 'n
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createReadStream, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { DEFAULT_BRIDGE_PORT, ensureIdentity, tokenMatches, type BridgeIdentity } from './identity'
+import {
+  DEFAULT_BRIDGE_PORT,
+  ensureIdentity,
+  isTailscaleIp,
+  tokenMatches,
+  type BridgeIdentity,
+} from './identity'
 
 // The mobile bridge: a small authenticated JSON API over the sessions that have
 // REGISTERED themselves for remote control (see src/main/remote-sessions.ts).
@@ -86,7 +92,12 @@ export type BridgeDeps = {
    * that owns the Mac, else null. The bridge itself does no Tailscale work —
    * the app injects this so the bridge module stays dependency-free.
    */
-  tailscalePair?(peerAddress: string): { token: string; fp: string; name: string } | null
+  tailscalePair?(
+    peerAddress: string,
+  ):
+    | { token: string; fp: string; name: string }
+    | null
+    | Promise<{ token: string; fp: string; name: string } | null>
 
   /** Repos the phone may start a session in — also the workspace list. */
   repos?(): BridgeRepo[]
@@ -110,7 +121,8 @@ export type BridgeDeps = {
     iid: number,
   ): Promise<BridgePrDetail | null> | BridgePrDetail | null
   workspacePrDiff?(repoPath: string, iid: number): Promise<BridgeText> | BridgeText
-  /** `source` picks the log store; it comes from the run row. */
+  /** `source`/`hostId` stay on the wire for compatibility, but the Mac reads
+   *  the log with ITS OWN run row for the id — never the phone's copies. */
   workspaceRunLog?(runId: string, source: string, hostId?: string): Promise<BridgeText> | BridgeText
   workspaceSchedule?(
     repoPath: string,
@@ -292,6 +304,14 @@ export function createBridgeHandler(
   getToken: () => string,
   opts: { onRequest?: (method: string, path: string, status: number) => void } = {},
 ): (req: IncomingMessage, res: ServerResponse) => void {
+  // /v1/pair is unauthenticated, and verifying a peer shells out to the
+  // Tailscale CLI — so keep it slow: one verification in flight at a time,
+  // plus a small per-minute budget. In-memory is enough; pairing is rare.
+  let pairInFlight = false
+  let pairWindowStart = 0
+  let pairAttempts = 0
+  const PAIR_MAX_PER_MINUTE = 6
+
   return (req, res) => {
     const url = new URL(req.url || '/', 'http://bridge.invalid')
     const parts = url.pathname.split('/').filter(Boolean)
@@ -324,16 +344,34 @@ export function createBridgeHandler(
       }
       // The peer address the socket saw — trusted because it is the kernel's
       // view of who connected, not anything the client claimed.
-      const peer =
-        (req.socket.remoteAddress || '').replace(/^::ffff:/, '') +
-        ':' +
-        (req.socket.remotePort || 0)
-      const result = deps.tailscalePair(peer)
-      if (!result) {
+      const ip = (req.socket.remoteAddress || '').replace(/^::ffff:/, '')
+      // Cheap fence BEFORE any subprocess work: only a tailnet (CGNAT) source
+      // address can even ask, so a LAN scanner can't make the Mac shell out.
+      if (!isTailscaleIp(ip)) {
         json(res, 403, { error: 'not a recognised tailnet peer' })
         return
       }
-      json(res, 200, result)
+      const now = Date.now()
+      if (now - pairWindowStart > 60_000) {
+        pairWindowStart = now
+        pairAttempts = 0
+      }
+      if (pairInFlight || ++pairAttempts > PAIR_MAX_PER_MINUTE) {
+        json(res, 429, { error: 'too many pairing attempts' })
+        return
+      }
+      pairInFlight = true
+      // Release the flight BEFORE responding — the response is what callers
+      // await, so a follow-up request must already see the slot free.
+      const done = (status: number, body: unknown): void => {
+        pairInFlight = false
+        json(res, status, body)
+      }
+      Promise.resolve(deps.tailscalePair(`${ip}:${req.socket.remotePort || 0}`))
+        .then((result) =>
+          result ? done(200, result) : done(403, { error: 'not a recognised tailnet peer' }),
+        )
+        .catch((e: Error) => done(500, { error: e.message }))
       return
     }
 

@@ -4,7 +4,7 @@ import XCTest
 
 final class PairingPayloadTests: XCTestCase {
     private let valid = """
-        {"v":1,"n":"Trevor's MacBook","p":8790,"h":["100.126.73.11","192.168.1.42"],\
+        {"v":1,"n":"Trevor's MacBook","p":8790,"h":["100.100.1.2","192.168.1.42"],\
         "t":"tok","fp":"Zm9vYmFy"}
         """
 
@@ -12,7 +12,7 @@ final class PairingPayloadTests: XCTestCase {
         let payload = try PairingPayload.decode(valid)
         XCTAssertEqual(payload.n, "Trevor's MacBook")
         XCTAssertEqual(payload.p, 8790)
-        XCTAssertEqual(payload.h, ["100.126.73.11", "192.168.1.42"])
+        XCTAssertEqual(payload.h, ["100.100.1.2", "192.168.1.42"])
         XCTAssertEqual(payload.t, "tok")
         XCTAssertEqual(payload.fp, "Zm9vYmFy")
     }
@@ -41,7 +41,7 @@ final class PairingPayloadTests: XCTestCase {
         let cases: [(String, String, String)] = [
             ("\"t\":\"tok\"", "\"t\":\"\"", "token"),
             ("\"fp\":\"Zm9vYmFy\"", "\"fp\":\"\"", "certificate fingerprint"),
-            ("\"h\":[\"100.126.73.11\",\"192.168.1.42\"]", "\"h\":[]", "host"),
+            ("\"h\":[\"100.100.1.2\",\"192.168.1.42\"]", "\"h\":[]", "host"),
             ("\"p\":8790", "\"p\":0", "port"),
             ("\"p\":8790", "\"p\":70000", "port"),
         ]
@@ -67,7 +67,7 @@ final class PairingPayloadTests: XCTestCase {
     func testBuildsTheBaseURL() throws {
         let payload = try PairingPayload.decode(valid)
         XCTAssertEqual(
-            payload.baseURL(host: "100.126.73.11")?.absoluteString,
-            "https://100.126.73.11:8790")
+            payload.baseURL(host: "100.100.1.2")?.absoluteString,
+            "https://100.100.1.2:8790")
     }
 }

@@ -121,30 +121,113 @@ describe('auth', () => {
 })
 
 describe('GET /v1/pair (tailnet)', () => {
+  // Pairing is fenced to tailnet (CGNAT) source addresses, which a loopback
+  // test socket can never present — so drive the handler directly with a fake
+  // socket instead of a real connection.
+  type PairResult = { status: number; body: Record<string, unknown> }
+  function pairHandler(over: Partial<BridgeDeps> = {}) {
+    const deps: BridgeDeps = {
+      sessions: () => [],
+      messages: () => [],
+      reply: () => false,
+      ...over,
+    }
+    return createBridgeHandler(deps, () => TOKEN)
+  }
+  function pair(
+    handler: ReturnType<typeof createBridgeHandler>,
+    remoteAddress = '100.64.1.2',
+  ): Promise<PairResult> {
+    return new Promise((resolve) => {
+      const req = {
+        method: 'GET',
+        url: '/v1/pair',
+        headers: {},
+        socket: { remoteAddress, remotePort: 4242 },
+      }
+      const res = {
+        statusCode: 0,
+        writeHead(status: number) {
+          this.statusCode = status
+          return this
+        },
+        end(payload: unknown) {
+          resolve({ status: this.statusCode, body: JSON.parse(String(payload)) })
+        },
+        on() {},
+      }
+      handler(req as never, res as never)
+    })
+  }
+
   it('hands the payload to a verified peer without a token', async () => {
     const seen: string[] = []
-    const h = await harness({
+    const h = pairHandler({
       tailscalePair: (peer) => {
         seen.push(peer)
         return { token: 'tok', fp: 'fp', name: 'MacBook' }
       },
     })
     // No Authorization header — pairing runs before the phone has a token.
-    const res = await fetch(`${h.url}/v1/pair`)
+    const res = await pair(h, '100.64.1.2')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ token: 'tok', fp: 'fp', name: 'MacBook' })
+    expect(res.body).toEqual({ token: 'tok', fp: 'fp', name: 'MacBook' })
     // The peer address came from the socket, not the client.
-    expect(seen[0]).toMatch(/^127\.0\.0\.1:\d+$/)
+    expect(seen[0]).toBe('100.64.1.2:4242')
+  })
+
+  it('strips the IPv4-mapped prefix a dual-stack socket reports', async () => {
+    const seen: string[] = []
+    const h = pairHandler({
+      tailscalePair: (peer) => {
+        seen.push(peer)
+        return { token: 'tok', fp: 'fp', name: 'MacBook' }
+      },
+    })
+    expect((await pair(h, '::ffff:100.64.1.2')).status).toBe(200)
+    expect(seen[0]).toBe('100.64.1.2:4242')
   })
 
   it('403s a peer the tailnet does not vouch for', async () => {
-    const h = await harness({ tailscalePair: () => null })
-    expect((await fetch(`${h.url}/v1/pair`)).status).toBe(403)
+    const h = pairHandler({ tailscalePair: () => null })
+    expect((await pair(h)).status).toBe(403)
+  })
+
+  it('rejects a non-tailnet source address without ever calling the dep', async () => {
+    let calls = 0
+    const h = pairHandler({
+      tailscalePair: () => {
+        calls++
+        return { token: 'tok', fp: 'fp', name: 'MacBook' }
+      },
+    })
+    for (const addr of ['127.0.0.1', '192.168.1.9', '10.0.0.4', '8.8.8.8', '::1', '']) {
+      expect((await pair(h, addr)).status).toBe(403)
+    }
+    expect(calls).toBe(0)
+  })
+
+  it('rate-limits rapid pairing attempts', async () => {
+    const h = pairHandler({ tailscalePair: () => null })
+    for (let i = 0; i < 6; i++) expect((await pair(h)).status).toBe(403)
+    expect((await pair(h)).status).toBe(429)
+  })
+
+  it('single-flights concurrent pairing attempts', async () => {
+    let release: (v: null) => void = () => {}
+    const h = pairHandler({
+      tailscalePair: () => new Promise<null>((r) => (release = r)),
+    })
+    const first = pair(h)
+    // While the first verification is still in flight, a second is refused.
+    expect((await pair(h)).status).toBe(429)
+    release(null)
+    expect((await first).status).toBe(403)
   })
 
   it('501s when tailnet pairing is not wired', async () => {
-    const h = await harness()
-    expect((await fetch(`${h.url}/v1/pair`)).status).toBe(501)
+    const h = pairHandler()
+    expect((await pair(h)).status).toBe(501)
   })
 })
 

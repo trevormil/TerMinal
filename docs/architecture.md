@@ -58,10 +58,20 @@ anything else that can run a shell command.
   that blocks the turn ending when something is waiting, so replies arrive
   without the agent polling. Silent and exit 0 wherever no session is
   registered, which is most sessions.
-- **`src/main/bridge/`** is a small authenticated JSON API — no streaming:
-  `GET /v1/remote` (sessions + HITL), `GET /v1/remote/:id/messages`,
-  `POST /v1/remote/:id/reply`, `GET|POST /v1/hitl`, `POST /v1/devices`. All
-  bearer-authenticated except `GET /v1/health`.
+- **`src/main/bridge/`** is a small authenticated JSON API — no streaming.
+  Sessions: `GET /v1/remote` (sessions + HITL), `POST /v1/remote/new`,
+  `DELETE /v1/remote/:id`, `GET /v1/remote/:id/messages`,
+  `POST /v1/remote/:id/reply`, `POST /v1/remote/:id/end`,
+  `GET /v1/remote/:id/image/:name`. HITL: `GET /v1/hitl`,
+  `POST /v1/hitl/read`, `POST /v1/hitl/:id`. Workspaces: `GET /v1/repos`,
+  `GET /v1/workspaces`, `GET /v1/workspaces/:kind` (lists),
+  `GET /v1/workspace/:kind` (drill-downs), `GET /v1/engines`. Push:
+  `POST /v1/devices`. All bearer-authenticated except two bootstrap routes:
+  `GET /v1/health` (liveness probe, reveals nothing but "a bridge is here")
+  and `GET /v1/pair` (tailnet auto-pairing — the caller has no token yet by
+  definition; gated instead by a CGNAT-range (100.64.0.0/10) remote-address
+  pre-check, a `tailscale whois` confirmation that the peer belongs to the
+  same tailnet user that owns this Mac, and rate limiting).
 - **Off by default.** Nothing binds a port until `settings.bridge.enabled`;
   `will-quit` releases it.
 - **HTTPS, self-signed, pinned.** The pairing QR carries base64 SHA-256 of the
