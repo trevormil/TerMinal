@@ -6,14 +6,19 @@
 # to additionally file a severity=normal daily summary.
 #
 # Config (schedule env or shell env):
-#   CONTROL_PLANE_URL    e.g. https://control.example.com   (required)
-#   CONTROL_PLANE_TOKEN  bearer token                        (required)
+#   CONTROL_PLANE_URL         e.g. https://control.example.com     (required)
+#   CONTROL_PLANE_TOKEN       bearer token, OR
+#   CONTROL_PLANE_TOKEN_FILE  path to a 0600 file holding the token — prefer
+#                             this for schedules (their env is plaintext JSON)
 set -uo pipefail
 
 BASE="${CONTROL_PLANE_URL:-}"
 TOKEN="${CONTROL_PLANE_TOKEN:-}"
+if [ -z "$TOKEN" ] && [ -n "${CONTROL_PLANE_TOKEN_FILE:-}" ]; then
+  TOKEN="$(tr -d '[:space:]' <"$CONTROL_PLANE_TOKEN_FILE" 2>/dev/null || true)"
+fi
 if [ -z "$BASE" ] || [ -z "$TOKEN" ]; then
-  echo "fleet-health: set CONTROL_PLANE_URL and CONTROL_PLANE_TOKEN" >&2
+  echo "fleet-health: set CONTROL_PLANE_URL and CONTROL_PLANE_TOKEN(_FILE)" >&2
   exit 2
 fi
 DIGEST=false
