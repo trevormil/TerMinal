@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @Observable
 final class InboxViewModel {
@@ -11,25 +12,19 @@ final class InboxViewModel {
 
     var unread: [HitlItem] { hitl.filter(\.isUnread) }
     var open: [HitlItem] { hitl.filter { !$0.isResolved } }
-    var resolved: [HitlItem] { hitl.filter(\.isResolved) }
+    var archived: [HitlItem] { hitl.filter(\.isResolved) }
 
     @MainActor
     func refresh() async {
         defer { loading = false }
         do {
-            let (_, hitl) = try await client.remote()
-            // Merge server truth but keep any optimistic read-state we already
-            // applied, so a mid-poll refresh doesn't make an item flash unread.
-            let readLocally = Set(self.hitl.filter { $0.readAt != nil }.map(\.id))
-            self.hitl = hitl.map { item in
-                readLocally.contains(item.id) && item.readAt == nil
-                    ? HitlItem(
-                        id: item.id, title: item.title, detail: item.detail, action: item.action,
-                        repo: item.repo, source: item.source, createdAt: item.createdAt,
-                        severity: item.severity, status: item.status, readAt: Date().timeIntervalSince1970 * 1000)
-                    : item
-            }
+            let (_, fresh) = try await client.remote()
+            // Keep any optimistic read-state we applied so an item doesn't flash
+            // unread mid-poll.
+            let readLocally = Set(hitl.filter { $0.readAt != nil }.map(\.id))
+            hitl = fresh.map { $0.markingReadIfIn(readLocally) }
             error = nil
+            syncBadge()
         } catch { self.error = error.localizedDescription }
     }
 
@@ -40,91 +35,81 @@ final class InboxViewModel {
         await refresh()
     }
 
-    /// Mark items read — optimistic locally, persisted in the background.
+    /// Mark read — optimistic locally, persisted + badge-synced in the background.
     @MainActor
     func markRead(_ items: [HitlItem]) {
         let ids = items.filter(\.isUnread).map(\.id)
         guard !ids.isEmpty else { return }
-        let now = Date().timeIntervalSince1970 * 1000
-        hitl = hitl.map { h in
-            ids.contains(h.id)
-                ? HitlItem(
-                    id: h.id, title: h.title, detail: h.detail, action: h.action, repo: h.repo,
-                    source: h.source, createdAt: h.createdAt, severity: h.severity,
-                    status: h.status, readAt: now)
-                : h
-        }
+        hitl = hitl.map { ids.contains($0.id) ? $0.markedRead() : $0 }
+        syncBadge()
         Task { try? await client.markHitlRead(ids: ids) }
     }
+
+    @MainActor
+    func markAllRead() { markRead(hitl) }
+
+    /// The app icon badge should track UNREAD, and clear as you read — iOS keeps
+    /// it until the app resets it, which is why a stale "1" lingered.
+    private func syncBadge() {
+        UNUserNotificationCenter.current().setBadgeCount(unread.count)
+    }
 }
 
-enum InboxFilter: String, CaseIterable, Identifiable {
-    case unread, open, resolved, all
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-}
-
-/// Global, cross-workspace: everything that needs you, with read/unread and a
-/// severity that says whether it pinged you (push) or just waits (normal).
+/// Global, cross-workspace: everything that needs you, read like email — a list
+/// of subjects; tap one to read the full body.
 struct InboxView: View {
     @State var model: InboxViewModel
-    @State private var filter: InboxFilter = .open
+    @State private var archive = false
 
-    private var shown: [HitlItem] {
-        switch filter {
-        case .unread: return model.unread
-        case .open: return model.open
-        case .resolved: return model.resolved
-        case .all: return model.hitl
-        }
-    }
+    private var shown: [HitlItem] { archive ? model.archived : model.open }
 
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Picker("Filter", selection: $filter) {
-                    ForEach(InboxFilter.allCases) { f in
-                        Text(counted(f)).tag(f)
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    if let error = model.error {
+                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                     }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let error = model.error {
-                            GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+                    if shown.isEmpty && !model.loading {
+                        GTPanel {
+                            Text(archive ? "Nothing archived yet." : "Inbox zero.")
+                                .font(GT.sans(12)).foregroundStyle(GT.textMuted)
                         }
-                        if shown.isEmpty && !model.loading {
-                            GTPanel {
-                                Text(emptyText)
-                                    .font(GT.sans(12)).foregroundStyle(GT.textMuted)
-                            }
-                        }
-                        ForEach(shown) { item in
-                            InboxCard(item: item) { approved in
+                    }
+                    ForEach(shown) { item in
+                        NavigationLink {
+                            InboxDetailView(item: item) { approved in
                                 Task { await model.resolve(item, approved: approved) }
                             }
                             .onAppear { model.markRead([item]) }
+                        } label: {
+                            InboxRow(item: item)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(14)
                 }
-                .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
-                .refreshable { await model.refresh() }
+                .padding(14)
             }
+            .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
+            .refreshable { await model.refresh() }
         }
         .navigationTitle("Inbox")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            if !model.unread.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Mark all read") { model.markRead(model.hitl) }
-                        .font(GT.sans(13))
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: $archive) {
+                    Text(model.unread.isEmpty ? "Inbox" : "Inbox (\(model.unread.count))").tag(false)
+                    Text("Archive").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if !model.unread.isEmpty {
+                    Button("Read all") { model.markAllRead() }.font(GT.sans(13))
                 }
             }
         }
@@ -135,77 +120,121 @@ struct InboxView: View {
             }
         }
     }
+}
 
-    private func counted(_ f: InboxFilter) -> String {
-        let n: Int
-        switch f {
-        case .unread: n = model.unread.count
-        case .open: n = model.open.count
-        case .resolved: n = model.resolved.count
-        case .all: n = model.hitl.count
-        }
-        return n > 0 ? "\(f.label) \(n)" : f.label
-    }
-
-    private var emptyText: String {
-        switch filter {
-        case .resolved: return "Nothing resolved yet."
-        case .unread: return "Inbox zero — nothing unread."
-        default: return "Nothing needs you. Agents that get blocked show up here."
+/// One subject line — bold when unread, a severity tag, source + time. No body.
+private struct InboxRow: View {
+    let item: HitlItem
+    var body: some View {
+        GTPanel(padding: 11) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(item.isUnread ? GT.accent : Color.clear)
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(GT.sans(14, item.isUnread ? .semibold : .medium))
+                        .foregroundStyle(item.isResolved ? GT.textMuted : GT.text)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(item.source).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                        if let repo = item.repo, !repo.isEmpty {
+                            Text("· \(repo)").font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                        }
+                        Text("· \(relativeTime(item.createdAt))")
+                            .font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                    }
+                    .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                SeverityTag(severity: item.severity)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
+            }
         }
     }
 }
 
-/// One inbox item: unread dot, severity, and approve/dismiss for open items.
-private struct InboxCard: View {
+/// The opened email: full body rendered as Markdown, with actions.
+private struct InboxDetailView: View {
     let item: HitlItem
     let onResolve: (Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var body_: String {
+        [item.action, item.detail].compactMap { $0 }.filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
 
     var body: some View {
-        GTPanel {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    if item.isUnread {
-                        Circle().fill(GT.accent).frame(width: 6, height: 6)
+        ZStack {
+            GT.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(item.title).font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
+                    HStack(spacing: 6) {
+                        SeverityTag(severity: item.severity)
+                        Text(item.source).font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                        if let repo = item.repo, !repo.isEmpty {
+                            Text("· \(repo)").font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                        }
+                        Text("· \(relativeTime(item.createdAt))")
+                            .font(GT.mono(11)).foregroundStyle(GT.textFaint)
                     }
-                    Image(systemName: item.isResolved ? "checkmark.circle" : "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(item.isResolved ? GT.textFaint : GT.yellow)
-                    Text(item.title)
-                        .font(GT.sans(14, item.isUnread ? .semibold : .medium))
-                        .foregroundStyle(item.isResolved ? GT.textMuted : GT.text)
-                    Spacer(minLength: 4)
-                    pill(item.isNormal ? "normal" : "push", tint: item.isNormal ? GT.textFaint : GT.accentLight)
-                }
-                if let detail = item.detail, !detail.isEmpty {
-                    Text(detail).font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(6)
-                }
-                if let action = item.action, !action.isEmpty {
-                    Text(action)
-                        .font(GT.mono(11))
-                        .foregroundStyle(GT.accentLight)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(GT.codeBg)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                }
-                HStack(spacing: 8) {
-                    if let repo = item.repo, !repo.isEmpty {
-                        Text(repo).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                    if body_.isEmpty {
+                        Text("No details.").font(GT.sans(13)).foregroundStyle(GT.textMuted)
+                    } else {
+                        MarkdownText(raw: body_)
                     }
-                    Spacer()
                     if !item.isResolved {
-                        Button("Dismiss") { onResolve(false) }.gtSecondaryButton()
-                        Button("Resolve") { onResolve(true) }
-                            .font(GT.sans(13, .semibold))
+                        HStack(spacing: 10) {
+                            Button("Dismiss") {
+                                onResolve(false)
+                                dismiss()
+                            }
+                            .gtSecondaryButton()
+                            Button("Resolve") {
+                                onResolve(true)
+                                dismiss()
+                            }
+                            .font(GT.sans(14, .semibold))
                             .foregroundStyle(.black)
-                            .padding(.horizontal, 14)
-                            .frame(height: 34)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
                             .background(GT.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .padding(.top, 4)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
             }
         }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(GT.panel, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+}
+
+/// 3-tier severity tag; legacy 'push' reads as urgent.
+private struct SeverityTag: View {
+    let severity: String?
+    private var tier: (String, Color) {
+        switch severity {
+        case "normal": return ("normal", GT.accentLight)
+        case "low": return ("low", GT.textFaint)
+        default: return ("urgent", GT.yellow)  // 'urgent' | legacy 'push' | nil
+        }
+    }
+    var body: some View {
+        Text(tier.0)
+            .font(GT.sans(9, .semibold))
+            .foregroundStyle(tier.1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(tier.1.opacity(0.12))
+            .clipShape(Capsule())
     }
 }

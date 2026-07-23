@@ -988,8 +988,8 @@ export type HitlItem = {
   repoRoot?: string
   source: HitlSource
   status: 'open' | 'resolved'
-  /** 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as 'push'. */
-  severity?: 'push' | 'normal'
+  /** urgent notifies; normal/low are inbox-only. Legacy 'push' reads as urgent. */
+  severity?: 'urgent' | 'normal' | 'low' | 'push'
   /** When first seen; absent ⇒ unread. */
   readAt?: number
   createdAt: number

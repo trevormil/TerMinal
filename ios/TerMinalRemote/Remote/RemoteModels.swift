@@ -51,6 +51,19 @@ struct HitlItem: Codable, Identifiable, Hashable {
     var isNormal: Bool { severity == "normal" }
     var isResolved: Bool { status == "resolved" }
     var isUnread: Bool { !isResolved && readAt == nil }
+
+    /// A copy marked read now (struct is immutable, so rebuild it).
+    func markedRead() -> HitlItem {
+        HitlItem(
+            id: id, title: title, detail: detail, action: action, repo: repo, source: source,
+            createdAt: createdAt, severity: severity, status: status,
+            readAt: Date().timeIntervalSince1970 * 1000)
+    }
+
+    /// Preserve optimistic read-state across a server refresh.
+    func markingReadIfIn(_ ids: Set<String>) -> HitlItem {
+        (ids.contains(id) && readAt == nil) ? markedRead() : self
+    }
 }
 
 /// A repo the phone may start a session in.

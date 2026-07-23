@@ -9,12 +9,43 @@ import {
   RotateCcw,
   ListChecks,
   SquareTerminal,
-  Ticket as TicketIcon,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
+import { Markdown } from '../../components/Markdown'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
+
+// Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
+// 'push' reads as urgent.
+type Sev = 'urgent' | 'normal' | 'low'
+function severityOf(h: HitlItem): Sev {
+  const s = h.severity
+  if (s === 'normal') return 'normal'
+  if (s === 'low') return 'low'
+  return 'urgent' // 'urgent' | legacy 'push' | undefined
+}
+function SeverityTag({ sev }: { sev: Sev }) {
+  const style: Record<Sev, string> = {
+    urgent: 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-[var(--gt-red)]',
+    normal: 'border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)]',
+    low: 'border-[var(--gt-border)] text-zinc-500',
+  }
+  const label: Record<Sev, string> = { urgent: 'urgent', normal: 'normal', low: 'low' }
+  const title: Record<Sev, string> = {
+    urgent: 'Urgent — notifies you (per your Settings threshold)',
+    normal: 'Normal — inbox unless you lower the notify threshold',
+    low: 'Low — inbox only, never notifies',
+  }
+  return (
+    <span
+      title={title[sev]}
+      className={`shrink-0 rounded-full border px-1.5 py-px text-[9.5px] font-semibold ${style[sev]}`}
+    >
+      {label[sev]}
+    </span>
+  )
+}
 
 export type InboxTerminalRef = {
   key: string
@@ -53,10 +84,6 @@ function reltime(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-function compactDetail(text: string): string {
-  return text.replace(/\s+/g, ' ').trim()
-}
-
 function cleanPath(path?: string): string {
   return (path || '').replace(/\/$/, '')
 }
@@ -88,8 +115,10 @@ export function InboxDrawer({
   openTerminals?: InboxTerminalRef[]
 }) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
-  const [filter, setFilter] = useState<'unread' | 'open' | 'resolved' | 'all'>('open')
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  // Email model: one Inbox (open), one Archive (resolved). Unread lives IN the
+  // inbox, shown bold — not a separate filter tab.
+  const [filter, setFilter] = useState<'inbox' | 'archive'>('inbox')
+  const [reading, setReading] = useState<string | null>(null)
   const [resolvingAll, setResolvingAll] = useState(false)
 
   // Merge local HITL with open items fanned out from every host (#14), so a run
@@ -123,8 +152,7 @@ export function InboxDrawer({
   // independent of resolve (see hitl.ts), so an item can be open-but-read.
   const isUnread = (h: HitlItem) => h.status === 'open' && !h.readAt
   const unread = all.filter(isUnread)
-  const shown =
-    filter === 'resolved' ? resolved : filter === 'all' ? all : filter === 'unread' ? unread : open
+  const shown = filter === 'archive' ? resolved : open
 
   const markRead = (ids: string[]) => {
     const fresh = ids.filter((id) => all.find((h) => h.id === id && !h.readAt))
@@ -172,7 +200,7 @@ export function InboxDrawer({
             Mark all read
           </button>
         )}
-        {filter !== 'resolved' && open.length > 0 && (
+        {filter === 'inbox' && open.length > 0 && (
           <button
             onClick={resolveAll}
             disabled={resolvingAll}
@@ -184,22 +212,25 @@ export function InboxDrawer({
         )}
         {(
           [
-            ['unread', `unread (${unread.length})`],
-            ['open', `open (${open.length})`],
-            ['resolved', `resolved (${resolved.length})`],
-            ['all', `all (${all.length})`],
+            ['inbox', 'Inbox', unread.length],
+            ['archive', 'Archive', 0],
           ] as const
-        ).map(([key, label]) => (
+        ).map(([key, label, count]) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
+            className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] ${
               filter === key
                 ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
                 : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
             }`}
           >
             {label}
+            {count > 0 && (
+              <span className="rounded-full bg-[var(--gt-accent)]/25 px-1.5 text-[9px] font-bold text-[var(--gt-accent-light)]">
+                {count}
+              </span>
+            )}
           </button>
         ))}
         {onClose && (
@@ -218,199 +249,150 @@ export function InboxDrawer({
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">
-            {filter === 'resolved'
-              ? 'Nothing resolved yet.'
-              : filter === 'unread'
-                ? 'Nothing unread — inbox zero.'
-                : 'Nothing needs you. True human-needs (decisions, approvals, creds, failed cron runs) land here from any repo — and ping Telegram.'}
+            {filter === 'archive'
+              ? 'Nothing archived yet.'
+              : 'Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from any repo.'}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {shown.map((h) => {
-              const detail = compactDetail(h.detail || '')
-              const canExpand = !!detail && (h.source === 'completion-hook' || detail.length > 180)
-              const isExpanded = expanded.has(h.id)
+              const isOpen = reading === h.id
               const canViewTerminal = hasOpenTerminal(h, openTerminals)
+              const body = [h.action, h.detail].filter(Boolean).join('\n\n')
               return (
                 <div
                   key={h.id}
-                  onMouseEnter={() => isUnread(h) && markRead([h.id])}
-                  className={`rounded-lg border bg-[var(--gt-panel)] p-2.5 ${
-                    h.status === 'open'
-                      ? 'border-[var(--gt-red)]/30'
-                      : 'border-[var(--gt-border)] opacity-70'
+                  className={`overflow-hidden rounded-lg border bg-[var(--gt-panel)] ${
+                    isOpen
+                      ? 'border-[var(--gt-accent)]/40'
+                      : h.status === 'open'
+                        ? 'border-[var(--gt-border)]'
+                        : 'border-[var(--gt-border)] opacity-70'
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {isUnread(h) && (
-                          <span
-                            title="Unread"
-                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent)]"
-                          />
-                        )}
-                        <span
-                          className={`text-[12.5px] ${isUnread(h) ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
-                        >
-                          {h.title}
-                        </span>
-                        {(h.severity ?? 'push') === 'normal' ? (
-                          <span
-                            title="Normal — inbox only, no notification"
-                            className="rounded-full border border-[var(--gt-border)] px-1.5 py-px text-[9.5px] font-semibold text-zinc-500"
-                          >
-                            normal
-                          </span>
-                        ) : (
-                          <span
-                            title="Push — notifies you"
-                            className="rounded-full border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-px text-[9.5px] font-semibold text-[var(--gt-accent-light)]"
-                          >
-                            push
-                          </span>
-                        )}
-                        <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
-                        {h.source !== 'completion-hook' && (h.occurrenceCount || 1) > 1 && (
-                          <span
-                            title={`Repeated ${h.occurrenceCount} times within the recent dedupe window`}
-                            className="rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 py-px text-[9.5px] font-semibold text-[var(--gt-yellow)]"
-                          >
-                            x{h.occurrenceCount}
-                          </span>
-                        )}
-                        {h.repo && (
-                          <span className="font-mono text-[10px] text-zinc-600">{h.repo}</span>
-                        )}
-                        <span className="text-[10px] text-zinc-600">· {reltime(h.createdAt)}</span>
-                      </div>
-                      {h.action && (
-                        <div className="mt-1 text-[12px] text-[var(--gt-accent-light)]">
-                          {h.action}
+                  {/* Subject row — click to read (like opening an email). */}
+                  <button
+                    onClick={() => {
+                      setReading(isOpen ? null : h.id)
+                      if (isUnread(h)) markRead([h.id])
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${isUnread(h) ? 'bg-[var(--gt-accent)]' : ''}`}
+                    />
+                    <span
+                      className={`min-w-0 flex-1 truncate text-[12.5px] ${isUnread(h) ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
+                    >
+                      {h.title}
+                    </span>
+                    <SeverityTag sev={severityOf(h)} />
+                    <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                    {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
+                      <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
+                        x{h.occurrenceCount}
+                      </span>
+                    )}
+                    <span className="shrink-0 text-[10px] text-zinc-600">
+                      {reltime(h.createdAt)}
+                    </span>
+                    {isOpen ? (
+                      <ChevronDown size={13} className="shrink-0 text-zinc-600" />
+                    ) : (
+                      <ChevronRight size={13} className="shrink-0 text-zinc-600" />
+                    )}
+                  </button>
+                  {/* Body — full content rendered as markdown + actions. */}
+                  {isOpen && (
+                    <div className="border-t border-[var(--gt-border)] px-3 py-2.5">
+                      {(h.repo || h.terminalCwd || h.repoRoot) && (
+                        <div className="mb-1.5 truncate font-mono text-[10px] text-zinc-600">
+                          {h.repo}
+                          {(h.terminalCwd || h.repoRoot) && ` · ${h.terminalCwd || h.repoRoot}`}
                         </div>
                       )}
-                      {detail && (
-                        <div className="mt-1">
-                          {canExpand ? (
-                            <>
-                              <button
-                                onClick={() =>
-                                  setExpanded((prev) => {
-                                    const next = new Set(prev)
-                                    if (next.has(h.id)) next.delete(h.id)
-                                    else next.add(h.id)
-                                    return next
-                                  })
-                                }
-                                className="flex max-w-full items-center gap-1 text-left text-[11px] text-zinc-500 hover:text-zinc-300"
-                              >
-                                {isExpanded ? (
-                                  <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
-                                ) : (
-                                  <ChevronRight size={12} strokeWidth={2} className="shrink-0" />
-                                )}
-                                <span className="min-w-0 truncate">
-                                  {isExpanded ? 'Hide details' : detail}
-                                </span>
-                              </button>
-                              {isExpanded && (
-                                <div className="mt-1 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--gt-border)] bg-black/20 p-2 text-[11px] leading-snug text-zinc-400">
-                                  {h.detail}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="text-[11.5px] leading-snug text-zinc-500">{detail}</div>
-                          )}
+                      {body ? (
+                        <div className="max-h-80 overflow-y-auto">
+                          <Markdown className="text-[12px] text-zinc-300">{body}</Markdown>
                         </div>
-                      )}
-                      {(h.terminalCwd || h.terminalKey || h.sessionId) && (
-                        <div className="mt-1 truncate font-mono text-[10px] text-zinc-600">
-                          {h.terminalCwd || h.repoRoot || 'Terminal session'}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {canViewTerminal && (
-                        <button
-                          onClick={() =>
-                            navigateTo('terminal', {
-                              sessionKey: h.terminalKey,
-                              sessionId: h.sessionId,
-                              cwd: h.terminalCwd || h.repoRoot,
-                              repoRoot: h.repoRoot,
-                            })
-                          }
-                          title="Jump to the terminal session that filed this Inbox item"
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                        >
-                          <SquareTerminal size={11} strokeWidth={2} />
-                          View terminal
-                        </button>
-                      )}
-                      {h.runId && (
-                        <button
-                          onClick={() => navigateTo('runs', { runId: h.runId })}
-                          title="Jump to the run that filed this Inbox item"
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                        >
-                          <ListChecks size={11} strokeWidth={2} />
-                          View run
-                        </button>
-                      )}
-                      {h.ticketPath && (
-                        <button
-                          onClick={() =>
-                            navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
-                          }
-                          title="Jump to the backlog ticket auto-filed alongside this Inbox item"
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                        >
-                          <TicketIcon size={11} strokeWidth={2} />
-                          View ticket
-                        </button>
-                      )}
-                      {h.status === 'open' ? (
-                        <button
-                          onClick={async () => {
-                            await window.gt.hitl.resolve(h.id, true, h.hostId)
-                            reload()
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
-                        >
-                          <Check size={12} strokeWidth={2.5} />
-                          Resolve
-                        </button>
                       ) : (
+                        <div className="text-[11.5px] italic text-zinc-600">No details.</div>
+                      )}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        {canViewTerminal && (
+                          <button
+                            onClick={() =>
+                              navigateTo('terminal', {
+                                sessionKey: h.terminalKey,
+                                sessionId: h.sessionId,
+                                cwd: h.terminalCwd || h.repoRoot,
+                                repoRoot: h.repoRoot,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                          >
+                            <SquareTerminal size={11} strokeWidth={2} />
+                            Terminal
+                          </button>
+                        )}
+                        {h.runId && (
+                          <button
+                            onClick={() => navigateTo('runs', { runId: h.runId })}
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                          >
+                            <ListChecks size={11} strokeWidth={2} />
+                            Run
+                          </button>
+                        )}
+                        {h.ticketPath && (
+                          <button
+                            onClick={() =>
+                              navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
+                            }
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                          >
+                            <ListChecks size={11} strokeWidth={2} />
+                            Ticket
+                          </button>
+                        )}
+                        <div className="flex-1" />
+                        {h.status === 'open' ? (
+                          <button
+                            onClick={async () => {
+                              await window.gt.hitl.resolve(h.id, true, h.hostId)
+                              reload()
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
+                          >
+                            <Check size={12} strokeWidth={2.5} />
+                            Resolve
+                          </button>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              await window.gt.hitl.resolve(h.id, false, h.hostId)
+                              reload()
+                            }}
+                            title="Reopen"
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-300"
+                          >
+                            <RotateCcw size={11} strokeWidth={2} />
+                          </button>
+                        )}
                         <button
                           onClick={async () => {
-                            await window.gt.hitl.resolve(h.id, false, h.hostId)
+                            if (!confirm('Delete this Inbox item permanently?')) return
+                            await window.gt.hitl.remove(h.id, h.hostId)
                             reload()
                           }}
-                          title="Reopen"
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-300"
+                          title="Remove"
+                          className="inline-flex items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
                         >
-                          <RotateCcw size={11} strokeWidth={2} />
+                          <Trash2 size={11} strokeWidth={2} />
                         </button>
-                      )}
-                      <button
-                        onClick={async () => {
-                          if (
-                            !confirm(
-                              'Delete this Inbox item permanently? Resolving keeps the record in the resolved view; deleting removes it from the durable Inbox file.',
-                            )
-                          )
-                            return
-                          await window.gt.hitl.remove(h.id, h.hostId)
-                          reload()
-                        }}
-                        title="Remove"
-                        className="inline-flex items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                      >
-                        <Trash2 size={11} strokeWidth={2} />
-                      </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             })}
