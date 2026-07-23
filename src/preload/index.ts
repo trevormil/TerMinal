@@ -249,6 +249,9 @@ const gt = {
     toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
     openDir: () => ipcRenderer.invoke('listeners:open-dir'),
   },
+  remote: {
+    active: () => ipcRenderer.invoke('remote:active'),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),

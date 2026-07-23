@@ -6,6 +6,7 @@ import {
   Grid2x2,
   LayoutDashboard,
   Mail,
+  Smartphone,
   Plus,
   Search,
   Server,
@@ -31,7 +32,14 @@ import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
 import { coerceSessionEngine } from './lib/engines'
-import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
+import type {
+  AppearanceCfg,
+  Engine,
+  FleetSession,
+  RemoteActiveSession,
+  SessionEngine,
+  TabContext,
+} from './lib/types'
 import { applyTheme } from './lib/themes'
 import { loadHiddenTabs } from './lib/tabVisibility'
 
@@ -224,6 +232,9 @@ export default function App() {
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
   const [inboxOpenCount, setInboxOpenCount] = useState(0)
+  // Sessions currently mirrored to the phone, polled so the header indicator is
+  // live as you register/off a session (or delete it from the phone).
+  const [remoteActive, setRemoteActive] = useState<RemoteActiveSession[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
@@ -315,6 +326,16 @@ export default function App() {
     const id = setInterval(tick, 3000)
     return () => clearInterval(id)
   }, [sessions.length])
+  useEffect(() => {
+    const tick = () =>
+      window.gt.remote
+        .active()
+        .then(setRemoteActive)
+        .catch(() => {})
+    tick()
+    const id = setInterval(tick, 4000)
+    return () => clearInterval(id)
+  }, [])
   useEffect(() => {
     const tick = () =>
       window.gt.hitl
@@ -1314,6 +1335,34 @@ export default function App() {
               Fleet
             </button>
           )}
+          {(() => {
+            // Live "is this session on my phone?" indicator. Matches the active
+            // session's engine id (== the remote record's agentSessionId), with
+            // cwd as a fallback. Hidden when there's no active agent session.
+            const s = sessions.find((x) => x.key === activeKey)
+            const sid = s?.info.sessionId || s?.choice.sessionId || ''
+            const cwd = s?.info.cwd || s?.choice.cwd || ''
+            if (!s || s.choice.engine === 'local') return null
+            const onPhone = remoteActive.find(
+              (r) => (sid && r.agentSessionId === sid) || (cwd && !sid && r.cwd === cwd),
+            )
+            return (
+              <div
+                style={noDrag}
+                title={
+                  onPhone
+                    ? `On your phone: ${onPhone.title}. Say "you can stop remote" to take it off.`
+                    : 'This session is local. Say "sync this to my phone" to go remote.'
+                }
+                className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+                  onPhone ? 'bg-[var(--gt-accent2)]/20 text-[var(--gt-accent2)]' : 'text-zinc-600'
+                }`}
+              >
+                <Smartphone size={13} strokeWidth={2} />
+                {onPhone ? 'On phone' : 'Local'}
+              </div>
+            )
+          })()}
           <button
             style={noDrag}
             onClick={() => {

@@ -966,6 +966,14 @@ export type HitlSource =
   | 'listener'
   | 'completion-hook'
   | 'review-pattern'
+/** A session currently mirrored to the phone (registered + not ended). */
+export type RemoteActiveSession = {
+  id: string
+  title: string
+  agentSessionId?: string
+  cwd: string
+  status: string
+}
 export type HitlItem = {
   id: string
   title: string
@@ -1752,6 +1760,9 @@ export type GtApi = {
     }>
     toggle: (enabled: boolean) => Promise<ListenerStatus>
     openDir: () => Promise<string>
+  }
+  remote: {
+    active: () => Promise<RemoteActiveSession[]>
   }
   hitl: {
     list: () => Promise<HitlItem[]>

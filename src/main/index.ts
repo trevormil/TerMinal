@@ -2643,6 +2643,21 @@ ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
 })
 ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
+// Which sessions are currently mirrored to the phone (registered + not ended),
+// so the desktop can show a live "on phone" indicator for the active session.
+// agentSessionId is the engine session id — the same value as the desktop's
+// info.sessionId — with cwd as a fallback correlation.
+ipcMain.handle('remote:active', () =>
+  listRemoteSessions()
+    .filter((s) => s.status !== 'ended')
+    .map((s) => ({
+      id: s.id,
+      title: s.title,
+      agentSessionId: s.agentSessionId,
+      cwd: s.cwd,
+      status: s.status,
+    })),
+)
 ipcMain.handle('hitl:list', () => readHitl())
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
 // hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
