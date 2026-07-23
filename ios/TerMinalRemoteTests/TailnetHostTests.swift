@@ -9,7 +9,7 @@ import XCTest
 final class TailnetHostTests: XCTestCase {
     func testAcceptsCGNATRangeAddresses() {
         XCTAssertTrue(TailscalePairing.isTailnetHost("100.64.0.1"))
-        XCTAssertTrue(TailscalePairing.isTailnetHost("100.126.73.11"))
+        XCTAssertTrue(TailscalePairing.isTailnetHost("100.100.1.2"))
     }
 
     func testAcceptsMagicDNSNames() {
