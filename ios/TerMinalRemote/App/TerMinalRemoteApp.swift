@@ -46,6 +46,7 @@ private struct PairedView: View {
     @State private var client: BridgeClient
     @State private var feed: RemoteFeed
     @State private var active: ActiveSessionsViewModel
+    @State private var health: HealthViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
 
@@ -59,6 +60,7 @@ private struct PairedView: View {
         _client = State(initialValue: c)
         _feed = State(initialValue: f)
         _active = State(initialValue: ActiveSessionsViewModel(feed: f))
+        _health = State(initialValue: HealthViewModel(client: c))
     }
 
     var body: some View {
@@ -78,6 +80,11 @@ private struct PairedView: View {
                 InboxView(model: InboxViewModel(feed: feed))
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
+
+            NavigationStack {
+                HealthView(model: health)
+            }
+            .tabItem { Label("Health", systemImage: "waveform.path.ecg") }
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.
