@@ -88,7 +88,7 @@ export function InboxDrawer({
   openTerminals?: InboxTerminalRef[]
 }) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
-  const [showResolved, setShowResolved] = useState(false)
+  const [filter, setFilter] = useState<'unread' | 'open' | 'resolved' | 'all'>('open')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [resolvingAll, setResolvingAll] = useState(false)
 
@@ -116,9 +116,30 @@ export function InboxDrawer({
     }
   }, [])
 
-  const open = (items || []).filter((h) => h.status === 'open')
-  const resolved = (items || []).filter((h) => h.status === 'resolved')
-  const shown = showResolved ? resolved : open
+  const all = items || []
+  const open = all.filter((h) => h.status === 'open')
+  const resolved = all.filter((h) => h.status === 'resolved')
+  // Unread = open and never seen — the true "still needs you" set. Read-state is
+  // independent of resolve (see hitl.ts), so an item can be open-but-read.
+  const isUnread = (h: HitlItem) => h.status === 'open' && !h.readAt
+  const unread = all.filter(isUnread)
+  const shown =
+    filter === 'resolved' ? resolved : filter === 'all' ? all : filter === 'unread' ? unread : open
+
+  const markRead = (ids: string[]) => {
+    const fresh = ids.filter((id) => all.find((h) => h.id === id && !h.readAt))
+    if (!fresh.length) return
+    // Optimistic: flip local read-state now, persist in the background.
+    setItems((prev) =>
+      (prev || []).map((h) => (fresh.includes(h.id) ? { ...h, readAt: Date.now() } : h)),
+    )
+    void window.gt.hitl.markRead(fresh)
+  }
+  const markAllRead = async () => {
+    if (!unread.length) return
+    setItems((prev) => (prev || []).map((h) => (isUnread(h) ? { ...h, readAt: Date.now() } : h)))
+    await window.gt.hitl.markAllRead()
+  }
   const resolveAll = async () => {
     if (open.length === 0 || resolvingAll) return
     if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
@@ -142,7 +163,16 @@ export function InboxDrawer({
           one global inbox · everything that needs you
         </span>
         <div className="flex-1" />
-        {!showResolved && open.length > 0 && (
+        {unread.length > 0 && (
+          <button
+            onClick={markAllRead}
+            title="Mark every unread item read"
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+          >
+            Mark all read
+          </button>
+        )}
+        {filter !== 'resolved' && open.length > 0 && (
           <button
             onClick={resolveAll}
             disabled={resolvingAll}
@@ -152,16 +182,26 @@ export function InboxDrawer({
             {resolvingAll ? 'Resolving...' : 'Resolve all'}
           </button>
         )}
-        <button
-          onClick={() => setShowResolved((v) => !v)}
-          className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
-            showResolved
-              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          {showResolved ? `resolved (${resolved.length})` : `open (${open.length})`}
-        </button>
+        {(
+          [
+            ['unread', `unread (${unread.length})`],
+            ['open', `open (${open.length})`],
+            ['resolved', `resolved (${resolved.length})`],
+            ['all', `all (${all.length})`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
+              filter === key
+                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
         {onClose && (
           <button
             onClick={onClose}
@@ -178,9 +218,11 @@ export function InboxDrawer({
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (
           <div className="p-3 text-[12px] text-zinc-600">
-            {showResolved
+            {filter === 'resolved'
               ? 'Nothing resolved yet.'
-              : 'Nothing needs you. True human-needs (decisions, approvals, creds, failed cron runs) land here from any repo — and ping Telegram.'}
+              : filter === 'unread'
+                ? 'Nothing unread — inbox zero.'
+                : 'Nothing needs you. True human-needs (decisions, approvals, creds, failed cron runs) land here from any repo — and ping Telegram.'}
           </div>
         ) : (
           <div className="space-y-2">
@@ -192,6 +234,7 @@ export function InboxDrawer({
               return (
                 <div
                   key={h.id}
+                  onMouseEnter={() => isUnread(h) && markRead([h.id])}
                   className={`rounded-lg border bg-[var(--gt-panel)] p-2.5 ${
                     h.status === 'open'
                       ? 'border-[var(--gt-red)]/30'
@@ -201,7 +244,32 @@ export function InboxDrawer({
                   <div className="flex items-start gap-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[12.5px] font-semibold text-zinc-100">{h.title}</span>
+                        {isUnread(h) && (
+                          <span
+                            title="Unread"
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gt-accent)]"
+                          />
+                        )}
+                        <span
+                          className={`text-[12.5px] ${isUnread(h) ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
+                        >
+                          {h.title}
+                        </span>
+                        {(h.severity ?? 'push') === 'normal' ? (
+                          <span
+                            title="Normal — inbox only, no notification"
+                            className="rounded-full border border-[var(--gt-border)] px-1.5 py-px text-[9.5px] font-semibold text-zinc-500"
+                          >
+                            normal
+                          </span>
+                        ) : (
+                          <span
+                            title="Push — notifies you"
+                            className="rounded-full border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-px text-[9.5px] font-semibold text-[var(--gt-accent-light)]"
+                          >
+                            push
+                          </span>
+                        )}
                         <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
                         {h.source !== 'completion-hook' && (h.occurrenceCount || 1) > 1 && (
                           <span
@@ -359,7 +427,9 @@ const tab: Tab = {
   icon: Mail,
   order: 4,
   appliesTo: () => true, // global inbox — always available
-  badge: async (gt) => (await gt.hitl.list()).filter((h) => h.status === 'open').length,
+  // Badge the UNREAD count — a seen-but-unresolved item shouldn't keep nagging.
+  badge: async (gt) =>
+    (await gt.hitl.list()).filter((h) => h.status === 'open' && !h.readAt).length,
   Component: InboxDrawer,
 }
 export default tab

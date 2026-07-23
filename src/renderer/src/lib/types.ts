@@ -467,6 +467,9 @@ export type AlertsCfg = {
 }
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 export type InboxCfg = { completionHook: boolean; agentContextPreamble: boolean }
+// Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
+// settings.json — see src/main/bridge/identity.ts.
+export type BridgeCfg = { enabled: boolean; port: number }
 export type DaemonCfg = {
   projectsDir: string
   worktreesDir: string
@@ -588,6 +591,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  bridge: BridgeCfg
   appearance: AppearanceCfg
   apps: AppsCfg
   suggestions: SuggestionsCfg
@@ -602,7 +606,7 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -611,6 +615,7 @@ export type SettingsPatch = Partial<
     webhook?: Partial<AlertsCfg['webhook']>
   }
   inbox?: Partial<InboxCfg>
+  bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
@@ -970,6 +975,10 @@ export type HitlItem = {
   repoRoot?: string
   source: HitlSource
   status: 'open' | 'resolved'
+  /** 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as 'push'. */
+  severity?: 'push' | 'normal'
+  /** When first seen; absent ⇒ unread. */
+  readAt?: number
   createdAt: number
   resolvedAt?: number
   runId?: string
@@ -1095,6 +1104,35 @@ export type CronRun = {
 }
 
 export type ListenerDir = 'new' | 'processing' | 'done' | 'failed' | 'dead-letter'
+// Mobile bridge (TerMinal Remote for iOS). The pairing payload carries the
+// bearer token, so it is fetched on demand for the Settings pane only.
+export type BridgeStatus = {
+  enabled: boolean
+  listening: boolean
+  port: number
+  error?: string
+}
+// Push readiness for the Settings pane. `configured` flips once an APNs key
+// has been dropped next to the bridge identity.
+// The Mac's own tailnet identity, shown in Settings so the phone knows the name
+// to pair against.
+export type BridgeTailscale =
+  { available: true; dnsName: string; login: string } | { available: false }
+export type BridgePushStatus = {
+  configured: boolean
+  devices: number
+  config: string
+  key: string
+}
+export type BridgePairing = {
+  v: 1
+  n: string // Mac display name
+  p: number // port
+  h: string[] // candidate hosts, tailnet first
+  t: string // bearer token
+  fp: string // base64 SHA-256 of the DER cert, pinned by the client
+}
+
 export type ListenerStatus = {
   enabled: boolean
   inboxDir: string
@@ -1696,6 +1734,14 @@ export type GtApi = {
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
   }
+  onRemoteOpenSession: (cb: (payload: Record<string, unknown>) => void) => () => void
+  bridge: {
+    status: () => Promise<BridgeStatus>
+    pairing: () => Promise<BridgePairing>
+    pushStatus: () => Promise<BridgePushStatus>
+    tailscale: () => Promise<BridgeTailscale>
+    rotateToken: () => Promise<BridgePairing>
+  }
   listeners: {
     status: () => Promise<ListenerStatus>
     process: () => Promise<{
@@ -1716,6 +1762,8 @@ export type GtApi = {
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
+    markRead: (ids: string[]) => Promise<number>
+    markAllRead: () => Promise<number>
   }
   factory: {
     health: () => Promise<FactoryHealth>

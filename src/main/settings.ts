@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSy
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
+import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -75,6 +76,13 @@ export type NoteFolder = {
   title: string
   path: string
 }
+// Mobile bridge (the TerMinal Remote iOS app). Off by default; nothing binds a
+// port until it is on. The bearer token and TLS cert deliberately live OUTSIDE
+// settings.json — see src/main/bridge/identity.ts for why.
+export type BridgeCfg = {
+  enabled: boolean
+  port: number
+}
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
   id: string
@@ -95,6 +103,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  bridge: BridgeCfg
   appearance: AppearanceCfg
   apps: AppsCfg
   suggestions: SuggestionsCfg
@@ -115,7 +124,7 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -124,6 +133,7 @@ export type SettingsPatch = Partial<
     webhook?: Partial<AlertsCfg['webhook']>
   }
   inbox?: Partial<InboxCfg>
+  bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
@@ -189,6 +199,7 @@ export function defaultSettings(): Settings {
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
     inbox: { completionHook: true, agentContextPreamble: true },
+    bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
     appearance: {
       mode: 'dark',
       theme: 'terminal',
@@ -380,6 +391,13 @@ export function migrate(raw: unknown): Settings {
       s.suggestions.autoModel = r.suggestions.autoModel.trim()
     }
   }
+  if (r.bridge && typeof r.bridge === 'object') {
+    if (typeof r.bridge.enabled === 'boolean') s.bridge.enabled = r.bridge.enabled
+    // A bad port would leave the bridge permanently unable to bind; fall back
+    // to the default rather than persisting something unusable.
+    const port = Number(r.bridge.port)
+    if (Number.isInteger(port) && port >= 1024 && port <= 65535) s.bridge.port = port
+  }
   s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
   if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0)
@@ -476,6 +494,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     telegram,
     alerts,
     inbox,
+    bridge,
     appearance,
     apps,
     engines,
@@ -493,6 +512,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       webhook: { ...cur.alerts.webhook, ...(alerts?.webhook || {}) },
     },
     inbox: { ...cur.inbox, ...(inbox || {}) },
+    bridge: { ...cur.bridge, ...(bridge || {}) },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },
     engines: {

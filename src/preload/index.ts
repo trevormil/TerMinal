@@ -228,6 +228,21 @@ const gt = {
     disabledAll: (disabled: boolean) => ipcRenderer.invoke('schedules:disabled-all', disabled),
     design: (text: string, engine: string) => ipcRenderer.invoke('schedules:design', text, engine),
   },
+  // Main asks the renderer to open a session (phone-initiated spawn). Routed
+  // through the renderer so the new session gets a real tab and the normal
+  // initialInput delivery, instead of an orphan pty.
+  onRemoteOpenSession: (cb: (payload: Record<string, unknown>) => void) => {
+    const h = (_e: unknown, payload: Record<string, unknown>) => cb(payload)
+    ipcRenderer.on('remote:open-session', h)
+    return () => ipcRenderer.removeListener('remote:open-session', h)
+  },
+  bridge: {
+    status: () => ipcRenderer.invoke('bridge:status'),
+    pairing: () => ipcRenderer.invoke('bridge:pairing'),
+    pushStatus: () => ipcRenderer.invoke('bridge:push-status'),
+    tailscale: () => ipcRenderer.invoke('bridge:tailscale'),
+    rotateToken: () => ipcRenderer.invoke('bridge:rotate-token'),
+  },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
     process: () => ipcRenderer.invoke('listeners:process'),
@@ -241,6 +256,8 @@ const gt = {
     resolve: (id: string, resolved?: boolean, hostId?: string) =>
       ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
+    markRead: (ids: string[]) => ipcRenderer.invoke('hitl:mark-read', ids),
+    markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
   },
   factory: {
     health: () => ipcRenderer.invoke('factory:health'),

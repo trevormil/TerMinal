@@ -402,6 +402,24 @@ export default function App() {
     return offExit
   }, [])
 
+  // A session started from the phone (bridge spawn) lands here: main asks the
+  // renderer to open it so it gets a real tab and normal initialInput delivery,
+  // rather than an orphan pty with nothing driving it. Without this, the phone's
+  // "New session" registers a thread but never launches an agent — nothing ever
+  // replies. Routes through the same terminal:new path as any new session.
+  useEffect(() => {
+    const off = window.gt.onRemoteOpenSession((payload) => {
+      navigateTo('terminal:new', {
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : '',
+        engine: typeof payload.engine === 'string' ? payload.engine : undefined,
+        initialInput: typeof payload.initialInput === 'string' ? payload.initialInput : '',
+        // No one is at the Mac — submit the prompt for it, or it just sits.
+        autoSubmit: true,
+      })
+    })
+    return off
+  }, [])
+
   useEffect(() => {
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind !== 'task-complete' || !ev.sessionId) return
@@ -495,6 +513,7 @@ export default function App() {
             (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
+          const autoSubmit = payload.autoSubmit === true
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const model = typeof payload.model === 'string' ? payload.model : undefined
           const openrouterHarness =
@@ -512,6 +531,7 @@ export default function App() {
                 cwd,
                 name,
                 initialInput,
+                autoSubmit,
                 ticketSlug,
                 remote,
                 model,
