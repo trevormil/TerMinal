@@ -7,7 +7,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: '1.0'
-    CURRENT_PROJECT_VERSION: '24'
+    CURRENT_PROJECT_VERSION: '25'
     SWIFT_VERSION: '5.9'
     # Apple Developer team id. Also read by scripts/testflight.sh, which
     # generates ExportOptions.plist from it — keep this the only copy.
