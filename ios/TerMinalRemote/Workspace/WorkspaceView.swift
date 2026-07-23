@@ -109,7 +109,9 @@ struct WorkspaceView: View {
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
         }
         .sheet(isPresented: $startingNew) {
-            NewSessionSheet(client: model.client) { _ in await model.loadSessions() }
+            NewSessionSheet(client: model.client, repo: model.repo) { _ in
+                await model.loadSessions()
+            }
         }
         .task(id: tab) { await model.load(tab) }
     }
