@@ -4,13 +4,13 @@ import XCTest
 
 final class PairingPayloadTests: XCTestCase {
     private let valid = """
-        {"v":1,"n":"Trevor's MacBook","p":8790,"h":["100.100.1.2","192.168.1.42"],\
+        {"v":1,"n":"My Mac","p":8790,"h":["100.100.1.2","192.168.1.42"],\
         "t":"tok","fp":"Zm9vYmFy"}
         """
 
     func testDecodesAValidCode() throws {
         let payload = try PairingPayload.decode(valid)
-        XCTAssertEqual(payload.n, "Trevor's MacBook")
+        XCTAssertEqual(payload.n, "My Mac")
         XCTAssertEqual(payload.p, 8790)
         XCTAssertEqual(payload.h, ["100.100.1.2", "192.168.1.42"])
         XCTAssertEqual(payload.t, "tok")
