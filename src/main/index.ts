@@ -385,6 +385,7 @@ import {
 } from './remote'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
 import { sanitizeLog } from '../shared/run-log/sanitize'
+import { runLogAuthorized } from './bridge/run-auth'
 import { processSpawnCwd } from './spawn-cwd'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -1500,13 +1501,11 @@ const bridgeDeps: BridgeDeps = {
   // that is where a failure is.
   workspaceRunLog: async (runId, source, hostId) => {
     try {
-      // Authorize the opaque run id against the workspace boundary: a LOCAL run
-      // whose repo isn't advertised (an id guessed from another project) is
-      // refused. Host runs are the user's own configured hosts, listed elsewhere.
+      // Authorize POSITIVELY: only serve when we can see the run AND it's a host
+      // run or its repo is advertised. An id we can't find — aged out of the run
+      // window or guessed — is refused, never a fall-through to the raw readers.
       const run = listAllRuns().find((r) => r.id === runId)
-      if (run && !run.hostId && !advertisedRepoNames().has(run.repoLabel)) {
-        return { text: '', truncated: false }
-      }
+      if (!runLogAuthorized(run, advertisedRepoNames())) return { text: '', truncated: false }
       const raw = await Promise.resolve(readRunLogFor(source, runId, hostId))
       return capText(sanitizeLog(raw || ''), 200_000, { keepTail: true })
     } catch {
