@@ -24,8 +24,7 @@ Live scratchpad so nothing thrown my way gets dropped. Newest asks at the bottom
       was the root flakiness.
 
 ## Pending (not code)
-- [ ] Install build 24 (inbox revamp) to the phone — device was offline; auto
-      when it reconnects. Handoff fixes are Mac-side, already live.
+- [x] Install build 25 (inbox revamp + handoff) to the phone
 
 ## Parked / needs human
 - [ ] APNs key: created once in Apple portal (no API). Push is inert until the
