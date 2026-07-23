@@ -48,6 +48,15 @@ async function harness(over: Partial<BridgeDeps> = {}, token = TOKEN): Promise<H
     ],
     resolveHitl: () => true,
     registerDevice: () => {},
+    // The paths the workspace/spawn tests exercise are "advertised" by default,
+    // so those tests pass the path-authorization gate. Tests about the gate
+    // itself override `repos` with a narrower set.
+    repos: () => [
+      { name: 'x', path: '/x' },
+      { name: 'rx', path: '/r/x' },
+      { name: 'alpha', path: '/repos/alpha' },
+      { name: 'beta', path: '/repos/beta' },
+    ],
     ...over,
   }
   const s = createServer(createBridgeHandler(deps, () => token))
@@ -570,6 +579,85 @@ describe('inbox read-state', () => {
       501,
     )
     expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST' })).status).toBe(401)
+  })
+})
+
+describe('workspace path authorization', () => {
+  // The bearer token authenticates the device; it must NOT authorize an
+  // arbitrary path. Every repo/cwd route is fenced to the advertised repos().
+  const onlyAlpha = { repos: () => [{ name: 'alpha', path: '/repos/alpha' }] }
+
+  it('refuses spawn into an unadvertised cwd, without calling spawn', async () => {
+    let spawned = false
+    const h = await harness({
+      ...onlyAlpha,
+      spawn: () => {
+        spawned = true
+        return { id: 'x' }
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ cwd: '/tmp', engine: 'codex', task: 'pwd' }),
+    })
+    expect(res.status).toBe(403)
+    expect(spawned).toBe(false)
+  })
+
+  it('allows spawn into an advertised cwd', async () => {
+    let seen = ''
+    const h = await harness({
+      ...onlyAlpha,
+      spawn: (i) => {
+        seen = i.cwd
+        return { id: 'ok' }
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/new`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ cwd: '/repos/alpha' }),
+    })
+    expect(res.status).toBe(200)
+    expect(seen).toBe('/repos/alpha')
+  })
+
+  it('refuses list + detail routes for an unadvertised repo, untouched deps', async () => {
+    let touched = false
+    const h = await harness({
+      ...onlyAlpha,
+      workspaceTickets: () => {
+        touched = true
+        return []
+      },
+      workspaceTicket: () => {
+        touched = true
+        return null
+      },
+      workspaceSchedule: () => {
+        touched = true
+        return null
+      },
+    })
+    const tmp = encodeURIComponent('/tmp')
+    for (const path of [
+      `/v1/workspaces/tickets?repo=${tmp}`,
+      `/v1/workspace/ticket?repo=${tmp}&slug=x`,
+      `/v1/workspace/schedule?repo=${tmp}&id=s1`,
+    ]) {
+      const res = await fetch(`${h.url}${path}`, { headers: auth })
+      expect(res.status).toBe(403)
+    }
+    expect(touched).toBe(false)
+  })
+
+  it('rejects a path that resolves outside the set via ..', async () => {
+    const h = await harness({ ...onlyAlpha, workspaceTickets: () => [] })
+    const sneaky = encodeURIComponent('/repos/alpha/../beta')
+    expect(
+      (await fetch(`${h.url}/v1/workspaces/tickets?repo=${sneaky}`, { headers: auth })).status,
+    ).toBe(403)
   })
 })
 

@@ -1,6 +1,7 @@
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createReadStream, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { DEFAULT_BRIDGE_PORT, ensureIdentity, tokenMatches, type BridgeIdentity } from './identity'
 
 // The mobile bridge: a small authenticated JSON API over the sessions that have
@@ -251,6 +252,19 @@ function bearer(req: IncomingMessage): string {
   return h.startsWith('Bearer ') ? h.slice(7) : ''
 }
 
+/**
+ * The bearer token authenticates the DEVICE; it does NOT authorize an arbitrary
+ * filesystem path. Every route that takes a caller-supplied repo/cwd must be
+ * fenced to the exact set the Mac advertises in repos() — otherwise a token
+ * holder could spawn a session in /tmp or read any repo's tickets/PRs/runs.
+ * Paths are resolved before comparison so `.../a/../b` can't slip through.
+ */
+function repoAllowed(deps: BridgeDeps, path: string): boolean {
+  if (!path) return false
+  const target = resolve(path)
+  return (deps.repos?.() ?? []).some((r) => resolve(r.path) === target)
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0
@@ -383,6 +397,12 @@ export function createBridgeHandler(
     if (req.method === 'GET' && url.pathname.startsWith('/v1/workspace/')) {
       const kind = url.pathname.slice('/v1/workspace/'.length)
       const repo = url.searchParams.get('repo') || ''
+      // Fence every repo-scoped detail to the advertised set. run-log carries no
+      // repo (opaque run id); its dep authorizes the run against allowed repos.
+      if (kind !== 'run-log' && !repoAllowed(deps, repo)) {
+        json(res, 403, { error: 'workspace not allowed' })
+        return
+      }
       const detail = (): unknown | undefined => {
         switch (kind) {
           case 'ticket': {
@@ -442,6 +462,10 @@ export function createBridgeHandler(
       }
       if (!repo) {
         json(res, 400, { error: 'repo is required' })
+        return
+      }
+      if (!repoAllowed(deps, repo)) {
+        json(res, 403, { error: 'workspace not allowed' })
         return
       }
       Promise.resolve(fn(repo))
@@ -524,6 +548,12 @@ export function createBridgeHandler(
             }
           } catch (e) {
             json(res, 400, { error: (e as Error).message })
+            return
+          }
+          // Spawn only into an advertised workspace — a token holder must not be
+          // able to start a session in an arbitrary directory (e.g. /tmp).
+          if (!repoAllowed(deps, input.cwd)) {
+            json(res, 403, { error: 'workspace not allowed' })
             return
           }
           const result = deps.spawn!(input)

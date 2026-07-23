@@ -1178,6 +1178,17 @@ function capText(s: string, max: number, opts: { keepTail?: boolean } = {}): Bri
  * host on the run row; inheriting whatever terminal happens to be focused would
  * silently read a different machine's log.
  */
+/** The repo NAMES the bridge advertises (immediate subdirs of the projects dir).
+ *  Used to authorize an opaque run id against the workspace boundary — the same
+ *  set repos() exposes and workspaceRuns() filters by. */
+function advertisedRepoNames(): Set<string> {
+  try {
+    return new Set(readdirSync(resolvedProjectsDir()).filter((n) => !n.startsWith('.')))
+  } catch {
+    return new Set()
+  }
+}
+
 function readRunLogFor(source: string, runId: string, hostId?: string): string | Promise<string> {
   const remote = hostId ? remoteFromHostId(hostId) : null
   if (remote) return remoteRuns.log(remote, runId).catch(() => '')
@@ -1489,6 +1500,13 @@ const bridgeDeps: BridgeDeps = {
   // that is where a failure is.
   workspaceRunLog: async (runId, source, hostId) => {
     try {
+      // Authorize the opaque run id against the workspace boundary: a LOCAL run
+      // whose repo isn't advertised (an id guessed from another project) is
+      // refused. Host runs are the user's own configured hosts, listed elsewhere.
+      const run = listAllRuns().find((r) => r.id === runId)
+      if (run && !run.hostId && !advertisedRepoNames().has(run.repoLabel)) {
+        return { text: '', truncated: false }
+      }
       const raw = await Promise.resolve(readRunLogFor(source, runId, hostId))
       return capText(sanitizeLog(raw || ''), 200_000, { keepTail: true })
     } catch {
@@ -1497,7 +1515,11 @@ const bridgeDeps: BridgeDeps = {
   },
   workspaceSchedule: (repoPath, id) => {
     const s = getSchedule(id)
-    if (!s) return null
+    const root = repoRootOf(repoPath) || repoPath
+    // server.ts already fenced repoPath to the advertised set; also require the
+    // schedule to actually belong to it, so one allowed repo's token can't read
+    // another repo's schedule prompt by guessing its id.
+    if (!s || !(s.repoRoot === root || s.repoLabel === basename(repoPath))) return null
     const now = Date.now()
     return {
       id: s.id,
