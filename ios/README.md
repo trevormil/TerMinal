@@ -16,8 +16,8 @@ default. Turning it on in **Settings → Mobile** generates a bearer token and a
 self-signed certificate, then shows a QR code:
 
 ```
-{ "v":1, "n":"Trevor's MacBook", "p":8790,
-  "h":["100.126.73.11","192.168.1.42"], "t":"<token>", "fp":"<sha256 of cert>" }
+{ "v":1, "n":"My Mac", "p":8790,
+  "h":["100.100.1.2","192.168.1.42"], "t":"<token>", "fp":"<sha256 of cert>" }
 ```
 
 - **`fp` is pinned.** The app accepts exactly that certificate and no other

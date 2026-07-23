@@ -13,15 +13,17 @@ registration model.
 ## Prerequisites (once)
 
 - Apple Developer Program membership on the account that owns the app.
-  Already true — team `8UWQ486J94`, set in `ios/project.yml`.
+  Put your team id in the gitignored `ios/.xcodegen.env`
+  (`DEVELOPMENT_TEAM=…` — copy `ios/.xcodegen.env.example`); `project.yml`
+  substitutes it at generate time.
 - Xcode signed in to that account (Settings → Accounts).
 - `brew install xcodegen`.
 - App Store Connect API key at
-  `~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8`. Already present.
+  `~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8`.
 
 > **The key's role must be Admin.** App Manager can upload builds but *cannot*
 > create the cloud-managed distribution certificate, so the first export fails
-> with a misleading `No profiles for 'com.trevormil.terminal' were found`. The
+> with a misleading `No profiles for '<your bundle id>' were found`. The
 > real cause only appears in `IDEDistributionProvisioning.log` (path is printed
 > in the failure output): Apple returns `403 FORBIDDEN_ERROR — you haven't been
 > given access to cloud-managed distribution certificates`. A key's role cannot
@@ -33,8 +35,8 @@ appstoreconnect.apple.com → Apps → **+ New App**:
 
 - Platform **iOS**, Name **TerMinal Remote**
 - Primary language English (U.S.)
-- Bundle ID `com.trevormil.terminal` — register it under Certificates →
-  Identifiers if it is not offered in the dropdown
+- Bundle ID — your `PRODUCT_BUNDLE_ID` from `ios/.xcodegen.env` — register it
+  under Certificates → Identifiers if it is not offered in the dropdown
 - SKU `terminal-remote-ios`, Full access
 
 Then TestFlight → **Internal Testing** → new group → add yourself. Internal
@@ -65,8 +67,10 @@ cp .testflight.env.example .testflight.env   # once: ASC_KEY_ID + ASC_ISSUER_ID
 ```
 
 `--bump` increments `CURRENT_PROJECT_VERSION` first (build numbers must
-strictly increase per upload); `--dry-run` stops after export. Team ID is read
-from `project.yml`, so that file is the single source of truth.
+strictly increase per upload); `--dry-run` stops after export. Team and bundle
+ids are read from the gitignored `ios/.xcodegen.env` (`DEVELOPMENT_TEAM`,
+`PRODUCT_BUNDLE_ID`), the single source of truth for Apple identifiers —
+`project.yml` only substitutes those variables.
 
 ## 4. Export compliance
 
@@ -90,8 +94,8 @@ APNs auth keys cannot be minted through any API, so this step is manual:
    cd ios && ./scripts/setup-push.sh ~/Downloads/AuthKey_<KEYID>.p8
    ```
    That copies the key to `~/.config/TerMinal/bridge/apns.p8` (0600) and writes
-   `apns.json` with the key id plus the team and bundle ids read from
-   `project.yml`.
+   `apns.json` with the key id plus the team and bundle ids read from the
+   gitignored `ios/.xcodegen.env`.
 5. Restart TerMinal, then open the app on the phone once so it registers its
    device token. **Settings → Mobile** then shows the device count.
 
