@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process'
 import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
-import { hitlRecurrenceKey } from './hitl-recurrence'
+import { hitlRecurrenceKey, hitlRecurrenceBump } from './hitl-recurrence'
 import { defaultSeverity, itemSeverity, shouldNotify, type HitlSeverity } from './hitl-severity'
 import {
   hitlActivityKind,
@@ -120,7 +120,7 @@ export function markHitlRead(ids: string[]): number {
   return changed
 }
 
-/** Mark every open item read — the inbox "mark all read" sweep. */
+/** Mark every unread item read (open or resolved) — the "mark all read" sweep. */
 export function markAllHitlRead(): number {
   return markHitlRead(
     readHitl()
@@ -179,15 +179,15 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     (h) => h.status === 'open' && h.createdAt >= since && hitlRecurrenceKey(h) === fp,
   )
   if (dupIndex >= 0) {
-    const dup = {
-      ...existing[dupIndex],
-      occurrenceCount: (existing[dupIndex].occurrenceCount || 1) + 1,
-      lastOccurredAt: Date.now(),
-    }
+    // Bump the count instead of double-filing, but the recurrence is new
+    // information: the item goes back to unread and the notify decision runs
+    // the same severity-threshold gate a fresh filing would get.
+    const { item: dup, loud } = hitlRecurrenceBump(
+      existing[dupIndex],
+      readSettings().inbox.notifyThreshold,
+    )
     existing[dupIndex] = dup
     write(existing)
-    // Re-ping the activity feed so the operator sees the recurrence count,
-    // but don't double-file. Surface "still blocked, N occurrences".
     emitActivity(
       {
         kind: hitlActivityKind(input.source),
@@ -199,9 +199,11 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
         runId: input.runId,
         runSource: input.runSource,
         sessionId: input.sessionId,
+        suppressTelegram: true,
       },
-      { notify: false }, // don't re-fire the macOS notification
+      { notify: loud },
     )
+    if (loud) alwaysPingTelegram(dup)
     return dup
   }
   const item: HitlItem = {
@@ -235,7 +237,7 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     { notify: loud },
   )
   // HITL pings Telegram when configured even if the general feed toggle is off —
-  // but only for 'push' severity. A 'normal' item is inbox-only.
+  // but only at or above the configured notify threshold.
   if (loud) alwaysPingTelegram(item)
   return item
 }

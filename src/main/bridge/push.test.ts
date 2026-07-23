@@ -38,8 +38,8 @@ function configure(dir: string): string {
     join(dir, 'apns.json'),
     JSON.stringify({
       keyId: 'ABC1234567',
-      teamId: '8UWQ486J94',
-      bundleId: 'com.trevormil.terminal',
+      teamId: 'ABCDE12345',
+      bundleId: 'com.example.terminal',
     }),
   )
   return key
@@ -56,7 +56,7 @@ describe('apnsJwt', () => {
     const decode = (s: string) =>
       JSON.parse(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString())
     expect(decode(header)).toEqual({ alg: 'ES256', kid: 'ABC1234567' })
-    expect(decode(payload)).toEqual({ iss: '8UWQ486J94', iat: 1_784_000_000 })
+    expect(decode(payload)).toEqual({ iss: 'ABCDE12345', iat: 1_784_000_000 })
 
     // Apple rejects DER signatures; JWS requires the raw r||s pair, which for
     // P-256 is exactly 64 bytes. This is the detail that silently breaks push.

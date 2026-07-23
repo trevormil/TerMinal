@@ -189,9 +189,10 @@ function Toggle({
 }
 
 // Pairing pane for the mobile bridge (TerMinal Remote for iOS). The QR carries
-// the bearer token and the pinned cert fingerprint, so it is rendered on demand
-// and never persisted anywhere the renderer can leak it. The copyable text form
-// exists because the iOS Simulator has no camera.
+// the bearer token and the pinned cert fingerprint — it IS the credential in
+// scannable form, so it stays hidden (with the text code) until the user
+// explicitly reveals it, and is never persisted anywhere the renderer can leak
+// it. The copyable text form exists because the iOS Simulator has no camera.
 function MobileSection({
   cfg,
   save,
@@ -268,10 +269,19 @@ function MobileSection({
 
         {cfg.enabled && status?.listening && pairing && (
           <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-            <div
-              className="h-[168px] w-[168px] shrink-0 rounded-md bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
-              dangerouslySetInnerHTML={{ __html: qrSvg }}
-            />
+            {revealed ? (
+              <div
+                className="h-[168px] w-[168px] shrink-0 rounded-md bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
+                dangerouslySetInnerHTML={{ __html: qrSvg }}
+              />
+            ) : (
+              <div className="flex h-[168px] w-[168px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--gt-border)] bg-black/20 text-center">
+                <Eye size={18} strokeWidth={2} className="text-zinc-600" />
+                <span className="px-3 text-[10.5px] leading-snug text-zinc-500">
+                  QR hidden — Show pairing code to reveal
+                </span>
+              </div>
+            )}
             <div className="min-w-0 space-y-2">
               <div className="text-[11px] text-zinc-400">
                 Listening on port {status.port} as{' '}
@@ -320,7 +330,7 @@ function MobileSection({
                 </button>
                 <button className={buttonClass} onClick={() => setRevealed((v) => !v)}>
                   <Eye size={13} strokeWidth={2} />
-                  {revealed ? 'Hide' : 'Show'} code
+                  {revealed ? 'Hide' : 'Show'} pairing code
                 </button>
                 <button
                   className={buttonClass}
@@ -344,8 +354,9 @@ function MobileSection({
                 />
               )}
               <div className="text-[10.5px] leading-relaxed text-zinc-600">
-                The code contains the bearer token — treat it like a password. Rotating it
-                disconnects every paired device.
+                The code contains the bearer token — treat it like a password. Copy pairing code
+                places a working credential in your clipboard. Rotating the token disconnects every
+                paired device.
               </div>
             </div>
           </div>

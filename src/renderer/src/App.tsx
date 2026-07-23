@@ -231,7 +231,7 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
-  const [inboxOpenCount, setInboxOpenCount] = useState(0)
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
   // Sessions currently mirrored to the phone, polled so the header indicator is
   // live as you register/off a session (or delete it from the phone).
   const [remoteActive, setRemoteActive] = useState<RemoteActiveSession[]>([])
@@ -340,7 +340,9 @@ export default function App() {
     const tick = () =>
       window.gt.hitl
         .list()
-        .then((items) => setInboxOpenCount(items.filter((h) => h.status === 'open').length))
+        .then((items) =>
+          setInboxUnreadCount(items.filter((h) => h.status === 'open' && !h.readAt).length),
+        )
         .catch(() => {})
     tick()
     const off = window.gt.activity.onEvent((ev) => {
@@ -1380,9 +1382,9 @@ export default function App() {
           >
             <Mail size={13} strokeWidth={2} />
             Inbox
-            {inboxOpenCount > 0 && (
+            {inboxUnreadCount > 0 && (
               <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
-                {inboxOpenCount}
+                {inboxUnreadCount}
               </span>
             )}
           </button>

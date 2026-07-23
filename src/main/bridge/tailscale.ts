@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { promisify } from 'node:util'
 
 // Tailnet identity, for zero-QR pairing.
 //
@@ -35,13 +36,17 @@ function tailscaleBin(): string | null {
   return null
 }
 
-function run(args: string[]): string | null {
+const execFileAsync = promisify(execFile)
+
+// Async on purpose: this runs from an unauthenticated HTTP route on the
+// Electron main process — a blocking subprocess here would freeze the whole
+// app for up to the timeout on every probe.
+async function run(args: string[]): Promise<string | null> {
   const bin = tailscaleBin()
   if (!bin) return null
   try {
-    return execFileSync(bin, args, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 4000 })
-      .toString()
-      .trim()
+    const { stdout } = await execFileAsync(bin, args, { timeout: 4000 })
+    return stdout.toString().trim()
   } catch {
     return null
   }
@@ -57,8 +62,8 @@ export type TailscaleSelf = {
 }
 
 /** This Mac's tailnet identity, or null when Tailscale isn't usable. */
-export function tailscaleSelf(): TailscaleSelf | null {
-  const out = run(['status', '--json'])
+export async function tailscaleSelf(): Promise<TailscaleSelf | null> {
+  const out = await run(['status', '--json'])
   if (!out) return null
   try {
     const status = JSON.parse(out) as {
@@ -85,10 +90,10 @@ export type TailscalePeer = {
 }
 
 /** Identify the tailnet peer behind an address (ip or ip:port). */
-export function tailscaleWhois(peerAddress: string): TailscalePeer | null {
+export async function tailscaleWhois(peerAddress: string): Promise<TailscalePeer | null> {
   // whois wants ip:port; append a dummy port when only an ip is given.
   const arg = peerAddress.includes(':') ? peerAddress : `${peerAddress}:0`
-  const out = run(['whois', '--json', arg])
+  const out = await run(['whois', '--json', arg])
   if (!out) return null
   try {
     const who = JSON.parse(out) as {
@@ -114,10 +119,12 @@ export function tailscaleWhois(peerAddress: string): TailscalePeer | null {
  * Strict by construction: an unknown peer, a down tailnet, or a different user
  * all return false, so a failure is a refusal — never an accidental grant.
  */
-export function tailscalePeerAllowed(peerAddress: string): { ok: boolean; peer?: TailscalePeer } {
-  const self = tailscaleSelf()
+export async function tailscalePeerAllowed(
+  peerAddress: string,
+): Promise<{ ok: boolean; peer?: TailscalePeer }> {
+  const self = await tailscaleSelf()
   if (!self) return { ok: false }
-  const peer = tailscaleWhois(peerAddress)
+  const peer = await tailscaleWhois(peerAddress)
   if (!peer) return { ok: false }
   return { ok: peer.userId === self.userId, peer }
 }

@@ -1356,16 +1356,21 @@ const bridgeDeps: BridgeDeps = {
   },
 
   // Every engine the desktop can launch, labelled the way the desktop labels
-  // them — the phone should never render a bare lowercase "codex".
-  engines: () => [
-    { id: 'claude', label: 'Claude' },
-    { id: 'codex', label: 'Codex' },
-    { id: 'cursor', label: 'Cursor' },
-    { id: 'openrouter', label: 'OpenRouter' },
-    { id: 'hermes', label: 'Hermes' },
-    { id: 'openai-compat', label: 'Self-hosted' },
-    { id: 'local', label: 'Local' },
-  ],
+  // them — the phone should never render a bare lowercase "codex". The Mac's
+  // configured default leads because the phone preselects the first entry.
+  engines: () => {
+    const all = [
+      { id: 'claude', label: 'Claude' },
+      { id: 'codex', label: 'Codex' },
+      { id: 'cursor', label: 'Cursor' },
+      { id: 'openrouter', label: 'OpenRouter' },
+      { id: 'hermes', label: 'Hermes' },
+      { id: 'openai-compat', label: 'Self-hosted' },
+      { id: 'local', label: 'Local' },
+    ]
+    const def = readSettings().defaultEngine
+    return all.sort((a, b) => Number(b.id === def) - Number(a.id === def))
+  },
 
   // Per-workspace read-only cockpit data. Each resolves a local daemon for the
   // requested repo path (the same machinery the desktop tabs use), then projects
@@ -1500,14 +1505,18 @@ const bridgeDeps: BridgeDeps = {
   // Logs come back whole and ANSI-laden with no pagination, so cap + strip here
   // rather than shipping megabytes of escape codes to a phone. Keep the TAIL —
   // that is where a failure is.
-  workspaceRunLog: async (runId, source, hostId) => {
+  workspaceRunLog: async (runId) => {
     try {
       // Authorize POSITIVELY: only serve when we can see the run AND it's a host
       // run or its repo is advertised. An id we can't find — aged out of the run
       // window or guessed — is refused, never a fall-through to the raw readers.
       const run = listAllRuns().find((r) => r.id === runId)
-      if (!runLogAuthorized(run, advertisedRepoNames())) return { text: '', truncated: false }
-      const raw = await Promise.resolve(readRunLogFor(source, runId, hostId))
+      if (!run || !runLogAuthorized(run, advertisedRepoNames())) {
+        return { text: '', truncated: false }
+      }
+      // Read with the AUTHORIZED row's own store/host — never the phone's copy,
+      // which could point the readers at a different log than we authorized.
+      const raw = await Promise.resolve(readRunLogFor(run.source, runId, run.hostId))
       return capText(sanitizeLog(raw || ''), 200_000, { keepTail: true })
     } catch {
       return { text: '', truncated: false }
@@ -1598,8 +1607,8 @@ const bridgeDeps: BridgeDeps = {
 
   // Hand the pairing payload to a verified same-user tailnet peer. The identity
   // check is in tailscale.ts; here we just turn a yes into the token.
-  tailscalePair: (peerAddress) => {
-    const { ok, peer } = tailscalePeerAllowed(peerAddress)
+  tailscalePair: async (peerAddress) => {
+    const { ok, peer } = await tailscalePeerAllowed(peerAddress)
     if (!ok) return null
     const identity = ensureIdentity()
     const payload = pairingPayload({ port: readSettings().bridge.port, identity })
@@ -1641,8 +1650,8 @@ ipcMain.handle('bridge:pairing', () => {
   return pairingPayload({ port: cfg.port, identity })
 })
 ipcMain.handle('bridge:push-status', () => ({ ...pushStatus(), ...apnsPaths() }))
-ipcMain.handle('bridge:tailscale', () => {
-  const self = tailscaleSelf()
+ipcMain.handle('bridge:tailscale', async () => {
+  const self = await tailscaleSelf()
   return self ? { available: true, dnsName: self.dnsName, login: self.login } : { available: false }
 })
 ipcMain.handle('bridge:rotate-token', () => {
@@ -2690,9 +2699,16 @@ ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
   }
   return removeHitl(id)
 })
-// Read-state is LOCAL to whichever surface you're looking at — it says "I've
-// seen this", not "resolve it on the host". So mark-read never routes to a host.
-ipcMain.handle('hitl:mark-read', (_e, ids: string[]) => markHitlRead(ids))
+// Mark-read routes to the owning host like resolve/remove (#14) — a remote
+// item's readAt must persist where the item lives, or the 15s remote fan-in
+// flips it back to unread. No hostId → local, as before.
+ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string) => {
+  if (hostId) {
+    const ref = remoteFromHostId(hostId)
+    if (ref) return remoteHitl.markRead(ref, ids).catch(() => 0)
+  }
+  return markHitlRead(ids)
+})
 ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.
 ipcMain.handle('factory:health', () => factoryHealth())

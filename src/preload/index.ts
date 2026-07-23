@@ -259,7 +259,7 @@ const gt = {
     resolve: (id: string, resolved?: boolean, hostId?: string) =>
       ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
-    markRead: (ids: string[]) => ipcRenderer.invoke('hitl:mark-read', ids),
+    markRead: (ids: string[], hostId?: string) => ipcRenderer.invoke('hitl:mark-read', ids, hostId),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
   },
   factory: {

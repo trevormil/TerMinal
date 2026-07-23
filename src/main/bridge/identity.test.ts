@@ -98,9 +98,9 @@ describe('bridgeHosts', () => {
         { family: 'IPv6', address: 'fe80::1', internal: false },
       ],
       lo0: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
-      utun4: [{ family: 'IPv4', address: '100.126.73.11', internal: false }],
+      utun4: [{ family: 'IPv4', address: '100.100.1.2', internal: false }],
     } as never)
-    expect(hosts).toEqual(['100.126.73.11', '192.168.1.42'])
+    expect(hosts).toEqual(['100.100.1.2', '192.168.1.42'])
   })
 
   it('drops loopback and dedupes', () => {
@@ -120,14 +120,14 @@ describe('pairingPayload', () => {
     const payload = pairingPayload({
       port: 8790,
       identity,
-      name: "Trevor's MacBook",
-      hosts: ['100.126.73.11'],
+      name: 'My Mac',
+      hosts: ['100.100.1.2'],
     })
     expect(payload).toEqual({
       v: 1,
-      n: "Trevor's MacBook",
+      n: 'My Mac',
       p: 8790,
-      h: ['100.126.73.11'],
+      h: ['100.100.1.2'],
       t: identity.token,
       fp: identity.fingerprint,
     })
