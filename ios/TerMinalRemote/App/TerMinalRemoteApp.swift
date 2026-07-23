@@ -21,6 +21,9 @@ struct RootView: View {
             // pinned session rather than reusing stale credentials.
             PairedView(pairing: pairing, onUnpair: {
                 PairingStore.clear()
+                // Drop the push singleton's client too, so a later APNs token
+                // refresh can't POST with the revoked credentials.
+                PushRegistrar.shared.client = nil
                 self.pairing = nil
             })
             .id(pairing.t)
@@ -88,6 +91,14 @@ private struct PairedView: View {
                     }
             }
             .preferredColorScheme(.dark)
+        }
+        .task {
+            // A cold-launch notification tap sets pendingThreadKey before this
+            // view exists, so .onChange never fires — consume it once here.
+            if let key = push.pendingThreadKey {
+                push.pendingThreadKey = nil
+                await openThread(key)
+            }
         }
         .task {
             // Only ask for notifications once there is a Mac to send the token
