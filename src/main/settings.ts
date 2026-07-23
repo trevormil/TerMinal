@@ -335,6 +335,12 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
     if (typeof r.inbox.agentContextPreamble === 'boolean')
       s.inbox.agentContextPreamble = r.inbox.agentContextPreamble
+    if (
+      r.inbox.notifyThreshold === 'urgent' ||
+      r.inbox.notifyThreshold === 'normal' ||
+      r.inbox.notifyThreshold === 'low'
+    )
+      s.inbox.notifyThreshold = r.inbox.notifyThreshold
   }
   if (r.appearance && typeof r.appearance === 'object') {
     if (

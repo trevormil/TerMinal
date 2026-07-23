@@ -55,6 +55,14 @@ describe('migrate', () => {
     )
   })
 
+  test('inbox notifyThreshold defaults to urgent and survives migration', () => {
+    expect(migrate({}).inbox.notifyThreshold).toBe('urgent')
+    expect(migrate({ inbox: { notifyThreshold: 'normal' } }).inbox.notifyThreshold).toBe('normal')
+    expect(migrate({ inbox: { notifyThreshold: 'low' } }).inbox.notifyThreshold).toBe('low')
+    // garbage falls back to the default rather than persisting
+    expect(migrate({ inbox: { notifyThreshold: 'bogus' } }).inbox.notifyThreshold).toBe('urgent')
+  })
+
   test('appearance defaults to dark and accepts light/system modes', () => {
     expect(migrate({}).appearance).toEqual({
       mode: 'dark',
