@@ -108,9 +108,17 @@ struct WorkspaceView: View {
         .navigationDestination(for: RemoteSession.self) { s in
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
         }
+        // Programmatic open (a freshly started session) — distinct from the
+        // NavigationLink taps above.
+        .navigationDestination(item: $opened) { s in
+            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
+        }
         .sheet(isPresented: $startingNew) {
-            NewSessionSheet(client: model.client, repo: model.repo) { _ in
+            NewSessionSheet(client: model.client, repo: model.repo) { newId in
                 await model.loadSessions()
+                // Open the thread we just started — it registered before the
+                // agent booted, so it's already in the refreshed list.
+                await MainActor.run { opened = model.sessions.first { $0.id == newId } }
             }
         }
         .task(id: tab) { await model.load(tab) }
