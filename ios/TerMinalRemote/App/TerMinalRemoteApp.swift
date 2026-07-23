@@ -33,25 +33,35 @@ struct RootView: View {
     }
 }
 
-/// The paired app: Workspaces + Inbox tabs, plus a root-level deep-link so a
-/// tapped notification opens its thread regardless of which tab/workspace is
+/// The paired app: Active + Workspaces + Inbox tabs, plus a root-level deep-link
+/// so a tapped notification opens its thread regardless of which tab/workspace is
 /// showing (threads are nested under workspaces, so this can't live there).
 private struct PairedView: View {
     let pairing: PairingPayload
     let onUnpair: () -> Void
 
     @State private var client: BridgeClient
+    @State private var active: ActiveSessionsViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
 
     init(pairing: PairingPayload, onUnpair: @escaping () -> Void) {
         self.pairing = pairing
         self.onUnpair = onUnpair
-        _client = State(initialValue: BridgeClient(pairing: pairing))
+        // One client shared across tabs so a single pinned session is reused.
+        let c = BridgeClient(pairing: pairing)
+        _client = State(initialValue: c)
+        _active = State(initialValue: ActiveSessionsViewModel(client: c))
     }
 
     var body: some View {
         TabView {
+            NavigationStack {
+                ActiveSessionsView(model: active)
+            }
+            .tabItem { Label("Active", systemImage: "bolt.horizontal") }
+            .badge(active.awaitingCount)
+
             NavigationStack {
                 WorkspacesView(model: WorkspacesViewModel(client: client), onUnpair: onUnpair)
             }
@@ -81,6 +91,14 @@ private struct PairedView: View {
             PushRegistrar.shared.client = client
             await PushRegistrar.shared.requestAuthorization()
             PushRegistrar.shared.resend()
+        }
+        .task {
+            // Poll here, not inside the tab, so the Active badge stays live even
+            // while you're on Workspaces or Inbox.
+            while !Task.isCancelled {
+                await active.refresh()
+                try? await Task.sleep(for: .seconds(5))
+            }
         }
         .onChange(of: push.pendingThreadKey) { _, key in
             guard let key else { return }
