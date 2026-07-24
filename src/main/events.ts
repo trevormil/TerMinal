@@ -15,9 +15,11 @@ import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { readSettings } from './settings'
+import { openHitlCount, pushConfigured, sendPush } from './bridge/push'
 import { inferActivityKind } from './event-classifier'
 import {
   createDesktopChannel,
+  createPushChannel,
   createTelegramChannel,
   createWebhookChannel,
   dispatchAlert,
@@ -120,6 +122,15 @@ const alertChannels: NotifyChannel[] = [
   createTelegramChannel(readSettings),
   createDesktopChannel(readSettings, showDesktopNotification),
   createWebhookChannel(readSettings),
+  // A paired iPhone is just another channel — same alerts Telegram gets.
+  // Silently inert until an APNs key is dropped in and a device registers.
+  createPushChannel(
+    () => readSettings().bridge.enabled && pushConfigured(),
+    (input) => {
+      void sendPush(input)
+    },
+    openHitlCount,
+  ),
 ]
 
 // Fan one event out to every enabled alert channel.

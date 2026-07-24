@@ -40,6 +40,10 @@ export type Choice = {
   cwd?: string
   name?: string
   initialInput?: string
+  /** Submit initialInput automatically (send Enter). For sessions started with
+   *  no one at the Mac — e.g. spawned from the phone — that would otherwise sit
+   *  unsubmitted in the prompt. */
+  autoSubmit?: boolean
   ticketSlug?: string
   remote?: RemoteSession
   /** Set on the two sessions of a live-paired loop, linking them to a loop id. */

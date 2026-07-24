@@ -48,7 +48,7 @@ function detectForge(url) {
     if (f === 'github' || f === 'gitlab') return f
   } catch {}
   if (/github\.com/.test(url)) return 'github'
-  if (/gitlab|labs\.gauntletai/.test(url)) return 'gitlab'
+  if (/gitlab/.test(url)) return 'gitlab'
   return 'github'
 }
 

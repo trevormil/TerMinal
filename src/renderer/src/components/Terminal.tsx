@@ -553,7 +553,15 @@ export function TerminalPane({
       resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
       if (choice.initialInput) {
-        window.setTimeout(() => gt.pty.input(sessionKey, choice.initialInput || ''), 900)
+        window.setTimeout(() => {
+          gt.pty.input(sessionKey, choice.initialInput || '')
+          // A phone-spawned session has no one to press Enter. Submit for it,
+          // after a beat so the TUI has ingested the whole (multi-line) prompt —
+          // the embedded newlines are literal, only this \r submits.
+          if (choice.autoSubmit) {
+            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 600)
+          }
+        }, 900)
       }
     })
 

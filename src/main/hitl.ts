@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process'
 import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
-import { hitlRecurrenceKey } from './hitl-recurrence'
+import { hitlRecurrenceKey, hitlRecurrenceBump } from './hitl-recurrence'
+import { defaultSeverity, itemSeverity, shouldNotify, type HitlSeverity } from './hitl-severity'
 import {
   hitlActivityKind,
   hitlNotifyKind,
@@ -30,6 +31,8 @@ export type HitlSource =
   | 'listener'
   | 'completion-hook'
   | 'review-pattern'
+export { itemSeverity, type HitlSeverity } from './hitl-severity'
+
 export type HitlItem = {
   id: string
   title: string
@@ -39,6 +42,13 @@ export type HitlItem = {
   repoRoot?: string
   source: HitlSource
   status: 'open' | 'resolved'
+  /** Alert loudness — see HitlSeverity. Absent on legacy items ⇒ treated as
+   *  'push' so nothing that used to notify goes silent after the upgrade. */
+  severity?: HitlSeverity
+  /** When you first saw it. Absent ⇒ unread. Independent of resolve: an item
+   *  can be read-but-open (you saw it, haven't acted) or unread-and-resolved
+   *  (auto-resolved before you looked). */
+  readAt?: number
   createdAt: number
   resolvedAt?: number
   // Optional pointer back to the run that produced this HITL. Lets the HITL
@@ -87,6 +97,36 @@ function write(list: HitlItem[]): void {
 
 export function openCount(): number {
   return readHitl().filter((h) => h.status === 'open').length
+}
+
+/** Open items you haven't seen yet — the badge that should actually nag you. */
+export function unreadCount(): number {
+  return readHitl().filter((h) => h.status === 'open' && !h.readAt).length
+}
+
+/** Mark items read (viewed). Returns how many changed. */
+export function markHitlRead(ids: string[]): number {
+  const set = new Set(ids)
+  const list = readHitl()
+  let changed = 0
+  const next = list.map((h) => {
+    if (set.has(h.id) && !h.readAt) {
+      changed++
+      return { ...h, readAt: Date.now() }
+    }
+    return h
+  })
+  if (changed) write(next)
+  return changed
+}
+
+/** Mark every unread item read (open or resolved) — the "mark all read" sweep. */
+export function markAllHitlRead(): number {
+  return markHitlRead(
+    readHitl()
+      .filter((h) => !h.readAt)
+      .map((h) => h.id),
+  )
 }
 
 // HITL usually means "I need attention", but deterministic completion-hook
@@ -139,15 +179,15 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     (h) => h.status === 'open' && h.createdAt >= since && hitlRecurrenceKey(h) === fp,
   )
   if (dupIndex >= 0) {
-    const dup = {
-      ...existing[dupIndex],
-      occurrenceCount: (existing[dupIndex].occurrenceCount || 1) + 1,
-      lastOccurredAt: Date.now(),
-    }
+    // Bump the count instead of double-filing, but the recurrence is new
+    // information: the item goes back to unread and the notify decision runs
+    // the same severity-threshold gate a fresh filing would get.
+    const { item: dup, loud } = hitlRecurrenceBump(
+      existing[dupIndex],
+      readSettings().inbox.notifyThreshold,
+    )
     existing[dupIndex] = dup
     write(existing)
-    // Re-ping the activity feed so the operator sees the recurrence count,
-    // but don't double-file. Surface "still blocked, N occurrences".
     emitActivity(
       {
         kind: hitlActivityKind(input.source),
@@ -159,19 +199,26 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
         runId: input.runId,
         runSource: input.runSource,
         sessionId: input.sessionId,
+        suppressTelegram: true,
       },
-      { notify: false }, // don't re-fire the macOS notification
+      { notify: loud },
     )
+    if (loud) alwaysPingTelegram(dup)
     return dup
   }
   const item: HitlItem = {
     ...input,
     id: randomUUID(),
     status: 'open',
+    severity: input.severity ?? defaultSeverity(input.source),
     createdAt: Date.now(),
     occurrenceCount: 1,
   }
   write([item, ...readHitl()])
+  // Severity + the configurable threshold are the alert gate. At or above the
+  // threshold notifies (macOS/Telegram/phone); below it, the item just waits in
+  // the inbox for your next sweep. Default threshold 'urgent' → only urgent pings.
+  const loud = shouldNotify(itemSeverity(item), readSettings().inbox.notifyThreshold)
   emitActivity(
     {
       kind: hitlActivityKind(item.source),
@@ -187,11 +234,11 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
       sessionId: item.sessionId,
       suppressTelegram: true,
     },
-    { notify: true },
+    { notify: loud },
   )
-  // Belt-and-suspenders: HITL ALWAYS pings Telegram when configured, even if
-  // the general activity-feed notify toggle is off.
-  alwaysPingTelegram(item)
+  // HITL pings Telegram when configured even if the general feed toggle is off —
+  // but only at or above the configured notify threshold.
+  if (loud) alwaysPingTelegram(item)
   return item
 }
 

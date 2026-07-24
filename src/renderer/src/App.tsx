@@ -6,6 +6,7 @@ import {
   Grid2x2,
   LayoutDashboard,
   Mail,
+  Smartphone,
   Plus,
   Search,
   Server,
@@ -31,7 +32,14 @@ import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
 import { coerceSessionEngine } from './lib/engines'
-import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
+import type {
+  AppearanceCfg,
+  Engine,
+  FleetSession,
+  RemoteActiveSession,
+  SessionEngine,
+  TabContext,
+} from './lib/types'
 import { applyTheme } from './lib/themes'
 import { loadHiddenTabs } from './lib/tabVisibility'
 
@@ -223,7 +231,10 @@ export default function App() {
   const [fullscreen, setFullscreen] = useState(false)
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
-  const [inboxOpenCount, setInboxOpenCount] = useState(0)
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
+  // Sessions currently mirrored to the phone, polled so the header indicator is
+  // live as you register/off a session (or delete it from the phone).
+  const [remoteActive, setRemoteActive] = useState<RemoteActiveSession[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
@@ -317,9 +328,21 @@ export default function App() {
   }, [sessions.length])
   useEffect(() => {
     const tick = () =>
+      window.gt.remote
+        .active()
+        .then(setRemoteActive)
+        .catch(() => {})
+    tick()
+    const id = setInterval(tick, 4000)
+    return () => clearInterval(id)
+  }, [])
+  useEffect(() => {
+    const tick = () =>
       window.gt.hitl
         .list()
-        .then((items) => setInboxOpenCount(items.filter((h) => h.status === 'open').length))
+        .then((items) =>
+          setInboxUnreadCount(items.filter((h) => h.status === 'open' && !h.readAt).length),
+        )
         .catch(() => {})
     tick()
     const off = window.gt.activity.onEvent((ev) => {
@@ -400,6 +423,24 @@ export default function App() {
       markAttention(key, { reason: 'exited', at: Date.now(), exitCode: code })
     })
     return offExit
+  }, [])
+
+  // A session started from the phone (bridge spawn) lands here: main asks the
+  // renderer to open it so it gets a real tab and normal initialInput delivery,
+  // rather than an orphan pty with nothing driving it. Without this, the phone's
+  // "New session" registers a thread but never launches an agent — nothing ever
+  // replies. Routes through the same terminal:new path as any new session.
+  useEffect(() => {
+    const off = window.gt.onRemoteOpenSession((payload) => {
+      navigateTo('terminal:new', {
+        cwd: typeof payload.cwd === 'string' ? payload.cwd : '',
+        engine: typeof payload.engine === 'string' ? payload.engine : undefined,
+        initialInput: typeof payload.initialInput === 'string' ? payload.initialInput : '',
+        // No one is at the Mac — submit the prompt for it, or it just sits.
+        autoSubmit: true,
+      })
+    })
+    return off
   }, [])
 
   useEffect(() => {
@@ -495,6 +536,7 @@ export default function App() {
             (typeof payload.cwd === 'string' ? payload.cwd : activeWorkspaceRoot || '')
           const name = typeof payload.name === 'string' ? payload.name : ''
           const initialInput = typeof payload.initialInput === 'string' ? payload.initialInput : ''
+          const autoSubmit = payload.autoSubmit === true
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const model = typeof payload.model === 'string' ? payload.model : undefined
           const openrouterHarness =
@@ -512,6 +554,7 @@ export default function App() {
                 cwd,
                 name,
                 initialInput,
+                autoSubmit,
                 ticketSlug,
                 remote,
                 model,
@@ -1294,6 +1337,34 @@ export default function App() {
               Fleet
             </button>
           )}
+          {(() => {
+            // Live "is this session on my phone?" indicator. Matches the active
+            // session's engine id (== the remote record's agentSessionId), with
+            // cwd as a fallback. Hidden when there's no active agent session.
+            const s = sessions.find((x) => x.key === activeKey)
+            const sid = s?.info.sessionId || s?.choice.sessionId || ''
+            const cwd = s?.info.cwd || s?.choice.cwd || ''
+            if (!s || s.choice.engine === 'local') return null
+            const onPhone = remoteActive.find(
+              (r) => (sid && r.agentSessionId === sid) || (cwd && !sid && r.cwd === cwd),
+            )
+            return (
+              <div
+                style={noDrag}
+                title={
+                  onPhone
+                    ? `On your phone: ${onPhone.title}. Say "you can stop remote" to take it off.`
+                    : 'This session is local. Say "sync this to my phone" to go remote.'
+                }
+                className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+                  onPhone ? 'bg-[var(--gt-accent2)]/20 text-[var(--gt-accent2)]' : 'text-zinc-600'
+                }`}
+              >
+                <Smartphone size={13} strokeWidth={2} />
+                {onPhone ? 'On phone' : 'Local'}
+              </div>
+            )
+          })()}
           <button
             style={noDrag}
             onClick={() => {
@@ -1311,9 +1382,9 @@ export default function App() {
           >
             <Mail size={13} strokeWidth={2} />
             Inbox
-            {inboxOpenCount > 0 && (
+            {inboxUnreadCount > 0 && (
               <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
-                {inboxOpenCount}
+                {inboxUnreadCount}
               </span>
             )}
           </button>

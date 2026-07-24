@@ -55,6 +55,14 @@ describe('migrate', () => {
     )
   })
 
+  test('inbox notifyThreshold defaults to urgent and survives migration', () => {
+    expect(migrate({}).inbox.notifyThreshold).toBe('urgent')
+    expect(migrate({ inbox: { notifyThreshold: 'normal' } }).inbox.notifyThreshold).toBe('normal')
+    expect(migrate({ inbox: { notifyThreshold: 'low' } }).inbox.notifyThreshold).toBe('low')
+    // garbage falls back to the default rather than persisting
+    expect(migrate({ inbox: { notifyThreshold: 'bogus' } }).inbox.notifyThreshold).toBe('urgent')
+  })
+
   test('appearance defaults to dark and accepts light/system modes', () => {
     expect(migrate({}).appearance).toEqual({
       mode: 'dark',
@@ -273,6 +281,19 @@ describe('settings secrets', () => {
     })
     const next = mergeSettingsPatch(cur, { telegram: { notify: true } })
     expect(next.telegram).toEqual({ notify: true, control: false, botToken: 'bot', chatId: 'chat' })
+  })
+
+  test('an invalid bridge port in a patch keeps the current value', () => {
+    const cur = migrate({ bridge: { enabled: true, port: 9123 } })
+    for (const bad of [80, 0, -1, 65536, 1.5, NaN, 'nope']) {
+      const next = mergeSettingsPatch(cur, { bridge: { port: bad } } as any)
+      expect(next.bridge).toEqual({ enabled: true, port: 9123 })
+    }
+    // A valid port still applies, and preserves siblings.
+    expect(mergeSettingsPatch(cur, { bridge: { port: 9200 } }).bridge).toEqual({
+      enabled: true,
+      port: 9200,
+    })
   })
 
   test('legacy third-party model settings are ignored on migrate and patch', () => {

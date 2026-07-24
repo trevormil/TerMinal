@@ -83,7 +83,7 @@ case "$classification" in
       exit 0
     fi
     # Worktree-isolated codex run that ONLY fixes prettier formatting + pushes.
-    wt="$HOME/CompSci/gauntlet/.worktrees/$(basename "$TERMINAL_REPO")/ci-fix-$CI_PIPELINE_ID"
+    wt="${TERMINAL_WORKTREES_ROOT:-$(dirname "$TERMINAL_REPO")/.worktrees}/$(basename "$TERMINAL_REPO")/ci-fix-$CI_PIPELINE_ID"
     git worktree add -B "ci-fix/$CI_MR_IID-$CI_PIPELINE_ID" "$wt" "origin/${CI_BRANCH:-main}" 2>&1
     (
       cd "$wt"

@@ -79,7 +79,7 @@ The schedule needs a repo with an `origin` remote (schedule save runs
 no origin → save fails with "local repo has no origin remote").
 
 1. Create a scratch repo (any forge you have auth for) and clone it on the
-   Mac, e.g. `~/CompSci/gauntlet/terminal-e2e-scratch`.
+   Mac, e.g. `~/terminal-e2e-scratch`.
 2. Commit a **script agent** — `.agents/e2e-verify.sh` (script agents are
    discovered by filename, id must match `[a-z0-9][a-z0-9-]*`; the runner
    execs the script INSTEAD of building an engine command, so this run is
@@ -305,7 +305,7 @@ acceptance ("a documented, reproducible run").
 
 | Item | Expected | Observed |
 |---|---|---|
-| Date / host (id + label) | — | 2026-07-17 22:44 → 2026-07-18 10:10 EDT, host `TM` (trevormil-server) |
+| Date / host (id + label) | — | 2026-07-17 22:44 → 2026-07-18 10:10 EDT, host `TM` (Ubuntu workstation) |
 | Schedule id / spec | `*/10 * * * *` | `3151b43c…` on repo `terminal-e2e-scratch`, bare runtime, engine codex |
 | Fire with lid closed | run at scheduled minute ±1 min | 71 runs at 10-min cadence across 13 distinct hours, continuous overnight (Mac asleep); no missed windows in the record |
 | Run visible in Runs tab w/ host badge | yes, after manual refresh | yes — Runs tab lists all runs with `TM` host chip |

@@ -163,6 +163,43 @@ describe('REMOTE_SCRIPT files traversal guard', () => {
   })
 })
 
+describe('REMOTE_SCRIPT hitl.markRead', () => {
+  test('persists readAt on the owning host so the fan-in stays read', () => {
+    const dir = mkRepo()
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-home-')))
+    try {
+      const cfgDir = join(home, '.config', 'TerMinal')
+      mkdirSync(cfgDir, { recursive: true })
+      writeFileSync(
+        join(cfgDir, 'hitl.json'),
+        JSON.stringify([
+          { id: 'a', title: 'A', source: 'agent', status: 'open', createdAt: 1 },
+          { id: 'b', title: 'B', source: 'agent', status: 'open', createdAt: 1, readAt: 42 },
+          { id: 'c', title: 'C', source: 'agent', status: 'open', createdAt: 1 },
+        ]),
+      )
+
+      const changed = runRemoteScript(
+        { op: 'hitl.markRead', ids: ['a', 'b', 'missing'] },
+        { cwd: dir, home },
+      )
+      expect(changed.trim()).toBe('1') // a flips; b was already read; missing is ignored
+
+      // Round-trip through the same hitl.list the fan-in uses: a and b read, c not.
+      const list = JSON.parse(runRemoteScript({ op: 'hitl.list' }, { cwd: dir, home }))
+      const byId = Object.fromEntries(
+        list.map((h: { id: string; readAt?: number }) => [h.id, h.readAt]),
+      )
+      expect(byId.a).toBeGreaterThan(0)
+      expect(byId.b).toBe(42)
+      expect(byId.c).toBeUndefined()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('REMOTE_SCRIPT stale-run sweep', () => {
   test('finalizes a >2h running record but leaves a fresh one alone', () => {
     const dir = mkRepo()

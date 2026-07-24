@@ -269,6 +269,7 @@ function schedulesSave(input){const list=schedules();const idx=list.findIndex(s=
 function hitlList(){try{const p=path.join(cfg(),'hitl.json');if(!exists(p))return [];const a=JSON.parse(fs.readFileSync(p,'utf8'));return Array.isArray(a)?a.filter(h=>h&&h.status==='open'):[]}catch{return []}}
 function hitlResolve(id,resolved){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const it=a.find(h=>h&&h.id===id);if(!it)return false;if(resolved===false){it.status='open';delete it.resolvedAt}else{it.status='resolved';it.resolvedAt=Date.now()}writeJson(p,a);return true}catch{return false}}
 function hitlRemove(id){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));writeJson(p,a.filter(h=>h&&h.id!==id));return true}catch{return false}}
+function hitlMarkRead(ids){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const set=new Set(Array.isArray(ids)?ids:[]);let n=0;for(const h of a){if(h&&set.has(h.id)&&!h.readAt){h.readAt=Date.now();n++}}if(n)writeJson(p,a);return n}catch{return 0}}
 function runCancel(id){try{const p=path.join(cfg(),'cron-runs',id+'.json');const rec=JSON.parse(fs.readFileSync(p,'utf8'));if(rec.runnerPid){try{process.kill(rec.runnerPid,'SIGTERM')}catch(e){}}return true}catch(e){return false}}
 function scheduleRemove(id){const next=schedules().filter(s=>s.id!==id);writeJson(path.join(cfg(),'schedules.json'),next);return true}
 function scheduleToggle(id,enabled){const list=schedules();const s=list.find(x=>x.id===id);if(!s)return false;s.enabled=!!enabled;writeJson(path.join(cfg(),'schedules.json'),list);return true}
@@ -285,7 +286,7 @@ else if(op==='docs.list')out(docs(root));else if(op==='docs.get')out(readFile(ro
 else if(op==='agents.list')out(readRepoAgents(root));else if(op==='agents.script')out(readAgentScript(root,input.id));
 else if(op==='schedules.list')out(schedules());else if(op==='schedules.runs')out(cronRuns(input.id,200));else if(op==='schedules.runLog')out(runLog(input.runId));
 else if(op==='schedules.save')out(schedulesSave(input.schedule));else if(op==='schedules.remove')out(scheduleRemove(input.id));else if(op==='schedules.toggle')out(scheduleToggle(input.id,input.enabled));else if(op==='schedules.runNow'){const s=schedules().find(x=>x.id===input.id);if(!s)out({error:'schedule not found'});else out(runStart(root,{agentId:s.agentId,agentTitle:s.agentTitle,engine:s.engine,model:s.model,steps:[{label:s.agentTitle||s.agentId,prompt:s.prompt}],inPlace:false,worktreesDir:input.worktreesDir,enginePath:input.enginePath,scheduleId:s.id}))}
-else if(op==='hitl.list')out(hitlList());else if(op==='hitl.resolve')out(hitlResolve(input.id,input.resolved));else if(op==='hitl.remove')out(hitlRemove(input.id));
+else if(op==='hitl.list')out(hitlList());else if(op==='hitl.resolve')out(hitlResolve(input.id,input.resolved));else if(op==='hitl.remove')out(hitlRemove(input.id));else if(op==='hitl.markRead')out(hitlMarkRead(input.ids));
 else if(op==='runs.all')out(unifiedRuns());else if(op==='runs.log')out(runLog(input.runId));else if(op==='runs.cancel')out(runCancel(input.id));
 else if(op==='runs.start')out(runStart(root,input.run||{}));
 else if(op==='sessions.list')out(sessionsList(root));else if(op==='sessions.get')out(sessionGet(root,input.slug));
@@ -438,6 +439,8 @@ export const remoteHitl = {
     remoteJson<boolean>(remote, { op: 'hitl.resolve', id, resolved }),
   remove: (remote: RemoteSessionRef, id: string) =>
     remoteJson<boolean>(remote, { op: 'hitl.remove', id }),
+  markRead: (remote: RemoteSessionRef, ids: string[]) =>
+    remoteJson<number>(remote, { op: 'hitl.markRead', ids }),
 }
 export const remoteRuns = {
   all: (remote: RemoteSessionRef) => remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }),

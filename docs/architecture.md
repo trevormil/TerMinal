@@ -37,6 +37,61 @@ Each `SessionView` mounts:
   active, so backgrounded sessions don't poll).
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
 
+## Remote sessions (TerMinal Remote for iOS)
+
+A session **opts in** by running the `/remote-terminal` skill; nothing is
+scraped and the phone never touches a pty. The agent posts what it wants you to
+see and reads what you send back, so this is identical for claude, codex, or
+anything else that can run a shell command.
+
+- **`src/main/remote-sessions.ts`** is the store: two files per session under
+  `~/.config/TerMinal/remote/` — a JSON record and an append-only JSONL log.
+  Plain files on purpose, so `bin/terminal-cli` can read and write them without
+  importing the app.
+- **`bin/terminal-cli remote`** is the agent's side: `register`, `post`,
+  `ask` (blocks until the phone replies, printing it on stdout), `check`
+  (non-blocking), `end`.
+- **Replies queue behind a delivery cursor**, so a message sent while the agent
+  is busy is handed over at its next check — exactly once — rather than needing
+  the agent to be blocked at that moment.
+- **`.claude/hooks/remote-check.sh`** is the always-on listener: a Stop hook
+  that blocks the turn ending when something is waiting, so replies arrive
+  without the agent polling. Silent and exit 0 wherever no session is
+  registered, which is most sessions.
+- **`src/main/bridge/`** is a small authenticated JSON API — no streaming.
+  Sessions: `GET /v1/remote` (sessions + HITL), `POST /v1/remote/new`,
+  `DELETE /v1/remote/:id`, `GET /v1/remote/:id/messages`,
+  `POST /v1/remote/:id/reply`, `POST /v1/remote/:id/end`,
+  `GET /v1/remote/:id/image/:name`. HITL: `GET /v1/hitl`,
+  `POST /v1/hitl/read`, `POST /v1/hitl/:id`. Workspaces: `GET /v1/repos`,
+  `GET /v1/workspaces`, `GET /v1/workspaces/:kind` (lists),
+  `GET /v1/workspace/:kind` (drill-downs), `GET /v1/engines`. Push:
+  `POST /v1/devices`. All bearer-authenticated except two bootstrap routes:
+  `GET /v1/health` (liveness probe, reveals nothing but "a bridge is here")
+  and `GET /v1/pair` (tailnet auto-pairing — the caller has no token yet by
+  definition; gated instead by a CGNAT-range (100.64.0.0/10) remote-address
+  pre-check, a `tailscale whois` confirmation that the peer belongs to the
+  same tailnet user that owns this Mac, and rate limiting).
+- **Off by default.** Nothing binds a port until `settings.bridge.enabled`;
+  `will-quit` releases it.
+- **HTTPS, self-signed, pinned.** The pairing QR carries base64 SHA-256 of the
+  DER certificate and the client accepts only that one. Token, cert and key
+  live at `~/.config/TerMinal/bridge/` (0600) rather than `settings.json`,
+  whose `safeStorage` sealing drops secrets outright when OS encryption is
+  unavailable — which would silently unpair a phone in dev builds.
+- **HITL fans out to remote hosts**, so an agent blocked on `tm` still reaches
+  the phone.
+- **Push is an alert channel.** `createPushChannel` sits alongside
+  telegram/desktop/webhook in `dispatchAlert`, and `src/main/bridge/push.ts`
+  signs an ES256 JWT and posts to APNs directly from this Mac.
+
+The client lives at [`ios/`](../ios/README.md). Design records:
+[ADR-0006](decisions/0006-mobile-terminal-bridge.md) (transport, pairing,
+pinning) and [ADR-0008](decisions/0008-remote-sessions-register-themselves.md)
+(the registration model, superseding the terminal-mirror and transcript-chat
+designs); shipping path:
+[runbooks/ios-testflight.md](runbooks/ios-testflight.md).
+
 ## Plugins & tabs (auto-discovery)
 
 Both are "just a folder" discovered with Vite `import.meta.glob`:
