@@ -1285,10 +1285,10 @@ function spawnPrompt(remoteId: string, task?: string): string {
     `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
     `the safe default and say so in a post.`,
     ``,
-    `This session stays live between turns — a Stop hook parks it waiting for the`,
-    `next phone message. So when you finish a task, post the result and just stop;`,
-    `you'll be handed the next instruction automatically. You do NOT need to keep`,
-    `an ask open to stay reachable.`,
+    `This session stays live between turns. When you finish a task, post the result`,
+    `and just stop — the human's next phone message is handed to you automatically`,
+    `as your next instruction, so you do NOT need to keep an ask open to stay`,
+    `reachable.`,
   ]
   if (task) lines.push(``, `Your task:`, ``, task)
   else
@@ -1297,6 +1297,47 @@ function spawnPrompt(remoteId: string, task?: string): string {
       `No task was given — post that you are ready and stop; wait for the first message.`,
     )
   return lines.join('\n')
+}
+
+// Harness-agnostic listener. Claude keeps its remote-check.sh Stop hook, which
+// parks INSIDE a turn and hands the phone message back as the block reason — but
+// that hook is Claude-only, so Codex/cursor/hermes finish a turn, idle at their
+// prompt, and never see the queued reply. For those engines the APP pushes the
+// reply straight into the live pty (bracketed paste + Enter) so the idle agent
+// receives it as its next instruction. Best-effort: no live pty → the reply
+// still sits in the log for a `terminal-cli remote` collect.
+function deliverReplyToPty(remoteId: string, text: string, images: string[]): void {
+  try {
+    const remote = readRemoteSession(remoteId)
+    if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
+    const live = [...sessions.values()]
+    // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
+    // set for every engine now). cwd is ambiguous — two sessions can share a repo —
+    // so only fall back to it when it resolves to EXACTLY one live session; never
+    // guess and inject into the wrong one.
+    let match = remote.agentSessionId
+      ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
+      : undefined
+    if (!match && remote.cwd) {
+      const inCwd = live.filter((s) => s.pinned.cwd === remote.cwd)
+      if (inCwd.length === 1) match = inCwd[0]
+    }
+    if (!match) return
+    const pty = match.pty
+    const imageNote = images.length
+      ? `\n\n[${images.length} image(s) attached — read them with: terminal-cli remote messages --id ${remoteId}]`
+      : ''
+    // A short reminder so the agent treats this as a phone message AND posts its
+    // reply back — otherwise its answer only shows in the terminal, never on the
+    // phone (the phone thread shows posts, not raw terminal output).
+    const body =
+      `[Phone message via TerMinal Remote — reply by posting: ` +
+      `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
+    pty.write(`\x1b[200~${body}\x1b[201~`)
+    setTimeout(() => pty.write('\r'), 80)
+  } catch {
+    /* best-effort — the log-collect path remains */
+  }
 }
 
 const bridgeDeps: BridgeDeps = {
@@ -1315,9 +1356,14 @@ const bridgeDeps: BridgeDeps = {
       messages: messageCount(s.id),
     })),
   messages: (id, opts) => readMessages(id, opts),
-  // Queued, not delivered: the agent collects it at its next check, so a reply
-  // sent while it is busy is never lost.
-  reply: (id, text, images) => !!postMessage(id, 'user', text, images ?? []),
+  // Always log the reply (phone history + the collect cursor). For engines
+  // without a Claude-style Stop hook, ALSO push it into the live pty so the idle
+  // agent actually receives it — otherwise Codex/cursor "don't listen".
+  reply: (id, text, images) => {
+    const ok = !!postMessage(id, 'user', text, images ?? [])
+    if (ok) deliverReplyToPty(id, text, images ?? [])
+    return ok
+  },
   endRemote: (id) => !!endRemoteSession(id),
   deleteRemote: (id) => deleteRemoteSession(id),
   saveImage: (id, data, ext) => saveImage(id, data, ext),
