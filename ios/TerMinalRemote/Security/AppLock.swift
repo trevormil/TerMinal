@@ -20,13 +20,19 @@ final class AppLock {
     /// locked and re-locks whenever it leaves the foreground.
     private(set) var locked: Bool
 
+    /// Observed mirrors of Keychain/UserDefaults state — reading those stores
+    /// directly is invisible to @Observable, so a Settings screen wouldn't
+    /// update the instant you set a passcode. These do.
+    private(set) var isEnabled: Bool
+    private(set) var passcodeLength: Int
+
     private init() {
+        isEnabled = Self.passcodeSet()
+        passcodeLength = UserDefaults.standard.integer(forKey: "appLock.length")
         locked = Self.passcodeSet()
     }
 
     // ---- state ----------------------------------------------------------
-
-    var isEnabled: Bool { Self.passcodeSet() }
 
     var biometricsOptIn: Bool {
         get { UserDefaults.standard.bool(forKey: "appLock.biometrics") }
@@ -57,19 +63,21 @@ final class AppLock {
         if ok { await MainActor.run { locked = false } }
     }
 
-    /// Digits in the stored passcode (4 or 6), so the lock pad shows the right
-    /// dot count and auto-submits at the right length. 0 when none set.
-    var passcodeLength: Int { UserDefaults.standard.integer(forKey: "appLock.length") }
-
     func setPasscode(_ code: String) {
         Self.store(code)
         UserDefaults.standard.set(code.count, forKey: "appLock.length")
+        passcodeLength = code.count
+        isEnabled = true
         // Setting a passcode shouldn't lock you out of the session you're in.
         locked = false
     }
 
     func removePasscode() {
         Self.deleteRecord()
+        UserDefaults.standard.removeObject(forKey: "appLock.length")
+        passcodeLength = 0
+        isEnabled = false
+        biometricsOptIn = false
         locked = false
     }
 
