@@ -99,6 +99,30 @@ describe('dispatchAlert', () => {
     expect(on.calls).toHaveLength(1)
   })
 
+  test('routes by category: generic activity reaches desktop but NOT the phone', () => {
+    // A routine ticket filing — the kind of thing that was spamming the phone.
+    const ticket = { kind: 'ticket-filed', title: 'Filed #20' }
+    const desktop = recordingChannel('desktop')
+    const push = recordingChannel('push')
+    dispatchAlert([desktop.ch, push.ch], ticket)
+    expect(desktop.calls).toHaveLength(1) // desktop wants tickets by default
+    expect(push.calls).toHaveLength(0) // phone does not
+  })
+
+  test('the phone still gets inbox items and completions', () => {
+    const push = recordingChannel('push')
+    dispatchAlert([push.ch], ev) // ev has a hitlId → needs-you
+    dispatchAlert([push.ch], { kind: 'task-complete', title: 'Done' })
+    expect(push.calls).toHaveLength(2)
+  })
+
+  test('a matrix override reroutes a channel', () => {
+    const push = recordingChannel('push')
+    // opt the phone INTO code review
+    dispatchAlert([push.ch], { kind: 'pr-merged', title: 'Merged #7' }, { push: { 'code-review': true } })
+    expect(push.calls).toHaveLength(1)
+  })
+
   test('a channel throwing synchronously does not block the others', () => {
     const boom: NotifyChannel = {
       id: 'webhook',

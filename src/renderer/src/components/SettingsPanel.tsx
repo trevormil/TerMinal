@@ -34,6 +34,8 @@ import {
   Plus,
   Trash2,
   BellRing,
+  BellDot,
+  Check,
   ArrowUpCircle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -69,6 +71,16 @@ import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } fr
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 import { EngineModelPicker } from './EngineModelPicker'
+import {
+  CATEGORY_META,
+  CHANNEL_META,
+  channelWants,
+  NOTIFY_CATEGORIES,
+  NOTIFY_CHANNELS,
+  type NotifyCategory,
+  type NotifyChannelId,
+  type NotifyMatrix,
+} from '../../../shared/notifications'
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
@@ -504,6 +516,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'mobile', title: 'Mobile', icon: Smartphone },
   { id: 'suggestions', title: 'Replies', icon: Sparkles },
   { id: 'alerts', title: 'Alerts', icon: BellRing },
+  { id: 'notifications', title: 'Routing', icon: BellDot },
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
@@ -1464,6 +1477,78 @@ function TicketProviderPanel() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// The category × channel routing grid. A checked cell = that channel fires for
+// that category; effective state falls back to the shipped defaults per cell.
+function NotificationMatrix({
+  matrix,
+  onToggle,
+  onReset,
+}: {
+  matrix: NotifyMatrix
+  onToggle: (ch: NotifyChannelId, cat: NotifyCategory) => void
+  onReset: () => void
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="w-full py-1.5 text-left" />
+              {NOTIFY_CHANNELS.map((ch) => (
+                <th
+                  key={ch}
+                  className="px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-400"
+                >
+                  {CHANNEL_META[ch].label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {NOTIFY_CATEGORIES.map((cat) => (
+              <tr key={cat} className="border-t border-[var(--gt-border)]">
+                <td className="py-1.5 pr-3">
+                  <div className="text-[12px] font-medium text-zinc-200">
+                    {CATEGORY_META[cat].label}
+                  </div>
+                  <div className="text-[10px] leading-tight text-zinc-600">
+                    {CATEGORY_META[cat].desc}
+                  </div>
+                </td>
+                {NOTIFY_CHANNELS.map((ch) => {
+                  const on = channelWants(ch, cat, matrix)
+                  return (
+                    <td key={ch} className="px-2 text-center">
+                      <button
+                        onClick={() => onToggle(ch, cat)}
+                        title={`${on ? 'Disable' : 'Enable'} ${CATEGORY_META[cat].label} → ${CHANNEL_META[ch].label}`}
+                        className={`inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded transition-colors ${
+                          on
+                            ? 'bg-[var(--gt-accent)]/25 text-[var(--gt-accent-light)]'
+                            : 'bg-black/20 text-transparent hover:bg-white/5'
+                        }`}
+                      >
+                        <Check size={13} strokeWidth={2.5} />
+                      </button>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button
+        onClick={onReset}
+        className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+      >
+        Reset to defaults
+      </button>
     </div>
   )
 }
@@ -2889,7 +2974,7 @@ export function SettingsPanel({
                 id="alerts"
                 icon={BellRing}
                 title="Alert channels"
-                desc="Where completion/blocker/HITL pings go. Every enabled channel receives every alert; a failing channel never blocks the others."
+                desc="Turn each channel on/off and test it. What each channel actually fires for is set below in Notification routing; a failing channel never blocks the others."
               >
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -3010,6 +3095,27 @@ export function SettingsPanel({
                     )}
                   </div>
                 </div>
+              </Section>
+
+              {/* Notification routing matrix */}
+              <Section
+                id="notifications"
+                icon={BellDot}
+                title="Notification routing"
+                desc="Which kinds of events reach which channel. The phone (Push) stays quiet by default — only things that need you and completions."
+              >
+                <NotificationMatrix
+                  matrix={s.notifications.matrix}
+                  onToggle={(ch, cat) => {
+                    const nextVal = !channelWants(ch, cat, s.notifications.matrix)
+                    const next: NotifyMatrix = {
+                      ...s.notifications.matrix,
+                      [ch]: { ...(s.notifications.matrix[ch] || {}), [cat]: nextVal },
+                    }
+                    save({ notifications: { matrix: next } })
+                  }}
+                  onReset={() => save({ notifications: { matrix: {} } })}
+                />
               </Section>
 
               {/* Telegram */}

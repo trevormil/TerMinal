@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
+import { NOTIFY_CATEGORIES, NOTIFY_CHANNELS, type NotifyMatrix } from '../shared/notifications'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -86,6 +87,8 @@ export type BridgeCfg = {
   enabled: boolean
   port: number
 }
+/** User overrides on the notification matrix; {} means "all shipped defaults". */
+export type NotificationsCfg = { matrix: NotifyMatrix }
 export type RemotePlatform = 'auto' | 'linux' | 'macos'
 export type RemoteHost = {
   id: string
@@ -106,6 +109,8 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  /** Per-channel × per-category notification routing (see shared/notifications). */
+  notifications: NotificationsCfg
   bridge: BridgeCfg
   appearance: AppearanceCfg
   apps: AppsCfg
@@ -202,6 +207,7 @@ export function defaultSettings(): Settings {
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
     inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'urgent' },
+    notifications: { matrix: {} }, // {} = ship defaults (shared/notifications DEFAULT_MATRIX)
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
     appearance: {
       mode: 'dark',
@@ -399,6 +405,20 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.suggestions.autoModel === 'string') {
       s.suggestions.autoModel = r.suggestions.autoModel.trim()
     }
+  }
+  if (r.notifications?.matrix && typeof r.notifications.matrix === 'object') {
+    // Copy only well-formed channel → category → boolean entries; ignore junk
+    // so a hand-edited file can never crash the dispatch.
+    const clean: NotifyMatrix = {}
+    for (const [ch, cats] of Object.entries(r.notifications.matrix as Record<string, unknown>)) {
+      if (!NOTIFY_CHANNELS.includes(ch as never) || !cats || typeof cats !== 'object') continue
+      const row: Record<string, boolean> = {}
+      for (const [cat, val] of Object.entries(cats as Record<string, unknown>)) {
+        if (NOTIFY_CATEGORIES.includes(cat as never) && typeof val === 'boolean') row[cat] = val
+      }
+      if (Object.keys(row).length) (clean as Record<string, unknown>)[ch] = row
+    }
+    s.notifications.matrix = clean
   }
   if (r.bridge && typeof r.bridge === 'object') {
     if (typeof r.bridge.enabled === 'boolean') s.bridge.enabled = r.bridge.enabled
