@@ -63,16 +63,17 @@ struct PairingView: View {
                             error = nil
                             tailscaling = true
                         } label: {
-                            Text(
-                                "On Tailscale? Enter your Mac's MagicDNS name instead"
-                                    + " — no QR needed."
-                            )
-                            .font(GT.sans(12))
-                            .foregroundStyle(GT.accent2)
-                            .multilineTextAlignment(.center)
+                            Label("Pair over Tailscale", systemImage: "network")
+                                .frame(maxWidth: .infinity)
+                                .gtSecondaryButton()
                         }
                         .buttonStyle(.plain)
-                        .padding(.top, 4)
+
+                        Text("Enter your Mac's MagicDNS name — no QR needed.")
+                            .font(GT.sans(11))
+                            .foregroundStyle(GT.textFaint)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 2)
                     }
                     Spacer(minLength: 24)
                 }
