@@ -225,12 +225,16 @@ private struct SeverityTag: View {
         }
     }
     var body: some View {
-        Text(tier.0)
-            .font(GT.sans(9, .semibold))
-            .foregroundStyle(tier.1)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tier.1.opacity(0.12))
-            .clipShape(Capsule())
+        // "normal" is the common tier — a constant tag on nearly every row is
+        // noise. Only urgent/low carry scanning signal.
+        if severity != "normal" {
+            Text(tier.0)
+                .font(GT.sans(9, .semibold))
+                .foregroundStyle(tier.1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(tier.1.opacity(0.12))
+                .clipShape(Capsule())
+        }
     }
 }

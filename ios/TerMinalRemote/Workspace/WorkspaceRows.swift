@@ -74,10 +74,10 @@ struct RunRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(run.title).font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
                     HStack(spacing: 6) {
+                        // Logo alone identifies the engine — the text name was
+                        // just repeating it.
                         EngineLogo(engine: run.engine, size: 11)
-                        Text(WsEngine.label(for: run.engine))
-                            .font(GT.sans(10)).foregroundStyle(GT.textFaint)
-                        Text("· \(run.branch)").font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                        Text(run.branch).font(GT.mono(10)).foregroundStyle(GT.textFaint)
                         Text("· \(relativeTime(run.startedAt))")
                             .font(GT.mono(10)).foregroundStyle(GT.textFaint)
                     }

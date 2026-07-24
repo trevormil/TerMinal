@@ -163,7 +163,7 @@ export function AutomationInboxView({ ctx }: { ctx: TabContext }) {
               {counts && (
                 <span className="inline-flex items-center gap-1.5 text-[10.5px]">
                   {counts.new > 0 && <Badge tone="blue">{counts.new} new</Badge>}
-                  <Badge tone="green">{counts.done} done</Badge>
+                  {counts.done > 0 && <Badge tone="green">{counts.done} done</Badge>}
                   {counts.failed + counts['dead-letter'] > 0 && (
                     <Badge tone="red">{counts.failed + counts['dead-letter']} failed</Badge>
                   )}

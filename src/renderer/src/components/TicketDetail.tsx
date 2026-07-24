@@ -255,7 +255,9 @@ export function TicketDetail({
             onChanged()
           }}
         />
-        <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+        {selected.horizon !== 'now' && (
+          <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+        )}
         {selected.provider === 'obsidian' && (
           <button
             onClick={() => window.gt.tickets.openInObsidian(selected.slug)}

@@ -20,11 +20,6 @@ extension WsEngine {
         .init(id: "openai-compat", label: "Self-hosted"),
         .init(id: "local", label: "Local"),
     ]
-
-    /// Display label for an arbitrary engine id (e.g. one stored on a session).
-    static func label(for id: String) -> String {
-        fallback.first { $0.id == id }?.label ?? id.capitalized
-    }
 }
 
 /// The engine's wordmark, mirroring the desktop's EngineLogo: bundled art where
