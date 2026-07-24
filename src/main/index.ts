@@ -940,11 +940,18 @@ function pollActivity() {
     const focusedHere = key === activeKey && (win?.isFocused() ?? false)
     const label = s.pinned.name || basename(s.pinned.cwd) || 'session'
     const st = readTranscriptStats(sid)
+    // Say WHAT the agent just did, not a generic "ready". The turn's closing
+    // message is the most honest "what happened"; fall back to the session's AI
+    // title or the last tool. Title carries a headline snippet so the
+    // notification is legible without opening anything.
+    const summary =
+      t.summary || st.aiTitle || (st.lastAction ? `ran ${st.lastAction.tool}` : 'finished its turn')
+    const headline = summary.length > 72 ? `${summary.slice(0, 71)}…` : summary
     emitActivity(
       {
         kind: 'task-complete',
-        title: `${label} · ready`,
-        detail: st.aiTitle || (st.lastAction ? `done — ${st.lastAction.tool}` : 'Turn complete'),
+        title: `${label} — ${headline}`,
+        detail: summary,
         repo: repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || ''),
         repoRoot: repoRootOf(s.pinned.cwd),
         sessionId: sid,

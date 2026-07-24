@@ -519,7 +519,25 @@ export function findSessionFile(sessionId: string): string | null {
  * mid-work ('tool_use'); `id` dedupes so a completion fires once. Tail-only so
  * it's cheap to poll across many sessions.
  */
-export function lastAssistantTurn(file: string): { id: string; endTurn: boolean } | null {
+/** The agent's closing text of the last turn — the "what just happened" summary
+ *  for the completion notification. First text block, whitespace-collapsed and
+ *  clipped to a headline length. */
+export function lastAssistantMessage(m: { content?: unknown }): string {
+  const content = m?.content
+  const text = Array.isArray(content)
+    ? content
+        .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+        .map((b: any) => b.text)
+        .join(' ')
+    : typeof content === 'string'
+      ? content
+      : ''
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+export function lastAssistantTurn(
+  file: string,
+): { id: string; endTurn: boolean; summary: string } | null {
   try {
     const size = statSync(file).size
     if (!size) return null
@@ -541,6 +559,7 @@ export function lastAssistantTurn(file: string): { id: string; endTurn: boolean 
         return {
           id: String(m.id || o.uuid || o.timestamp || i),
           endTurn: m.stop_reason === 'end_turn',
+          summary: lastAssistantMessage(m),
         }
       }
     }

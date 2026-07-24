@@ -3,12 +3,30 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  lastAssistantMessage,
   parseCodexSessionFile,
   parseCursorSessionFile,
   parseObservabilityIndexRecordsFile,
   parseTranscriptDetailFile,
   parseTranscriptFile,
 } from './data'
+
+describe('lastAssistantMessage', () => {
+  test('joins text blocks and collapses whitespace', () => {
+    expect(
+      lastAssistantMessage({
+        content: [
+          { type: 'text', text: 'Opened PR #125.\n\nAll  tests green.' },
+          { type: 'tool_use', name: 'Bash' },
+        ],
+      }),
+    ).toBe('Opened PR #125. All tests green.')
+  })
+  test('handles a plain string body and empty content', () => {
+    expect(lastAssistantMessage({ content: 'done' })).toBe('done')
+    expect(lastAssistantMessage({})).toBe('')
+  })
+})
 
 describe('parseCodexSessionFile', () => {
   test('extracts picker metadata from Codex JSONL sessions', () => {
