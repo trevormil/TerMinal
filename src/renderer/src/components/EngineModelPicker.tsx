@@ -2,7 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import type { Engine } from '../lib/types'
-import { engineLabel, ENGINE_MODELS as MODELS, ENGINE_VENDOR as VENDOR } from '../lib/engines'
+import {
+  engineLabel,
+  ENGINE_MODELS as MODELS,
+  ENGINE_VENDOR as VENDOR,
+  type ModelOption,
+} from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 
 // One DRY surface for the "pick engine + model" UX everywhere a run is
@@ -32,6 +37,11 @@ export function EngineModelPicker({
 }) {
   const engineList = engines ?? (Object.keys(MODELS) as Engine[])
   const [open, setOpen] = useState(false)
+  // Cursor's catalog is served by its CLI, so new models — and anything Cursor
+  // Router adds — show up without a release. Falls back to the static list.
+  const [cursorModels, setCursorModels] = useState<ModelOption[] | null>(null)
+  const modelsFor = (e: Engine): ModelOption[] =>
+    e === 'cursor' ? (cursorModels ?? MODELS.cursor) : MODELS[e]
   const [menuPos, setMenuPos] = useState<MenuPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -60,6 +70,27 @@ export function EngineModelPicker({
       })
     }
   }
+
+  // Pull Cursor's catalog when the menu first opens, not on mount: it shells
+  // out to cursor-agent, and most pickers are never opened.
+  useEffect(() => {
+    if (!open || cursorModels || !engineList.includes('cursor')) return
+    let alive = true
+    void window.gt
+      .cursorModels?.()
+      .then((live) => {
+        if (!alive || !live?.length) return
+        setCursorModels(
+          live.map((m) => ({ id: m.id, label: m.id === 'auto' ? 'auto · Router' : m.id })),
+        )
+      })
+      .catch(() => {
+        /* CLI missing or logged out — the static catalog stands */
+      })
+    return () => {
+      alive = false
+    }
+  }, [open, cursorModels, engineList])
 
   useEffect(() => {
     if (!open) return
@@ -149,7 +180,7 @@ export function EngineModelPicker({
                     >
                       Default
                     </button>
-                    {MODELS[e].map((m) => {
+                    {modelsFor(e).map((m) => {
                       const selected = isActive && model === m.id
                       return (
                         <button
