@@ -119,6 +119,17 @@ struct RemoteThreadView: View {
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            // Live agent state while you chat — the 2s poll keeps it honest.
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 5) {
+                    GTStatusDot(status: model.status)
+                    Text(statusLabel)
+                        .font(GT.sans(11, .medium))
+                        .foregroundStyle(GT.textMuted)
+                }
+            }
+        }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }
@@ -146,6 +157,15 @@ struct RemoteThreadView: View {
     }
 
     private var canSend: Bool { !draft.isEmpty || pendingImage != nil }
+
+    private var statusLabel: String {
+        switch model.status {
+        case "awaiting": return "asking"
+        case "idle": return "idle"
+        case "ended": return "done"
+        default: return "working"
+        }
+    }
 
     private var endedBanner: some View {
         HStack(spacing: 6) {
