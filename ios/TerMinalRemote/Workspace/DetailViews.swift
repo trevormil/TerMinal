@@ -228,24 +228,12 @@ struct PrDetailView: View {
 
                 if let findings = pr.findings, !findings.isEmpty {
                     sectionLabel("Findings (\(findings.count))")
-                    ForEach(findings) { f in
-                        GTPanel(padding: 10) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    if let s = f.severity { pill(s, tint: severityTint(s)) }
-                                    Text(f.title ?? "finding")
-                                        .font(GT.sans(13, .medium)).foregroundStyle(GT.text)
-                                }
-                                if let file = f.file {
-                                    Text("\(file)\(f.line.map { ":\($0)" } ?? "")")
-                                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
-                                }
-                                if let t = f.text, !t.isEmpty {
-                                    Text(t).font(GT.sans(12)).foregroundStyle(GT.textMuted)
-                                }
-                            }
-                        }
-                    }
+                    ForEach(findings) { f in findingPanel(f) }
+                }
+
+                if let suggestions = pr.suggestions, !suggestions.isEmpty {
+                    sectionLabel("Suggestions (\(suggestions.count))")
+                    ForEach(suggestions) { f in findingPanel(f) }
                 }
 
                 if !pr.description.isEmpty {
@@ -295,6 +283,27 @@ struct PrDetailView: View {
         case "high", "critical": return GT.yellow
         case "medium": return GT.accent2
         default: return GT.textMuted
+        }
+    }
+
+    /// One finding/suggestion card — shared by both sections.
+    @ViewBuilder
+    private func findingPanel(_ f: WsFinding) -> some View {
+        GTPanel(padding: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if let s = f.severity { pill(s, tint: severityTint(s)) }
+                    Text(f.title ?? "finding")
+                        .font(GT.sans(13, .medium)).foregroundStyle(GT.text)
+                }
+                if let file = f.file {
+                    Text("\(file)\(f.line.map { ":\($0)" } ?? "")")
+                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                }
+                if let t = f.text, !t.isEmpty {
+                    Text(t).font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                }
+            }
         }
     }
 }

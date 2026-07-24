@@ -1506,6 +1506,13 @@ const bridgeDeps: BridgeDeps = {
           line: f.line,
           text: f.text || f.body,
         })),
+        suggestions: (d.suggestions || []).slice(0, 60).map((f) => ({
+          severity: f.severity,
+          title: f.title,
+          file: f.file,
+          line: f.line,
+          text: f.text || f.body,
+        })),
         // Overall status plus any failing job names — the part worth reading
         // on a phone when CI is red.
         ci: ci

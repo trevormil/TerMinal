@@ -225,6 +225,8 @@ export type BridgePrDetail = BridgePr & {
   /** The code-review artifact's markdown, when one exists. */
   reviewNotes?: string
   findings?: BridgeFinding[]
+  /** Non-blocking review suggestions — the code-review's separate list. */
+  suggestions?: BridgeFinding[]
   ci?: string
 }
 export type BridgeScheduleDetail = BridgeSchedule & {
