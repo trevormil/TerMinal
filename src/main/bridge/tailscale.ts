@@ -38,14 +38,28 @@ function tailscaleBin(): string | null {
 
 const execFileAsync = promisify(execFile)
 
+const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
+const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+
 // Async on purpose: this runs from an unauthenticated HTTP route on the
 // Electron main process — a blocking subprocess here would freeze the whole
 // app for up to the timeout on every probe.
+//
+// Routed through a LOGIN SHELL, not a bare execFile. The GUI / Mac-App-Store
+// Tailscale ships its CLI as a thin shim that reaches the backend through the
+// user's login session. A Finder/dock-launched Electron app runs with a
+// stripped environment where that shim fails with "The Tailscale GUI failed to
+// start" (CLIError 3) — so whois returned null and EVERY tailnet peer was
+// refused with 403, even though pairing worked fine under `bun run dev` (which
+// inherits the shell env). `$SHELL -lc` reconstructs the login session the shim
+// needs; capturing env vars alone is NOT enough — it's session context, not
+// just variables.
 async function run(args: string[]): Promise<string | null> {
   const bin = tailscaleBin()
   if (!bin) return null
+  const cmd = [bin, ...args].map(shq).join(' ')
   try {
-    const { stdout } = await execFileAsync(bin, args, { timeout: 4000 })
+    const { stdout } = await execFileAsync(LOGIN_SHELL, ['-lc', cmd], { timeout: 8000 })
     return stdout.toString().trim()
   } catch {
     return null

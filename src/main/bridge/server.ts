@@ -784,9 +784,14 @@ export async function startBridge(
       status = { listening: false, port, error: e.message }
       resolve(bridgeStatus())
     })
-    // 0.0.0.0 on purpose: the phone reaches the Mac over the LAN or the tailnet,
-    // and the bind only happens while the user has the toggle on.
-    s.listen(port, '0.0.0.0', () => {
+    // Dual-stack `::` — NOT `0.0.0.0`. Tailscale MagicDNS hands the phone the
+    // Mac's IPv6 tailnet address (AAAA) first, so an IPv4-only listener refused
+    // the connection and the phone reported it as "Mac didn't recognise this
+    // device". Binding `::` (ipv6Only off by default on macOS) accepts genuine
+    // IPv6 peers AND IPv4 clients as ::ffff:-mapped addresses, which the pair
+    // pre-check and isTailscaleIp already normalise. The bind only happens while
+    // the user has the toggle on.
+    s.listen(port, '::', () => {
       server = s
       status = { listening: true, port }
       resolve(bridgeStatus())

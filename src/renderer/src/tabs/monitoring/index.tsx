@@ -714,7 +714,7 @@ function MonitorRow({
   return (
     <div
       onClick={onSelect}
-      className={`group flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
+      className={`group relative flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
         selected ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
       } ${m.enabled ? '' : 'opacity-55'}`}
     >
@@ -741,9 +741,11 @@ function MonitorRow({
           )}
         </div>
       </div>
-      {/* actions — appear on hover */}
+      {/* actions — overlaid on the right, revealed on hover. Absolutely
+          positioned so they reserve NO layout space at rest (an in-flow hidden
+          bar left an awkward gap between the badge/time and the row edge). */}
       <div
-        className="flex shrink-0 items-center gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-black/50 px-1 py-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
