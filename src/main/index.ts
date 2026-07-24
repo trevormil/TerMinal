@@ -395,6 +395,7 @@ import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspac
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { processSpawnCwd } from './spawn-cwd'
+import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -552,6 +553,29 @@ function remoteFromHostId(hostId: string, cwd?: string): RemoteSession | null {
   }
 }
 
+// Pre-accept Claude Code's workspace-trust dialog for a directory, so an
+// unattended phone spawn's seeded prompt isn't swallowed by it. Claude records
+// trust in ~/.claude.json under projects[dir].hasTrustDialogAccepted; choosing to
+// spawn there IS the trust decision. Best-effort — on any failure the trust
+// dialog simply remains (the pre-existing behavior).
+function pretrustClaudeProject(dir: string): void {
+  try {
+    const file = join(homedir(), '.claude.json')
+    if (!existsSync(file)) return
+    const cfg = JSON.parse(readFileSync(file, 'utf8')) as {
+      projects?: Record<string, { hasTrustDialogAccepted?: boolean }>
+    }
+    if (!cfg.projects || typeof cfg.projects !== 'object') cfg.projects = {}
+    const entry = cfg.projects[dir] || {}
+    if (entry.hasTrustDialogAccepted === true) return // already trusted — don't churn the file
+    entry.hasTrustDialogAccepted = true
+    cfg.projects[dir] = entry
+    writeFileSync(file, JSON.stringify(cfg, null, 2))
+  } catch {
+    /* best-effort */
+  }
+}
+
 function startSession(key: string, opts: StartOpts) {
   sessions.get(key)?.pty.kill()
 
@@ -668,6 +692,17 @@ function startSession(key: string, opts: StartOpts) {
 
   // Wire Claude sessions to the status-line shim (zero-API usage + context).
   if (engine === 'claude' && !remote) args.push('--settings', statuslineSettingsArg())
+
+  // Seed the FIRST prompt as a launch argument instead of pasting it into the
+  // booted TUI after a readiness heuristic (see engine-seed.ts) — deterministic,
+  // conversational, and provider-agnostic. Local + new sessions only; the
+  // renderer skips its paste path when `seeded` comes back true.
+  let seeded = false
+  if (opts.mode === 'new' && opts.initialInput && !remote && engineSupportsLaunchSeed(engine)) {
+    if (engine === 'claude') pretrustClaudeProject(cwd)
+    args.push(...engineInitialPromptArgs(engine, opts.initialInput, opts.openrouterHarness))
+    seeded = true
+  }
 
   const env = {
     ...process.env,
@@ -835,7 +870,7 @@ function startSession(key: string, opts: StartOpts) {
     runId: sessionId,
     runSource: 'session',
   })
-  return { sessionId, cwd: displayCwd, remote }
+  return { sessionId, cwd: displayCwd, remote, seeded }
 }
 
 function setActiveSession(key: string) {
