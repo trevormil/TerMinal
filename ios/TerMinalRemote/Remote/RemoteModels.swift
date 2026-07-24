@@ -51,7 +51,9 @@ struct HitlItem: Codable, Identifiable, Hashable {
 
     var isNormal: Bool { severity == "normal" }
     var isResolved: Bool { status == "resolved" }
-    var isUnread: Bool { !isResolved && readAt == nil }
+    // One axis: read = seen (readAt) OR legacy-resolved (already dealt with).
+    // Mirrors src/main/hitl.ts isHitlRead.
+    var isUnread: Bool { readAt == nil && status != "resolved" }
 
     /// A copy marked read now (struct is immutable, so rebuild it).
     func markedRead() -> HitlItem {
@@ -62,10 +64,12 @@ struct HitlItem: Codable, Identifiable, Hashable {
     }
 
     /// A copy back on the unread pile — the email "keep this on my plate" move.
+    /// Clears BOTH readAt and a legacy resolved status, or a once-resolved item
+    /// could never return to unread. Mirrors markHitlRead(read:false).
     func markedUnread() -> HitlItem {
         HitlItem(
             id: id, title: title, detail: detail, action: action, repo: repo, source: source,
-            createdAt: createdAt, severity: severity, status: status, readAt: nil)
+            createdAt: createdAt, severity: severity, status: "open", readAt: nil)
     }
 
     /// Preserve optimistic read-state across a server refresh.

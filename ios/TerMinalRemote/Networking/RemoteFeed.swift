@@ -41,9 +41,11 @@ final class RemoteFeed {
             let (s, h) = try await client.remote()
             sessions = s
             // Drop overrides the server has caught up to (or items now gone).
+            // Compare full read-state (readAt OR resolved), not just readAt —
+            // a resolved item reads as read with a nil readAt.
             pendingRead = pendingRead.filter { id, want in
                 guard let it = h.first(where: { $0.id == id }) else { return false }
-                return (it.readAt != nil) != want
+                return !it.isUnread != want
             }
             hitl = h.map { it in
                 guard let want = pendingRead[it.id] else { return it }
