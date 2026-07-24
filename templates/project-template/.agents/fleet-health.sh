@@ -21,8 +21,9 @@ if [ -z "$BASE" ] || [ -z "$TOKEN" ]; then
   echo "fleet-health: set CONTROL_PLANE_URL and CONTROL_PLANE_TOKEN(_FILE)" >&2
   exit 2
 fi
+# --digest flag or FLEET_DIGEST=1 env (schedules exec scripts with no args).
 DIGEST=false
-[ "${1:-}" = "--digest" ] && DIGEST=true
+{ [ "${1:-}" = "--digest" ] || [ "${FLEET_DIGEST:-}" = "1" ]; } && DIGEST=true
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

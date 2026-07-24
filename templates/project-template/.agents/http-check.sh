@@ -6,6 +6,8 @@
 # Config (schedule env or shell env):
 #   CHECK_URLS       space-separated https URLs to probe (required)
 #   CHECK_KIND       check kind label            (default: http)
+#   CHECK_SCOPE      'global' for a fleet-wide check; default scopes to the
+#                    repo the schedule runs in (TERMINAL_REPO)
 #   CERT_WARN_DAYS   warn when a cert is closer  (default: 15)
 set -uo pipefail
 
@@ -70,6 +72,8 @@ metrics="{\"up\":$up,\"down\":$down,\"warn\":$warnhits${soonest_days:+,\"soonest
 
 tmp=$(mktemp)
 printf '%s' "$detail" >"$tmp"
+scope_args=()
+[ -n "${CHECK_SCOPE:-}" ] && scope_args+=("--scope=$CHECK_SCOPE")
 terminal-cli check-status "$KIND" "$status" \
-  --summary="$summary" --metrics-json="$metrics" --detail-json="@$tmp"
+  --summary="$summary" --metrics-json="$metrics" --detail-json="@$tmp" "${scope_args[@]}"
 rm -f "$tmp"
