@@ -1358,7 +1358,24 @@ const bridgeDeps: BridgeDeps = {
     }
 
     const base = resolvedProjectsDir()
-    let repos: { name: string; path: string; lastUsedAt?: number; scratch?: boolean }[] = []
+    // Cheap CI-configured probe (no git call): the phone shows a CI tab only
+    // when workflow files exist.
+    const forgeOf = (p: string): string | undefined => {
+      try {
+        if (existsSync(join(p, '.github', 'workflows'))) return 'github'
+        if (existsSync(join(p, '.gitlab-ci.yml'))) return 'gitlab'
+      } catch {
+        /* ignore */
+      }
+      return undefined
+    }
+    let repos: {
+      name: string
+      path: string
+      lastUsedAt?: number
+      scratch?: boolean
+      forge?: string
+    }[] = []
     try {
       repos = readdirSync(base)
         .filter((n) => !n.startsWith('.'))
@@ -1370,7 +1387,7 @@ const bridgeDeps: BridgeDeps = {
             return false
           }
         })
-        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path) }))
+        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path), forge: forgeOf(d.path) }))
         // Recently used first; everything else alphabetical behind it.
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name))
     } catch {
@@ -1598,6 +1615,10 @@ const bridgeDeps: BridgeDeps = {
         enabled: s.enabled,
       }))
   },
+  // Native CI for the phone's per-workspace CI tab — the same run/job data the
+  // desktop CI tab's Runs view uses.
+  workspaceCi: (repoPath) => listCiRuns(repoRootOf(repoPath) || repoPath, 40),
+  workspaceCiJobs: (repoPath, runId) => listCiJobs(repoRootOf(repoPath) || repoPath, runId),
 
   // Start a session from the phone. The remote thread is registered up front so
   // the phone can open it immediately, then the RENDERER is asked to open the

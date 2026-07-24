@@ -116,6 +116,10 @@ export type BridgeDeps = {
   workspacePrs?(repoPath: string): Promise<BridgePr[]> | BridgePr[]
   workspaceRuns?(repoPath: string): Promise<BridgeRun[]> | BridgeRun[]
   workspaceSchedules?(repoPath: string): Promise<BridgeSchedule[]> | BridgeSchedule[]
+  /** Native CI runs for the repo (gh run / glab api). */
+  workspaceCi?(repoPath: string): Promise<unknown> | unknown
+  /** Jobs for one CI run. */
+  workspaceCiJobs?(repoPath: string, runId: string): Promise<unknown> | unknown
 
   /** Drill-downs — the full readable content behind a list row. */
   workspaceTicket?(
@@ -151,6 +155,9 @@ export type BridgeRepo = {
   lastUsedAt?: number
   /** The app-owned throwaway workspace — no repo attached. */
   scratch?: boolean
+  /** 'github' | 'gitlab' when CI is configured (workflow files present), so the
+   *  phone can show a CI tab. Absent when there's no CI. */
+  forge?: string
 }
 
 /** An engine the phone may start a session with, already display-cased. */
@@ -489,6 +496,11 @@ export function createBridgeHandler(
             if (!deps.workspaceSchedule || !repo || !id) return undefined
             return deps.workspaceSchedule(repo, id)
           }
+          case 'ci-jobs': {
+            const runId = url.searchParams.get('run') || ''
+            if (!deps.workspaceCiJobs || !repo || !runId) return undefined
+            return deps.workspaceCiJobs(repo, runId)
+          }
           default:
             return undefined
         }
@@ -512,6 +524,7 @@ export function createBridgeHandler(
         prs: deps.workspacePrs && ((p) => deps.workspacePrs!(p)),
         runs: deps.workspaceRuns && ((p) => deps.workspaceRuns!(p)),
         schedules: deps.workspaceSchedules && ((p) => deps.workspaceSchedules!(p)),
+        ci: deps.workspaceCi && ((p) => deps.workspaceCi!(p)),
       }
       const fn = fetcher[kind]
       if (!fn) {

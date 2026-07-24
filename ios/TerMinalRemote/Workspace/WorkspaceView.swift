@@ -10,6 +10,7 @@ final class WorkspaceViewModel {
     private(set) var prs: [WsPr] = []
     private(set) var runs: [WsRun] = []
     private(set) var schedules: [WsSchedule] = []
+    private(set) var ciRuns: [CiRun] = []
     private(set) var error: String?
     var loading = false
 
@@ -44,6 +45,7 @@ final class WorkspaceViewModel {
             case .prs: prs = try await client.prs(repo: repo.path)
             case .runs: runs = try await client.runs(repo: repo.path)
             case .schedules: schedules = try await client.schedules(repo: repo.path)
+            case .ci: ciRuns = try await client.ci(repo: repo.path)
             }
             if tab != .sessions { error = nil }
         } catch { self.error = error.localizedDescription }
@@ -61,8 +63,19 @@ final class WorkspaceViewModel {
 }
 
 enum WorkspaceTab: String, CaseIterable, Identifiable {
-    case sessions, tickets, prs, runs, schedules
+    case sessions, tickets, prs, runs, schedules, ci
     var id: String { rawValue }
+    /// SF Symbol for the vertical rail.
+    var icon: String {
+        switch self {
+        case .sessions: return "bolt.horizontal"
+        case .tickets: return "ticket"
+        case .prs: return "arrow.triangle.pull"
+        case .runs: return "play.rectangle"
+        case .schedules: return "clock"
+        case .ci: return "checkmark.seal"
+        }
+    }
     var label: String {
         switch self {
         case .sessions: return "Sessions"
@@ -70,6 +83,7 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
         case .prs: return "PRs"
         case .runs: return "Runs"
         case .schedules: return "Schedules"
+        case .ci: return "CI"
         }
     }
 }
@@ -82,16 +96,38 @@ struct WorkspaceView: View {
     @State private var startingNew = false
     @State private var opened: RemoteSession?
 
+    /// CI only appears when the repo actually has CI configured.
+    private var tabs: [WorkspaceTab] {
+        WorkspaceTab.allCases.filter { $0 != .ci || model.repo.hasCi }
+    }
+
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Picker("Tab", selection: $tab) {
-                    ForEach(WorkspaceTab.allCases) { Text($0.label).tag($0) }
+            // A vertical tab rail (six tabs are too many for a segmented row) +
+            // the content pane. Icon+label, selected highlighted.
+            HStack(spacing: 0) {
+                VStack(spacing: 4) {
+                    ForEach(tabs) { t in
+                        Button { tab = t } label: {
+                            VStack(spacing: 3) {
+                                Image(systemName: t.icon).font(.system(size: 15))
+                                Text(t.label).font(GT.sans(9, .medium)).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .foregroundStyle(tab == t ? GT.text : GT.textMuted)
+                            .background(tab == t ? GT.accent.opacity(0.18) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 12)
+                .frame(width: 62)
                 .padding(.vertical, 8)
+                .padding(.horizontal, 5)
+                .background(GT.panel)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
@@ -160,6 +196,28 @@ struct WorkspaceView: View {
                 NavigationLink {
                     ScheduleDetailView(client: model.client, repo: model.repo.path, id: s.id)
                 } label: { ScheduleRow(s: s) }
+                .buttonStyle(.plain)
+            }
+        case .ci:
+            ciContent
+        }
+    }
+
+    @ViewBuilder private var ciContent: some View {
+        if model.ciRuns.isEmpty && !model.loading {
+            GTPanel {
+                Text("No recent CI runs (or the forge CLI isn't authenticated on your Mac).")
+                    .font(GT.sans(12)).foregroundStyle(GT.textMuted)
+            }
+        }
+        ForEach(Array(Ci.grouped(model.ciRuns).enumerated()), id: \.offset) { _, group in
+            Text(group.name.uppercased())
+                .font(GT.sans(10, .semibold)).tracking(0.8).foregroundStyle(GT.textFaint)
+                .padding(.top, 2)
+            ForEach(group.runs) { run in
+                NavigationLink {
+                    CiRunDetailView(client: model.client, repo: model.repo.path, run: run)
+                } label: { CiRunRow(run: run) }
                 .buttonStyle(.plain)
             }
         }
