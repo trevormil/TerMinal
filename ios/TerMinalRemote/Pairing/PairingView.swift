@@ -14,70 +14,70 @@ struct PairingView: View {
 
     var body: some View {
         ZStack {
-        GT.bg.ignoresSafeArea()
-        VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "terminal.fill")
-                .font(.system(size: 52))
-                .foregroundStyle(GT.gradient)
-            VStack(spacing: 8) {
-                Text("Pair with your Mac")
-                    .font(GT.sans(22, .semibold))
-                    .foregroundStyle(GT.text)
-                Text("On your Mac, open TerMinal → Settings → Mobile and turn on the bridge.")
-                    .font(GT.sans(14))
-                    .foregroundStyle(GT.textMuted)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 32)
+            GT.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 24) {
+                    identityHeader
+                        .padding(.top, 36)
 
-            if let error {
-                Text(error)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+                    stepsPanel
 
-            VStack(spacing: 10) {
-                Button {
-                    error = nil
-                    scanning = true
-                } label: {
-                    Label("Scan QR code", systemImage: "qrcode.viewfinder")
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(GT.accent)
-
-                Button {
-                    error = nil
-                    tailscaling = true
-                } label: {
-                    Label("Pair over Tailscale", systemImage: "network")
-                        .frame(maxWidth: .infinity, minHeight: 46)
-                }
-                .buttonStyle(.bordered)
-                .tint(GT.accent2)
-
-                // No intermediate editor sheet: pasting IS the action. Use
-                // "Copy pairing code" on the Mac, then tap this — one step, and
-                // nobody ever wants to hand-edit the JSON.
-                Button("Paste pairing code") {
-                    error = nil
-                    guard let clip = UIPasteboard.general.string, !clip.isEmpty else {
-                        error = "Your clipboard is empty. Use “Copy pairing code” in "
-                            + "TerMinal → Settings → Mobile."
-                        return
+                    if let error {
+                        Text(error)
+                            .font(GT.sans(13))
+                            .foregroundStyle(GT.yellow)
+                            .multilineTextAlignment(.center)
                     }
-                    accept(clip)
+
+                    VStack(spacing: 12) {
+                        Button {
+                            error = nil
+                            scanning = true
+                        } label: {
+                            Label("Scan QR code", systemImage: "qrcode.viewfinder")
+                                .font(GT.sans(16, .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(GT.accent)
+
+                        // No intermediate editor sheet: pasting IS the action.
+                        // Use "Copy pairing code" on the Mac, then tap this —
+                        // one step, and nobody ever wants to hand-edit the JSON.
+                        Button {
+                            error = nil
+                            guard let clip = UIPasteboard.general.string, !clip.isEmpty else {
+                                error = "Your clipboard is empty. Use “Copy pairing code” in "
+                                    + "TerMinal → Settings → Mobile."
+                                return
+                            }
+                            accept(clip)
+                        } label: {
+                            Label("Paste pairing code", systemImage: "doc.on.clipboard")
+                                .frame(maxWidth: .infinity)
+                                .gtSecondaryButton()
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            error = nil
+                            tailscaling = true
+                        } label: {
+                            Text(
+                                "On Tailscale? Enter your Mac's MagicDNS name instead"
+                                    + " — no QR needed."
+                            )
+                            .font(GT.sans(12))
+                            .foregroundStyle(GT.accent2)
+                            .multilineTextAlignment(.center)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                    }
+                    Spacer(minLength: 24)
                 }
-                .font(GT.sans(14))
-                .foregroundStyle(GT.accentLight)
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 32)
-            Spacer()
-        }
         }
         .sheet(isPresented: $tailscaling) { tailscaleSheet }
         .sheet(isPresented: $scanning) {
@@ -98,6 +98,54 @@ struct PairingView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// App icon + wordmark: the first screen anyone sees, so it should look
+    /// like the product, not a system placeholder.
+    private var identityHeader: some View {
+        VStack(spacing: 14) {
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16).stroke(GT.border, lineWidth: 1)
+                )
+            VStack(spacing: 6) {
+                Text("TerMinal")
+                    .font(GT.sans(28, .bold))
+                    .foregroundStyle(GT.text)
+                Text("Your agents, in your pocket.")
+                    .font(GT.sans(14))
+                    .foregroundStyle(GT.textMuted)
+            }
+        }
+    }
+
+    private var stepsPanel: some View {
+        GTPanel(padding: 16) {
+            VStack(alignment: .leading, spacing: 14) {
+                step(1, "Open TerMinal on your Mac → Settings → Mobile.")
+                step(2, "Turn on the bridge.")
+                step(3, "Tap “Show pairing code” and scan the QR — or paste the copied code.")
+            }
+        }
+    }
+
+    private func step(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text("\(number)")
+                .font(GT.mono(13, .medium))
+                .foregroundStyle(GT.accentLight)
+                .frame(width: 24, height: 24)
+                .background(GT.accent.opacity(0.15))
+                .clipShape(Circle())
+            Text(text)
+                .font(GT.sans(14))
+                .foregroundStyle(GT.textSoft)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

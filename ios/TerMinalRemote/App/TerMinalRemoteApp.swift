@@ -72,7 +72,7 @@ private struct PairedView: View {
             .badge(active.awaitingCount)
 
             NavigationStack {
-                WorkspacesView(model: WorkspacesViewModel(client: client), onUnpair: onUnpair)
+                WorkspacesView(model: WorkspacesViewModel(client: client))
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
 
@@ -85,6 +85,11 @@ private struct PairedView: View {
                 HealthView(model: health)
             }
             .tabItem { Label("Health", systemImage: "waveform.path.ecg") }
+
+            NavigationStack {
+                SettingsView(pairing: pairing, onUnpair: onUnpair)
+            }
+            .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.
