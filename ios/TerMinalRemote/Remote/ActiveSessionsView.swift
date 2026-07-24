@@ -34,6 +34,21 @@ final class ActiveSessionsViewModel {
 
     @MainActor
     func refresh() async { await feed.refresh() }
+
+    /// Ask the agent to finish up — the session stays listed, marked ended.
+    @MainActor
+    func terminate(_ s: RemoteSession) async {
+        try? await feed.client.endSession(id: s.id)
+        await feed.refresh()
+    }
+
+    /// Unregister from the phone entirely (the Mac session keeps running).
+    @MainActor
+    func unregister(_ s: RemoteSession) async {
+        feed.removeSession(id: s.id)
+        try? await feed.client.deleteSession(id: s.id)
+        await feed.refresh()
+    }
 }
 
 /// Global, cross-workspace: every live session at a glance so you don't have to
@@ -45,26 +60,54 @@ struct ActiveSessionsView: View {
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    if let error = model.error {
-                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
-                    }
-                    if model.active.isEmpty && !model.loading {
-                        GTPanel {
-                            Text(
-                                "No live sessions. Start one from a workspace, or run /remote-terminal on your Mac."
-                            )
-                            .font(GT.sans(12)).foregroundStyle(GT.textMuted)
-                        }
-                    }
-                    ForEach(model.active) { s in
-                        NavigationLink(value: s) { SessionRow(session: s) }
-                            .buttonStyle(.plain)
-                    }
+            // A real List (not a LazyVStack) so rows get native swipe actions.
+            List {
+                if let error = model.error {
+                    GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+                        .plainRow()
                 }
-                .padding(14)
+                if model.active.isEmpty && !model.loading {
+                    GTPanel {
+                        Text(
+                            "No live sessions. Start one from a workspace, or run /remote-terminal on your Mac."
+                        )
+                        .font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                    }
+                    .plainRow()
+                }
+                ForEach(model.active) { s in
+                    NavigationLink(value: s) { SessionRow(session: s) }
+                        .buttonStyle(.plain)
+                        .plainRow()
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                Task { await model.unregister(s) }
+                            } label: {
+                                Label("Unregister", systemImage: "iphone.slash")
+                            }
+                            if !s.hasEnded {
+                                Button {
+                                    Task { await model.terminate(s) }
+                                } label: {
+                                    Label("End", systemImage: "stop.circle")
+                                }
+                                .tint(.orange)
+                            }
+                        }
+                        .contextMenu {
+                            if !s.hasEnded {
+                                Button("End session", systemImage: "stop.circle") {
+                                    Task { await model.terminate(s) }
+                                }
+                            }
+                            Button("Unregister from phone", systemImage: "iphone.slash", role: .destructive) {
+                                Task { await model.unregister(s) }
+                            }
+                        }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }

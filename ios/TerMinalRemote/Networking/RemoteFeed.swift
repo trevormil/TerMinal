@@ -47,7 +47,10 @@ final class RemoteFeed {
         }
     }
 
-    // ---- hitl mutations (the Inbox's optimistic updates) ----------------
+    // ---- optimistic mutations (Inbox + Active rows) ---------------------
+
+    @MainActor
+    func removeSession(id: String) { sessions.removeAll { $0.id == id } }
 
     @MainActor
     func removeHitl(id: String) { hitl.removeAll { $0.id == id } }

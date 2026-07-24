@@ -138,3 +138,15 @@ extension View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(GT.border, lineWidth: 1))
     }
 }
+
+extension View {
+    /// List-row reset for GTPanel-styled rows living inside a native List
+    /// (which we use for swipe actions): no system background, no separator,
+    /// insets matching the old LazyVStack padding.
+    func plainRow() -> some View {
+        self
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+    }
+}

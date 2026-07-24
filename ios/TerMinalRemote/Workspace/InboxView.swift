@@ -51,31 +51,77 @@ struct InboxView: View {
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    if let error = model.error {
-                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+            // A real List (not a LazyVStack) so rows get native swipe actions.
+            List {
+                if let error = model.error {
+                    GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+                        .plainRow()
+                }
+                if shown.isEmpty && !model.loading {
+                    GTPanel {
+                        Text(archive ? "Nothing archived yet." : "Inbox zero.")
+                            .font(GT.sans(12)).foregroundStyle(GT.textMuted)
                     }
-                    if shown.isEmpty && !model.loading {
-                        GTPanel {
-                            Text(archive ? "Nothing archived yet." : "Inbox zero.")
-                                .font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                    .plainRow()
+                }
+                ForEach(shown) { item in
+                    NavigationLink {
+                        InboxDetailView(item: item) { approved in
+                            Task { await model.resolve(item, approved: approved) }
                         }
+                        .onAppear { model.markRead([item]) }
+                    } label: {
+                        InboxRow(item: item)
                     }
-                    ForEach(shown) { item in
-                        NavigationLink {
-                            InboxDetailView(item: item) { approved in
-                                Task { await model.resolve(item, approved: approved) }
+                    .buttonStyle(.plain)
+                    .plainRow()
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        if item.isUnread {
+                            Button {
+                                model.markRead([item])
+                            } label: {
+                                Label("Read", systemImage: "envelope.open")
                             }
-                            .onAppear { model.markRead([item]) }
-                        } label: {
-                            InboxRow(item: item)
+                            .tint(GT.accent)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if archive {
+                            Button {
+                                Task { await model.resolve(item, approved: false) }
+                            } label: {
+                                Label("Reopen", systemImage: "arrow.uturn.backward")
+                            }
+                            .tint(.orange)
+                        } else {
+                            Button {
+                                Task { await model.resolve(item, approved: true) }
+                            } label: {
+                                Label("Archive", systemImage: "checkmark")
+                            }
+                            .tint(GT.green)
+                        }
+                    }
+                    .contextMenu {
+                        if item.isUnread {
+                            Button("Mark read", systemImage: "envelope.open") {
+                                model.markRead([item])
+                            }
+                        }
+                        if archive {
+                            Button("Reopen", systemImage: "arrow.uturn.backward") {
+                                Task { await model.resolve(item, approved: false) }
+                            }
+                        } else {
+                            Button("Archive", systemImage: "checkmark") {
+                                Task { await model.resolve(item, approved: true) }
+                            }
+                        }
                     }
                 }
-                .padding(14)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
