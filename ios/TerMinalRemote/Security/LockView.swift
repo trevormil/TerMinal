@@ -6,6 +6,7 @@ struct LockView: View {
     @State private var lock = AppLock.shared
     @State private var entered = ""
     @State private var shake = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
     private var length: Int { max(4, lock.passcodeLength) }
@@ -60,7 +61,13 @@ struct LockView: View {
                 Spacer()
             }
         }
+        // Auto-prompt Face ID on appear AND every time the app returns to the
+        // foreground while locked — the on-appear attempt fires as the app is
+        // backgrounding (when the lock engages) and can't actually run then.
         .task { await lock.unlockWithBiometrics() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await lock.unlockWithBiometrics() } }
+        }
     }
 
     private func digit(_ d: String) -> some View {

@@ -28,16 +28,27 @@ final class RemoteFeed {
         n >= 3 ? .seconds(30) : .seconds(5)
     }
 
+    /// Read-state we've toggled locally but the server may not have confirmed
+    /// yet — id → desired isRead. Applied over every poll so an optimistic
+    /// read OR unread survives the 5s refresh, and self-clears once the server
+    /// agrees (or the item vanishes).
+    private var pendingRead: [String: Bool] = [:]
+
     @MainActor
     func refresh() async {
         defer { loading = false }
         do {
             let (s, h) = try await client.remote()
             sessions = s
-            // Keep any optimistic read-state we applied so an item doesn't
-            // flash unread mid-poll.
-            let readLocally = Set(hitl.filter { $0.readAt != nil }.map(\.id))
-            hitl = h.map { $0.markingReadIfIn(readLocally) }
+            // Drop overrides the server has caught up to (or items now gone).
+            pendingRead = pendingRead.filter { id, want in
+                guard let it = h.first(where: { $0.id == id }) else { return false }
+                return (it.readAt != nil) != want
+            }
+            hitl = h.map { it in
+                guard let want = pendingRead[it.id] else { return it }
+                return want ? it.markedRead() : it.markedUnread()
+            }
             error = nil
             failures = 0
             syncBadge()
@@ -57,6 +68,7 @@ final class RemoteFeed {
 
     @MainActor
     func markHitlRead(ids: [String], read: Bool = true) {
+        for id in ids { pendingRead[id] = read }
         hitl = hitl.map {
             ids.contains($0.id) ? (read ? $0.markedRead() : $0.markedUnread()) : $0
         }
