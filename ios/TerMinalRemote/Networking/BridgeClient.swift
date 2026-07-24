@@ -222,10 +222,10 @@ final class BridgeClient {
         return list.isEmpty ? WsEngine.fallback : list
     }
 
-    /// Latest status of every scheduled health check, all repos plus global.
-    func checks() async throws -> [CheckStatus] {
-        struct Envelope: Decodable { let checks: [CheckStatus] }
-        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/checks")).checks
+    /// Every monitor joined with its latest probe state, worst-first.
+    func monitors() async throws -> [MonitorWithState] {
+        struct Envelope: Decodable { let monitors: [MonitorWithState] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/monitors")).monitors
     }
 
     // ---- drill-downs: full readable content -----------------------------

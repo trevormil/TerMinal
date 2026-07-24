@@ -114,6 +114,83 @@ export function installMcpServer(srcPath: string): void {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+// ── Monitoring daemon ──────────────────────────────────────────────────────
+// A SINGLE launchd job (not per-monitor) that ticks the monitor daemon on a
+// short interval — its own process, wholly separate from the cron jobs above.
+const MONITOR_RUNNER = join(CFG, 'bin', 'terminal-monitor')
+const MONITOR_LABEL = 'com.terminal.monitor'
+const monitorPlistPath = () => join(LA_DIR, `${MONITOR_LABEL}.plist`)
+
+export function installMonitorDaemon(srcPath: string): void {
+  try {
+    if (!existsSync(srcPath)) return
+    mkdirSync(join(CFG, 'bin'), { recursive: true })
+    copyFileSync(srcPath, MONITOR_RUNNER)
+    chmodSync(MONITOR_RUNNER, 0o755)
+  } catch {
+    /* best effort */
+  }
+}
+
+function monitorPlistXml(intervalSec: number): string {
+  const args = [resolveBun(), MONITOR_RUNNER, 'tick']
+  const argsXml = args.map((a) => `    <string>${esc(a)}</string>`).join('\n')
+  const logOut = join(CFG, 'monitor.launchd.log')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${MONITOR_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+${argsXml}
+  </array>
+  <key>StartInterval</key>
+  <integer>${intervalSec}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${esc(logOut)}</string>
+  <key>StandardErrorPath</key>
+  <string>${esc(logOut)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>${esc(homedir())}</string>
+    <key>PATH</key><string>${esc(launchdPath())}</string>
+  </dict>
+</dict>
+</plist>
+`
+}
+
+/** Load (or refresh) the single monitor-daemon job. Idempotent. */
+export function syncMonitorDaemon(intervalSec = 30): { ok: boolean; error?: string } {
+  mkdirSync(LA_DIR, { recursive: true })
+  const xml = monitorPlistXml(intervalSec)
+  const path = monitorPlistPath()
+  const onDisk = existsSync(path) ? readFileSync(path, 'utf8') : null
+  if (!needsReload(onDisk, xml, isJobLoaded(MONITOR_LABEL))) return { ok: true }
+  bootout(MONITOR_LABEL)
+  try {
+    writeFileSync(path, xml)
+  } catch (e) {
+    return { ok: false, error: `write plist: ${(e as Error).message}` }
+  }
+  try {
+    execFileSync('launchctl', ['bootstrap', domain, path], { stdio: 'ignore' })
+  } catch {
+    try {
+      execFileSync('launchctl', ['load', path], { stdio: 'ignore' })
+    } catch {
+      /* verified below */
+    }
+  }
+  return isJobLoaded(MONITOR_LABEL)
+    ? { ok: true }
+    : { ok: false, error: 'launchctl did not load the monitor daemon' }
+}
+
 function plistXml(s: Schedule): string {
   const trig = specToTrigger(s.spec)
   const args = [resolveBun(), RUNNER, 'run', s.id]

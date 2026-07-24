@@ -692,23 +692,23 @@ describe('inbox read-state', () => {
   })
 })
 
-describe('checks', () => {
-  it('GET /v1/checks returns the latest statuses and requires auth', async () => {
+describe('monitors', () => {
+  it('GET /v1/monitors returns monitors+state and requires auth', async () => {
     const h = await harness({
-      checks: () => [{ kind: 'fleet-health', status: 'warn', summary: '1 pod issue' }],
+      monitors: () => [{ id: 'up', name: 'Uptime', type: 'http', state: { status: 'warn' } }],
     })
-    expect((await fetch(`${h.url}/v1/checks`)).status).toBe(401)
-    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
+    expect((await fetch(`${h.url}/v1/monitors`)).status).toBe(401)
+    const res = await fetch(`${h.url}/v1/monitors`, { headers: auth })
     expect(res.status).toBe(200)
-    expect((await res.json()).checks).toEqual([
-      { kind: 'fleet-health', status: 'warn', summary: '1 pod issue' },
+    expect((await res.json()).monitors).toEqual([
+      { id: 'up', name: 'Uptime', type: 'http', state: { status: 'warn' } },
     ])
   })
 
-  it('empty when no checks dep is wired', async () => {
+  it('empty when no monitors dep is wired', async () => {
     const h = await harness()
-    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
-    expect((await res.json()).checks).toEqual([])
+    const res = await fetch(`${h.url}/v1/monitors`, { headers: auth })
+    expect((await res.json()).monitors).toEqual([])
   })
 })
 

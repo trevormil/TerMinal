@@ -174,7 +174,7 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
-import { listChecks } from './checks'
+import { listMonitorsWithStatus, writeMonitors } from './monitors'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -249,6 +249,8 @@ import {
   installRunner,
   installCli,
   installMcpServer,
+  installMonitorDaemon,
+  syncMonitorDaemon,
   installOrTier,
   // mcp-register pulled separately below; not part of launchd helpers.
   reconcileSchedules,
@@ -1038,6 +1040,13 @@ function createWindow() {
     ? join(process.resourcesPath, 'terminal-mcp-server')
     : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // The Monitoring daemon: refresh the runner + load its single launchd job so
+  // checks run on their own process even when the app is closed.
+  const monitorSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-monitor')
+    : join(moduleDir, '../../bin/terminal-monitor')
+  installMonitorDaemon(monitorSrc)
+  syncMonitorDaemon()
   // Bundle the OpenRouter (or-agent) tier so a fresh install runs OpenRouter
   // agents without any global ~/.claude dotfiles.
   const orBinDir = app.isPackaged ? process.resourcesPath : join(moduleDir, '../../bin')
@@ -1376,8 +1385,8 @@ const bridgeDeps: BridgeDeps = {
     ]
   },
 
-  // Latest health-check statuses for the phone's health surface.
-  checks: () => listChecks(),
+  // Monitors + latest state for the phone's Monitoring surface.
+  monitors: () => listMonitorsWithStatus(),
 
   // Every engine the desktop can launch, labelled the way the desktop labels
   // them — the phone should never render a bare lowercase "codex". The Mac's
@@ -2700,7 +2709,25 @@ ipcMain.handle('remote:active', () =>
     })),
 )
 ipcMain.handle('hitl:list', () => readHitl())
-ipcMain.handle('checks:list', () => listChecks())
+// Monitoring: read-only list for the tab; writes go through monitors.json (the
+// tab edits it directly via these handlers), and a check triggers the daemon.
+ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
+ipcMain.handle('monitors:save', (_e, list: unknown) => {
+  if (Array.isArray(list)) writeMonitors(list as never)
+  syncMonitorDaemon()
+  return true
+})
+ipcMain.handle('monitors:run', (_e, id: string) => {
+  try {
+    execFileSync(join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-monitor'), ['run', id], {
+      stdio: 'ignore',
+      timeout: 40000,
+    })
+  } catch {
+    /* surfaced via the state file */
+  }
+  return listMonitorsWithStatus()
+})
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
 // hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
 // an unreachable host contributes an error, not a failed view.

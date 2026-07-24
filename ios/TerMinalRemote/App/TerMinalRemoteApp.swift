@@ -59,7 +59,7 @@ private struct PairedView: View {
     @State private var client: BridgeClient
     @State private var feed: RemoteFeed
     @State private var active: ActiveSessionsViewModel
-    @State private var health: HealthViewModel
+    @State private var monitoring: MonitoringViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
 
@@ -73,7 +73,7 @@ private struct PairedView: View {
         _client = State(initialValue: c)
         _feed = State(initialValue: f)
         _active = State(initialValue: ActiveSessionsViewModel(feed: f))
-        _health = State(initialValue: HealthViewModel(client: c))
+        _monitoring = State(initialValue: MonitoringViewModel(client: c))
     }
 
     var body: some View {
@@ -95,9 +95,10 @@ private struct PairedView: View {
             .tabItem { Label("Inbox", systemImage: "tray") }
 
             NavigationStack {
-                HealthView(model: health)
+                MonitoringView(model: monitoring)
             }
-            .tabItem { Label("Health", systemImage: "waveform.path.ecg") }
+            .tabItem { Label("Monitoring", systemImage: "chart.line.uptrend.xyaxis") }
+            .badge(monitoring.failingCount)
 
             NavigationStack {
                 SettingsView(pairing: pairing, onUnpair: onUnpair)

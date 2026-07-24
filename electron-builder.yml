@@ -16,6 +16,9 @@ extraResources:
     to: terminal-cli
   - from: bin/terminal-mcp-server
     to: terminal-mcp-server
+  # Monitoring daemon — copied to ~/.config/TerMinal/bin, run by its own launchd job.
+  - from: bin/terminal-monitor
+    to: terminal-monitor
   # OpenRouter (or-agent) tier — installed to ~/.config/TerMinal/{bin,model-routing}
   - from: bin/or-exec
     to: or-exec
