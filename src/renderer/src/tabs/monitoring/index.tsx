@@ -134,6 +134,13 @@ function fmtDate(v: unknown): string {
   const d = new Date(v)
   return isNaN(d.getTime()) ? v : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
+// Row summary with the redundancy stripped: a cert's "Nd until expiry · Issuer"
+// already has the days in the expiry badge, so keep only the issuer half.
+function rowSummary(m: MonitorWithState): string {
+  const s = m.state?.summary?.trim() || ''
+  if (m.type === 'tls-cert' && s.includes('·')) return s.split('·').slice(1).join('·').trim()
+  return s
+}
 
 const DEFAULT_NOTIFY: MonitorNotify = {
   onFailure: 'normal',
@@ -785,20 +792,21 @@ function MonitorRow({
           {m.type === 'tls-cert' && certDays(m) !== null && (
             <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
           )}
-          <Badge tone="mute">{TYPE_LABEL[m.type]}</Badge>
           {stale && <Badge tone="yellow">stale</Badge>}
           <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
             {reltime(st?.lastCheckedAt)}
           </span>
         </div>
         {/* line 2 — indented past the dot (10px + 8px gap) so it aligns under
-            the name; target then summary, each truncating independently */}
+            the name; target then a de-duplicated summary. The type badge is
+            gone (the name/expiry already imply it); the cert summary drops its
+            redundant "Nd until expiry" (that's the badge). */}
         <div className="mt-0.5 flex items-center gap-2 pl-[18px] text-[10.5px]">
           <span className="min-w-0 max-w-[55%] shrink-0 truncate font-mono text-zinc-600">
             {m.target}
           </span>
-          {st?.summary && (
-            <span className="min-w-0 flex-1 truncate text-zinc-500">{st.summary}</span>
+          {rowSummary(m) && (
+            <span className="min-w-0 flex-1 truncate text-zinc-500">{rowSummary(m)}</span>
           )}
         </div>
       </div>

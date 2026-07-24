@@ -178,13 +178,14 @@ private struct MonitorRow: View {
                 Spacer(minLength: 6)
                 // Certs lead with time-to-expiry (the thing you actually watch);
                 // everything else shows a friendly verdict only when unhealthy.
+                // No type pill — the name/expiry already imply the kind, and it
+                // was just redundant noise.
                 if let d = certDays(monitor) {
                     Text(certExpiryShort(d))
                         .font(GT.sans(11, .semibold)).foregroundStyle(certExpiryColor(d))
                 } else if let (word, color) = verdict {
                     Text(word).font(GT.sans(11, .semibold)).foregroundStyle(color)
                 }
-                pill(monitorTypeLabel(monitor.type), tint: GT.textFaint)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
             }
@@ -209,17 +210,6 @@ private func certExpiryPhrase(_ days: Int) -> String {
     return "Expires in \(days) day\(days == 1 ? "" : "s")"
 }
 
-/// Display label for a monitor type, matching the desktop ("HTTP", "TLS cert").
-private func monitorTypeLabel(_ type: String) -> String {
-    switch type {
-    case "http": return "HTTP"
-    case "tls-cert": return "TLS cert"
-    case "tcp": return "TCP"
-    case "dns": return "DNS"
-    case "command": return "Command"
-    default: return type.uppercased()
-    }
-}
 
 /// Everything one monitor holds: config, notify prefs, latest metrics, a history
 /// strip, then per-section detail. Generic on purpose — no type-specific
