@@ -387,6 +387,7 @@ import {
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
+import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -2933,6 +2934,10 @@ ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: nu
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })
 ipcMain.handle('difft:available', () => difftOnPath())
+// Cursor's live model catalog (incl. the `auto` entry point for Cursor
+// Router). Empty when the CLI is missing or not logged in — the renderer then
+// keeps the static catalog.
+ipcMain.handle('cursor:models', () => listCursorModels())
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
