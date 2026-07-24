@@ -13,6 +13,7 @@ final class RemoteThreadViewModel {
     let session: RemoteSession
     let client: BridgeClient
     private var poll: Task<Void, Never>?
+    private var inFlight: Task<Void, Never>?
 
     var isAwaiting: Bool { status == "awaiting" }
     var hasEnded: Bool { status == "ended" }
@@ -26,18 +27,43 @@ final class RemoteThreadViewModel {
 
     @MainActor
     func refresh() async {
+        // send() and the poll tick can call this concurrently; two identical
+        // `after` fetches would append the same page twice. Piggyback on the
+        // in-flight refresh instead of racing it.
+        if let inFlight { return await inFlight.value }
+        let task = Task { await performRefresh() }
+        inFlight = task
+        defer { inFlight = nil }
+        await task.value
+    }
+
+    @MainActor
+    private func performRefresh() async {
         defer { loading = false }
         do {
             // Ask only for what we don't have — this polls every couple of
             // seconds and a long session's log keeps growing.
-            let page = try await client.messages(id: session.id, after: messages.count)
-            if !page.messages.isEmpty { messages.append(contentsOf: page.messages) }
+            let after = messages.count
+            let page = try await client.messages(id: session.id, after: after)
+            if Self.shouldApply(
+                pageCount: page.messages.count, requestedAfter: after,
+                currentCount: messages.count
+            ) {
+                messages.append(contentsOf: page.messages)
+            }
             status = page.status
             question = page.question
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Whether a fetched page may be appended: only if nothing else grew the
+    /// transcript while the request was in flight (belt-and-suspenders under
+    /// the in-flight guard above).
+    static func shouldApply(pageCount: Int, requestedAfter: Int, currentCount: Int) -> Bool {
+        pageCount > 0 && currentCount == requestedAfter
     }
 
     func start() {

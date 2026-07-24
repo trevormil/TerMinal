@@ -5,9 +5,9 @@ import XCTest
 /// Integration test against a running `ios/scripts/e2e-bridge.ts`.
 ///
 /// Skips itself when the harness isn't up, so it never blocks a normal test
-/// run. It exists because the offline tests exercise the SSE *parser* but
-/// never `BridgeClient.stream()` itself — the one path that actually opens a
-/// connection — so a stream that never issues a request passed everything.
+/// run. It exists because the offline tests never open a real connection —
+/// this is the one place `BridgeClient`'s polling requests (resolve, list,
+/// messages, reply) run against an actual bridge end to end.
 ///
 /// The Simulator shares the host filesystem, so the pairing payload is read
 /// straight out of the harness log rather than plumbed through env vars.

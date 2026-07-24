@@ -28,6 +28,7 @@ import { Terminal as Xterm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import { frameInitialInput } from '../lib/pty-input'
 import type { Choice } from './EntryScreen'
 import type { Engine, KnowledgeScope, PromptSnippet, SkillInfo } from '../lib/types'
 import { rewriteCodexSkillSubmit } from '../lib/codexSkillInput'
@@ -554,10 +555,11 @@ export function TerminalPane({
       onStarted?.(info)
       if (choice.initialInput) {
         window.setTimeout(() => {
-          gt.pty.input(sessionKey, choice.initialInput || '')
+          // Bracketed-paste framing keeps embedded newlines literal — without
+          // it a multiline phone prompt splits into multiple submissions.
+          gt.pty.input(sessionKey, frameInitialInput(choice.initialInput || ''))
           // A phone-spawned session has no one to press Enter. Submit for it,
-          // after a beat so the TUI has ingested the whole (multi-line) prompt —
-          // the embedded newlines are literal, only this \r submits.
+          // after a beat so the TUI has ingested the whole prompt.
           if (choice.autoSubmit) {
             window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 600)
           }

@@ -30,7 +30,6 @@ final class PushRegistrar: NSObject {
 
     func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
         let granted =
             (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await MainActor.run {
@@ -89,6 +88,16 @@ extension PushRegistrar: UNUserNotificationCenterDelegate {
 
 /// Minimal delegate: APNs token callbacks have no SwiftUI equivalent.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Must be set before this returns, or a notification tap that cold-
+        // launches the app never reaches didReceive and the deep-link is lost.
+        UNUserNotificationCenter.current().delegate = PushRegistrar.shared
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
