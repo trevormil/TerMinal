@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
+  ArrowLeft,
   Check,
-  ChevronDown,
-  ChevronRight,
   Mail,
   X,
   Trash2,
@@ -107,6 +106,23 @@ function hasOpenTerminal(h: HitlItem, terminals: InboxTerminalRef[]): boolean {
   })
 }
 
+function bodyOf(h: HitlItem): string {
+  return [h.action, h.detail].filter(Boolean).join('\n\n')
+}
+
+// One-line preview under the subject, like a mail client — markdown syntax
+// stripped just enough to read as prose.
+function snippetOf(h: HitlItem): string {
+  return bodyOf(h)
+    .replace(/[#*`>_[\]()-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140)
+}
+
+const ACTION_BTN =
+  'inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100'
+
 export function InboxDrawer({
   onClose,
   openTerminals = [],
@@ -198,6 +214,151 @@ export function InboxDrawer({
     }
   }
 
+  // Mail-client model: the list is the inbox; opening an item replaces the
+  // whole pane with the message and a back button — no accordion.
+  const readingItem = reading ? all.find((h) => h.id === reading) || null : null
+  useEffect(() => {
+    if (!reading) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setReading(null)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [reading])
+  if (readingItem) {
+    const canViewTerminal = hasOpenTerminal(readingItem, openTerminals)
+    const body = bodyOf(readingItem)
+    const h = readingItem
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+          <button
+            onClick={() => setReading(null)}
+            title="Back to Inbox (Esc)"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-zinc-400 transition-colors duration-150 hover:bg-white/5 hover:text-zinc-100"
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            Inbox
+          </button>
+          <div className="flex-1" />
+          <SeverityTag sev={severityOf(h)} />
+          <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Close Inbox"
+              className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/5 hover:text-zinc-200"
+            >
+              <X size={15} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[640px] px-6 py-5">
+            <h2 className="text-[17px] font-semibold leading-snug text-zinc-100">{h.title}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
+              {h.repo && <span className="font-medium text-zinc-400">{h.repo}</span>}
+              {(h.terminalCwd || h.repoRoot) && (
+                <span className="truncate font-mono text-[10px]">
+                  {h.terminalCwd || h.repoRoot}
+                </span>
+              )}
+              <span>·</span>
+              <span>{reltime(h.createdAt)}</span>
+              {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
+                <span className="rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
+                  x{h.occurrenceCount}
+                </span>
+              )}
+            </div>
+            <div className="my-4 border-t border-[var(--gt-border)]" />
+            {body ? (
+              <Markdown className="text-[12.5px] leading-relaxed text-zinc-300">{body}</Markdown>
+            ) : (
+              <div className="text-[12px] italic text-zinc-600">No details.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--gt-border)] px-4 py-2.5">
+          {canViewTerminal && (
+            <button
+              onClick={() =>
+                navigateTo('terminal', {
+                  sessionKey: h.terminalKey,
+                  sessionId: h.sessionId,
+                  cwd: h.terminalCwd || h.repoRoot,
+                  repoRoot: h.repoRoot,
+                })
+              }
+              className={ACTION_BTN}
+            >
+              <SquareTerminal size={11} strokeWidth={2} />
+              Terminal
+            </button>
+          )}
+          {h.runId && (
+            <button onClick={() => navigateTo('runs', { runId: h.runId })} className={ACTION_BTN}>
+              <ListChecks size={11} strokeWidth={2} />
+              Run
+            </button>
+          )}
+          {h.ticketPath && (
+            <button
+              onClick={() => navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })}
+              className={ACTION_BTN}
+            >
+              <Ticket size={11} strokeWidth={2} />
+              Ticket
+            </button>
+          )}
+          <div className="flex-1" />
+          {h.status === 'open' ? (
+            <button
+              onClick={async () => {
+                await window.gt.hitl.resolve(h.id, true, h.hostId)
+                setReading(null)
+                reload()
+              }}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] text-zinc-300 transition-colors duration-150 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
+            >
+              <Check size={12} strokeWidth={2.5} />
+              Resolve
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                await window.gt.hitl.resolve(h.id, false, h.hostId)
+                reload()
+              }}
+              title="Reopen"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 transition-colors duration-150 hover:text-zinc-300"
+            >
+              <RotateCcw size={11} strokeWidth={2} />
+              Reopen
+            </button>
+          )}
+          <button
+            onClick={async () => {
+              if (!confirm('Delete this Inbox item permanently?')) return
+              await window.gt.hitl.remove(h.id, h.hostId)
+              setReading(null)
+              reload()
+            }}
+            title="Remove"
+            className="inline-flex cursor-pointer items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 transition-colors duration-150 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
+          >
+            <Trash2 size={11} strokeWidth={2} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
@@ -211,7 +372,7 @@ export function InboxDrawer({
           <button
             onClick={markAllRead}
             title="Mark every unread item read"
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
           >
             Mark all read
           </button>
@@ -220,7 +381,7 @@ export function InboxDrawer({
           <button
             onClick={resolveAll}
             disabled={resolvingAll}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)] disabled:cursor-wait disabled:opacity-60"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)] disabled:cursor-wait disabled:opacity-60"
           >
             <Check size={12} strokeWidth={2.5} />
             {resolvingAll ? 'Resolving...' : 'Resolve all'}
@@ -235,7 +396,7 @@ export function InboxDrawer({
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] ${
+            className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors duration-150 ${
               filter === key
                 ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
                 : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
@@ -253,163 +414,70 @@ export function InboxDrawer({
           <button
             onClick={onClose}
             title="Close Inbox"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/5 hover:text-zinc-200"
           >
             <X size={15} strokeWidth={2} />
           </button>
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {items === null ? (
-          <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
+          <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (
-          <div className="p-3 text-[12px] text-zinc-600">
+          <div className="p-4 text-[12px] text-zinc-600">
             {filter === 'archive'
               ? 'Nothing archived yet.'
               : 'Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from any repo.'}
           </div>
         ) : (
-          <div className="space-y-1.5">
+          // Flat mail-style rows: hairline dividers, hover highlight, click to
+          // open the message full-pane.
+          <div className="divide-y divide-[var(--gt-border)]/60">
             {shown.map((h) => {
-              const isOpen = reading === h.id
-              const canViewTerminal = hasOpenTerminal(h, openTerminals)
-              const body = [h.action, h.detail].filter(Boolean).join('\n\n')
+              const unreadRow = isUnread(h)
+              const snippet = snippetOf(h)
               return (
-                <div
+                <button
                   key={h.id}
-                  className={`overflow-hidden rounded-lg border bg-[var(--gt-panel)] ${
-                    isOpen
-                      ? 'border-[var(--gt-accent)]/40'
-                      : h.status === 'open'
-                        ? 'border-[var(--gt-border)]'
-                        : 'border-[var(--gt-border)] opacity-70'
+                  onClick={() => {
+                    setReading(h.id)
+                    if (unreadRow) markRead([h.id])
+                  }}
+                  className={`group flex w-full cursor-pointer items-start gap-2.5 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.04] ${
+                    h.status === 'resolved' ? 'opacity-60' : ''
                   }`}
                 >
-                  {/* Subject row — click to read (like opening an email). */}
-                  <button
-                    onClick={() => {
-                      setReading(isOpen ? null : h.id)
-                      if (isUnread(h)) markRead([h.id])
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left"
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${isUnread(h) ? 'bg-[var(--gt-accent)]' : ''}`}
-                    />
-                    <span
-                      className={`min-w-0 flex-1 truncate text-[12.5px] ${isUnread(h) ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
-                    >
-                      {h.title}
+                  <span
+                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`min-w-0 flex-1 truncate text-[12.5px] ${unreadRow ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
+                      >
+                        {h.title}
+                      </span>
+                      <SeverityTag sev={severityOf(h)} />
+                      <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                      {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
+                        <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
+                          x{h.occurrenceCount}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                        {reltime(h.createdAt)}
+                      </span>
                     </span>
-                    <SeverityTag sev={severityOf(h)} />
-                    <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
-                    {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
-                      <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
-                        x{h.occurrenceCount}
+                    {(snippet || h.repo) && (
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
+                        {h.repo && <span className="shrink-0 text-zinc-500">{h.repo}</span>}
+                        {h.repo && snippet && <span>—</span>}
+                        <span className="truncate">{snippet}</span>
                       </span>
                     )}
-                    <span className="shrink-0 text-[10px] text-zinc-600">
-                      {reltime(h.createdAt)}
-                    </span>
-                    {isOpen ? (
-                      <ChevronDown size={13} className="shrink-0 text-zinc-600" />
-                    ) : (
-                      <ChevronRight size={13} className="shrink-0 text-zinc-600" />
-                    )}
-                  </button>
-                  {/* Body — full content rendered as markdown + actions. */}
-                  {isOpen && (
-                    <div className="border-t border-[var(--gt-border)] px-3 py-2.5">
-                      {(h.repo || h.terminalCwd || h.repoRoot) && (
-                        <div className="mb-1.5 truncate font-mono text-[10px] text-zinc-600">
-                          {h.repo}
-                          {(h.terminalCwd || h.repoRoot) && ` · ${h.terminalCwd || h.repoRoot}`}
-                        </div>
-                      )}
-                      {body ? (
-                        <div className="max-h-80 overflow-y-auto">
-                          <Markdown className="text-[12px] text-zinc-300">{body}</Markdown>
-                        </div>
-                      ) : (
-                        <div className="text-[11.5px] italic text-zinc-600">No details.</div>
-                      )}
-                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                        {canViewTerminal && (
-                          <button
-                            onClick={() =>
-                              navigateTo('terminal', {
-                                sessionKey: h.terminalKey,
-                                sessionId: h.sessionId,
-                                cwd: h.terminalCwd || h.repoRoot,
-                                repoRoot: h.repoRoot,
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                          >
-                            <SquareTerminal size={11} strokeWidth={2} />
-                            Terminal
-                          </button>
-                        )}
-                        {h.runId && (
-                          <button
-                            onClick={() => navigateTo('runs', { runId: h.runId })}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                          >
-                            <ListChecks size={11} strokeWidth={2} />
-                            Run
-                          </button>
-                        )}
-                        {h.ticketPath && (
-                          <button
-                            onClick={() =>
-                              navigateTo('tickets', { slug: ticketSlugFromPath(h.ticketPath!) })
-                            }
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                          >
-                            <Ticket size={11} strokeWidth={2} />
-                            Ticket
-                          </button>
-                        )}
-                        <div className="flex-1" />
-                        {h.status === 'open' ? (
-                          <button
-                            onClick={async () => {
-                              await window.gt.hitl.resolve(h.id, true, h.hostId)
-                              reload()
-                            }}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
-                          >
-                            <Check size={12} strokeWidth={2.5} />
-                            Resolve
-                          </button>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              await window.gt.hitl.resolve(h.id, false, h.hostId)
-                              reload()
-                            }}
-                            title="Reopen"
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-300"
-                          >
-                            <RotateCcw size={11} strokeWidth={2} />
-                          </button>
-                        )}
-                        <button
-                          onClick={async () => {
-                            if (!confirm('Delete this Inbox item permanently?')) return
-                            await window.gt.hitl.remove(h.id, h.hostId)
-                            reload()
-                          }}
-                          title="Remove"
-                          className="inline-flex items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
-                        >
-                          <Trash2 size={11} strokeWidth={2} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  </span>
+                </button>
               )
             })}
           </div>
