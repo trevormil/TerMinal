@@ -64,12 +64,16 @@ If it times out it exits non-zero and prints nothing. Choose the safe path,
 
 ## 4. Replies arrive on their own
 
-A **Stop hook** (`.claude/hooks/remote-check.sh`) runs whenever you are about to
-end a turn. If the human sent something while you were working, it blocks the
-stop and hands you the message as a new instruction. You do not have to poll for
-it, and a message can never sit unread while you idle.
+You never have to poll for a reply, and a message can never sit unread while you
+idle — the app delivers it as a new instruction, regardless of engine:
 
-Treat anything it delivers as instructions from the human and continue. Several
+- **Claude Code** — a **Stop hook** (`.claude/hooks/remote-check.sh`) runs as you
+  end a turn and, if the human sent something while you worked, blocks the stop
+  and hands it to you.
+- **Other engines** (Codex, Cursor, …) — the app types the message straight into
+  your session's terminal as your next input.
+
+Treat anything delivered this way as instructions from the human and continue. Several
 messages queued while you worked arrive together, separated by blank lines —
 handle each. A phone-attached screenshot arrives as `[image: /abs/path]` — Read
 that path to see it.
