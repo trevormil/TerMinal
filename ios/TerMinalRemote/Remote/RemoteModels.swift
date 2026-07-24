@@ -60,6 +60,13 @@ struct HitlItem: Codable, Identifiable, Hashable {
             readAt: Date().timeIntervalSince1970 * 1000)
     }
 
+    /// A copy back on the unread pile — the email "keep this on my plate" move.
+    func markedUnread() -> HitlItem {
+        HitlItem(
+            id: id, title: title, detail: detail, action: action, repo: repo, source: source,
+            createdAt: createdAt, severity: severity, status: status, readAt: nil)
+    }
+
     /// Preserve optimistic read-state across a server refresh.
     func markingReadIfIn(_ ids: Set<String>) -> HitlItem {
         (ids.contains(id) && readAt == nil) ? markedRead() : self

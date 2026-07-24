@@ -656,6 +656,31 @@ describe('inbox read-state', () => {
     expect(seen).toEqual([['a', 'b']])
   })
 
+  it('read:false flows through as mark-unread', async () => {
+    const seen: [string[], boolean | undefined][] = []
+    const h = await harness({
+      markHitlRead: (ids, read) => {
+        seen.push([ids, read])
+        return ids.length
+      },
+    })
+    await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['a'], read: false }),
+    })
+    // Omitted read defaults to true — the original wire shape keeps working.
+    await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['b'] }),
+    })
+    expect(seen).toEqual([
+      [['a'], false],
+      [['b'], true],
+    ])
+  })
+
   it('501s when read-state is unavailable, and requires auth', async () => {
     const h = await harness()
     expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST', headers: auth })).status).toBe(

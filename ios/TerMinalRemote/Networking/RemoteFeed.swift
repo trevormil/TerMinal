@@ -56,8 +56,10 @@ final class RemoteFeed {
     func removeHitl(id: String) { hitl.removeAll { $0.id == id } }
 
     @MainActor
-    func markHitlRead(ids: [String]) {
-        hitl = hitl.map { ids.contains($0.id) ? $0.markedRead() : $0 }
+    func markHitlRead(ids: [String], read: Bool = true) {
+        hitl = hitl.map {
+            ids.contains($0.id) ? (read ? $0.markedRead() : $0.markedUnread()) : $0
+        }
         syncBadge()
     }
 

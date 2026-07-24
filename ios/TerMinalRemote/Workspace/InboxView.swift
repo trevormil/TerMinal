@@ -36,6 +36,14 @@ final class InboxViewModel {
         Task { try? await client.markHitlRead(ids: ids) }
     }
 
+    /// Back on the unread pile — email parity with "mark as unread".
+    @MainActor
+    func markUnread(_ item: HitlItem) {
+        guard item.readAt != nil else { return }
+        feed.markHitlRead(ids: [item.id], read: false)
+        Task { try? await client.markHitlRead(ids: [item.id], read: false) }
+    }
+
     @MainActor
     func markAllRead() { markRead(hitl) }
 }
@@ -83,6 +91,13 @@ struct InboxView: View {
                                 Label("Read", systemImage: "envelope.open")
                             }
                             .tint(GT.accent)
+                        } else if !item.isResolved {
+                            Button {
+                                model.markUnread(item)
+                            } label: {
+                                Label("Unread", systemImage: "envelope.badge")
+                            }
+                            .tint(GT.accent)
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -106,6 +121,10 @@ struct InboxView: View {
                         if item.isUnread {
                             Button("Mark read", systemImage: "envelope.open") {
                                 model.markRead([item])
+                            }
+                        } else if !item.isResolved {
+                            Button("Mark unread", systemImage: "envelope.badge") {
+                                model.markUnread(item)
                             }
                         }
                         if archive {
@@ -173,8 +192,7 @@ private struct InboxRow: View {
                 }
                 Spacer(minLength: 4)
                 SeverityTag(severity: item.severity)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
+                // No chevron: the List's NavigationLink draws the native one.
             }
         }
     }

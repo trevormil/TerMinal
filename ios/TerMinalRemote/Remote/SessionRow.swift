@@ -4,6 +4,8 @@ import SwiftUI
 /// Shared by the workspace Sessions tab.
 struct SessionRow: View {
     let session: RemoteSession
+    /// False inside a native List, whose NavigationLink draws its own chevron.
+    var showsChevron = true
 
     var body: some View {
         GTPanel {
@@ -36,9 +38,11 @@ struct SessionRow: View {
                 } else if session.hasEnded {
                     Text("done").font(GT.sans(10)).foregroundStyle(GT.textFaint)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(GT.textFaint)
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(GT.textFaint)
+                }
             }
         }
     }

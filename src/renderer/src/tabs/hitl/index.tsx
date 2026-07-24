@@ -189,6 +189,13 @@ export function InboxDrawer({
     for (const [hostId, hostIds] of byHost(fresh))
       void window.gt.hitl.markRead(hostIds, hostId).catch(() => 0)
   }
+  // Email parity: put an item back on the unread pile (and return to the list,
+  // like a mail client does).
+  const markUnread = (h: HitlItem) => {
+    setItems((prev) => (prev || []).map((x) => (x.id === h.id ? { ...x, readAt: undefined } : x)))
+    void window.gt.hitl.markRead([h.id], h.hostId, false).catch(() => 0)
+    setReading(null)
+  }
   const markAllRead = async () => {
     if (!unread.length) return
     const remoteUnread = unread.filter((h) => h.hostId)
@@ -317,6 +324,12 @@ export function InboxDrawer({
             </button>
           )}
           <div className="flex-1" />
+          {h.status === 'open' && h.readAt && (
+            <button onClick={() => markUnread(h)} title="Mark unread" className={ACTION_BTN}>
+              <Mail size={11} strokeWidth={2} />
+              Mark unread
+            </button>
+          )}
           {h.status === 'open' ? (
             <button
               onClick={async () => {

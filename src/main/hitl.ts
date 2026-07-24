@@ -104,15 +104,16 @@ export function unreadCount(): number {
   return readHitl().filter((h) => h.status === 'open' && !h.readAt).length
 }
 
-/** Mark items read (viewed). Returns how many changed. */
-export function markHitlRead(ids: string[]): number {
+/** Mark items read (viewed) — or unread again with read=false, the email
+ *  "keep this on my plate" gesture. Returns how many changed. */
+export function markHitlRead(ids: string[], read = true): number {
   const set = new Set(ids)
   const list = readHitl()
   let changed = 0
   const next = list.map((h) => {
-    if (set.has(h.id) && !h.readAt) {
+    if (set.has(h.id) && (read ? !h.readAt : !!h.readAt)) {
       changed++
-      return { ...h, readAt: Date.now() }
+      return read ? { ...h, readAt: Date.now() } : { ...h, readAt: undefined }
     }
     return h
   })

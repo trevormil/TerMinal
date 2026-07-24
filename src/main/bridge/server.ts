@@ -84,7 +84,7 @@ export type BridgeDeps = {
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
   /** Mark HITL items read (viewed on the phone). */
-  markHitlRead?(ids: string[]): number
+  markHitlRead?(ids: string[], read?: boolean): number
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
 
@@ -406,7 +406,7 @@ export function createBridgeHandler(
       return
     }
 
-    // Mark inbox items read (viewed on the phone).
+    // Mark inbox items read — or unread again with read:false (viewed on the phone).
     if (req.method === 'POST' && url.pathname === '/v1/hitl/read') {
       if (!deps.markHitlRead) {
         json(res, 501, { error: 'read state not available' })
@@ -414,17 +414,20 @@ export function createBridgeHandler(
       }
       readBody(req)
         .then((raw) => {
-          const ids = (() => {
+          const { ids, read } = (() => {
             try {
-              const p = JSON.parse(raw || '{}') as { ids?: unknown }
-              return Array.isArray(p.ids)
-                ? p.ids.filter((x): x is string => typeof x === 'string')
-                : []
+              const p = JSON.parse(raw || '{}') as { ids?: unknown; read?: unknown }
+              return {
+                ids: Array.isArray(p.ids)
+                  ? p.ids.filter((x): x is string => typeof x === 'string')
+                  : [],
+                read: p.read !== false,
+              }
             } catch {
-              return []
+              return { ids: [], read: true }
             }
           })()
-          json(res, 200, { marked: deps.markHitlRead!(ids) })
+          json(res, 200, { marked: deps.markHitlRead!(ids, read) })
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return

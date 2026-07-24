@@ -76,7 +76,7 @@ struct ActiveSessionsView: View {
                     .plainRow()
                 }
                 ForEach(model.active) { s in
-                    NavigationLink(value: s) { SessionRow(session: s) }
+                    NavigationLink(value: s) { SessionRow(session: s, showsChevron: false) }
                         .buttonStyle(.plain)
                         .plainRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

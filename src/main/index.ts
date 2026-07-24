@@ -1306,7 +1306,7 @@ const bridgeDeps: BridgeDeps = {
     return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
   },
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
-  markHitlRead: (ids) => markHitlRead(ids),
+  markHitlRead: (ids, read) => markHitlRead(ids, read),
   repos: () => {
     // Most recent activity per repo, so the phone can surface what you actually
     // work in instead of an alphabetical wall. Desktop pins/recents live in
@@ -2707,12 +2707,12 @@ ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
 // Mark-read routes to the owning host like resolve/remove (#14) — a remote
 // item's readAt must persist where the item lives, or the 15s remote fan-in
 // flips it back to unread. No hostId → local, as before.
-ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string) => {
+ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = true) => {
   if (hostId) {
     const ref = remoteFromHostId(hostId)
-    if (ref) return remoteHitl.markRead(ref, ids).catch(() => 0)
+    if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
   }
-  return markHitlRead(ids)
+  return markHitlRead(ids, read)
 })
 ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.

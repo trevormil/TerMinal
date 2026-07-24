@@ -1797,7 +1797,7 @@ export type GtApi = {
     file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
-    markRead: (ids: string[], hostId?: string) => Promise<number>
+    markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
   }
   factory: {

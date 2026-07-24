@@ -139,9 +139,13 @@ final class BridgeClient {
         try await post("v1/hitl/\(id)", body: ["resolved": resolved])
     }
 
-    /// Mark inbox items read (viewed). Read-state is local to the surface.
-    func markHitlRead(ids: [String]) async throws {
-        try await post("v1/hitl/read", body: ["ids": ids])
+    /// Mark inbox items read (viewed) — or unread again with read=false.
+    func markHitlRead(ids: [String], read: Bool = true) async throws {
+        struct Body: Encodable {
+            let ids: [String]
+            let read: Bool
+        }
+        try await post("v1/hitl/read", body: Body(ids: ids, read: read))
     }
 
     /// Terminate a session — it stays listed, marked ended.
