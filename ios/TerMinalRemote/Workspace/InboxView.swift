@@ -1,38 +1,30 @@
 import SwiftUI
-import UserNotifications
 
+/// Reads from the shared RemoteFeed (polled once at the app root) rather than
+/// running its own fetch loop against the same endpoint.
 @Observable
 final class InboxViewModel {
-    let client: BridgeClient
-    private(set) var hitl: [HitlItem] = []
-    private(set) var error: String?
-    var loading = true
+    let feed: RemoteFeed
+    private var client: BridgeClient { feed.client }
 
-    init(client: BridgeClient) { self.client = client }
+    init(feed: RemoteFeed) { self.feed = feed }
+
+    var hitl: [HitlItem] { feed.hitl }
+    var error: String? { feed.error }
+    var loading: Bool { feed.loading }
 
     var unread: [HitlItem] { hitl.filter(\.isUnread) }
     var open: [HitlItem] { hitl.filter { !$0.isResolved } }
     var archived: [HitlItem] { hitl.filter(\.isResolved) }
 
     @MainActor
-    func refresh() async {
-        defer { loading = false }
-        do {
-            let (_, fresh) = try await client.remote()
-            // Keep any optimistic read-state we applied so an item doesn't flash
-            // unread mid-poll.
-            let readLocally = Set(hitl.filter { $0.readAt != nil }.map(\.id))
-            hitl = fresh.map { $0.markingReadIfIn(readLocally) }
-            error = nil
-            syncBadge()
-        } catch { self.error = error.localizedDescription }
-    }
+    func refresh() async { await feed.refresh() }
 
     @MainActor
     func resolve(_ item: HitlItem, approved: Bool) async {
-        hitl.removeAll { $0.id == item.id }
+        feed.removeHitl(id: item.id)
         try? await client.resolveHitl(id: item.id, resolved: approved)
-        await refresh()
+        await feed.refresh()
     }
 
     /// Mark read — optimistic locally, persisted + badge-synced in the background.
@@ -40,19 +32,12 @@ final class InboxViewModel {
     func markRead(_ items: [HitlItem]) {
         let ids = items.filter(\.isUnread).map(\.id)
         guard !ids.isEmpty else { return }
-        hitl = hitl.map { ids.contains($0.id) ? $0.markedRead() : $0 }
-        syncBadge()
+        feed.markHitlRead(ids: ids)
         Task { try? await client.markHitlRead(ids: ids) }
     }
 
     @MainActor
     func markAllRead() { markRead(hitl) }
-
-    /// The app icon badge should track UNREAD, and clear as you read — iOS keeps
-    /// it until the app resets it, which is why a stale "1" lingered.
-    private func syncBadge() {
-        UNUserNotificationCenter.current().setBadgeCount(unread.count)
-    }
 }
 
 /// Global, cross-workspace: everything that needs you, read like email — a list
@@ -111,12 +96,6 @@ struct InboxView: View {
                 if !model.unread.isEmpty {
                     Button("Read all") { model.markAllRead() }.font(GT.sans(13))
                 }
-            }
-        }
-        .task {
-            while !Task.isCancelled {
-                await model.refresh()
-                try? await Task.sleep(for: .seconds(5))
             }
         }
     }

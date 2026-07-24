@@ -10,7 +10,9 @@ struct NewSessionSheet: View {
     let onStarted: (String) async -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var engine = "claude"
+    // The Mac's list order carries its default; codex only if the list is empty
+    // (the repo-wide safe default — never assume claude).
+    @State private var engine = WsEngine.fallback.first?.id ?? "codex"
     @State private var task = ""
     @State private var busy = false
     @State private var error: String?
@@ -111,7 +113,12 @@ struct NewSessionSheet: View {
                 }
             }
             .task {
-                if let live = try? await client.engines(), !live.isEmpty { engines = live }
+                guard let live = try? await client.engines(), !live.isEmpty else { return }
+                // Re-default to the Mac's first engine, but never clobber a
+                // selection the user already made.
+                let untouched = engine == engines.first?.id
+                engines = live
+                if untouched, let first = live.first { engine = first.id }
             }
         }
         .preferredColorScheme(.dark)

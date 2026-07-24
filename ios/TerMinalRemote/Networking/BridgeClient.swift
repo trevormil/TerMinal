@@ -2,6 +2,7 @@ import Foundation
 
 enum BridgeError: LocalizedError, Equatable {
     case unreachable
+    case pinMismatch
     case unauthorized
     case sessionGone
     case http(Int)
@@ -10,6 +11,9 @@ enum BridgeError: LocalizedError, Equatable {
         switch self {
         case .unreachable:
             return "Can't reach TerMinal. Is the Mac awake and on the same network?"
+        case .pinMismatch:
+            return "The Mac's identity has changed and no longer matches this pairing. "
+                + "Re-pair this device to reconnect."
         case .unauthorized:
             return "This device is no longer paired. Scan the code again."
         case .sessionGone:
@@ -36,11 +40,11 @@ final class BridgeClient {
         self.delegate = PinnedSessionDelegate(fingerprint: pairing.fp)
         let config = URLSessionConfiguration.ephemeral
         // Applies to the gap BETWEEN packets, not the whole request. Fine for
-        // the small JSON calls; the stream raises it (see `stream`).
+        // the small JSON polling calls this session carries.
         config.timeoutIntervalForRequest = 10
-        // An SSE stream is open indefinitely; without this the OS tears it down
-        // mid-session and the terminal appears to freeze.
-        config.timeoutIntervalForResource = .infinity
+        // The app polls; nothing long-lived rides this session, so a finite
+        // ceiling is safe and reclaims any stuck task.
+        config.timeoutIntervalForResource = 120
         config.waitsForConnectivity = false
         self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
@@ -60,12 +64,14 @@ final class BridgeClient {
     /// the address that actually works rather than failing outright.
     @discardableResult
     func resolveHost() async -> String? {
-        if let host, await isHealthy(host) { return host }
+        // Trust the cache outright — a health probe per call would double the
+        // round trips of the 2s thread poll. `perform` clears it and re-races
+        // when a request actually fails.
+        if let host { return host }
         for candidate in pairing.h where await isHealthy(candidate) {
             host = candidate
             return candidate
         }
-        host = nil
         return nil
     }
 
@@ -120,18 +126,11 @@ final class BridgeClient {
         try await post("v1/remote/\(id)/reply", body: body)
     }
 
-    /// Authenticated URL for an attached image, loaded via `imageData`.
-    func imageURL(id: String, name: String) async -> URL? {
-        guard let host = await resolveHost() else { return nil }
-        return URL(string: "https://\(host):\(pairing.p)/v1/remote/\(id)/image/\(name)")
-    }
-
     /// Fetch an image's bytes (bearer + pinned, like everything else).
     func imageData(id: String, name: String) async -> Data? {
-        guard let host = await resolveHost() else { return nil }
-        guard let (data, response) = try? await session.data(
-            for: request("v1/remote/\(id)/image/\(name)", host: host))
-        else { return nil }
+        guard let (data, response) = try? await perform({
+            self.request("v1/remote/\(id)/image/\(name)", host: $0)
+        }) else { return nil }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return data
     }
@@ -152,10 +151,9 @@ final class BridgeClient {
 
     /// Remove a session for good.
     func deleteSession(id: String) async throws {
-        guard let host = await resolveHost() else { throw BridgeError.unreachable }
-        guard let (_, response) = try? await session.data(
-            for: request("v1/remote/\(id)", host: host, method: "DELETE"))
-        else { throw BridgeError.unreachable }
+        let (_, response) = try await perform {
+            self.request("v1/remote/\(id)", host: $0, method: "DELETE")
+        }
         try Self.check(response)
     }
 
@@ -264,25 +262,70 @@ final class BridgeClient {
     // ---- plumbing -------------------------------------------------------
 
     private func get(_ path: String) async throws -> Data {
-        guard let host = await resolveHost() else { throw BridgeError.unreachable }
-        guard let (data, response) = try? await session.data(for: request(path, host: host)) else {
-            throw BridgeError.unreachable
-        }
+        let (data, response) = try await perform { self.request(path, host: $0) }
         try Self.check(response)
         return data
     }
 
     @discardableResult
     private func post(_ path: String, body: (any Encodable)?) async throws -> Data {
-        guard let host = await resolveHost() else { throw BridgeError.unreachable }
-        var req = request(path, host: host, method: "POST")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let body { req.httpBody = try JSONEncoder().encode(AnyEncodable(body)) }
-        guard let (data, response) = try? await session.data(for: req) else {
-            throw BridgeError.unreachable
+        let encoded = try body.map { try JSONEncoder().encode(AnyEncodable($0)) }
+        let (data, response) = try await perform {
+            var req = self.request(path, host: $0, method: "POST")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = encoded
+            return req
         }
         try Self.check(response)
         return data
+    }
+
+    /// One request against the resolved host. If the cached address stopped
+    /// answering, drop it, re-race the candidates once, and retry once.
+    private func perform(_ makeRequest: (String) -> URLRequest) async throws -> (Data, URLResponse) {
+        guard let host = await resolveHost() else { throw BridgeError.unreachable }
+        do {
+            return try await session.data(for: makeRequest(host))
+        } catch {
+            let mapped = classify(error)
+            guard mapped == .unreachable, Self.isStaleHostError(error) else { throw mapped }
+            self.host = nil
+            guard let fresh = await resolveHost() else { throw BridgeError.unreachable }
+            do {
+                return try await session.data(for: makeRequest(fresh))
+            } catch {
+                throw classify(error)
+            }
+        }
+    }
+
+    private func classify(_ error: Error) -> BridgeError {
+        guard let urlError = error as? URLError else { return .unreachable }
+        switch urlError.code {
+        case .serverCertificateUntrusted, .serverCertificateHasBadDate,
+            .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+            return .pinMismatch
+        case .cancelled where delegate.rejectedPin:
+            // -999 is ambiguous: the pinning delegate cancelling the challenge
+            // and ordinary Task cancellation look identical. The delegate's
+            // flag disambiguates.
+            return .pinMismatch
+        default:
+            return .unreachable
+        }
+    }
+
+    /// Failures that mean "this address is dead", worth a host re-race — as
+    /// opposed to cancellation or a TLS refusal.
+    private static func isStaleHostError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+            .networkConnectionLost, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func check(_ response: URLResponse) throws {

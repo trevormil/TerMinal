@@ -6,8 +6,8 @@ import Security
 /// home for it — this is the one genuinely sensitive thing the app stores.
 enum PairingStore {
     // Derive from the running bundle id so a fork under its own identifier gets
-    // its own Keychain namespace (for Trevor's build this resolves to the same
-    // "com.trevormil.terminal.pairing", so nothing re-pairs).
+    // its own Keychain namespace ("<bundle id>.pairing"), and a rebuild under
+    // the same id keeps its pairing.
     private static let service = (Bundle.main.bundleIdentifier ?? "terminal") + ".pairing"
     private static let account = "default"
 

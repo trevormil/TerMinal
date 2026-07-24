@@ -30,9 +30,41 @@ enum TailscalePairing {
         }
     }
 
+    /// True only for hosts that provably route over the tailnet. The bootstrap
+    /// pair request skips certificate pinning on the assumption the traffic
+    /// rides the WireGuard tunnel — so the typed host must be a tailnet
+    /// address, never a LAN or internet one.
+    static func isTailnetHost(_ host: String) -> Bool {
+        let h = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !h.isEmpty else { return false }
+        // MagicDNS: full *.ts.net names.
+        if h.hasSuffix(".ts.net") { return true }
+        // Tailscale CGNAT IPv4 range: 100.64.0.0/10.
+        let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+        if parts.count == 4 {
+            let octets = parts.compactMap { UInt8($0) }
+            return octets.count == 4 && octets[0] == 100 && (64...127).contains(octets[1])
+        }
+        // Raw IPv6 (incl. Tailscale's fd7a: ULA range) is rejected: the rest of
+        // the pipeline can't complete it — PairingPayload.baseURL builds URLs
+        // without brackets and the Mac's /v1/pair gate only vouches for IPv4
+        // CGNAT peers. Tailnet IPv6 users still pair via the MagicDNS name.
+        if h.contains(":") { return false }
+        // A bare MagicDNS short name (no dots) can only resolve via tailnet DNS.
+        return !h.contains(".")
+    }
+
     /// `host` is the Mac's MagicDNS name (or any tailnet address); `port` is the
     /// bridge port. Returns a full pairing payload on success.
     static func pair(host: String, port: Int) async throws -> PairingPayload {
+        guard isTailnetHost(host) else {
+            throw Failure.detailed(
+                "\"\(host)\" isn't a Tailscale address. Tailscale pairing skips "
+                    + "certificate checks because the tunnel already secures the "
+                    + "connection — that's only safe for tailnet addresses "
+                    + "(100.x.y.z, *.ts.net, or a MagicDNS name). For a LAN "
+                    + "address, use QR pairing instead.")
+        }
         var comps = URLComponents()
         comps.scheme = "https"
         comps.host = host

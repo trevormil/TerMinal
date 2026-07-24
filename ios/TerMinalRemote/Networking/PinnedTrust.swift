@@ -31,13 +31,16 @@ enum PinnedTrust {
 ///
 /// Conforms to BOTH `URLSessionDelegate` and `URLSessionTaskDelegate` on
 /// purpose. `data(for:)` routes its auth challenge to the session-level method,
-/// but `bytes(for:)` — the one the SSE stream uses — consults the TASK-level
-/// method instead. Implementing only the session-level one meant every plain
-/// request authenticated fine while the stream silently failed its TLS
-/// handshake with NSURLErrorServerCertificateUntrusted (-1202), so the bridge
-/// never even saw the request.
+/// but some URLSession call paths consult the TASK-level method instead (the
+/// old SSE `bytes(for:)` path failed its handshake for exactly this reason).
+/// The app polls now, but implementing both keeps every path pinned.
 final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let fingerprint: String
+
+    /// Set when a challenge was refused for a fingerprint mismatch. URLSession
+    /// surfaces that refusal as `.cancelled` (-999), indistinguishable from an
+    /// ordinary Task cancellation — this flag lets the client tell them apart.
+    private(set) var rejectedPin = false
 
     init(fingerprint: String) {
         self.fingerprint = fingerprint
@@ -69,6 +72,7 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskD
             // Wrong certificate: could be a stale pairing after the Mac
             // regenerated its identity, or someone impersonating the bridge.
             // Either way, refuse — never fall back to default handling.
+            rejectedPin = true
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }

@@ -7,7 +7,7 @@ import Foundation
 struct RecentHost: Codable, Identifiable, Equatable {
     let host: String
     let port: Int
-    /// The Mac's name from the pairing response, e.g. "Trevor's MacBook".
+    /// The Mac's name from the pairing response, e.g. "My Mac".
     let name: String
 
     var id: String { "\(host):\(port)" }
