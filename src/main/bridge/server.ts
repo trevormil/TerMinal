@@ -74,6 +74,10 @@ export type BridgeDeps = {
   deleteRemote?(id: string): boolean
   /** Store an uploaded image; returns its filename, or null. */
   saveImage?(id: string, data: Buffer, ext: string): string | null
+  /** Recent raw terminal output (ANSI already stripped) for the desktop pty
+   *  behind a remote session — the read-only peek. Null when no live terminal
+   *  matches (headless or ended). */
+  remoteTerminal?(id: string): { text: string; updatedAt: number } | null
   /** Absolute path of a stored image, for serving it back. */
   imagePath?(id: string, name: string): string | null
 
@@ -681,6 +685,18 @@ export function createBridgeHandler(
             json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
           })
           .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
+
+      // Read-only peek at the session's raw terminal output, for when the chat
+      // goes quiet and you want to see what the pty is actually doing.
+      if (req.method === 'GET' && parts[3] === 'terminal') {
+        if (!deps.remoteTerminal) {
+          json(res, 501, { error: 'terminal peek not available' })
+          return
+        }
+        const tail = deps.remoteTerminal(id)
+        json(res, tail ? 200 : 404, tail ?? { error: 'no terminal attached' })
         return
       }
 

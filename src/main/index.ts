@@ -275,6 +275,7 @@ import {
   readCronRuns,
   readCronRunLog,
   readSessionRunLog,
+  readSessionRunLogTail,
   readSessionRuns,
   listAllRuns,
   runTrends,
@@ -299,8 +300,10 @@ import {
   messageCount,
   postMessage,
   readMessages,
+  readRemoteSession,
   registerRemoteSession,
   saveImage,
+  stripAnsi,
 } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
@@ -1259,6 +1262,22 @@ const bridgeDeps: BridgeDeps = {
   deleteRemote: (id) => deleteRemoteSession(id),
   saveImage: (id, data, ext) => saveImage(id, data, ext),
   imagePath: (id, name) => imagePath(id, name),
+
+  // Read-only terminal peek. Correlate the remote thread to a live desktop pty
+  // the same way the desktop's "on phone" indicator does — engine session id
+  // first, cwd as a fallback — then serve the tail of that pty's output log.
+  remoteTerminal: (id) => {
+    const remote = readRemoteSession(id)
+    if (!remote) return null
+    const live = [...sessions.values()]
+    const match =
+      (remote.agentSessionId
+        ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
+        : undefined) ?? (remote.cwd ? live.find((s) => s.pinned.cwd === remote.cwd) : undefined)
+    if (!match) return null
+    const tail = readSessionRunLogTail(match.pinned.sessionId)
+    return tail ? { text: stripAnsi(tail.text), updatedAt: tail.updatedAt } : null
+  },
 
   // Local items plus every configured host's. An agent blocked on `tm` pages
   // nobody otherwise, which defeats the whole point of an AFK remote.

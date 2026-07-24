@@ -9,6 +9,9 @@ struct SettingsView: View {
 
     @State private var notifStatus: UNAuthorizationStatus?
     @State private var confirmingUnpair = false
+    @State private var lock = AppLock.shared
+    @State private var settingPasscode = false
+    @State private var confirmingLockOff = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -17,6 +20,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     section("Paired Mac") { pairedMacPanel }
+                    section("App lock") { appLockPanel }
                     section("Notifications") { notificationsPanel }
                     section("About") { aboutPanel }
 
@@ -38,6 +42,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
+            .refreshable { await refreshNotifStatus() }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
@@ -108,6 +113,65 @@ struct SettingsView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 0)
+        }
+    }
+
+    private var appLockPanel: some View {
+        GTPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: lock.isEnabled ? "lock.fill" : "lock.open")
+                        .font(.system(size: 15))
+                        .foregroundStyle(lock.isEnabled ? GT.green : GT.textMuted)
+                    Text(lock.isEnabled ? "Passcode on" : "No passcode")
+                        .font(GT.sans(14))
+                        .foregroundStyle(GT.textSoft)
+                    Spacer()
+                    Button(lock.isEnabled ? "Change" : "Set passcode") {
+                        settingPasscode = true
+                    }
+                    .font(GT.sans(13, .medium))
+                    .foregroundStyle(GT.accentLight)
+                    .buttonStyle(.plain)
+                }
+                Text(
+                    "Locks the app's contents on open and when you leave — "
+                        + "notifications stay readable (unlike the iOS-level Face ID lock)."
+                )
+                .font(GT.sans(12))
+                .foregroundStyle(GT.textMuted)
+                if lock.isEnabled {
+                    Divider().overlay(GT.border)
+                    Toggle(isOn: Binding(
+                        get: { lock.biometricsOptIn },
+                        set: { lock.biometricsOptIn = $0 }
+                    )) {
+                        Text("Unlock with Face ID")
+                            .font(GT.sans(13))
+                            .foregroundStyle(GT.textSoft)
+                    }
+                    .tint(GT.accent)
+                    Button("Turn off passcode") {
+                        confirmingLockOff = true
+                    }
+                    .font(GT.sans(13))
+                    .foregroundStyle(GT.red)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .sheet(isPresented: $settingPasscode) {
+            SetPasscodeSheet { code in
+                if let code { lock.setPasscode(code) }
+            }
+        }
+        .confirmationDialog(
+            "Turn off the passcode?",
+            isPresented: $confirmingLockOff,
+            titleVisibility: .visible
+        ) {
+            Button("Turn off", role: .destructive) { lock.removePasscode() }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

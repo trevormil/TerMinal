@@ -14,24 +14,37 @@ struct TerMinalRemoteApp: App {
 
 struct RootView: View {
     @State private var pairing: PairingPayload? = PairingStore.load()
+    @State private var lock = AppLock.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        if let pairing {
-            // Re-key on the token so unpair/re-pair rebuilds the client and its
-            // pinned session rather than reusing stale credentials.
-            PairedView(pairing: pairing, onUnpair: {
-                PairingStore.clear()
-                // Drop the push singleton's client too, so a later APNs token
-                // refresh can't POST with the revoked credentials.
-                PushRegistrar.shared.client = nil
-                self.pairing = nil
-            })
-            .id(pairing.t)
-        } else {
-            PairingView { payload in
-                PairingStore.save(payload)
-                self.pairing = payload
+        ZStack {
+            if let pairing {
+                // Re-key on the token so unpair/re-pair rebuilds the client and its
+                // pinned session rather than reusing stale credentials.
+                PairedView(pairing: pairing, onUnpair: {
+                    PairingStore.clear()
+                    // Drop the push singleton's client too, so a later APNs token
+                    // refresh can't POST with the revoked credentials.
+                    PushRegistrar.shared.client = nil
+                    self.pairing = nil
+                })
+                .id(pairing.t)
+            } else {
+                PairingView { payload in
+                    PairingStore.save(payload)
+                    self.pairing = payload
+                }
             }
+            // In-app passcode gate — contents locked, notifications untouched
+            // (the iOS-level Face ID app lock hides notification previews;
+            // this one doesn't).
+            if lock.locked {
+                LockView().transition(.opacity)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { lock.lockIfEnabled() }
         }
     }
 }

@@ -148,6 +148,18 @@ final class BridgeClient {
         try await post("v1/hitl/read", body: Body(ids: ids, read: read))
     }
 
+    /// The session's recent raw terminal output — the read-only peek. The Mac
+    /// tails the pty log and strips ANSI, so this is plain text.
+    func terminalText(id: String) async throws -> (text: String, updatedAt: Double) {
+        struct Envelope: Decodable {
+            let text: String
+            let updatedAt: Double
+        }
+        let env = try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/remote/\(id)/terminal"))
+        return (env.text, env.updatedAt)
+    }
+
     /// Terminate a session — it stays listed, marked ended.
     func endSession(id: String) async throws {
         try await post("v1/remote/\(id)/end", body: nil)

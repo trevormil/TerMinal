@@ -26,10 +26,16 @@ struct DetailLoader<T, Content: View>: View {
                 .padding(14)
             }
             .overlay { if value == nil && error == nil { ProgressView().tint(GT.accentLight) } }
+            .refreshable { await refresh() }
         }
-        .task {
-            do { value = try await load() } catch { self.error = error.localizedDescription }
-        }
+        .task { await refresh() }
+    }
+
+    private func refresh() async {
+        do {
+            value = try await load()
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 }
 
@@ -236,6 +242,7 @@ struct PrDetailView: View {
                             ProgressView().tint(GT.accentLight).padding(40)
                         }
                     }
+                    .refreshable { diff = try? await client.prDiff(repo: repo, iid: iid) }
                 }
                 .navigationTitle("Diff · !\(iid)")
                 .navigationBarTitleDisplayMode(.inline)

@@ -136,6 +136,18 @@ struct RemoteThreadView: View {
                     }
                 }
             }
+            // The principal slot holds the status subtitle, so the terminal
+            // peek rides as a trailing icon.
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    TerminalPeekView(sessionId: model.session.id, client: model.client)
+                } label: {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 15))
+                        .foregroundStyle(GT.textMuted)
+                }
+                .accessibilityLabel("Terminal")
+            }
         }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
