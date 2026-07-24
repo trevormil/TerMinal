@@ -174,7 +174,6 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
-import { listChecks } from './checks'
 import { listMonitorsWithStatus, writeMonitors } from './monitors'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
@@ -1385,8 +1384,6 @@ const bridgeDeps: BridgeDeps = {
     ]
   },
 
-  // Latest health-check statuses for the phone's health surface.
-  checks: () => listChecks(),
   // Monitors + latest state for the phone's Monitoring surface.
   monitors: () => listMonitorsWithStatus(),
 
@@ -2711,7 +2708,6 @@ ipcMain.handle('remote:active', () =>
     })),
 )
 ipcMain.handle('hitl:list', () => readHitl())
-ipcMain.handle('checks:list', () => listChecks())
 // Monitoring: read-only list for the tab; writes go through monitors.json (the
 // tab edits it directly via these handlers), and a check triggers the daemon.
 ipcMain.handle('monitors:list', () => listMonitorsWithStatus())

@@ -1,7 +1,15 @@
 # 10. Health checks: a status contract, not integrations
 
 Date: 2026-07-23
-Status: accepted
+Status: superseded by [0011](0011-monitoring-subsystem.md)
+
+> **Superseded 2026-07-24.** The `terminal-cli check-status` contract shipped
+> but was replaced before merge by the native Monitoring subsystem (ADR-0011):
+> a dedicated `terminal-monitor` daemon with built-in generic check types and
+> its own Monitoring tab, rather than agents emitting a status one-liner. The
+> "harness, not integrations" and one-axis-severity reasoning below still holds;
+> only the mechanism changed (daemon + config, not a CLI contract driven by
+> scheduled agents).
 
 ## Context
 

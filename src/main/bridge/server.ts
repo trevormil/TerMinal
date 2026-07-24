@@ -83,8 +83,6 @@ export type BridgeDeps = {
 
   /** Open HITL items. May be async: the Mac fans out to remote hosts. */
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
-  /** Latest health-check statuses (see src/main/checks.ts). */
-  checks?(): unknown[]
   /** Monitors joined with their latest state (see src/main/monitors.ts). */
   monitors?(): unknown[]
   /** Resolve one HITL item through the app's existing write path. */
@@ -402,15 +400,6 @@ export function createBridgeHandler(
       Promise.resolve(deps.hitl?.() ?? [])
         .then((items) => json(res, 200, { items }))
         .catch((e: Error) => json(res, 500, { error: e.message }))
-      return
-    }
-
-    if (req.method === 'GET' && url.pathname === '/v1/checks') {
-      try {
-        json(res, 200, { checks: deps.checks?.() ?? [] })
-      } catch (e) {
-        json(res, 500, { error: (e as Error).message })
-      }
       return
     }
 
