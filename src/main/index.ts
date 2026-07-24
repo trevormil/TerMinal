@@ -21,6 +21,7 @@ import {
   readdirSync,
   readFileSync,
   writeFileSync,
+  renameSync,
   openSync,
   mkdirSync,
 } from 'node:fs'
@@ -394,6 +395,7 @@ import {
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
+import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 
@@ -570,7 +572,13 @@ function pretrustClaudeProject(dir: string): void {
     if (entry.hasTrustDialogAccepted === true) return // already trusted — don't churn the file
     entry.hasTrustDialogAccepted = true
     cfg.projects[dir] = entry
-    writeFileSync(file, JSON.stringify(cfg, null, 2))
+    // Atomic write: Claude Code also writes ~/.claude.json frequently, so write
+    // a temp file and rename it into place — a rename is atomic, so a concurrent
+    // reader/writer never sees a half-written config (worst case a lost update,
+    // which just re-shows the trust dialog — the harmless fallback).
+    const tmp = `${file}.tm-${process.pid}.tmp`
+    writeFileSync(tmp, JSON.stringify(cfg, null, 2))
+    renameSync(tmp, file)
   } catch {
     /* best-effort */
   }
@@ -3110,6 +3118,10 @@ ipcMain.handle('mrs:structural-diff', (_e, iid: number, path: string, width?: nu
   return activeDaemon().mrStructuralDiff(iid, path, width)
 })
 ipcMain.handle('difft:available', () => difftOnPath())
+// Cursor's live model catalog (incl. the `auto` entry point for Cursor
+// Router). Empty when the CLI is missing or not logged in — the renderer then
+// keeps the static catalog.
+ipcMain.handle('cursor:models', () => listCursorModels())
 ipcMain.handle('digest:get', (_e, iid: number, short?: string) => {
   return activeDaemon().digestGet(iid, short)
 })
