@@ -200,7 +200,9 @@ export function createPushChannel(
     send(kind, title, detail, refs) {
       return send({
         title: `${KIND_EMOJI[kind]} ${title}`,
-        body: detail || '',
+        // Never an empty body: iOS renders a body-less alert as the generic
+        // "Notification" placeholder in stacked/summary surfaces.
+        body: detail || title,
         // A run id doubles as the session key for session-sourced alerts, which
         // is what the app routes on.
         threadKey: refs.runId,

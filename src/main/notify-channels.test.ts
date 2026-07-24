@@ -344,3 +344,20 @@ describe('testWebhook', () => {
     expect(r).toEqual({ ok: false, error: 'ECONNREFUSED' })
   })
 })
+
+describe('push channel', () => {
+  test('body falls back to the title so iOS never renders a generic "Notification"', async () => {
+    const sent: { title: string; body: string }[] = []
+    const ch = createPushChannel(
+      () => true,
+      (input) => {
+        sent.push(input)
+      },
+      () => 2,
+    )
+    await ch.send('blocked', 'HITL · approve deploy', '', {})
+    await ch.send('done', 'Run finished', 'all green', {})
+    expect(sent[0].body).toBe('HITL · approve deploy')
+    expect(sent[1].body).toBe('all green')
+  })
+})
