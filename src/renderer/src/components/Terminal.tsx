@@ -554,16 +554,21 @@ export function TerminalPane({
       resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
       if (choice.initialInput) {
+        // The engine TUI takes a moment to boot and take over stdin — type too
+        // early and the text lands in the shell instead of the prompt box.
         window.setTimeout(() => {
           // Bracketed-paste framing keeps embedded newlines literal — without
           // it a multiline phone prompt splits into multiple submissions.
           gt.pty.input(sessionKey, frameInitialInput(choice.initialInput || ''))
           // A phone-spawned session has no one to press Enter. Submit for it,
-          // after a beat so the TUI has ingested the whole prompt.
+          // well after the TUI has ingested the paste (an early \r gets eaten
+          // while it's still processing), and once more as insurance — a
+          // second Enter on an empty prompt box is a no-op.
           if (choice.autoSubmit) {
-            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 600)
+            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 1500)
+            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 3000)
           }
-        }, 900)
+        }, 1200)
       }
     })
 
