@@ -563,8 +563,11 @@ export function TerminalPane({
     gt.startSession(sessionKey, { ...choice, cols: term.cols, rows: term.rows }).then((info) => {
       resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
-      if (choice.initialInput) {
-        // Type once the engine TUI has booted and gone quiet — waiting for the
+      if (choice.initialInput && !info.seeded) {
+        // FALLBACK path only: main seeds the first prompt as a launch argument
+        // for supported engines (info.seeded), which is deterministic. This
+        // post-boot paste remains for the cases it can't seed (e.g. a `local`
+        // shell). Type once the engine TUI has booted and gone quiet — waiting
         // output to settle adapts to load time, where a fixed delay was flaky
         // (typed into the shell before Claude took over, or before a fresh-dir
         // "trust this folder?" prompt resolved). We poll for: saw some output,

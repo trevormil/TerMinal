@@ -1572,7 +1572,10 @@ export type UpdateCheckResult = {
 
 export type GtApi = {
   listSessions: (engine?: Engine) => Promise<SessionMeta[]>
-  startSession: (key: string, opts: StartOpts) => Promise<{ sessionId: string; cwd: string }>
+  startSession: (
+    key: string,
+    opts: StartOpts,
+  ) => Promise<{ sessionId: string; cwd: string; remote?: boolean; seeded?: boolean }>
   setActiveSession: (key: string) => Promise<void>
   stopSession: (key: string) => Promise<void>
   fleet: () => Promise<FleetSession[]>
