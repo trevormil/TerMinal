@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import type { NotifyMatrix } from '../../../shared/notifications'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
@@ -596,6 +597,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  notifications: { matrix: NotifyMatrix }
   bridge: BridgeCfg
   appearance: AppearanceCfg
   apps: AppsCfg

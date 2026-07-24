@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings } from './settings'
+import { categoryFor, channelWants, type NotifyMatrix } from '../shared/notifications'
 import { sendUrl } from './telegram-api'
 
 // The channel-agnostic event kinds — same vocabulary as the notify skill.
@@ -80,8 +81,13 @@ const message = (title: string, detail?: string) => (detail ? `${title} — ${de
  * rest still deliver. `suppressTelegram` (producers that already pinged
  * Telegram directly) skips only that channel.
  */
-export function dispatchAlert(channels: NotifyChannel[], ev: AlertSource): void {
+export function dispatchAlert(
+  channels: NotifyChannel[],
+  ev: AlertSource,
+  matrix?: NotifyMatrix,
+): void {
   const kind = notifyKindFor(ev)
+  const category = categoryFor(ev)
   const refs: NotifyRefs = {
     ticket: ev.ref?.ticket,
     pr: ev.ref?.pr,
@@ -91,6 +97,8 @@ export function dispatchAlert(channels: NotifyChannel[], ev: AlertSource): void 
   }
   for (const ch of channels) {
     if (ch.id === 'telegram' && ev.suppressTelegram) continue
+    // Per-channel routing: a channel only fires for categories it opted into.
+    if (!channelWants(ch.id as NotifyChannelId, category, matrix)) continue
     try {
       if (!ch.enabled()) continue
       Promise.resolve(ch.send(kind, ev.title, ev.detail, refs)).catch((e) =>

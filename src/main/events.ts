@@ -15,6 +15,7 @@ import { join, dirname, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { readSettings } from './settings'
+import { anyChannelWants, categoryFor } from '../shared/notifications'
 import { openHitlCount, pushConfigured, sendPush } from './bridge/push'
 import { inferActivityKind } from './event-classifier'
 import {
@@ -81,27 +82,9 @@ export type ActivityEvent = {
   suppressTelegram?: boolean
 }
 
-// which kinds raise a macOS/Telegram notification (vs. log-only feed context).
-// High-signal checkpoints ping; routine/contextual ones are log-only.
-const NOTIFY: Record<ActivityKind, boolean> = {
-  'session-start': false,
-  'session-end': false,
-  deploy: false,
-  'ticket-filed': true,
-  'ticket-closed': false,
-  'pr-opened': false,
-  'pr-verdict': true,
-  'pr-merged': true,
-  'tests-pass': false,
-  'tests-fail': true,
-  check: false,
-  doc: false,
-  'agent-run': true,
-  'task-complete': true,
-  blocked: true,
-  error: true,
-  info: false,
-}
+// Whether an event raises a notification, and on which channels, is now decided
+// by the per-channel × per-category matrix in shared/notifications — replacing
+// the old single global NOTIFY map. categoryFor() maps a kind to its category.
 
 let broadcast: (ev: ActivityEvent) => void = () => {}
 export function onActivity(fn: (ev: ActivityEvent) => void) {
@@ -133,9 +116,9 @@ const alertChannels: NotifyChannel[] = [
   ),
 ]
 
-// Fan one event out to every enabled alert channel.
+// Fan one event out to every enabled alert channel that opted into its category.
 function fireNotification(ev: ActivityEvent): void {
-  dispatchAlert(alertChannels, ev)
+  dispatchAlert(alertChannels, ev, readSettings().notifications.matrix)
 }
 
 /** Settings "Test" button for the desktop channel. */
@@ -189,7 +172,8 @@ export function emitActivity(
     /* best effort */
   }
   rememberEmitted(ev.id)
-  if (opts?.notify ?? NOTIFY[ev.kind]) fireNotification(ev)
+  if (opts?.notify ?? anyChannelWants(categoryFor(ev), readSettings().notifications.matrix))
+    fireNotification(ev)
   // NOTE: don't broadcast here — the file tail (below) picks up this append and
   // broadcasts it, so terminal-written and skill-written events flow through one
   // path (no double feed entries). The tail also NOTIFIES external (skill/cron)
@@ -244,7 +228,11 @@ function drainTail() {
         // Notify for EXTERNAL high-signal events (skills, cron, gt-notify) that the
         // app didn't emit in-process — so skill-raised HITL/blocked/errors actually
         // ping. Deduped against emittedIds so app emits don't double-notify.
-        if (!emittedIds.has(ev.id) && NOTIFY[ev.kind]) fireNotification(ev)
+        if (
+          !emittedIds.has(ev.id) &&
+          anyChannelWants(categoryFor(ev), readSettings().notifications.matrix)
+        )
+          fireNotification(ev)
       } catch {
         /* partial/garbled line — skip */
       }
