@@ -120,13 +120,20 @@ struct RemoteThreadView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            // Live agent state while you chat — the 2s poll keeps it honest.
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 5) {
-                    GTStatusDot(status: model.status)
-                    Text(statusLabel)
-                        .font(GT.sans(11, .medium))
-                        .foregroundStyle(GT.textMuted)
+            // Messenger-style header: title with a live status line under it
+            // (the 2s poll keeps it honest). Plain views — nothing tappable.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(model.session.title)
+                        .font(GT.sans(14, .semibold))
+                        .foregroundStyle(GT.text)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Circle().fill(statusColor).frame(width: 6, height: 6)
+                        Text(statusLabel)
+                            .font(GT.sans(10.5))
+                            .foregroundStyle(GT.textMuted)
+                    }
                 }
             }
         }
@@ -160,10 +167,19 @@ struct RemoteThreadView: View {
 
     private var statusLabel: String {
         switch model.status {
-        case "awaiting": return "asking"
-        case "idle": return "idle"
+        case "awaiting": return "asking you"
+        case "idle": return "idle — waiting for you"
         case "ended": return "done"
         default: return "working"
+        }
+    }
+
+    private var statusColor: Color {
+        switch model.status {
+        case "awaiting": return GT.accent2
+        case "idle": return GT.yellow
+        case "ended": return GT.textFaint
+        default: return GT.green
         }
     }
 
