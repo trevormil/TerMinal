@@ -110,12 +110,20 @@ codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 
 echo "▸ installing → ${DEST}…"
-pkill -f "$DEST/Contents/MacOS" 2>/dev/null || true
-sleep 1
+if [[ "${TERMINAL_RELEASE_NO_RELAUNCH:-}" != "1" ]]; then
+  pkill -f "$DEST/Contents/MacOS" 2>/dev/null || true
+  sleep 1
+fi
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"
 xattr -cr "$DEST"
 
-echo "▸ launching…"
-open "$DEST"
+if [[ "${TERMINAL_RELEASE_NO_RELAUNCH:-}" == "1" ]]; then
+  # The running copy keeps its in-memory code; the new build takes effect on
+  # the next launch. Lets a release land mid-session without killing it.
+  echo "▸ installed — restart TerMinal when ready (TERMINAL_RELEASE_NO_RELAUNCH=1)"
+else
+  echo "▸ launching…"
+  open "$DEST"
+fi
 echo "✓ released → $DEST"
