@@ -163,6 +163,9 @@ struct PairingView: View {
                     .font(GT.sans(13))
                     .foregroundStyle(GT.textMuted)
 
+                    // Is the phone actually on the tailnet? Warn before a timeout.
+                    TailscaleStatusBanner()
+
                     // Machines paired before: one tap, no typing.
                     if !recents.isEmpty {
                         Text("YOUR MACS")
