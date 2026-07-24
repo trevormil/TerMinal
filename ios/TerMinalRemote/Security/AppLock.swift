@@ -43,10 +43,52 @@ final class AppLock {
         if isEnabled { locked = true }
     }
 
+    // ---- brute-force throttle -------------------------------------------
+    // A 4-digit passcode is only 10k combinations, so cap the guess rate with
+    // an escalating lockout. Persisted (UserDefaults) so killing the app can't
+    // reset it. lockedUntil is an absolute epoch; failedTries drives the ramp.
+    private(set) var lockedUntilRemaining: Int = 0  // seconds, for the UI countdown
+
+    private var failedTries: Int {
+        get { UserDefaults.standard.integer(forKey: "appLock.fails") }
+        set { UserDefaults.standard.set(newValue, forKey: "appLock.fails") }
+    }
+    private var lockoutUntil: Double {
+        get { UserDefaults.standard.double(forKey: "appLock.lockoutUntil") }
+        set { UserDefaults.standard.set(newValue, forKey: "appLock.lockoutUntil") }
+    }
+
+    /// Seconds still to wait before another guess is allowed (0 = go ahead).
+    func lockoutRemaining() -> Int {
+        max(0, Int((lockoutUntil - Date().timeIntervalSince1970).rounded(.up)))
+    }
+
+    /// Escalating delay: nothing for the first 5, then 30s, 1m, 5m, 15m.
+    private func penalty(for tries: Int) -> Double {
+        switch tries {
+        case ..<5: return 0
+        case 5: return 30
+        case 6: return 60
+        case 7: return 300
+        default: return 900
+        }
+    }
+
+    @discardableResult
     func unlock(with passcode: String) -> Bool {
-        guard Self.verify(passcode) else { return false }
-        locked = false
-        return true
+        guard lockoutRemaining() == 0 else { return false }
+        if Self.verify(passcode) {
+            failedTries = 0
+            lockoutUntil = 0
+            lockedUntilRemaining = 0
+            locked = false
+            return true
+        }
+        failedTries += 1
+        let wait = penalty(for: failedTries)
+        if wait > 0 { lockoutUntil = Date().timeIntervalSince1970 + wait }
+        lockedUntilRemaining = lockoutRemaining()
+        return false
     }
 
     /// In-app Face ID / Touch ID — succeeds silently or falls back to the pad.
@@ -68,6 +110,9 @@ final class AppLock {
         UserDefaults.standard.set(code.count, forKey: "appLock.length")
         passcodeLength = code.count
         isEnabled = true
+        failedTries = 0
+        lockoutUntil = 0
+        lockedUntilRemaining = 0
         // Setting a passcode shouldn't lock you out of the session you're in.
         locked = false
     }
@@ -78,6 +123,9 @@ final class AppLock {
         passcodeLength = 0
         isEnabled = false
         biometricsOptIn = false
+        failedTries = 0
+        lockoutUntil = 0
+        lockedUntilRemaining = 0
         locked = false
     }
 

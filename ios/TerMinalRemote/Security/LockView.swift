@@ -6,10 +6,12 @@ struct LockView: View {
     @State private var lock = AppLock.shared
     @State private var entered = ""
     @State private var shake = false
+    @State private var lockoutLeft = 0
     @Environment(\.scenePhase) private var scenePhase
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
     private var length: Int { max(4, lock.passcodeLength) }
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -21,9 +23,9 @@ struct LockView: View {
                     .scaledToFit()
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: 13))
-                Text("Enter passcode")
+                Text(lockoutLeft > 0 ? "Too many attempts" : "Enter passcode")
                     .font(GT.sans(16, .semibold))
-                    .foregroundStyle(GT.text)
+                    .foregroundStyle(lockoutLeft > 0 ? GT.red : GT.text)
 
                 HStack(spacing: 14) {
                     ForEach(0..<length, id: \.self) { i in
@@ -36,6 +38,11 @@ struct LockView: View {
                 .animation(
                     shake ? .linear(duration: 0.06).repeatCount(5, autoreverses: true) : .default,
                     value: shake)
+
+                if lockoutLeft > 0 {
+                    Text("Try again in \(lockoutLeft)s")
+                        .font(GT.sans(13)).foregroundStyle(GT.textMuted)
+                }
 
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(1...9, id: \.self) { n in
@@ -65,6 +72,8 @@ struct LockView: View {
         // foreground while locked — the on-appear attempt fires as the app is
         // backgrounding (when the lock engages) and can't actually run then.
         .task { await lock.unlockWithBiometrics() }
+        .onAppear { lockoutLeft = lock.lockoutRemaining() }
+        .onReceive(ticker) { _ in lockoutLeft = lock.lockoutRemaining() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await lock.unlockWithBiometrics() } }
         }
@@ -72,12 +81,14 @@ struct LockView: View {
 
     private func digit(_ d: String) -> some View {
         padButton(label: d) {
-            guard entered.count < length else { return }
+            // No guesses while locked out.
+            guard lockoutLeft == 0, entered.count < length else { return }
             entered.append(d)
             if entered.count == length {
                 if !lock.unlock(with: entered) {
                     entered = ""
                     shake = true
+                    lockoutLeft = lock.lockoutRemaining()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { shake = false }
                 }
             }
