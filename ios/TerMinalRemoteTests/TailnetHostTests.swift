@@ -19,9 +19,13 @@ final class TailnetHostTests: XCTestCase {
         XCTAssertTrue(TailscalePairing.isTailnetHost("mymac"))
     }
 
-    func testAcceptsTailscaleULARange() {
-        XCTAssertTrue(TailscalePairing.isTailnetHost("fd7a:115c:a1e0::1"))
-        XCTAssertTrue(TailscalePairing.isTailnetHost("FD7A:115C:A1E0:ab12::7"))
+    /// Raw IPv6 — including Tailscale's own ULA range — is rejected: the URL
+    /// builder and the Mac's /v1/pair gate can't complete it, so accepting it
+    /// here would advertise a pairing path that can never connect. MagicDNS
+    /// names are the supported route for IPv6-only tailnets.
+    func testRejectsRawIPv6IncludingTailscaleULA() {
+        XCTAssertFalse(TailscalePairing.isTailnetHost("fd7a:115c:a1e0::1"))
+        XCTAssertFalse(TailscalePairing.isTailnetHost("FD7A:115C:A1E0:ab12::7"))
     }
 
     func testRejectsLANAndInternetAddresses() {
