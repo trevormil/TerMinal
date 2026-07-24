@@ -1339,6 +1339,7 @@ function resolveRemoteId(flagId, cwd, { quiet = false, soft = false, agentSessio
   // then most-recent, only when no session id is known.
   const sid =
     agentSessionId ||
+    process.env.GT_TERMINAL_SESSION_ID ||
     process.env.CLAUDE_CODE_SESSION_ID ||
     process.env.CODEX_SESSION_ID ||
     process.env.TERMINAL_REMOTE_AGENT_SESSION ||
@@ -1474,6 +1475,7 @@ function remoteCommand(sub, rest) {
         // can never reach a different session sharing this repo. Engine-agnostic:
         // each engine exposes its own, and the returned --id works regardless.
         agentSessionId:
+          process.env.GT_TERMINAL_SESSION_ID ||
           process.env.CLAUDE_CODE_SESSION_ID ||
           process.env.CODEX_SESSION_ID ||
           process.env.TERMINAL_REMOTE_AGENT_SESSION ||

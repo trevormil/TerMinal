@@ -1303,17 +1303,30 @@ function deliverReplyToPty(remoteId: string, text: string, images: string[]): vo
     const remote = readRemoteSession(remoteId)
     if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
     const live = [...sessions.values()]
-    const match =
-      (remote.agentSessionId
-        ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
-        : undefined) ?? (remote.cwd ? live.find((s) => s.pinned.cwd === remote.cwd) : undefined)
+    // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
+    // set for every engine now). cwd is ambiguous — two sessions can share a repo —
+    // so only fall back to it when it resolves to EXACTLY one live session; never
+    // guess and inject into the wrong one.
+    let match = remote.agentSessionId
+      ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
+      : undefined
+    if (!match && remote.cwd) {
+      const inCwd = live.filter((s) => s.pinned.cwd === remote.cwd)
+      if (inCwd.length === 1) match = inCwd[0]
+    }
     if (!match) return
-    // Images can't be typed; point the agent at them (it already has terminal-cli).
-    const body = images.length
-      ? `${text}\n\n[${images.length} image(s) attached to this message — read them with: terminal-cli remote messages --id ${remoteId}]`
-      : text
-    match.pty.write(`\x1b[200~${body}\x1b[201~`)
-    setTimeout(() => match.pty.write('\r'), 80)
+    const pty = match.pty
+    const imageNote = images.length
+      ? `\n\n[${images.length} image(s) attached — read them with: terminal-cli remote messages --id ${remoteId}]`
+      : ''
+    // A short reminder so the agent treats this as a phone message AND posts its
+    // reply back — otherwise its answer only shows in the terminal, never on the
+    // phone (the phone thread shows posts, not raw terminal output).
+    const body =
+      `[Phone message via TerMinal Remote — reply by posting: ` +
+      `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
+    pty.write(`\x1b[200~${body}\x1b[201~`)
+    setTimeout(() => pty.write('\r'), 80)
   } catch {
     /* best-effort — the log-collect path remains */
   }
