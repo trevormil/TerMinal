@@ -103,6 +103,8 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
 /// full screen for that section. Sessions you can steer; the rest are read-only.
 struct WorkspaceView: View {
     @State var model: WorkspaceViewModel
+    @State private var startingNew = false
+    @State private var opened: RemoteSession?
 
     /// CI only appears when the repo actually has CI configured.
     private var sections: [WorkspaceTab] {
@@ -118,6 +120,17 @@ struct WorkspaceView: View {
                         NavigationLink(value: t) { WorkspaceMenuRow(tab: t) }
                             .buttonStyle(.plain)
                     }
+                    // New Session lives on the Sessions screen too, but surface it
+                    // here so it's one tap from the workspace root on first load.
+                    Button { startingNew = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus")
+                            Text("New session")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .gtSecondaryButton()
+                    }
+                    .padding(.top, 4)
                 }
                 .padding(14)
             }
@@ -134,6 +147,16 @@ struct WorkspaceView: View {
         }
         .navigationDestination(for: RemoteSession.self) { s in
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
+        }
+        // A freshly started session opens straight into its thread.
+        .navigationDestination(item: $opened) { s in
+            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
+        }
+        .sheet(isPresented: $startingNew) {
+            NewSessionSheet(client: model.client, repo: model.repo) { session in
+                await MainActor.run { opened = session }
+                Task { await model.loadSessions() }
+            }
         }
     }
 }
