@@ -57,8 +57,13 @@ final class AppLock {
         if ok { await MainActor.run { locked = false } }
     }
 
+    /// Digits in the stored passcode (4 or 6), so the lock pad shows the right
+    /// dot count and auto-submits at the right length. 0 when none set.
+    var passcodeLength: Int { UserDefaults.standard.integer(forKey: "appLock.length") }
+
     func setPasscode(_ code: String) {
         Self.store(code)
+        UserDefaults.standard.set(code.count, forKey: "appLock.length")
         // Setting a passcode shouldn't lock you out of the session you're in.
         locked = false
     }

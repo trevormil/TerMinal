@@ -104,18 +104,27 @@ export function unreadCount(): number {
   return readHitl().filter((h) => h.status === 'open' && !h.readAt).length
 }
 
+/** Read = readAt is set OR the item was resolved (a resolved item has been
+ *  dealt with, so it reads as read). One axis: unread vs read. */
+export function isHitlRead(h: { readAt?: number; status?: string }): boolean {
+  return !!h.readAt || h.status === 'resolved'
+}
+
 /** Mark items read (viewed) — or unread again with read=false, the email
- *  "keep this on my plate" gesture. Returns how many changed. */
+ *  "keep this on my plate" gesture. Unread also clears a prior resolve so a
+ *  resolved item can genuinely return to the unread pile. Returns how many
+ *  changed. */
 export function markHitlRead(ids: string[], read = true): number {
   const set = new Set(ids)
   const list = readHitl()
   let changed = 0
   const next = list.map((h) => {
-    if (set.has(h.id) && (read ? !h.readAt : !!h.readAt)) {
-      changed++
-      return read ? { ...h, readAt: Date.now() } : { ...h, readAt: undefined }
-    }
-    return h
+    if (!set.has(h.id)) return h
+    if (read ? isHitlRead(h) : !isHitlRead(h)) return h
+    changed++
+    return read
+      ? { ...h, readAt: Date.now() }
+      : { ...h, readAt: undefined, status: 'open' as const, resolvedAt: undefined }
   })
   if (changed) write(next)
   return changed
@@ -243,31 +252,29 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   return item
 }
 
+// The inbox is one axis now — read vs unread, no separate archive. Legacy
+// "resolve" (Telegram button, MCP resolve_hitl, agent-side) maps to mark-read;
+// "reopen" maps to mark-unread. Items stay in the one list, just read.
 export function resolveHitl(id: string, resolved = true): boolean {
-  const list = readHitl()
-  const i = list.findIndex((h) => h.id === id)
-  if (i < 0) return false
-  const item = list[i]
-  list[i] = {
-    ...item,
-    status: resolved ? 'resolved' : 'open',
-    resolvedAt: resolved ? Date.now() : undefined,
-  }
-  write(list)
-  emitActivity(
-    {
-      kind: resolved ? 'task-complete' : 'blocked',
-      title: `Inbox ${resolved ? 'resolved' : 'reopened'} · ${item.title}`,
-      detail: item.action || item.detail,
-      repo: item.repo,
-      repoRoot: item.repoRoot,
-      hitlId: item.id,
-      runId: item.runId,
-      runSource: item.runSource,
-      sessionId: item.sessionId,
-    },
-    { notify: !resolved },
-  )
+  const item = readHitl().find((h) => h.id === id)
+  if (!item) return false
+  const changed = markHitlRead([id], resolved) > 0
+  if (changed && !resolved)
+    // A reopen puts it back in your face; a read never re-notifies.
+    emitActivity(
+      {
+        kind: 'blocked',
+        title: `Inbox reopened · ${item.title}`,
+        detail: item.action || item.detail,
+        repo: item.repo,
+        repoRoot: item.repoRoot,
+        hitlId: item.id,
+        runId: item.runId,
+        runSource: item.runSource,
+        sessionId: item.sessionId,
+      },
+      { notify: true },
+    )
   return true
 }
 

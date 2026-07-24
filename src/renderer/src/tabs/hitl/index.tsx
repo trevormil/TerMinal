@@ -5,7 +5,6 @@ import {
   Mail,
   X,
   Trash2,
-  RotateCcw,
   ListChecks,
   SquareTerminal,
   Ticket,
@@ -132,11 +131,8 @@ export function InboxDrawer({
   openTerminals?: InboxTerminalRef[]
 }) {
   const [items, setItems] = useState<HitlItem[] | null>(null)
-  // Email model: one Inbox (open), one Archive (resolved). Unread lives IN the
-  // inbox, shown bold — not a separate filter tab.
-  const [filter, setFilter] = useState<'inbox' | 'archive'>('inbox')
+  // One list, one axis: unread (bold) vs read. No archive.
   const [reading, setReading] = useState<string | null>(null)
-  const [resolvingAll, setResolvingAll] = useState(false)
 
   // Merge local HITL with open items fanned out from every host (#14), so a run
   // that failed on a host and filed a block there shows here with a host badge.
@@ -162,14 +158,16 @@ export function InboxDrawer({
     }
   }, [])
 
-  const all = items || []
-  const open = all.filter((h) => h.status === 'open')
-  const resolved = all.filter((h) => h.status === 'resolved')
-  // Unread = open and never seen — the true "still needs you" set. Read-state is
-  // independent of resolve (see hitl.ts), so an item can be open-but-read.
-  const isUnread = (h: HitlItem) => h.status === 'open' && !h.readAt
+  // One axis: read vs unread. No archive. Legacy items already resolved before
+  // this change stay hidden (they were archived); everything else shows, newest
+  // first, unread bold.
+  const all = (items || [])
+    .filter((h) => h.status !== 'resolved')
+    .slice()
+    .sort((a, b) => b.createdAt - a.createdAt)
+  const isUnread = (h: HitlItem) => !h.readAt
   const unread = all.filter(isUnread)
-  const shown = filter === 'archive' ? resolved : open
+  const shown = all
 
   // Group ids by owning host — a remote item's readAt must persist on the host
   // that owns it (like resolve), or the 15s reload flips it back to unread.
@@ -207,18 +205,10 @@ export function InboxDrawer({
       ),
     ])
   }
-  const resolveAll = async () => {
-    if (open.length === 0 || resolvingAll) return
-    if (!confirm(`Resolve all ${open.length} open Inbox items?`)) return
-    setResolvingAll(true)
-    try {
-      await Promise.all(
-        open.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)),
-      )
-      await reload()
-    } finally {
-      setResolvingAll(false)
-    }
+  const remove = async (h: HitlItem) => {
+    setItems((prev) => (prev || []).filter((x) => x.id !== h.id))
+    setReading(null)
+    await window.gt.hitl.remove(h.id, h.hostId).catch(() => false)
   }
 
   // Mail-client model: the list is the inbox; opening an item replaces the
@@ -324,45 +314,29 @@ export function InboxDrawer({
             </button>
           )}
           <div className="flex-1" />
-          {h.status === 'open' && h.readAt && (
+          {h.readAt ? (
             <button onClick={() => markUnread(h)} title="Mark unread" className={ACTION_BTN}>
               <Mail size={11} strokeWidth={2} />
               Mark unread
             </button>
-          )}
-          {h.status === 'open' ? (
+          ) : (
             <button
-              onClick={async () => {
-                await window.gt.hitl.resolve(h.id, true, h.hostId)
+              onClick={() => {
+                markRead([h.id])
                 setReading(null)
-                reload()
               }}
               className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2.5 py-1 text-[11px] text-zinc-300 transition-colors duration-150 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)]"
             >
               <Check size={12} strokeWidth={2.5} />
-              Resolve
-            </button>
-          ) : (
-            <button
-              onClick={async () => {
-                await window.gt.hitl.resolve(h.id, false, h.hostId)
-                reload()
-              }}
-              title="Reopen"
-              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 transition-colors duration-150 hover:text-zinc-300"
-            >
-              <RotateCcw size={11} strokeWidth={2} />
-              Reopen
+              Mark read
             </button>
           )}
           <button
-            onClick={async () => {
+            onClick={() => {
               if (!confirm('Delete this Inbox item permanently?')) return
-              await window.gt.hitl.remove(h.id, h.hostId)
-              setReading(null)
-              reload()
+              void remove(h)
             }}
-            title="Remove"
+            title="Delete"
             className="inline-flex cursor-pointer items-center justify-center rounded-md border border-[var(--gt-border)] px-1.5 py-1 text-zinc-500 transition-colors duration-150 hover:border-[var(--gt-red)]/60 hover:text-[var(--gt-red)]"
           >
             <Trash2 size={11} strokeWidth={2} />
@@ -390,39 +364,11 @@ export function InboxDrawer({
             Mark all read
           </button>
         )}
-        {filter === 'inbox' && open.length > 0 && (
-          <button
-            onClick={resolveAll}
-            disabled={resolvingAll}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-green)]/60 hover:text-[var(--gt-green)] disabled:cursor-wait disabled:opacity-60"
-          >
-            <Check size={12} strokeWidth={2.5} />
-            {resolvingAll ? 'Resolving...' : 'Resolve all'}
-          </button>
+        {unread.length > 0 && (
+          <span className="rounded-full bg-[var(--gt-accent)]/25 px-2 py-0.5 text-[10px] font-bold text-[var(--gt-accent-light)]">
+            {unread.length} unread
+          </span>
         )}
-        {(
-          [
-            ['inbox', 'Inbox', unread.length],
-            ['archive', 'Archive', 0],
-          ] as const
-        ).map(([key, label, count]) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors duration-150 ${
-              filter === key
-                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            {label}
-            {count > 0 && (
-              <span className="rounded-full bg-[var(--gt-accent)]/25 px-1.5 text-[9px] font-bold text-[var(--gt-accent-light)]">
-                {count}
-              </span>
-            )}
-          </button>
-        ))}
         {onClose && (
           <button
             onClick={onClose}
@@ -439,9 +385,8 @@ export function InboxDrawer({
           <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (
           <div className="p-4 text-[12px] text-zinc-600">
-            {filter === 'archive'
-              ? 'Nothing archived yet.'
-              : 'Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from any repo.'}
+            Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from
+            any repo.
           </div>
         ) : (
           // Flat mail-style rows: hairline dividers, hover highlight, click to
@@ -457,9 +402,7 @@ export function InboxDrawer({
                     setReading(h.id)
                     if (unreadRow) markRead([h.id])
                   }}
-                  className={`group flex w-full cursor-pointer items-start gap-2.5 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.04] ${
-                    h.status === 'resolved' ? 'opacity-60' : ''
-                  }`}
+                  className="group flex w-full cursor-pointer items-start gap-2.5 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.04]"
                 >
                   <span
                     className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}

@@ -267,7 +267,9 @@ function runStart(root,input){
 }
 function schedulesSave(input){const list=schedules();const idx=list.findIndex(s=>s.id===input.id);if(idx>=0)list[idx]=input;else list.push(input);writeJson(path.join(cfg(),'schedules.json'),list);return {ok:true,id:input.id}}
 function hitlList(){try{const p=path.join(cfg(),'hitl.json');if(!exists(p))return [];const a=JSON.parse(fs.readFileSync(p,'utf8'));return Array.isArray(a)?a.filter(h=>h&&h.status==='open'):[]}catch{return []}}
-function hitlResolve(id,resolved){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const it=a.find(h=>h&&h.id===id);if(!it)return false;if(resolved===false){it.status='open';delete it.resolvedAt}else{it.status='resolved';it.resolvedAt=Date.now()}writeJson(p,a);return true}catch{return false}}
+// One-axis inbox: resolve = mark read, reopen = mark unread (also clears a
+// legacy resolved status). Mirrors src/main/hitl.ts resolveHitl.
+function hitlResolve(id,resolved){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const it=a.find(h=>h&&h.id===id);if(!it)return false;if(resolved===false){it.status='open';delete it.resolvedAt;delete it.readAt}else{it.readAt=Date.now()}writeJson(p,a);return true}catch{return false}}
 function hitlRemove(id){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));writeJson(p,a.filter(h=>h&&h.id!==id));return true}catch{return false}}
 function hitlMarkRead(ids,read){const on=read!==false;try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const set=new Set(Array.isArray(ids)?ids:[]);let n=0;for(const h of a){if(h&&set.has(h.id)&&(on?!h.readAt:!!h.readAt)){if(on)h.readAt=Date.now();else delete h.readAt;n++}}if(n)writeJson(p,a);return n}catch{return 0}}
 function runCancel(id){try{const p=path.join(cfg(),'cron-runs',id+'.json');const rec=JSON.parse(fs.readFileSync(p,'utf8'));if(rec.runnerPid){try{process.kill(rec.runnerPid,'SIGTERM')}catch(e){}}return true}catch(e){return false}}

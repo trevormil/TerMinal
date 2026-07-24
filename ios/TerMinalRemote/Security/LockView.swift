@@ -8,6 +8,7 @@ struct LockView: View {
     @State private var shake = false
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+    private var length: Int { max(4, lock.passcodeLength) }
 
     var body: some View {
         ZStack {
@@ -24,7 +25,7 @@ struct LockView: View {
                     .foregroundStyle(GT.text)
 
                 HStack(spacing: 14) {
-                    ForEach(0..<6, id: \.self) { i in
+                    ForEach(0..<length, id: \.self) { i in
                         Circle()
                             .fill(i < entered.count ? GT.accent : GT.border)
                             .frame(width: 12, height: 12)
@@ -64,9 +65,9 @@ struct LockView: View {
 
     private func digit(_ d: String) -> some View {
         padButton(label: d) {
-            guard entered.count < 6 else { return }
+            guard entered.count < length else { return }
             entered.append(d)
-            if entered.count == 6 {
+            if entered.count == length {
                 if !lock.unlock(with: entered) {
                     entered = ""
                     shake = true
@@ -98,6 +99,7 @@ struct LockView: View {
 /// Settings flow for creating / changing a passcode: enter twice to confirm.
 struct SetPasscodeSheet: View {
     let onDone: (String?) -> Void
+    @State private var length = 6
     @State private var first = ""
     @State private var entry = ""
     @State private var stage = Stage.enter
@@ -111,8 +113,17 @@ struct SetPasscodeSheet: View {
         ZStack {
             GT.bg.ignoresSafeArea()
             VStack(spacing: 20) {
-                Text(stage == .enter ? "Choose a 6-digit passcode" : "Re-enter to confirm")
+                Text(stage == .enter ? "Choose a \(length)-digit passcode" : "Re-enter to confirm")
                     .font(GT.sans(15, .semibold)).foregroundStyle(GT.text)
+                if stage == .enter {
+                    Picker("Length", selection: $length) {
+                        Text("4 digits").tag(4)
+                        Text("6 digits").tag(6)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                    .onChange(of: length) { _, _ in entry = "" }
+                }
                 if stage == .mismatch {
                     Text("Didn't match — start over.").font(GT.sans(12)).foregroundStyle(GT.red)
                 }
@@ -127,9 +138,9 @@ struct SetPasscodeSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .frame(maxWidth: 220)
                     .onChange(of: entry) { _, v in
-                        let digits = String(v.filter(\.isNumber).prefix(6))
+                        let digits = String(v.filter(\.isNumber).prefix(length))
                         if digits != v { entry = digits }
-                        guard digits.count == 6 else { return }
+                        guard digits.count == length else { return }
                         if stage == .enter || stage == .mismatch {
                             first = digits
                             entry = ""
