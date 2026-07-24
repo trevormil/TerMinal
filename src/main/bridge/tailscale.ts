@@ -89,11 +89,30 @@ export type TailscalePeer = {
   node: string
 }
 
-/** Identify the tailnet peer behind an address (ip or ip:port). */
+/**
+ * Format a peer address as the `host:port` `tailscale whois` demands, without
+ * mangling IPv6. A raw IPv6 tailnet address (fd7a:115c:a1e0::1) is ALL colons,
+ * so the old `${ip}:${port}` produced `fd7a:...::1:0` — unparseable, whois
+ * returned null, and every IPv6 pairing peer was rejected as "not recognised".
+ * IPv6 must be bracketed: `[fd7a:...::1]:0`. The port is a dummy — whois
+ * identifies by IP, so we normalise it to `:0`. Callers pass a BARE address
+ * (a raw IPv6 has no port to strip, and its own colons can't be told apart
+ * from a `:port` suffix); a bracketed `[v6]:port` is also accepted.
+ */
+export function whoisArg(peerAddress: string): string {
+  const host = peerAddress.trim()
+  // Already bracketed IPv6, optionally with a port — keep just the address.
+  const bracketed = host.match(/^\[([^\]]+)\]/)
+  if (bracketed) return `[${bracketed[1]}]:0`
+  // Bare IPv6 (2+ colons) — bracket it verbatim.
+  if ((host.match(/:/g)?.length ?? 0) > 1) return `[${host}]:0`
+  // IPv4, with or without a :port.
+  return `${host.split(':')[0]}:0`
+}
+
+/** Identify the tailnet peer behind an address (ip, ip:port, or [ipv6]:port). */
 export async function tailscaleWhois(peerAddress: string): Promise<TailscalePeer | null> {
-  // whois wants ip:port; append a dummy port when only an ip is given.
-  const arg = peerAddress.includes(':') ? peerAddress : `${peerAddress}:0`
-  const out = await run(['whois', '--json', arg])
+  const out = await run(['whois', '--json', whoisArg(peerAddress)])
   if (!out) return null
   try {
     const who = JSON.parse(out) as {

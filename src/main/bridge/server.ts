@@ -382,7 +382,10 @@ export function createBridgeHandler(
         pairInFlight = false
         json(res, status, body)
       }
-      Promise.resolve(deps.tailscalePair(`${ip}:${req.socket.remotePort || 0}`))
+      // Pass the BARE address — whois identifies by IP, and appending
+      // `:port` to a raw IPv6 address makes it unparseable (its own colons
+      // collide with the port separator). whoisArg brackets it correctly.
+      Promise.resolve(deps.tailscalePair(ip))
         .then((result) =>
           result ? done(200, result) : done(403, { error: 'not a recognised tailnet peer' }),
         )

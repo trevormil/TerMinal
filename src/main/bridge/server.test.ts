@@ -174,8 +174,9 @@ describe('GET /v1/pair (tailnet)', () => {
     const res = await pair(h, '100.64.1.2')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ token: 'tok', fp: 'fp', name: 'MacBook' })
-    // The peer address came from the socket, not the client.
-    expect(seen[0]).toBe('100.64.1.2:4242')
+    // The peer address came from the socket, not the client — the BARE ip
+    // (no port), so IPv6 addresses stay parseable for `tailscale whois`.
+    expect(seen[0]).toBe('100.64.1.2')
   })
 
   it('strips the IPv4-mapped prefix a dual-stack socket reports', async () => {
@@ -187,7 +188,21 @@ describe('GET /v1/pair (tailnet)', () => {
       },
     })
     expect((await pair(h, '::ffff:100.64.1.2')).status).toBe(200)
-    expect(seen[0]).toBe('100.64.1.2:4242')
+    expect(seen[0]).toBe('100.64.1.2')
+  })
+
+  it('passes an IPv6 tailnet peer through verbatim (the re-pairing regression)', async () => {
+    const seen: string[] = []
+    const h = pairHandler({
+      tailscalePair: (peer) => {
+        seen.push(peer)
+        return { token: 'tok', fp: 'fp', name: 'MacBook' }
+      },
+    })
+    // A phone on the tailnet often arrives over IPv6. The address must reach
+    // tailscalePair unmangled so whoisArg can bracket it for `tailscale whois`.
+    expect((await pair(h, 'fd7a:115c:a1e0:ab12::1')).status).toBe(200)
+    expect(seen[0]).toBe('fd7a:115c:a1e0:ab12::1')
   })
 
   it('403s a peer the tailnet does not vouch for', async () => {

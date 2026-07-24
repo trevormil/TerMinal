@@ -14,6 +14,7 @@ import {
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { SkillHint } from '../../components/SkillHint'
+import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type {
   Tab,
   TabContext,
@@ -634,24 +635,30 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             Config
           </div>
           <div className="flex flex-col gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[12px]">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Type</span>
-              <span className="text-zinc-200">{TYPE_LABEL[m.type]}</span>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Type</span>
+              <span className="min-w-0 break-words text-right text-zinc-200">{TYPE_LABEL[m.type]}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Interval</span>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Target</span>
+              <span className="min-w-0 break-all text-right font-mono text-zinc-200">{m.target}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Interval</span>
               <span className="tabular-nums text-zinc-200">{m.intervalSec}s</span>
             </div>
             {m.group && (
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Group</span>
-                <span className="text-zinc-200">{m.group}</span>
+              <div className="flex justify-between gap-4">
+                <span className="shrink-0 text-zinc-500">Group</span>
+                <span className="min-w-0 break-words text-right text-zinc-200">{m.group}</span>
               </div>
             )}
             {config.map(([k, v]) => (
-              <div key={k} className="flex justify-between">
-                <span className="text-zinc-500">{k}</span>
-                <span className="font-mono text-zinc-200">{fmtMetric(v)}</span>
+              <div key={k} className="flex justify-between gap-4">
+                <span className="shrink-0 text-zinc-500">{k}</span>
+                <span className="min-w-0 break-all text-right font-mono text-zinc-200">
+                  {fmtMetric(v)}
+                </span>
               </div>
             ))}
           </div>
@@ -707,29 +714,36 @@ function MonitorRow({
   return (
     <div
       onClick={onSelect}
-      className={`group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
+      className={`group flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
         selected ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
       } ${m.enabled ? '' : 'opacity-55'}`}
     >
       <StatusDot status={st?.status} />
-      <span className="min-w-0 shrink-0 max-w-[10rem] truncate text-[12.5px] font-medium text-zinc-100">
-        {m.name}
-      </span>
-      <Badge tone="mute">{TYPE_LABEL[m.type]}</Badge>
-      <span className="min-w-0 flex-shrink truncate font-mono text-[10.5px] text-zinc-600">
-        {m.target}
-      </span>
-      {st?.summary && (
-        <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">{st.summary}</span>
-      )}
-      {!st?.summary && <span className="flex-1" />}
-      {stale && <Badge tone="yellow">stale</Badge>}
-      <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
-        {reltime(st?.lastCheckedAt)}
-      </span>
+      <div className="min-w-0 flex-1">
+        {/* line 1 — name, type, stale, time */}
+        <div className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-zinc-100">
+            {m.name}
+          </span>
+          <Badge tone="mute">{TYPE_LABEL[m.type]}</Badge>
+          {stale && <Badge tone="yellow">stale</Badge>}
+          <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
+            {reltime(st?.lastCheckedAt)}
+          </span>
+        </div>
+        {/* line 2 — target then summary, each truncating independently */}
+        <div className="mt-0.5 flex items-center gap-2 text-[10.5px]">
+          <span className="min-w-0 max-w-[55%] shrink-0 truncate font-mono text-zinc-600">
+            {m.target}
+          </span>
+          {st?.summary && (
+            <span className="min-w-0 flex-1 truncate text-zinc-500">{st.summary}</span>
+          )}
+        </div>
+      </div>
       {/* actions — appear on hover */}
       <div
-        className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+        className="flex shrink-0 items-center gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -773,6 +787,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const [editing, setEditing] = useState<Monitor | null>(null)
   const [adding, setAdding] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const railW = useResizableWidth('gt.monitoringRailWidth', 384, { min: 280, max: 640 })
 
   const load = () => {
     window.gt.monitors
@@ -850,7 +865,10 @@ function MonitoringTab(_: { ctx: TabContext }) {
   return (
     <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">
       {/* list */}
-      <aside className="flex w-[34rem] shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]">
+      <aside
+        className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]"
+        style={{ width: railW.width }}
+      >
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
           <Activity size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <span className="text-[12px] font-semibold text-zinc-200">Monitoring</span>
@@ -921,6 +939,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
           )}
         </div>
       </aside>
+      <ResizeHandle onMouseDown={railW.onResizeStart} />
 
       {/* right pane */}
       <section className="flex min-w-0 flex-1 flex-col">

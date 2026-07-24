@@ -156,33 +156,53 @@ private struct MonitorRow: View {
 
     var body: some View {
         let stale = isStale(monitor)
+        let status = monitor.state?.status
         GTPanel {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Circle()
-                    .fill(monitor.state == nil ? GT.textFaint : statusColor(monitor.state?.status))
+                    .fill(monitor.state == nil ? GT.textFaint : statusColor(status))
                     .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 3) {
+                    .padding(.top, 5)
+                VStack(alignment: .leading, spacing: 4) {
+                    // line 1 — name + type pill, then time on the right
                     HStack(spacing: 6) {
                         Text(monitor.name)
                             .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
-                        if stale { pill("stale", tint: GT.textFaint) }
+                        pill(monitorTypeLabel(monitor.type), tint: GT.textFaint)
+                        if stale { pill("stale", tint: GT.yellow) }
+                        Spacer(minLength: 4)
+                        if let checkedAt = monitor.state?.lastCheckedAt {
+                            Text(relativeTime(checkedAt))
+                                .font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                        }
                     }
-                    Text("\(monitor.type) · \(monitor.target)")
+                    Text(monitor.target)
                         .font(GT.mono(10)).foregroundStyle(GT.textMuted).lineLimit(1)
-                    if let summary = monitor.state?.summary {
-                        Text(summary)
-                            .font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(2)
+                    // line 3 — status verdict + summary
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text((status ?? "pending").uppercased())
+                            .font(GT.sans(10, .bold))
+                            .foregroundStyle(monitor.state == nil ? GT.textFaint : statusColor(status))
+                        if let summary = monitor.state?.summary {
+                            Text(summary)
+                                .font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(2)
+                        }
                     }
                 }
-                Spacer(minLength: 4)
-                if let checkedAt = monitor.state?.lastCheckedAt {
-                    Text(relativeTime(checkedAt))
-                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
             }
         }
+    }
+}
+
+/// Display label for a monitor type, matching the desktop ("HTTP", "TLS cert").
+private func monitorTypeLabel(_ type: String) -> String {
+    switch type {
+    case "http": return "HTTP"
+    case "tls-cert": return "TLS cert"
+    case "tcp": return "TCP"
+    case "dns": return "DNS"
+    case "command": return "Command"
+    default: return type.uppercased()
     }
 }
 
