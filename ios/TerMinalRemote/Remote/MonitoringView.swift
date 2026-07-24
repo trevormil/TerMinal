@@ -176,7 +176,12 @@ private struct MonitorRow: View {
                     .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
                 if isStale(monitor) { pill("stale", tint: GT.yellow) }
                 Spacer(minLength: 6)
-                if let (word, color) = verdict {
+                // Certs lead with time-to-expiry (the thing you actually watch);
+                // everything else shows a friendly verdict only when unhealthy.
+                if let d = certDays(monitor) {
+                    Text(certExpiryShort(d))
+                        .font(GT.sans(11, .semibold)).foregroundStyle(certExpiryColor(d))
+                } else if let (word, color) = verdict {
                     Text(word).font(GT.sans(11, .semibold)).foregroundStyle(color)
                 }
                 pill(monitorTypeLabel(monitor.type), tint: GT.textFaint)
@@ -185,6 +190,23 @@ private struct MonitorRow: View {
             }
         }
     }
+}
+
+// ---- cert expiry (the headline fact for a TLS-cert monitor) ----------------
+private func certDays(_ m: MonitorWithState) -> Int? {
+    guard m.type == "tls-cert", let s = m.state?.metrics?["daysRemaining"] else { return nil }
+    return Int(Double(s) ?? .nan)
+}
+private func certExpiryColor(_ days: Int) -> Color {
+    days <= 5 ? GT.red : days <= 15 ? GT.yellow : GT.green
+}
+private func certExpiryShort(_ days: Int) -> String {
+    days < 0 ? "expired" : days == 0 ? "today" : "\(days)d left"
+}
+private func certExpiryPhrase(_ days: Int) -> String {
+    if days < 0 { return "Expired \(-days) day\(-days == 1 ? "" : "s") ago" }
+    if days == 0 { return "Expires today" }
+    return "Expires in \(days) day\(days == 1 ? "" : "s")"
 }
 
 /// Display label for a monitor type, matching the desktop ("HTTP", "TLS cert").
@@ -211,6 +233,7 @@ struct MonitorDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     statusPanel
+                    if let d = certDays(monitor) { certExpiryPanel(d) }
                     configPanel
                     notifyPanel
                     if let metrics = monitor.state?.metrics, !metrics.isEmpty {
@@ -272,6 +295,41 @@ struct MonitorDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    /// The headline for a cert: big time-to-expiry, plus the exact valid-until
+    /// date. Tinted by urgency so it reads at a glance.
+    @ViewBuilder private func certExpiryPanel(_ days: Int) -> some View {
+        GTPanel(padding: 16) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("CERTIFICATE")
+                        .font(GT.sans(10, .semibold)).tracking(0.8).foregroundStyle(GT.textFaint)
+                    Text(certExpiryPhrase(days))
+                        .font(GT.sans(20, .semibold)).foregroundStyle(certExpiryColor(days))
+                }
+                Spacer()
+                if let notAfter = monitor.state?.metrics?["notAfter"] {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("VALID UNTIL")
+                            .font(GT.sans(9, .semibold)).tracking(0.6).foregroundStyle(GT.textFaint)
+                        Text(certDateLabel(notAfter))
+                            .font(GT.mono(12)).foregroundStyle(GT.textSoft)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func certDateLabel(_ raw: String) -> String {
+        let iso = ISO8601DateFormatter()
+        let df = DateFormatter(); df.dateStyle = .medium
+        if let d = iso.date(from: raw) { return df.string(from: d) }
+        // TLS notAfter is often a non-ISO string ("Sep 20 12:00:00 2026 GMT").
+        let alt = DateFormatter(); alt.dateFormat = "MMM d HH:mm:ss yyyy zzz"
+        if let d = alt.date(from: raw) { return df.string(from: d) }
+        return raw
     }
 
     private var notifyPanel: some View {

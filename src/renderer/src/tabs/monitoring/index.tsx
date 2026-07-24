@@ -111,6 +111,30 @@ function fmtMetric(v: unknown): string {
   return String(v)
 }
 
+// ---- cert expiry (the headline fact for a TLS-cert monitor) -----------------
+function certDays(m: MonitorWithState): number | null {
+  const d = m.state?.metrics?.daysRemaining
+  return typeof d === 'number' ? d : null
+}
+function expiryTone(days: number): BadgeTone {
+  return days <= 5 ? 'red' : days <= 15 ? 'yellow' : 'green'
+}
+function expiryLabel(days: number): string {
+  if (days < 0) return `expired ${-days}d ago`
+  if (days === 0) return 'expires today'
+  return `${days}d left`
+}
+function expiryPhrase(days: number): string {
+  if (days < 0) return `Expired ${-days} day${-days === 1 ? '' : 's'} ago`
+  if (days === 0) return 'Expires today'
+  return `Expires in ${days} day${days === 1 ? '' : 's'}`
+}
+function fmtDate(v: unknown): string {
+  if (typeof v !== 'string') return '—'
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? v : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 const DEFAULT_NOTIFY: MonitorNotify = {
   onFailure: 'normal',
   onRecovery: true,
@@ -558,6 +582,37 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
           </div>
         </div>
 
+        {/* cert expiry — the headline fact for a TLS-cert monitor */}
+        {m.type === 'tls-cert' && certDays(m) !== null && (
+          <div
+            className="mb-4 flex items-center justify-between rounded-lg border px-4 py-3"
+            style={{
+              borderColor: `color-mix(in srgb, ${DOT_COLOR[st!.status]} 40%, transparent)`,
+              background: `color-mix(in srgb, ${DOT_COLOR[st!.status]} 10%, transparent)`,
+            }}
+          >
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Certificate
+              </div>
+              <div
+                className="mt-0.5 text-[18px] font-semibold"
+                style={{ color: DOT_COLOR[st!.status] }}
+              >
+                {expiryPhrase(certDays(m)!)}
+              </div>
+            </div>
+            {st?.metrics?.notAfter != null && (
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-600">Valid until</div>
+                <div className="mt-0.5 font-mono text-[12px] text-zinc-300">
+                  {fmtDate(st.metrics.notAfter)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* history strip */}
         {recent.length > 0 && (
           <div className="mb-4">
@@ -725,6 +780,9 @@ function MonitorRow({
           <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-zinc-100">
             {m.name}
           </span>
+          {m.type === 'tls-cert' && certDays(m) !== null && (
+            <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
+          )}
           <Badge tone="mute">{TYPE_LABEL[m.type]}</Badge>
           {stale && <Badge tone="yellow">stale</Badge>}
           <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
