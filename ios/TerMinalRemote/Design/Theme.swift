@@ -118,7 +118,9 @@ struct GTStatusDot: View {
     }
     private var color: Color {
         switch status {
-        case "working": return GT.accent2
+        case "working": return GT.green
+        case "awaiting": return GT.accent2
+        case "idle": return GT.yellow
         case "error", "failed": return GT.red
         default: return GT.textFaint
         }

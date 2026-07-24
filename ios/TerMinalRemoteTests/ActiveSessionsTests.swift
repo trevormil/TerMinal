@@ -40,6 +40,17 @@ final class ActiveSessionsTests: XCTestCase {
         XCTAssertEqual(ranked.map(\.id), ["new", "mid", "old"])
     }
 
+    func testIdleParksBelowWorkingAboveNothing() {
+        // A parked (idle) session matters less than one actively working, even
+        // when it's more recent.
+        let ranked = ActiveSessionsViewModel.rank([
+            session("idle", status: "idle", lastSeenAt: 100),
+            session("working", status: "working", lastSeenAt: 1),
+            session("asking", status: "awaiting", lastSeenAt: 0),
+        ])
+        XCTAssertEqual(ranked.map(\.id), ["asking", "working", "idle"])
+    }
+
     func testAwaitingCountExcludesEndedAndZerosWhenStale() {
         let sessions = [
             session("a", status: "awaiting", lastSeenAt: 1),

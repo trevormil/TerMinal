@@ -1315,7 +1315,14 @@ function takeRemoteReplies(id) {
     question: undefined,
     lastSeenAt: Date.now(),
   })
-  return fresh.map((m) => m.text)
+  // Attached images hand over as absolute paths the agent can Read — mirrors
+  // src/main/remote-sessions.ts takeReplies, so "look at this screenshot"
+  // works through the hook path too.
+  return fresh.map((m) => {
+    if (!m.images || !m.images.length) return m.text
+    const paths = m.images.map((n) => `[image: ${join(REMOTE_DIR, `${id}.files`, n)}]`).join(' ')
+    return m.text ? `${m.text}\n${paths}` : paths
+  })
 }
 /**
  * Park until the phone sends something for THIS session, it ends, or we time
@@ -1327,13 +1334,19 @@ function takeRemoteReplies(id) {
  *   timeout→ exit 3 (hook re-parks with a heartbeat)
  */
 function waitForReplies(sessionId, timeoutSec) {
+  // Parked between turns = idle: the phone can tell "waiting for you" apart
+  // from "actively working". Draining a reply flips it back to working.
+  const parked = readRemote(sessionId)
+  if (parked && parked.status === 'working')
+    writeRemote({ ...parked, status: 'idle', lastSeenAt: Date.now() })
   const deadline = Date.now() + timeoutSec * 1000
   for (;;) {
     const session = readRemote(sessionId)
     if (!session || session.status === 'ended') return
     const replies = takeRemoteReplies(sessionId)
     if (replies.length) {
-      console.log(replies.join('\n'))
+      // Blank line between queued messages so the agent sees the boundaries.
+      console.log(replies.join('\n\n'))
       return
     }
     if (Date.now() > deadline) process.exit(3)
@@ -1449,7 +1462,7 @@ function remoteCommand(sub, rest) {
       const sessionId = resolveRemoteId(id, cwdFlag || process.cwd(), { soft: true })
       const question = positional.join(' ').trim()
       if (!question) {
-        console.error('usage: terminal-cli remote ask "<question>"')
+        console.error('usage: terminal-cli remote ask "<question>" [--image <path>]')
         process.exit(2)
       }
       // No remote session to answer — behave like a timeout: no stdout, non-zero,
@@ -1458,7 +1471,9 @@ function remoteCommand(sub, rest) {
         console.error('remote: no active session to ask — proceed with a safe default')
         process.exit(3)
       }
-      remoteAppend(sessionId, 'agent', question)
+      // A screenshot often IS the question ("which layout?") — attach like post.
+      const askImages = imageFlag ? [remoteSaveImage(sessionId, imageFlag)] : []
+      remoteAppend(sessionId, 'agent', question, askImages)
       writeRemote({
         ...readRemote(sessionId),
         status: 'awaiting',
@@ -1471,7 +1486,7 @@ function remoteCommand(sub, rest) {
       for (;;) {
         const replies = takeRemoteReplies(sessionId)
         if (replies.length) {
-          console.log(replies.join('\n'))
+          console.log(replies.join('\n\n'))
           return
         }
         if (Date.now() > deadline) {
@@ -1511,7 +1526,7 @@ function remoteCommand(sub, rest) {
         // Those still get their queued replies, non-blocking.
         if (mine.origin !== 'phone') {
           const queued = takeRemoteReplies(mine.id)
-          if (queued.length) console.log(queued.join('\n'))
+          if (queued.length) console.log(queued.join('\n\n'))
           break
         }
         return waitForReplies(mine.id, timeoutSec)
@@ -1523,7 +1538,7 @@ function remoteCommand(sub, rest) {
       })
       if (!sessionId) break
       const replies = takeRemoteReplies(sessionId)
-      if (replies.length) console.log(replies.join('\n'))
+      if (replies.length) console.log(replies.join('\n\n'))
       break
     }
     // 'end' / 'off' — come back to the desktop: stop being remote, keep the

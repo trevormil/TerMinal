@@ -17,13 +17,14 @@ final class ActiveSessionsViewModel {
     /// so a dead bridge doesn't keep showing a confident count.
     var awaitingCount: Int { Self.awaitingCount(feed.sessions, stale: feed.isStale) }
 
-    /// Pure so it's unit-testable without a bridge: drop ended sessions, float
-    /// the ones awaiting you to the top, then most-recently-seen first.
+    /// Pure so it's unit-testable without a bridge: drop ended sessions, then
+    /// awaiting (blocked on you) > working > idle (parked), recency within a tier.
     static func rank(_ sessions: [RemoteSession]) -> [RemoteSession] {
-        sessions
+        func tier(_ s: RemoteSession) -> Int { s.isAwaiting ? 0 : s.isIdle ? 2 : 1 }
+        return sessions
             .filter { !$0.hasEnded }
             .sorted { a, b in
-                if a.isAwaiting != b.isAwaiting { return a.isAwaiting }
+                if tier(a) != tier(b) { return tier(a) < tier(b) }
                 return a.lastSeenAt > b.lastSeenAt
             }
     }
@@ -76,8 +77,10 @@ struct ActiveSessionsView: View {
                     .plainRow()
                 }
                 ForEach(model.active) { s in
-                    NavigationLink(value: s) { SessionRow(session: s, showsChevron: false) }
-                        .buttonStyle(.plain)
+                    // Chevron lives INSIDE the card (SessionRow draws it); the
+                    // native List accessory is suppressed by hiding the link.
+                    SessionRow(session: s)
+                        .background(NavigationLink(value: s) { EmptyView() }.opacity(0))
                         .plainRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {

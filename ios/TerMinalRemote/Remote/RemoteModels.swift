@@ -8,7 +8,7 @@ struct RemoteSession: Codable, Identifiable, Hashable {
     let repo: String
     let branch: String
     let engine: String
-    /// "working" | "awaiting" | "ended"
+    /// "working" | "awaiting" | "idle" (parked between turns) | "ended"
     let status: String
     /// What the agent is blocked on, when awaiting.
     let question: String?
@@ -16,6 +16,7 @@ struct RemoteSession: Codable, Identifiable, Hashable {
     let messages: Int
 
     var isAwaiting: Bool { status == "awaiting" }
+    var isIdle: Bool { status == "idle" }
     var hasEnded: Bool { status == "ended" }
 }
 

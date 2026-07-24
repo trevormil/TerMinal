@@ -73,16 +73,19 @@ struct InboxView: View {
                     .plainRow()
                 }
                 ForEach(shown) { item in
-                    NavigationLink {
-                        InboxDetailView(item: item) { approved in
-                            Task { await model.resolve(item, approved: approved) }
-                        }
-                        .onAppear { model.markRead([item]) }
-                    } label: {
-                        InboxRow(item: item)
-                    }
-                    .buttonStyle(.plain)
-                    .plainRow()
+                    // Chevron lives INSIDE the card (InboxRow draws it); the
+                    // native List accessory is suppressed by hiding the link.
+                    InboxRow(item: item)
+                        .background(
+                            NavigationLink {
+                                InboxDetailView(item: item) { approved in
+                                    Task { await model.resolve(item, approved: approved) }
+                                }
+                                .onAppear { model.markRead([item]) }
+                            } label: { EmptyView() }
+                            .opacity(0)
+                        )
+                        .plainRow()
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         if item.isUnread {
                             Button {
@@ -192,7 +195,8 @@ private struct InboxRow: View {
                 }
                 Spacer(minLength: 4)
                 SeverityTag(severity: item.severity)
-                // No chevron: the List's NavigationLink draws the native one.
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
             }
         }
     }
