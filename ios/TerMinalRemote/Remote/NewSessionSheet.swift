@@ -6,8 +6,9 @@ import SwiftUI
 struct NewSessionSheet: View {
     let client: BridgeClient
     let repo: RepoOption
-    /// Handed the new thread id so the caller can open it immediately.
-    let onStarted: (String) async -> Void
+    /// Handed a ready-to-open session (synthesized from the spawn result) so the
+    /// caller can navigate immediately — no waiting on a list refresh.
+    let onStarted: (RemoteSession) async -> Void
 
     @Environment(\.dismiss) private var dismiss
     // The Mac's list order carries its default; codex only if the list is empty
@@ -129,7 +130,20 @@ struct NewSessionSheet: View {
         defer { busy = false }
         do {
             let id = try await client.spawn(cwd: repo.path, engine: engine, task: task)
-            await onStarted(id)
+            // The Mac registers the session before the agent boots, so we can
+            // open it right away from what we already know — the thread view
+            // polls by id and fills in as the agent starts. No race on the list.
+            let session = RemoteSession(
+                id: id,
+                title: task.isEmpty ? "\(repo.name) · new session" : task,
+                repo: repo.name,
+                branch: "",
+                engine: engine,
+                status: "working",
+                question: nil,
+                lastSeenAt: Date().timeIntervalSince1970 * 1000,
+                messages: 0)
+            await onStarted(session)
             dismiss()
         } catch {
             self.error = error.localizedDescription
