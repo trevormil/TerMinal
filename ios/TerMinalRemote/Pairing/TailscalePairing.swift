@@ -45,8 +45,11 @@ enum TailscalePairing {
             let octets = parts.compactMap { UInt8($0) }
             return octets.count == 4 && octets[0] == 100 && (64...127).contains(octets[1])
         }
-        // Tailscale ULA IPv6 range: fd7a:115c:a1e0::/48.
-        if h.contains(":") { return h.hasPrefix("fd7a:115c:a1e0:") }
+        // Raw IPv6 (incl. Tailscale's fd7a: ULA range) is rejected: the rest of
+        // the pipeline can't complete it — PairingPayload.baseURL builds URLs
+        // without brackets and the Mac's /v1/pair gate only vouches for IPv4
+        // CGNAT peers. Tailnet IPv6 users still pair via the MagicDNS name.
+        if h.contains(":") { return false }
         // A bare MagicDNS short name (no dots) can only resolve via tailnet DNS.
         return !h.contains(".")
     }
