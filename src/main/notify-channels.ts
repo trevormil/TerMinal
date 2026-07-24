@@ -198,8 +198,13 @@ export function createPushChannel(
     id: 'push',
     enabled: isConfigured,
     send(kind, title, detail, refs) {
+      // "TerMinal" is the app name iOS already shows as the notification's
+      // header, so repeating it in the title is redundant — strip a leading
+      // app-name token (e.g. an agent finishing in the TerMinal repo yields a
+      // "TerMinal — …" title). Keep the original if that would empty it.
+      const clean = title.replace(/^\s*TerMinal\b\s*(?:[—:-]\s*)?/i, '').trim() || title
       return send({
-        title: `${KIND_EMOJI[kind]} ${title}`,
+        title: `${KIND_EMOJI[kind]} ${clean}`,
         // Never an empty body: iOS renders a body-less alert as the generic
         // "Notification" placeholder in stacked/summary surfaces.
         body: detail || title,
