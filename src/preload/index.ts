@@ -252,6 +252,9 @@ const gt = {
   remote: {
     active: () => ipcRenderer.invoke('remote:active'),
   },
+  checks: {
+    list: () => ipcRenderer.invoke('checks:list'),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
@@ -259,7 +262,8 @@ const gt = {
     resolve: (id: string, resolved?: boolean, hostId?: string) =>
       ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
-    markRead: (ids: string[], hostId?: string) => ipcRenderer.invoke('hitl:mark-read', ids, hostId),
+    markRead: (ids: string[], hostId?: string, read?: boolean) =>
+      ipcRenderer.invoke('hitl:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
   },
   factory: {

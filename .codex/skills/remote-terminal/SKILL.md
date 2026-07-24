@@ -52,7 +52,8 @@ terminal-cli remote ask --id <id> "PR is green. Merge it, or hold for review?"
 
 `ask` **blocks** until the human replies and prints their answer on stdout —
 treat that output as their instruction and continue. It defaults to a 15 minute
-wait; pass `--timeout <seconds>` for longer.
+wait; pass `--timeout <seconds>` for longer. `--image <path>` attaches a
+screenshot when the picture IS the question ("which layout?").
 
 Use it for a real fork in the road: an irreversible action, a design choice, a
 missing credential. If you can pick a sensible default and note it in a `post`,
@@ -68,7 +69,10 @@ end a turn. If the human sent something while you were working, it blocks the
 stop and hands you the message as a new instruction. You do not have to poll for
 it, and a message can never sit unread while you idle.
 
-Treat anything it delivers as instructions from the human and continue.
+Treat anything it delivers as instructions from the human and continue. Several
+messages queued while you worked arrive together, separated by blank lines —
+handle each. A phone-attached screenshot arrives as `[image: /abs/path]` — Read
+that path to see it.
 
 You can still check explicitly mid-task — useful during long stretches with no
 turn boundary, like a big build:

@@ -26,19 +26,24 @@ struct DetailLoader<T, Content: View>: View {
                 .padding(14)
             }
             .overlay { if value == nil && error == nil { ProgressView().tint(GT.accentLight) } }
+            .refreshable { await refresh() }
         }
-        .task {
-            do { value = try await load() } catch { self.error = error.localizedDescription }
-        }
+        .task { await refresh() }
+    }
+
+    private func refresh() async {
+        do {
+            value = try await load()
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 }
 
-/// Monospaced viewer for diffs and logs: horizontally scrollable so long lines
+/// Monospaced viewer for logs and prompts: horizontally scrollable so long lines
 /// aren't wrapped into mush, selectable, and copyable whole.
 struct CodeViewer: View {
     let text: String
     let truncated: Bool
-    var diffColoring = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -55,7 +60,7 @@ struct CodeViewer: View {
                         ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                             Text(line.isEmpty ? " " : line)
                                 .font(GT.mono(11))
-                                .foregroundStyle(color(for: line))
+                                .foregroundStyle(GT.textSoft)
                                 .textSelection(.enabled)
                         }
                     }
@@ -78,14 +83,6 @@ struct CodeViewer: View {
         return all.count > 4000 ? Array(all.suffix(4000)) : all
     }
 
-    private func color(for line: String) -> Color {
-        guard diffColoring else { return GT.textSoft }
-        if line.hasPrefix("+++") || line.hasPrefix("---") { return GT.textMuted }
-        if line.hasPrefix("+") { return GT.green }
-        if line.hasPrefix("-") { return GT.yellow }
-        if line.hasPrefix("@@") { return GT.accentLight }
-        return GT.textSoft
-    }
 }
 
 private func sectionLabel(_ s: String) -> some View {
@@ -145,8 +142,9 @@ struct PrDetailView: View {
     let repo: String
     let iid: Int
 
-    @State private var diff: WsText?
-    @State private var showDiff = false
+    /// Fetched up front so the "View diff" link can show files + net ±,
+    /// then handed to PrDiffView so it doesn't fetch again.
+    @State private var parsedDiff: ParsedDiff?
 
     var body: some View {
         DetailLoader { try await client.pr(repo: repo, iid: iid) } content: { pr in
@@ -154,60 +152,88 @@ struct PrDetailView: View {
                 Text(pr.title).font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
                 HStack(spacing: 6) {
                     pill(pr.state, tint: GT.accent2)
-                    if pr.draft { pill("draft", tint: GT.textFaint) }
-                    if let v = pr.verdict { pill(v, tint: v == "approve" ? GT.green : GT.yellow) }
-                    if let s = pr.score {
-                        Text("\(Int(s))").font(GT.mono(11)).foregroundStyle(GT.textFaint)
-                    }
-                }
-                HStack(spacing: 8) {
+                    if pr.draft { pill("draft", tint: GT.yellow) }
                     Text(pr.author).font(GT.mono(11)).foregroundStyle(GT.textFaint)
                     if let b = pr.branch {
                         Text("· \(b)").font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                            .lineLimit(1)
                     }
                 }
-                if let tests = pr.testStatus, !tests.isEmpty {
-                    Text("tests: \(tests)").font(GT.sans(12)).foregroundStyle(GT.textSoft)
-                }
-                if let ci = pr.ci, !ci.isEmpty {
-                    Text("CI: \(ci)").font(GT.sans(12)).foregroundStyle(GT.textSoft)
-                }
-                if let risk = pr.riskTier, !risk.isEmpty {
-                    Text("risk: \(risk)").font(GT.sans(12)).foregroundStyle(GT.textSoft)
+                if !pr.labels.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(pr.labels, id: \.self) { pill($0, tint: GT.accentLight) }
+                        }
+                    }
                 }
 
-                Button {
-                    showDiff = true
-                    Task { diff = try? await client.prDiff(repo: repo, iid: iid) }
+                // Review verdict + score, front and center — the desktop MRs
+                // list's quick-scan signal.
+                if pr.verdict != nil || pr.score != nil || pr.testStatus != nil
+                    || pr.riskTier != nil || pr.ci != nil {
+                    GTPanel(padding: 10) {
+                        HStack(alignment: .top, spacing: 16) {
+                            if let v = pr.verdict {
+                                reviewStat("verdict") {
+                                    pill(v, tint: v == "approve" ? GT.green : GT.yellow)
+                                }
+                            }
+                            if let s = pr.score {
+                                reviewStat("score") {
+                                    Text("\(Int(s))")
+                                        .font(GT.mono(17, .medium))
+                                        .foregroundStyle(s >= 80 ? GT.green : GT.yellow)
+                                }
+                            }
+                            if let tests = pr.testStatus, !tests.isEmpty {
+                                reviewStat("tests") {
+                                    pill(tests, tint: tests == "pass" ? GT.green : GT.yellow)
+                                }
+                            }
+                            if let risk = pr.riskTier, !risk.isEmpty {
+                                reviewStat("risk") {
+                                    pill(risk, tint: risk == "high" ? GT.red : GT.textMuted)
+                                }
+                            }
+                            if let ci = pr.ci, !ci.isEmpty {
+                                reviewStat("ci") {
+                                    pill(ci, tint: ci == "success" ? GT.green : GT.yellow)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+
+                NavigationLink {
+                    PrDiffView(client: client, repo: repo, iid: iid, preloaded: parsedDiff)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.magnifyingglass")
                         Text("View diff")
+                        Spacer()
+                        if let d = parsedDiff {
+                            Text("\(d.files.count) files")
+                                .font(GT.sans(11)).foregroundStyle(GT.textMuted)
+                            Text("+\(d.additions)").font(GT.mono(11)).foregroundStyle(GT.green)
+                            Text("−\(d.deletions)").font(GT.mono(11)).foregroundStyle(GT.red)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11)).foregroundStyle(GT.textFaint)
                     }
                     .frame(maxWidth: .infinity)
                     .gtSecondaryButton()
                 }
+                .buttonStyle(.plain)
 
                 if let findings = pr.findings, !findings.isEmpty {
                     sectionLabel("Findings (\(findings.count))")
-                    ForEach(findings) { f in
-                        GTPanel(padding: 10) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    if let s = f.severity { pill(s, tint: severityTint(s)) }
-                                    Text(f.title ?? "finding")
-                                        .font(GT.sans(13, .medium)).foregroundStyle(GT.text)
-                                }
-                                if let file = f.file {
-                                    Text("\(file)\(f.line.map { ":\($0)" } ?? "")")
-                                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
-                                }
-                                if let t = f.text, !t.isEmpty {
-                                    Text(t).font(GT.sans(12)).foregroundStyle(GT.textMuted)
-                                }
-                            }
-                        }
-                    }
+                    ForEach(findings) { f in findingPanel(f) }
+                }
+
+                if let suggestions = pr.suggestions, !suggestions.isEmpty {
+                    sectionLabel("Suggestions (\(suggestions.count))")
+                    ForEach(suggestions) { f in findingPanel(f) }
                 }
 
                 if !pr.description.isEmpty {
@@ -218,36 +244,37 @@ struct PrDetailView: View {
                     sectionLabel("Code review")
                     MarkdownText(raw: notes)
                 }
+                if let url = URL(string: pr.url) {
+                    Link(destination: url) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("Open on GitHub")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .gtSecondaryButton()
+                    }
+                }
             }
         }
         .navigationTitle("!\(iid)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .sheet(isPresented: $showDiff) {
-            NavigationStack {
-                ZStack {
-                    GT.bg.ignoresSafeArea()
-                    ScrollView {
-                        if let diff {
-                            CodeViewer(text: diff.text, truncated: diff.truncated, diffColoring: true)
-                                .padding(14)
-                        } else {
-                            ProgressView().tint(GT.accentLight).padding(40)
-                        }
-                    }
-                }
-                .navigationTitle("Diff · !\(iid)")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(GT.panel, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { showDiff = false }
-                    }
-                }
+        .task {
+            guard parsedDiff == nil else { return }
+            if let text = try? await client.prDiff(repo: repo, iid: iid) {
+                parsedDiff = ParsedDiff(
+                    files: DiffParser.parse(text.text), truncated: text.truncated)
             }
-            .preferredColorScheme(.dark)
+        }
+    }
+
+    @ViewBuilder
+    private func reviewStat(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(GT.sans(9, .semibold)).tracking(0.8).foregroundStyle(GT.textFaint)
+            value()
         }
     }
 
@@ -256,6 +283,27 @@ struct PrDetailView: View {
         case "high", "critical": return GT.yellow
         case "medium": return GT.accent2
         default: return GT.textMuted
+        }
+    }
+
+    /// One finding/suggestion card — shared by both sections.
+    @ViewBuilder
+    private func findingPanel(_ f: WsFinding) -> some View {
+        GTPanel(padding: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if let s = f.severity { pill(s, tint: severityTint(s)) }
+                    Text(f.title ?? "finding")
+                        .font(GT.sans(13, .medium)).foregroundStyle(GT.text)
+                }
+                if let file = f.file {
+                    Text("\(file)\(f.line.map { ":\($0)" } ?? "")")
+                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                }
+                if let t = f.text, !t.isEmpty {
+                    Text(t).font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                }
+            }
         }
     }
 }

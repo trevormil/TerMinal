@@ -96,6 +96,8 @@ struct WsPrDetail: Codable, Hashable {
     /// The code-review artifact's markdown.
     let reviewNotes: String?
     let findings: [WsFinding]?
+    /// Non-blocking review suggestions — separate from findings.
+    let suggestions: [WsFinding]?
     let ci: String?
 }
 

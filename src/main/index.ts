@@ -174,6 +174,7 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
+import { listChecks } from './checks'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -274,6 +275,7 @@ import {
   readCronRuns,
   readCronRunLog,
   readSessionRunLog,
+  readSessionRunLogTail,
   readSessionRuns,
   listAllRuns,
   runTrends,
@@ -298,8 +300,10 @@ import {
   messageCount,
   postMessage,
   readMessages,
+  readRemoteSession,
   registerRemoteSession,
   saveImage,
+  stripAnsi,
 } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
@@ -1259,6 +1263,22 @@ const bridgeDeps: BridgeDeps = {
   saveImage: (id, data, ext) => saveImage(id, data, ext),
   imagePath: (id, name) => imagePath(id, name),
 
+  // Read-only terminal peek. Correlate the remote thread to a live desktop pty
+  // the same way the desktop's "on phone" indicator does — engine session id
+  // first, cwd as a fallback — then serve the tail of that pty's output log.
+  remoteTerminal: (id) => {
+    const remote = readRemoteSession(id)
+    if (!remote) return null
+    const live = [...sessions.values()]
+    const match =
+      (remote.agentSessionId
+        ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
+        : undefined) ?? (remote.cwd ? live.find((s) => s.pinned.cwd === remote.cwd) : undefined)
+    if (!match) return null
+    const tail = readSessionRunLogTail(match.pinned.sessionId)
+    return tail ? { text: stripAnsi(tail.text), updatedAt: tail.updatedAt } : null
+  },
+
   // Local items plus every configured host's. An agent blocked on `tm` pages
   // nobody otherwise, which defeats the whole point of an AFK remote.
   hitl: async () => {
@@ -1305,7 +1325,7 @@ const bridgeDeps: BridgeDeps = {
     return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
   },
   resolveHitl: (id, resolved) => resolveHitl(id, resolved),
-  markHitlRead: (ids) => markHitlRead(ids),
+  markHitlRead: (ids, read) => markHitlRead(ids, read),
   repos: () => {
     // Most recent activity per repo, so the phone can surface what you actually
     // work in instead of an alphabetical wall. Desktop pins/recents live in
@@ -1354,6 +1374,9 @@ const bridgeDeps: BridgeDeps = {
       ...repos,
     ]
   },
+
+  // Latest health-check statuses for the phone's health surface.
+  checks: () => listChecks(),
 
   // Every engine the desktop can launch, labelled the way the desktop labels
   // them — the phone should never render a bare lowercase "codex". The Mac's
@@ -1477,6 +1500,13 @@ const bridgeDeps: BridgeDeps = {
         riskTier: d.reviewMeta?.riskTier,
         reviewNotes: capText(d.reviewMd || '', 120_000).text,
         findings: (d.findings || []).slice(0, 60).map((f) => ({
+          severity: f.severity,
+          title: f.title,
+          file: f.file,
+          line: f.line,
+          text: f.text || f.body,
+        })),
+        suggestions: (d.suggestions || []).slice(0, 60).map((f) => ({
           severity: f.severity,
           title: f.title,
           file: f.file,
@@ -2669,6 +2699,7 @@ ipcMain.handle('remote:active', () =>
     })),
 )
 ipcMain.handle('hitl:list', () => readHitl())
+ipcMain.handle('checks:list', () => listChecks())
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
 // hostId so the Inbox shows a host run's block alongside local ones. Best-effort:
 // an unreachable host contributes an error, not a failed view.
@@ -2702,12 +2733,12 @@ ipcMain.handle('hitl:remove', (_e, id: string, hostId?: string) => {
 // Mark-read routes to the owning host like resolve/remove (#14) — a remote
 // item's readAt must persist where the item lives, or the 15s remote fan-in
 // flips it back to unread. No hostId → local, as before.
-ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string) => {
+ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = true) => {
   if (hostId) {
     const ref = remoteFromHostId(hostId)
-    if (ref) return remoteHitl.markRead(ref, ids).catch(() => 0)
+    if (ref) return remoteHitl.markRead(ref, ids, read).catch(() => 0)
   }
-  return markHitlRead(ids)
+  return markHitlRead(ids, read)
 })
 ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
 // Factory: read-only cross-repo health roll-up + start the orchestrator in-place.

@@ -118,7 +118,9 @@ struct GTStatusDot: View {
     }
     private var color: Color {
         switch status {
-        case "working": return GT.accent2
+        case "working": return GT.green
+        case "awaiting": return GT.accent2
+        case "idle": return GT.yellow
         case "error", "failed": return GT.red
         default: return GT.textFaint
         }
@@ -136,5 +138,17 @@ extension View {
             .background(Color.black.opacity(0.25))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(GT.border, lineWidth: 1))
+    }
+}
+
+extension View {
+    /// List-row reset for GTPanel-styled rows living inside a native List
+    /// (which we use for swipe actions): no system background, no separator,
+    /// insets matching the old LazyVStack padding.
+    func plainRow() -> some View {
+        self
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
     }
 }

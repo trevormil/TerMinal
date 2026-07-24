@@ -70,6 +70,8 @@ targets:
           TerMinal's Settings on your Mac.
         NSPhotoLibraryUsageDescription: >-
           TerMinal lets you send a screenshot or photo to an agent session.
+        NSFaceIDUsageDescription: >-
+          TerMinal can use Face ID to unlock the app's passcode lock.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ${PRODUCT_BUNDLE_ID}

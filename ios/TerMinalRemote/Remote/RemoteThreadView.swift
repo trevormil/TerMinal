@@ -119,6 +119,24 @@ struct RemoteThreadView: View {
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            // Messenger-style header: title with a live status line under it
+            // (the 2s poll keeps it honest). Plain views — nothing tappable.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(model.session.title)
+                        .font(GT.sans(14, .semibold))
+                        .foregroundStyle(GT.text)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Circle().fill(statusColor).frame(width: 6, height: 6)
+                        Text(statusLabel)
+                            .font(GT.sans(10.5))
+                            .foregroundStyle(GT.textMuted)
+                    }
+                }
+            }
+        }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }
@@ -146,6 +164,24 @@ struct RemoteThreadView: View {
     }
 
     private var canSend: Bool { !draft.isEmpty || pendingImage != nil }
+
+    private var statusLabel: String {
+        switch model.status {
+        case "awaiting": return "asking you"
+        case "idle": return "idle — waiting for you"
+        case "ended": return "done"
+        default: return "working"
+        }
+    }
+
+    private var statusColor: Color {
+        switch model.status {
+        case "awaiting": return GT.accent2
+        case "idle": return GT.yellow
+        case "ended": return GT.textFaint
+        default: return GT.green
+        }
+    }
 
     private var endedBanner: some View {
         HStack(spacing: 6) {
