@@ -254,6 +254,11 @@ final class BridgeClient {
         return try JSONDecoder().decode(Envelope.self, from: try await get("v1/monitors")).monitors
     }
 
+    func activity() async throws -> [ActivityItem] {
+        struct Envelope: Decodable { let activity: [ActivityItem] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/activity")).activity
+    }
+
     // ---- drill-downs: full readable content -----------------------------
 
     func ticket(repo: String, slug: String) async throws -> WsTicketDetail {

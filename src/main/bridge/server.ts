@@ -85,6 +85,8 @@ export type BridgeDeps = {
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
   /** Monitors joined with their latest state (see src/main/monitors.ts). */
   monitors?(): unknown[]
+  /** The global activity feed — recent events across every repo/session. */
+  activity?(): unknown[]
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
   /** Mark HITL items read (viewed on the phone). */
@@ -416,6 +418,15 @@ export function createBridgeHandler(
     if (req.method === 'GET' && url.pathname === '/v1/monitors') {
       try {
         json(res, 200, { monitors: deps.monitors?.() ?? [] })
+      } catch (e) {
+        json(res, 500, { error: (e as Error).message })
+      }
+      return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/v1/activity') {
+      try {
+        json(res, 200, { activity: deps.activity?.() ?? [] })
       } catch (e) {
         json(res, 500, { error: (e as Error).message })
       }

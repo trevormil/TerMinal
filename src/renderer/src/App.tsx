@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
+  Activity as ActivityIcon,
   Bell,
   ChevronDown,
   Columns2,
@@ -25,6 +26,7 @@ import { firstRunPhase } from './lib/orientation'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
+import { ActivityTab } from './tabs/activity'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
 import { ALL_TABS } from './tabs/registry'
@@ -225,6 +227,8 @@ export default function App() {
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const [activityUnread, setActivityUnread] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
@@ -334,6 +338,26 @@ export default function App() {
       clearInterval(id)
     }
   }, [])
+  // Activity button badge: unseen high-signal events (errors, blockers, test
+  // fails) since the feed was last opened. Mirrors the old Activity-tab badge.
+  useEffect(() => {
+    const hi = new Set(['error', 'blocked', 'tests-fail'])
+    const tick = () =>
+      window.gt.activity
+        .list()
+        .then((items) => {
+          const seen = Number(localStorage.getItem('gt.activity.lastSeen') || 0)
+          setActivityUnread(items.filter((e) => e.ts > seen && hi.has(e.kind)).length)
+        })
+        .catch(() => {})
+    tick()
+    const off = window.gt.activity.onEvent(() => tick())
+    const id = setInterval(tick, 10_000)
+    return () => {
+      off()
+      clearInterval(id)
+    }
+  }, [activityOpen])
   useEffect(() => {
     localStorage.setItem('gt.terminalLayout', terminalLayout)
   }, [terminalLayout])
@@ -573,6 +597,14 @@ export default function App() {
           setInbox(true)
           setFleet(false)
           setSearchOpen(false)
+          setActivityOpen(false)
+          return
+        }
+        if (ev.tabId === 'activity') {
+          setActivityOpen(true)
+          setInbox(false)
+          setFleet(false)
+          setSearchOpen(false)
           return
         }
         if (ev.tabId === 'search') {
@@ -581,6 +613,7 @@ export default function App() {
           setSearchOpen(true)
           setFleet(false)
           setInbox(false)
+          setActivityOpen(false)
           return
         }
         if (ev.tabId === 'terminal:new') {
@@ -1388,6 +1421,7 @@ export default function App() {
                 setFleet((f) => !f)
                 setSearchOpen(false)
                 setAttentionOpen(false)
+                setActivityOpen(false)
               }}
               title="Fleet overview — all sessions at a glance"
               className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
@@ -1403,10 +1437,35 @@ export default function App() {
           <button
             style={noDrag}
             onClick={() => {
+              setActivityOpen((v) => !v)
+              setInbox(false)
+              setFleet(false)
+              setSearchOpen(false)
+              setAttentionOpen(false)
+            }}
+            title="Activity — global live feed of everything happening"
+            className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+              activityOpen
+                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+            }`}
+          >
+            <ActivityIcon size={13} strokeWidth={2} />
+            Activity
+            {activityUnread > 0 && (
+              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
+                {activityUnread}
+              </span>
+            )}
+          </button>
+          <button
+            style={noDrag}
+            onClick={() => {
               setInbox((v) => !v)
               setFleet(false)
               setSearchOpen(false)
               setAttentionOpen(false)
+              setActivityOpen(false)
             }}
             title="Inbox — unresolved human-needed items"
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
@@ -1765,6 +1824,19 @@ export default function App() {
                   openTerminals={openInboxTerminals}
                   onClose={() => setInbox(false)}
                 />
+              </div>
+            </div>
+          )}
+          {activityOpen && !showEntry && (
+            <div
+              className="absolute inset-0 z-50 flex justify-end bg-black/35"
+              onClick={() => setActivityOpen(false)}
+            >
+              <div
+                className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ActivityTab global onClose={() => setActivityOpen(false)} />
               </div>
             </div>
           )}
