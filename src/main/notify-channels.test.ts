@@ -9,6 +9,7 @@ import {
   createTelegramChannel,
   createDesktopChannel,
   createWebhookChannel,
+  createPushChannel,
   type NotifyChannel,
   type NotifyKind,
   type NotifyRefs,
