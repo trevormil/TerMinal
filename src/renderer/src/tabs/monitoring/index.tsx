@@ -566,15 +566,16 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-2xl">
-        {/* summary */}
-        <div className="mb-4 flex items-start gap-2.5">
-          <StatusDot status={st?.status} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
-              <Badge tone={stateTone(st?.status)}>{st?.status ?? 'no data'}</Badge>
-              {!m.enabled && <Badge tone="mute">disabled</Badge>}
-            </div>
+        {/* summary — dot inside the name's items-center row so it's centered on
+            the name; the lines below indent past it (10px dot + 8px gap). */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2">
+            <StatusDot status={st?.status} />
+            <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
+            <Badge tone={stateTone(st?.status)}>{st?.status ?? 'no data'}</Badge>
+            {!m.enabled && <Badge tone="mute">disabled</Badge>}
+          </div>
+          <div className="min-w-0 pl-[18px]">
             <div className="mt-0.5 font-mono text-[11px] text-zinc-500">{m.target}</div>
             {st?.summary && (
               <div className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-300">{st.summary}</div>
@@ -769,14 +770,15 @@ function MonitorRow({
   return (
     <div
       onClick={onSelect}
-      className={`group relative flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
+      className={`group relative flex cursor-pointer items-start rounded-md px-2.5 py-1.5 transition-colors ${
         selected ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
       } ${m.enabled ? '' : 'opacity-55'}`}
     >
-      <StatusDot status={st?.status} />
       <div className="min-w-0 flex-1">
-        {/* line 1 — name, type, stale, time */}
-        <div className="flex items-center gap-1.5">
+        {/* line 1 — dot sits INSIDE this items-center row, so flex centers it on
+            the name (an outer items-start dot floated too high). */}
+        <div className="flex items-center gap-2">
+          <StatusDot status={st?.status} />
           <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-zinc-100">
             {m.name}
           </span>
@@ -789,8 +791,9 @@ function MonitorRow({
             {reltime(st?.lastCheckedAt)}
           </span>
         </div>
-        {/* line 2 — target then summary, each truncating independently */}
-        <div className="mt-0.5 flex items-center gap-2 text-[10.5px]">
+        {/* line 2 — indented past the dot (10px + 8px gap) so it aligns under
+            the name; target then summary, each truncating independently */}
+        <div className="mt-0.5 flex items-center gap-2 pl-[18px] text-[10.5px]">
           <span className="min-w-0 max-w-[55%] shrink-0 truncate font-mono text-zinc-600">
             {m.target}
           </span>
