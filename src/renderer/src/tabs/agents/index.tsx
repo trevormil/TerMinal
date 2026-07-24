@@ -2274,7 +2274,6 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     <h2 className="text-[14px] font-bold text-zinc-100">
                       {selectedDefinition.title}
                     </h2>
-                    <Badge tone="accent">Persistent</Badge>
                     <Badge tone="blue">{selectedDefinition.scope}</Badge>
                     <span className="font-mono text-[10px] text-zinc-600">
                       {selectedDefinition.ref.id}

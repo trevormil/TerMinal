@@ -2306,7 +2306,6 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3">
         <RadioTower size={15} strokeWidth={2.25} className="text-[var(--gt-accent-light)]" />
         <span className="text-[12px] font-semibold text-zinc-100">Observability</span>
-        <Badge tone="accent">Trace browser</Badge>
         {indexQuery && <Badge tone="mute">{indexQuery.query.replaceAll('_', ' ')}</Badge>}
         {snap && <span className="text-[10.5px] text-zinc-600">updated {reltime(snap.ts)}</span>}
         {err && <span className="text-[11px] text-[var(--gt-red)]">{err}</span>}

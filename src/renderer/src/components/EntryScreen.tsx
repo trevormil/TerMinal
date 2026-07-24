@@ -836,11 +836,6 @@ export function EntryScreen({
                           />
                         )}
                         <span className="truncate">{pathLabel(r)}</span>
-                        {isRemotePath(r) && (
-                          <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
-                            ssh
-                          </span>
-                        )}
                       </button>
                       <button
                         onClick={(e) => {

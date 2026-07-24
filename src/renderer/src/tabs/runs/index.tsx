@@ -380,7 +380,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                       {counts.running} running
                     </Badge>
                   )}
-                  <Badge tone="green">{counts.done} done</Badge>
+                  {counts.done > 0 && <Badge tone="green">{counts.done} done</Badge>}
                   {counts.failed > 0 && <Badge tone="red">{counts.failed} failed</Badge>}
                 </span>
                 <div className="flex-1" />
