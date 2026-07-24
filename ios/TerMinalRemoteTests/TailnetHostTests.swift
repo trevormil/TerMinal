@@ -15,8 +15,12 @@ final class TailnetHostTests: XCTestCase {
     func testAcceptsMagicDNSNames() {
         XCTAssertTrue(TailscalePairing.isTailnetHost("foo.tailnet-name.ts.net"))
         XCTAssertTrue(TailscalePairing.isTailnetHost("Foo.Tailnet-Name.TS.NET"))
-        // A bare short name resolves only via tailnet DNS.
-        XCTAssertTrue(TailscalePairing.isTailnetHost("mymac"))
+    }
+
+    /// A bare, dot-less name is rejected — since the tailnet path skips cert
+    /// pinning, an off-tailnet resolution would silently pair with an attacker.
+    func testRejectsBareShortName() {
+        XCTAssertFalse(TailscalePairing.isTailnetHost("mymac"))
     }
 
     /// Raw IPv6 — including Tailscale's own ULA range — is rejected: the URL

@@ -50,8 +50,12 @@ enum TailscalePairing {
         // without brackets and the Mac's /v1/pair gate only vouches for IPv4
         // CGNAT peers. Tailnet IPv6 users still pair via the MagicDNS name.
         if h.contains(":") { return false }
-        // A bare MagicDNS short name (no dots) can only resolve via tailnet DNS.
-        return !h.contains(".")
+        // A bare, dot-less short name is rejected: since this path SKIPS cert
+        // pinning, a name that resolves off-tailnet (search-domain surprise,
+        // hostile DNS) would silently pair with an attacker. Require an
+        // unambiguous tailnet address — a full *.ts.net MagicDNS name or a
+        // 100.x CGNAT IP (both handled above).
+        return false
     }
 
     /// `host` is the Mac's MagicDNS name (or any tailnet address); `port` is the
