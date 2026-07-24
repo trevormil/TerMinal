@@ -65,7 +65,6 @@ final class WorkspaceViewModel {
 enum WorkspaceTab: String, CaseIterable, Identifiable {
     case sessions, tickets, prs, runs, schedules, ci
     var id: String { rawValue }
-    /// SF Symbol for the vertical rail.
     var icon: String {
         switch self {
         case .sessions: return "bolt.horizontal"
@@ -86,88 +85,131 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
         case .ci: return "CI"
         }
     }
+    /// One-line hint under each menu row.
+    var subtitle: String {
+        switch self {
+        case .sessions: return "Live terminals you can steer"
+        case .tickets: return "Backlog & in-progress"
+        case .prs: return "Open pull requests"
+        case .runs: return "Recent agent runs"
+        case .schedules: return "Scheduled agents"
+        case .ci: return "Latest CI runs"
+        }
+    }
 }
 
-/// One repo's cockpit: sessions you can steer, plus read-only tickets/PRs/runs/
-/// schedules — the desktop tabs, phone-sized.
+/// One repo's cockpit — a GitHub-app-style menu. The root lists the sections
+/// (Sessions, Tickets, PRs, Runs, Schedules, CI) as rows; tapping one pushes a
+/// full screen for that section. Sessions you can steer; the rest are read-only.
 struct WorkspaceView: View {
     @State var model: WorkspaceViewModel
-    @State private var tab: WorkspaceTab = .sessions
-    @State private var startingNew = false
-    @State private var opened: RemoteSession?
 
     /// CI only appears when the repo actually has CI configured.
-    private var tabs: [WorkspaceTab] {
+    private var sections: [WorkspaceTab] {
         WorkspaceTab.allCases.filter { $0 != .ci || model.repo.hasCi }
     }
 
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            // A vertical tab rail (six tabs are too many for a segmented row) +
-            // the content pane. Icon+label, selected highlighted.
-            HStack(spacing: 0) {
-                VStack(spacing: 4) {
-                    ForEach(tabs) { t in
-                        Button { tab = t } label: {
-                            VStack(spacing: 3) {
-                                Image(systemName: t.icon).font(.system(size: 15))
-                                Text(t.label).font(GT.sans(9, .medium)).lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .foregroundStyle(tab == t ? GT.text : GT.textMuted)
-                            .background(tab == t ? GT.accent.opacity(0.18) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(sections) { t in
+                        NavigationLink(value: t) { WorkspaceMenuRow(tab: t) }
+                            .buttonStyle(.plain)
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(width: 62)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 5)
-                .background(GT.panel)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let error = model.error {
-                            GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
-                        }
-                        content
-                    }
-                    .padding(14)
-                }
-                .refreshable { await model.load(tab) }
+                .padding(14)
             }
         }
         .navigationTitle(model.repo.name)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarBackground(GT.panel, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        // Registered here so section screens deeper in the stack can push a
+        // section or a session thread by value.
+        .navigationDestination(for: WorkspaceTab.self) { t in
+            WorkspaceSectionView(model: model, section: t)
+        }
+        .navigationDestination(for: RemoteSession.self) { s in
+            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
+        }
+    }
+}
+
+/// A single tappable section row: tinted icon, label, one-line hint, chevron.
+private struct WorkspaceMenuRow: View {
+    let tab: WorkspaceTab
+
+    var body: some View {
+        GTPanel {
+            HStack(spacing: 12) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(GT.accentLight)
+                    .frame(width: 34, height: 34)
+                    .background(GT.accent.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tab.label).font(GT.sans(15, .semibold)).foregroundStyle(GT.text)
+                    Text(tab.subtitle).font(GT.sans(11)).foregroundStyle(GT.textMuted)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(GT.textFaint)
+            }
+        }
+    }
+}
+
+/// A single section's full screen: loads its slice on appear, pull-to-refresh,
+/// and (for Sessions) the new-session flow.
+struct WorkspaceSectionView: View {
+    let model: WorkspaceViewModel
+    let section: WorkspaceTab
+    @State private var startingNew = false
+    @State private var opened: RemoteSession?
+
+    var body: some View {
+        ZStack {
+            GT.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let error = model.error {
+                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+                    }
+                    content
+                }
+                .padding(14)
+            }
+            .refreshable { await model.load(section) }
+            .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
+        }
+        .navigationTitle(section.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(for: RemoteSession.self) { s in
-            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
-        }
-        // Programmatic open (a freshly started session) — distinct from the
-        // NavigationLink taps above.
+        // A freshly started session — programmatic push, distinct from the
+        // value-based session links (handled by WorkspaceView's destination).
         .navigationDestination(item: $opened) { s in
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
         }
         .sheet(isPresented: $startingNew) {
             NewSessionSheet(client: model.client, repo: model.repo) { session in
-                // Navigate immediately to the synthesized session — no waiting
-                // on a list round trip. Refresh the list detached so the
-                // "Starting…" button dismisses at once, not after the refresh.
+                // Navigate immediately to the synthesized session — no waiting on
+                // a list round trip. Refresh the list detached so the "Starting…"
+                // button dismisses at once, not after the refresh.
                 await MainActor.run { opened = session }
                 Task { await model.loadSessions() }
             }
         }
-        .task(id: tab) { await model.load(tab) }
+        .task { await model.load(section) }
     }
 
     @ViewBuilder private var content: some View {
-        switch tab {
+        switch section {
         case .sessions:
             sessionsTab
         case .tickets:

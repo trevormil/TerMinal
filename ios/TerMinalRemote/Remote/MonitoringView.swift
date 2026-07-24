@@ -154,41 +154,34 @@ private struct MonitoringHero: View {
 private struct MonitorRow: View {
     let monitor: MonitorWithState
 
+    /// A friendly, glanceable verdict — the noisy detail (URL, status codes,
+    /// latency, history) lives on the drill-in, not the row.
+    private var verdict: (String, Color)? {
+        if monitor.state == nil { return ("Pending", GT.textFaint) }
+        switch monitor.state?.status {
+        case "ok": return nil  // healthy rows stay quiet — the green dot says it
+        case "warn": return ("Degraded", GT.yellow)
+        case "fail": return ("Down", GT.red)
+        default: return nil
+        }
+    }
+
     var body: some View {
-        let stale = isStale(monitor)
-        let status = monitor.state?.status
         GTPanel {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(spacing: 11) {
                 Circle()
-                    .fill(monitor.state == nil ? GT.textFaint : statusColor(status))
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 5)
-                VStack(alignment: .leading, spacing: 4) {
-                    // line 1 — name + type pill, then time on the right
-                    HStack(spacing: 6) {
-                        Text(monitor.name)
-                            .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
-                        pill(monitorTypeLabel(monitor.type), tint: GT.textFaint)
-                        if stale { pill("stale", tint: GT.yellow) }
-                        Spacer(minLength: 4)
-                        if let checkedAt = monitor.state?.lastCheckedAt {
-                            Text(relativeTime(checkedAt))
-                                .font(GT.mono(10)).foregroundStyle(GT.textFaint)
-                        }
-                    }
-                    Text(monitor.target)
-                        .font(GT.mono(10)).foregroundStyle(GT.textMuted).lineLimit(1)
-                    // line 3 — status verdict + summary
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text((status ?? "pending").uppercased())
-                            .font(GT.sans(10, .bold))
-                            .foregroundStyle(monitor.state == nil ? GT.textFaint : statusColor(status))
-                        if let summary = monitor.state?.summary {
-                            Text(summary)
-                                .font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(2)
-                        }
-                    }
+                    .fill(monitor.state == nil ? GT.textFaint : statusColor(monitor.state?.status))
+                    .frame(width: 9, height: 9)
+                Text(monitor.name)
+                    .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
+                if isStale(monitor) { pill("stale", tint: GT.yellow) }
+                Spacer(minLength: 6)
+                if let (word, color) = verdict {
+                    Text(word).font(GT.sans(11, .semibold)).foregroundStyle(color)
                 }
+                pill(monitorTypeLabel(monitor.type), tint: GT.textFaint)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
             }
         }
     }
