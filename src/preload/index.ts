@@ -255,6 +255,11 @@ const gt = {
   checks: {
     list: () => ipcRenderer.invoke('checks:list'),
   },
+  monitors: {
+    list: () => ipcRenderer.invoke('monitors:list'),
+    save: (list: unknown) => ipcRenderer.invoke('monitors:save', list),
+    run: (id: string) => ipcRenderer.invoke('monitors:run', id),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),

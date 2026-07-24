@@ -995,6 +995,45 @@ export type CheckStatus = {
   lastTransition: { from: string; to: string; at: number } | null
   history: { at: number; status: string }[]
 }
+/** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
+ *  observability, no inference. */
+export type MonitorType = 'http' | 'tls-cert' | 'tcp' | 'dns' | 'command'
+export type MonitorState = 'ok' | 'warn' | 'fail'
+export type MonitorNotify = {
+  onFailure: 'urgent' | 'normal' | 'low' | 'off'
+  onRecovery: boolean
+  renotifyAfterSec: number
+  dailyDigest: boolean
+  digestHour: number
+}
+export type Monitor = {
+  id: string
+  name: string
+  type: MonitorType
+  target: string
+  intervalSec: number
+  enabled: boolean
+  group?: string
+  notify: MonitorNotify
+  config: Record<string, unknown>
+}
+export type MonitorStatusState = {
+  id: string
+  status: MonitorState
+  summary: string
+  metrics?: Record<string, unknown>
+  detail?: {
+    sections: {
+      title: string
+      items: { label: string; health: string; meta?: Record<string, unknown> }[]
+    }[]
+  }
+  lastCheckedAt: number
+  since: number
+  lastTransition: { from: string; to: string; at: number } | null
+  history: { at: number; status: string }[]
+}
+export type MonitorWithState = Monitor & { state: MonitorStatusState | null }
 export type HitlItem = {
   id: string
   title: string
@@ -1787,6 +1826,11 @@ export type GtApi = {
   }
   checks: {
     list: () => Promise<CheckStatus[]>
+  }
+  monitors: {
+    list: () => Promise<MonitorWithState[]>
+    save: (list: Monitor[]) => Promise<boolean>
+    run: (id: string) => Promise<MonitorWithState[]>
   }
   hitl: {
     list: () => Promise<HitlItem[]>
