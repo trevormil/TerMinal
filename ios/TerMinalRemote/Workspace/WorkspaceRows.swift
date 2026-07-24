@@ -54,6 +54,9 @@ struct PrRow: View {
                         if let s = pr.score {
                             Text("\(Int(s))").font(GT.mono(10)).foregroundStyle(GT.textFaint)
                         }
+                        ForEach(pr.labels.prefix(2), id: \.self) {
+                            pill($0, tint: GT.accentLight)
+                        }
                     }
                 }
                 Spacer(minLength: 4)
