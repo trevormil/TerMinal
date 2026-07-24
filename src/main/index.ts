@@ -175,6 +175,7 @@ import {
   type DaemonCfg,
 } from './settings'
 import { listMonitorsWithStatus, writeMonitors } from './monitors'
+import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -2716,6 +2717,14 @@ ipcMain.handle('monitors:save', (_e, list: unknown) => {
   syncMonitorDaemon()
   return true
 })
+// Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
+// repoRoot comes from the tab's context. The webview view is the default; this
+// backs the "Runs" toggle.
+ipcMain.handle('ci:list', (_e, repoRoot: string, limit?: number) =>
+  listCiRuns(repoRoot, limit ?? 40),
+)
+ipcMain.handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
+ipcMain.handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
 ipcMain.handle('monitors:run', (_e, id: string) => {
   try {
     execFileSync(join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-monitor'), ['run', id], {
