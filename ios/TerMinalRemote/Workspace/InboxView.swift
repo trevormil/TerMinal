@@ -78,9 +78,13 @@ struct InboxView: View {
                     InboxRow(item: item)
                         .background(
                             NavigationLink {
-                                InboxDetailView(item: item) { approved in
-                                    Task { await model.resolve(item, approved: approved) }
-                                }
+                                InboxDetailView(
+                                    item: item,
+                                    onResolve: { approved in
+                                        Task { await model.resolve(item, approved: approved) }
+                                    },
+                                    live: { id in model.hitl.first { $0.id == id } }
+                                )
                                 .onAppear { model.markRead([item]) }
                             } label: { EmptyView() }
                             .opacity(0)
@@ -206,7 +210,13 @@ private struct InboxRow: View {
 private struct InboxDetailView: View {
     let item: HitlItem
     let onResolve: (Bool) -> Void
+    /// Live view of the item, so a resolve from anywhere (desktop, swipe,
+    /// another device) updates the buttons — `item` alone is a snapshot from
+    /// push time.
+    var live: (String) -> HitlItem? = { _ in nil }
     @Environment(\.dismiss) private var dismiss
+
+    private var current: HitlItem { live(item.id) ?? item }
 
     private var body_: String {
         [item.action, item.detail].compactMap { $0 }.filter { !$0.isEmpty }
@@ -233,24 +243,30 @@ private struct InboxDetailView: View {
                     } else {
                         MarkdownText(raw: body_)
                     }
-                    if !item.isResolved {
-                        HStack(spacing: 10) {
-                            Button("Dismiss") {
+                    if current.isResolved {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(GT.green)
+                            Text("Resolved").font(GT.sans(13)).foregroundStyle(GT.textMuted)
+                            Spacer()
+                            Button("Reopen") {
                                 onResolve(false)
                                 dismiss()
                             }
                             .gtSecondaryButton()
-                            Button("Resolve") {
-                                onResolve(true)
-                                dismiss()
-                            }
-                            .font(GT.sans(14, .semibold))
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(GT.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
+                        .padding(.top, 4)
+                    } else {
+                        Button("Resolve") {
+                            onResolve(true)
+                            dismiss()
+                        }
+                        .font(GT.sans(14, .semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(GT.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .padding(.top, 4)
                     }
                 }
