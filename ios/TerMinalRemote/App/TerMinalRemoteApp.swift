@@ -14,24 +14,37 @@ struct TerMinalRemoteApp: App {
 
 struct RootView: View {
     @State private var pairing: PairingPayload? = PairingStore.load()
+    @State private var lock = AppLock.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        if let pairing {
-            // Re-key on the token so unpair/re-pair rebuilds the client and its
-            // pinned session rather than reusing stale credentials.
-            PairedView(pairing: pairing, onUnpair: {
-                PairingStore.clear()
-                // Drop the push singleton's client too, so a later APNs token
-                // refresh can't POST with the revoked credentials.
-                PushRegistrar.shared.client = nil
-                self.pairing = nil
-            })
-            .id(pairing.t)
-        } else {
-            PairingView { payload in
-                PairingStore.save(payload)
-                self.pairing = payload
+        ZStack {
+            if let pairing {
+                // Re-key on the token so unpair/re-pair rebuilds the client and its
+                // pinned session rather than reusing stale credentials.
+                PairedView(pairing: pairing, onUnpair: {
+                    PairingStore.clear()
+                    // Drop the push singleton's client too, so a later APNs token
+                    // refresh can't POST with the revoked credentials.
+                    PushRegistrar.shared.client = nil
+                    self.pairing = nil
+                })
+                .id(pairing.t)
+            } else {
+                PairingView { payload in
+                    PairingStore.save(payload)
+                    self.pairing = payload
+                }
             }
+            // In-app passcode gate — contents locked, notifications untouched
+            // (the iOS-level Face ID app lock hides notification previews;
+            // this one doesn't).
+            if lock.locked {
+                LockView().transition(.opacity)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { lock.lockIfEnabled() }
         }
     }
 }
@@ -46,6 +59,7 @@ private struct PairedView: View {
     @State private var client: BridgeClient
     @State private var feed: RemoteFeed
     @State private var active: ActiveSessionsViewModel
+    @State private var health: HealthViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
 
@@ -59,6 +73,7 @@ private struct PairedView: View {
         _client = State(initialValue: c)
         _feed = State(initialValue: f)
         _active = State(initialValue: ActiveSessionsViewModel(feed: f))
+        _health = State(initialValue: HealthViewModel(client: c))
     }
 
     var body: some View {
@@ -70,7 +85,7 @@ private struct PairedView: View {
             .badge(active.awaitingCount)
 
             NavigationStack {
-                WorkspacesView(model: WorkspacesViewModel(client: client), onUnpair: onUnpair)
+                WorkspacesView(model: WorkspacesViewModel(client: client))
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
 
@@ -78,6 +93,16 @@ private struct PairedView: View {
                 InboxView(model: InboxViewModel(feed: feed))
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
+
+            NavigationStack {
+                HealthView(model: health)
+            }
+            .tabItem { Label("Health", systemImage: "waveform.path.ecg") }
+
+            NavigationStack {
+                SettingsView(pairing: pairing, onUnpair: onUnpair)
+            }
+            .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.

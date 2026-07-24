@@ -22,7 +22,6 @@ final class WorkspacesViewModel {
 /// Top level: pick a repo to open its cockpit. Each is its own workspace.
 struct WorkspacesView: View {
     @State var model: WorkspacesViewModel
-    let onUnpair: () -> Void
     @State private var pins: [String] = PinnedReposStore.all()
 
     // The Mac already returns repos recency-first; the phone layers its own
@@ -101,15 +100,6 @@ struct WorkspacesView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationDestination(for: RepoOption.self) { repo in
             WorkspaceView(model: WorkspaceViewModel(client: model.client, repo: repo))
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Unpair this Mac", role: .destructive, action: onUnpair)
-                } label: {
-                    Image(systemName: "ellipsis.circle").foregroundStyle(GT.textMuted)
-                }
-            }
         }
         .task { await model.refresh() }
     }

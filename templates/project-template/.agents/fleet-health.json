@@ -1,0 +1,8 @@
+{
+  "id": "fleet-health",
+  "title": "Fleet health (control-plane poll)",
+  "description": "Polls a control-plane style status API (CONTROL_PLANE_URL + token) and feeds the check contract with full detail sections. Run with --digest on a daily schedule for a severity=normal summary. Zero LLM cost.",
+  "icon": "Activity",
+  "opensPr": false,
+  "inPlace": true
+}

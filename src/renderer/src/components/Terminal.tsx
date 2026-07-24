@@ -507,7 +507,17 @@ export function TerminalPane({
 
     // attach listeners BEFORE starting the pty so no early output is missed.
     // Filter by sessionKey: every session's pty streams to all listeners.
-    const offData = gt.pty.onData((key, d) => key === sessionKey && term.write(d))
+    // Track output timing so an auto-typed initial prompt can wait for the
+    // engine's boot burst to SETTLE rather than guessing a fixed delay (which
+    // is flaky across cold/warm starts and machine speed).
+    let lastDataTs = 0
+    let sawData = false
+    const offData = gt.pty.onData((key, d) => {
+      if (key !== sessionKey) return
+      lastDataTs = Date.now()
+      sawData = true
+      term.write(d)
+    })
     const offExit = gt.pty.onExit((key, code) => {
       if (key !== sessionKey) return
       // When an attached engine (claude/codex/…) exits — Ctrl-C, normal quit,
@@ -554,16 +564,47 @@ export function TerminalPane({
       resolvedCwdRef.current = info.cwd || resolvedCwdRef.current
       onStarted?.(info)
       if (choice.initialInput) {
-        window.setTimeout(() => {
-          // Bracketed-paste framing keeps embedded newlines literal — without
-          // it a multiline phone prompt splits into multiple submissions.
-          gt.pty.input(sessionKey, frameInitialInput(choice.initialInput || ''))
-          // A phone-spawned session has no one to press Enter. Submit for it,
-          // after a beat so the TUI has ingested the whole prompt.
-          if (choice.autoSubmit) {
-            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 600)
+        // Type once the engine TUI has booted and gone quiet — waiting for the
+        // output to settle adapts to load time, where a fixed delay was flaky
+        // (typed into the shell before Claude took over, or before a fresh-dir
+        // "trust this folder?" prompt resolved). We poll for: saw some output,
+        // then a quiet gap; a hard floor so we never type into a half-drawn UI;
+        // and a ceiling so a chatty boot can't stall us forever.
+        const startedAt = Date.now()
+        const QUIET_MS = 600 // output settled = ready for input
+        const FLOOR_MS = 1000 // never before this
+        const CEIL_MS = 8000 // never wait longer than this
+        const typeWhenReady = () => {
+          const now = Date.now()
+          const elapsed = now - startedAt
+          const settled = sawData && now - lastDataTs > QUIET_MS
+          if (elapsed < CEIL_MS && (elapsed < FLOOR_MS || !settled)) {
+            window.setTimeout(typeWhenReady, 150)
+            return
           }
-        }, 900)
+          // For an unattended phone spawn, clear a startup gate first: a fresh
+          // dir makes Claude Code show "trust this folder?", whose default
+          // accepts on Enter — otherwise our prompt answers THAT dialog and is
+          // lost. A leading Enter with nothing pending is a harmless no-op.
+          if (choice.autoSubmit) {
+            gt.pty.input(sessionKey, '\r')
+            window.setTimeout(() => paste(), 400)
+          } else {
+            paste()
+          }
+        }
+        const paste = () => {
+          // Bracketed-paste framing keeps embedded newlines literal.
+          gt.pty.input(sessionKey, frameInitialInput(choice.initialInput || ''))
+          // No one is at the Mac to press Enter — submit for it, after the paste
+          // is ingested, and once more as insurance (a second Enter on an empty
+          // prompt box is a no-op).
+          if (choice.autoSubmit) {
+            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 500)
+            window.setTimeout(() => gt.pty.input(sessionKey, '\r'), 1800)
+          }
+        }
+        window.setTimeout(typeWhenReady, FLOOR_MS)
       }
     })
 

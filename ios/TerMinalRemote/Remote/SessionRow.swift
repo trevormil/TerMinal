@@ -8,7 +8,7 @@ struct SessionRow: View {
     var body: some View {
         GTPanel {
             HStack(spacing: 10) {
-                GTStatusDot(status: session.hasEnded ? "ended" : "working")
+                GTStatusDot(status: session.status)
                 if !session.engine.isEmpty { EngineLogo(engine: session.engine, size: 13) }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.title)
@@ -33,8 +33,18 @@ struct SessionRow: View {
                         .padding(.vertical, 3)
                         .background(GT.accent2.opacity(0.12))
                         .clipShape(Capsule())
+                } else if session.isIdle {
+                    Text("idle")
+                        .font(GT.sans(10, .semibold))
+                        .foregroundStyle(GT.yellow)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(GT.yellow.opacity(0.1))
+                        .clipShape(Capsule())
                 } else if session.hasEnded {
                     Text("done").font(GT.sans(10)).foregroundStyle(GT.textFaint)
+                } else {
+                    Text("working").font(GT.sans(10)).foregroundStyle(GT.green.opacity(0.8))
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))

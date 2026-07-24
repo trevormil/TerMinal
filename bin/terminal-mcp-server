@@ -833,7 +833,7 @@ function updateTicketRun(args) {
 // --- file_hitl ------------------------------------------------------------
 
 function fileHitlTool(args) {
-  const { title, action, detail, repo, source = 'agent', runId, ticketPath } = args
+  const { title, action, detail, repo, source = 'agent', runId, ticketPath, severity } = args
   if (!title) throw new Error('title is required')
   const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
   mkdirSync(cfg, { recursive: true })
@@ -854,6 +854,9 @@ function fileHitlTool(args) {
     source,
     status: 'open',
     createdAt: Date.now(),
+    ...(severity === 'urgent' || severity === 'normal' || severity === 'low'
+      ? { severity }
+      : {}),
     runId,
     ticketPath,
     sessionId: process.env.GT_TERMINAL_SESSION_ID || undefined,
@@ -1851,6 +1854,12 @@ const TOOLS = [
         source: {
           type: 'string',
           enum: ['manual', 'agent', 'skill', 'factory', 'cron-fail'],
+        },
+        severity: {
+          type: 'string',
+          enum: ['urgent', 'normal', 'low'],
+          description:
+            'urgent = push/ping now; normal = inbox-worthy, notifies only if the user lowered their threshold; low = FYI. Omit for the source default.',
         },
         runId: { type: 'string' },
         ticketPath: { type: 'string' },

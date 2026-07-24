@@ -4,7 +4,7 @@ import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
-import type { Tab, TabContext, DocsTree, DocEntry } from '../../lib/types'
+import type { Tab, TabContext, DocsTree, DocEntry, CheckStatus } from '../../lib/types'
 
 // Reports viewer — focused, status-aware sibling to the Docs tab. Groups
 // reports/<kind>/<sha>.md by agent kind, parses each run's frontmatter to show
@@ -103,6 +103,59 @@ function metricChips(meta: ReportMeta): { label: string; tone?: BadgeTone }[] {
   return chips
 }
 
+// ---- live checks strip -----------------------------------------------------
+// Latest `terminal-cli check-status` state across every scope — the "is my
+// world green" glance, distinct from the per-run artifacts below it. A record
+// nobody has refreshed in 2h renders stale: "I can't tell" must look different
+// from "everything is fine".
+const CHECK_STALE_MS = 2 * 60 * 60 * 1000
+
+function ChecksStrip(): React.JSX.Element | null {
+  const [checks, setChecks] = useState<CheckStatus[]>([])
+  useEffect(() => {
+    let live = true
+    const load = () => {
+      window.gt.checks
+        .list()
+        .then((c) => live && setChecks(c))
+        .catch(() => {})
+    }
+    load()
+    const t = setInterval(load, 30_000)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [])
+  if (checks.length === 0) return null
+  return (
+    <div className="shrink-0 border-b border-[var(--gt-border)] px-3 py-2">
+      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        Live checks
+      </div>
+      <div className="flex flex-col gap-1">
+        {checks.map((c) => {
+          const stale = Date.now() - c.updatedAt > CHECK_STALE_MS
+          return (
+            <div key={`${c.scope}--${c.kind}`} className="flex items-center gap-1.5">
+              <Badge tone={stale ? 'mute' : statusTone(c.status)}>
+                {stale ? 'stale' : c.status}
+              </Badge>
+              <span className="truncate text-[11px] text-zinc-300">
+                {c.repoLabel ? `${c.repoLabel} · ${c.kind}` : c.kind}
+              </span>
+              {c.summary && <span className="truncate text-[10px] text-zinc-600">{c.summary}</span>}
+              <span className="ml-auto shrink-0 text-[9.5px] tabular-nums text-zinc-700">
+                {reltime(new Date(c.updatedAt).toISOString())}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ---- helpers ---------------------------------------------------------------
 function reltime(iso?: string): string {
   if (!iso) return ''
@@ -197,6 +250,8 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
             performance, tickets, and HITL.
           </SkillHint>
         </div>
+        <ChecksStrip />
+
         <nav className="min-h-0 flex-1 overflow-y-auto p-2">
           {runs === null ? (
             <div className="px-2 py-3 text-[11px] text-zinc-600">Loading reports…</div>

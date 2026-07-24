@@ -1,8 +1,12 @@
 import {
   appendFileSync,
+  closeSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   existsSync,
+  statSync,
   writeFileSync,
   mkdirSync,
 } from 'node:fs'
@@ -226,6 +230,34 @@ export function readSessionRunLog(runId: string): string {
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
     return ''
+  }
+}
+
+/**
+ * Tail of a session's pty log, for the phone's terminal peek. Reads only the
+ * last `maxBytes` — the log grows unbounded while a session lives, and the
+ * phone polls this every few seconds.
+ */
+export function readSessionRunLogTail(
+  runId: string,
+  maxBytes = 64 * 1024,
+): { text: string; updatedAt: number } | null {
+  const safe = safeRunId(runId)
+  if (!safe) return null
+  const f = join(SESSION_RUNS_DIR, `${safe}.log`)
+  try {
+    const stat = statSync(f)
+    const length = Math.min(stat.size, maxBytes)
+    const buf = Buffer.alloc(length)
+    const fd = openSync(f, 'r')
+    try {
+      readSync(fd, buf, 0, length, stat.size - length)
+    } finally {
+      closeSync(fd)
+    }
+    return { text: buf.toString('utf8'), updatedAt: stat.mtimeMs }
+  } catch {
+    return null
   }
 }
 

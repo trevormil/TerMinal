@@ -139,9 +139,25 @@ final class BridgeClient {
         try await post("v1/hitl/\(id)", body: ["resolved": resolved])
     }
 
-    /// Mark inbox items read (viewed). Read-state is local to the surface.
-    func markHitlRead(ids: [String]) async throws {
-        try await post("v1/hitl/read", body: ["ids": ids])
+    /// Mark inbox items read (viewed) — or unread again with read=false.
+    func markHitlRead(ids: [String], read: Bool = true) async throws {
+        struct Body: Encodable {
+            let ids: [String]
+            let read: Bool
+        }
+        try await post("v1/hitl/read", body: Body(ids: ids, read: read))
+    }
+
+    /// The session's recent raw terminal output — the read-only peek. The Mac
+    /// tails the pty log and strips ANSI, so this is plain text.
+    func terminalText(id: String) async throws -> (text: String, updatedAt: Double) {
+        struct Envelope: Decodable {
+            let text: String
+            let updatedAt: Double
+        }
+        let env = try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/remote/\(id)/terminal"))
+        return (env.text, env.updatedAt)
     }
 
     /// Terminate a session — it stays listed, marked ended.
@@ -204,6 +220,12 @@ final class BridgeClient {
         struct Envelope: Decodable { let engines: [WsEngine] }
         let list = try JSONDecoder().decode(Envelope.self, from: try await get("v1/engines")).engines
         return list.isEmpty ? WsEngine.fallback : list
+    }
+
+    /// Latest status of every scheduled health check, all repos plus global.
+    func checks() async throws -> [CheckStatus] {
+        struct Envelope: Decodable { let checks: [CheckStatus] }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/checks")).checks
     }
 
     // ---- drill-downs: full readable content -----------------------------

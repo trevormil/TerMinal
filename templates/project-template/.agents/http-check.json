@@ -1,0 +1,8 @@
+{
+  "id": "http-check",
+  "title": "HTTP uptime + TLS check",
+  "description": "Probes CHECK_URLS with curl/openssl and feeds the check contract — HITL only on state transitions. Zero LLM cost.",
+  "icon": "Activity",
+  "opensPr": false,
+  "inPlace": true
+}

@@ -19,11 +19,16 @@ final class WorkspaceViewModel {
     }
 
     /// Sessions registered in this repo (the bridge lists them all; filter here).
+    /// The desktop stores a session's repo as the full path OR its basename, and
+    /// scratch has its own name — so match on any of those rather than one form.
     @MainActor
     func loadSessions() async {
         do {
             let (all, _) = try await client.remote()
-            sessions = all.filter { $0.repo == repo.name || $0.repo == repo.path }
+            let base = (repo.path as NSString).lastPathComponent
+            sessions = all.filter {
+                $0.repo == repo.name || $0.repo == repo.path || $0.repo == base
+            }
             error = nil
         } catch { self.error = error.localizedDescription }
     }
@@ -114,11 +119,12 @@ struct WorkspaceView: View {
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
         }
         .sheet(isPresented: $startingNew) {
-            NewSessionSheet(client: model.client, repo: model.repo) { newId in
-                await model.loadSessions()
-                // Open the thread we just started — it registered before the
-                // agent booted, so it's already in the refreshed list.
-                await MainActor.run { opened = model.sessions.first { $0.id == newId } }
+            NewSessionSheet(client: model.client, repo: model.repo) { session in
+                // Navigate immediately to the synthesized session — no waiting
+                // on a list round trip. Refresh the list detached so the
+                // "Starting…" button dismisses at once, not after the refresh.
+                await MainActor.run { opened = session }
+                Task { await model.loadSessions() }
             }
         }
         .task(id: tab) { await model.load(tab) }

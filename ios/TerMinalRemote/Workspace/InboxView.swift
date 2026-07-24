@@ -10,22 +10,15 @@ final class InboxViewModel {
     init(feed: RemoteFeed) { self.feed = feed }
 
     var hitl: [HitlItem] { feed.hitl }
+    // One axis: unread vs read. No archive. Newest first.
+    var items: [HitlItem] { hitl.sorted { $0.createdAt > $1.createdAt } }
     var error: String? { feed.error }
     var loading: Bool { feed.loading }
 
     var unread: [HitlItem] { hitl.filter(\.isUnread) }
-    var open: [HitlItem] { hitl.filter { !$0.isResolved } }
-    var archived: [HitlItem] { hitl.filter(\.isResolved) }
 
     @MainActor
     func refresh() async { await feed.refresh() }
-
-    @MainActor
-    func resolve(_ item: HitlItem, approved: Bool) async {
-        feed.removeHitl(id: item.id)
-        try? await client.resolveHitl(id: item.id, resolved: approved)
-        await feed.refresh()
-    }
 
     /// Mark read — optimistic locally, persisted + badge-synced in the background.
     @MainActor
@@ -36,6 +29,14 @@ final class InboxViewModel {
         Task { try? await client.markHitlRead(ids: ids) }
     }
 
+    /// Back on the unread pile — email "keep this on my plate".
+    @MainActor
+    func markUnread(_ item: HitlItem) {
+        guard !item.isUnread else { return }
+        feed.markHitlRead(ids: [item.id], read: false)
+        Task { try? await client.markHitlRead(ids: [item.id], read: false) }
+    }
+
     @MainActor
     func markAllRead() { markRead(hitl) }
 }
@@ -44,38 +45,69 @@ final class InboxViewModel {
 /// of subjects; tap one to read the full body.
 struct InboxView: View {
     @State var model: InboxViewModel
-    @State private var archive = false
 
-    private var shown: [HitlItem] { archive ? model.archived : model.open }
+    private var shown: [HitlItem] { model.items }
 
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    if let error = model.error {
-                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
-                    }
-                    if shown.isEmpty && !model.loading {
-                        GTPanel {
-                            Text(archive ? "Nothing archived yet." : "Inbox zero.")
-                                .font(GT.sans(12)).foregroundStyle(GT.textMuted)
-                        }
-                    }
-                    ForEach(shown) { item in
-                        NavigationLink {
-                            InboxDetailView(item: item) { approved in
-                                Task { await model.resolve(item, approved: approved) }
-                            }
-                            .onAppear { model.markRead([item]) }
-                        } label: {
-                            InboxRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            // A real List (not a LazyVStack) so rows get native swipe actions.
+            List {
+                if let error = model.error {
+                    GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
+                        .plainRow()
                 }
-                .padding(14)
+                if shown.isEmpty && !model.loading {
+                    GTPanel {
+                        Text("Inbox zero.")
+                            .font(GT.sans(12)).foregroundStyle(GT.textMuted)
+                    }
+                    .plainRow()
+                }
+                ForEach(shown) { item in
+                    // Chevron lives INSIDE the card (InboxRow draws it); the
+                    // native List accessory is suppressed by hiding the link.
+                    InboxRow(item: item)
+                        .background(
+                            NavigationLink {
+                                InboxDetailView(item: item, model: model)
+                                    .onAppear { model.markRead([item]) }
+                            } label: { EmptyView() }
+                            .opacity(0)
+                        )
+                        .plainRow()
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            if item.isUnread {
+                                Button {
+                                    model.markRead([item])
+                                } label: {
+                                    Label("Read", systemImage: "envelope.open")
+                                }
+                                .tint(GT.accent)
+                            } else {
+                                Button {
+                                    model.markUnread(item)
+                                } label: {
+                                    Label("Unread", systemImage: "envelope.badge")
+                                }
+                                .tint(GT.accent)
+                            }
+                        }
+                        .contextMenu {
+                            if item.isUnread {
+                                Button("Mark read", systemImage: "envelope.open") {
+                                    model.markRead([item])
+                                }
+                            } else {
+                                Button("Mark unread", systemImage: "envelope.badge") {
+                                    model.markUnread(item)
+                                }
+                            }
+                        }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
@@ -84,14 +116,6 @@ struct InboxView: View {
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("", selection: $archive) {
-                    Text(model.unread.isEmpty ? "Inbox" : "Inbox (\(model.unread.count))").tag(false)
-                    Text("Archive").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 if !model.unread.isEmpty {
                     Button("Read all") { model.markAllRead() }.font(GT.sans(13))
@@ -113,7 +137,7 @@ private struct InboxRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .font(GT.sans(14, item.isUnread ? .semibold : .medium))
-                        .foregroundStyle(item.isResolved ? GT.textMuted : GT.text)
+                        .foregroundStyle(item.isUnread ? GT.text : GT.textMuted)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text(item.source).font(GT.mono(10)).foregroundStyle(GT.textFaint)
@@ -134,11 +158,14 @@ private struct InboxRow: View {
     }
 }
 
-/// The opened email: full body rendered as Markdown, with actions.
+/// The opened email: full body rendered as Markdown. Opening marks read; the
+/// only action is to put it back on the unread pile.
 private struct InboxDetailView: View {
     let item: HitlItem
-    let onResolve: (Bool) -> Void
+    let model: InboxViewModel
     @Environment(\.dismiss) private var dismiss
+
+    private var live: HitlItem { model.hitl.first { $0.id == item.id } ?? item }
 
     private var body_: String {
         [item.action, item.detail].compactMap { $0 }.filter { !$0.isEmpty }
@@ -165,26 +192,6 @@ private struct InboxDetailView: View {
                     } else {
                         MarkdownText(raw: body_)
                     }
-                    if !item.isResolved {
-                        HStack(spacing: 10) {
-                            Button("Dismiss") {
-                                onResolve(false)
-                                dismiss()
-                            }
-                            .gtSecondaryButton()
-                            Button("Resolve") {
-                                onResolve(true)
-                                dismiss()
-                            }
-                            .font(GT.sans(14, .semibold))
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(GT.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .padding(.top, 4)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -194,6 +201,16 @@ private struct InboxDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    model.markUnread(live)
+                    dismiss()
+                } label: {
+                    Label("Mark unread", systemImage: "envelope.badge")
+                }
+            }
+        }
     }
 }
 

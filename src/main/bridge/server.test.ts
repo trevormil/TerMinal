@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createBridgeHandler, type BridgeDeps, type BridgeRemoteSession } from './server'
+import { stripAnsi } from '../remote-sessions'
 
 const TOKEN = 'test-token-value'
 
@@ -110,6 +111,7 @@ describe('auth', () => {
       ['/v1/remote', {}],
       ['/v1/hitl', {}],
       ['/v1/remote/sess-1/messages', {}],
+      ['/v1/remote/sess-1/terminal', {}],
       ['/v1/remote/sess-1/reply', { method: 'POST', body: '{"text":"x"}' }],
       ['/v1/hitl/h1', { method: 'POST' }],
       ['/v1/devices', { method: 'POST', body: '{"token":"a"}' }],
@@ -656,12 +658,57 @@ describe('inbox read-state', () => {
     expect(seen).toEqual([['a', 'b']])
   })
 
+  it('read:false flows through as mark-unread', async () => {
+    const seen: [string[], boolean | undefined][] = []
+    const h = await harness({
+      markHitlRead: (ids, read) => {
+        seen.push([ids, read])
+        return ids.length
+      },
+    })
+    await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['a'], read: false }),
+    })
+    // Omitted read defaults to true — the original wire shape keeps working.
+    await fetch(`${h.url}/v1/hitl/read`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: ['b'] }),
+    })
+    expect(seen).toEqual([
+      [['a'], false],
+      [['b'], true],
+    ])
+  })
+
   it('501s when read-state is unavailable, and requires auth', async () => {
     const h = await harness()
     expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST', headers: auth })).status).toBe(
       501,
     )
     expect((await fetch(`${h.url}/v1/hitl/read`, { method: 'POST' })).status).toBe(401)
+  })
+})
+
+describe('checks', () => {
+  it('GET /v1/checks returns the latest statuses and requires auth', async () => {
+    const h = await harness({
+      checks: () => [{ kind: 'fleet-health', status: 'warn', summary: '1 pod issue' }],
+    })
+    expect((await fetch(`${h.url}/v1/checks`)).status).toBe(401)
+    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).checks).toEqual([
+      { kind: 'fleet-health', status: 'warn', summary: '1 pod issue' },
+    ])
+  })
+
+  it('empty when no checks dep is wired', async () => {
+    const h = await harness()
+    const res = await fetch(`${h.url}/v1/checks`, { headers: auth })
+    expect((await res.json()).checks).toEqual([])
   })
 })
 
@@ -835,6 +882,67 @@ describe('workspace drill-downs', () => {
   it('requires auth', async () => {
     const h = await harness({ workspaceTicket: () => null })
     expect((await fetch(`${h.url}/v1/workspace/ticket?repo=/r/x&slug=a`)).status).toBe(401)
+  })
+})
+
+describe('GET /v1/remote/:id/terminal', () => {
+  it('requires auth', async () => {
+    const h = await harness({ remoteTerminal: () => ({ text: 'x', updatedAt: 1 }) })
+    expect((await fetch(`${h.url}/v1/remote/sess-1/terminal`)).status).toBe(401)
+  })
+
+  it('returns the tail the dep serves', async () => {
+    const seen: string[] = []
+    const h = await harness({
+      remoteTerminal: (id) => {
+        seen.push(id)
+        return { text: 'bun test\nall green', updatedAt: 1234 }
+      },
+    })
+    const res = await fetch(`${h.url}/v1/remote/sess-1/terminal`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ text: 'bun test\nall green', updatedAt: 1234 })
+    expect(seen).toEqual(['sess-1'])
+  })
+
+  it('404s when no live terminal matches the session', async () => {
+    const h = await harness({ remoteTerminal: () => null })
+    expect((await fetch(`${h.url}/v1/remote/sess-1/terminal`, { headers: auth })).status).toBe(404)
+  })
+
+  it('404s for a session that is not registered', async () => {
+    const h = await harness({ remoteTerminal: () => ({ text: 'x', updatedAt: 1 }) })
+    expect((await fetch(`${h.url}/v1/remote/nope/terminal`, { headers: auth })).status).toBe(404)
+  })
+
+  it('501s when the Mac does not provide the dep', async () => {
+    const h = await harness()
+    expect((await fetch(`${h.url}/v1/remote/sess-1/terminal`, { headers: auth })).status).toBe(501)
+  })
+})
+
+describe('stripAnsi', () => {
+  it('removes colors and text attributes', () => {
+    expect(stripAnsi('\x1b[31mred\x1b[0m and \x1b[1;38;5;208mbold orange\x1b[m')).toBe(
+      'red and bold orange',
+    )
+  })
+
+  it('removes cursor movement and erase sequences', () => {
+    expect(stripAnsi('\x1b[2J\x1b[H\x1b[1;5Hprompt \x1b[?25l$\x1b[K')).toBe('prompt $')
+  })
+
+  it('removes OSC titles with BEL or ST terminators', () => {
+    expect(stripAnsi('\x1b]0;my window title\x07hello')).toBe('hello')
+    expect(stripAnsi('\x1b]633;A\x1b\\ok')).toBe('ok')
+  })
+
+  it('removes charset selection and a sequence cut off by the tail window', () => {
+    expect(stripAnsi('\x1b(Bplain\x1b[38;5;1')).toBe('plain')
+  })
+
+  it('keeps plain text and newlines intact', () => {
+    expect(stripAnsi('line one\nline two\r\n$ bun test')).toBe('line one\nline two\r\n$ bun test')
   })
 })
 

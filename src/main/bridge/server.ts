@@ -74,15 +74,21 @@ export type BridgeDeps = {
   deleteRemote?(id: string): boolean
   /** Store an uploaded image; returns its filename, or null. */
   saveImage?(id: string, data: Buffer, ext: string): string | null
+  /** Recent raw terminal output (ANSI already stripped) for the desktop pty
+   *  behind a remote session — the read-only peek. Null when no live terminal
+   *  matches (headless or ended). */
+  remoteTerminal?(id: string): { text: string; updatedAt: number } | null
   /** Absolute path of a stored image, for serving it back. */
   imagePath?(id: string, name: string): string | null
 
   /** Open HITL items. May be async: the Mac fans out to remote hosts. */
   hitl?(): BridgeHitl[] | Promise<BridgeHitl[]>
+  /** Latest health-check statuses (see src/main/checks.ts). */
+  checks?(): unknown[]
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
   /** Mark HITL items read (viewed on the phone). */
-  markHitlRead?(ids: string[]): number
+  markHitlRead?(ids: string[], read?: boolean): number
   /** Remember a phone's APNs token so alerts can reach it. */
   registerDevice?(token: string, environment: 'sandbox' | 'production'): void
 
@@ -219,6 +225,8 @@ export type BridgePrDetail = BridgePr & {
   /** The code-review artifact's markdown, when one exists. */
   reviewNotes?: string
   findings?: BridgeFinding[]
+  /** Non-blocking review suggestions — the code-review's separate list. */
+  suggestions?: BridgeFinding[]
   ci?: string
 }
 export type BridgeScheduleDetail = BridgeSchedule & {
@@ -395,7 +403,16 @@ export function createBridgeHandler(
       return
     }
 
-    // Mark inbox items read (viewed on the phone).
+    if (req.method === 'GET' && url.pathname === '/v1/checks') {
+      try {
+        json(res, 200, { checks: deps.checks?.() ?? [] })
+      } catch (e) {
+        json(res, 500, { error: (e as Error).message })
+      }
+      return
+    }
+
+    // Mark inbox items read — or unread again with read:false (viewed on the phone).
     if (req.method === 'POST' && url.pathname === '/v1/hitl/read') {
       if (!deps.markHitlRead) {
         json(res, 501, { error: 'read state not available' })
@@ -403,17 +420,20 @@ export function createBridgeHandler(
       }
       readBody(req)
         .then((raw) => {
-          const ids = (() => {
+          const { ids, read } = (() => {
             try {
-              const p = JSON.parse(raw || '{}') as { ids?: unknown }
-              return Array.isArray(p.ids)
-                ? p.ids.filter((x): x is string => typeof x === 'string')
-                : []
+              const p = JSON.parse(raw || '{}') as { ids?: unknown; read?: unknown }
+              return {
+                ids: Array.isArray(p.ids)
+                  ? p.ids.filter((x): x is string => typeof x === 'string')
+                  : [],
+                read: p.read !== false,
+              }
             } catch {
-              return []
+              return { ids: [], read: true }
             }
           })()
-          json(res, 200, { marked: deps.markHitlRead!(ids) })
+          json(res, 200, { marked: deps.markHitlRead!(ids, read) })
         })
         .catch((e: Error) => json(res, 413, { error: e.message }))
       return
@@ -667,6 +687,18 @@ export function createBridgeHandler(
             json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'gone' })
           })
           .catch((e: Error) => json(res, 413, { error: e.message }))
+        return
+      }
+
+      // Read-only peek at the session's raw terminal output, for when the chat
+      // goes quiet and you want to see what the pty is actually doing.
+      if (req.method === 'GET' && parts[3] === 'terminal') {
+        if (!deps.remoteTerminal) {
+          json(res, 501, { error: 'terminal peek not available' })
+          return
+        }
+        const tail = deps.remoteTerminal(id)
+        json(res, tail ? 200 : 404, tail ?? { error: 'no terminal attached' })
         return
       }
 

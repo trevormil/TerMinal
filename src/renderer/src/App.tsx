@@ -6,7 +6,6 @@ import {
   Grid2x2,
   LayoutDashboard,
   Mail,
-  Smartphone,
   Plus,
   Search,
   Server,
@@ -32,15 +31,9 @@ import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
 import { coerceSessionEngine } from './lib/engines'
-import type {
-  AppearanceCfg,
-  Engine,
-  FleetSession,
-  RemoteActiveSession,
-  SessionEngine,
-  TabContext,
-} from './lib/types'
+import type { AppearanceCfg, Engine, FleetSession, SessionEngine, TabContext } from './lib/types'
 import { applyTheme } from './lib/themes'
+import { SessionSwitcher } from './components/SessionSwitcher'
 import { loadHiddenTabs } from './lib/tabVisibility'
 
 const drag = { WebkitAppRegion: 'drag' } as CSSProperties
@@ -232,9 +225,6 @@ export default function App() {
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
-  // Sessions currently mirrored to the phone, polled so the header indicator is
-  // live as you register/off a session (or delete it from the phone).
-  const [remoteActive, setRemoteActive] = useState<RemoteActiveSession[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [terminalLayout, setTerminalLayout] = useState<TerminalLayout>(loadTerminalLayout)
@@ -328,16 +318,6 @@ export default function App() {
   }, [sessions.length])
   useEffect(() => {
     const tick = () =>
-      window.gt.remote
-        .active()
-        .then(setRemoteActive)
-        .catch(() => {})
-    tick()
-    const id = setInterval(tick, 4000)
-    return () => clearInterval(id)
-  }, [])
-  useEffect(() => {
-    const tick = () =>
       window.gt.hitl
         .list()
         .then((items) =>
@@ -371,6 +351,89 @@ export default function App() {
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
   }, [])
+  // ── Session cycling ────────────────────────────────────────────────────
+  // ctrl+Tab: MRU switcher HUD — hold ⌃, tap Tab to step, release ⌃ to
+  // commit (an in-app cmd+Tab; macOS's own is untouched). ⌘⇧[ / ⌘⇧]: linear
+  // prev/next in visual order. ⌘1…⌘9: direct jump. Captured at the window
+  // (before xterm) so none of it reaches the pty.
+  const [switcher, setSwitcher] = useState<{ order: string[]; index: number } | null>(null)
+  const switcherRef = useRef(switcher)
+  switcherRef.current = switcher
+  const mruRef = useRef<string[]>([])
+  useEffect(() => {
+    if (activeKey) mruRef.current = [activeKey, ...mruRef.current.filter((k) => k !== activeKey)]
+  }, [activeKey])
+  useEffect(() => {
+    if (adding !== false || sessions.length === 0) return
+    const keys = sessions.map((s) => s.key)
+    const mruOrder = () => {
+      const seen = new Set<string>()
+      const order: string[] = []
+      for (const k of [...mruRef.current, ...keys]) {
+        if (keys.includes(k) && !seen.has(k)) {
+          seen.add(k)
+          order.push(k)
+        }
+      }
+      return order
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.metaKey && e.key === 'Tab') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (keys.length < 2) return
+        setSwitcher((prev) => {
+          const order = prev?.order || mruOrder()
+          const delta = e.shiftKey ? -1 : 1
+          const index = prev
+            ? (prev.index + delta + order.length) % order.length
+            : delta === 1
+              ? Math.min(1, order.length - 1)
+              : order.length - 1
+          return { order, index }
+        })
+        return
+      }
+      if (switcherRef.current && e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSwitcher(null)
+        return
+      }
+      if (e.metaKey && e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (keys.length < 2) return
+        const i = Math.max(0, keys.indexOf(activeKey || ''))
+        const delta = e.code === 'BracketRight' ? 1 : -1
+        activate(keys[(i + delta + keys.length) % keys.length])
+        return
+      }
+      if (e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        const target = sessions[Number(e.key) - 1]
+        if (target) {
+          e.preventDefault()
+          e.stopPropagation()
+          activate(target.key)
+        }
+      }
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== 'Control') return
+      const s = switcherRef.current
+      if (s) {
+        activate(s.order[s.index])
+        setSwitcher(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keyup', onKeyUp, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('keyup', onKeyUp, true)
+    }
+  }, [sessions, adding, activeKey])
+
   // ⌘K / Ctrl+K toggles the command palette. Captured at the window so it works
   // regardless of focus (terminal, a tab, etc.).
   useEffect(() => {
@@ -1337,34 +1400,6 @@ export default function App() {
               Fleet
             </button>
           )}
-          {(() => {
-            // Live "is this session on my phone?" indicator. Matches the active
-            // session's engine id (== the remote record's agentSessionId), with
-            // cwd as a fallback. Hidden when there's no active agent session.
-            const s = sessions.find((x) => x.key === activeKey)
-            const sid = s?.info.sessionId || s?.choice.sessionId || ''
-            const cwd = s?.info.cwd || s?.choice.cwd || ''
-            if (!s || s.choice.engine === 'local') return null
-            const onPhone = remoteActive.find(
-              (r) => (sid && r.agentSessionId === sid) || (cwd && !sid && r.cwd === cwd),
-            )
-            return (
-              <div
-                style={noDrag}
-                title={
-                  onPhone
-                    ? `On your phone: ${onPhone.title}. Say "you can stop remote" to take it off.`
-                    : 'This session is local. Say "sync this to my phone" to go remote.'
-                }
-                className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
-                  onPhone ? 'bg-[var(--gt-accent2)]/20 text-[var(--gt-accent2)]' : 'text-zinc-600'
-                }`}
-              >
-                <Smartphone size={13} strokeWidth={2} />
-                {onPhone ? 'On phone' : 'Local'}
-              </div>
-            )
-          })()}
           <button
             style={noDrag}
             onClick={() => {
@@ -1698,6 +1733,23 @@ export default function App() {
                 onClose={() => setFleet(false)}
               />
             </div>
+          )}
+          {switcher && !showEntry && (
+            <SessionSwitcher
+              index={switcher.index}
+              entries={switcher.order.map((k) => {
+                const s = sessions.find((x) => x.key === k)
+                return {
+                  key: k,
+                  title:
+                    s?.choice.name ||
+                    (s?.choice.cwd || s?.info.cwd || '').split('/').pop() ||
+                    k.slice(0, 8),
+                  sub: s?.choice.engine || '',
+                  status: statusByKey[k],
+                }
+              })}
+            />
           )}
           {inbox && !showEntry && (
             <div

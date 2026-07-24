@@ -312,3 +312,22 @@ export function remoteSessionForAgent(
 export function currentRemoteSession(dir: string = REMOTE_DIR): RemoteSession | null {
   return listRemoteSessions(dir).filter((s) => s.status !== 'ended')[0] || null
 }
+
+/**
+ * Strip ANSI escape sequences from raw pty output, so the phone's terminal
+ * peek renders plain text instead of a soup of color codes. Server-side on
+ * purpose: the phone should never need a terminal emulator.
+ */
+export function stripAnsi(input: string): string {
+  return (
+    input
+      // OSC (window titles, hyperlinks): ESC ] … terminated by BEL or ESC \
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '')
+      // CSI (colors, cursor movement, erase). The final byte is optional so a
+      // sequence cut in half by the tail window still disappears.
+      .replace(/\x1b\[[0-9;:?]*[ -/]*[@-~]?/g, '')
+      // Charset selection (ESC ( B and friends), then any other lone escape.
+      .replace(/\x1b[()#][0-9A-Za-z]?/g, '')
+      .replace(/\x1b.?/g, '')
+  )
+}
