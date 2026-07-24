@@ -1412,6 +1412,7 @@ const bridgeDeps: BridgeDeps = {
 
   // Monitors + latest state for the phone's Monitoring surface.
   monitors: () => listMonitorsWithStatus(),
+  activity: () => readActivity(200),
 
   // Every engine the desktop can launch, labelled the way the desktop labels
   // them — the phone should never render a bare lowercase "codex". The Mac's

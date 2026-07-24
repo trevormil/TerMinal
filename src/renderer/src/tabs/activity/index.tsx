@@ -18,6 +18,7 @@ import {
   TriangleAlert,
   Info,
   Search,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
@@ -142,7 +143,19 @@ function Chip({
 
 type Scope = 'all' | 'repo' | 'session'
 
-function ActivityTab({ ctx }: { ctx: TabContext }) {
+export function ActivityTab({
+  ctx,
+  global,
+  onClose,
+}: {
+  /** Optional — only the repo/session scopes use it, and those are hidden in
+   *  `global` mode (the top-right drawer), which stays on the 'all' scope. */
+  ctx?: TabContext
+  /** Global feed only — hides the repo/session scope chips (used by the
+   *  top-right Activity drawer, which has no active-tab context). */
+  global?: boolean
+  onClose?: () => void
+}) {
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [scope, setScope] = useState<Scope>('all')
   const [kindFilter, setKindFilter] = useState<string>('all')
@@ -172,8 +185,8 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
     scope === 'all'
       ? true
       : scope === 'repo'
-        ? e.repoRoot === ctx.repoRoot
-        : e.sessionId === ctx.sessionId,
+        ? e.repoRoot === ctx?.repoRoot
+        : e.sessionId === ctx?.sessionId,
   )
   // kind chips reflect what's actually present in the current scope
   const kindsPresent = [...new Set(scoped.map((e) => e.kind))].sort()
@@ -198,16 +211,20 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--gt-green)] gt-pulse" />
           Live
         </span>
-        <span className="mx-1 text-zinc-700">·</span>
-        <Chip active={scope === 'all'} onClick={() => setScope('all')}>
-          All repos
-        </Chip>
-        <Chip active={scope === 'repo'} onClick={() => setScope('repo')}>
-          This repo
-        </Chip>
-        <Chip active={scope === 'session'} onClick={() => setScope('session')}>
-          This session
-        </Chip>
+        {!global && (
+          <>
+            <span className="mx-1 text-zinc-700">·</span>
+            <Chip active={scope === 'all'} onClick={() => setScope('all')}>
+              All repos
+            </Chip>
+            <Chip active={scope === 'repo'} onClick={() => setScope('repo')}>
+              This repo
+            </Chip>
+            <Chip active={scope === 'session'} onClick={() => setScope('session')}>
+              This session
+            </Chip>
+          </>
+        )}
         <div className="flex-1" />
         <select
           value={kindFilter}
@@ -241,6 +258,15 @@ function ActivityTab({ ctx }: { ctx: TabContext }) {
         >
           Clear
         </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            title="Close"
+            className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+          >
+            <X size={14} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

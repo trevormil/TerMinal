@@ -725,6 +725,20 @@ describe('monitors', () => {
     const res = await fetch(`${h.url}/v1/monitors`, { headers: auth })
     expect((await res.json()).monitors).toEqual([])
   })
+
+  it('GET /v1/activity returns the feed and requires auth', async () => {
+    const h = await harness({
+      activity: () => [{ id: 'a1', ts: 1, kind: 'task-complete', title: 'Opened PR' }],
+    })
+    expect((await fetch(`${h.url}/v1/activity`)).status).toBe(401)
+    const res = await fetch(`${h.url}/v1/activity`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).activity).toEqual([
+      { id: 'a1', ts: 1, kind: 'task-complete', title: 'Opened PR' },
+    ])
+    const empty = await fetch(`${(await harness()).url}/v1/activity`, { headers: auth })
+    expect((await empty.json()).activity).toEqual([])
+  })
 })
 
 describe('workspace path authorization', () => {

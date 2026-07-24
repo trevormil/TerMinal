@@ -116,6 +116,15 @@ struct InboxView: View {
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            // Activity is the Inbox's sibling (same pairing as the desktop's
+            // top-right): a global live feed, one tap away.
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    ActivityView(model: ActivityViewModel(client: model.feed.client))
+                } label: {
+                    Image(systemName: "waveform.path.ecg")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 if !model.unread.isEmpty {
                     Button("Read all") { model.markAllRead() }.font(GT.sans(13))
