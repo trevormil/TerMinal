@@ -153,13 +153,15 @@ export function tokenMatches(presented: string, expected: string): boolean {
   return timingSafeEqual(a, b)
 }
 
-/** Is this address in 100.64.0.0/10 (CGNAT, what tailnets use)? Accepts the
- *  IPv4-mapped `::ffff:` form Node reports on dual-stack sockets. */
+/** Is this a tailnet address — 100.64.0.0/10 (CGNAT IPv4) OR Tailscale's
+ *  fd7a:115c:a1e0::/48 (IPv6 ULA)? A phone reaching the Mac over the tailnet may
+ *  arrive on EITHER, so the /v1/pair pre-check must accept both or it 403s a
+ *  legitimate IPv6 peer before whois runs. Accepts the IPv4-mapped `::ffff:`
+ *  form Node reports on dual-stack sockets. */
 export const isTailscaleIp = (ip: string): boolean => {
-  const [a, b] = ip
-    .replace(/^::ffff:/i, '')
-    .split('.')
-    .map(Number)
+  const clean = ip.replace(/^::ffff:/i, '').toLowerCase()
+  if (clean.startsWith('fd7a:115c:a1e0:')) return true
+  const [a, b] = clean.split('.').map(Number)
   return a === 100 && b >= 64 && b <= 127
 }
 
