@@ -175,6 +175,7 @@ import {
   type DaemonCfg,
 } from './settings'
 import { listMonitorsWithStatus, writeMonitors } from './monitors'
+import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
 import {
@@ -940,11 +941,18 @@ function pollActivity() {
     const focusedHere = key === activeKey && (win?.isFocused() ?? false)
     const label = s.pinned.name || basename(s.pinned.cwd) || 'session'
     const st = readTranscriptStats(sid)
+    // Say WHAT the agent just did, not a generic "ready". The turn's closing
+    // message is the most honest "what happened"; fall back to the session's AI
+    // title or the last tool. Title carries a headline snippet so the
+    // notification is legible without opening anything.
+    const summary =
+      t.summary || st.aiTitle || (st.lastAction ? `ran ${st.lastAction.tool}` : 'finished its turn')
+    const headline = summary.length > 72 ? `${summary.slice(0, 71)}…` : summary
     emitActivity(
       {
         kind: 'task-complete',
-        title: `${label} · ready`,
-        detail: st.aiTitle || (st.lastAction ? `done — ${st.lastAction.tool}` : 'Turn complete'),
+        title: `${label} — ${headline}`,
+        detail: summary,
         repo: repoForCwd(s.pinned.cwd)?.path || basename(repoRootOf(s.pinned.cwd) || ''),
         repoRoot: repoRootOf(s.pinned.cwd),
         sessionId: sid,
@@ -1358,7 +1366,24 @@ const bridgeDeps: BridgeDeps = {
     }
 
     const base = resolvedProjectsDir()
-    let repos: { name: string; path: string; lastUsedAt?: number; scratch?: boolean }[] = []
+    // Cheap CI-configured probe (no git call): the phone shows a CI tab only
+    // when workflow files exist.
+    const forgeOf = (p: string): string | undefined => {
+      try {
+        if (existsSync(join(p, '.github', 'workflows'))) return 'github'
+        if (existsSync(join(p, '.gitlab-ci.yml'))) return 'gitlab'
+      } catch {
+        /* ignore */
+      }
+      return undefined
+    }
+    let repos: {
+      name: string
+      path: string
+      lastUsedAt?: number
+      scratch?: boolean
+      forge?: string
+    }[] = []
     try {
       repos = readdirSync(base)
         .filter((n) => !n.startsWith('.'))
@@ -1370,7 +1395,7 @@ const bridgeDeps: BridgeDeps = {
             return false
           }
         })
-        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path) }))
+        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path), forge: forgeOf(d.path) }))
         // Recently used first; everything else alphabetical behind it.
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name))
     } catch {
@@ -1598,6 +1623,10 @@ const bridgeDeps: BridgeDeps = {
         enabled: s.enabled,
       }))
   },
+  // Native CI for the phone's per-workspace CI tab — the same run/job data the
+  // desktop CI tab's Runs view uses.
+  workspaceCi: (repoPath) => listCiRuns(repoRootOf(repoPath) || repoPath, 40),
+  workspaceCiJobs: (repoPath, runId) => listCiJobs(repoRootOf(repoPath) || repoPath, runId),
 
   // Start a session from the phone. The remote thread is registered up front so
   // the phone can open it immediately, then the RENDERER is asked to open the
@@ -2717,6 +2746,14 @@ ipcMain.handle('monitors:save', (_e, list: unknown) => {
   syncMonitorDaemon()
   return true
 })
+// Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
+// repoRoot comes from the tab's context. The webview view is the default; this
+// backs the "Runs" toggle.
+ipcMain.handle('ci:list', (_e, repoRoot: string, limit?: number) =>
+  listCiRuns(repoRoot, limit ?? 40),
+)
+ipcMain.handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
+ipcMain.handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
 ipcMain.handle('monitors:run', (_e, id: string) => {
   try {
     execFileSync(join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-monitor'), ['run', id], {

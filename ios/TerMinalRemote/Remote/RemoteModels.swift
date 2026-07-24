@@ -86,8 +86,11 @@ struct RepoOption: Codable, Identifiable, Hashable {
     let lastUsedAt: Double?
     /// The app-owned throwaway workspace — no repo attached.
     let scratch: Bool?
+    /// 'github' | 'gitlab' when CI is configured — gates the CI tab.
+    let forge: String?
 
     var id: String { path }
     var isScratch: Bool { scratch == true }
+    var hasCi: Bool { forge != nil }
 }
 

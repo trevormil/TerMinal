@@ -10,6 +10,7 @@ final class WorkspaceViewModel {
     private(set) var prs: [WsPr] = []
     private(set) var runs: [WsRun] = []
     private(set) var schedules: [WsSchedule] = []
+    private(set) var ciRuns: [CiRun] = []
     private(set) var error: String?
     var loading = false
 
@@ -44,6 +45,7 @@ final class WorkspaceViewModel {
             case .prs: prs = try await client.prs(repo: repo.path)
             case .runs: runs = try await client.runs(repo: repo.path)
             case .schedules: schedules = try await client.schedules(repo: repo.path)
+            case .ci: ciRuns = try await client.ci(repo: repo.path)
             }
             if tab != .sessions { error = nil }
         } catch { self.error = error.localizedDescription }
@@ -61,8 +63,18 @@ final class WorkspaceViewModel {
 }
 
 enum WorkspaceTab: String, CaseIterable, Identifiable {
-    case sessions, tickets, prs, runs, schedules
+    case sessions, tickets, prs, runs, schedules, ci
     var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .sessions: return "bolt.horizontal"
+        case .tickets: return "ticket"
+        case .prs: return "arrow.triangle.pull"
+        case .runs: return "play.rectangle"
+        case .schedules: return "clock"
+        case .ci: return "checkmark.seal"
+        }
+    }
     var label: String {
         switch self {
         case .sessions: return "Sessions"
@@ -70,68 +82,134 @@ enum WorkspaceTab: String, CaseIterable, Identifiable {
         case .prs: return "PRs"
         case .runs: return "Runs"
         case .schedules: return "Schedules"
+        case .ci: return "CI"
+        }
+    }
+    /// One-line hint under each menu row.
+    var subtitle: String {
+        switch self {
+        case .sessions: return "Live terminals you can steer"
+        case .tickets: return "Backlog & in-progress"
+        case .prs: return "Open pull requests"
+        case .runs: return "Recent agent runs"
+        case .schedules: return "Scheduled agents"
+        case .ci: return "Latest CI runs"
         }
     }
 }
 
-/// One repo's cockpit: sessions you can steer, plus read-only tickets/PRs/runs/
-/// schedules — the desktop tabs, phone-sized.
+/// One repo's cockpit — a GitHub-app-style menu. The root lists the sections
+/// (Sessions, Tickets, PRs, Runs, Schedules, CI) as rows; tapping one pushes a
+/// full screen for that section. Sessions you can steer; the rest are read-only.
 struct WorkspaceView: View {
     @State var model: WorkspaceViewModel
-    @State private var tab: WorkspaceTab = .sessions
+
+    /// CI only appears when the repo actually has CI configured.
+    private var sections: [WorkspaceTab] {
+        WorkspaceTab.allCases.filter { $0 != .ci || model.repo.hasCi }
+    }
+
+    var body: some View {
+        ZStack {
+            GT.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(sections) { t in
+                        NavigationLink(value: t) { WorkspaceMenuRow(tab: t) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(14)
+            }
+        }
+        .navigationTitle(model.repo.name)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarBackground(GT.panel, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        // Registered here so section screens deeper in the stack can push a
+        // section or a session thread by value.
+        .navigationDestination(for: WorkspaceTab.self) { t in
+            WorkspaceSectionView(model: model, section: t)
+        }
+        .navigationDestination(for: RemoteSession.self) { s in
+            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
+        }
+    }
+}
+
+/// A single tappable section row: tinted icon, label, one-line hint, chevron.
+private struct WorkspaceMenuRow: View {
+    let tab: WorkspaceTab
+
+    var body: some View {
+        GTPanel {
+            HStack(spacing: 12) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(GT.accentLight)
+                    .frame(width: 34, height: 34)
+                    .background(GT.accent.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tab.label).font(GT.sans(15, .semibold)).foregroundStyle(GT.text)
+                    Text(tab.subtitle).font(GT.sans(11)).foregroundStyle(GT.textMuted)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(GT.textFaint)
+            }
+        }
+    }
+}
+
+/// A single section's full screen: loads its slice on appear, pull-to-refresh,
+/// and (for Sessions) the new-session flow.
+struct WorkspaceSectionView: View {
+    let model: WorkspaceViewModel
+    let section: WorkspaceTab
     @State private var startingNew = false
     @State private var opened: RemoteSession?
 
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                Picker("Tab", selection: $tab) {
-                    ForEach(WorkspaceTab.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let error = model.error {
-                            GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
-                        }
-                        content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let error = model.error {
+                        GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                     }
-                    .padding(14)
+                    content
                 }
-                .refreshable { await model.load(tab) }
+                .padding(14)
             }
+            .refreshable { await model.load(section) }
+            .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
         }
-        .navigationTitle(model.repo.name)
+        .navigationTitle(section.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(for: RemoteSession.self) { s in
-            RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
-        }
-        // Programmatic open (a freshly started session) — distinct from the
-        // NavigationLink taps above.
+        // A freshly started session — programmatic push, distinct from the
+        // value-based session links (handled by WorkspaceView's destination).
         .navigationDestination(item: $opened) { s in
             RemoteThreadView(model: RemoteThreadViewModel(session: s, client: model.client))
         }
         .sheet(isPresented: $startingNew) {
             NewSessionSheet(client: model.client, repo: model.repo) { session in
-                // Navigate immediately to the synthesized session — no waiting
-                // on a list round trip. Refresh the list detached so the
-                // "Starting…" button dismisses at once, not after the refresh.
+                // Navigate immediately to the synthesized session — no waiting on
+                // a list round trip. Refresh the list detached so the "Starting…"
+                // button dismisses at once, not after the refresh.
                 await MainActor.run { opened = session }
                 Task { await model.loadSessions() }
             }
         }
-        .task(id: tab) { await model.load(tab) }
+        .task { await model.load(section) }
     }
 
     @ViewBuilder private var content: some View {
-        switch tab {
+        switch section {
         case .sessions:
             sessionsTab
         case .tickets:
@@ -160,6 +238,28 @@ struct WorkspaceView: View {
                 NavigationLink {
                     ScheduleDetailView(client: model.client, repo: model.repo.path, id: s.id)
                 } label: { ScheduleRow(s: s) }
+                .buttonStyle(.plain)
+            }
+        case .ci:
+            ciContent
+        }
+    }
+
+    @ViewBuilder private var ciContent: some View {
+        if model.ciRuns.isEmpty && !model.loading {
+            GTPanel {
+                Text("No recent CI runs (or the forge CLI isn't authenticated on your Mac).")
+                    .font(GT.sans(12)).foregroundStyle(GT.textMuted)
+            }
+        }
+        ForEach(Array(Ci.grouped(model.ciRuns).enumerated()), id: \.offset) { _, group in
+            Text(group.name.uppercased())
+                .font(GT.sans(10, .semibold)).tracking(0.8).foregroundStyle(GT.textFaint)
+                .padding(.top, 2)
+            ForEach(group.runs) { run in
+                NavigationLink {
+                    CiRunDetailView(client: model.client, repo: model.repo.path, run: run)
+                } label: { CiRunRow(run: run) }
                 .buttonStyle(.plain)
             }
         }

@@ -14,6 +14,7 @@ import {
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { SkillHint } from '../../components/SkillHint'
+import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type {
   Tab,
   TabContext,
@@ -108,6 +109,37 @@ function fmtMetric(v: unknown): string {
   if (typeof v === 'boolean') return v ? 'yes' : 'no'
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
+}
+
+// ---- cert expiry (the headline fact for a TLS-cert monitor) -----------------
+function certDays(m: MonitorWithState): number | null {
+  const d = m.state?.metrics?.daysRemaining
+  return typeof d === 'number' ? d : null
+}
+function expiryTone(days: number): BadgeTone {
+  return days <= 5 ? 'red' : days <= 15 ? 'yellow' : 'green'
+}
+function expiryLabel(days: number): string {
+  if (days < 0) return `expired ${-days}d ago`
+  if (days === 0) return 'expires today'
+  return `${days}d left`
+}
+function expiryPhrase(days: number): string {
+  if (days < 0) return `Expired ${-days} day${-days === 1 ? '' : 's'} ago`
+  if (days === 0) return 'Expires today'
+  return `Expires in ${days} day${days === 1 ? '' : 's'}`
+}
+function fmtDate(v: unknown): string {
+  if (typeof v !== 'string') return '—'
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? v : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+// Row summary with the redundancy stripped: a cert's "Nd until expiry · Issuer"
+// already has the days in the expiry badge, so keep only the issuer half.
+function rowSummary(m: MonitorWithState): string {
+  const s = m.state?.summary?.trim() || ''
+  if (m.type === 'tls-cert' && s.includes('·')) return s.split('·').slice(1).join('·').trim()
+  return s
 }
 
 const DEFAULT_NOTIFY: MonitorNotify = {
@@ -541,21 +573,53 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
       <div className="mx-auto max-w-2xl">
-        {/* summary */}
-        <div className="mb-4 flex items-start gap-2.5">
-          <StatusDot status={st?.status} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
-              <Badge tone={stateTone(st?.status)}>{st?.status ?? 'no data'}</Badge>
-              {!m.enabled && <Badge tone="mute">disabled</Badge>}
-            </div>
+        {/* summary — dot inside the name's items-center row so it's centered on
+            the name; the lines below indent past it (10px dot + 8px gap). */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2">
+            <StatusDot status={st?.status} />
+            <span className="text-[14px] font-semibold text-zinc-100">{m.name}</span>
+            <Badge tone={stateTone(st?.status)}>{st?.status ?? 'no data'}</Badge>
+            {!m.enabled && <Badge tone="mute">disabled</Badge>}
+          </div>
+          <div className="min-w-0 pl-[18px]">
             <div className="mt-0.5 font-mono text-[11px] text-zinc-500">{m.target}</div>
             {st?.summary && (
               <div className="mt-1.5 text-[12.5px] leading-relaxed text-zinc-300">{st.summary}</div>
             )}
           </div>
         </div>
+
+        {/* cert expiry — the headline fact for a TLS-cert monitor */}
+        {m.type === 'tls-cert' && certDays(m) !== null && (
+          <div
+            className="mb-4 flex items-center justify-between rounded-lg border px-4 py-3"
+            style={{
+              borderColor: `color-mix(in srgb, ${DOT_COLOR[st!.status]} 40%, transparent)`,
+              background: `color-mix(in srgb, ${DOT_COLOR[st!.status]} 10%, transparent)`,
+            }}
+          >
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Certificate
+              </div>
+              <div
+                className="mt-0.5 text-[18px] font-semibold"
+                style={{ color: DOT_COLOR[st!.status] }}
+              >
+                {expiryPhrase(certDays(m)!)}
+              </div>
+            </div>
+            {st?.metrics?.notAfter != null && (
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wide text-zinc-600">Valid until</div>
+                <div className="mt-0.5 font-mono text-[12px] text-zinc-300">
+                  {fmtDate(st.metrics.notAfter)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* history strip */}
         {recent.length > 0 && (
@@ -634,24 +698,30 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
             Config
           </div>
           <div className="flex flex-col gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[12px]">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Type</span>
-              <span className="text-zinc-200">{TYPE_LABEL[m.type]}</span>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Type</span>
+              <span className="min-w-0 break-words text-right text-zinc-200">{TYPE_LABEL[m.type]}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Interval</span>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Target</span>
+              <span className="min-w-0 break-all text-right font-mono text-zinc-200">{m.target}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-zinc-500">Interval</span>
               <span className="tabular-nums text-zinc-200">{m.intervalSec}s</span>
             </div>
             {m.group && (
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Group</span>
-                <span className="text-zinc-200">{m.group}</span>
+              <div className="flex justify-between gap-4">
+                <span className="shrink-0 text-zinc-500">Group</span>
+                <span className="min-w-0 break-words text-right text-zinc-200">{m.group}</span>
               </div>
             )}
             {config.map(([k, v]) => (
-              <div key={k} className="flex justify-between">
-                <span className="text-zinc-500">{k}</span>
-                <span className="font-mono text-zinc-200">{fmtMetric(v)}</span>
+              <div key={k} className="flex justify-between gap-4">
+                <span className="shrink-0 text-zinc-500">{k}</span>
+                <span className="min-w-0 break-all text-right font-mono text-zinc-200">
+                  {fmtMetric(v)}
+                </span>
               </div>
             ))}
           </div>
@@ -707,29 +777,44 @@ function MonitorRow({
   return (
     <div
       onClick={onSelect}
-      className={`group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors ${
+      className={`group relative flex cursor-pointer items-start rounded-md px-2.5 py-1.5 transition-colors ${
         selected ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
       } ${m.enabled ? '' : 'opacity-55'}`}
     >
-      <StatusDot status={st?.status} />
-      <span className="min-w-0 shrink-0 max-w-[10rem] truncate text-[12.5px] font-medium text-zinc-100">
-        {m.name}
-      </span>
-      <Badge tone="mute">{TYPE_LABEL[m.type]}</Badge>
-      <span className="min-w-0 flex-shrink truncate font-mono text-[10.5px] text-zinc-600">
-        {m.target}
-      </span>
-      {st?.summary && (
-        <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">{st.summary}</span>
-      )}
-      {!st?.summary && <span className="flex-1" />}
-      {stale && <Badge tone="yellow">stale</Badge>}
-      <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
-        {reltime(st?.lastCheckedAt)}
-      </span>
-      {/* actions — appear on hover */}
+      <div className="min-w-0 flex-1">
+        {/* line 1 — dot sits INSIDE this items-center row, so flex centers it on
+            the name (an outer items-start dot floated too high). */}
+        <div className="flex items-center gap-2">
+          <StatusDot status={st?.status} />
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-zinc-100">
+            {m.name}
+          </span>
+          {m.type === 'tls-cert' && certDays(m) !== null && (
+            <Badge tone={expiryTone(certDays(m)!)}>{expiryLabel(certDays(m)!)}</Badge>
+          )}
+          {stale && <Badge tone="yellow">stale</Badge>}
+          <span className="shrink-0 text-[9.5px] tabular-nums text-zinc-700">
+            {reltime(st?.lastCheckedAt)}
+          </span>
+        </div>
+        {/* line 2 — indented past the dot (10px + 8px gap) so it aligns under
+            the name; target then a de-duplicated summary. The type badge is
+            gone (the name/expiry already imply it); the cert summary drops its
+            redundant "Nd until expiry" (that's the badge). */}
+        <div className="mt-0.5 flex items-center gap-2 pl-[18px] text-[10.5px]">
+          <span className="min-w-0 max-w-[55%] shrink-0 truncate font-mono text-zinc-600">
+            {m.target}
+          </span>
+          {rowSummary(m) && (
+            <span className="min-w-0 flex-1 truncate text-zinc-500">{rowSummary(m)}</span>
+          )}
+        </div>
+      </div>
+      {/* actions — overlaid on the right, revealed on hover. Absolutely
+          positioned so they reserve NO layout space at rest (an in-flow hidden
+          bar left an awkward gap between the badge/time and the row edge). */}
       <div
-        className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-black/50 px-1 py-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -773,6 +858,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const [editing, setEditing] = useState<Monitor | null>(null)
   const [adding, setAdding] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const railW = useResizableWidth('gt.monitoringRailWidth', 384, { min: 280, max: 640 })
 
   const load = () => {
     window.gt.monitors
@@ -850,7 +936,10 @@ function MonitoringTab(_: { ctx: TabContext }) {
   return (
     <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">
       {/* list */}
-      <aside className="flex w-[34rem] shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]">
+      <aside
+        className="flex shrink-0 flex-col border-r border-[var(--gt-border)] bg-[var(--gt-panel)]"
+        style={{ width: railW.width }}
+      >
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
           <Activity size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
           <span className="text-[12px] font-semibold text-zinc-200">Monitoring</span>
@@ -921,6 +1010,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
           )}
         </div>
       </aside>
+      <ResizeHandle onMouseDown={railW.onResizeStart} />
 
       {/* right pane */}
       <section className="flex min-w-0 flex-1 flex-col">

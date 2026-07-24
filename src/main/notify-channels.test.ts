@@ -248,6 +248,31 @@ describe('createWebhookChannel', () => {
   })
 })
 
+describe('createPushChannel', () => {
+  const sent: { title: string; body: string }[] = []
+  const ch = createPushChannel(
+    () => true,
+    (i) => {
+      sent.push({ title: i.title, body: i.body })
+    },
+    () => 0,
+  )
+
+  test('strips a redundant leading "TerMinal" — iOS already shows the app name', () => {
+    sent.length = 0
+    ch.send('done', 'TerMinal — Opened PR #125', 'all green', {})
+    expect(sent[0].title).toBe('✅ Opened PR #125')
+  })
+
+  test('leaves other-repo titles (and mid-string TerMinal) untouched', () => {
+    sent.length = 0
+    ch.send('done', 'bitbadges-indexer — deploy done', 'ok', {})
+    expect(sent[0].title).toBe('✅ bitbadges-indexer — deploy done')
+    ch.send('done', 'Ported the TerMinal bridge', 'ok', {})
+    expect(sent[1].title).toBe('✅ Ported the TerMinal bridge')
+  })
+})
+
 describe('createTelegramChannel', () => {
   test('enabled mirrors telegram.notify', () => {
     expect(createTelegramChannel(() => settingsWith({})).enabled()).toBe(false)

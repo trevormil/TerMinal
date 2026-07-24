@@ -3,6 +3,7 @@ import Foundation
 import LocalAuthentication
 import Security
 import SwiftUI
+import UIKit
 
 /// In-app passcode gate. Deliberately NOT the iOS-level "Require Face ID"
 /// app lock — that suppresses notification previews system-wide, which defeats
@@ -93,7 +94,17 @@ final class AppLock {
 
     /// In-app Face ID / Touch ID — succeeds silently or falls back to the pad.
     func unlockWithBiometrics() async {
-        guard isEnabled, biometricsOptIn else { return }
+        guard isEnabled, biometricsOptIn, locked else { return }
+        // Only ever prompt when the app is genuinely front-and-center. A
+        // scenePhase blip behind the iOS lock screen, or a background wake for a
+        // notification, must NOT pop the Face ID sheet — that's the "prompted on
+        // the lock screen" bug. `.active` means foreground+interactive;
+        // `isProtectedDataAvailable == false` means the device itself is locked.
+        let visible = await MainActor.run {
+            UIApplication.shared.applicationState == .active
+                && UIApplication.shared.isProtectedDataAvailable
+        }
+        guard visible else { return }
         let ctx = LAContext()
         var err: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {

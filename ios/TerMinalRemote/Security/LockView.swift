@@ -1,12 +1,17 @@
 import SwiftUI
 
-/// Full-screen passcode gate shown over the app while AppLock.locked.
-/// Face ID (when opted in) fires on appear; the pad is always available.
+/// Full-screen gate shown over the app while AppLock.locked.
+///
+/// When biometrics are opted in, the lock leads with a dedicated Face ID
+/// screen (auto-prompts on foreground) and offers "Use passcode" as the
+/// fallback. Without biometrics it goes straight to the passcode pad.
 struct LockView: View {
     @State private var lock = AppLock.shared
     @State private var entered = ""
     @State private var shake = false
     @State private var lockoutLeft = 0
+    /// Start on the Face ID screen only when biometrics is actually set.
+    @State private var showPad: Bool = !AppLock.shared.biometricsOptIn
     @Environment(\.scenePhase) private var scenePhase
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
@@ -16,66 +21,105 @@ struct LockView: View {
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
-            VStack(spacing: 26) {
-                Spacer()
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 13))
-                Text(lockoutLeft > 0 ? "Too many attempts" : "Enter passcode")
-                    .font(GT.sans(16, .semibold))
-                    .foregroundStyle(lockoutLeft > 0 ? GT.red : GT.text)
-
-                HStack(spacing: 14) {
-                    ForEach(0..<length, id: \.self) { i in
-                        Circle()
-                            .fill(i < entered.count ? GT.accent : GT.border)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-                .offset(x: shake ? -8 : 0)
-                .animation(
-                    shake ? .linear(duration: 0.06).repeatCount(5, autoreverses: true) : .default,
-                    value: shake)
-
-                if lockoutLeft > 0 {
-                    Text("Try again in \(lockoutLeft)s")
-                        .font(GT.sans(13)).foregroundStyle(GT.textMuted)
-                }
-
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(1...9, id: \.self) { n in
-                        digit("\(n)")
-                    }
-                    // Bottom row: Face ID · 0 · delete
-                    Group {
-                        if lock.biometricsOptIn {
-                            padButton(systemImage: "faceid") {
-                                Task { await lock.unlockWithBiometrics() }
-                            }
-                        } else {
-                            Color.clear.frame(height: 64)
-                        }
-                        digit("0")
-                        padButton(systemImage: "delete.left") {
-                            if !entered.isEmpty { entered.removeLast() }
-                        }
-                    }
-                }
-                .padding(.horizontal, 44)
-                Spacer()
-                Spacer()
+            if showPad {
+                passcodePad
+            } else {
+                biometricScreen
             }
         }
-        // Auto-prompt Face ID on appear AND every time the app returns to the
-        // foreground while locked — the on-appear attempt fires as the app is
-        // backgrounding (when the lock engages) and can't actually run then.
-        .task { await lock.unlockWithBiometrics() }
+        // Auto-prompt Face ID every time the app returns to the foreground while
+        // locked (unlockWithBiometrics no-ops unless the app is truly active, so
+        // it never fires behind the iOS lock screen). Only while on the Face ID
+        // screen — once the user chooses the passcode we don't re-pop the sheet.
+        .task { if !showPad { await lock.unlockWithBiometrics() } }
         .onAppear { lockoutLeft = lock.lockoutRemaining() }
         .onReceive(ticker) { _ in lockoutLeft = lock.lockoutRemaining() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await lock.unlockWithBiometrics() } }
+            if phase == .active, !showPad { Task { await lock.unlockWithBiometrics() } }
+        }
+    }
+
+    // ---- Face ID first screen -------------------------------------------
+    private var biometricScreen: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            Image("Logo")
+                .resizable().scaledToFit()
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            Text("TerMinal is locked")
+                .font(GT.sans(17, .semibold)).foregroundStyle(GT.text)
+            Button {
+                Task { await lock.unlockWithBiometrics() }
+            } label: {
+                VStack(spacing: 10) {
+                    Image(systemName: "faceid")
+                        .font(.system(size: 46, weight: .regular))
+                        .foregroundStyle(GT.accentLight)
+                    Text("Unlock with Face ID")
+                        .font(GT.sans(13, .medium)).foregroundStyle(GT.textSoft)
+                }
+                .frame(width: 180, height: 140)
+                .background(GT.panel2)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button("Use passcode") { showPad = true }
+                .font(GT.sans(14, .medium)).foregroundStyle(GT.accentLight)
+            Spacer().frame(height: 24)
+        }
+    }
+
+    // ---- passcode pad ----------------------------------------------------
+    private var passcodePad: some View {
+        VStack(spacing: 26) {
+            Spacer()
+            Image("Logo")
+                .resizable().scaledToFit()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 13))
+            Text(lockoutLeft > 0 ? "Too many attempts" : "Enter passcode")
+                .font(GT.sans(16, .semibold))
+                .foregroundStyle(lockoutLeft > 0 ? GT.red : GT.text)
+
+            HStack(spacing: 14) {
+                ForEach(0..<length, id: \.self) { i in
+                    Circle()
+                        .fill(i < entered.count ? GT.accent : GT.border)
+                        .frame(width: 12, height: 12)
+                }
+            }
+            .offset(x: shake ? -8 : 0)
+            .animation(
+                shake ? .linear(duration: 0.06).repeatCount(5, autoreverses: true) : .default,
+                value: shake)
+
+            if lockoutLeft > 0 {
+                Text("Try again in \(lockoutLeft)s")
+                    .font(GT.sans(13)).foregroundStyle(GT.textMuted)
+            }
+
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(1...9, id: \.self) { n in
+                    digit("\(n)")
+                }
+                // Bottom row: Face ID (back to biometric screen) · 0 · delete
+                Group {
+                    if lock.biometricsOptIn {
+                        padButton(systemImage: "faceid") { showPad = false }
+                    } else {
+                        Color.clear.frame(height: 64)
+                    }
+                    digit("0")
+                    padButton(systemImage: "delete.left") {
+                        if !entered.isEmpty { entered.removeLast() }
+                    }
+                }
+            }
+            .padding(.horizontal, 44)
+            Spacer()
+            Spacer()
         }
     }
 

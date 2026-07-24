@@ -257,6 +257,11 @@ const gt = {
     save: (list: unknown) => ipcRenderer.invoke('monitors:save', list),
     run: (id: string) => ipcRenderer.invoke('monitors:run', id),
   },
+  ci: {
+    list: (repoRoot: string, limit?: number) => ipcRenderer.invoke('ci:list', repoRoot, limit),
+    jobs: (repoRoot: string, runId: string) => ipcRenderer.invoke('ci:jobs', repoRoot, runId),
+    log: (repoRoot: string, jobId: string) => ipcRenderer.invoke('ci:log', repoRoot, jobId),
+  },
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),

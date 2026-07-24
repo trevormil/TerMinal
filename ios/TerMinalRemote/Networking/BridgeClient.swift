@@ -208,6 +208,32 @@ final class BridgeClient {
         ).runs
     }
 
+    /// Native CI runs for the repo (the bridge wraps ci.ts's result).
+    func ci(repo: String) async throws -> [CiRun] {
+        struct Result: Decodable {
+            let runs: [CiRun]?
+            let error: String?
+        }
+        struct Envelope: Decodable { let ci: Result }
+        let ci = try JSONDecoder().decode(
+            Envelope.self, from: try await get("v1/workspaces/ci?repo=\(Self.q(repo))")
+        ).ci
+        if let err = ci.error, (ci.runs ?? []).isEmpty {
+            // e.g. "gh not authenticated for this host" — surface it verbatim.
+            throw NSError(domain: "CI", code: 0, userInfo: [NSLocalizedDescriptionKey: err])
+        }
+        return ci.runs ?? []
+    }
+
+    func ciJobs(repo: String, runId: String) async throws -> [CiJob] {
+        struct Result: Decodable {
+            let jobs: [CiJob]?
+        }
+        return try JSONDecoder().decode(
+            Result.self, from: try await get("v1/workspace/ci-jobs?repo=\(Self.q(repo))&run=\(Self.q(runId))")
+        ).jobs ?? []
+    }
+
     func schedules(repo: String) async throws -> [WsSchedule] {
         struct Envelope: Decodable { let schedules: [WsSchedule] }
         return try JSONDecoder().decode(

@@ -38,14 +38,28 @@ function tailscaleBin(): string | null {
 
 const execFileAsync = promisify(execFile)
 
+const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
+const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+
 // Async on purpose: this runs from an unauthenticated HTTP route on the
 // Electron main process — a blocking subprocess here would freeze the whole
 // app for up to the timeout on every probe.
+//
+// Routed through a LOGIN SHELL, not a bare execFile. The GUI / Mac-App-Store
+// Tailscale ships its CLI as a thin shim that reaches the backend through the
+// user's login session. A Finder/dock-launched Electron app runs with a
+// stripped environment where that shim fails with "The Tailscale GUI failed to
+// start" (CLIError 3) — so whois returned null and EVERY tailnet peer was
+// refused with 403, even though pairing worked fine under `bun run dev` (which
+// inherits the shell env). `$SHELL -lc` reconstructs the login session the shim
+// needs; capturing env vars alone is NOT enough — it's session context, not
+// just variables.
 async function run(args: string[]): Promise<string | null> {
   const bin = tailscaleBin()
   if (!bin) return null
+  const cmd = [bin, ...args].map(shq).join(' ')
   try {
-    const { stdout } = await execFileAsync(bin, args, { timeout: 4000 })
+    const { stdout } = await execFileAsync(LOGIN_SHELL, ['-lc', cmd], { timeout: 8000 })
     return stdout.toString().trim()
   } catch {
     return null
@@ -89,11 +103,30 @@ export type TailscalePeer = {
   node: string
 }
 
-/** Identify the tailnet peer behind an address (ip or ip:port). */
+/**
+ * Format a peer address as the `host:port` `tailscale whois` demands, without
+ * mangling IPv6. A raw IPv6 tailnet address (fd7a:115c:a1e0::1) is ALL colons,
+ * so the old `${ip}:${port}` produced `fd7a:...::1:0` — unparseable, whois
+ * returned null, and every IPv6 pairing peer was rejected as "not recognised".
+ * IPv6 must be bracketed: `[fd7a:...::1]:0`. The port is a dummy — whois
+ * identifies by IP, so we normalise it to `:0`. Callers pass a BARE address
+ * (a raw IPv6 has no port to strip, and its own colons can't be told apart
+ * from a `:port` suffix); a bracketed `[v6]:port` is also accepted.
+ */
+export function whoisArg(peerAddress: string): string {
+  const host = peerAddress.trim()
+  // Already bracketed IPv6, optionally with a port — keep just the address.
+  const bracketed = host.match(/^\[([^\]]+)\]/)
+  if (bracketed) return `[${bracketed[1]}]:0`
+  // Bare IPv6 (2+ colons) — bracket it verbatim.
+  if ((host.match(/:/g)?.length ?? 0) > 1) return `[${host}]:0`
+  // IPv4, with or without a :port.
+  return `${host.split(':')[0]}:0`
+}
+
+/** Identify the tailnet peer behind an address (ip, ip:port, or [ipv6]:port). */
 export async function tailscaleWhois(peerAddress: string): Promise<TailscalePeer | null> {
-  // whois wants ip:port; append a dummy port when only an ip is given.
-  const arg = peerAddress.includes(':') ? peerAddress : `${peerAddress}:0`
-  const out = await run(['whois', '--json', arg])
+  const out = await run(['whois', '--json', whoisArg(peerAddress)])
   if (!out) return null
   try {
     const who = JSON.parse(out) as {

@@ -6,11 +6,30 @@ import {
   bridgeHosts,
   certFingerprint,
   ensureIdentity,
+  isTailscaleIp,
   pairingPayload,
   resetIdentity,
   rotateToken,
   tokenMatches,
 } from './identity'
+
+describe('isTailscaleIp', () => {
+  it('accepts a tailnet peer on IPv4 CGNAT OR IPv6 ULA', () => {
+    expect(isTailscaleIp('100.64.1.2')).toBe(true)
+    expect(isTailscaleIp('100.126.73.11')).toBe(true)
+    expect(isTailscaleIp('::ffff:100.100.1.2')).toBe(true)
+    // A phone reaching the Mac over the tailnet may arrive on IPv6 — must pass
+    // the pre-check or /v1/pair 403s it before whois runs.
+    expect(isTailscaleIp('fd7a:115c:a1e0:ab12::1')).toBe(true)
+    expect(isTailscaleIp('FD7A:115C:A1E0::7')).toBe(true)
+  })
+  it('rejects LAN / internet / loopback addresses', () => {
+    expect(isTailscaleIp('192.168.1.5')).toBe(false)
+    expect(isTailscaleIp('100.63.255.255')).toBe(false)
+    expect(isTailscaleIp('::1')).toBe(false)
+    expect(isTailscaleIp('8.8.8.8')).toBe(false)
+  })
+})
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'gt-bridge-'))
 

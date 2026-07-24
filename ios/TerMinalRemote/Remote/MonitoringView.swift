@@ -154,30 +154,37 @@ private struct MonitoringHero: View {
 private struct MonitorRow: View {
     let monitor: MonitorWithState
 
+    /// A friendly, glanceable verdict — the noisy detail (URL, status codes,
+    /// latency, history) lives on the drill-in, not the row.
+    private var verdict: (String, Color)? {
+        if monitor.state == nil { return ("Pending", GT.textFaint) }
+        switch monitor.state?.status {
+        case "ok": return nil  // healthy rows stay quiet — the green dot says it
+        case "warn": return ("Degraded", GT.yellow)
+        case "fail": return ("Down", GT.red)
+        default: return nil
+        }
+    }
+
     var body: some View {
-        let stale = isStale(monitor)
         GTPanel {
-            HStack(spacing: 10) {
+            HStack(spacing: 11) {
                 Circle()
                     .fill(monitor.state == nil ? GT.textFaint : statusColor(monitor.state?.status))
-                    .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(monitor.name)
-                            .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
-                        if stale { pill("stale", tint: GT.textFaint) }
-                    }
-                    Text("\(monitor.type) · \(monitor.target)")
-                        .font(GT.mono(10)).foregroundStyle(GT.textMuted).lineLimit(1)
-                    if let summary = monitor.state?.summary {
-                        Text(summary)
-                            .font(GT.sans(12)).foregroundStyle(GT.textMuted).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 4)
-                if let checkedAt = monitor.state?.lastCheckedAt {
-                    Text(relativeTime(checkedAt))
-                        .font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                    .frame(width: 9, height: 9)
+                Text(monitor.name)
+                    .font(GT.sans(14, .medium)).foregroundStyle(GT.text).lineLimit(1)
+                if isStale(monitor) { pill("stale", tint: GT.yellow) }
+                Spacer(minLength: 6)
+                // Certs lead with time-to-expiry (the thing you actually watch);
+                // everything else shows a friendly verdict only when unhealthy.
+                // No type pill — the name/expiry already imply the kind, and it
+                // was just redundant noise.
+                if let d = certDays(monitor) {
+                    Text(certExpiryShort(d))
+                        .font(GT.sans(11, .semibold)).foregroundStyle(certExpiryColor(d))
+                } else if let (word, color) = verdict {
+                    Text(word).font(GT.sans(11, .semibold)).foregroundStyle(color)
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(GT.textFaint)
@@ -185,6 +192,24 @@ private struct MonitorRow: View {
         }
     }
 }
+
+// ---- cert expiry (the headline fact for a TLS-cert monitor) ----------------
+private func certDays(_ m: MonitorWithState) -> Int? {
+    guard m.type == "tls-cert", let s = m.state?.metrics?["daysRemaining"] else { return nil }
+    return Int(Double(s) ?? .nan)
+}
+private func certExpiryColor(_ days: Int) -> Color {
+    days <= 5 ? GT.red : days <= 15 ? GT.yellow : GT.green
+}
+private func certExpiryShort(_ days: Int) -> String {
+    days < 0 ? "expired" : days == 0 ? "today" : "\(days)d left"
+}
+private func certExpiryPhrase(_ days: Int) -> String {
+    if days < 0 { return "Expired \(-days) day\(-days == 1 ? "" : "s") ago" }
+    if days == 0 { return "Expires today" }
+    return "Expires in \(days) day\(days == 1 ? "" : "s")"
+}
+
 
 /// Everything one monitor holds: config, notify prefs, latest metrics, a history
 /// strip, then per-section detail. Generic on purpose — no type-specific
@@ -198,6 +223,7 @@ struct MonitorDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     statusPanel
+                    if let d = certDays(monitor) { certExpiryPanel(d) }
                     configPanel
                     notifyPanel
                     if let metrics = monitor.state?.metrics, !metrics.isEmpty {
@@ -259,6 +285,41 @@ struct MonitorDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    /// The headline for a cert: big time-to-expiry, plus the exact valid-until
+    /// date. Tinted by urgency so it reads at a glance.
+    @ViewBuilder private func certExpiryPanel(_ days: Int) -> some View {
+        GTPanel(padding: 16) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("CERTIFICATE")
+                        .font(GT.sans(10, .semibold)).tracking(0.8).foregroundStyle(GT.textFaint)
+                    Text(certExpiryPhrase(days))
+                        .font(GT.sans(20, .semibold)).foregroundStyle(certExpiryColor(days))
+                }
+                Spacer()
+                if let notAfter = monitor.state?.metrics?["notAfter"] {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("VALID UNTIL")
+                            .font(GT.sans(9, .semibold)).tracking(0.6).foregroundStyle(GT.textFaint)
+                        Text(certDateLabel(notAfter))
+                            .font(GT.mono(12)).foregroundStyle(GT.textSoft)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func certDateLabel(_ raw: String) -> String {
+        let iso = ISO8601DateFormatter()
+        let df = DateFormatter(); df.dateStyle = .medium
+        if let d = iso.date(from: raw) { return df.string(from: d) }
+        // TLS notAfter is often a non-ISO string ("Sep 20 12:00:00 2026 GMT").
+        let alt = DateFormatter(); alt.dateFormat = "MMM d HH:mm:ss yyyy zzz"
+        if let d = alt.date(from: raw) { return df.string(from: d) }
+        return raw
     }
 
     private var notifyPanel: some View {

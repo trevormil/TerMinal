@@ -979,6 +979,41 @@ export type RemoteActiveSession = {
   cwd: string
   status: string
 }
+/** Native CI — mirror of src/main/ci.ts. Forge-agnostic run/job/log views. */
+export type CiRunStatus =
+  'queued' | 'in_progress' | 'success' | 'failed' | 'canceled' | 'skipped' | 'pending'
+export type CiRun = {
+  id: string
+  name: string
+  status: CiRunStatus
+  branch: string
+  shortSha: string
+  event: string
+  webUrl: string
+  createdAt: number
+  updatedAt: number
+  durationMs: number | null
+}
+export type CiTabStep = {
+  name: string
+  status: CiRunStatus
+  number: number
+}
+export type CiTabJob = {
+  id: string
+  name: string
+  stage: string
+  status: CiRunStatus
+  webUrl: string
+  startedAt: number | null
+  finishedAt: number | null
+  durationMs: number | null
+  steps?: CiTabStep[]
+}
+export type CiListResult = { runs: CiRun[]; error?: string }
+export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
+export type CiLogResult = { log: string; truncated?: boolean; error?: string }
+
 /** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
  *  observability, no inference. */
 export type MonitorType = 'http' | 'tls-cert' | 'tcp' | 'dns' | 'command'
@@ -1812,6 +1847,11 @@ export type GtApi = {
     list: () => Promise<MonitorWithState[]>
     save: (list: Monitor[]) => Promise<boolean>
     run: (id: string) => Promise<MonitorWithState[]>
+  }
+  ci: {
+    list: (repoRoot: string, limit?: number) => Promise<CiListResult>
+    jobs: (repoRoot: string, runId: string) => Promise<CiJobsResult>
+    log: (repoRoot: string, jobId: string) => Promise<CiLogResult>
   }
   hitl: {
     list: () => Promise<HitlItem[]>

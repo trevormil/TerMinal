@@ -116,6 +116,10 @@ export type BridgeDeps = {
   workspacePrs?(repoPath: string): Promise<BridgePr[]> | BridgePr[]
   workspaceRuns?(repoPath: string): Promise<BridgeRun[]> | BridgeRun[]
   workspaceSchedules?(repoPath: string): Promise<BridgeSchedule[]> | BridgeSchedule[]
+  /** Native CI runs for the repo (gh run / glab api). */
+  workspaceCi?(repoPath: string): Promise<unknown> | unknown
+  /** Jobs for one CI run. */
+  workspaceCiJobs?(repoPath: string, runId: string): Promise<unknown> | unknown
 
   /** Drill-downs — the full readable content behind a list row. */
   workspaceTicket?(
@@ -151,6 +155,9 @@ export type BridgeRepo = {
   lastUsedAt?: number
   /** The app-owned throwaway workspace — no repo attached. */
   scratch?: boolean
+  /** 'github' | 'gitlab' when CI is configured (workflow files present), so the
+   *  phone can show a CI tab. Absent when there's no CI. */
+  forge?: string
 }
 
 /** An engine the phone may start a session with, already display-cased. */
@@ -375,7 +382,10 @@ export function createBridgeHandler(
         pairInFlight = false
         json(res, status, body)
       }
-      Promise.resolve(deps.tailscalePair(`${ip}:${req.socket.remotePort || 0}`))
+      // Pass the BARE address — whois identifies by IP, and appending
+      // `:port` to a raw IPv6 address makes it unparseable (its own colons
+      // collide with the port separator). whoisArg brackets it correctly.
+      Promise.resolve(deps.tailscalePair(ip))
         .then((result) =>
           result ? done(200, result) : done(403, { error: 'not a recognised tailnet peer' }),
         )
@@ -489,6 +499,11 @@ export function createBridgeHandler(
             if (!deps.workspaceSchedule || !repo || !id) return undefined
             return deps.workspaceSchedule(repo, id)
           }
+          case 'ci-jobs': {
+            const runId = url.searchParams.get('run') || ''
+            if (!deps.workspaceCiJobs || !repo || !runId) return undefined
+            return deps.workspaceCiJobs(repo, runId)
+          }
           default:
             return undefined
         }
@@ -512,6 +527,7 @@ export function createBridgeHandler(
         prs: deps.workspacePrs && ((p) => deps.workspacePrs!(p)),
         runs: deps.workspaceRuns && ((p) => deps.workspaceRuns!(p)),
         schedules: deps.workspaceSchedules && ((p) => deps.workspaceSchedules!(p)),
+        ci: deps.workspaceCi && ((p) => deps.workspaceCi!(p)),
       }
       const fn = fetcher[kind]
       if (!fn) {
@@ -768,9 +784,14 @@ export async function startBridge(
       status = { listening: false, port, error: e.message }
       resolve(bridgeStatus())
     })
-    // 0.0.0.0 on purpose: the phone reaches the Mac over the LAN or the tailnet,
-    // and the bind only happens while the user has the toggle on.
-    s.listen(port, '0.0.0.0', () => {
+    // Dual-stack `::` — NOT `0.0.0.0`. Tailscale MagicDNS hands the phone the
+    // Mac's IPv6 tailnet address (AAAA) first, so an IPv4-only listener refused
+    // the connection and the phone reported it as "Mac didn't recognise this
+    // device". Binding `::` (ipv6Only off by default on macOS) accepts genuine
+    // IPv6 peers AND IPv4 clients as ::ffff:-mapped addresses, which the pair
+    // pre-check and isTailscaleIp already normalise. The bind only happens while
+    // the user has the toggle on.
+    s.listen(port, '::', () => {
       server = s
       status = { listening: true, port }
       resolve(bridgeStatus())
