@@ -1949,6 +1949,12 @@ export type GtApi = {
   getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
   /** Raw `git status --porcelain`, for per-file tree decorations. */
   getStatusPorcelain: () => Promise<string>
+  /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
+  checkpoints: {
+    list: () => Promise<{ sha: string; at: number; label: string }[]>
+    create: (label: string) => Promise<{ ok: boolean; sha: string }>
+    restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
+  }
   getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>

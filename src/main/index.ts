@@ -397,6 +397,7 @@ import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
+import { createCheckpoint, listCheckpoints, restoreCheckpoint } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 import { modelArgs, resumeArgs } from '../shared/engines'
 
@@ -1003,6 +1004,14 @@ function pollActivity() {
     const summary =
       t.summary || st.aiTitle || (st.lastAction ? `ran ${st.lastAction.tool}` : 'finished its turn')
     const headline = summary.length > 72 ? `${summary.slice(0, 71)}…` : summary
+    // Snapshot the workspace at each turn boundary so the turn is undoable.
+    // Best-effort and silent: a checkpoint failing must never disrupt a run.
+    try {
+      const root = repoRootOf(s.pinned.cwd)
+      if (root) createCheckpoint(root, `${label} — ${headline}`)
+    } catch {
+      /* checkpoints are best-effort */
+    }
     emitActivity(
       {
         kind: 'task-complete',
@@ -3130,6 +3139,13 @@ ipcMain.handle('git:file-at-head', (_e, rel: string) => {
 ipcMain.handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
 })
+ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
+ipcMain.handle('checkpoints:create', (_e, label: string) =>
+  createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
+)
+ipcMain.handle('checkpoints:restore', (_e, sha: string) =>
+  restoreCheckpoint(activeDaemon().repoRoot(), sha),
+)
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)
 })
