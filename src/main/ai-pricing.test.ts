@@ -33,6 +33,28 @@ describe('lookupPrice', () => {
     expect(lookupPrice('gpt-5.6-terra').output).toBeCloseTo(15 / M, 12)
   })
 
+  test('the whole gpt-5.6 family prices distinctly, incl. the bare alias', () => {
+    const M = 1_000_000
+    // Sol is the frontier tier…
+    expect(lookupPrice('gpt-5.6-sol').input).toBeCloseTo(5 / M, 12)
+    expect(lookupPrice('gpt-5.6-sol').output).toBeCloseTo(30 / M, 12)
+    // …and `gpt-5.6` is its alias. Without an explicit row this would
+    // prefix-match the older, cheaper `gpt-5` and under-report cost.
+    expect(lookupPrice('gpt-5.6').input).toBeCloseTo(5 / M, 12)
+    expect(lookupPrice('gpt-5.6').input).not.toBeCloseTo(lookupPrice('gpt-5').input, 12)
+    // Luna is the cheap tier.
+    expect(lookupPrice('gpt-5.6-luna').input).toBeCloseTo(1 / M, 12)
+  })
+
+  test('Opus 5 prices as a frontier Claude model', () => {
+    const M = 1_000_000
+    expect(lookupPrice('claude-opus-5').input).toBeCloseTo(15 / M, 12)
+    expect(lookupPrice('claude-opus-5').output).toBeCloseTo(75 / M, 12)
+    expect(lookupPrice('claude-opus-5').family).toBe('claude')
+    // Dated variants still resolve via prefix matching.
+    expect(lookupPrice('claude-opus-5-20260901').contextWindow).toBe(1_000_000)
+  })
+
   test('unknown provider-prefixed slugs still fall back to zero-cost', () => {
     expect(lookupPrice('nobody/great-unknown-model').contextWindow).toBe(0)
   })

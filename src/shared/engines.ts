@@ -67,10 +67,14 @@ export const ENGINES = {
     label: 'Claude',
     vendor: 'Anthropic Claude',
     bin: { name: 'claude', envVar: 'GT_CLAUDE_BIN' },
+    // Aliases track the newest model of each family (claude --help: "an alias
+    // for the latest model"), so `opus` already resolves to Opus 5. The pinned
+    // id is listed too, for a run that must not drift when the alias moves.
     models: [
       { id: 'haiku', label: 'haiku' },
       { id: 'sonnet', label: 'sonnet' },
-      { id: 'opus', label: 'opus' },
+      { id: 'opus', label: 'opus (Opus 5)' },
+      { id: 'claude-opus-5', label: 'claude-opus-5 (pinned)' },
       { id: 'fable', label: 'fable' },
     ],
     allowsCustomModel: false,
@@ -85,11 +89,17 @@ export const ENGINES = {
     label: 'Codex',
     vendor: 'OpenAI Codex',
     bin: { name: 'codex' },
+    // GPT-5.6 family (Sol = frontier reasoning/coding, Terra = balanced,
+    // Luna = cost-sensitive); `gpt-5.6` is Sol's alias.
     models: [
+      { id: 'gpt-5.6-sol', label: 'gpt-5.6 Sol' },
+      { id: 'gpt-5.6-terra', label: 'gpt-5.6 Terra' },
+      { id: 'gpt-5.6-luna', label: 'gpt-5.6 Luna' },
       { id: 'gpt-5-codex', label: 'gpt-5-codex' },
       { id: 'gpt-5', label: 'gpt-5' },
     ],
-    allowsCustomModel: false,
+    // The catalog moves faster than releases — allow a raw slug too.
+    allowsCustomModel: true,
     modelFlag: '--model',
     seed: 'positional',
     resume: 'sub:resume',
