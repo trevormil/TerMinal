@@ -2151,6 +2151,8 @@ export type GtApi = {
     readBinary: (
       rel: string,
     ) => Promise<{ ok: boolean; base64: string; size: number; reason?: string }>
+    /** Reveal in Finder. Fenced to the workspace root in main. */
+    reveal: (rel: string) => Promise<boolean>
     write: (rel: string, content: string) => Promise<boolean>
     search: (q: string) => Promise<{ file: string; line: number; text: string }[]>
     create: (rel: string, dir: boolean) => Promise<boolean>

@@ -3139,6 +3139,16 @@ ipcMain.handle('git:file-at-head', (_e, rel: string) => {
 ipcMain.handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
 })
+ipcMain.handle('files:reveal', (_e, rel: string) => {
+  // Resolve against the workspace root and refuse anything that escapes it —
+  // the renderer must not be able to reveal arbitrary filesystem paths.
+  const root = activeDaemon().filesRoot()
+  if (!root || typeof rel !== 'string') return false
+  const abs = join(root, rel)
+  if (!abs.startsWith(root)) return false
+  shell.showItemInFolder(abs)
+  return true
+})
 ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
 ipcMain.handle('checkpoints:create', (_e, label: string) =>
   createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),

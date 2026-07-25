@@ -500,6 +500,7 @@ const gt = {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
     readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
+    reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('files:write', rel, content),
     search: (q: string) => ipcRenderer.invoke('files:search', q),
     create: (rel: string, dir: boolean) => ipcRenderer.invoke('files:create', rel, dir),

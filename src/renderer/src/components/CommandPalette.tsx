@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Compass, Repeat, Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
 import type { Tab, Mr, Ticket } from '../lib/types'
 import { fuzzyRank, parseQuickOpen } from '../../../shared/fuzzy'
+import { extractSymbols, symbolGlyph } from '../../../shared/symbols'
 import { navigateTo } from '../lib/nav'
 import { sessionEngineLabel } from '../lib/engines'
 
@@ -51,6 +52,7 @@ export function CommandPalette({
   const [mrs, setMrs] = useState<Mr[]>([])
   const [hits, setHits] = useState<{ file: string; line: number; text: string }[]>([])
   const [checkpoints, setCheckpoints] = useState<{ sha: string; at: number; label: string }[]>([])
+  const [symbols, setSymbols] = useState<{ name: string; kind: string; line: number }[]>([])
   const listRef = useRef<HTMLDivElement>(null)
 
   // Lazy-load the cross-cutting sources once when the palette opens.
@@ -72,6 +74,18 @@ export function CommandPalette({
   // One input, five modes (VS Code convention): `>` commands, `@` symbols,
   // `:42` line, `#` project search, anything else = files/everything.
   const parsed = useMemo(() => parseQuickOpen(q), [q])
+
+  // `@` mode: outline of the file the Files tab last had open. Extracted with
+  // the shared regex-based extractor — no language server needed.
+  useEffect(() => {
+    if (parsed.mode !== 'symbols') return
+    const path = localStorage.getItem('gt.files.lastPath') || ''
+    if (!path) return setSymbols([])
+    window.gt.files
+      .read(path)
+      .then((r) => setSymbols(r.ok ? extractSymbols(path, r.content) : []))
+      .catch(() => setSymbols([]))
+  }, [parsed.mode])
 
   // Debounced content search — only when the query is substantial.
   useEffect(() => {
@@ -158,6 +172,20 @@ export function CommandPalette({
         label: `#${t.id} ${t.title}`,
         hint: t.status,
         run: close(() => navigateTo('tickets', { slug: t.slug })),
+      })
+
+    for (const sym of symbols)
+      out.push({
+        id: `sym:${sym.name}:${sym.line}`,
+        group: 'Symbol',
+        label: `${symbolGlyph(sym.kind as never)}  ${sym.name}`,
+        hint: `line ${sym.line}`,
+        run: close(() =>
+          navigateTo('files', {
+            path: localStorage.getItem('gt.files.lastPath') || '',
+            line: sym.line,
+          }),
+        ),
       })
 
     // Roll the workspace back to any agent turn. Restoring is itself
