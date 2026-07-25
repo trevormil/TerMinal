@@ -9,9 +9,12 @@
 // When the published rate is given per million, we normalize:
 //   input  = listed / 1e6
 //   output = listed / 1e6
-// Cache pricing (Anthropic):
+// Cache pricing — BOTH vendors bill a cache write above uncached input:
 //   cacheRead  = ~0.1 × input
 //   cacheWrite = ~1.25 × input  (one-time at creation)
+// Omitting cacheWrite is not free: costOf falls back to the plain input rate,
+// silently under-reporting by 25%. Older OpenAI rows (gpt-5 and earlier) predate
+// a published cache-write tier and are left alone; every GPT-5.6 row sets it.
 
 export type ModelPrice = {
   /** USD per input token */
@@ -151,6 +154,7 @@ const TABLE: Record<string, ModelPrice> = {
     input: 5 / M,
     output: 30 / M,
     cacheRead: 0.5 / M,
+    cacheWrite: 6.25 / M,
     contextWindow: 1_050_000,
     family: 'codex',
   },
@@ -158,6 +162,7 @@ const TABLE: Record<string, ModelPrice> = {
     input: 5 / M,
     output: 30 / M,
     cacheRead: 0.5 / M,
+    cacheWrite: 6.25 / M,
     contextWindow: 1_050_000,
     family: 'codex',
   },
@@ -165,6 +170,7 @@ const TABLE: Record<string, ModelPrice> = {
     input: 2.5 / M,
     output: 15 / M,
     cacheRead: 0.25 / M,
+    cacheWrite: 3.125 / M,
     contextWindow: 1_050_000,
     family: 'codex',
   },
@@ -172,6 +178,7 @@ const TABLE: Record<string, ModelPrice> = {
     input: 1 / M,
     output: 6 / M,
     cacheRead: 0.1 / M,
+    cacheWrite: 1.25 / M,
     contextWindow: 1_050_000,
     family: 'codex',
   },
