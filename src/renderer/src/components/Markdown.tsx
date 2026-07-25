@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js/lib/common'
+import { Mermaid } from './Mermaid'
+import { splitFrontmatter } from '../../../shared/frontmatter'
 
 // Lightweight INLINE markdown for compact, high-volume rows (the Activity feed).
 // react-markdown is too heavy to run per-row across a streaming list, and its
@@ -99,8 +101,24 @@ export function Markdown({
   children: string
   className?: string
 }) {
+  const { frontmatter, body } = splitFrontmatter(children)
   return (
     <div className={className}>
+      {frontmatter.length > 0 && (
+        <div className="mb-4 overflow-hidden rounded-lg border border-[var(--gt-border)] bg-black/20">
+          <div className="border-b border-[var(--gt-border)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            Frontmatter
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 py-2 text-[11.5px]">
+            {frontmatter.map(([k, v]) => (
+              <div key={k} className="contents">
+                <span className="font-mono text-zinc-500">{k}</span>
+                <span className="min-w-0 break-words text-zinc-300">{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -126,6 +144,11 @@ export function Markdown({
             const { className, children, ...rest } = props as {
               className?: string
               children?: React.ReactNode
+            }
+            // ```mermaid fences render as real diagrams (the component falls
+            // back to source on a parse error, so a bad diagram never blanks).
+            if (className === 'language-mermaid') {
+              return <Mermaid source={String(children ?? '').replace(/\n$/, '')} />
             }
             // code blocks come wrapped in <pre>; we detect via className="language-*"
             if (className && className.startsWith('language-')) {
@@ -195,7 +218,7 @@ export function Markdown({
           },
         }}
       >
-        {children}
+        {body}
       </ReactMarkdown>
     </div>
   )

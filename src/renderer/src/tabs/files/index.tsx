@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
+import { langKeyFor } from '../../../../shared/languages'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
 import { MergeDiffView } from '../../components/MergeDiffView'
 import {
@@ -30,44 +31,12 @@ import { onNavigate } from '../../lib/nav'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
-// Values must be valid @uiw/codemirror-extensions-langs keys — which are the
-// SHORT names (ts/js/py/rs/sh/rb), not the long ones. Mapping to a missing key
-// returns undefined → no parser → no syntax highlighting (the bug this fixes).
-const EXT: Record<string, string> = {
-  ts: 'ts',
-  tsx: 'tsx',
-  js: 'js',
-  jsx: 'jsx',
-  mjs: 'js',
-  cjs: 'js',
-  json: 'json',
-  md: 'markdown',
-  mdx: 'markdown',
-  css: 'css',
-  scss: 'scss',
-  less: 'less',
-  html: 'html',
-  py: 'py',
-  rs: 'rs',
-  go: 'go',
-  yaml: 'yaml',
-  yml: 'yaml',
-  sql: 'sql',
-  sh: 'sh',
-  bash: 'sh',
-  zsh: 'sh',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  hpp: 'cpp',
-  java: 'java',
-  php: 'php',
-  rb: 'rb',
-  toml: 'toml',
-  xml: 'xml',
-}
+// Language grammars come from the shared resolver (src/shared/languages.ts),
+// which covers ~100 extensions plus extensionless files like Dockerfile and
+// Makefile, and is unit-tested against the real langs export so a mapped key
+// can never silently resolve to "no highlighting".
 function langFor(path: string): Extension[] {
-  const key = EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | undefined
+  const key = langKeyFor(path) as keyof typeof langs | ''
   try {
     return key && langs[key] ? [langs[key]()] : []
   } catch {
