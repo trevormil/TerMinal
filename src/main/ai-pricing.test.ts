@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { lookupPrice } from './ai-pricing'
+import { costOf, lookupPrice } from './ai-pricing'
 
 describe('lookupPrice', () => {
   test('normalizes known aliases and dated model ids', () => {
@@ -57,5 +57,28 @@ describe('lookupPrice', () => {
 
   test('unknown provider-prefixed slugs still fall back to zero-cost', () => {
     expect(lookupPrice('nobody/great-unknown-model').contextWindow).toBe(0)
+  })
+
+  // A row that omits cacheWrite does not bill zero — costOf falls back to the
+  // plain input rate, so the miss is a silent 25% under-report rather than an
+  // obvious one. Assert the rate, not merely that the field exists.
+  test('every GPT-5.6 row bills cache writes at 1.25x uncached input', () => {
+    const M = 1_000_000
+    const writeCost = (m: string) => costOf(m, { cacheWrite: M })
+    expect(writeCost('gpt-5.6-sol')).toBeCloseTo(6.25, 9)
+    expect(writeCost('gpt-5.6')).toBeCloseTo(6.25, 9) // Sol's alias
+    expect(writeCost('gpt-5.6-terra')).toBeCloseTo(3.125, 9)
+    expect(writeCost('gpt-5.6-luna')).toBeCloseTo(1.25, 9)
+    // The exact bug this pins: silently falling through to the input rate.
+    for (const m of ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+      expect(writeCost(m)).toBeGreaterThan(costOf(m, { input: M }))
+  })
+
+  test('a cache read stays far cheaper than a cache write', () => {
+    const M = 1_000_000
+    expect(costOf('gpt-5.6-sol', { cacheRead: M })).toBeCloseTo(0.5, 9)
+    expect(costOf('gpt-5.6-sol', { cacheRead: M })).toBeLessThan(
+      costOf('gpt-5.6-sol', { cacheWrite: M }),
+    )
   })
 })
