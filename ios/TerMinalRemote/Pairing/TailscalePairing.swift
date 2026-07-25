@@ -21,9 +21,12 @@ enum TailscalePairing {
             case .detailed(let why):
                 return why
             case .refused:
-                return "That Mac didn't recognise this device as the same Tailscale account."
+                return "That Mac didn't recognise this phone as the same Tailscale "
+                    + "account. Sign both devices into the same account, or restart "
+                    + "TerMinal on the Mac if you just updated it."
             case .notAvailable:
-                return "Tailscale pairing isn't enabled on that Mac."
+                return "Tailscale pairing isn't enabled on that Mac — turn on the "
+                    + "bridge in TerMinal → Settings → Mobile."
             case .badResponse:
                 return "The Mac sent something unexpected."
             }
@@ -90,10 +93,28 @@ enum TailscalePairing {
         do {
             (data, response) = try await session.data(for: request, delegate: delegate)
         } catch let urlError as URLError {
-            // Report the actual reason — "unreachable" hid TLS and DNS failures.
-            throw Failure.detailed(
-                "\(url.host ?? "host"):\(port) — \(urlError.localizedDescription) "
-                    + "[\(urlError.code.rawValue)]")
+            // Turn the raw URLError into something actionable. The overwhelmingly
+            // common cause here is "the phone isn't actually on the tailnet", so
+            // lead with that for the can't-reach codes; keep the technical detail
+            // small at the end.
+            let target = url.host ?? "your Mac"
+            let hint: String
+            switch urlError.code {
+            case .timedOut, .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet,
+                .networkConnectionLost:
+                hint =
+                    "Couldn't reach \(target) over Tailscale. Make sure Tailscale is "
+                    + "connected on BOTH this phone and your Mac — signed in to the same "
+                    + "account — then try again."
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                .serverCertificateHasBadDate:
+                hint =
+                    "Reached \(target), but the secure connection failed. Check that the "
+                    + "Mac name is exact and Tailscale is up on both devices."
+            default:
+                hint = "Couldn't pair with \(target): \(urlError.localizedDescription)"
+            }
+            throw Failure.detailed("\(hint)  (\(urlError.localizedDescription), \(urlError.code.rawValue))")
         } catch {
             throw Failure.detailed(error.localizedDescription)
         }
