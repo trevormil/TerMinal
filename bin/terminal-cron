@@ -328,6 +328,20 @@ function activity(ev) {
 
 // Auto-file a global HITL item on a failed cron run + best-effort Telegram ping
 // (works even with the app closed — reads the token straight from settings.json).
+const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
+
+/** Does a severity clear the operator's configured notify threshold? An item
+ *  with no explicit severity is loud (legacy policy — never silence a filer
+ *  that predates the tiers). */
+function hitlIsLoud(severity) {
+  if (!SEVERITY_RANK[severity]) return true
+  let threshold
+  try {
+    threshold = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))?.inbox?.notifyThreshold
+  } catch {}
+  return SEVERITY_RANK[severity] >= (SEVERITY_RANK[threshold] || 3)
+}
+
 function fileHitl(item) {
   const rec = {
     id: randomUUID(),
@@ -346,6 +360,11 @@ function fileHitl(item) {
   } catch (e) {
     log(`hitl write failed: ${e}`)
   }
+  // An item that carries an explicit severity honors the same
+  // inbox.notifyThreshold gate the desktop applies (mirrors terminal-cli's
+  // fileHitl). Without one, the legacy always-ping policy stands so nothing
+  // that used to alert goes silent.
+  if (!hitlIsLoud(rec.severity)) return
   try {
     // HITL ALWAYS pings Telegram when bot+chat configured, regardless of the
     // general activity-feed `telegram.notify` toggle. HITL is by definition the
@@ -1280,6 +1299,11 @@ async function runReviewPatterns() {
     if (existingKeys.has(p.key)) continue
     fileHitl({
       kind: 'review-pattern',
+      // Was inheriting the default 'cron-fail' source, which both mislabelled a
+      // digest as a failed job and made it ping unconditionally. It's a
+      // 'normal'-tier FYI: inbox now, no buzz unless you lowered the threshold.
+      source: 'review-pattern',
+      severity: 'normal',
       patternKey: p.key,
       title: `Recurring ${p.category} finding: ${p.tokens.join(' / ')}`,
       action: `${p.count}× across ${p.repos.length} repos — promote to CLAUDE.md?`,

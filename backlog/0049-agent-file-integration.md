@@ -1,7 +1,7 @@
 ---
 id: 49
 title: "Agent↔file integration: inline AI-edit diffs, per-turn checkpoints, line-pinned diff comments, AI attribution"
-status: backlog
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -55,3 +55,12 @@ they matter more here than generic IDE parity.
 
 `@codebase` embeddings and predictive multi-line completion were considered and
 rejected: high cost, and ripgrep + fuzzy paths already cover the retrieval need.
+
+## Update (2026-07-25)
+
+Per-turn checkpoints with one-click restore shipped in PR #142 — a shadow git
+repo that never touches the user's own .git, with restore itself undoable.
+
+**Remaining:** inline AI-edit diffs with per-hunk accept/reject, line-pinned
+diff comments batched into one revision prompt, and AI-attribution gutter
+markers.

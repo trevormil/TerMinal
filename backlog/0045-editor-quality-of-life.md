@@ -1,7 +1,7 @@
 ---
 id: 45
 title: "Editor quality-of-life: multi-cursor, regex find/replace, sticky scroll, breadcrumbs, format-on-save"
-status: backlog
+status: in-progress
 priority: medium
 horizon: now
 hitl: false
@@ -43,3 +43,11 @@ extensions. Batch of editing affordances users expect from any editor:
 - Format-on-save is opt-in per settings and never fires on a file the formatter
   doesn't own.
 - Auto-save cannot lose content mid-edit (debounced, and flushes on blur/close).
+
+## Update (2026-07-25)
+
+Multi-cursor, column select, regex find/replace, code folding, bracket
+matching, indentation auto-detect, and breadcrumbs shipped in PR #138.
+
+**Remaining:** sticky scroll (no CM6 core equivalent — needs a custom
+viewport + syntax-tree overlay) and format-on-save.

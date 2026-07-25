@@ -1,7 +1,7 @@
 ---
 id: 48
 title: "Diff review: inline/side-by-side toggle, word-level, collapse unchanged, multi-file view, image diff"
-status: backlog
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -52,3 +52,11 @@ provides most of this out of the box.
 
 Per-hunk git *staging* is deliberately out of scope — the audit flagged it as
 high-cost/error-prone and TerMinal is not a git client.
+
+## Update (2026-07-25)
+
+MergeDiffView shipped in PR #140: split/inline toggle, word-level highlighting,
+collapse-unchanged, syntax highlighting inside the diff, n/p hunk stepping,
+plus the per-file Changes View against HEAD.
+
+**Remaining:** image diff (swipe / onion-skin) and the multi-file diff view.

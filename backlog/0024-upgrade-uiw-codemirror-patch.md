@@ -1,14 +1,14 @@
 ---
 id: 24
 title: "Upgrade UIW CodeMirror packages to 4.25.11"
-status: open
+status: closed
 priority: low
 horizon: next
 hitl: false
 type: chore
 source: dependency-hygiene
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-25
 prs: []
 refs:
   - "Audit: @uiw/codemirror-extensions-langs 4.25.10 -> 4.25.11, published 2026-07-08T16:41:42.889Z"
@@ -25,3 +25,8 @@ agent_kind: classic
 
 ## Description
 The UIW CodeMirror packages were safely bumped from 4.25.9 to 4.25.10 in the dependency hygiene pass, but the latest 4.25.11 releases were still inside the 72-hour hold window at audit time. Upgrade them once the age rule is satisfied.
+
+## Update (2026-07-25)
+
+**Done** — package.json pins `@uiw/react-codemirror` and
+`@uiw/codemirror-extensions-langs` at exactly 4.25.11.

@@ -1,7 +1,7 @@
 ---
 id: 47
 title: "File tree: git status decorations, context actions, drag-and-drop (incl. drop path into agent)"
-status: backlog
+status: in-progress
 priority: medium
 horizon: next
 hitl: false
@@ -44,3 +44,11 @@ working surface:
 - Every context action works and is keyboard-reachable.
 - Dropping a file on a terminal pastes its path into that session's prompt.
 - Compare-with-saved shows the unsaved-vs-disk diff.
+
+## Update (2026-07-25)
+
+Git status decorations with parent-folder rollup shipped in PR #141; copy
+relative path and reveal-in-Finder in PR #144.
+
+**Remaining:** drag-and-drop (including the Orca steal — drop a file onto an
+agent terminal to paste its path) and compare-with.

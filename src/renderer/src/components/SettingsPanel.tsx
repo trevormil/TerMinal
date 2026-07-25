@@ -2905,14 +2905,18 @@ export function SettingsPanel({
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-zinc-500">
+                  <div className="grid grid-cols-3 gap-1.5 text-[10.5px] text-zinc-500">
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Always on</span>
-                      <span>Human blockers, cron failures, spend alerts</span>
+                      <span className="block text-zinc-300">Urgent</span>
+                      <span>Human blockers, cron failures, daily cap reached</span>
                     </div>
                     <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">This toggle</span>
-                      <span>Post-completion review prompts only</span>
+                      <span className="block text-zinc-300">Normal</span>
+                      <span>Spend warnings, recurring review-finding digests</span>
+                    </div>
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                      <span className="block text-zinc-300">Low</span>
+                      <span>Post-completion review prompts</span>
                     </div>
                   </div>
                 </div>
