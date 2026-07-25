@@ -106,6 +106,29 @@ export function readFile(root: string, rel: string): ReadResult {
   }
 }
 
+export type ReadBinaryResult = { ok: boolean; base64: string; size: number; reason?: string }
+/**
+ * Raw bytes as base64, for the viewers that can't use a utf8 string: images,
+ * PDFs, and the hex dump. readFile() deliberately refuses anything with a NUL
+ * byte, which is why an image previously failed with "binary file".
+ *
+ * The cap is higher than readFile's (images and PDFs are legitimately large)
+ * but still bounded — base64 inflates by 4/3 and the payload crosses IPC.
+ */
+export function readFileBinary(root: string, rel: string): ReadBinaryResult {
+  const abs = safe(root, rel)
+  if (!abs || !existsSync(abs)) return { ok: false, base64: '', size: 0, reason: 'not found' }
+  try {
+    const st = statSync(abs)
+    if (st.isDirectory()) return { ok: false, base64: '', size: 0, reason: 'directory' }
+    if (st.size > 25_000_000)
+      return { ok: false, base64: '', size: st.size, reason: 'file too large (>25 MB)' }
+    return { ok: true, base64: readFileSync(abs).toString('base64'), size: st.size }
+  } catch (e) {
+    return { ok: false, base64: '', size: 0, reason: String((e as Error).message) }
+  }
+}
+
 export function writeFile(root: string, rel: string, content: string): boolean {
   const abs = safe(root, rel)
   if (!abs) return false
