@@ -11,11 +11,12 @@ import cursorLogo from '../assets/cursor.png?inline'
 import hermesLogo from '../assets/hermes.svg?inline'
 import { engineLabel } from '../lib/engines'
 
-// OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
+// opencode/OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
   claude: claudeLogo,
   cursor: cursorLogo,
+  opencode: '',
   openrouter: '',
   hermes: hermesLogo,
   'openai-compat': '',

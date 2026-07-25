@@ -48,7 +48,9 @@ import type { TicketAgent } from './backlog'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
+// One definition, from the shared registry — this was a verbatim copy of
+// settings.EngineId that could (and did) drift from it.
+export type Engine = import('../shared/engines').EngineId
 
 export type AgentModelPolicy = {
   default?: string

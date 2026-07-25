@@ -1377,9 +1377,7 @@ function listHermesSessions(): SessionMeta[] {
 }
 
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
-export function listSessions(
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat',
-): SessionMeta[] {
+export function listSessions(engine?: import('../shared/engines').EngineId): SessionMeta[] {
   const out =
     engine === 'claude'
       ? listClaudeSessions()
