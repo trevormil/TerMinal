@@ -193,6 +193,8 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
   // A viewer-backed file (markdown/csv/svg/...) can toggle to its raw source,
   // which hands rendering back to CodeMirror so edit/save stay in one place.
+  // Owned HERE, not in FileViewer: flipping it swaps which FileViewer instance
+  // is mounted, so any copy held inside the component is wiped on every toggle.
   const [viewerSource, setViewerSource] = useState(false)
   // Per-file "Changes View" (Orca): diff THIS file against HEAD inside its own
   // tab, instead of leaving for the whole-worktree diff pane.
@@ -222,6 +224,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
   const activeFile = open.find((f) => f.path === activePath) || null
   const bump = () => setVersion((v) => v + 1)
+
+  // Opening a different file starts on its rendered view again — switching to a
+  // README shouldn't inherit "show source" from the CSV you were just reading.
+  useEffect(() => {
+    setViewerSource(false)
+  }, [activePath])
 
   useEffect(() => {
     window.gt.files.list('').then(setRoots)
@@ -560,6 +568,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               key={activeFile.path}
               path={activeFile.path}
               text={activeFile.content}
+              showSource={false}
               onWantsSource={setViewerSource}
             />
           ) : (
@@ -569,6 +578,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   key={`${activeFile.path}:src`}
                   path={activeFile.path}
                   text={activeFile.content}
+                  showSource
                   onWantsSource={setViewerSource}
                 />
               )}

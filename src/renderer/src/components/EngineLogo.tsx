@@ -9,14 +9,15 @@ import openaiLogo from '../assets/openai.svg?inline'
 import claudeLogo from '../assets/claude.svg?inline'
 import cursorLogo from '../assets/cursor.png?inline'
 import hermesLogo from '../assets/hermes.svg?inline'
+import opencodeLogo from '../assets/opencode.svg?inline'
 import { engineLabel } from '../lib/engines'
 
-// opencode/OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
+// OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
 const LOGO: Record<Engine, string> = {
   codex: openaiLogo,
   claude: claudeLogo,
   cursor: cursorLogo,
-  opencode: '',
+  opencode: opencodeLogo,
   openrouter: '',
   hermes: hermesLogo,
   'openai-compat': '',

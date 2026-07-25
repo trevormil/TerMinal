@@ -270,17 +270,24 @@ function HexView({ base64, size }: { base64: string; size: number }) {
 export function FileViewer({
   path,
   text,
+  showSource,
   onWantsSource,
 }: {
   path: string
   /** utf8 content, already loaded by the Files tab (empty for binary kinds). */
   text: string
-  /** Called with true when the user toggles to source, so the caller can
-   *  render its editor instead (keeping edit/save in one place). */
+  /**
+   * Rendered-vs-source is CONTROLLED by the caller. It must not also live here:
+   * the caller swaps which FileViewer instance is mounted when it flips, so a
+   * local copy is destroyed and re-initialised on every toggle — the flag
+   * snapped straight back to false and the Source button appeared dead.
+   */
+  showSource: boolean
+  /** Called with the flag the user asked for; the caller renders its editor
+   *  when true, keeping edit/save in one place. */
   onWantsSource: (source: boolean) => void
 }) {
   const kind = viewerKindFor(path)
-  const [showSource, setShowSource] = useState(false)
   const [bin, setBin] = useState<{ base64: string; size: number; reason?: string } | null>(null)
 
   // Binary kinds need the raw bytes; text kinds already have their content.
@@ -296,16 +303,7 @@ export function FileViewer({
     }
   }, [path, kind])
 
-  useEffect(() => {
-    setShowSource(false)
-    onWantsSource(false)
-  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggle = () => {
-    const next = !showSource
-    setShowSource(next)
-    onWantsSource(next)
-  }
+  const toggle = () => onWantsSource(!showSource)
 
   if (showSource) {
     // The caller renders CodeMirror; we keep the toolbar so it can be toggled back.
