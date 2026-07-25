@@ -24,6 +24,7 @@ import {
 import { activityTone } from '../../lib/badges'
 import { badgeClasses } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
+import { InlineMd } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
 
 // Decide where clicking an activity row should take you. Priority:
@@ -323,7 +324,7 @@ export function ActivityTab({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">
-                          {e.title}
+                          <InlineMd text={e.title} />
                         </span>
                         <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
                           {reltime(e.ts)}
@@ -331,7 +332,7 @@ export function ActivityTab({
                       </div>
                       {e.detail && (
                         <div className="truncate text-[11.5px] text-zinc-500" title={e.detail}>
-                          {e.detail}
+                          <InlineMd text={e.detail} />
                         </div>
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
