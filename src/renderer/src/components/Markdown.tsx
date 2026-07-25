@@ -44,21 +44,26 @@ export function InlineMd({ text }: { text: string }): ReactNode {
           {m[3]}
         </del>,
       )
-    else if (m[4] !== undefined)
+    else if (m[4] !== undefined) {
+      // Capture the URL now. `m` is the loop's mutable exec() result and is null
+      // once the loop ends, so a handler closing over it dereferences null on
+      // click — and preventDefault has already killed the browser fallback,
+      // leaving the link dead both ways.
+      const href = m[5]
       out.push(
         <a
           key={key++}
-          href={m[5]}
+          href={href}
           onClick={(e) => {
             e.preventDefault()
-            window.gt.openExternal(m![5])
+            window.gt.openExternal(href)
           }}
           className="text-[var(--gt-accent-2)] hover:underline"
         >
           {m[4]}
         </a>,
       )
-    else if (m[6] !== undefined)
+    } else if (m[6] !== undefined)
       out.push(
         <em key={key++} className="italic">
           {m[6]}
