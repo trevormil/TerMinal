@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
+import { describeIndent, detectIndent } from '../../../../shared/indent'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
@@ -396,6 +397,32 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           </span>
         )}
       </div>
+
+      {/* breadcrumbs — the active file's path, each segment clickable to reveal
+          that folder in the tree. Also carries the detected indentation. */}
+      {activeFile && sidebar !== 'changes' && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1 text-[10.5px] text-zinc-600">
+          {activeFile.path.split('/').map((seg, i, all) => {
+            const upto = all.slice(0, i + 1).join('/')
+            const last = i === all.length - 1
+            return (
+              <span key={upto} className="flex items-center gap-1">
+                {i > 0 && <span className="text-zinc-700">/</span>}
+                <button
+                  onClick={() => !last && setSelectedDir(upto)}
+                  className={
+                    last ? 'text-zinc-300' : 'cursor-pointer transition-colors hover:text-zinc-300'
+                  }
+                >
+                  {seg}
+                </button>
+              </span>
+            )
+          })}
+          <div className="flex-1" />
+          <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* editor (left) — replaced by the working diff when Changes is active */}
