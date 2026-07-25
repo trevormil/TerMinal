@@ -3127,6 +3127,9 @@ ipcMain.handle('git:working-diff', () => {
 ipcMain.handle('git:file-at-head', (_e, rel: string) => {
   return activeDaemon().fileAtHead(rel)
 })
+ipcMain.handle('git:status-porcelain', () => {
+  return activeDaemon().statusPorcelain()
+})
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)
 })

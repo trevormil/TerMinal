@@ -38,6 +38,7 @@ import {
   gitStatus,
   getWorkingDiff,
   getFileAtHead,
+  getStatusPorcelain,
   type HeadFile,
   type GitStatus,
   type WorkingDiff,
@@ -116,6 +117,7 @@ export type WorkspaceDaemon = {
   gitStatus(): Promise<GitStatus> | GitStatus
   workingDiff(): Promise<WorkingDiff> | WorkingDiff
   fileAtHead(rel: string): Promise<HeadFile> | HeadFile
+  statusPorcelain(): Promise<string> | string
   workingStructuralDiff(
     path: string,
     width?: number,
@@ -226,6 +228,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     gitStatus: () => gitStatus(currentCwd),
     workingDiff: () => getWorkingDiff(root()),
     fileAtHead: (rel: string) => getFileAtHead(root(), rel),
+    statusPorcelain: () => getStatusPorcelain(root()),
     workingStructuralDiff: (path: string, width?: number) =>
       getWorkingStructuralDiff(root(), path, width),
     docsList: () => listDocs(root() || ''),
@@ -313,6 +316,7 @@ export function createSshWorkspaceDaemon(
       content: '',
       reason: 'Per-file diff is not supported on remote workspaces yet.',
     }),
+    statusPorcelain: () => '',
     workingStructuralDiff: (): StructuralDiffResult => ({
       ok: false,
       reason: 'error',

@@ -355,6 +355,7 @@ const gt = {
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
+  getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
   getWorkingStructuralDiff: (path: string, width?: number) =>
     ipcRenderer.invoke('git:working-structural-diff', path, width),
   getStructuralDiff: (iid: number, path: string, width?: number) =>

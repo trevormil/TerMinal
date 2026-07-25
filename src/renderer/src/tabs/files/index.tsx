@@ -15,6 +15,12 @@ import {
 import { langs } from '@uiw/codemirror-extensions-langs'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
 import { MergeDiffView } from '../../components/MergeDiffView'
+import {
+  fileStatuses,
+  statusBadge,
+  statusColor,
+  type StatusMap,
+} from '../../../../shared/git-status'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -84,6 +90,7 @@ function TreeNode({
   active,
   selectedDir,
   version,
+  statuses,
   act,
 }: {
   entry: FileEntry
@@ -91,6 +98,7 @@ function TreeNode({
   active: string | null
   selectedDir: string
   version: number
+  statuses: StatusMap
   act: NodeActions
 }) {
   const [open, setOpen] = useState(false)
@@ -127,7 +135,19 @@ function TreeNode({
           ) : null}
         </span>
         <Icon size={14} strokeWidth={2} className={`shrink-0 ${cls}`} />
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        <span
+          className={`min-w-0 flex-1 truncate ${statuses[entry.path] ? statusColor(statuses[entry.path]) : ''}`}
+        >
+          {entry.name}
+        </span>
+        {statuses[entry.path] && (
+          <span
+            title={statuses[entry.path]}
+            className={`shrink-0 font-mono text-[10px] font-bold ${statusColor(statuses[entry.path])}`}
+          >
+            {statusBadge(statuses[entry.path])}
+          </span>
+        )}
         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
           <button
             onClick={(e) => {
@@ -161,6 +181,7 @@ function TreeNode({
             active={active}
             selectedDir={selectedDir}
             version={version}
+            statuses={statuses}
             act={act}
           />
         ))}
@@ -185,6 +206,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // tab, instead of leaving for the whole-worktree diff pane.
   const [fileDiff, setFileDiff] = useState(false)
   const [headContent, setHeadContent] = useState<string | null>(null)
+  // Per-file git status for tree decorations. Polled (not watched) because an
+  // agent writing files is the common case and a 2s poll is cheap next to it.
+  const [statuses, setStatuses] = useState<StatusMap>({})
   const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
     min: 200,
     max: 640,
@@ -204,6 +228,16 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
   useEffect(() => {
     window.gt.files.list('').then(setRoots)
+  }, [ctx.repoRoot, version])
+  useEffect(() => {
+    const load = () =>
+      window.gt
+        .getStatusPorcelain()
+        .then((p) => setStatuses(fileStatuses(p)))
+        .catch(() => {})
+    load()
+    const id = setInterval(load, 2000)
+    return () => clearInterval(id)
   }, [ctx.repoRoot, version])
   useEffect(() => {
     window.gt.settings.get().then((s) => setEditorName(s.apps?.editor || 'Cursor'))
@@ -647,6 +681,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                       active={activePath}
                       selectedDir={selectedDir}
                       version={version}
+                      statuses={statuses}
                       act={nodeActs}
                     />
                   ))

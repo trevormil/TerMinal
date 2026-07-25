@@ -1947,6 +1947,8 @@ export type GtApi = {
   getWorkingDiff: () => Promise<WorkingDiff>
   /** A file's content at HEAD — the base for a per-file working diff. */
   getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+  /** Raw `git status --porcelain`, for per-file tree decorations. */
+  getStatusPorcelain: () => Promise<string>
   getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
