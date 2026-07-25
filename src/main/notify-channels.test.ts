@@ -119,7 +119,11 @@ describe('dispatchAlert', () => {
   test('a matrix override reroutes a channel', () => {
     const push = recordingChannel('push')
     // opt the phone INTO code review
-    dispatchAlert([push.ch], { kind: 'pr-merged', title: 'Merged #7' }, { push: { 'code-review': true } })
+    dispatchAlert(
+      [push.ch],
+      { kind: 'pr-merged', title: 'Merged #7' },
+      { push: { 'code-review': true } },
+    )
     expect(push.calls).toHaveLength(1)
   })
 

@@ -1,7 +1,7 @@
 {
   "name": "terminal",
   "version": "0.1.0",
-  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability — no server, no account.",
+  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability \u2014 no server, no account.",
   "author": "Trevor Miller",
   "license": "MIT",
   "repository": {
@@ -69,13 +69,9 @@
     "vite": "7.3.6"
   },
   "overrides": {
-    "@codemirror/state": "6.6.0",
-    "@codemirror/view": "6.43.0",
-    "form-data": "4.0.6",
-    "js-yaml": "4.3.0",
-    "dompurify": "3.4.11",
-    "tar": "7.5.19",
-    "brace-expansion": "5.0.7",
-    "fast-uri": "3.1.4"
+    "app-builder-lib": "26.15.6",
+    "brace-expansion": "5.0.8",
+    "builder-util-runtime": "9.7.0",
+    "postcss": "8.5.22"
   }
 }

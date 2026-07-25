@@ -31,7 +31,14 @@ describe('channelWants (phone defaults kill the spam)', () => {
     }
   })
   test('generic activity does NOT push (the reported bug)', () => {
-    for (const kind of ['ticket-filed', 'pr-verdict', 'pr-merged', 'tests-fail', 'agent-run', 'error']) {
+    for (const kind of [
+      'ticket-filed',
+      'pr-verdict',
+      'pr-merged',
+      'tests-fail',
+      'agent-run',
+      'error',
+    ]) {
       expect(channelWants('push', categoryFor({ kind }))).toBe(false)
     }
   })
