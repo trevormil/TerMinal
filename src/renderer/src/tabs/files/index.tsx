@@ -530,15 +530,18 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.repoRoot, activePath, lastCkpt])
 
-  // Enter review mode: base = the latest checkpoint's version of this file,
-  // falling back to HEAD when no checkpoint exists yet.
+  // Enter review mode. Checkpoints are POST-turn snapshots, so when the
+  // buffer still matches the newest one, diffing against it would compare the
+  // file with itself and hide exactly the edits under review — step back one
+  // checkpoint in that case. Falls back to HEAD when checkpoints can't help.
   const openReview = async () => {
     if (!activeFile) return
     const cps = await window.gt.checkpoints.list().catch(() => [])
-    if (cps.length) {
-      const r = await window.gt.checkpoints.file(cps[0].sha, activeFile.path)
-      if (r.ok)
-        return setReview({ original: r.content, label: `checkpoint ${cps[0].sha.slice(0, 7)}` })
+    for (const [i, cp] of cps.slice(0, 2).entries()) {
+      const r = await window.gt.checkpoints.file(cp.sha, activeFile.path)
+      if (!r.ok) break
+      if (i === 0 && r.content === activeFile.content) continue // self-diff — step back
+      return setReview({ original: r.content, label: `checkpoint ${cp.sha.slice(0, 7)}` })
     }
     const r = await window.gt.getFileAtHead(activeFile.path)
     setReview({ original: r.ok ? r.content : '', label: 'HEAD' })
