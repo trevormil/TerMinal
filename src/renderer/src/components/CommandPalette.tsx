@@ -50,6 +50,7 @@ export function CommandPalette({
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [mrs, setMrs] = useState<Mr[]>([])
   const [hits, setHits] = useState<{ file: string; line: number; text: string }[]>([])
+  const [checkpoints, setCheckpoints] = useState<{ sha: string; at: number; label: string }[]>([])
   const listRef = useRef<HTMLDivElement>(null)
 
   // Lazy-load the cross-cutting sources once when the palette opens.
@@ -61,6 +62,10 @@ export function CommandPalette({
     window.gt
       .listMrs()
       .then((r) => setMrs(r.mrs || []))
+      .catch(() => {})
+    window.gt.checkpoints
+      .list()
+      .then(setCheckpoints)
       .catch(() => {})
   }, [])
 
@@ -155,6 +160,27 @@ export function CommandPalette({
         run: close(() => navigateTo('tickets', { slug: t.slug })),
       })
 
+    // Roll the workspace back to any agent turn. Restoring is itself
+    // checkpointed, so this can always be undone.
+    for (const c of checkpoints.slice(0, 25))
+      out.push({
+        id: `ckpt:${c.sha}`,
+        group: 'Restore checkpoint',
+        label: c.label,
+        hint: new Date(c.at).toLocaleString(),
+        icon: Repeat,
+        run: close(async () => {
+          const r = await window.gt.checkpoints.restore(c.sha)
+          window.dispatchEvent(
+            new CustomEvent('gt.toast', {
+              detail: r.ok
+                ? `Restored to "${c.label}" — undo available`
+                : `Restore failed: ${r.error || 'unknown error'}`,
+            }),
+          )
+        }),
+      })
+
     for (const m of mrs)
       out.push({
         id: `mr:${m.iid}`,
@@ -181,7 +207,20 @@ export function CommandPalette({
         run: close(() => navigateTo('files', { path: h.file, line: h.line })),
       })
     return filtered
-  }, [tabs, sessions, activeKey, mrSym, tickets, mrs, hits, q, parsed, onActivateSession, onClose])
+  }, [
+    tabs,
+    sessions,
+    activeKey,
+    mrSym,
+    tickets,
+    mrs,
+    hits,
+    checkpoints,
+    q,
+    parsed,
+    onActivateSession,
+    onClose,
+  ])
 
   // Keep selection in range as the list shrinks/grows.
   useEffect(() => {

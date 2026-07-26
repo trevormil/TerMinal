@@ -356,6 +356,11 @@ const gt = {
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
   getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
+  checkpoints: {
+    list: () => ipcRenderer.invoke('checkpoints:list'),
+    create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
+    restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
+  },
   getWorkingStructuralDiff: (path: string, width?: number) =>
     ipcRenderer.invoke('git:working-structural-diff', path, width),
   getStructuralDiff: (iid: number, path: string, width?: number) =>
