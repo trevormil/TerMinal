@@ -110,6 +110,36 @@ export function CommandPalette({
       onClose()
     }
 
+    // `:42` — jump to a line in the file the Files tab last had open. The mode
+    // was parsed and advertised in the placeholder, but nothing ever consumed
+    // parsed.line, so typing `:42` fell through to a file search that matched
+    // nothing. It returns its own result set: ranking a line jump against tabs
+    // and tickets would bury the one thing the user explicitly asked for.
+    if (parsed.mode === 'line') {
+      const path = localStorage.getItem('gt.files.lastPath') || ''
+      if (!path)
+        return [
+          {
+            id: 'line:nofile',
+            group: 'Go to line',
+            label: 'Open a file first',
+            hint: 'the line jump applies to the active file',
+            run: () => {},
+          },
+        ]
+      if (parsed.line === undefined) return []
+      const line = parsed.line
+      return [
+        {
+          id: `line:${line}`,
+          group: 'Go to line',
+          label: `${path.split('/').pop() || path}:${line}`,
+          hint: path,
+          run: close(() => navigateTo('files', { path, line })),
+        },
+      ]
+    }
+
     out.push({
       id: 'tab:terminal',
       group: 'Tab',

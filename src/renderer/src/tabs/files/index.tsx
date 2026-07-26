@@ -18,6 +18,7 @@ import {
 import { langs } from '@uiw/codemirror-extensions-langs'
 import { langKeyFor } from '../../../../shared/languages'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
+import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
 import { MergeDiffView } from '../../components/MergeDiffView'
 import {
   fileStatuses,
@@ -200,6 +201,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // tab, instead of leaving for the whole-worktree diff pane.
   const [fileDiff, setFileDiff] = useState(false)
   const [headContent, setHeadContent] = useState<string | null>(null)
+  // Why the HEAD read failed, when it did — kept distinct from "HEAD had no
+  // such file", which is a legitimate empty original.
+  const [headErr, setHeadErr] = useState<string | null>(null)
   // Per-file git status for tree decorations. Polled (not watched) because an
   // agent writing files is the common case and a 2s poll is cheap next to it.
   const [statuses, setStatuses] = useState<StatusMap>({})
@@ -249,13 +253,24 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   }, [])
 
   // Fetch the HEAD version when the per-file diff opens (and on file change).
+  //
+  // A failure is NOT an empty original. Remote daemons answer
+  // { ok: false, reason: 'Per-file diff not supported…' }, and collapsing that
+  // to '' made every unchanged remote file render as a whole-file addition —
+  // a confidently wrong diff, which is worse than saying we can't show one.
+  // Only a successful read of a file absent from HEAD is legitimately empty.
   useEffect(() => {
     if (!fileDiff || !activeFile) return
     setHeadContent(null)
+    setHeadErr(null)
     window.gt
       .getFileAtHead(activeFile.path)
-      .then((r) => setHeadContent(r.ok ? r.content : ''))
-      .catch(() => setHeadContent(''))
+      .then((r) =>
+        r.ok
+          ? setHeadContent(r.content)
+          : setHeadErr(r.reason || 'Could not read this file at HEAD'),
+      )
+      .catch((e) => setHeadErr(String(e?.message || e) || 'Could not read this file at HEAD'))
   }, [fileDiff, activeFile?.path]) // eslint-disable-line react-hooks/exhaustive-deps
   // Leaving a file closes its diff, so the toggle never sticks across files.
   useEffect(() => setFileDiff(false), [activePath])
@@ -521,18 +536,24 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           >
             <ArrowRight size={11} strokeWidth={2} />
           </button>
-          <button
-            onClick={() => setFileDiff((d) => !d)}
-            title="Diff this file against HEAD"
-            className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 transition-colors ${
-              fileDiff
-                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                : 'hover:bg-white/5 hover:text-zinc-300'
-            }`}
-          >
-            <GitCompare size={11} strokeWidth={2} />
-            Changes
-          </button>
+          {/* Only text-backed files can be diffed. Binary kinds (image/PDF/hex)
+              come in through readBinary and their `content` is an empty string,
+              so offering Changes here produced an all-deleted diff of a file
+              that has not changed at all. */}
+          {!needsBinaryRead(viewerKindFor(activeFile.path)) && (
+            <button
+              onClick={() => setFileDiff((d) => !d)}
+              title="Diff this file against HEAD"
+              className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 transition-colors ${
+                fileDiff
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                  : 'hover:bg-white/5 hover:text-zinc-300'
+              }`}
+            >
+              <GitCompare size={11} strokeWidth={2} />
+              Changes
+            </button>
+          )}
           <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
         </div>
       )}
@@ -551,7 +572,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               Can't open {activeFile.path} — {activeFile.err}
             </div>
           ) : fileDiff ? (
-            headContent === null ? (
+            headErr ? (
+              <div className="p-6 text-[12px] text-zinc-600">{headErr}</div>
+            ) : headContent === null ? (
               <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
             ) : (
               <MergeDiffView

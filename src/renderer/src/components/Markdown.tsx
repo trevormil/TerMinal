@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js/lib/common'
 import { Mermaid } from './Mermaid'
 import { splitFrontmatter } from '../../../shared/frontmatter'
+import { parseInline } from '../../../shared/inline-md'
 
 // Lightweight INLINE markdown for compact, high-volume rows (the Activity feed).
 // react-markdown is too heavy to run per-row across a streaming list, and its
@@ -11,76 +12,61 @@ import { splitFrontmatter } from '../../../shared/frontmatter'
 // spans — `code`, **bold**, *italic*, ~~strike~~, [text](url) — on one line, so
 // it slots inside a `truncate` container. Block syntax (headings, bullets) is
 // flattened to plain text.
-const INLINE_RE =
-  /`([^`]+)`|\*\*([^*]+?)\*\*|~~([^~]+?)~~|\[([^\]]+?)\]\((https?:\/\/[^)\s]+)\)|(?<![\w*])\*([^*\n]+?)\*(?![\w*])|(?<![\w_])_([^_\n]+?)_(?![\w_])/g
-
+//
+// The parsing lives in src/shared/inline-md.ts so it can be unit-tested without
+// a DOM; this component only maps tokens to elements.
 export function InlineMd({ text }: { text: string }): ReactNode {
-  // Collapse to one line + strip a leading heading marker so a `## Title` detail
-  // doesn't render its hashes.
-  const clean = text.replace(/\s*\n+\s*/g, ' ').replace(/^\s*#{1,6}\s+/, '')
-  const out: ReactNode[] = []
-  let last = 0
-  let key = 0
-  let m: RegExpExecArray | null
-  INLINE_RE.lastIndex = 0
-  while ((m = INLINE_RE.exec(clean))) {
-    if (m.index > last) out.push(clean.slice(last, m.index))
-    if (m[1] !== undefined)
-      out.push(
-        <code
-          key={key++}
-          className="rounded bg-black/30 px-1 font-mono text-[0.9em] text-[var(--gt-accent-2)]"
-        >
-          {m[1]}
-        </code>,
-      )
-    else if (m[2] !== undefined)
-      out.push(
-        <strong key={key++} className="font-semibold text-zinc-100">
-          {m[2]}
-        </strong>,
-      )
-    else if (m[3] !== undefined)
-      out.push(
-        <del key={key++} className="opacity-60">
-          {m[3]}
-        </del>,
-      )
-    else if (m[4] !== undefined) {
-      // Capture the URL now. `m` is the loop's mutable exec() result and is null
-      // once the loop ends, so a handler closing over it dereferences null on
-      // click — and preventDefault has already killed the browser fallback,
-      // leaving the link dead both ways.
-      const href = m[5]
-      out.push(
-        <a
-          key={key++}
-          href={href}
-          onClick={(e) => {
-            e.preventDefault()
-            window.gt.openExternal(href)
-          }}
-          className="text-[var(--gt-accent-2)] hover:underline"
-        >
-          {m[4]}
-        </a>,
-      )
-    } else if (m[6] !== undefined)
-      out.push(
-        <em key={key++} className="italic">
-          {m[6]}
-        </em>,
-      )
-    else if (m[7] !== undefined)
-      out.push(
-        <em key={key++} className="italic">
-          {m[7]}
-        </em>,
-      )
-    last = m.index + m[0].length
-  }
-  if (last < clean.length) out.push(clean.slice(last))
-  return <>{out}</>
+  return (
+    <>
+      {parseInline(text).map((t, i) => {
+        switch (t.kind) {
+          case 'code':
+            return (
+              <code
+                key={i}
+                className="rounded bg-black/30 px-1 font-mono text-[0.9em] text-[var(--gt-accent-2)]"
+              >
+                {t.text}
+              </code>
+            )
+          case 'bold':
+            return (
+              <strong key={i} className="font-semibold text-zinc-100">
+                {t.text}
+              </strong>
+            )
+          case 'strike':
+            return (
+              <del key={i} className="opacity-60">
+                {t.text}
+              </del>
+            )
+          case 'italic':
+            return (
+              <em key={i} className="italic">
+                {t.text}
+              </em>
+            )
+          case 'link':
+            return (
+              <a
+                key={i}
+                href={t.href}
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.gt.openExternal(t.href)
+                }}
+                className="text-[var(--gt-accent-2)] hover:underline"
+              >
+                {t.text}
+              </a>
+            )
+          default:
+            return <span key={i}>{t.text}</span>
+        }
+      })}
+    </>
+  )
 }
 
 function highlighted(code: string, className?: string): string {
