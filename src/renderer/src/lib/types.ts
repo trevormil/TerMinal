@@ -1956,6 +1956,10 @@ export type GtApi = {
     list: () => Promise<{ sha: string; at: number; label: string }[]>
     create: (label: string) => Promise<{ ok: boolean; sha: string }>
     restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
+    /** A file's content at a checkpoint ('' where it didn't exist). */
+    file: (sha: string, rel: string) => Promise<{ ok: boolean; content: string }>
+    /** Line ranges a checkpoint touched per file — the AI-attribution source. */
+    ranges: (sha: string) => Promise<Record<string, { from: number; to: number }[]>>
   }
   getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>

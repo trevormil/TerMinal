@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderTree,
   ChevronDown,
@@ -13,7 +13,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Copy,
+  MessageSquarePlus,
   Replace,
+  Send,
+  Sparkles,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
@@ -36,9 +39,23 @@ import { contentToWrite, minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
+import { ReviewEditsView } from '../../components/ReviewEditsView'
 import { fileIcon } from '../../lib/fileIcons'
 import { WorkingDiffView } from '../../components/WorkingDiffView'
-import { onNavigate } from '../../lib/nav'
+import { navigateTo, onNavigate } from '../../lib/nav'
+import { frameInitialInput } from '../../lib/pty-input'
+import {
+  aiAttribution,
+  linesToRanges,
+  loadAttr,
+  recordAttr,
+  saveAttr,
+} from '../../lib/aiAttribution'
+import {
+  buildRevisionPrompt,
+  reanchorLine,
+  type ReviewComment,
+} from '../../../../shared/review-comments'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
@@ -422,6 +439,14 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // Live EditorViews by path, so a formatter result can be dispatched as one
   // minimal change (cursor + scroll survive) instead of a full re-render.
   const views = useRef<Record<string, EditorView>>({})
+  // Review mode (0049): the agent's edits as red/green chunks with per-hunk
+  // accept/reject, against the latest checkpoint (or HEAD when none exists).
+  const [review, setReview] = useState<{ original: string; label: string } | null>(null)
+  // Line-pinned comments across files, batched into one revision prompt.
+  const [comments, setComments] = useState<ReviewComment[]>([])
+  // Latest checkpoint sha — bumps re-seed the attribution gutter.
+  const [lastCkpt, setLastCkpt] = useState('')
+  const ckptRef = useRef<string | null>(null)
 
   const activeFile = open.find((f) => f.path === activePath) || null
   const bump = () => setVersion((v) => v + 1)
@@ -448,6 +473,29 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     const id = setInterval(load, 2000)
     return () => clearInterval(id)
   }, [ctx.repoRoot, version])
+  // Watch for new agent-turn checkpoints and fold their changed line ranges
+  // into the local attribution store (never git — see aiAttribution.ts).
+  useEffect(() => {
+    ckptRef.current = null
+    const root = ctx.repoRoot
+    if (!root) return
+    const check = async () => {
+      const cps = await window.gt.checkpoints.list().catch(() => [])
+      const latest = cps[0]?.sha || ''
+      if (ckptRef.current === latest) return
+      const first = ckptRef.current === null
+      ckptRef.current = latest
+      // The checkpoints that existed before this tab opened are history, not
+      // news — only attribute turns that land while we're watching.
+      if (first || !latest) return
+      const ranges = await window.gt.checkpoints.ranges(latest).catch(() => ({}))
+      recordAttr(root, ranges)
+      setLastCkpt(latest)
+    }
+    check()
+    const id = setInterval(check, 3000)
+    return () => clearInterval(id)
+  }, [ctx.repoRoot])
   useEffect(() => {
     window.gt.settings.get().then((s) => {
       setEditorName(s.apps?.editor || 'Cursor')
@@ -455,12 +503,64 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   }, [])
 
-  // Leaving a file closes its diff and any compare, so neither sticks across
+  // Leaving a file closes its diff, compare, and review, so none stick across
   // files.
   useEffect(() => {
     setFileDiff(false)
     setCompare(null)
+    setReview(null)
   }, [activePath])
+
+  // The attribution gutter for the active file. Rebuilt when a new checkpoint
+  // lands; user edits into marked lines clear + persist through onChange.
+  const attrExt = useMemo<Extension[]>(() => {
+    const root = ctx.repoRoot
+    if (!root || !activePath) return []
+    const ranges = loadAttr(root)[activePath]
+    if (!ranges?.length) return []
+    const path = activePath
+    return [
+      aiAttribution(ranges, (lines) => {
+        const store = loadAttr(root)
+        if (lines.length) store[path] = linesToRanges(lines)
+        else delete store[path]
+        saveAttr(root, store)
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.repoRoot, activePath, lastCkpt])
+
+  // Enter review mode: base = the latest checkpoint's version of this file,
+  // falling back to HEAD when no checkpoint exists yet.
+  const openReview = async () => {
+    if (!activeFile) return
+    const cps = await window.gt.checkpoints.list().catch(() => [])
+    if (cps.length) {
+      const r = await window.gt.checkpoints.file(cps[0].sha, activeFile.path)
+      if (r.ok)
+        return setReview({ original: r.content, label: `checkpoint ${cps[0].sha.slice(0, 7)}` })
+    }
+    const r = await window.gt.getFileAtHead(activeFile.path)
+    setReview({ original: r.ok ? r.content : '', label: 'HEAD' })
+  }
+
+  // Send every pinned comment as ONE revision prompt to this session's agent.
+  // Comments re-anchor by line text first, so a pin survives the file having
+  // shifted underneath it.
+  const sendComments = () => {
+    if (!comments.length) return
+    const anchored = comments.map((c) => {
+      const buf = open.find((f) => f.path === c.file)
+      if (!buf) return c
+      const line = reanchorLine(c, buf.content.split('\n'))
+      return line === null ? c : { ...c, line }
+    })
+    window.gt.pty.input(ctx.sessionId, frameInitialInput(buildRevisionPrompt(anchored)))
+    // Submit after the paste settles, mirroring the phone-spawn seed path.
+    window.setTimeout(() => window.gt.pty.input(ctx.sessionId, '\r'), 300)
+    setComments([])
+    navigateTo('terminal')
+  }
 
   const patch = (path: string, p: Partial<OpenFile>) =>
     setOpen((o) => o.map((f) => (f.path === path ? { ...f, ...p } : f)))
@@ -840,7 +940,51 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               Changes
             </button>
           )}
+          {!needsBinaryRead(viewerKindFor(activeFile.path)) && !activeFile.err && (
+            <button
+              onClick={() => (review ? setReview(null) : openReview())}
+              title="Review agent edits — per-hunk accept/reject vs the last checkpoint"
+              className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 transition-colors ${
+                review
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                  : 'hover:bg-white/5 hover:text-zinc-300'
+              }`}
+            >
+              <Sparkles size={11} strokeWidth={2} />
+              Review
+            </button>
+          )}
           <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
+        </div>
+      )}
+
+      {/* pinned review comments — batched into ONE revision prompt (0049) */}
+      {comments.length > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-accent)]/5 px-3 py-1 text-[11px]">
+          <MessageSquarePlus size={12} strokeWidth={2} className="shrink-0 text-zinc-400" />
+          <span className="min-w-0 flex-1 truncate text-zinc-400">
+            {comments.length} pinned comment{comments.length === 1 ? '' : 's'} ·{' '}
+            {comments
+              .slice(0, 3)
+              .map((c) => `${base(c.file)}:${c.line}`)
+              .join(' · ')}
+            {comments.length > 3 ? ' · …' : ''}
+          </span>
+          <button
+            onClick={sendComments}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--gt-accent)]/20 px-2 py-0.5 font-medium text-zinc-100"
+            title="Send every comment to the agent as one revision prompt"
+          >
+            <Send size={11} strokeWidth={2} />
+            Send to agent
+          </button>
+          <button
+            onClick={() => setComments([])}
+            className="flex shrink-0 items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+            title="Discard comments"
+          >
+            <X size={11} strokeWidth={2} />
+          </button>
         </div>
       )}
 
@@ -855,6 +999,20 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             )
           ) : compare && activeFile ? (
             <CompareView a={compare} b={activeFile.path} onClose={() => setCompare(null)} />
+          ) : review && activeFile && !activeFile.err ? (
+            <ReviewEditsView
+              path={activeFile.path}
+              content={activeFile.content}
+              original={review.original}
+              baseLabel={review.label}
+              extensions={langFor(activeFile.path)}
+              onContentChange={(v) => {
+                patch(activeFile.path, { content: v, dirty: true })
+                scheduleSave(activeFile.path, v)
+              }}
+              onClose={() => setReview(null)}
+              onComment={(c) => setComments((cs) => [...cs, { ...c, file: activeFile.path }])}
+            />
           ) : !activeFile ? (
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
               Select a file to edit.
@@ -900,7 +1058,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     patch(activeFile.path, { content: v, dirty: true })
                     scheduleSave(activeFile.path, v)
                   }}
-                  extensions={langFor(activeFile.path)}
+                  extensions={[...langFor(activeFile.path), ...attrExt]}
                   scrollToLine={activeFile.scrollLine}
                   onView={(v) => (views.current[activeFile.path] = v)}
                 />

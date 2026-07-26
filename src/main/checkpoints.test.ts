@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   checkpointDir,
+  checkpointChangedRanges,
   createCheckpoint,
+  fileAtCheckpoint,
   listCheckpoints,
   parseCheckpointLog,
   restoreCheckpoint,
@@ -128,6 +130,43 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(() =>
       execFileSync('git', ['-C', ws, 'rev-parse', 'HEAD'], { stdio: 'ignore' }),
     ).toThrow() // no commits were made there
+  })
+
+  test('reads a file at a checkpoint, and empty where it did not exist', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'v1\n')
+    const v1 = createCheckpoint(ws, 'v1').sha
+    writeFileSync(join(ws, 'a.txt'), 'v2\n')
+    writeFileSync(join(ws, 'b.txt'), 'new\n')
+    const v2 = createCheckpoint(ws, 'v2').sha
+
+    expect(fileAtCheckpoint(ws, v1, 'a.txt')).toEqual({ ok: true, content: 'v1\n' })
+    expect(fileAtCheckpoint(ws, v2, 'a.txt')).toEqual({ ok: true, content: 'v2\n' })
+    expect(fileAtCheckpoint(ws, v1, 'b.txt')).toEqual({ ok: true, content: '' })
+    // traversal + junk shas refused
+    expect(fileAtCheckpoint(ws, v1, '../escape').ok).toBe(false)
+    expect(fileAtCheckpoint(ws, 'HEAD; rm -rf', 'a.txt').ok).toBe(false)
+  })
+
+  test('reports the line ranges a checkpoint touched (AI attribution)', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'one\ntwo\nthree\n')
+    createCheckpoint(ws, 'base')
+    writeFileSync(join(ws, 'a.txt'), 'one\nTWO CHANGED\nthree\nfour added\n')
+    const turn = createCheckpoint(ws, 'agent turn').sha
+
+    const ranges = checkpointChangedRanges(ws, turn)
+    expect(ranges['a.txt']).toEqual([
+      { from: 2, to: 2 },
+      { from: 4, to: 4 },
+    ])
+  })
+
+  test('the very first checkpoint attributes every line', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'x\ny\n')
+    const first = createCheckpoint(ws, 'first').sha
+    expect(checkpointChangedRanges(ws, first)['a.txt']).toEqual([{ from: 1, to: 2 }])
   })
 
   test('unknown workspace or sha fails cleanly', () => {
