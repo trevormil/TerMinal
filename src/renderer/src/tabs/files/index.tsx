@@ -361,6 +361,10 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const save = async () => {
     if (!activeFile || activeFile.err) return
     let content = activeFile.content
+    // An already-scheduled autosave holds this same (now superseded) content —
+    // left alone it could fire after the formatted write below and clobber it
+    // with the stale pre-format text.
+    clearTimeout(saveTimers.current[activeFile.path])
     // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
     // the formatter never fights mid-typing). Skipped silently when the
     // project has no prettier or prettier doesn't own the file.
