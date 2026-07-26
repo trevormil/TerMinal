@@ -142,6 +142,34 @@ export function checkpointChangedRanges(
   }
 }
 
+export type ReviewBase = { ok: true; sha: string; content: string } | { ok: false }
+
+/**
+ * The baseline Review mode should diff the current buffer against.
+ *
+ * Checkpoints are POST-turn snapshots, so when the newest one touched this
+ * file, its PARENT is the base that shows that turn's edits — picking the
+ * newest itself would hide them behind any later local edit (or diff the
+ * file against itself when there were none). When the last turn left the
+ * file alone, the newest checkpoint is the right base for showing local
+ * drift; when even that matches the buffer, checkpoints have nothing to
+ * show and the caller falls back to HEAD.
+ */
+export function reviewBaseFor(repoRoot: string, rel: string, buffer: string): ReviewBase {
+  const cps = listCheckpoints(repoRoot, 2)
+  if (!cps.length) return { ok: false }
+  const newest = fileAtCheckpoint(repoRoot, cps[0].sha, rel)
+  if (!newest.ok) return { ok: false }
+  if (cps.length > 1) {
+    const prev = fileAtCheckpoint(repoRoot, cps[1].sha, rel)
+    if (prev.ok && prev.content !== newest.content) {
+      return { ok: true, sha: cps[1].sha, content: prev.content }
+    }
+  }
+  if (newest.content !== buffer) return { ok: true, sha: cps[0].sha, content: newest.content }
+  return { ok: false }
+}
+
 /**
  * Restore the working tree to a checkpoint.
  *

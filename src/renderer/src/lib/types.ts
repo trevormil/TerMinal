@@ -1960,6 +1960,11 @@ export type GtApi = {
     file: (sha: string, rel: string) => Promise<{ ok: boolean; content: string }>
     /** Line ranges a checkpoint touched per file — the AI-attribution source. */
     ranges: (sha: string) => Promise<Record<string, { from: number; to: number }[]>>
+    /** The checkpoint baseline Review mode should diff `buffer` against. */
+    reviewBase: (
+      rel: string,
+      buffer: string,
+    ) => Promise<{ ok: true; sha: string; content: string } | { ok: false }>
   }
   getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>

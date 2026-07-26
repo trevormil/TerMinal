@@ -403,6 +403,7 @@ import {
   fileAtCheckpoint,
   listCheckpoints,
   restoreCheckpoint,
+  reviewBaseFor,
 } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 import { resolveWithin } from './path-guard'
@@ -3172,6 +3173,9 @@ ipcMain.handle('checkpoints:file', (_e, sha: string, rel: string) =>
 )
 ipcMain.handle('checkpoints:ranges', (_e, sha: string) =>
   checkpointChangedRanges(activeDaemon().repoRoot(), sha),
+)
+ipcMain.handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
+  reviewBaseFor(activeDaemon().repoRoot(), rel, buffer),
 )
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)

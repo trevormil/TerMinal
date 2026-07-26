@@ -530,19 +530,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.repoRoot, activePath, lastCkpt])
 
-  // Enter review mode. Checkpoints are POST-turn snapshots, so when the
-  // buffer still matches the newest one, diffing against it would compare the
-  // file with itself and hide exactly the edits under review — step back one
-  // checkpoint in that case. Falls back to HEAD when checkpoints can't help.
+  // Enter review mode. The baseline choice lives in main (reviewBaseFor,
+  // tested against real git): the parent of the last agent turn that touched
+  // this file, so the turn's edits stay visible even under later local edits.
+  // HEAD is the fallback when checkpoints have nothing to show.
   const openReview = async () => {
     if (!activeFile) return
-    const cps = await window.gt.checkpoints.list().catch(() => [])
-    for (const [i, cp] of cps.slice(0, 2).entries()) {
-      const r = await window.gt.checkpoints.file(cp.sha, activeFile.path)
-      if (!r.ok) break
-      if (i === 0 && r.content === activeFile.content) continue // self-diff — step back
-      return setReview({ original: r.content, label: `checkpoint ${cp.sha.slice(0, 7)}` })
-    }
+    const base = await window.gt.checkpoints
+      .reviewBase(activeFile.path, activeFile.content)
+      .catch(() => ({ ok: false as const }))
+    if (base.ok)
+      return setReview({ original: base.content, label: `checkpoint ${base.sha.slice(0, 7)}` })
     const r = await window.gt.getFileAtHead(activeFile.path)
     setReview({ original: r.ok ? r.content : '', label: 'HEAD' })
   }
