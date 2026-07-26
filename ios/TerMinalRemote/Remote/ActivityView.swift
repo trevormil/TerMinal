@@ -71,6 +71,19 @@ struct ActivityView: View {
     }
 }
 
+/// Render the inline markdown agents write (**bold**, `code`, [links]) rather
+/// than showing the raw asterisks. Collapsed to one line and inline-only, so a
+/// multi-line body still fits a compact row; falls back to plain text if the
+/// markdown doesn't parse.
+func inlineMarkdown(_ s: String) -> AttributedString {
+    let flat = s.replacingOccurrences(of: "\n", with: " ")
+        .replacingOccurrences(of: #"^\s*#{1,6}\s+"#, with: "", options: .regularExpression)
+    return (try? AttributedString(
+        markdown: flat,
+        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+        ?? AttributedString(s)
+}
+
 private struct ActivityRow: View {
     let item: ActivityItem
 
@@ -84,10 +97,10 @@ private struct ActivityRow: View {
                     .frame(width: 20)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
+                    Text(inlineMarkdown(item.title))
                         .font(GT.sans(13, .medium)).foregroundStyle(GT.text).lineLimit(2)
                     if let detail = item.detail, !detail.isEmpty {
-                        Text(detail)
+                        Text(inlineMarkdown(detail))
                             .font(GT.sans(11)).foregroundStyle(GT.textMuted).lineLimit(2)
                     }
                     if let repo = item.repo, !repo.isEmpty {
