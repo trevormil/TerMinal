@@ -3680,6 +3680,9 @@ ipcMain.handle('files:list', (_e, rel: string) => {
 ipcMain.handle('files:read', (_e, rel: string) => {
   return activeDaemon().filesRead(rel)
 })
+ipcMain.handle('files:readBinary', (_e, rel: string) => {
+  return activeDaemon().filesReadBinary(rel)
+})
 ipcMain.handle('files:write', (_e, rel: string, content: string) => {
   return activeDaemon().filesWrite(rel, content)
 })

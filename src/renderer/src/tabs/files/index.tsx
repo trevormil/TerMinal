@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
+import { FileViewer, hasViewer } from '../../components/FileViewer'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
@@ -175,6 +176,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
+  // A viewer-backed file (markdown/csv/svg/...) can toggle to its raw source,
+  // which hands rendering back to CodeMirror so edit/save stay in one place.
+  const [viewerSource, setViewerSource] = useState(false)
   const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
     min: 200,
     max: 640,
@@ -402,21 +406,43 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
               Select a file to edit.
             </div>
-          ) : activeFile.err ? (
+          ) : activeFile.err && !hasViewer(activeFile.path) ? (
             <div className="p-6 text-[12px] text-zinc-600">
               Can't open {activeFile.path} — {activeFile.err}
             </div>
-          ) : (
-            <CodeEditor
+          ) : hasViewer(activeFile.path) && !viewerSource ? (
+            // Rendered viewer (markdown/image/pdf/csv/svg/binary). This runs
+            // even when the utf8 read failed — an image legitimately fails that
+            // read and is loaded through the binary channel instead.
+            <FileViewer
               key={activeFile.path}
-              value={activeFile.content}
-              onChange={(v) => {
-                patch(activeFile.path, { content: v, dirty: true })
-                scheduleSave(activeFile.path, v)
-              }}
-              extensions={langFor(activeFile.path)}
-              scrollToLine={activeFile.scrollLine}
+              path={activeFile.path}
+              text={activeFile.content}
+              onWantsSource={setViewerSource}
             />
+          ) : (
+            <div className="flex h-full min-h-0 flex-col">
+              {hasViewer(activeFile.path) && (
+                <FileViewer
+                  key={`${activeFile.path}:src`}
+                  path={activeFile.path}
+                  text={activeFile.content}
+                  onWantsSource={setViewerSource}
+                />
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  key={activeFile.path}
+                  value={activeFile.content}
+                  onChange={(v) => {
+                    patch(activeFile.path, { content: v, dirty: true })
+                    scheduleSave(activeFile.path, v)
+                  }}
+                  extensions={langFor(activeFile.path)}
+                  scrollToLine={activeFile.scrollLine}
+                />
+              </div>
+            </div>
           )}
         </div>
 
