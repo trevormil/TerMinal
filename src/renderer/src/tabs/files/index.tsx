@@ -10,6 +10,9 @@ import {
   FolderPlus,
   ExternalLink,
   GitCompare,
+  ArrowLeft,
+  ArrowRight,
+  Copy,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
@@ -121,6 +124,26 @@ function TreeNode({
           <button
             onClick={(e) => {
               e.stopPropagation()
+              navigator.clipboard.writeText(entry.path)
+            }}
+            title="Copy relative path"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          >
+            <Copy size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.gt.files.reveal(entry.path)
+            }}
+            title="Reveal in Finder"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          >
+            <ExternalLink size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
               act.onRename(entry.path)
             }}
             title="Rename"
@@ -178,6 +201,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // Per-file git status for tree decorations. Polled (not watched) because an
   // agent writing files is the common case and a 2s poll is cheap next to it.
   const [statuses, setStatuses] = useState<StatusMap>({})
+  // Back/forward across files — the editor-location stack every IDE has, and
+  // the thing you miss instantly when it's absent. Held in a ref so pushing a
+  // visit never re-renders.
+  const history = useRef<{ stack: string[]; at: number }>({ stack: [], at: -1 })
+  const [, bumpHistory] = useState(0)
   const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
     min: 200,
     max: 640,
@@ -227,8 +255,23 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const patch = (path: string, p: Partial<OpenFile>) =>
     setOpen((o) => o.map((f) => (f.path === path ? { ...f, ...p } : f)))
 
-  const openFile = async (path: string, line?: number) => {
+  const openFile = async (path: string, line?: number, fromHistory = false) => {
     setActivePath(path)
+    // The palette's `@` (symbols) mode outlines whichever file is open here.
+    try {
+      localStorage.setItem('gt.files.lastPath', path)
+    } catch {
+      /* storage disabled */
+    }
+    if (!fromHistory) {
+      const h = history.current
+      // Truncate any forward entries — a new visit forks the timeline.
+      if (h.stack[h.at] !== path) {
+        h.stack = [...h.stack.slice(0, h.at + 1), path]
+        h.at = h.stack.length - 1
+        bumpHistory((n) => n + 1)
+      }
+    }
     if (open.some((f) => f.path === path)) {
       if (line) patch(path, { scrollLine: line })
       return
@@ -440,6 +483,36 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             )
           })}
           <div className="flex-1" />
+          <button
+            onClick={() => {
+              const h = history.current
+              if (h.at > 0) {
+                h.at--
+                bumpHistory((n) => n + 1)
+                openFile(h.stack[h.at], undefined, true)
+              }
+            }}
+            disabled={history.current.at <= 0}
+            title="Back"
+            className="inline-flex cursor-pointer items-center rounded px-1 py-0.5 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-default disabled:opacity-30"
+          >
+            <ArrowLeft size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={() => {
+              const h = history.current
+              if (h.at < h.stack.length - 1) {
+                h.at++
+                bumpHistory((n) => n + 1)
+                openFile(h.stack[h.at], undefined, true)
+              }
+            }}
+            disabled={history.current.at >= history.current.stack.length - 1}
+            title="Forward"
+            className="inline-flex cursor-pointer items-center rounded px-1 py-0.5 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-default disabled:opacity-30"
+          >
+            <ArrowRight size={11} strokeWidth={2} />
+          </button>
           <button
             onClick={() => setFileDiff((d) => !d)}
             title="Diff this file against HEAD"
