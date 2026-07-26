@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
+import { MergeDiffView } from '../../components/MergeDiffView'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -180,6 +181,10 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // A viewer-backed file (markdown/csv/svg/...) can toggle to its raw source,
   // which hands rendering back to CodeMirror so edit/save stay in one place.
   const [viewerSource, setViewerSource] = useState(false)
+  // Per-file "Changes View" (Orca): diff THIS file against HEAD inside its own
+  // tab, instead of leaving for the whole-worktree diff pane.
+  const [fileDiff, setFileDiff] = useState(false)
+  const [headContent, setHeadContent] = useState<string | null>(null)
   const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
     min: 200,
     max: 640,
@@ -203,6 +208,18 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   useEffect(() => {
     window.gt.settings.get().then((s) => setEditorName(s.apps?.editor || 'Cursor'))
   }, [])
+
+  // Fetch the HEAD version when the per-file diff opens (and on file change).
+  useEffect(() => {
+    if (!fileDiff || !activeFile) return
+    setHeadContent(null)
+    window.gt
+      .getFileAtHead(activeFile.path)
+      .then((r) => setHeadContent(r.ok ? r.content : ''))
+      .catch(() => setHeadContent(''))
+  }, [fileDiff, activeFile?.path]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving a file closes its diff, so the toggle never sticks across files.
+  useEffect(() => setFileDiff(false), [activePath])
 
   const patch = (path: string, p: Partial<OpenFile>) =>
     setOpen((o) => o.map((f) => (f.path === path ? { ...f, ...p } : f)))
@@ -420,6 +437,18 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             )
           })}
           <div className="flex-1" />
+          <button
+            onClick={() => setFileDiff((d) => !d)}
+            title="Diff this file against HEAD"
+            className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 transition-colors ${
+              fileDiff
+                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                : 'hover:bg-white/5 hover:text-zinc-300'
+            }`}
+          >
+            <GitCompare size={11} strokeWidth={2} />
+            Changes
+          </button>
           <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
         </div>
       )}
@@ -437,6 +466,16 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <div className="p-6 text-[12px] text-zinc-600">
               Can't open {activeFile.path} — {activeFile.err}
             </div>
+          ) : fileDiff ? (
+            headContent === null ? (
+              <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
+            ) : (
+              <MergeDiffView
+                original={headContent}
+                modified={activeFile.content}
+                extensions={langFor(activeFile.path)}
+              />
+            )
           ) : hasViewer(activeFile.path) && !viewerSource ? (
             // Rendered viewer (markdown/image/pdf/csv/svg/binary). This runs
             // even when the utf8 read failed — an image legitimately fails that
