@@ -206,6 +206,7 @@ export function EntryScreen({
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
   const [engine, setEngine] = useState<SessionEngine>('local')
+  const [scratchEngine, setScratchEngine] = useState<SessionEngine>('claude')
   const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
@@ -576,21 +577,30 @@ export function EntryScreen({
                   <span className="font-mono">~/.config/TerMinal/scratch</span>, no repo attached
                 </div>
               </div>
-              <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {(['claude', 'codex', 'cursor', 'hermes', 'local'] as SessionEngine[]).map((e) => (
-                  <button
-                    key={e}
-                    onClick={() => startScratch(e)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                  >
-                    {e === 'local' ? (
-                      <SquareTerminal size={13} strokeWidth={2} className="shrink-0" />
-                    ) : (
-                      <EngineLogo engine={e} size={13} />
-                    )}
-                    {sessionEngineLabel(e)}
-                  </button>
-                ))}
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                {scratchEngine === 'local' ? (
+                  <SquareTerminal size={14} strokeWidth={2} className="shrink-0 text-zinc-400" />
+                ) : (
+                  <EngineLogo engine={scratchEngine} size={14} />
+                )}
+                <select
+                  value={scratchEngine}
+                  onChange={(e) => setScratchEngine(e.target.value as SessionEngine)}
+                  aria-label="Scratch session engine"
+                  className={sel}
+                >
+                  {engineOptions.map((e) => (
+                    <option key={e} value={e}>
+                      {sessionEngineLabel(e)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => startScratch(scratchEngine)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90"
+                >
+                  Start
+                </button>
               </div>
             </div>
             {mode === 'single' && (
