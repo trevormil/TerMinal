@@ -44,6 +44,26 @@ describe('detectIndent', () => {
     const src = ['\tstray', 'a', '  b', '    c', '  d', '    e'].join('\n')
     expect(detectIndent(src).useTabs).toBe(false)
   })
+
+  // Counting each *distinct* width once let a single wrapped-argument line
+  // carry the same weight as the entire rest of the file: widths {4, 6} vote
+  // 4 once and 2 once, and the smaller-width tie-break then picked 2 — so a
+  // 4-space file indented at 2.
+  test('a lone wrapped continuation does not outvote the dominant indent', () => {
+    const src = [
+      'def f():',
+      '    value = call(',
+      '      wrapped_arg,',
+      '    )',
+      '    return value',
+    ].join('\n')
+    expect(detectIndent(src)).toEqual({ useTabs: false, width: 4 })
+  })
+
+  test('a genuinely 2-space file still wins against a few deeper lines', () => {
+    const src = ['a', '  b', '  c', '  d', '    e', '    f', '      g'].join('\n')
+    expect(detectIndent(src)).toEqual({ useTabs: false, width: 2 })
+  })
 })
 
 describe('indentUnitFor / describeIndent', () => {

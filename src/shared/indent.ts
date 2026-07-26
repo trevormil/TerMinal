@@ -39,11 +39,20 @@ export function detectIndent(text: string, fallback: IndentStyle = DEFAULT_INDEN
 
   // Count the gaps between successive indent widths, plus each first-level
   // indent, and take the most frequent.
+  //
+  // Each gap is WEIGHTED by how many lines actually sit at that width. Counting
+  // each distinct width once instead let a single wrapped-argument line (one
+  // line at 6 in an otherwise 4-space file) carry as much weight as the entire
+  // rest of the file, and the smaller-width tie-break below then picked 2.
+  const lineCount = new Map<number, number>()
+  for (const n of spaceIndents) lineCount.set(n, (lineCount.get(n) || 0) + 1)
+
   const votes = new Map<number, number>()
-  const sorted = [...new Set(spaceIndents)].sort((a, b) => a - b)
+  const sorted = [...lineCount.keys()].sort((a, b) => a - b)
   for (let i = 0; i < sorted.length; i++) {
     const diff = i === 0 ? sorted[0] : sorted[i] - sorted[i - 1]
-    if (diff >= 2 && diff <= 8) votes.set(diff, (votes.get(diff) || 0) + 1)
+    if (diff >= 2 && diff <= 8)
+      votes.set(diff, (votes.get(diff) || 0) + (lineCount.get(sorted[i]) || 1))
   }
   if (!votes.size) return fallback
 
