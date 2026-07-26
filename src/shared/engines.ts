@@ -124,8 +124,12 @@ export const ENGINES = {
   },
   opencode: {
     id: 'opencode',
-    label: 'opencode',
-    vendor: 'opencode · any provider',
+    // Their own wordmark is lowercase, but every other engine reads as a proper
+    // noun in the picker ("Claude", "Cursor", "Hermes") and a lone lowercase
+    // entry looked like a rendering bug. The id stays lowercase — it is the
+    // binary name and the persisted value.
+    label: 'Opencode',
+    vendor: 'Opencode · any provider',
     // Installs to ~/.opencode/bin and is often NOT on a login shell's PATH.
     bin: { name: 'opencode', candidates: ['~/.opencode/bin/opencode'] },
     models: [],

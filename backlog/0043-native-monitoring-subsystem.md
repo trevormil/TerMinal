@@ -1,14 +1,14 @@
 ---
 id: 43
 title: "Native Monitoring subsystem — dedicated daemon, own tab, control-plane parity, replaces check-status"
-status: backlog
+status: closed
 priority: high
 horizon: next
 hitl: false
 type: feature
 source: manual
 created: 2026-07-24
-updated: 2026-07-24
+updated: 2026-07-25
 prs: []
 refs:
   - bin/terminal-cron
@@ -97,3 +97,10 @@ per-user customizable; nothing stack-specific (e.g. Kubernetes) in core.
 Split into a few reviewable PRs (daemon+contract+CLI, desktop tab, bridge+mobile,
 parity/migration) — do NOT recreate the #124 mega-PR. See the retro note about
 branch discipline.
+
+## Update (2026-07-25)
+
+**Done** — shipped: monitors.ts + the bin/terminal-monitor daemon under
+launchd, its own Monitoring tab, a /v1/monitors bridge route, and the phone
+view. The old check-status contract was removed. control.trevormil.com was
+subsequently migrated onto it (60 monitors) and scaled to 0.

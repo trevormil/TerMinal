@@ -1,14 +1,14 @@
 ---
 id: 42
 title: "schedules.json torn writes — make all writers atomic (tmp + rename) with a lock"
-status: backlog
+status: closed
 priority: high
 horizon: next
 hitl: false
 type: bug
 source: manual
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-25
 prs: []
 refs:
   - src/main/schedules.ts
@@ -49,3 +49,13 @@ Found during the health-checks e2e (2026-07-23): wiring three new schedules
 while the app was running truncated the file to 3 of 8 entries. Same pattern
 likely applies to `hitl.json` (app + terminal-cli + MCP server all write it) —
 audit it in the same pass.
+
+## Update (2026-07-25)
+
+**Done** — src/main/atomic-write.ts provides writeFileAtomic / writeJsonAtomic
+(temp beside the target + rename(2), temp cleaned up on failure), applied to
+schedules.json, hitl.json, monitors.json, and remote-session metadata.
+
+monitors.ts turned out to carry a latent bug: it wrote `<file>.tmp` and then
+wrote `<file>` directly, so the temp was never renamed and the real write was
+not atomic at all. Both lines are now one writeJsonAtomic call.

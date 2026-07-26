@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { writeJsonAtomic } from './atomic-write'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -119,7 +120,7 @@ export function readSchedules(now = Date.now()): Schedule[] {
 function write(list: Schedule[]): boolean {
   try {
     mkdirSync(dirname(FILE), { recursive: true })
-    writeFileSync(FILE, JSON.stringify(list, null, 2))
+    writeJsonAtomic(FILE, list)
     return true
   } catch {
     return false

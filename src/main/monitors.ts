@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { writeJsonAtomic } from './atomic-write'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -124,9 +125,7 @@ export function readMonitors(file = MONITORS_FILE): Monitor[] {
 
 export function writeMonitors(list: Monitor[], file = MONITORS_FILE): void {
   mkdirSync(CFG, { recursive: true })
-  const tmp = `${file}.tmp`
-  writeFileSync(tmp, JSON.stringify(list, null, 2))
-  writeFileSync(file, JSON.stringify(list, null, 2))
+  writeJsonAtomic(file, list)
 }
 
 export function readMonitorStatus(id: string, dir = MONITOR_STATE_DIR): MonitorStatus | null {

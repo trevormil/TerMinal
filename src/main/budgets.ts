@@ -206,6 +206,10 @@ export function maybeCrossedThreshold(): { crossed: number; spent: number; cap: 
       .map(([m, v]) => `${m} $${v.usd.toFixed(2)}`)
       .join(', ')}`,
     source: 'manual',
+    // The cap being *reached* refuses new spawns — that's a block, it wants you
+    // now. An intermediate warn ("50% of today's budget") changes nothing and
+    // needs no action; it belongs in the inbox, not on your phone.
+    severity: crossed >= 1 ? 'urgent' : 'normal',
   })
   return { crossed, spent: summary.totalUsd, cap: b.dailyTotalUsd }
 }

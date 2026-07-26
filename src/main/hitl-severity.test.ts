@@ -19,6 +19,18 @@ describe('itemSeverity', () => {
     expect(defaultSeverity('cron-fail')).toBe('urgent')
     expect(defaultSeverity('manual')).toBe('urgent')
   })
+
+  it('defaults a recurring-pattern digest to normal — inbox-worthy, not a buzz', () => {
+    expect(defaultSeverity('review-pattern')).toBe('normal')
+  })
+
+  it('the normal tier is reachable from a real producer, so the middle threshold differs', () => {
+    // The whole point of ticket 0038: before a producer emitted 'normal',
+    // threshold 'normal' behaved identically to threshold 'urgent'.
+    const sev = defaultSeverity('review-pattern')
+    expect(shouldNotify(sev, 'urgent')).toBe(false)
+    expect(shouldNotify(sev, 'normal')).toBe(true)
+  })
 })
 
 describe('shouldNotify', () => {

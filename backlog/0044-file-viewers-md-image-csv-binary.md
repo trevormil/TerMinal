@@ -1,7 +1,7 @@
 ---
 id: 44
 title: "File viewers: markdown preview, images, CSV/TSV tables, JSON folding, binary hex fallback"
-status: backlog
+status: closed
 priority: high
 horizon: now
 hitl: false
@@ -47,3 +47,10 @@ Batch of viewers, picked by extension with a raw-source toggle on each:
 - Markdown preview scroll-syncs both directions without feedback loops.
 - A binary file NEVER renders as text.
 - Unknown extensions still fall through to the existing editor unchanged.
+
+## Update (2026-07-25)
+
+**Done** — PR #137: markdown preview, image viewer with zoom, native PDF,
+sortable/filterable CSV/TSV tables, SVG, and an offset/hex/ASCII dump for
+binaries, each with a source toggle. PR #143 added frontmatter rendering and
+mermaid diagrams to the markdown path.

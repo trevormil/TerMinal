@@ -1,7 +1,7 @@
 ---
 id: 46
 title: "Navigation: fuzzy quick-open with modes, symbol outline, back/forward history, project-wide search"
-status: backlog
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -50,3 +50,11 @@ widget with mode prefixes, the way VS Code and Orca both do it.
 - Back/forward survives edits (positions don't drift onto the wrong line).
 - Replace-across-files shows a preview and can be applied partially.
 - Clicking `src/main/index.ts:412` in agent output opens that exact line.
+
+## Update (2026-07-25)
+
+Ranked fuzzy quick-open with `>`/`@`/`:`/`#` modes, gitignored-second-tier
+ranking, and file:line ref extraction shipped in PR #139; the symbol outline
+and back/forward history in PR #144.
+
+**Remaining:** project-wide search & replace with a per-match preview.

@@ -1,14 +1,14 @@
 ---
 id: 20
 title: "Formatted per-agent run logs (structured, not a wall of text) — Runs, CI, all run views"
-status: in-progress
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-17
+updated: 2026-07-25
 prs:
   - https://github.com/trevormil/TerMinal/pull/91
 refs: []
@@ -49,3 +49,8 @@ scheduled/cron runs, and forge CI job logs. Keep a raw-text fallback (and a
   next layer on top of that.
 - Consider reusing the observability transcript parsing (data.ts) for Claude
   sessions where a real transcript exists.
+
+## Update (2026-07-25)
+
+**Done** — src/shared/run-log/ provides per-engine adapters plus parse/
+sanitize, so run logs render as structured events rather than a wall of text.

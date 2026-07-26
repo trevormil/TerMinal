@@ -1,14 +1,14 @@
 ---
 id: 19
 title: "Additional alert-manager channels beyond Telegram (Slack / email / desktop / webhook)"
-status: in-progress
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: brainstorm
 created: 2026-07-09
-updated: 2026-07-17
+updated: 2026-07-25
 prs: ["https://github.com/trevormil/TerMinal/pull/90"]
 refs: []
 depends_on: []
@@ -46,3 +46,10 @@ delivery fans out to all enabled channels with per-channel failure isolation.
   follow-up.
 - Reuse the existing `emitActivity` kinds (done/blocked/question/info) as the
   channel-agnostic event shape.
+
+## Update (2026-07-25)
+
+**Done** — desktop, outbound webhook (covers Slack/Discord incoming webhooks),
+and iOS push all ship as NotifyChannels alongside Telegram, with per-channel
+failure isolation. PR #126 went further and added per-channel × per-category
+routing on top.

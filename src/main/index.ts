@@ -399,6 +399,7 @@ import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
 import { createCheckpoint, listCheckpoints, restoreCheckpoint } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
+import { resolveWithin } from './path-guard'
 import { modelArgs, resumeArgs } from '../shared/engines'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -3141,11 +3142,12 @@ ipcMain.handle('git:status-porcelain', () => {
 })
 ipcMain.handle('files:reveal', (_e, rel: string) => {
   // Resolve against the workspace root and refuse anything that escapes it —
-  // the renderer must not be able to reveal arbitrary filesystem paths.
-  const root = activeDaemon().filesRoot()
-  if (!root || typeof rel !== 'string') return false
-  const abs = join(root, rel)
-  if (!abs.startsWith(root)) return false
+  // the renderer must not be able to reveal arbitrary filesystem paths. This
+  // has to be resolveWithin and not a startsWith prefix test: with root
+  // /tmp/repo, `../repo-private/x` normalises to /tmp/repo-private/x, which
+  // shares the prefix but is a different directory.
+  const abs = resolveWithin(activeDaemon().filesRoot(), rel)
+  if (!abs) return false
   shell.showItemInFolder(abs)
   return true
 })
