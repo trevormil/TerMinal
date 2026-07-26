@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 /// Certificate pinning for the bridge.
 ///
@@ -34,13 +35,18 @@ enum PinnedTrust {
 /// but some URLSession call paths consult the TASK-level method instead (the
 /// old SSE `bytes(for:)` path failed its handshake for exactly this reason).
 /// The app polls now, but implementing both keeps every path pinned.
-final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
+    @unchecked Sendable
+{
     private let fingerprint: String
 
     /// Set when a challenge was refused for a fingerprint mismatch. URLSession
     /// surfaces that refusal as `.cancelled` (-999), indistinguishable from an
     /// ordinary Task cancellation — this flag lets the client tell them apart.
-    private(set) var rejectedPin = false
+    /// Written from URLSession's delegate queue and read from the client's
+    /// actor, so it lives behind a lock rather than being a bare var.
+    private let rejectedPinState = OSAllocatedUnfairLock(initialState: false)
+    var rejectedPin: Bool { rejectedPinState.withLock { $0 } }
 
     init(fingerprint: String) {
         self.fingerprint = fingerprint
@@ -72,7 +78,7 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskD
             // Wrong certificate: could be a stale pairing after the Mac
             // regenerated its identity, or someone impersonating the bridge.
             // Either way, refuse — never fall back to default handling.
-            rejectedPin = true
+            rejectedPinState.withLock { $0 = true }
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }

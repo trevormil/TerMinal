@@ -1,14 +1,14 @@
 ---
 id: 40
 title: "Remote messages endpoint re-reads the whole session log per poll"
-status: backlog
+status: in-progress
 priority: low
 horizon: later
 hitl: false
 type: refactor
 source: manual
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-26
 prs: []
 refs:
   - src/main/remote-sessions.ts

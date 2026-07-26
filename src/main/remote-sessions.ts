@@ -1,8 +1,12 @@
 import {
   appendFileSync,
+  closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -157,28 +161,60 @@ export function listRemoteSessions(dir: string = REMOTE_DIR): RemoteSession[] {
   })
 }
 
+// The phone polls /messages every ~2s, so parsing the whole append-only log
+// each tick is O(session length) per poll. Remember how far each log has been
+// parsed and only decode bytes appended since.
+type LogCursor = { offset: number; messages: RemoteMessage[] }
+const logCursors = new Map<string, LogCursor>()
+
+/** Test hook: total lines JSON-parsed, to assert polls stay incremental. */
+export const __remoteLogStats = { linesParsed: 0 }
+
 export function readMessages(
   id: string,
   opts: { after?: number } = {},
   dir: string = REMOTE_DIR,
 ): RemoteMessage[] {
   if (!isValidRemoteId(id)) return []
-  let raw = ''
+  const path = logPath(id, dir)
+  let fd: number
   try {
-    raw = readFileSync(logPath(id, dir), 'utf8')
+    fd = openSync(path, 'r')
   } catch {
+    logCursors.delete(path)
     return []
   }
-  const out: RemoteMessage[] = []
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue
-    try {
-      out.push(JSON.parse(line) as RemoteMessage)
-    } catch {
-      // The log is appended to live; a torn final line is normal.
+  try {
+    const size = fstatSync(fd).size
+    let cursor = logCursors.get(path)
+    // A shrunken file means the log was rewritten, not appended — start over.
+    if (!cursor || size < cursor.offset) cursor = { offset: 0, messages: [] }
+    if (size > cursor.offset) {
+      const buf = Buffer.alloc(size - cursor.offset)
+      const read = readSync(fd, buf, 0, buf.length, cursor.offset)
+      const chunk = buf.subarray(0, read)
+      // Consume only complete lines; a torn final line is normal while the
+      // agent is appending and gets re-read once its newline lands. Safe on
+      // UTF-8 since 0x0a never appears inside a multi-byte sequence.
+      const end = chunk.lastIndexOf(0x0a)
+      if (end !== -1) {
+        for (const line of chunk.subarray(0, end).toString('utf8').split('\n')) {
+          if (!line.trim()) continue
+          __remoteLogStats.linesParsed++
+          try {
+            cursor.messages.push(JSON.parse(line) as RemoteMessage)
+          } catch {
+            // A corrupt line is dropped, exactly as the full re-parse did.
+          }
+        }
+        cursor.offset += end + 1
+      }
     }
+    logCursors.set(path, cursor)
+    return cursor.messages.slice(Math.max(0, opts.after ?? 0))
+  } finally {
+    closeSync(fd)
   }
-  return out.slice(Math.max(0, opts.after ?? 0))
 }
 
 export function messageCount(id: string, dir: string = REMOTE_DIR): number {
@@ -282,6 +318,7 @@ export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSe
 export function deleteRemoteSession(id: string, dir: string = REMOTE_DIR): boolean {
   if (!isValidRemoteId(id)) return false
   let removed = false
+  logCursors.delete(logPath(id, dir))
   for (const p of [metaPath(id, dir), logPath(id, dir)]) {
     if (existsSync(p)) {
       rmSync(p, { force: true })
