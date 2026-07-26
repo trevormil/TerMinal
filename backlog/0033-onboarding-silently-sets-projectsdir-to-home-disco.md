@@ -1,16 +1,15 @@
 ---
 id: 33
 title: "Onboarding silently sets projectsDir to home, discovering zero repos for nested layouts"
-status: open
+status: closed
 priority: medium
 horizon: now
 hitl: false
 type: ux
 source: Discovered live 2026-07-18 while registering cfo-ai (~/workspace/cfo-ai) with the harness
 created: 2026-07-18
-updated: 2026-07-18
-prs:
-  - "https://github.com/trevormil/TerMinal/pull/109"
+updated: 2026-07-26
+prs: []
 refs: []
 depends_on: []
 agent_id: 1000x-ai-engineer

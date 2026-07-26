@@ -1,14 +1,14 @@
 ---
 id: 46
 title: "Navigation: fuzzy quick-open with modes, symbol outline, back/forward history, project-wide search"
-status: in-progress
+status: open
 priority: high
 horizon: now
 hitl: false
 type: feature
 source: manual
 created: 2026-07-25
-updated: 2026-07-25
+updated: 2026-07-26
 prs: []
 refs:
   - src/renderer/src/components/CommandPalette.tsx

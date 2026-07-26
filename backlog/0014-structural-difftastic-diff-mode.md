@@ -9,8 +9,7 @@ type: feature
 source: manual
 created: 2026-07-07
 updated: 2026-07-09
-prs:
-  - https://github.com/trevormil/TerMinal/pull/2
+prs: []
 refs: []
 depends_on: []
 agent_id: perf-pass
