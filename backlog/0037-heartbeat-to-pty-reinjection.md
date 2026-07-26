@@ -1,14 +1,14 @@
 ---
 id: 37
 title: "Retire the never-die heartbeat in favor of app-side pty re-injection"
-status: backlog
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: refactor
 source: manual
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-25
 prs: []
 refs:
   - src/main/bridge/server.ts
@@ -51,3 +51,12 @@ staying alive.
 
 Separate subsystem from the iOS UI — deliberately NOT bundled into the Active-tab
 follow-up. Touches the desktop never-die machinery and needs its own e2e pass.
+
+## Resolution (2026-07-25)
+
+**Superseded** by the harness-agnostic listener shipped in PR #130. Non-Claude engines
+(Codex/Cursor/Hermes/opencode) now receive phone messages via app-side pty injection
+instead of a Stop hook — the mechanism this ticket asked for. Claude deliberately keeps
+its Stop hook: while parked it is suspended and cannot read pty input, so injection
+wouldn't reach it. Removing that remaining hourly heartbeat turn is the only piece left
+and is not worth its own ticket until it actually bites.

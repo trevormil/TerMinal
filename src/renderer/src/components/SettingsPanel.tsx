@@ -67,7 +67,13 @@ import type {
   BridgeTailscale,
 } from '../lib/types'
 import qrcode from 'qrcode-generator'
-import { engineLabel, ENGINE_MODELS, ENGINE_VENDOR, engineAllowsCustomModel } from '../lib/engines'
+import {
+  engineLabel,
+  ENGINE_MODELS,
+  ENGINE_VENDOR,
+  engineAllowsCustomModel,
+  ENGINE_IDS,
+} from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
 import { ACCENT_SWATCHES, THEMES } from '../lib/themes'
 import { EngineModelPicker } from './EngineModelPicker'
@@ -90,14 +96,11 @@ const emptyDaemon = (): DaemonCfg => ({
   worktreesDir: '',
   harnessDir: '',
   templateRepo: '',
-  engines: {
-    codex: { path: '', defaultModel: '', baseUrl: '' },
-    claude: { path: '', defaultModel: '', baseUrl: '' },
-    cursor: { path: '', defaultModel: '', baseUrl: '' },
-    openrouter: { path: '', defaultModel: '', baseUrl: '' },
-    hermes: { path: '', defaultModel: '', baseUrl: '' },
-    'openai-compat': { path: '', defaultModel: '', baseUrl: '' },
-  },
+  // Derived from the registry — this was the third hand-written copy of the
+  // per-engine defaults (main had two more).
+  engines: Object.fromEntries(
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+  ) as DaemonCfg['engines'],
   defaultEngine: 'claude',
   forge: 'auto',
 })
@@ -118,17 +121,9 @@ const mergeDaemon = (
 ): DaemonCfg => ({
   ...base,
   ...patch,
-  engines: {
-    codex: { ...base.engines.codex, ...(patch.engines?.codex || {}) },
-    claude: { ...base.engines.claude, ...(patch.engines?.claude || {}) },
-    cursor: { ...base.engines.cursor, ...(patch.engines?.cursor || {}) },
-    openrouter: { ...base.engines.openrouter, ...(patch.engines?.openrouter || {}) },
-    hermes: { ...base.engines.hermes, ...(patch.engines?.hermes || {}) },
-    'openai-compat': {
-      ...base.engines['openai-compat'],
-      ...(patch.engines?.['openai-compat'] || {}),
-    },
-  },
+  engines: Object.fromEntries(
+    ENGINE_IDS.map((id) => [id, { ...base.engines[id], ...(patch.engines?.[id] || {}) }]),
+  ) as DaemonCfg['engines'],
 })
 
 function Section({

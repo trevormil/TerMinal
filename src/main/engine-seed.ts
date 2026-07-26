@@ -9,48 +9,36 @@
 // one-shot — so we pass the prompt at launch and the engine ingests it as its
 // first turn, deterministically and provider-agnostically.
 //
-// Verified from each CLI's --help:
-//   claude "<prompt>"        positional; "-p/--print for non-interactive"
-//   codex "<prompt>"         positional [PROMPT]; forwarded to the interactive CLI
-//   cursor-agent "<prompt>"  positional; "Initial prompt for the agent"
-//   hermes --tui -z "<p>"    -z PROMPT flag
-//   openrouter/openai-compat inherit their harness (codex → positional, hermes → -z)
+// The per-engine shapes now live in the shared registry (src/shared/engines.ts)
+// alongside every other engine fact; these wrappers keep the call sites stable.
+import { engineSupportsSeed, seedArgs } from '../shared/engines'
 
 /** Which engines can be seeded at launch. `local` is a bare shell — no agent, no
  *  prompt semantics — so it can't. */
 export function engineSupportsLaunchSeed(engine: string): boolean {
-  switch (engine) {
-    case 'claude':
-    case 'codex':
-    case 'cursor':
-    case 'hermes':
-    case 'openrouter':
-    case 'openai-compat':
-      return true
-    default:
-      return false
-  }
+  return engineSupportsSeed(engine)
 }
 
-/** The args that make `engine` start an interactive session already seeded with
- *  `prompt` as the first turn. Appended AFTER the engine's own flags. */
+/**
+ * The args that make `engine` start an interactive session already seeded with
+ * `prompt` as the first turn. Appended AFTER the engine's own flags.
+ *
+ * Verified from each CLI's --help:
+ *   claude "<prompt>"        positional; "-p/--print for non-interactive"
+ *   codex "<prompt>"         positional [PROMPT]; forwarded to the interactive CLI
+ *   cursor-agent "<prompt>"  positional; "Initial prompt for the agent"
+ *   opencode --prompt "<p>"  "--prompt   prompt to use" (the TUI is the default cmd)
+ *   hermes --tui -z "<p>"    -z PROMPT flag
+ *   openrouter/openai-compat inherit their harness (codex → positional, hermes → -z)
+ */
 export function engineInitialPromptArgs(
   engine: string,
   prompt: string,
   harness: 'codex' | 'hermes' = 'codex',
 ): string[] {
   if (!prompt) return []
-  switch (engine) {
-    case 'claude':
-    case 'codex':
-    case 'cursor':
-    case 'openai-compat':
-      return [prompt]
-    case 'hermes':
-      return ['-z', prompt]
-    case 'openrouter':
-      return harness === 'hermes' ? ['-z', prompt] : [prompt]
-    default:
-      return []
-  }
+  // OpenRouter's interactive shape follows whichever harness actually runs it,
+  // so it can't be a static registry fact.
+  if (engine === 'openrouter') return harness === 'hermes' ? ['-z', prompt] : [prompt]
+  return seedArgs(engine, prompt)
 }

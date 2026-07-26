@@ -398,6 +398,7 @@ import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
+import { modelArgs, resumeArgs } from '../shared/engines'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -666,6 +667,16 @@ function startSession(key: string, opts: StartOpts) {
       'never',
     )
     if (defaultModel) args.push('-m', defaultModel)
+  } else if (engine === 'opencode') {
+    // opencode starts its TUI by default; `-s <id>` continues a session. Model
+    // (`-m provider/model`) and the launch seed (`--prompt`) come from the
+    // registry below, so this branch only owns session-id policy.
+    if (opts.mode === 'resume' && opts.sessionId) {
+      sessionId = opts.sessionId
+      args.push(...resumeArgs('opencode', sessionId))
+    } else {
+      sessionId = opts.sessionId || randomUUID()
+    }
   } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
@@ -675,7 +686,9 @@ function startSession(key: string, opts: StartOpts) {
     if (opts.name) args.push('--name', opts.name)
   }
   if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
-  // hermes/openrouter/openai-compat push their own `-m` above; everyone else takes --model.
+  // Model flag comes from the registry (--model vs -m vs none) instead of the
+  // negative list this replaced, which silently gave any new engine `--model`.
+  // hermes/openrouter/openai-compat already pushed their own `-m` above.
   if (
     defaultModel &&
     engine !== 'local' &&
@@ -683,7 +696,7 @@ function startSession(key: string, opts: StartOpts) {
     engine !== 'openrouter' &&
     engine !== 'openai-compat'
   )
-    args.push('--model', defaultModel)
+    args.push(...modelArgs(engine, defaultModel))
   // For interactive OpenRouter/openai-compat the binary is the harness (codex/
   // hermes), not the one-shot or-agent.
   const openrouterLaunchBin =

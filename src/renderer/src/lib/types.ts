@@ -457,8 +457,9 @@ export type DocsTree = {
   categories: { id: DocCategory; label: string; items: DocEntry[] }[]
 }
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
-export type SessionEngine = Engine | 'local'
+// From the shared registry — was a third copy of the same union.
+export type Engine = import('../../../shared/engines').EngineId
+export type SessionEngine = import('../../../shared/engines').SessionEngineId
 export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
