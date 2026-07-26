@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Compass, Repeat, Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
 import type { Tab, Mr, Ticket } from '../lib/types'
+import { fuzzyRank, parseQuickOpen } from '../../../shared/fuzzy'
 import { navigateTo } from '../lib/nav'
 import { sessionEngineLabel } from '../lib/engines'
 
@@ -28,19 +29,6 @@ type Item = {
 const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
 const base = (cwd: string) => cwd.split('/').filter(Boolean).pop() || cwd
-
-// Subsequence match (cheap fuzzy): every char of the query appears in order.
-function matches(q: string, text: string): boolean {
-  if (!q) return true
-  const t = text.toLowerCase()
-  let i = 0
-  for (const c of q.toLowerCase()) {
-    i = t.indexOf(c, i)
-    if (i === -1) return false
-    i++
-  }
-  return true
-}
 
 export function CommandPalette({
   tabs,
@@ -76,9 +64,13 @@ export function CommandPalette({
       .catch(() => {})
   }, [])
 
+  // One input, five modes (VS Code convention): `>` commands, `@` symbols,
+  // `:42` line, `#` project search, anything else = files/everything.
+  const parsed = useMemo(() => parseQuickOpen(q), [q])
+
   // Debounced content search — only when the query is substantial.
   useEffect(() => {
-    const term = q.trim()
+    const term = parsed.mode === 'search' ? parsed.term : parsed.mode === 'files' ? parsed.term : ''
     if (term.length < 2) {
       setHits([])
       return
@@ -90,7 +82,7 @@ export function CommandPalette({
         .catch(() => setHits([]))
     }, 160)
     return () => clearTimeout(id)
-  }, [q])
+  }, [parsed])
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
@@ -172,9 +164,13 @@ export function CommandPalette({
         run: close(() => navigateTo('mrs', { iid: m.iid })),
       })
 
-    // Static items are filtered by the fuzzy query; search hits are already
-    // query-derived so they pass through verbatim.
-    const filtered = out.filter((it) => matches(q.trim(), `${it.label} ${it.hint || ''}`))
+    // Static items are RANKED by the shared fuzzy scorer, not merely filtered —
+    // ordering is what makes a palette usable, and the old boolean subsequence
+    // test left the right answer buried among dozens of incidental matches.
+    // Search hits are already query-derived, so they pass through verbatim.
+    const filtered = fuzzyRank(parsed.term, out, (it) => `${it.label} ${it.hint || ''}`, {
+      limit: 60,
+    }).map((r) => r.item)
     for (const h of hits)
       filtered.push({
         id: `hit:${h.file}:${h.line}`,
@@ -185,7 +181,7 @@ export function CommandPalette({
         run: close(() => navigateTo('files', { path: h.file, line: h.line })),
       })
     return filtered
-  }, [tabs, sessions, activeKey, mrSym, tickets, mrs, hits, q, onActivateSession, onClose])
+  }, [tabs, sessions, activeKey, mrSym, tickets, mrs, hits, q, parsed, onActivateSession, onClose])
 
   // Keep selection in range as the list shrinks/grows.
   useEffect(() => {
@@ -235,7 +231,7 @@ export function CommandPalette({
               setSel(0)
             }}
             onKeyDown={onKey}
-            placeholder="Jump to a tab, session, ticket, MR, or search files…"
+            placeholder="Jump to anything — or > commands · @ symbols · :42 line · # search"
             className="w-full bg-transparent text-[14px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
           />
         </div>
