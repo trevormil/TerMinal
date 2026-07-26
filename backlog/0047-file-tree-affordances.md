@@ -9,7 +9,8 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/152
 refs:
   - src/renderer/src/tabs/files/index.tsx
 depends_on: []
