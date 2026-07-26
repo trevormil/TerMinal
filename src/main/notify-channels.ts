@@ -198,6 +198,7 @@ export function createPushChannel(
     title: string
     body: string
     threadKey?: string
+    hitlId?: string
     badge?: number
   }) => void | Promise<void>,
   openHitlCount: () => number,
@@ -219,6 +220,11 @@ export function createPushChannel(
         // A run id doubles as the session key for session-sourced alerts, which
         // is what the app routes on.
         threadKey: refs.runId,
+        // …but an inbox alert (a completion hook, a block) is NOT a registered
+        // remote session, so threadKey alone left the phone with nothing to
+        // resolve and a tap opened the app to a blank state. Send the hitlId so
+        // it can land on the Inbox item the notification is actually about.
+        hitlId: refs.hitlId,
         badge: openHitlCount(),
       })
     },

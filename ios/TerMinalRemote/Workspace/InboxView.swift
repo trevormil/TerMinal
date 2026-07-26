@@ -45,6 +45,9 @@ final class InboxViewModel {
 /// of subjects; tap one to read the full body.
 struct InboxView: View {
     @State var model: InboxViewModel
+    /// Item a tapped notification named. The list scrolls to it once loaded so
+    /// the alert lands on the thing it was about, not just the tab.
+    var focusedId: String?
 
     private var shown: [HitlItem] { model.items }
 
@@ -52,6 +55,7 @@ struct InboxView: View {
         ZStack {
             GT.bg.ignoresSafeArea()
             // A real List (not a LazyVStack) so rows get native swipe actions.
+            ScrollViewReader { proxy in
             List {
                 if let error = model.error {
                     GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
@@ -68,6 +72,7 @@ struct InboxView: View {
                     // Chevron lives INSIDE the card (InboxRow draws it); the
                     // native List accessory is suppressed by hiding the link.
                     InboxRow(item: item)
+                        .id(item.id)
                         .background(
                             NavigationLink {
                                 InboxDetailView(item: item, model: model)
@@ -106,10 +111,14 @@ struct InboxView: View {
                         }
                 }
             }
+            .onChange(of: focusedId) { _, id in scrollTo(id, proxy) }
+            .onChange(of: model.items.count) { _, _ in scrollTo(focusedId, proxy) }
+            .task { scrollTo(focusedId, proxy) }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
+            }
         }
         .navigationTitle("Inbox")
         .navigationBarTitleDisplayMode(.large)
@@ -131,6 +140,14 @@ struct InboxView: View {
                 }
             }
         }
+    }
+
+    /// Bring a notification's item into view once the feed contains it. A no-op
+    /// when the id is absent — the alert still landed on the Inbox, which is
+    /// the point.
+    private func scrollTo(_ id: String?, _ proxy: ScrollViewProxy) {
+        guard let id, model.items.contains(where: { $0.id == id }) else { return }
+        withAnimation { proxy.scrollTo(id, anchor: .center) }
     }
 }
 

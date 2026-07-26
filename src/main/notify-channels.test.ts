@@ -414,4 +414,35 @@ describe('push channel', () => {
     expect(sent[0].body).toBe('HITL · approve deploy')
     expect(sent[1].body).toBe('all green')
   })
+
+  // A completion-hook / inbox alert is NOT a registered remote session, so the
+  // phone had nothing to route on: threadKey carried a run id that never
+  // matched a session, and hitlId — the thing the notification is actually
+  // about — was dropped entirely. Tapping opened the app to nothing.
+  test('an inbox alert carries its hitlId so the phone can land somewhere', async () => {
+    const sent: { hitlId?: string; threadKey?: string }[] = []
+    const ch = createPushChannel(
+      () => true,
+      (input) => {
+        sent.push(input)
+      },
+      () => 0,
+    )
+    await ch.send('blocked', 'HITL · approve deploy', 'needs you', { hitlId: 'h-42' })
+    expect(sent[0].hitlId).toBe('h-42')
+  })
+
+  test('a session alert still carries its threadKey', async () => {
+    const sent: { hitlId?: string; threadKey?: string }[] = []
+    const ch = createPushChannel(
+      () => true,
+      (input) => {
+        sent.push(input)
+      },
+      () => 0,
+    )
+    await ch.send('done', 'Run finished', 'all green', { runId: 'run-7' })
+    expect(sent[0].threadKey).toBe('run-7')
+    expect(sent[0].hitlId).toBeUndefined()
+  })
 })

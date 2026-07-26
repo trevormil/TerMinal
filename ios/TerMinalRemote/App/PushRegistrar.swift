@@ -23,8 +23,10 @@ final class PushRegistrar: NSObject {
     /// Set once a pairing exists, so the token has somewhere to go.
     var client: BridgeClient?
     private(set) var authorized = false
-    /// Thread key from a tapped notification, consumed by the UI to deep-link.
-    var pendingThreadKey: String?
+    /// Where a tapped notification wants to go, consumed once by the UI.
+    /// Always non-nil after a tap — see NotificationRoute: every alert resolves
+    /// to a destination, falling back to the Inbox rather than to nothing.
+    var pendingRoute: NotificationRoute?
 
     private var lastToken: String?
 
@@ -79,10 +81,8 @@ extension PushRegistrar: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        let info = response.notification.request.content.userInfo
-        if let key = info["threadKey"] as? String, !key.isEmpty {
-            await MainActor.run { self.pendingThreadKey = key }
-        }
+        let route = NotificationRoute(userInfo: response.notification.request.content.userInfo)
+        await MainActor.run { self.pendingRoute = route }
     }
 }
 
