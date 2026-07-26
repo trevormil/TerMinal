@@ -9,7 +9,8 @@ type: refactor
 source: manual
 created: 2026-07-23
 updated: 2026-07-26
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/150
 refs:
   - src/main/remote-sessions.ts
 depends_on: [34]
