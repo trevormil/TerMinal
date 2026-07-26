@@ -673,6 +673,14 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const movePath = async (from: string, toDir: string) => {
     const dest = moveTargetFor(from, toDir)
     if (!dest) return
+    // Flush pending autosaves for anything being moved FIRST — a debounced
+    // write firing after the rename would recreate the old path on disk.
+    for (const f of open) {
+      if (f.path !== from && !f.path.startsWith(from + '/')) continue
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
+      if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    }
     if (await window.gt.files.rename(from, dest)) {
       const remap = (p: string) =>
         p === from ? dest : p.startsWith(from + '/') ? dest + p.slice(from.length) : p
