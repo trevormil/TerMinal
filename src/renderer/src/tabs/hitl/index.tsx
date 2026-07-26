@@ -1,14 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  ArrowLeft,
-  Check,
-  Mail,
-  X,
-  Trash2,
-  ListChecks,
-  SquareTerminal,
-  Ticket,
-} from 'lucide-react'
+import { ArrowLeft, Check, Mail, X, Trash2, ListChecks, SquareTerminal, Ticket } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
