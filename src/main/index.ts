@@ -3723,6 +3723,15 @@ ipcMain.handle('files:write', (_e, rel: string, content: string) => {
 ipcMain.handle('files:search', (_e, q: string) => {
   return activeDaemon().filesSearch(q)
 })
+ipcMain.handle('files:format', (_e, rel: string, content: string) => {
+  return activeDaemon().filesFormat(rel, content)
+})
+ipcMain.handle(
+  'files:replace',
+  (_e, q: string, replacement: string, targets: { file: string; line: number }[]) => {
+    return activeDaemon().filesReplace(q, replacement, targets)
+  },
+)
 ipcMain.handle('workspace:search', (_e, q: string, kinds?: WorkspaceSearchKind[]) => {
   return activeDaemon().search(q, kinds)
 })

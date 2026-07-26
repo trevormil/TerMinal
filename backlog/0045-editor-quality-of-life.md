@@ -1,7 +1,7 @@
 ---
 id: 45
 title: "Editor quality-of-life: multi-cursor, regex find/replace, sticky scroll, breadcrumbs, format-on-save"
-status: open
+status: in-progress
 priority: medium
 horizon: now
 hitl: false
@@ -51,3 +51,9 @@ matching, indentation auto-detect, and breadcrumbs shipped in PR #138.
 
 **Remaining:** sticky scroll (no CM6 core equivalent — needs a custom
 viewport + syntax-tree overlay) and format-on-save.
+
+## Update (2026-07-26)
+
+Sticky scroll (indentation-walk scope headers, shared/sticky.ts + a CM6 top
+panel) and opt-in format-on-save (project-local prettier via
+Settings → External apps) shipped in PR #151. Ticket complete pending merge.

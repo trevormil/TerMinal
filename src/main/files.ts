@@ -179,6 +179,116 @@ export function removeEntry(root: string, rel: string): boolean {
   }
 }
 
+export type ReplaceTarget = { file: string; line: number }
+export type ReplaceResult = { files: number; replaced: number; skipped: number }
+
+/**
+ * Apply a project-wide search & replace to specific (file, line) targets from
+ * a prior search. Literal and case-insensitive, mirroring searchRepo's
+ * `git grep -F -i`. A target line that no longer contains the query (the file
+ * changed since the search) is skipped rather than blindly rewritten.
+ */
+export async function replaceInFiles(
+  root: string,
+  query: string,
+  replacement: string,
+  targets: ReplaceTarget[],
+): Promise<ReplaceResult> {
+  const { replaceInLine } = await import('../shared/replace')
+  const byFile = new Map<string, number[]>()
+  const result: ReplaceResult = { files: 0, replaced: 0, skipped: 0 }
+  if (!query) return result
+  for (const t of targets) {
+    if (!byFile.has(t.file)) byFile.set(t.file, [])
+    byFile.get(t.file)!.push(t.line)
+  }
+  for (const [rel, lineNos] of byFile) {
+    const abs = safe(root, rel)
+    if (!abs || !existsSync(abs)) {
+      result.skipped += lineNos.length
+      continue
+    }
+    const read = readFile(root, rel)
+    if (!read.ok) {
+      result.skipped += lineNos.length
+      continue
+    }
+    const lines = read.content.split('\n')
+    let changed = 0
+    for (const n of new Set(lineNos)) {
+      const at = n - 1
+      if (at < 0 || at >= lines.length) {
+        result.skipped++
+        continue
+      }
+      const { text, count } = replaceInLine(lines[at], query, replacement)
+      if (count === 0) {
+        result.skipped++
+        continue
+      }
+      lines[at] = text
+      changed += count
+    }
+    if (changed > 0 && writeFile(root, rel, lines.join('\n'))) {
+      result.files++
+      result.replaced += changed
+    }
+  }
+  return result
+}
+
+export type FormatResult = { ok: boolean; content?: string; reason?: string }
+
+const execP = (
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; input?: string },
+): Promise<{ code: number; stdout: string; stderr: string }> =>
+  new Promise((res) => {
+    const child = execFile(
+      cmd,
+      args,
+      { cwd: opts.cwd, timeout: 10_000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' },
+      (err, stdout, stderr) =>
+        res({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
+    )
+    if (opts.input !== undefined) {
+      child.stdin?.write(opts.input)
+      child.stdin?.end()
+    }
+  })
+
+/**
+ * Format `content` through the PROJECT'S OWN prettier (never a global one):
+ * no node_modules/.bin/prettier means the project didn't opt into formatting,
+ * so we refuse rather than impose defaults. Also refuses files prettier
+ * doesn't own — ignored by .prettierignore, or no parser for the extension.
+ */
+export async function formatFile(
+  root: string,
+  rel: string,
+  content: string,
+): Promise<FormatResult> {
+  const abs = safe(root, rel)
+  if (!abs) return { ok: false, reason: 'bad path' }
+  const bin = join(root, 'node_modules', '.bin', 'prettier')
+  if (!existsSync(bin)) return { ok: false, reason: 'this project has no prettier install' }
+  const info = await execP(bin, ['--file-info', rel], { cwd: root })
+  try {
+    const parsed = JSON.parse(info.stdout) as { ignored?: boolean; inferredParser?: string | null }
+    if (parsed.ignored || !parsed.inferredParser) {
+      return { ok: false, reason: 'prettier does not own this file' }
+    }
+  } catch {
+    return { ok: false, reason: info.stderr.trim() || 'prettier --file-info failed' }
+  }
+  const run = await execP(bin, ['--stdin-filepath', rel], { cwd: root, input: content })
+  if (run.code !== 0) {
+    return { ok: false, reason: run.stderr.split('\n')[0]?.trim() || 'prettier failed' }
+  }
+  return { ok: true, content: run.stdout }
+}
+
 export type SearchHit = { file: string; line: number; text: string }
 const MAX_HITS = 300
 export function searchRepo(root: string, query: string): Promise<SearchHit[]> {

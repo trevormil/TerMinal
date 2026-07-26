@@ -503,6 +503,9 @@ const gt = {
     reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('files:write', rel, content),
     search: (q: string) => ipcRenderer.invoke('files:search', q),
+    format: (rel: string, content: string) => ipcRenderer.invoke('files:format', rel, content),
+    replace: (q: string, replacement: string, targets: { file: string; line: number }[]) =>
+      ipcRenderer.invoke('files:replace', q, replacement, targets),
     create: (rel: string, dir: boolean) => ipcRenderer.invoke('files:create', rel, dir),
     rename: (from: string, to: string) => ipcRenderer.invoke('files:rename', from, to),
     del: (rel: string) => ipcRenderer.invoke('files:delete', rel),

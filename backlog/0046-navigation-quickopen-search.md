@@ -1,7 +1,7 @@
 ---
 id: 46
 title: "Navigation: fuzzy quick-open with modes, symbol outline, back/forward history, project-wide search"
-status: open
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -58,3 +58,9 @@ ranking, and file:line ref extraction shipped in PR #139; the symbol outline
 and back/forward history in PR #144.
 
 **Remaining:** project-wide search & replace with a per-match preview.
+
+## Update (2026-07-26)
+
+Project-wide search & replace with per-match preview + checkboxes shipped in
+PR #151 (files:replace IPC, literal case-insensitive to match search
+semantics, stale-line skip). Ticket complete pending merge.

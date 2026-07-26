@@ -495,7 +495,7 @@ export type AppearanceCfg = {
   uiScale: number
   tabLayout: AppearanceTabLayout
 }
-export type AppsCfg = { editor: string; browser: string }
+export type AppsCfg = { editor: string; browser: string; formatOnSave: boolean }
 export type SuggestionsCfg = {
   aiEngine: Engine
   aiModel: string
@@ -2155,6 +2155,18 @@ export type GtApi = {
     reveal: (rel: string) => Promise<boolean>
     write: (rel: string, content: string) => Promise<boolean>
     search: (q: string) => Promise<{ file: string; line: number; text: string }[]>
+    /** Format through the project's own prettier; ok:false when it has none
+     *  or doesn't own the file. */
+    format: (
+      rel: string,
+      content: string,
+    ) => Promise<{ ok: boolean; content?: string; reason?: string }>
+    /** Apply search & replace to specific (file, line) targets. */
+    replace: (
+      q: string,
+      replacement: string,
+      targets: { file: string; line: number }[],
+    ) => Promise<{ files: number; replaced: number; skipped: number }>
     create: (rel: string, dir: boolean) => Promise<boolean>
     rename: (from: string, to: string) => Promise<boolean>
     del: (rel: string) => Promise<boolean>
