@@ -26,19 +26,14 @@ import type { LaunchMode } from '../lib/launch'
 import { ModelSelect } from './ModelSelect'
 import { SkillHint } from './SkillHint'
 import { EngineLogo } from './EngineLogo'
-import { engineLabel } from '../lib/engines'
+import { engineLabel, ENGINE_VENDOR, ENGINE_IDS } from '../lib/engines'
 
 // Three-step launch picker: engine → agent context (none + classic/persistent)
 // → pipeline (single run, or chained review/iterate stages). onPick fires with
 // engine + context id ('' = none) + pipeline id ('single' = just the task).
-const VENDOR: Record<Engine, string> = {
-  codex: 'OpenAI Codex',
-  claude: 'Anthropic Claude',
-  cursor: 'Cursor Agent',
-  openrouter: 'OpenRouter · Codex or Hermes',
-  hermes: 'Nous Hermes',
-  'openai-compat': 'Self-hosted · OpenAI-compatible',
-}
+// Vendor blurbs come from the shared registry — this was a third copy of the
+// same map that had already drifted from lib/engines' ENGINE_VENDOR.
+const VENDOR: Record<Engine, string> = ENGINE_VENDOR
 const PERSONA_ICON: Record<string, LucideIcon> = {
   ShieldCheck,
   Gauge,
@@ -130,8 +125,8 @@ export function EnginePicker({
   // readiness tracks Codex being installed; key/base URL validate at run time.
   const avail = (e: Engine) =>
     !env ||
-    (e === 'hermes'
-      ? true // resolved via PATH; validated at run time
+    (e === 'hermes' || e === 'opencode'
+      ? true // resolved via PATH / declared install path; validated at run time
       : e === 'codex' || e === 'openrouter' || e === 'openai-compat'
         ? env.codex.found
         : e === 'cursor'
@@ -142,11 +137,11 @@ export function EnginePicker({
     const ok = (['codex', 'claude', 'cursor'] as Engine[]).filter(avail)
     if (ok.length === 1) setEngine(ok[0])
   }, [env]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Registry order, default first — a newly registered engine appears here
+  // automatically instead of needing this literal list edited.
   const engineOrder: Engine[] = [
     defaultEngine,
-    ...(['claude', 'codex', 'cursor', 'openrouter', 'hermes', 'openai-compat'] as Engine[]).filter(
-      (e) => e !== defaultEngine,
-    ),
+    ...(ENGINE_IDS as Engine[]).filter((e) => e !== defaultEngine),
   ]
   const selectedContext = persona ? personas.find((p) => p.id === persona) : undefined
 

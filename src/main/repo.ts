@@ -61,6 +61,40 @@ function defaultBase(repoRoot: string): string {
   return ''
 }
 
+/** Raw `git status --porcelain` for per-file tree decorations ('' when not a repo). */
+export function getStatusPorcelain(repoRoot: string): string {
+  if (!repoRoot) return ''
+  try {
+    return execFileSync('git', ['-C', repoRoot, 'status', '--porcelain'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 8 * 1024 * 1024,
+    })
+  } catch {
+    return ''
+  }
+}
+
+export type HeadFile = { ok: boolean; content: string; reason?: string }
+/**
+ * A file's content at HEAD, for a per-file working-tree diff ("Changes View").
+ * A file that is new (not in HEAD) is not an error — it diffs against empty.
+ */
+export function getFileAtHead(repoRoot: string, rel: string): HeadFile {
+  if (!repoRoot) return { ok: false, content: '', reason: 'Not a git repository.' }
+  try {
+    const content = execFileSync('git', ['-C', repoRoot, 'show', `HEAD:${rel}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 16 * 1024 * 1024,
+    })
+    return { ok: true, content }
+  } catch {
+    // Untracked/new file — an empty original is the correct diff base.
+    return { ok: true, content: '' }
+  }
+}
+
 export type WorkingDiff = {
   ok: boolean
   diff: string

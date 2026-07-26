@@ -132,7 +132,9 @@ function expiryPhrase(days: number): string {
 function fmtDate(v: unknown): string {
   if (typeof v !== 'string') return '—'
   const d = new Date(v)
-  return isNaN(d.getTime()) ? v : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return isNaN(d.getTime())
+    ? v
+    : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 // Row summary with the redundancy stripped: a cert's "Nd until expiry · Issuer"
 // already has the days in the expiry badge, so keep only the issuer half.
@@ -700,11 +702,15 @@ function MonitorDetail({ m }: { m: MonitorWithState }) {
           <div className="flex flex-col gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3 text-[12px]">
             <div className="flex justify-between gap-4">
               <span className="shrink-0 text-zinc-500">Type</span>
-              <span className="min-w-0 break-words text-right text-zinc-200">{TYPE_LABEL[m.type]}</span>
+              <span className="min-w-0 break-words text-right text-zinc-200">
+                {TYPE_LABEL[m.type]}
+              </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="shrink-0 text-zinc-500">Target</span>
-              <span className="min-w-0 break-all text-right font-mono text-zinc-200">{m.target}</span>
+              <span className="min-w-0 break-all text-right font-mono text-zinc-200">
+                {m.target}
+              </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="shrink-0 text-zinc-500">Interval</span>

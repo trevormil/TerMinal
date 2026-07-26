@@ -9,9 +9,12 @@
 // When the published rate is given per million, we normalize:
 //   input  = listed / 1e6
 //   output = listed / 1e6
-// Cache pricing (Anthropic):
+// Cache pricing — BOTH vendors bill a cache write above uncached input:
 //   cacheRead  = ~0.1 × input
 //   cacheWrite = ~1.25 × input  (one-time at creation)
+// Omitting cacheWrite is not free: costOf falls back to the plain input rate,
+// silently under-reporting by 25%. Older OpenAI rows (gpt-5 and earlier) predate
+// a published cache-write tier and are left alone; every GPT-5.6 row sets it.
 
 export type ModelPrice = {
   /** USD per input token */
@@ -76,6 +79,14 @@ const TABLE: Record<string, ModelPrice> = {
     contextWindow: 1_000_000,
     family: 'claude',
   },
+  'claude-opus-5': {
+    input: 15 / M,
+    output: 75 / M,
+    cacheRead: 1.5 / M,
+    cacheWrite: 18.75 / M,
+    contextWindow: 1_000_000,
+    family: 'claude',
+  },
   // --- Aliases for friendly names that show up in `--model haiku` etc. ---
   haiku: {
     input: 1 / M,
@@ -133,10 +144,41 @@ const TABLE: Record<string, ModelPrice> = {
     contextWindow: 400_000,
     family: 'codex',
   },
+  // GPT-5.6 family: Sol = frontier reasoning/coding, Terra = balanced,
+  // Luna = cost-sensitive. Standard tier (regional endpoints add ~10%).
+  //
+  // `gpt-5.6` is Sol's documented alias and MUST have its own row: prefix
+  // matching would otherwise resolve it to the older, cheaper `gpt-5` and
+  // under-report cost.
+  'gpt-5.6': {
+    input: 5 / M,
+    output: 30 / M,
+    cacheRead: 0.5 / M,
+    cacheWrite: 6.25 / M,
+    contextWindow: 1_050_000,
+    family: 'codex',
+  },
+  'gpt-5.6-sol': {
+    input: 5 / M,
+    output: 30 / M,
+    cacheRead: 0.5 / M,
+    cacheWrite: 6.25 / M,
+    contextWindow: 1_050_000,
+    family: 'codex',
+  },
   'gpt-5.6-terra': {
     input: 2.5 / M,
     output: 15 / M,
     cacheRead: 0.25 / M,
+    cacheWrite: 3.125 / M,
+    contextWindow: 1_050_000,
+    family: 'codex',
+  },
+  'gpt-5.6-luna': {
+    input: 1 / M,
+    output: 6 / M,
+    cacheRead: 0.1 / M,
+    cacheWrite: 1.25 / M,
     contextWindow: 1_050_000,
     family: 'codex',
   },

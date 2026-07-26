@@ -12,6 +12,8 @@ import {
   removeEntry,
   type Entry,
   type ReadResult,
+  type ReadBinaryResult,
+  readFileBinary,
   type SearchHit,
 } from './files'
 import { forgeFor, type CiInfo } from './forge'
@@ -35,6 +37,9 @@ import {
   repoRootOf,
   gitStatus,
   getWorkingDiff,
+  getFileAtHead,
+  getStatusPorcelain,
+  type HeadFile,
   type GitStatus,
   type WorkingDiff,
 } from './repo'
@@ -111,6 +116,8 @@ export type WorkspaceDaemon = {
   context(sessionId: string): Promise<DaemonContext> | DaemonContext
   gitStatus(): Promise<GitStatus> | GitStatus
   workingDiff(): Promise<WorkingDiff> | WorkingDiff
+  fileAtHead(rel: string): Promise<HeadFile> | HeadFile
+  statusPorcelain(): Promise<string> | string
   workingStructuralDiff(
     path: string,
     width?: number,
@@ -141,6 +148,7 @@ export type WorkspaceDaemon = {
   notesWrite(scope: NotesScope, content: string): Promise<boolean> | boolean
   filesList(rel: string): Promise<Entry[]> | Entry[]
   filesRead(rel: string): Promise<ReadResult> | ReadResult
+  filesReadBinary(rel: string): Promise<ReadBinaryResult> | ReadBinaryResult
   filesWrite(rel: string, content: string): Promise<boolean> | boolean
   filesSearch(q: string): Promise<SearchHit[]>
   filesCreate(rel: string, dir: boolean): Promise<boolean> | boolean
@@ -219,6 +227,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     },
     gitStatus: () => gitStatus(currentCwd),
     workingDiff: () => getWorkingDiff(root()),
+    fileAtHead: (rel: string) => getFileAtHead(root(), rel),
+    statusPorcelain: () => getStatusPorcelain(root()),
     workingStructuralDiff: (path: string, width?: number) =>
       getWorkingStructuralDiff(root(), path, width),
     docsList: () => listDocs(root() || ''),
@@ -244,6 +254,7 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     notesWrite: (scope: NotesScope, content: string) => writeNotes(scope, content, root()),
     filesList: (rel: string) => listDir(fileRoot(), rel || ''),
     filesRead: (rel: string) => readFile(fileRoot(), rel),
+    filesReadBinary: (rel: string) => readFileBinary(fileRoot(), rel),
     filesWrite: (rel: string, content: string) => writeFile(fileRoot(), rel, content),
     filesSearch: (q: string) => searchRepo(fileRoot(), q),
     filesCreate: (rel: string, dir: boolean) => createEntry(fileRoot(), rel, dir),
@@ -300,6 +311,12 @@ export function createSshWorkspaceDaemon(
       branch: '',
       error: 'Working diff is not supported on remote workspaces yet.',
     }),
+    fileAtHead: (): HeadFile => ({
+      ok: false,
+      content: '',
+      reason: 'Per-file diff is not supported on remote workspaces yet.',
+    }),
+    statusPorcelain: () => '',
     workingStructuralDiff: (): StructuralDiffResult => ({
       ok: false,
       reason: 'error',
@@ -334,6 +351,12 @@ export function createSshWorkspaceDaemon(
       remoteNotes.write(remote, scope, content).catch(() => false),
     filesList: (rel: string) => remoteFiles.list(remote, rel || ''),
     filesRead: (rel: string) => remoteFiles.read(remote, rel),
+    filesReadBinary: () => ({
+      ok: false,
+      base64: '',
+      size: 0,
+      reason: 'binary preview is not supported on remote hosts yet',
+    }),
     filesWrite: (rel: string, content: string) => remoteFiles.write(remote, rel, content),
     filesSearch: (q: string) => remoteFiles.search(remote, q),
     filesCreate: (rel: string, dir: boolean) => remoteFiles.create(remote, rel, dir),

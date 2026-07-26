@@ -10,9 +10,23 @@ import {
   FolderPlus,
   ExternalLink,
   GitCompare,
+  ArrowLeft,
+  ArrowRight,
+  Copy,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
+import { langKeyFor } from '../../../../shared/languages'
+import { FileViewer, hasViewer } from '../../components/FileViewer'
+import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
+import { MergeDiffView } from '../../components/MergeDiffView'
+import {
+  fileStatuses,
+  statusBadge,
+  statusColor,
+  type StatusMap,
+} from '../../../../shared/git-status'
+import { describeIndent, detectIndent } from '../../../../shared/indent'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
@@ -21,44 +35,12 @@ import { onNavigate } from '../../lib/nav'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
 
-// Values must be valid @uiw/codemirror-extensions-langs keys — which are the
-// SHORT names (ts/js/py/rs/sh/rb), not the long ones. Mapping to a missing key
-// returns undefined → no parser → no syntax highlighting (the bug this fixes).
-const EXT: Record<string, string> = {
-  ts: 'ts',
-  tsx: 'tsx',
-  js: 'js',
-  jsx: 'jsx',
-  mjs: 'js',
-  cjs: 'js',
-  json: 'json',
-  md: 'markdown',
-  mdx: 'markdown',
-  css: 'css',
-  scss: 'scss',
-  less: 'less',
-  html: 'html',
-  py: 'py',
-  rs: 'rs',
-  go: 'go',
-  yaml: 'yaml',
-  yml: 'yaml',
-  sql: 'sql',
-  sh: 'sh',
-  bash: 'sh',
-  zsh: 'sh',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  hpp: 'cpp',
-  java: 'java',
-  php: 'php',
-  rb: 'rb',
-  toml: 'toml',
-  xml: 'xml',
-}
+// Language grammars come from the shared resolver (src/shared/languages.ts),
+// which covers ~100 extensions plus extensionless files like Dockerfile and
+// Makefile, and is unit-tested against the real langs export so a mapped key
+// can never silently resolve to "no highlighting".
 function langFor(path: string): Extension[] {
-  const key = EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | undefined
+  const key = langKeyFor(path) as keyof typeof langs | ''
   try {
     return key && langs[key] ? [langs[key]()] : []
   } catch {
@@ -81,6 +63,7 @@ function TreeNode({
   active,
   selectedDir,
   version,
+  statuses,
   act,
 }: {
   entry: FileEntry
@@ -88,6 +71,7 @@ function TreeNode({
   active: string | null
   selectedDir: string
   version: number
+  statuses: StatusMap
   act: NodeActions
 }) {
   const [open, setOpen] = useState(false)
@@ -124,8 +108,40 @@ function TreeNode({
           ) : null}
         </span>
         <Icon size={14} strokeWidth={2} className={`shrink-0 ${cls}`} />
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        <span
+          className={`min-w-0 flex-1 truncate ${statuses[entry.path] ? statusColor(statuses[entry.path]) : ''}`}
+        >
+          {entry.name}
+        </span>
+        {statuses[entry.path] && (
+          <span
+            title={statuses[entry.path]}
+            className={`shrink-0 font-mono text-[10px] font-bold ${statusColor(statuses[entry.path])}`}
+          >
+            {statusBadge(statuses[entry.path])}
+          </span>
+        )}
         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              navigator.clipboard.writeText(entry.path)
+            }}
+            title="Copy relative path"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          >
+            <Copy size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.gt.files.reveal(entry.path)
+            }}
+            title="Reveal in Finder"
+            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          >
+            <ExternalLink size={11} strokeWidth={2} />
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -158,6 +174,7 @@ function TreeNode({
             active={active}
             selectedDir={selectedDir}
             version={version}
+            statuses={statuses}
             act={act}
           />
         ))}
@@ -175,6 +192,26 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [activePath, setActivePath] = useState<string | null>(null)
   const [selectedDir, setSelectedDir] = useState('')
   const [sidebar, setSidebar] = useState<'files' | 'search' | 'changes'>('files')
+  // A viewer-backed file (markdown/csv/svg/...) can toggle to its raw source,
+  // which hands rendering back to CodeMirror so edit/save stay in one place.
+  // Owned HERE, not in FileViewer: flipping it swaps which FileViewer instance
+  // is mounted, so any copy held inside the component is wiped on every toggle.
+  const [viewerSource, setViewerSource] = useState(false)
+  // Per-file "Changes View" (Orca): diff THIS file against HEAD inside its own
+  // tab, instead of leaving for the whole-worktree diff pane.
+  const [fileDiff, setFileDiff] = useState(false)
+  const [headContent, setHeadContent] = useState<string | null>(null)
+  // Why the HEAD read failed, when it did — kept distinct from "HEAD had no
+  // such file", which is a legitimate empty original.
+  const [headErr, setHeadErr] = useState<string | null>(null)
+  // Per-file git status for tree decorations. Polled (not watched) because an
+  // agent writing files is the common case and a 2s poll is cheap next to it.
+  const [statuses, setStatuses] = useState<StatusMap>({})
+  // Back/forward across files — the editor-location stack every IDE has, and
+  // the thing you miss instantly when it's absent. Held in a ref so pushing a
+  // visit never re-renders.
+  const history = useRef<{ stack: string[]; at: number }>({ stack: [], at: -1 })
+  const [, bumpHistory] = useState(0)
   const filesSidebar = useResizableWidth('gt.filesSidebarWidth', 288, {
     min: 200,
     max: 640,
@@ -192,18 +229,72 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const activeFile = open.find((f) => f.path === activePath) || null
   const bump = () => setVersion((v) => v + 1)
 
+  // Opening a different file starts on its rendered view again — switching to a
+  // README shouldn't inherit "show source" from the CSV you were just reading.
+  useEffect(() => {
+    setViewerSource(false)
+  }, [activePath])
+
   useEffect(() => {
     window.gt.files.list('').then(setRoots)
+  }, [ctx.repoRoot, version])
+  useEffect(() => {
+    const load = () =>
+      window.gt
+        .getStatusPorcelain()
+        .then((p) => setStatuses(fileStatuses(p)))
+        .catch(() => {})
+    load()
+    const id = setInterval(load, 2000)
+    return () => clearInterval(id)
   }, [ctx.repoRoot, version])
   useEffect(() => {
     window.gt.settings.get().then((s) => setEditorName(s.apps?.editor || 'Cursor'))
   }, [])
 
+  // Fetch the HEAD version when the per-file diff opens (and on file change).
+  //
+  // A failure is NOT an empty original. Remote daemons answer
+  // { ok: false, reason: 'Per-file diff not supported…' }, and collapsing that
+  // to '' made every unchanged remote file render as a whole-file addition —
+  // a confidently wrong diff, which is worse than saying we can't show one.
+  // Only a successful read of a file absent from HEAD is legitimately empty.
+  useEffect(() => {
+    if (!fileDiff || !activeFile) return
+    setHeadContent(null)
+    setHeadErr(null)
+    window.gt
+      .getFileAtHead(activeFile.path)
+      .then((r) =>
+        r.ok
+          ? setHeadContent(r.content)
+          : setHeadErr(r.reason || 'Could not read this file at HEAD'),
+      )
+      .catch((e) => setHeadErr(String(e?.message || e) || 'Could not read this file at HEAD'))
+  }, [fileDiff, activeFile?.path]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving a file closes its diff, so the toggle never sticks across files.
+  useEffect(() => setFileDiff(false), [activePath])
+
   const patch = (path: string, p: Partial<OpenFile>) =>
     setOpen((o) => o.map((f) => (f.path === path ? { ...f, ...p } : f)))
 
-  const openFile = async (path: string, line?: number) => {
+  const openFile = async (path: string, line?: number, fromHistory = false) => {
     setActivePath(path)
+    // The palette's `@` (symbols) mode outlines whichever file is open here.
+    try {
+      localStorage.setItem('gt.files.lastPath', path)
+    } catch {
+      /* storage disabled */
+    }
+    if (!fromHistory) {
+      const h = history.current
+      // Truncate any forward entries — a new visit forks the timeline.
+      if (h.stack[h.at] !== path) {
+        h.stack = [...h.stack.slice(0, h.at + 1), path]
+        h.at = h.stack.length - 1
+        bumpHistory((n) => n + 1)
+      }
+    }
     if (open.some((f) => f.path === path)) {
       if (line) patch(path, { scrollLine: line })
       return
@@ -393,6 +484,80 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         )}
       </div>
 
+      {/* breadcrumbs — the active file's path, each segment clickable to reveal
+          that folder in the tree. Also carries the detected indentation. */}
+      {activeFile && sidebar !== 'changes' && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1 text-[10.5px] text-zinc-600">
+          {activeFile.path.split('/').map((seg, i, all) => {
+            const upto = all.slice(0, i + 1).join('/')
+            const last = i === all.length - 1
+            return (
+              <span key={upto} className="flex items-center gap-1">
+                {i > 0 && <span className="text-zinc-700">/</span>}
+                <button
+                  onClick={() => !last && setSelectedDir(upto)}
+                  className={
+                    last ? 'text-zinc-300' : 'cursor-pointer transition-colors hover:text-zinc-300'
+                  }
+                >
+                  {seg}
+                </button>
+              </span>
+            )
+          })}
+          <div className="flex-1" />
+          <button
+            onClick={() => {
+              const h = history.current
+              if (h.at > 0) {
+                h.at--
+                bumpHistory((n) => n + 1)
+                openFile(h.stack[h.at], undefined, true)
+              }
+            }}
+            disabled={history.current.at <= 0}
+            title="Back"
+            className="inline-flex cursor-pointer items-center rounded px-1 py-0.5 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-default disabled:opacity-30"
+          >
+            <ArrowLeft size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={() => {
+              const h = history.current
+              if (h.at < h.stack.length - 1) {
+                h.at++
+                bumpHistory((n) => n + 1)
+                openFile(h.stack[h.at], undefined, true)
+              }
+            }}
+            disabled={history.current.at >= history.current.stack.length - 1}
+            title="Forward"
+            className="inline-flex cursor-pointer items-center rounded px-1 py-0.5 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-default disabled:opacity-30"
+          >
+            <ArrowRight size={11} strokeWidth={2} />
+          </button>
+          {/* Only text-backed files can be diffed. Binary kinds (image/PDF/hex)
+              come in through readBinary and their `content` is an empty string,
+              so offering Changes here produced an all-deleted diff of a file
+              that has not changed at all. */}
+          {!needsBinaryRead(viewerKindFor(activeFile.path)) && (
+            <button
+              onClick={() => setFileDiff((d) => !d)}
+              title="Diff this file against HEAD"
+              className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 transition-colors ${
+                fileDiff
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                  : 'hover:bg-white/5 hover:text-zinc-300'
+              }`}
+            >
+              <GitCompare size={11} strokeWidth={2} />
+              Changes
+            </button>
+          )}
+          <span className="tabular-nums">{describeIndent(detectIndent(activeFile.content))}</span>
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1">
         {/* editor (left) — replaced by the working diff when Changes is active */}
         <div className="min-w-0 flex-1 overflow-hidden">
@@ -402,21 +567,57 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
               Select a file to edit.
             </div>
-          ) : activeFile.err ? (
+          ) : activeFile.err && !hasViewer(activeFile.path) ? (
             <div className="p-6 text-[12px] text-zinc-600">
               Can't open {activeFile.path} — {activeFile.err}
             </div>
-          ) : (
-            <CodeEditor
+          ) : fileDiff ? (
+            headErr ? (
+              <div className="p-6 text-[12px] text-zinc-600">{headErr}</div>
+            ) : headContent === null ? (
+              <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
+            ) : (
+              <MergeDiffView
+                original={headContent}
+                modified={activeFile.content}
+                extensions={langFor(activeFile.path)}
+              />
+            )
+          ) : hasViewer(activeFile.path) && !viewerSource ? (
+            // Rendered viewer (markdown/image/pdf/csv/svg/binary). This runs
+            // even when the utf8 read failed — an image legitimately fails that
+            // read and is loaded through the binary channel instead.
+            <FileViewer
               key={activeFile.path}
-              value={activeFile.content}
-              onChange={(v) => {
-                patch(activeFile.path, { content: v, dirty: true })
-                scheduleSave(activeFile.path, v)
-              }}
-              extensions={langFor(activeFile.path)}
-              scrollToLine={activeFile.scrollLine}
+              path={activeFile.path}
+              text={activeFile.content}
+              showSource={false}
+              onWantsSource={setViewerSource}
             />
+          ) : (
+            <div className="flex h-full min-h-0 flex-col">
+              {hasViewer(activeFile.path) && (
+                <FileViewer
+                  key={`${activeFile.path}:src`}
+                  path={activeFile.path}
+                  text={activeFile.content}
+                  showSource
+                  onWantsSource={setViewerSource}
+                />
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  key={activeFile.path}
+                  value={activeFile.content}
+                  onChange={(v) => {
+                    patch(activeFile.path, { content: v, dirty: true })
+                    scheduleSave(activeFile.path, v)
+                  }}
+                  extensions={langFor(activeFile.path)}
+                  scrollToLine={activeFile.scrollLine}
+                />
+              </div>
+            </div>
           )}
         </div>
 
@@ -555,6 +756,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                       active={activePath}
                       selectedDir={selectedDir}
                       version={version}
+                      statuses={statuses}
                       act={nodeActs}
                     />
                   ))

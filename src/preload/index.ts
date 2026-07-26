@@ -354,6 +354,13 @@ const gt = {
   getMr: (iid: number) => ipcRenderer.invoke('mrs:get', iid),
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
+  getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
+  getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
+  checkpoints: {
+    list: () => ipcRenderer.invoke('checkpoints:list'),
+    create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
+    restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
+  },
   getWorkingStructuralDiff: (path: string, width?: number) =>
     ipcRenderer.invoke('git:working-structural-diff', path, width),
   getStructuralDiff: (iid: number, path: string, width?: number) =>
@@ -492,6 +499,8 @@ const gt = {
   files: {
     list: (rel: string) => ipcRenderer.invoke('files:list', rel),
     read: (rel: string) => ipcRenderer.invoke('files:read', rel),
+    readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
+    reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('files:write', rel, content),
     search: (q: string) => ipcRenderer.invoke('files:search', q),
     create: (rel: string, dir: boolean) => ipcRenderer.invoke('files:create', rel, dir),

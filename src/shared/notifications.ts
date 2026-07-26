@@ -120,7 +120,9 @@ export const DEFAULT_MATRIX: Record<NotifyChannelId, Record<NotifyCategory, bool
 }
 
 /** User overrides on top of DEFAULT_MATRIX; a missing entry falls to the default. */
-export type NotifyMatrix = Partial<Record<NotifyChannelId, Partial<Record<NotifyCategory, boolean>>>>
+export type NotifyMatrix = Partial<
+  Record<NotifyChannelId, Partial<Record<NotifyCategory, boolean>>>
+>
 
 /** Does this channel want this category? Override wins, else the shipped default. */
 export function channelWants(

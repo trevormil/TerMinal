@@ -24,7 +24,7 @@ import type {
   SessionEngine,
   SessionMeta,
 } from '../lib/types'
-import { engineLabel, sessionEngineLabel, ENGINE_MODELS } from '../lib/engines'
+import { engineLabel, sessionEngineLabel, ENGINE_MODELS, ENGINE_IDS } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
 import { ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
@@ -508,15 +508,10 @@ export function EntryScreen({
       : projParent
         ? tilde(projParent)
         : parentLabel
-  const engineOptions = [
-    'local',
-    'claude',
-    'codex',
-    'cursor',
-    'openrouter',
-    'hermes',
-    'openai-compat',
-  ] as SessionEngine[]
+  // Registry order + the bare shell. Derived so a newly registered engine can
+  // never be silently missing here (this list and the scratch row below had
+  // already drifted apart).
+  const engineOptions = ['local', ...ENGINE_IDS] as SessionEngine[]
   const daemonLabel =
     location === 'remote' ? remoteHost?.label || remoteHost?.sshTarget || 'Remote SSH' : 'Local'
   const selectedWorkspaceLabel =

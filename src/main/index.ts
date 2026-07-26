@@ -397,7 +397,10 @@ import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
+import { createCheckpoint, listCheckpoints, restoreCheckpoint } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
+import { resolveWithin } from './path-guard'
+import { modelArgs, resumeArgs } from '../shared/engines'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -666,6 +669,16 @@ function startSession(key: string, opts: StartOpts) {
       'never',
     )
     if (defaultModel) args.push('-m', defaultModel)
+  } else if (engine === 'opencode') {
+    // opencode starts its TUI by default; `-s <id>` continues a session. Model
+    // (`-m provider/model`) and the launch seed (`--prompt`) come from the
+    // registry below, so this branch only owns session-id policy.
+    if (opts.mode === 'resume' && opts.sessionId) {
+      sessionId = opts.sessionId
+      args.push(...resumeArgs('opencode', sessionId))
+    } else {
+      sessionId = opts.sessionId || randomUUID()
+    }
   } else if (opts.mode === 'resume' && opts.sessionId) {
     sessionId = opts.sessionId
     args.push('--resume', sessionId)
@@ -675,7 +688,9 @@ function startSession(key: string, opts: StartOpts) {
     if (opts.name) args.push('--name', opts.name)
   }
   if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
-  // hermes/openrouter/openai-compat push their own `-m` above; everyone else takes --model.
+  // Model flag comes from the registry (--model vs -m vs none) instead of the
+  // negative list this replaced, which silently gave any new engine `--model`.
+  // hermes/openrouter/openai-compat already pushed their own `-m` above.
   if (
     defaultModel &&
     engine !== 'local' &&
@@ -683,7 +698,7 @@ function startSession(key: string, opts: StartOpts) {
     engine !== 'openrouter' &&
     engine !== 'openai-compat'
   )
-    args.push('--model', defaultModel)
+    args.push(...modelArgs(engine, defaultModel))
   // For interactive OpenRouter/openai-compat the binary is the harness (codex/
   // hermes), not the one-shot or-agent.
   const openrouterLaunchBin =
@@ -990,6 +1005,14 @@ function pollActivity() {
     const summary =
       t.summary || st.aiTitle || (st.lastAction ? `ran ${st.lastAction.tool}` : 'finished its turn')
     const headline = summary.length > 72 ? `${summary.slice(0, 71)}…` : summary
+    // Snapshot the workspace at each turn boundary so the turn is undoable.
+    // Best-effort and silent: a checkpoint failing must never disrupt a run.
+    try {
+      const root = repoRootOf(s.pinned.cwd)
+      if (root) createCheckpoint(root, `${label} — ${headline}`)
+    } catch {
+      /* checkpoints are best-effort */
+    }
     emitActivity(
       {
         kind: 'task-complete',
@@ -3111,6 +3134,30 @@ ipcMain.handle('mrs:diff', (_e, iid: number) => {
 ipcMain.handle('git:working-diff', () => {
   return activeDaemon().workingDiff()
 })
+ipcMain.handle('git:file-at-head', (_e, rel: string) => {
+  return activeDaemon().fileAtHead(rel)
+})
+ipcMain.handle('git:status-porcelain', () => {
+  return activeDaemon().statusPorcelain()
+})
+ipcMain.handle('files:reveal', (_e, rel: string) => {
+  // Resolve against the workspace root and refuse anything that escapes it —
+  // the renderer must not be able to reveal arbitrary filesystem paths. This
+  // has to be resolveWithin and not a startsWith prefix test: with root
+  // /tmp/repo, `../repo-private/x` normalises to /tmp/repo-private/x, which
+  // shares the prefix but is a different directory.
+  const abs = resolveWithin(activeDaemon().filesRoot(), rel)
+  if (!abs) return false
+  shell.showItemInFolder(abs)
+  return true
+})
+ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
+ipcMain.handle('checkpoints:create', (_e, label: string) =>
+  createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
+)
+ipcMain.handle('checkpoints:restore', (_e, sha: string) =>
+  restoreCheckpoint(activeDaemon().repoRoot(), sha),
+)
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)
 })
@@ -3666,6 +3713,9 @@ ipcMain.handle('files:list', (_e, rel: string) => {
 })
 ipcMain.handle('files:read', (_e, rel: string) => {
   return activeDaemon().filesRead(rel)
+})
+ipcMain.handle('files:readBinary', (_e, rel: string) => {
+  return activeDaemon().filesReadBinary(rel)
 })
 ipcMain.handle('files:write', (_e, rel: string, content: string) => {
   return activeDaemon().filesWrite(rel, content)

@@ -4,25 +4,40 @@ import { homedir } from 'node:os'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
 import { NOTIFY_CATEGORIES, NOTIFY_CHANNELS, type NotifyMatrix } from '../shared/notifications'
+import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
 // read time" (e.g. projectsDir → your home dir). Legacy files in the old
 // { telegram, telegramControl } shape are migrated on read.
 
-export type EngineId = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
-export const ENGINE_IDS: EngineId[] = [
-  'codex',
-  'claude',
-  'cursor',
-  'openrouter',
-  'hermes',
-  'openai-compat',
-]
+// Derived from the shared registry (src/shared/engines.ts) — adding an engine
+// there adds it everywhere, instead of drifting across the copies this replaced.
+export { ENGINE_IDS, type EngineId }
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
   baseUrl: string // openai-compat only: the self-hosted /v1 endpoint ('' elsewhere)
+}
+
+/** A blank config row for every registered engine. Replaces the hand-written
+ *  per-engine blocks that had to be edited (in three places) per new engine. */
+export function emptyEngineCfgs(): Record<EngineId, EngineCfg> {
+  return Object.fromEntries(
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+  ) as Record<EngineId, EngineCfg>
+}
+
+/** Merge stored engine rows over the defaults, tolerating unknown/missing ids. */
+export function mergeEngineCfgs(
+  cur: Partial<Record<EngineId, Partial<EngineCfg>>> | undefined,
+  patch: Partial<Record<EngineId, Partial<EngineCfg>>> | undefined,
+): Record<EngineId, EngineCfg> {
+  const base = emptyEngineCfgs()
+  for (const id of ENGINE_IDS) {
+    base[id] = { ...base[id], ...(cur?.[id] || {}), ...(patch?.[id] || {}) }
+  }
+  return base
 }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type DaemonCfg = {
@@ -182,14 +197,7 @@ export function defaultDaemonSettings(): DaemonCfg {
     worktreesDir: '',
     harnessDir: '',
     templateRepo: '',
-    engines: {
-      codex: { path: '', defaultModel: '', baseUrl: '' },
-      claude: { path: '', defaultModel: '', baseUrl: '' },
-      cursor: { path: '', defaultModel: '', baseUrl: '' },
-      openrouter: { path: '', defaultModel: '', baseUrl: '' },
-      hermes: { path: '', defaultModel: '', baseUrl: '' },
-      'openai-compat': { path: '', defaultModel: '', baseUrl: '' },
-    },
+    engines: emptyEngineCfgs(),
     defaultEngine: 'codex',
     forge: 'auto',
   }
@@ -551,14 +559,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     bridge: { ...cur.bridge, ...bridgePatch },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },
-    engines: {
-      codex: { ...cur.engines.codex, ...(engines?.codex || {}) },
-      claude: { ...cur.engines.claude, ...(engines?.claude || {}) },
-      cursor: { ...cur.engines.cursor, ...(engines?.cursor || {}) },
-      openrouter: { ...cur.engines.openrouter, ...(engines?.openrouter || {}) },
-      hermes: { ...cur.engines.hermes, ...(engines?.hermes || {}) },
-      'openai-compat': { ...cur.engines['openai-compat'], ...(engines?.['openai-compat'] || {}) },
-    },
+    engines: mergeEngineCfgs(cur.engines, engines),
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
     noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
   }
@@ -772,23 +773,23 @@ export function resolvedTemplateRepo(): string {
 
 /** The binary to invoke for an engine: explicit path > env override > bare name. */
 export function enginePath(engine: EngineId): string {
+  // Settings override always wins.
   const p = readSettings().engines[engine]?.path
   if (p) return p
-  if (engine === 'claude' && process.env.GT_CLAUDE_BIN) return process.env.GT_CLAUDE_BIN
-  if (engine === 'cursor' && process.env.GT_CURSOR_BIN) return process.env.GT_CURSOR_BIN
-  if (engine === 'cursor') return 'cursor-agent'
-  // OpenRouter AND openai-compat are driven by the or-agent harness (Codex on a
-  // provider model; openai-compat points it at a custom base URL via env).
-  // Prefer TerMinal's bundled copy, then a globally-installed one
-  // (~/.claude/bin), else bare 'or-agent' (resolved on PATH).
-  if (engine === 'openrouter' || engine === 'openai-compat') {
-    const candidates = [
-      join(homedir(), '.config', 'TerMinal', 'bin', 'or-agent'),
-      join(homedir(), '.claude', 'bin', 'or-agent'),
-    ]
-    return candidates.find((p) => existsSync(p)) || 'or-agent'
+  const d = engineOf(engine)
+  if (!d) return engine
+  // Then an env override (GT_CLAUDE_BIN / GT_CURSOR_BIN), declared per engine.
+  if (d.bin.envVar && process.env[d.bin.envVar]) return process.env[d.bin.envVar] as string
+  // Then declared install locations, for binaries that aren't on a login
+  // shell's PATH (or-agent for the OpenRouter/self-hosted harness; opencode,
+  // which installs to ~/.opencode/bin). `~` is expanded here — the registry
+  // stays filesystem-free.
+  for (const cand of d.bin.candidates || []) {
+    const abs = cand.startsWith('~/') ? join(homedir(), cand.slice(2)) : cand
+    if (existsSync(abs)) return abs
   }
-  return engine
+  // Else the declared binary name, resolved on PATH.
+  return d.bin.name
 }
 
 /** Per-engine model fallback. Returns '' when no fallback is set, in which

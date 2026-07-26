@@ -1,14 +1,14 @@
 ---
 id: 36
 title: "Route to a self-hosted / network model: configurable base URL + openai-compat engine"
-status: in-progress
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: manual
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-07-25
 prs: []
 refs:
   - src/renderer/src/lib/types.ts:440
@@ -125,3 +125,10 @@ fallback — see Design notes; do not build it, just reference it.
 - Anthropic-compatible (`ANTHROPIC_BASE_URL`) endpoints as a second protocol.
 - Health/readiness probe for the endpoint in `env:detect` so an unreachable
   self-hosted box surfaces in Settings like other engines.
+
+## Update (2026-07-25)
+
+**Done** — `openai-compat` is a first-class engine: configurable base URL +
+sealed API key in Settings, an inline Codex provider for interactive sessions,
+and a one-shot path via or-agent. It is now a registry entry in
+src/shared/engines.ts.

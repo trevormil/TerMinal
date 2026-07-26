@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Opencode's mark, taken from their favicon. The original paints a #131010
+       plate behind the glyph; dropped here so it sits on TerMinal's own chrome
+       like every other engine wordmark instead of showing as a solid tile. -->
+  <path d="M320 224V352H192V224H320Z" fill="#71717a"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="#e4e4e7"/>
+</svg>

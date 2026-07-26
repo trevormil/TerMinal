@@ -10,6 +10,7 @@ import {
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { writeJsonAtomic } from './atomic-write'
 
 // Remote sessions — the phone's whole model.
 //
@@ -103,7 +104,7 @@ export function readRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteS
 
 function writeMeta(session: RemoteSession, dir: string): void {
   ensure(dir)
-  writeFileSync(metaPath(session.id, dir), JSON.stringify(session, null, 2), { mode: 0o600 })
+  writeJsonAtomic(metaPath(session.id, dir), session, { mode: 0o600 })
 }
 
 export function registerRemoteSession(

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Compass, Repeat, Search, Terminal as TerminalIcon, type LucideIcon } from 'lucide-react'
 import type { Tab, Mr, Ticket } from '../lib/types'
+import { fuzzyRank, parseQuickOpen } from '../../../shared/fuzzy'
+import { extractSymbols, symbolGlyph } from '../../../shared/symbols'
 import { navigateTo } from '../lib/nav'
 import { sessionEngineLabel } from '../lib/engines'
 
@@ -29,19 +31,6 @@ const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
 const base = (cwd: string) => cwd.split('/').filter(Boolean).pop() || cwd
 
-// Subsequence match (cheap fuzzy): every char of the query appears in order.
-function matches(q: string, text: string): boolean {
-  if (!q) return true
-  const t = text.toLowerCase()
-  let i = 0
-  for (const c of q.toLowerCase()) {
-    i = t.indexOf(c, i)
-    if (i === -1) return false
-    i++
-  }
-  return true
-}
-
 export function CommandPalette({
   tabs,
   sessions,
@@ -62,6 +51,8 @@ export function CommandPalette({
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [mrs, setMrs] = useState<Mr[]>([])
   const [hits, setHits] = useState<{ file: string; line: number; text: string }[]>([])
+  const [checkpoints, setCheckpoints] = useState<{ sha: string; at: number; label: string }[]>([])
+  const [symbols, setSymbols] = useState<{ name: string; kind: string; line: number }[]>([])
   const listRef = useRef<HTMLDivElement>(null)
 
   // Lazy-load the cross-cutting sources once when the palette opens.
@@ -74,11 +65,31 @@ export function CommandPalette({
       .listMrs()
       .then((r) => setMrs(r.mrs || []))
       .catch(() => {})
+    window.gt.checkpoints
+      .list()
+      .then(setCheckpoints)
+      .catch(() => {})
   }, [])
+
+  // One input, five modes (VS Code convention): `>` commands, `@` symbols,
+  // `:42` line, `#` project search, anything else = files/everything.
+  const parsed = useMemo(() => parseQuickOpen(q), [q])
+
+  // `@` mode: outline of the file the Files tab last had open. Extracted with
+  // the shared regex-based extractor — no language server needed.
+  useEffect(() => {
+    if (parsed.mode !== 'symbols') return
+    const path = localStorage.getItem('gt.files.lastPath') || ''
+    if (!path) return setSymbols([])
+    window.gt.files
+      .read(path)
+      .then((r) => setSymbols(r.ok ? extractSymbols(path, r.content) : []))
+      .catch(() => setSymbols([]))
+  }, [parsed.mode])
 
   // Debounced content search — only when the query is substantial.
   useEffect(() => {
-    const term = q.trim()
+    const term = parsed.mode === 'search' ? parsed.term : parsed.mode === 'files' ? parsed.term : ''
     if (term.length < 2) {
       setHits([])
       return
@@ -90,13 +101,43 @@ export function CommandPalette({
         .catch(() => setHits([]))
     }, 160)
     return () => clearTimeout(id)
-  }, [q])
+  }, [parsed])
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
     const close = (fn: () => void) => () => {
       fn()
       onClose()
+    }
+
+    // `:42` — jump to a line in the file the Files tab last had open. The mode
+    // was parsed and advertised in the placeholder, but nothing ever consumed
+    // parsed.line, so typing `:42` fell through to a file search that matched
+    // nothing. It returns its own result set: ranking a line jump against tabs
+    // and tickets would bury the one thing the user explicitly asked for.
+    if (parsed.mode === 'line') {
+      const path = localStorage.getItem('gt.files.lastPath') || ''
+      if (!path)
+        return [
+          {
+            id: 'line:nofile',
+            group: 'Go to line',
+            label: 'Open a file first',
+            hint: 'the line jump applies to the active file',
+            run: () => {},
+          },
+        ]
+      if (parsed.line === undefined) return []
+      const line = parsed.line
+      return [
+        {
+          id: `line:${line}`,
+          group: 'Go to line',
+          label: `${path.split('/').pop() || path}:${line}`,
+          hint: path,
+          run: close(() => navigateTo('files', { path, line })),
+        },
+      ]
     }
 
     out.push({
@@ -163,6 +204,41 @@ export function CommandPalette({
         run: close(() => navigateTo('tickets', { slug: t.slug })),
       })
 
+    for (const sym of symbols)
+      out.push({
+        id: `sym:${sym.name}:${sym.line}`,
+        group: 'Symbol',
+        label: `${symbolGlyph(sym.kind as never)}  ${sym.name}`,
+        hint: `line ${sym.line}`,
+        run: close(() =>
+          navigateTo('files', {
+            path: localStorage.getItem('gt.files.lastPath') || '',
+            line: sym.line,
+          }),
+        ),
+      })
+
+    // Roll the workspace back to any agent turn. Restoring is itself
+    // checkpointed, so this can always be undone.
+    for (const c of checkpoints.slice(0, 25))
+      out.push({
+        id: `ckpt:${c.sha}`,
+        group: 'Restore checkpoint',
+        label: c.label,
+        hint: new Date(c.at).toLocaleString(),
+        icon: Repeat,
+        run: close(async () => {
+          const r = await window.gt.checkpoints.restore(c.sha)
+          window.dispatchEvent(
+            new CustomEvent('gt.toast', {
+              detail: r.ok
+                ? `Restored to "${c.label}" — undo available`
+                : `Restore failed: ${r.error || 'unknown error'}`,
+            }),
+          )
+        }),
+      })
+
     for (const m of mrs)
       out.push({
         id: `mr:${m.iid}`,
@@ -172,9 +248,13 @@ export function CommandPalette({
         run: close(() => navigateTo('mrs', { iid: m.iid })),
       })
 
-    // Static items are filtered by the fuzzy query; search hits are already
-    // query-derived so they pass through verbatim.
-    const filtered = out.filter((it) => matches(q.trim(), `${it.label} ${it.hint || ''}`))
+    // Static items are RANKED by the shared fuzzy scorer, not merely filtered —
+    // ordering is what makes a palette usable, and the old boolean subsequence
+    // test left the right answer buried among dozens of incidental matches.
+    // Search hits are already query-derived, so they pass through verbatim.
+    const filtered = fuzzyRank(parsed.term, out, (it) => `${it.label} ${it.hint || ''}`, {
+      limit: 60,
+    }).map((r) => r.item)
     for (const h of hits)
       filtered.push({
         id: `hit:${h.file}:${h.line}`,
@@ -185,7 +265,20 @@ export function CommandPalette({
         run: close(() => navigateTo('files', { path: h.file, line: h.line })),
       })
     return filtered
-  }, [tabs, sessions, activeKey, mrSym, tickets, mrs, hits, q, onActivateSession, onClose])
+  }, [
+    tabs,
+    sessions,
+    activeKey,
+    mrSym,
+    tickets,
+    mrs,
+    hits,
+    checkpoints,
+    q,
+    parsed,
+    onActivateSession,
+    onClose,
+  ])
 
   // Keep selection in range as the list shrinks/grows.
   useEffect(() => {
@@ -235,7 +328,7 @@ export function CommandPalette({
               setSel(0)
             }}
             onKeyDown={onKey}
-            placeholder="Jump to a tab, session, ticket, MR, or search files…"
+            placeholder="Jump to anything — or > commands · @ symbols · :42 line · # search"
             className="w-full bg-transparent text-[14px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
           />
         </div>

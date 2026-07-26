@@ -1,8 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { EditorView } from '@codemirror/view'
+import { EditorView, crosshairCursor, keymap, rectangularSelection } from '@codemirror/view'
 import { Prec, type Extension } from '@codemirror/state'
+import { bracketMatching, indentUnit } from '@codemirror/language'
+import { highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search'
+import { detectIndent, indentUnitFor } from '../../../shared/indent'
 
 // oneDark supplies syntax highlighting; theme tokens own the editor chrome so
 // dark/light appearance changes do not leave hard-coded background seams.
@@ -48,6 +51,27 @@ export function CodeEditor({
   scrollToLine?: number
 }) {
   const viewRef = useRef<EditorView | null>(null)
+
+  // Editor quality-of-life (ticket 0045). CodeMirror ships all of this; it was
+  // simply never wired up. Recomputed only when the file's indentation style
+  // changes, so typing doesn't rebuild the extension set.
+  const indent = useMemo(() => indentUnitFor(detectIndent(value)), [value.slice(0, 8000)]) // eslint-disable-line react-hooks/exhaustive-deps
+  const qol: Extension[] = useMemo(
+    () => [
+      // Match the file's own indentation rather than imposing a default.
+      indentUnit.of(indent),
+      bracketMatching(),
+      // Highlight other occurrences of the current selection.
+      highlightSelectionMatches(),
+      // Column/box selection: Shift-Alt-drag, with a crosshair while Alt is held.
+      rectangularSelection(),
+      crosshairCursor(),
+      // Multi-cursor: Cmd-D adds the next occurrence to the selection.
+      keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }]),
+    ],
+    [indent],
+  )
+
   useEffect(() => {
     const view = viewRef.current
     if (!view || !scrollToLine) return
@@ -75,13 +99,18 @@ export function CodeEditor({
       onCreateEditor={(view) => {
         viewRef.current = view
       }}
-      extensions={[chrome, ...(wrap ? [EditorView.lineWrapping] : []), ...extensions]}
+      extensions={[chrome, ...(wrap ? [EditorView.lineWrapping] : []), ...qol, ...extensions]}
       basicSetup={{
         lineNumbers: true,
-        foldGutter: false,
+        // Folding: gutter arrows + the fold keymap (Cmd-Alt-[ / ]).
+        foldGutter: true,
+        foldKeymap: true,
         highlightActiveLine: editable,
         autocompletion: true,
         searchKeymap: true,
+        // Bracket handling — matching is added below; auto-close only when
+        // the buffer is actually editable.
+        closeBrackets: editable,
       }}
     />
   )

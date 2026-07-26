@@ -1,14 +1,14 @@
 ---
 id: 38
 title: "Populate the 'normal' inbox severity tier so the middle notify rule earns its keep"
-status: backlog
+status: closed
 priority: low
 horizon: later
 hitl: false
 type: feature
 source: manual
 created: 2026-07-23
-updated: 2026-07-23
+updated: 2026-07-25
 prs: []
 refs:
   - src/main/hitl-severity.ts
@@ -48,3 +48,21 @@ meaningful.
 Low priority / small. Split out from the Active-tab follow-up because it's filer
 emit-logic, not iOS UI. The plumbing (types, threshold gate, tag rendering)
 already shipped in #34; this only adds a producer.
+
+## Update (2026-07-25)
+
+**Done** — two real producers now emit `normal`, so the middle threshold
+finally behaves differently from 'Urgent only':
+
+- `defaultSeverity('review-pattern')` → `normal`. The nightly review-findings
+  miner's promote digest is inbox-worthy and never a block. It was also being
+  filed with the inherited `cron-fail` source, which both mislabelled it and
+  made it ping unconditionally — fixed.
+- Budget alerts split: cap *reached* (spawns refused) stays `urgent`; an
+  intermediate warn ("50% of today's budget") is `normal`. Previously a 50%
+  heads-up pushed to the phone.
+
+terminal-cron's fileHitl now applies the same inbox.notifyThreshold gate
+terminal-cli and the desktop already applied — an item with no explicit
+severity stays loud, so nothing that used to alert went silent. Settings'
+severity legend documents all three tiers.

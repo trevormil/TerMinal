@@ -1,14 +1,14 @@
 ---
 id: 32
 title: "Cover CLI and MCP ticket routing for Obsidian vault provider"
-status: open
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: testing
 source: test-coverage-agent
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-25
 prs: []
 refs:
   - "src/main/ticket-provider.ts"
@@ -31,3 +31,8 @@ Recent Obsidian ticket-provider work added routing for agent, MCP, and CLI ticke
 ## Design Notes
 
 Keep the tests hermetic with temp repos/vaults and avoid requiring real Obsidian, GitHub, Linear, or network access.
+
+## Update (2026-07-25)
+
+**Done** — Obsidian ticket routing is covered in both surfaces:
+bin/terminal-cli and bin/terminal-mcp-server both resolve the vault provider.

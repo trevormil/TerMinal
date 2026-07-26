@@ -1376,25 +1376,27 @@ function listHermesSessions(): SessionMeta[] {
   }
 }
 
+// Which engines have a resumable local session store, and how to read it.
+// An engine ABSENT from this map has none, so an explicit request for it must
+// return [] rather than the other engines' sessions — resuming a foreign id
+// would run e.g. `opencode -s <a-claude-session-id>`.
+//
+// A keyed lookup rather than a ternary chain on purpose: the chain's final
+// `else` doubled as both "no engine given" and "engine I don't recognise", so
+// registering opencode silently opted it into the all-engines list. An engine
+// that isn't listed here now defaults to none, which is the safe direction.
+const SESSION_LISTERS: Partial<Record<import('../shared/engines').EngineId, () => SessionMeta[]>> = {
+  claude: listClaudeSessions,
+  codex: listCodexSessions,
+  cursor: listCursorSessions,
+  hermes: listHermesSessions,
+}
+
 /** Sessions for the entry picker. Engine-scoped calls keep startup cheap. */
-export function listSessions(
-  engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat',
-): SessionMeta[] {
-  const out =
-    engine === 'claude'
-      ? listClaudeSessions()
-      : engine === 'codex'
-        ? listCodexSessions()
-        : engine === 'cursor'
-          ? listCursorSessions()
-          : engine === 'hermes'
-            ? listHermesSessions()
-            : // openrouter/openai-compat have no resumable local store of their
-              // own — an explicit request returns none rather than leaking the
-              // other engines' lists.
-              engine === 'openrouter' || engine === 'openai-compat'
-              ? []
-              : [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
+export function listSessions(engine?: import('../shared/engines').EngineId): SessionMeta[] {
+  const out = !engine
+    ? [...listClaudeSessions(), ...listCodexSessions(), ...listCursorSessions()]
+    : (SESSION_LISTERS[engine]?.() ?? [])
   return out.sort((a, b) => b.mtime - a.mtime)
 }
 

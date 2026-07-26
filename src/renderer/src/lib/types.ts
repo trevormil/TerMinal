@@ -457,8 +457,9 @@ export type DocsTree = {
   categories: { id: DocCategory; label: string; items: DocEntry[] }[]
 }
 
-export type Engine = 'codex' | 'claude' | 'cursor' | 'openrouter' | 'hermes' | 'openai-compat'
-export type SessionEngine = Engine | 'local'
+// From the shared registry — was a third copy of the same union.
+export type Engine = import('../../../shared/engines').EngineId
+export type SessionEngine = import('../../../shared/engines').SessionEngineId
 export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
@@ -1944,6 +1945,16 @@ export type GtApi = {
   getMr: (iid: number) => Promise<MrDetail | null>
   getMrDiff: (iid: number) => Promise<string>
   getWorkingDiff: () => Promise<WorkingDiff>
+  /** A file's content at HEAD — the base for a per-file working diff. */
+  getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+  /** Raw `git status --porcelain`, for per-file tree decorations. */
+  getStatusPorcelain: () => Promise<string>
+  /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
+  checkpoints: {
+    list: () => Promise<{ sha: string; at: number; label: string }[]>
+    create: (label: string) => Promise<{ ok: boolean; sha: string }>
+    restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
+  }
   getWorkingStructuralDiff: (path: string, width?: number) => Promise<StructuralDiffResult>
   getStructuralDiff: (iid: number, path: string, width?: number) => Promise<StructuralDiffResult>
   difftAvailable: () => Promise<boolean>
@@ -2135,6 +2146,13 @@ export type GtApi = {
   files: {
     list: (rel: string) => Promise<FileEntry[]>
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+    /** Raw bytes as base64 — images, PDFs, and the hex dump (read() refuses
+     *  anything containing a NUL byte). */
+    readBinary: (
+      rel: string,
+    ) => Promise<{ ok: boolean; base64: string; size: number; reason?: string }>
+    /** Reveal in Finder. Fenced to the workspace root in main. */
+    reveal: (rel: string) => Promise<boolean>
     write: (rel: string, content: string) => Promise<boolean>
     search: (q: string) => Promise<{ file: string; line: number; text: string }[]>
     create: (rel: string, dir: boolean) => Promise<boolean>
