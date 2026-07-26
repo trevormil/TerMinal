@@ -32,7 +32,7 @@ import { moveTargetFor } from '../../../../shared/tree-dnd'
 import { ImageDiffView } from '../../components/ImageDiffView'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
 import { matchSegments, replaceInLine } from '../../../../shared/replace'
-import { minimalChange } from '../../../../shared/text-change'
+import { contentToWrite, minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -528,7 +528,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   const save = async () => {
     if (!activeFile || activeFile.err) return
-    let content = activeFile.content
+    const captured = activeFile.content
     // An already-scheduled autosave holds this same (now superseded) content —
     // left alone it could fire after the formatted write below and clobber it
     // with the stale pre-format text.
@@ -536,20 +536,24 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
     // the formatter never fights mid-typing). Skipped silently when the
     // project has no prettier or prettier doesn't own the file.
+    let formatted: string | null = null
     if (formatOnSave) {
-      const r = await window.gt.files.format(activeFile.path, content)
-      if (r.ok && r.content !== undefined && r.content !== content) {
+      const r = await window.gt.files.format(activeFile.path, captured)
+      if (r.ok && r.content !== undefined && r.content !== captured) {
+        formatted = r.content
         const view = views.current[activeFile.path]
         // Only apply if the buffer didn't change while prettier ran.
-        if (view && view.state.doc.toString() === content) {
-          const c = minimalChange(content, r.content)
+        if (view && view.state.doc.toString() === captured) {
+          const c = minimalChange(captured, formatted)
           if (c) view.dispatch({ changes: c })
-          content = r.content
-        } else if (!view) {
-          content = r.content
         }
       }
     }
+    // The buffer may have moved on while prettier ran — the live editor text
+    // always wins over both the captured snapshot and the formatter output,
+    // so a slow ⌘S can never write yesterday's buffer over today's typing.
+    const live = views.current[activeFile.path]?.state.doc.toString() ?? null
+    const content = contentToWrite(captured, formatted, live)
     if (await window.gt.files.write(activeFile.path, content))
       patch(activeFile.path, { content, dirty: false })
   }
@@ -618,11 +622,21 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
       .map((r) => ({ file: r.file, line: r.line }))
     if (targets.length === 0) return
     setReplacing(true)
-    for (const f of open) if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    // Cancel pending autosaves while flushing — a stale timer firing after
+    // the replace would overwrite the replaced text with pre-replace content.
+    for (const f of open) {
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
+      if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    }
     const res = await window.gt.files.replace(resultsQuery, replacement, targets)
     const touched = new Set(targets.map((t) => t.file))
     for (const f of open) {
       if (!touched.has(f.path)) continue
+      // A timer scheduled while the replace ran holds pre-replace content —
+      // clear it before adopting the replaced text from disk.
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
       const read = await window.gt.files.read(f.path)
       if (read.ok) patch(f.path, { content: read.content, dirty: false })
     }
