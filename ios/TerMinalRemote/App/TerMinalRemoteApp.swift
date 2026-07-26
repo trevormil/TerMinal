@@ -62,6 +62,13 @@ private struct PairedView: View {
     @State private var monitoring: MonitoringViewModel
     @State private var push = PushRegistrar.shared
     @State private var deepLinked: RemoteSession?
+    /// Bound so a tapped notification can switch tabs — without this there was
+    /// no way to land anywhere but the thread sheet.
+    @State private var tab: Tab = .active
+    /// Inbox item a notification named, so the Inbox can scroll to / open it.
+    @State private var focusedHitlId: String?
+
+    private enum Tab: Hashable { case active, workspaces, inbox, monitoring, settings }
 
     init(pairing: PairingPayload, onUnpair: @escaping () -> Void) {
         self.pairing = pairing
@@ -77,33 +84,38 @@ private struct PairedView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             NavigationStack {
                 ActiveSessionsView(model: active)
             }
             .tabItem { Label("Active", systemImage: "bolt.horizontal") }
+            .tag(Tab.active)
             .badge(active.awaitingCount)
 
             NavigationStack {
                 WorkspacesView(model: WorkspacesViewModel(client: client))
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
+            .tag(Tab.workspaces)
 
             NavigationStack {
-                InboxView(model: InboxViewModel(feed: feed))
+                InboxView(model: InboxViewModel(feed: feed), focusedId: focusedHitlId)
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
+            .tag(Tab.inbox)
 
             NavigationStack {
                 MonitoringView(model: monitoring)
             }
             .tabItem { Label("Monitoring", systemImage: "chart.line.uptrend.xyaxis") }
+            .tag(Tab.monitoring)
             .badge(monitoring.failingCount)
 
             NavigationStack {
                 SettingsView(pairing: pairing, onUnpair: onUnpair)
             }
             .tabItem { Label("Settings", systemImage: "gearshape") }
+            .tag(Tab.settings)
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.
@@ -121,9 +133,9 @@ private struct PairedView: View {
         .task {
             // A cold-launch notification tap sets pendingThreadKey before this
             // view exists, so .onChange never fires — consume it once here.
-            if let key = push.pendingThreadKey {
-                push.pendingThreadKey = nil
-                await openThread(key)
+            if let route = push.pendingRoute {
+                push.pendingRoute = nil
+                await follow(route)
             }
         }
         .task {
@@ -142,25 +154,47 @@ private struct PairedView: View {
                 try? await Task.sleep(for: feed.pollInterval)
             }
         }
-        .onChange(of: push.pendingThreadKey) { _, key in
-            guard let key else { return }
-            push.pendingThreadKey = nil
-            Task { await openThread(key) }
+        .onChange(of: push.pendingRoute) { _, route in
+            guard let route else { return }
+            push.pendingRoute = nil
+            Task { await follow(route) }
         }
     }
 
-    /// Resolve a tapped notification's thread key to a live session and present
-    /// it. Best-effort: if the id isn't a known registered session, do nothing.
-    private func openThread(_ id: String) async {
+    /// Take a tapped notification somewhere. Never a no-op: an unresolvable
+    /// thread falls back to the Inbox, which is what a completion hook or a
+    /// block is about anyway. Previously an unknown key silently did nothing,
+    /// so tapping a completion-hook alert opened the app to a blank state.
+    private func follow(_ route: NotificationRoute) async {
+        switch route {
+        case .inbox(let hitlId):
+            await MainActor.run {
+                focusedHitlId = hitlId
+                tab = .inbox
+            }
+        case .thread(let key):
+            if await openThread(key) { return }
+            // The alert named a session this device can't open — a desktop-only
+            // session, or one that ended. Land on the Inbox rather than nowhere.
+            await MainActor.run { tab = .inbox }
+        }
+    }
+
+    /// Resolve a thread key to a live session and present it.
+    /// Returns false when the id isn't a known registered session.
+    @discardableResult
+    private func openThread(_ id: String) async -> Bool {
         // The feed usually already knows the session; fall back to a fetch for
         // a notification that arrives ahead of the next poll tick.
         if let match = feed.sessions.first(where: { $0.id == id }) {
             await MainActor.run { deepLinked = match }
-            return
+            return true
         }
-        guard let (sessions, _) = try? await client.remote() else { return }
+        guard let (sessions, _) = try? await client.remote() else { return false }
         if let match = sessions.first(where: { $0.id == id }) {
             await MainActor.run { deepLinked = match }
+            return true
         }
+        return false
     }
 }

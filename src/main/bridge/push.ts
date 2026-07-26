@@ -153,6 +153,9 @@ export type PushPayload = {
   body: string
   /** Deep-link target: the chat thread this notification is about. */
   threadKey?: string
+  /** Deep-link target for an inbox alert (completion hook, block). Present when
+   *  the notification is about a HITL item rather than a live session. */
+  hitlId?: string
   /** Badge count for the app icon; omit to leave it alone. */
   badge?: number
 }
@@ -166,6 +169,7 @@ function apnsBody(payload: PushPayload): string {
       'interruption-level': 'time-sensitive',
     },
     threadKey: payload.threadKey,
+    hitlId: payload.hitlId,
   })
 }
 
