@@ -83,6 +83,36 @@ struct WsTicketComment: Codable, Hashable, Identifiable {
 
     var isAgent: Bool { kind == "agent" }
     var id: String { "\(at)-\(author)" }
+
+    var date: Date? { WsTicketComment.parser.date(from: at) }
+
+    /// Mirrors logTimestamp in src/renderer/src/lib/time.ts: recent entries stay
+    /// relative (you are watching a run work), older ones become real dates.
+    var shortStamp: String {
+        guard let d = date else { return at }
+        let elapsed = max(0, Date().timeIntervalSince(d))
+        if elapsed < 60 { return "just now" }
+        if elapsed < 3600 { return "\(Int(elapsed / 60))m ago" }
+        if elapsed < 86400 { return "\(Int(elapsed / 3600))h ago" }
+        let cal = Calendar.current
+        if cal.isDateInYesterday(d) {
+            return "Yesterday at " + d.formatted(date: .omitted, time: .shortened)
+        }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 0
+        if days < 7 { return "\(days)d ago" }
+        if cal.component(.year, from: d) == cal.component(.year, from: Date()) {
+            return d.formatted(.dateTime.month(.abbreviated).day()) + " at "
+                + d.formatted(date: .omitted, time: .shortened)
+        }
+        return d.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
+    /// ISO-8601 with fractional seconds — what the desktop writes.
+    private static let parser: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 }
 
 struct WsFinding: Codable, Hashable, Identifiable {

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
+import { groupLogEntries } from '../lib/ticketLog'
+import { logTimestamp, fullTimestamp } from '../lib/time'
 import {
   statusTone,
   priorityTone,
@@ -226,9 +228,10 @@ function RelationRow({
   )
 }
 
-// A ticket's comment log. Not a collaboration feature — it is the durable
-// per-ticket context that survives between agent runs, so entries written by an
-// agent are marked as such and carry the engine/model that wrote them.
+// A ticket's comment log, rendered as a thread. Not a collaboration feature —
+// it is the durable per-ticket context that survives between agent runs, so an
+// entry's voice (which human, or which agent on which model) is the thing the
+// layout leads with.
 function LogSection({
   comments,
   slug,
@@ -240,6 +243,12 @@ function LogSection({
 }) {
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  // Relative stamps go stale while you sit on a ticket watching a run work it.
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
 
   const post = async () => {
     const body = draft.trim()
@@ -255,80 +264,105 @@ function LogSection({
     }
   }
 
+  const blocks = groupLogEntries(comments)
+
   return (
     <div className="mt-5 border-t border-[var(--gt-border)] pt-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
+      <div className="mb-3 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
         <MessageSquare size={12} strokeWidth={2} /> Log
         {comments.length > 0 && (
           <span className="tabular-nums text-zinc-600">{comments.length}</span>
         )}
       </div>
-      {comments.length > 0 && (
-        <div className="mb-3 space-y-3">
-          {comments.map((c, i) => (
-            <div
-              key={`${c.at}:${i}`}
-              className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5"
-            >
-              <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                {c.kind === 'agent' ? (
-                  <Badge tone="accent">
-                    <Bot size={10} strokeWidth={2.25} />
-                    {c.author}
-                  </Badge>
-                ) : (
-                  <span className="font-semibold text-zinc-300">{c.author}</span>
+      {blocks.length > 0 && (
+        <div className="mb-4">
+          {blocks.map((b, bi) => (
+            <div key={`${b.at}:${bi}`} className="relative flex gap-2.5 pb-3">
+              {/* Rail: avatar plus a connector down to the next block, so the
+                  log reads as one thread rather than a stack of cards. */}
+              <div className="flex w-6 shrink-0 flex-col items-center">
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold ${
+                    b.kind === 'agent'
+                      ? 'border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                      : 'border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-400'
+                  }`}
+                  title={b.kind === 'agent' ? `agent ${b.author}` : b.author}
+                >
+                  {b.kind === 'agent' ? (
+                    <Bot size={12} strokeWidth={2.25} />
+                  ) : (
+                    b.author.slice(0, 1).toUpperCase()
+                  )}
+                </div>
+                {bi < blocks.length - 1 && (
+                  <div className="mt-1 w-px flex-1 bg-[var(--gt-border)]" />
                 )}
-                {c.via && <span className="font-mono text-[10px] text-zinc-600">{c.via}</span>}
-                <span className="ml-auto text-[10px] text-zinc-600" title={c.at}>
-                  {relativeTime(c.at)}
-                </span>
               </div>
-              <Markdown>{c.body}</Markdown>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span
+                    className={`text-[12px] font-semibold ${
+                      b.kind === 'agent' ? 'text-[var(--gt-accent-light)]' : 'text-zinc-200'
+                    }`}
+                  >
+                    {b.author}
+                  </span>
+                  {b.via && <span className="font-mono text-[10px] text-zinc-600">{b.via}</span>}
+                  <span className="text-[10.5px] text-zinc-600" title={fullTimestamp(b.at)}>
+                    {logTimestamp(b.at)}
+                  </span>
+                </div>
+                {b.entries.map((c, i) => (
+                  <div key={`${c.at}:${i}`} className="group mt-1 flex gap-2">
+                    <div className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-zinc-300">
+                      <Markdown>{c.body}</Markdown>
+                    </div>
+                    {/* Grouped entries lose their own header, so surface each
+                        one's real time on hover — the block stamp is the
+                        block's start, not this entry's. */}
+                    {i > 0 && (
+                      <span
+                        className="shrink-0 pt-0.5 text-[10px] text-transparent transition-colors group-hover:text-zinc-600"
+                        title={fullTimestamp(c.at)}
+                      >
+                        {logTimestamp(c.at)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
       )}
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void post()
-        }}
-        rows={2}
-        placeholder="Leave a note on this ticket — agents working it will read this. ⌘↵ to post."
-        className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-      />
-      <div className="mt-1.5 flex justify-end">
-        <button
-          onClick={post}
-          disabled={!draft.trim() || saving}
-          className="rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20 disabled:opacity-40"
-        >
-          {saving ? 'Posting…' : 'Comment'}
-        </button>
+      <div className="flex gap-2.5">
+        <div className="w-6 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void post()
+            }}
+            rows={2}
+            placeholder="Leave a note — agents working this ticket read it. ⌘↵ to post."
+            className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2.5 py-2 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+          />
+          <div className="mt-1.5 flex justify-end">
+            <button
+              onClick={post}
+              disabled={!draft.trim() || saving}
+              className="rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20 disabled:opacity-40"
+            >
+              {saving ? 'Posting…' : 'Comment'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
-}
-
-/** Compact "3h ago" for the log. Falls back to the raw stamp if unparseable —
- *  a remote or hand-edited entry should still render something readable. */
-function relativeTime(iso: string): string {
-  const then = Date.parse(iso)
-  if (!Number.isFinite(then)) return iso
-  const secs = Math.max(0, (Date.now() - then) / 1000)
-  const units: [number, string][] = [
-    [60, 's'],
-    [3600, 'm'],
-    [86400, 'h'],
-    [604800, 'd'],
-  ]
-  if (secs < 60) return 'just now'
-  for (let i = 1; i < units.length; i++) {
-    if (secs < units[i][0]) return `${Math.floor(secs / units[i - 1][0])}${units[i][1]} ago`
-  }
-  return `${Math.floor(secs / 604800)}w ago`
 }
 
 /**

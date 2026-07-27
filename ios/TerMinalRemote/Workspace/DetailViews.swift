@@ -153,23 +153,60 @@ extension TicketDetailView {
         if comments.isEmpty {
             Text("No entries yet.").font(GT.sans(13)).foregroundStyle(GT.textFaint)
         }
-        ForEach(comments) { c in
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(c.author)
-                        .font(GT.sans(12, .semibold))
-                        .foregroundStyle(c.isAgent ? GT.accentLight : GT.textSoft)
-                    if c.isAgent { pill("agent", tint: GT.accent2) }
-                    if let via = c.via {
-                        Text(via).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+        // A thread, not a stack of cards: an avatar rail carries the voice and
+        // a connector ties the entries together, so who-said-what-when reads at
+        // a glance on a small screen.
+        ForEach(Array(comments.enumerated()), id: \.element.id) { idx, c in
+            HStack(alignment: .top, spacing: 10) {
+                VStack(spacing: 4) {
+                    ZStack {
+                        Circle()
+                            .fill(c.isAgent ? GT.accent2.opacity(0.16) : GT.panel2)
+                            .frame(width: 26, height: 26)
+                        Circle()
+                            .strokeBorder(
+                                c.isAgent ? GT.accent2.opacity(0.5) : GT.textFaint.opacity(0.3),
+                                lineWidth: 1
+                            )
+                            .frame(width: 26, height: 26)
+                        if c.isAgent {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(GT.accent2)
+                        } else {
+                            Text(c.author.prefix(1).uppercased())
+                                .font(GT.sans(11, .semibold))
+                                .foregroundStyle(GT.textSoft)
+                        }
                     }
-                    Spacer()
-                    Text(c.at.prefix(10)).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                    if idx < comments.count - 1 {
+                        Rectangle()
+                            .fill(GT.textFaint.opacity(0.22))
+                            .frame(width: 1)
+                            .frame(maxHeight: .infinity)
+                    }
                 }
-                MarkdownText(raw: c.body)
+                .frame(width: 26)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(c.author)
+                            .font(GT.sans(12, .semibold))
+                            .foregroundStyle(c.isAgent ? GT.accentLight : GT.textSoft)
+                        if let via = c.via {
+                            Text(via).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                        }
+                        Spacer(minLength: 4)
+                        Text(c.shortStamp)
+                            .font(GT.sans(10.5))
+                            .foregroundStyle(GT.textFaint)
+                            .fixedSize()
+                    }
+                    MarkdownText(raw: c.body)
+                }
+                .padding(.bottom, 10)
             }
-            .padding(10)
-            .background(GT.panel, in: RoundedRectangle(cornerRadius: 8))
+            .fixedSize(horizontal: false, vertical: true)
         }
         VStack(alignment: .leading, spacing: 6) {
             TextField("Leave a note — agents working this ticket read it", text: $draft, axis: .vertical)
