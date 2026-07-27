@@ -193,6 +193,7 @@ struct WorkspaceSectionView: View {
     let section: WorkspaceTab
     @State private var startingNew = false
     @State private var opened: RemoteSession?
+    @State private var showClosedTickets = false
 
     var body: some View {
         ZStack {
@@ -231,17 +232,30 @@ struct WorkspaceSectionView: View {
         .task { await model.load(section) }
     }
 
+    /// Tickets, with an open/all lens. A backlog is mostly closed tickets, so
+    /// scrolling past them to find live work is the common case worth cutting.
+    @ViewBuilder private var ticketsTab: some View {
+        let shown = showClosedTickets ? model.tickets : model.tickets.filter { !$0.isDone }
+        Picker("", selection: $showClosedTickets) {
+            Text("Open").tag(false)
+            Text("All").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .padding(.bottom, 4)
+        list(shown, empty: showClosedTickets ? "No tickets" : "No open tickets") { t in
+            NavigationLink {
+                TicketDetailView(client: model.client, repo: model.repo.path, slug: t.slug)
+            } label: { TicketRow(t: t) }
+            .buttonStyle(.plain)
+        }
+    }
+
     @ViewBuilder private var content: some View {
         switch section {
         case .sessions:
             sessionsTab
         case .tickets:
-            list(model.tickets, empty: "No tickets") { t in
-                NavigationLink {
-                    TicketDetailView(client: model.client, repo: model.repo.path, slug: t.slug)
-                } label: { TicketRow(t: t) }
-                .buttonStyle(.plain)
-            }
+            ticketsTab
         case .prs:
             list(model.prs, empty: "No open PRs") { pr in
                 NavigationLink {

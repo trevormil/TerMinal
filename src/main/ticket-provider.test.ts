@@ -463,3 +463,102 @@ describe('commentOnRepoTicket', () => {
     }
   })
 })
+
+describe('saved ticket views', () => {
+  const view = (name: string, over: Record<string, unknown> = {}) => ({
+    name,
+    type: 'all',
+    horizon: 'all',
+    priority: 'all',
+    status: 'all',
+    hitl: false,
+    q: '',
+    groupBy: 'status',
+    sortBy: 'id-desc',
+    ...over,
+  })
+
+  test('round-trips saved views through save/read', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [view('My bugs', { type: 'bug' }), view('Urgent', { priority: 'critical' })],
+      } as never)
+      expect(saved.savedViews?.map((v) => v.name)).toEqual(['My bugs', 'Urgent'])
+      expect(readRepoTicketConfig(repo).savedViews?.[0].type).toBe('bug')
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  // A provider-only edit from the Settings pane must not wipe views the user
+  // saved from the Tickets toolbar.
+  test('omitting savedViews preserves the stored ones', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      saveRepoTicketConfig(repo, { provider: 'local', savedViews: [view('Keep me')] } as never)
+      const after = saveRepoTicketConfig(repo, { provider: 'github' })
+      expect(after.savedViews?.map((v) => v.name)).toEqual(['Keep me'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an explicit empty array clears them', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      saveRepoTicketConfig(repo, { provider: 'local', savedViews: [view('Bye')] } as never)
+      expect(
+        saveRepoTicketConfig(repo, { provider: 'local', savedViews: [] }).savedViews,
+      ).toBeUndefined()
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an unnamed or malformed view is dropped rather than stored', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [view(''), view('   '), 'nope', null, view('Good')],
+      } as never)
+      expect(saved.savedViews?.map((v) => v.name)).toEqual(['Good'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('a saved view falls back to defaults for missing axes', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [{ name: 'Sparse', type: 'bug' }],
+      } as never)
+      expect(saved.savedViews?.[0]).toMatchObject({
+        name: 'Sparse',
+        type: 'bug',
+        priority: 'all',
+        groupBy: 'status',
+        sortBy: 'id-desc',
+        hitl: false,
+        q: '',
+      })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('the linear comment tool gets a default so commenting works out of the box', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      expect(saveRepoTicketConfig(repo, { provider: 'linear' }).linear?.tools?.comment).toBe(
+        'save_comment',
+      )
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+})

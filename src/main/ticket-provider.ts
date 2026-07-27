@@ -81,12 +81,28 @@ export type TicketView = {
   default?: boolean
 }
 
+/** A named filter/group/sort lens over this repo's tickets. Distinct from
+ *  `TicketView`, which embeds an external platform's own web UI. Mirrors
+ *  SavedTicketView in src/renderer/src/lib/ticketViews.ts. */
+export type SavedTicketView = {
+  name: string
+  type: string
+  horizon: string
+  priority: string
+  status: string
+  hitl: boolean
+  q: string
+  groupBy: string
+  sortBy: string
+}
+
 export type RepoTicketsConfig = {
   provider?: TicketProviderKind
   github?: GithubConfig
   linear?: LinearTicketConfig
   obsidian?: ObsidianTicketConfig
   views?: TicketView[]
+  savedViews?: SavedTicketView[]
 }
 
 export type TicketProviderTestResult = {
@@ -217,6 +233,43 @@ export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): vo
 // Views are loaded into a real <webview>, so the url is a capability, not a
 // label: anything but http(s) (javascript:, file:, data:) is dropped here at the
 // config boundary rather than trusted downstream.
+const GROUP_BYS = ['status', 'priority', 'type', 'horizon', 'agent', 'none']
+const SORT_BYS = ['id-desc', 'id-asc', 'updated-desc', 'priority']
+
+// A stored view is user data that ends up driving list rendering, so every axis
+// is normalized to a known value and an unnamed view is dropped — a nameless
+// entry in the view picker would be unselectable and unremovable.
+function sanitizeSavedViews(raw: unknown): SavedTicketView[] {
+  if (!Array.isArray(raw)) return []
+  const out: SavedTicketView[] = []
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue
+    const r = v as Record<string, unknown>
+    const name = String(r.name ?? '').trim()
+    if (!name) continue
+    const str = (k: string, fallback: string) => {
+      const value = String(r[k] ?? '').trim()
+      return value || fallback
+    }
+    const oneOf = (k: string, allowed: string[], fallback: string) => {
+      const value = String(r[k] ?? '').trim()
+      return allowed.includes(value) ? value : fallback
+    }
+    out.push({
+      name,
+      type: str('type', 'all'),
+      horizon: str('horizon', 'all'),
+      priority: str('priority', 'all'),
+      status: str('status', 'all'),
+      hitl: r.hitl === true,
+      q: typeof r.q === 'string' ? r.q : '',
+      groupBy: oneOf('groupBy', GROUP_BYS, 'status'),
+      sortBy: oneOf('sortBy', SORT_BYS, 'id-desc'),
+    })
+  }
+  return out
+}
+
 function sanitizeViews(raw: unknown): TicketView[] {
   if (!Array.isArray(raw)) return []
   const out: TicketView[] = []
@@ -260,6 +313,7 @@ export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
     ...(cfg.linear ? { linear: cfg.linear } : {}),
     ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
     ...(cfg.views?.length ? { views: sanitizeViews(cfg.views) } : {}),
+    ...(cfg.savedViews?.length ? { savedViews: sanitizeSavedViews(cfg.savedViews) } : {}),
   }
 }
 
@@ -297,6 +351,7 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
               get: cfg.linear?.tools?.get || 'get_issue',
               create: cfg.linear?.tools?.create || 'save_issue',
               update: cfg.linear?.tools?.update || 'save_issue',
+              comment: cfg.linear?.tools?.comment || 'save_comment',
             },
             ...(cfg.linear?.team ? { team: cfg.linear.team } : {}),
             ...(cfg.linear?.teamKey ? { teamKey: cfg.linear.teamKey } : {}),
@@ -313,6 +368,15 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
           ? sanitizeViews(readConfig(repoRoot).views)
           : sanitizeViews(cfg.views)
       return next.length ? { views: next } : {}
+    })(),
+    // Same contract as `views`: omitted means unchanged, an explicit array
+    // (including []) replaces. A saved view is a lens, not provider config.
+    ...(() => {
+      const next =
+        cfg.savedViews === undefined
+          ? sanitizeSavedViews(readConfig(repoRoot).savedViews)
+          : sanitizeSavedViews(cfg.savedViews)
+      return next.length ? { savedViews: next } : {}
     })(),
   }
   mkdirSync(join(repoRoot, '.TerMinal'), { recursive: true })
