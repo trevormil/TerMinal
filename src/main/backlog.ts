@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
+import { appendComment, splitTicketBody, type TicketComment } from './ticket-comments'
 import { normalizeModelTier, type ModelTier } from './resolve-model'
 import {
   ensureProjectArea,
@@ -38,7 +39,10 @@ export type Ticket = {
   workedBy: string[]
   agent: TicketAgent
   run?: TicketRunLink
+  /** Prose only — the `## Log` section is split out into `comments`. */
   body: string
+  /** Timestamped log, oldest first. Written by humans and by agent runs. */
+  comments: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
@@ -109,6 +113,7 @@ export function backlogRel(repoRoot: string): string {
 
 function toTicket(slug: string, md: string): Ticket {
   const { fm, body } = parseFrontmatter(md)
+  const { prose, comments } = splitTicketBody(body)
   const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : [])
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
   const type = str(fm.type) || 'feature'
@@ -136,7 +141,8 @@ function toTicket(slug: string, md: string): Ticket {
         : [],
     agent: ticketAgentFromFrontmatter(fm, type),
     run: ticketRunFromFrontmatter(fm),
-    body: body.trim(),
+    body: prose,
+    comments,
     provider: 'local',
     providerLabel: 'Local backlog',
   }
@@ -429,6 +435,35 @@ export function updateTicket(
   }
 }
 
+/** Append a timestamped comment to a ticket's `## Log`. Frontmatter is left
+ *  alone apart from `updated`, and existing prose is preserved byte-for-byte,
+ *  so this is safe to interleave with `updateTicket`. */
+export function appendTicketComment(
+  repoRoot: string,
+  slug: string,
+  comment: Omit<TicketComment, 'at'> & { at?: string },
+  baseDir?: string,
+): boolean {
+  if (!comment.body.trim() || !comment.author.trim()) return false
+  const safe = slug.replace(/[^\w-]/g, '')
+  const p = ticketReadDirs(repoRoot, baseDir)
+    .map((dir) => join(dir, `${safe}.md`))
+    .find((candidate) => existsSync(candidate))
+  if (!p) return false
+  try {
+    const md = readFileSync(p, 'utf8')
+    const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
+    if (!m) return false
+    const body = appendComment(m[2], { ...comment, at: comment.at || new Date().toISOString() })
+    writeFileSync(p, `${m[1]}\n${body}`)
+  } catch {
+    return false
+  }
+  // Separate write so a failed bump can't lose the comment we just persisted.
+  updateTicket(repoRoot, safe, {}, baseDir)
+  return true
+}
+
 /** Append a PR/MR url to a ticket's `prs:` list (idempotent) and, when the
  *  ticket is still untouched, flip it to in-progress. Used by the background-
  *  task watcher to close the loop between a spawned run and its ticket. */
@@ -481,6 +516,7 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
     run: undefined,
     body: input.body || '',
+    comments: [],
     provider: 'local',
     providerLabel: 'Local backlog',
   }

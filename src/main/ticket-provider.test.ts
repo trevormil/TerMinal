@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  commentOnRepoTicket,
   createRepoTicket,
   getRepoTicket,
   githubIssueToTicket,
@@ -367,5 +368,87 @@ describe('saveRepoTicketConfig view preservation', () => {
     const saved = saveRepoTicketConfig(repo, { provider: 'local', views: [] })
     expect(saved.views ?? []).toEqual([])
     expect(readRepoTicketConfig(repo).views ?? []).toEqual([])
+  })
+})
+
+describe('provider comment mapping', () => {
+  test('GitHub issue comments map into the shared comment shape', () => {
+    const t = githubIssueToTicket({
+      number: 42,
+      title: 'Fix cache race',
+      state: 'OPEN',
+      body: 'Race details',
+      labels: [],
+      comments: [
+        { author: { login: 'trevor' }, body: 'first', createdAt: '2026-06-01T12:00:00Z' },
+        { author: { login: 'octobot' }, body: 'second', createdAt: '2026-06-02T12:00:00Z' },
+      ],
+    })
+    expect(t.comments.map((c) => [c.author, c.body, c.at])).toEqual([
+      ['trevor', 'first', '2026-06-01T12:00:00Z'],
+      ['octobot', 'second', '2026-06-02T12:00:00Z'],
+    ])
+    expect(t.comments.every((c) => c.kind === 'human')).toBe(true)
+  })
+
+  test('an issue with no comments field yields an empty log, not undefined', () => {
+    expect(githubIssueToTicket({ number: 1, title: 'x', state: 'OPEN', labels: [] }).comments).toEqual([])
+    expect(linearIssueToTicket({ id: 'TRE-5', title: 'x' }).comments).toEqual([])
+  })
+
+  test('Linear issue comments map into the shared comment shape', () => {
+    const t = linearIssueToTicket({
+      id: 'TRE-5',
+      title: 'x',
+      comments: [{ user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' }],
+    })
+    expect(t.comments).toEqual([
+      { at: '2026-06-07T20:41:17.329Z', author: 'Trevor', kind: 'human', body: 'linear note' },
+    ])
+  })
+})
+
+describe('commentOnRepoTicket', () => {
+  test('a local-provider comment lands in the repo backlog file', async () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const t = await createRepoTicket(repo, {
+        title: 'Local comment',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
+      expect(
+        await commentOnRepoTicket(repo, t.slug, { author: 'trevor', kind: 'human', body: 'noted' }),
+      ).toBe(true)
+      expect((await getRepoTicket(repo, t.slug))?.comments.map((c) => c.body)).toEqual(['noted'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an Obsidian comment is written into the vault, not the repo', async () => {
+    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
+    try {
+      const t = await createRepoTicket(repo, {
+        title: 'Vault comment',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
+      expect(
+        await commentOnRepoTicket(repo, t.slug, { author: 'docs', kind: 'agent', via: 'codex/gpt-5', body: 'from a run' }),
+      ).toBe(true)
+      expect(readFileSync(join(vault, 'tickets', `${t.slug}.md`), 'utf8')).toContain('agent:docs (codex/gpt-5)')
+      const got = await getRepoTicket(repo, t.slug)
+      expect(got?.comments.map((c) => c.body)).toEqual(['from a run'])
+      expect(got?.body).toBe('b')
+    } finally {
+      rmSync(vault, { recursive: true, force: true })
+      rmSync(repo, { recursive: true, force: true })
+    }
   })
 })
