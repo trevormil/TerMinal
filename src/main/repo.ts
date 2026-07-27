@@ -95,6 +95,24 @@ export function getFileAtHead(repoRoot: string, rel: string): HeadFile {
   }
 }
 
+export type HeadFileBinary = { ok: boolean; base64: string; reason?: string }
+/**
+ * Raw bytes at HEAD as base64 — the image-diff original. A file absent from
+ * HEAD (newly added) is not an error: it diffs against nothing.
+ */
+export function getFileAtHeadBinary(repoRoot: string, rel: string): HeadFileBinary {
+  if (!repoRoot) return { ok: false, base64: '', reason: 'Not a git repository.' }
+  try {
+    const buf = execFileSync('git', ['-C', repoRoot, 'show', `HEAD:${rel}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 25_000_000,
+    })
+    return { ok: true, base64: Buffer.from(buf).toString('base64') }
+  } catch {
+    return { ok: true, base64: '' }
+  }
+}
+
 export type WorkingDiff = {
   ok: boolean
   diff: string

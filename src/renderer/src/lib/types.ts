@@ -1947,6 +1947,8 @@ export type GtApi = {
   getWorkingDiff: () => Promise<WorkingDiff>
   /** A file's content at HEAD — the base for a per-file working diff. */
   getFileAtHead: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
+  /** Raw bytes at HEAD as base64 — the image-diff original. */
+  getFileAtHeadBinary: (rel: string) => Promise<{ ok: boolean; base64: string; reason?: string }>
   /** Raw `git status --porcelain`, for per-file tree decorations. */
   getStatusPorcelain: () => Promise<string>
   /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */

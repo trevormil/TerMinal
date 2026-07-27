@@ -355,6 +355,7 @@ const gt = {
   getMrDiff: (iid: number) => ipcRenderer.invoke('mrs:diff', iid),
   getWorkingDiff: () => ipcRenderer.invoke('git:working-diff'),
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
+  getFileAtHeadBinary: (rel: string) => ipcRenderer.invoke('git:file-at-head-binary', rel),
   getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
   checkpoints: {
     list: () => ipcRenderer.invoke('checkpoints:list'),

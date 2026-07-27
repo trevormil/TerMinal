@@ -4,6 +4,20 @@
 
 export type SpanChange = { from: number; to: number; insert: string }
 
+/**
+ * What a ⌘S should actually write when formatting raced the user's typing.
+ * The live buffer always wins when it moved past the captured snapshot —
+ * stale captured (or formatter) text must never overwrite newer edits.
+ */
+export function contentToWrite(
+  captured: string,
+  formatted: string | null,
+  live: string | null,
+): string {
+  if (live !== null && live !== captured) return live
+  return formatted ?? captured
+}
+
 /** The smallest {from, to, insert} turning `prev` into `next`; null if equal. */
 export function minimalChange(prev: string, next: string): SpanChange | null {
   if (prev === next) return null

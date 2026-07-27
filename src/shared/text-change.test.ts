@@ -1,5 +1,23 @@
 import { describe, expect, test } from 'bun:test'
-import { minimalChange } from './text-change'
+import { contentToWrite, minimalChange } from './text-change'
+
+describe('contentToWrite', () => {
+  test('formatter output wins when the buffer stayed put', () => {
+    // dispatching the format made live == formatted
+    expect(contentToWrite('a=1', 'a = 1', 'a = 1')).toBe('a = 1')
+    // no live view: formatted still applies
+    expect(contentToWrite('a=1', 'a = 1', null)).toBe('a = 1')
+  })
+
+  test('typing during the format wins over both snapshots', () => {
+    expect(contentToWrite('a=1', 'a = 1', 'a=1 // newer')).toBe('a=1 // newer')
+  })
+
+  test('no formatter, unchanged buffer → the captured content', () => {
+    expect(contentToWrite('a=1', null, 'a=1')).toBe('a=1')
+    expect(contentToWrite('a=1', null, null)).toBe('a=1')
+  })
+})
 
 const apply = (s: string, c: { from: number; to: number; insert: string }) =>
   s.slice(0, c.from) + c.insert + s.slice(c.to)

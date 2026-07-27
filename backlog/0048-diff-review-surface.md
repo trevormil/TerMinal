@@ -1,7 +1,7 @@
 ---
 id: 48
 title: "Diff review: inline/side-by-side toggle, word-level, collapse unchanged, multi-file view, image diff"
-status: open
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -9,7 +9,8 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/152
 refs:
   - src/renderer/src/components/MrDetail.tsx
   - src/renderer/src/tabs/files/index.tsx
@@ -60,3 +61,10 @@ collapse-unchanged, syntax highlighting inside the diff, n/p hunk stepping,
 plus the per-file Changes View against HEAD.
 
 **Remaining:** image diff (swipe / onion-skin) and the multi-file diff view.
+
+## Update (2026-07-26)
+
+Image diff (side-by-side / swipe / onion-skin, HEAD vs working via
+git:file-at-head-binary) and the multi-file diff view (Changes sidebar lists
+changed files; each opens its own merge diff, patch view one click away)
+shipped in PR #152. Ticket complete pending merge.

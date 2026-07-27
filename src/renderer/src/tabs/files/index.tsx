@@ -23,13 +23,16 @@ import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
 import { MergeDiffView } from '../../components/MergeDiffView'
 import {
   fileStatuses,
+  parsePorcelain,
   statusBadge,
   statusColor,
   type StatusMap,
 } from '../../../../shared/git-status'
+import { moveTargetFor } from '../../../../shared/tree-dnd'
+import { ImageDiffView } from '../../components/ImageDiffView'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
 import { matchSegments, replaceInLine } from '../../../../shared/replace'
-import { minimalChange } from '../../../../shared/text-change'
+import { contentToWrite, minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
@@ -59,7 +62,16 @@ type NodeActions = {
   onSelectDir: (p: string) => void
   onRename: (p: string) => void
   onDelete: (p: string) => void
+  /** Drop `from` into directory `toDir` ('' = root). */
+  onMove: (from: string, toDir: string) => void
+  /** Diff this file against the active open file. */
+  onCompare: (p: string) => void
+  /** Absolute path for a repo-relative one — what a terminal drop pastes. */
+  absFor: (p: string) => string
 }
+
+/** The drag payload key for tree-internal moves. */
+const DND_REL = 'application/x-terminal-rel'
 
 function TreeNode({
   entry,
@@ -80,6 +92,7 @@ function TreeNode({
 }) {
   const [open, setOpen] = useState(false)
   const [children, setChildren] = useState<FileEntry[] | null>(null)
+  const [dropHover, setDropHover] = useState(false)
   // refetch children when the tree version bumps (after a create/rename/delete)
   useEffect(() => {
     if (open) window.gt.files.list(entry.path).then(setChildren)
@@ -98,9 +111,44 @@ function TreeNode({
         onClick={click}
         style={{ paddingLeft: depth * 12 + 8 }}
         title={entry.ignored ? `${entry.name} · git-ignored` : entry.name}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(DND_REL, entry.path)
+          // text/plain carries the absolute path, so dropping on a terminal
+          // pastes something an agent can actually use (the Orca steal).
+          e.dataTransfer.setData('text/plain', act.absFor(entry.path))
+          e.dataTransfer.effectAllowed = 'copyMove'
+        }}
+        onDragOver={
+          entry.dir
+            ? (e) => {
+                if (!e.dataTransfer.types.includes(DND_REL)) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+                setDropHover(true)
+              }
+            : undefined
+        }
+        onDragLeave={entry.dir ? () => setDropHover(false) : undefined}
+        onDrop={
+          entry.dir
+            ? (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setDropHover(false)
+                const from = e.dataTransfer.getData(DND_REL)
+                if (from) act.onMove(from, entry.path)
+              }
+            : undefined
+        }
         className={`group flex cursor-pointer items-center gap-1 py-[3px] pr-1.5 text-[12px] hover:bg-white/5 ${
           sel ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
-        } ${entry.ignored ? 'opacity-45' : ''}`}
+        } ${entry.ignored ? 'opacity-45' : ''} ${
+          dropHover
+            ? 'bg-[var(--gt-accent)]/20 outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/50'
+            : ''
+        }`}
       >
         <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
           {entry.dir ? (
@@ -126,6 +174,18 @@ function TreeNode({
           </span>
         )}
         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+          {!entry.dir && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                act.onCompare(entry.path)
+              }}
+              title="Compare with active file"
+              className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+            >
+              <GitCompare size={11} strokeWidth={2} />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -186,6 +246,123 @@ function TreeNode({
   )
 }
 
+/**
+ * One file's HEAD vs working-tree diff — text through the CodeMirror merge
+ * view, images through swipe/onion. `working` short-circuits the disk read
+ * when the caller already holds the buffer (the active editor).
+ *
+ * A HEAD-read failure is NOT an empty original. Remote daemons answer
+ * { ok: false, reason: 'Per-file diff not supported…' }, and collapsing that
+ * to '' made every unchanged remote file render as a whole-file addition —
+ * a confidently wrong diff, which is worse than saying we can't show one.
+ */
+function PerFileDiff({ path, working }: { path: string; working?: string }) {
+  const isImage = viewerKindFor(path) === 'image'
+  const [head, setHead] = useState<string | null>(null)
+  const [headB64, setHeadB64] = useState<string | null>(null)
+  const [work, setWork] = useState<string | null>(null)
+  const [workB64, setWorkB64] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    setErr(null)
+    setHead(null)
+    setHeadB64(null)
+    setWork(null)
+    setWorkB64(null)
+    if (isImage) {
+      Promise.all([window.gt.getFileAtHeadBinary(path), window.gt.files.readBinary(path)])
+        .then(([h, w]) => {
+          if (!alive) return
+          if (!h.ok) return setErr(h.reason || 'Could not read this file at HEAD')
+          setHeadB64(h.base64)
+          // A working-tree read failure means the file is deleted — old-only.
+          setWorkB64(w.ok ? w.base64 : '')
+        })
+        .catch((e) => alive && setErr(String(e?.message || e)))
+      return () => {
+        alive = false
+      }
+    }
+    window.gt
+      .getFileAtHead(path)
+      .then((r) => {
+        if (!alive) return
+        if (!r.ok) return setErr(r.reason || 'Could not read this file at HEAD')
+        setHead(r.content)
+      })
+      .catch((e) => alive && setErr(String(e?.message || e)))
+    if (working === undefined) {
+      window.gt.files.read(path).then((r) => alive && setWork(r.ok ? r.content : ''))
+    } else {
+      setWork(working)
+    }
+    return () => {
+      alive = false
+    }
+  }, [path, working, isImage])
+
+  if (err) return <div className="p-6 text-[12px] text-zinc-600">{err}</div>
+  if (isImage) {
+    if (headB64 === null || workB64 === null)
+      return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
+    return <ImageDiffView path={path} oldBase64={headB64} newBase64={workB64} />
+  }
+  if (head === null || work === null)
+    return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
+  return <MergeDiffView original={head} modified={work} extensions={langFor(path)} />
+}
+
+/** Two arbitrary files diffed against each other (tree "compare with"). */
+function CompareView({ a, b, onClose }: { a: string; b: string; onClose: () => void }) {
+  const [ca, setCa] = useState<string | null>(null)
+  const [cb, setCb] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    setCa(null)
+    setCb(null)
+    setErr(null)
+    Promise.all([window.gt.files.read(a), window.gt.files.read(b)]).then(([ra, rb]) => {
+      if (!alive) return
+      if (!ra.ok) return setErr(`Can't read ${a} — ${ra.reason}`)
+      if (!rb.ok) return setErr(`Can't read ${b} — ${rb.reason}`)
+      setCa(ra.content)
+      setCb(rb.content)
+    })
+    return () => {
+      alive = false
+    }
+  }, [a, b])
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-1.5 text-[11px]">
+        <GitCompare size={12} strokeWidth={2} className="text-zinc-400" />
+        <span className="truncate font-mono text-zinc-400">{a}</span>
+        <span className="text-zinc-600">⟷</span>
+        <span className="truncate font-mono text-zinc-400">{b}</span>
+        <div className="flex-1" />
+        <button
+          onClick={onClose}
+          className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+          title="Close comparison"
+        >
+          <X size={12} strokeWidth={2} />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {err ? (
+          <div className="p-6 text-[12px] text-zinc-600">{err}</div>
+        ) : ca === null || cb === null ? (
+          <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
+        ) : (
+          <MergeDiffView original={ca} modified={cb} extensions={langFor(b)} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 type OpenFile = { path: string; content: string; dirty: boolean; err?: string; scrollLine?: number }
 type Prompt = { kind: 'new-file' | 'new-folder' | 'rename'; parent?: string; target?: string }
 
@@ -204,13 +381,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // Per-file "Changes View" (Orca): diff THIS file against HEAD inside its own
   // tab, instead of leaving for the whole-worktree diff pane.
   const [fileDiff, setFileDiff] = useState(false)
-  const [headContent, setHeadContent] = useState<string | null>(null)
-  // Why the HEAD read failed, when it did — kept distinct from "HEAD had no
-  // such file", which is a legitimate empty original.
-  const [headErr, setHeadErr] = useState<string | null>(null)
+  // Compare-with: a tree-picked file diffed against the active open file.
+  const [compare, setCompare] = useState<string | null>(null)
+  // Changes sidebar: a changed file picked from the list gets its own merge
+  // diff; null shows the whole-worktree patch.
+  const [changesFile, setChangesFile] = useState<string | null>(null)
   // Per-file git status for tree decorations. Polled (not watched) because an
   // agent writing files is the common case and a 2s poll is cheap next to it.
+  // The raw porcelain is kept too — the Changes list needs files only, without
+  // the parent-dir rollup the tree decorations use.
   const [statuses, setStatuses] = useState<StatusMap>({})
+  const [porcelain, setPorcelain] = useState('')
   // Back/forward across files — the editor-location stack every IDE has, and
   // the thing you miss instantly when it's absent. Held in a ref so pushing a
   // visit never re-renders.
@@ -258,7 +439,10 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     const load = () =>
       window.gt
         .getStatusPorcelain()
-        .then((p) => setStatuses(fileStatuses(p)))
+        .then((p) => {
+          setPorcelain(p)
+          setStatuses(fileStatuses(p))
+        })
         .catch(() => {})
     load()
     const id = setInterval(load, 2000)
@@ -271,28 +455,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   }, [])
 
-  // Fetch the HEAD version when the per-file diff opens (and on file change).
-  //
-  // A failure is NOT an empty original. Remote daemons answer
-  // { ok: false, reason: 'Per-file diff not supported…' }, and collapsing that
-  // to '' made every unchanged remote file render as a whole-file addition —
-  // a confidently wrong diff, which is worse than saying we can't show one.
-  // Only a successful read of a file absent from HEAD is legitimately empty.
+  // Leaving a file closes its diff and any compare, so neither sticks across
+  // files.
   useEffect(() => {
-    if (!fileDiff || !activeFile) return
-    setHeadContent(null)
-    setHeadErr(null)
-    window.gt
-      .getFileAtHead(activeFile.path)
-      .then((r) =>
-        r.ok
-          ? setHeadContent(r.content)
-          : setHeadErr(r.reason || 'Could not read this file at HEAD'),
-      )
-      .catch((e) => setHeadErr(String(e?.message || e) || 'Could not read this file at HEAD'))
-  }, [fileDiff, activeFile?.path]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Leaving a file closes its diff, so the toggle never sticks across files.
-  useEffect(() => setFileDiff(false), [activePath])
+    setFileDiff(false)
+    setCompare(null)
+  }, [activePath])
 
   const patch = (path: string, p: Partial<OpenFile>) =>
     setOpen((o) => o.map((f) => (f.path === path ? { ...f, ...p } : f)))
@@ -360,7 +528,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   const save = async () => {
     if (!activeFile || activeFile.err) return
-    let content = activeFile.content
+    const captured = activeFile.content
     // An already-scheduled autosave holds this same (now superseded) content —
     // left alone it could fire after the formatted write below and clobber it
     // with the stale pre-format text.
@@ -368,20 +536,24 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
     // the formatter never fights mid-typing). Skipped silently when the
     // project has no prettier or prettier doesn't own the file.
+    let formatted: string | null = null
     if (formatOnSave) {
-      const r = await window.gt.files.format(activeFile.path, content)
-      if (r.ok && r.content !== undefined && r.content !== content) {
+      const r = await window.gt.files.format(activeFile.path, captured)
+      if (r.ok && r.content !== undefined && r.content !== captured) {
+        formatted = r.content
         const view = views.current[activeFile.path]
         // Only apply if the buffer didn't change while prettier ran.
-        if (view && view.state.doc.toString() === content) {
-          const c = minimalChange(content, r.content)
+        if (view && view.state.doc.toString() === captured) {
+          const c = minimalChange(captured, formatted)
           if (c) view.dispatch({ changes: c })
-          content = r.content
-        } else if (!view) {
-          content = r.content
         }
       }
     }
+    // The buffer may have moved on while prettier ran — the live editor text
+    // always wins over both the captured snapshot and the formatter output,
+    // so a slow ⌘S can never write yesterday's buffer over today's typing.
+    const live = views.current[activeFile.path]?.state.doc.toString() ?? null
+    const content = contentToWrite(captured, formatted, live)
     if (await window.gt.files.write(activeFile.path, content))
       patch(activeFile.path, { content, dirty: false })
   }
@@ -450,11 +622,21 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
       .map((r) => ({ file: r.file, line: r.line }))
     if (targets.length === 0) return
     setReplacing(true)
-    for (const f of open) if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    // Cancel pending autosaves while flushing — a stale timer firing after
+    // the replace would overwrite the replaced text with pre-replace content.
+    for (const f of open) {
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
+      if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    }
     const res = await window.gt.files.replace(resultsQuery, replacement, targets)
     const touched = new Set(targets.map((t) => t.file))
     for (const f of open) {
       if (!touched.has(f.path)) continue
+      // A timer scheduled while the replace ran holds pre-replace content —
+      // clear it before adopting the replaced text from disk.
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
       const read = await window.gt.files.read(f.path)
       if (read.ok) patch(f.path, { content: read.content, dirty: false })
     }
@@ -500,11 +682,43 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     setConfirmDelete(null)
   }
 
+  // Tree drag-and-drop: rename under the hood, with open buffers and the
+  // active path following the file to its new home.
+  const movePath = async (from: string, toDir: string) => {
+    const dest = moveTargetFor(from, toDir)
+    if (!dest) return
+    // Flush pending autosaves for anything being moved FIRST — a debounced
+    // write firing after the rename would recreate the old path on disk.
+    for (const f of open) {
+      if (f.path !== from && !f.path.startsWith(from + '/')) continue
+      clearTimeout(saveTimers.current[f.path])
+      delete saveTimers.current[f.path]
+      if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    }
+    if (await window.gt.files.rename(from, dest)) {
+      const remap = (p: string) =>
+        p === from ? dest : p.startsWith(from + '/') ? dest + p.slice(from.length) : p
+      setOpen((o) => o.map((f) => ({ ...f, path: remap(f.path) })))
+      if (activePath) setActivePath(remap(activePath))
+      bump()
+    }
+  }
+
   const nodeActs: NodeActions = {
     onOpen: (p) => openFile(p),
     onSelectDir: setSelectedDir,
     onRename: (p) => startPrompt({ kind: 'rename', target: p }),
     onDelete: setConfirmDelete,
+    onMove: movePath,
+    onCompare: (p) => {
+      // Nothing open to compare against → just open the file instead.
+      if (!activePath || activePath === p) openFile(p)
+      else setCompare(p)
+    },
+    absFor: (p) => {
+      const root = ctx.repoRoot || ctx.cwd || ''
+      return root ? `${root}/${p}` : p
+    },
   }
 
   return (
@@ -607,11 +821,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           >
             <ArrowRight size={11} strokeWidth={2} />
           </button>
-          {/* Only text-backed files can be diffed. Binary kinds (image/PDF/hex)
-              come in through readBinary and their `content` is an empty string,
-              so offering Changes here produced an all-deleted diff of a file
-              that has not changed at all. */}
-          {!needsBinaryRead(viewerKindFor(activeFile.path)) && (
+          {/* Text-backed files diff through the merge view; images get their
+              own swipe/onion diff. Other binary kinds (PDF/hex) still can't be
+              diffed — their `content` is empty and the result would be an
+              all-deleted diff of an unchanged file. */}
+          {(!needsBinaryRead(viewerKindFor(activeFile.path)) ||
+            viewerKindFor(activeFile.path) === 'image') && (
             <button
               onClick={() => setFileDiff((d) => !d)}
               title="Diff this file against HEAD"
@@ -633,7 +848,13 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         {/* editor (left) — replaced by the working diff when Changes is active */}
         <div className="min-w-0 flex-1 overflow-hidden">
           {sidebar === 'changes' ? (
-            <WorkingDiffView />
+            changesFile ? (
+              <PerFileDiff path={changesFile} />
+            ) : (
+              <WorkingDiffView />
+            )
+          ) : compare && activeFile ? (
+            <CompareView a={compare} b={activeFile.path} onClose={() => setCompare(null)} />
           ) : !activeFile ? (
             <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
               Select a file to edit.
@@ -643,17 +864,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               Can't open {activeFile.path} — {activeFile.err}
             </div>
           ) : fileDiff ? (
-            headErr ? (
-              <div className="p-6 text-[12px] text-zinc-600">{headErr}</div>
-            ) : headContent === null ? (
-              <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
-            ) : (
-              <MergeDiffView
-                original={headContent}
-                modified={activeFile.content}
-                extensions={langFor(activeFile.path)}
-              />
-            )
+            <PerFileDiff
+              path={activeFile.path}
+              working={
+                needsBinaryRead(viewerKindFor(activeFile.path)) ? undefined : activeFile.content
+              }
+            />
           ) : hasViewer(activeFile.path) && !viewerSource ? (
             // Rendered viewer (markdown/image/pdf/csv/svg/binary). This runs
             // even when the utf8 read failed — an image legitimately fails that
@@ -736,9 +952,50 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           </div>
 
           {sidebar === 'changes' ? (
-            <div className="flex min-h-0 flex-1 flex-col p-3 text-[11px] leading-relaxed text-zinc-600">
-              Showing your pre-PR working-tree diff in the editor pane — everything since the base
-              branch, plus uncommitted and untracked changes.
+            <div className="flex min-h-0 flex-1 flex-col">
+              <button
+                onClick={() => setChangesFile(null)}
+                className={`shrink-0 border-b border-[var(--gt-border)] px-3 py-2 text-left text-[11px] font-medium ${
+                  changesFile === null
+                    ? 'bg-white/5 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                All changes · patch view
+              </button>
+              <div className="min-h-0 flex-1 overflow-y-auto py-1">
+                {Object.entries(parsePorcelain(porcelain)).length === 0 ? (
+                  <div className="p-3 text-[11px] leading-relaxed text-zinc-600">
+                    No uncommitted changes. The pane shows everything since the base branch.
+                  </div>
+                ) : (
+                  Object.entries(parsePorcelain(porcelain)).map(([path, st]) => {
+                    const { Icon, cls } = fileIcon(base(path), false)
+                    return (
+                      <button
+                        key={path}
+                        onClick={() => setChangesFile(path)}
+                        title={path}
+                        className={`flex w-full items-center gap-1.5 px-3 py-1 text-left text-[11.5px] hover:bg-white/5 ${
+                          changesFile === path
+                            ? 'bg-[var(--gt-accent)]/12 text-zinc-100'
+                            : 'text-zinc-400'
+                        }`}
+                      >
+                        <Icon size={12} strokeWidth={2} className={`shrink-0 ${cls}`} />
+                        <span className={`min-w-0 flex-1 truncate font-mono ${statusColor(st)}`}>
+                          {path}
+                        </span>
+                        <span
+                          className={`shrink-0 font-mono text-[10px] font-bold ${statusColor(st)}`}
+                        >
+                          {statusBadge(st)}
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
             </div>
           ) : sidebar === 'files' ? (
             <div className="flex min-h-0 flex-1 flex-col">
@@ -816,7 +1073,20 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </div>
               )}
 
-              <div className="min-h-0 flex-1 overflow-y-auto py-1" key={version}>
+              <div
+                className="min-h-0 flex-1 overflow-y-auto py-1"
+                key={version}
+                onDragOver={(e) => {
+                  // Falling through a folder row lands the drop at the root.
+                  if (!e.dataTransfer.types.includes(DND_REL)) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                }}
+                onDrop={(e) => {
+                  const from = e.dataTransfer.getData(DND_REL)
+                  if (from) movePath(from, '')
+                }}
+              >
                 {roots === null ? (
                   <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
                 ) : (
