@@ -1,7 +1,7 @@
 ---
 id: 48
 title: "Diff review: inline/side-by-side toggle, word-level, collapse unchanged, multi-file view, image diff"
-status: in-progress
+status: closed
 priority: high
 horizon: now
 hitl: false
@@ -9,8 +9,7 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs:
-  - https://github.com/trevormil/TerMinal/pull/152
+prs: []
 refs:
   - src/renderer/src/components/MrDetail.tsx
   - src/renderer/src/tabs/files/index.tsx

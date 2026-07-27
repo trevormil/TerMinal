@@ -1,7 +1,7 @@
 ---
 id: 45
 title: "Editor quality-of-life: multi-cursor, regex find/replace, sticky scroll, breadcrumbs, format-on-save"
-status: in-progress
+status: closed
 priority: medium
 horizon: now
 hitl: false
@@ -9,8 +9,7 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs:
-  - https://github.com/trevormil/TerMinal/pull/151
+prs: []
 refs:
   - src/renderer/src/tabs/files/index.tsx
 depends_on: []

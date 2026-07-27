@@ -1,7 +1,7 @@
 ---
 id: 47
 title: "File tree: git status decorations, context actions, drag-and-drop (incl. drop path into agent)"
-status: in-progress
+status: closed
 priority: medium
 horizon: next
 hitl: false
@@ -9,8 +9,7 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs:
-  - https://github.com/trevormil/TerMinal/pull/152
+prs: []
 refs:
   - src/renderer/src/tabs/files/index.tsx
 depends_on: []
