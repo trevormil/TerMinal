@@ -46,6 +46,81 @@ describe('files traversal guard', () => {
   })
 })
 
+describe('replaceInFiles', () => {
+  const setup = () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-replace-')))
+    writeFileSync(join(root, 'a.txt'), 'foo one\nbar\nfoo two foo\n')
+    mkdirSync(join(root, 'sub'))
+    writeFileSync(join(root, 'sub', 'b.txt'), 'nothing\nFoo here\n')
+    return root
+  }
+
+  test('replaces only the targeted lines and counts occurrences', async () => {
+    const root = setup()
+    const { replaceInFiles } = await import('./files')
+    const r = await replaceInFiles(root, 'foo', 'qux', [
+      { file: 'a.txt', line: 1 },
+      { file: 'a.txt', line: 3 },
+      { file: 'sub/b.txt', line: 2 },
+    ])
+    expect(r).toEqual({ files: 2, replaced: 4, skipped: 0 })
+    const { readFile } = await import('./files')
+    expect(readFile(root, 'a.txt').content).toBe('qux one\nbar\nqux two qux\n')
+    // case-insensitive, matching search semantics
+    expect(readFile(root, 'sub/b.txt').content).toBe('nothing\nqux here\n')
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('skips a line that no longer contains the query (stale search result)', async () => {
+    const root = setup()
+    const { replaceInFiles, readFile } = await import('./files')
+    const r = await replaceInFiles(root, 'foo', 'qux', [{ file: 'a.txt', line: 2 }])
+    expect(r).toEqual({ files: 0, replaced: 0, skipped: 1 })
+    expect(readFile(root, 'a.txt').content).toBe('foo one\nbar\nfoo two foo\n')
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('refuses traversal paths in targets', async () => {
+    const root = setup()
+    const { replaceInFiles } = await import('./files')
+    const r = await replaceInFiles(root, 'foo', 'qux', [{ file: '../outside.txt', line: 1 }])
+    expect(r).toEqual({ files: 0, replaced: 0, skipped: 1 })
+    rmSync(root, { recursive: true, force: true })
+  })
+})
+
+describe('formatFile', () => {
+  test('formats through the project-local prettier, honoring its config', async () => {
+    const { formatFile } = await import('./files')
+    // This repo's own root has node_modules/.bin/prettier + .prettierrc.
+    const repo = process.cwd()
+    const r = await formatFile(repo, 'virtual-format-target.ts', 'const a=1;')
+    expect(r.ok).toBe(true)
+    expect(r.content).toBe('const a = 1\n')
+  })
+
+  test("skips files prettier doesn't own (no parser for the extension)", async () => {
+    const { formatFile } = await import('./files')
+    const r = await formatFile(process.cwd(), 'x.zzz-not-a-language', 'whatever')
+    expect(r.ok).toBe(false)
+  })
+
+  test('skips entirely when the project has no prettier install', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-fmt-')))
+    const { formatFile } = await import('./files')
+    const r = await formatFile(root, 'x.ts', 'const a=1')
+    expect(r.ok).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('reports a syntax error instead of mangling the file', async () => {
+    const { formatFile } = await import('./files')
+    const r = await formatFile(process.cwd(), 'broken.ts', 'const const const')
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBeTruthy()
+  })
+})
+
 describe('isValidSessionId (data.ts) rejects path traversal', () => {
   test('accepts uuid-like ids, rejects separators and ..', async () => {
     const { isValidSessionId } = await import('./data')

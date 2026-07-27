@@ -6,6 +6,7 @@ import { Prec, type Extension } from '@codemirror/state'
 import { bracketMatching, indentUnit } from '@codemirror/language'
 import { highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search'
 import { detectIndent, indentUnitFor } from '../../../shared/indent'
+import { stickyScroll } from '../lib/stickyScroll'
 
 // oneDark supplies syntax highlighting; theme tokens own the editor chrome so
 // dark/light appearance changes do not leave hard-coded background seams.
@@ -42,6 +43,8 @@ export function CodeEditor({
   editable = true,
   wrap = false,
   scrollToLine,
+  sticky = true,
+  onView,
 }: {
   value: string
   onChange?: (v: string) => void
@@ -49,6 +52,10 @@ export function CodeEditor({
   editable?: boolean
   wrap?: boolean
   scrollToLine?: number
+  /** Pin enclosing scope headers while scrolling (on by default). */
+  sticky?: boolean
+  /** Surfaces the underlying EditorView, e.g. for surgical format dispatches. */
+  onView?: (view: EditorView) => void
 }) {
   const viewRef = useRef<EditorView | null>(null)
 
@@ -98,8 +105,15 @@ export function CodeEditor({
       style={{ height: '100%', background: EDITOR_BG }}
       onCreateEditor={(view) => {
         viewRef.current = view
+        onView?.(view)
       }}
-      extensions={[chrome, ...(wrap ? [EditorView.lineWrapping] : []), ...qol, ...extensions]}
+      extensions={[
+        chrome,
+        ...(wrap ? [EditorView.lineWrapping] : []),
+        ...(sticky ? [stickyScroll()] : []),
+        ...qol,
+        ...extensions,
+      ]}
       basicSetup={{
         lineNumbers: true,
         // Folding: gutter arrows + the fold keymap (Cmd-Alt-[ / ]).

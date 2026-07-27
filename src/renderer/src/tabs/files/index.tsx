@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Copy,
+  Replace,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
@@ -27,7 +28,10 @@ import {
   type StatusMap,
 } from '../../../../shared/git-status'
 import { describeIndent, detectIndent } from '../../../../shared/indent'
+import { matchSegments, replaceInLine } from '../../../../shared/replace'
+import { minimalChange } from '../../../../shared/text-change'
 import type { Extension } from '@codemirror/state'
+import type { EditorView } from '@codemirror/view'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
 import { WorkingDiffView } from '../../components/WorkingDiffView'
@@ -221,10 +225,22 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [results, setResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
   const searchSeq = useRef(0)
+  // The query the current results answer — replace previews must use it, not
+  // the live input the user may have edited since.
+  const [resultsQuery, setResultsQuery] = useState('')
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [replacement, setReplacement] = useState('')
+  const [excluded, setExcluded] = useState<Set<number>>(new Set())
+  const [replaceMsg, setReplaceMsg] = useState('')
+  const [replacing, setReplacing] = useState(false)
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [pv, setPv] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editorName, setEditorName] = useState('Cursor')
+  const [formatOnSave, setFormatOnSave] = useState(false)
+  // Live EditorViews by path, so a formatter result can be dispatched as one
+  // minimal change (cursor + scroll survive) instead of a full re-render.
+  const views = useRef<Record<string, EditorView>>({})
 
   const activeFile = open.find((f) => f.path === activePath) || null
   const bump = () => setVersion((v) => v + 1)
@@ -249,7 +265,10 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     return () => clearInterval(id)
   }, [ctx.repoRoot, version])
   useEffect(() => {
-    window.gt.settings.get().then((s) => setEditorName(s.apps?.editor || 'Cursor'))
+    window.gt.settings.get().then((s) => {
+      setEditorName(s.apps?.editor || 'Cursor')
+      setFormatOnSave(!!s.apps?.formatOnSave)
+    })
   }, [])
 
   // Fetch the HEAD version when the per-file diff opens (and on file change).
@@ -341,8 +360,30 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     })
   const save = async () => {
     if (!activeFile || activeFile.err) return
-    if (await window.gt.files.write(activeFile.path, activeFile.content))
-      patch(activeFile.path, { dirty: false })
+    let content = activeFile.content
+    // An already-scheduled autosave holds this same (now superseded) content —
+    // left alone it could fire after the formatted write below and clobber it
+    // with the stale pre-format text.
+    clearTimeout(saveTimers.current[activeFile.path])
+    // Format on save (opt-in, ⌘S only — the debounced auto-save stays raw so
+    // the formatter never fights mid-typing). Skipped silently when the
+    // project has no prettier or prettier doesn't own the file.
+    if (formatOnSave) {
+      const r = await window.gt.files.format(activeFile.path, content)
+      if (r.ok && r.content !== undefined && r.content !== content) {
+        const view = views.current[activeFile.path]
+        // Only apply if the buffer didn't change while prettier ran.
+        if (view && view.state.doc.toString() === content) {
+          const c = minimalChange(content, r.content)
+          if (c) view.dispatch({ changes: c })
+          content = r.content
+        } else if (!view) {
+          content = r.content
+        }
+      }
+    }
+    if (await window.gt.files.write(activeFile.path, content))
+      patch(activeFile.path, { content, dirty: false })
   }
 
   // auto-save: debounce a write per file on edit (no ⌘S needed). Keyed by path
@@ -393,7 +434,37 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     const r = q.length < 2 ? [] : await window.gt.files.search(q)
     if (seq !== searchSeq.current) return // superseded
     setResults(r)
+    setResultsQuery(q)
+    setExcluded(new Set())
+    setReplaceMsg('')
     setSearching(false)
+  }
+
+  // Apply the replacement to every non-excluded match. Dirty buffers flush
+  // first so the on-disk text the replace reads is what you see; changed open
+  // files reload from disk after.
+  const runReplace = async () => {
+    if (!results || !resultsQuery) return
+    const targets = results
+      .filter((_, i) => !excluded.has(i))
+      .map((r) => ({ file: r.file, line: r.line }))
+    if (targets.length === 0) return
+    setReplacing(true)
+    for (const f of open) if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
+    const res = await window.gt.files.replace(resultsQuery, replacement, targets)
+    const touched = new Set(targets.map((t) => t.file))
+    for (const f of open) {
+      if (!touched.has(f.path)) continue
+      const read = await window.gt.files.read(f.path)
+      if (read.ok) patch(f.path, { content: read.content, dirty: false })
+    }
+    setReplacing(false)
+    setReplaceMsg(
+      `Replaced ${res.replaced} in ${res.files} file${res.files === 1 ? '' : 's'}` +
+        (res.skipped ? ` · ${res.skipped} skipped` : ''),
+    )
+    bump()
+    runSearch()
   }
 
   const startPrompt = (p: Prompt) => {
@@ -615,6 +686,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   }}
                   extensions={langFor(activeFile.path)}
                   scrollToLine={activeFile.scrollLine}
+                  onView={(v) => (views.current[activeFile.path] = v)}
                 />
               </div>
             </div>
@@ -765,15 +837,55 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 p-2">
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                  placeholder="Search repo (Enter)"
-                  className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
-                />
+              <div className="shrink-0 space-y-1.5 p-2">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                    placeholder="Search repo (Enter)"
+                    className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                  />
+                  <button
+                    onClick={() => setReplaceOpen((o) => !o)}
+                    title="Search & replace"
+                    className={`flex shrink-0 items-center rounded-md border border-[var(--gt-border)] p-1.5 ${
+                      replaceOpen
+                        ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Replace size={13} strokeWidth={2} />
+                  </button>
+                </div>
+                {replaceOpen && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={replacement}
+                      onChange={(e) => setReplacement(e.target.value)}
+                      placeholder="Replace with"
+                      className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                    />
+                    <button
+                      onClick={runReplace}
+                      disabled={
+                        replacing ||
+                        !results ||
+                        results.length === 0 ||
+                        results.length === excluded.size
+                      }
+                      className="shrink-0 rounded-md bg-[var(--gt-accent)]/20 px-2 py-1 text-[11px] font-medium text-zinc-100 disabled:opacity-40"
+                    >
+                      {replacing
+                        ? 'Replacing…'
+                        : `Replace${results ? ` ${results.length - excluded.size}` : ''}`}
+                    </button>
+                  </div>
+                )}
+                {replaceMsg && (
+                  <div className="px-0.5 text-[10.5px] text-zinc-500">{replaceMsg}</div>
+                )}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {searching ? (
@@ -782,27 +894,66 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                   <div className="p-3 text-[12px] text-zinc-600">Type a query and press Enter.</div>
                 ) : results.length === 0 ? (
                   <div className="p-3 text-[12px] text-zinc-600">
-                    No matches for “{query.trim()}”.
+                    No matches for “{resultsQuery}”.
                   </div>
                 ) : (
                   results.map((r, i) => {
                     const { Icon, cls } = fileIcon(base(r.file), false)
+                    const line = r.text.trim()
                     return (
-                      <button
+                      <div
                         key={i}
-                        onClick={() => openFile(r.file, r.line)}
-                        className="block w-full border-b border-[var(--gt-border)]/50 px-3 py-1.5 text-left hover:bg-white/5"
+                        className={`flex w-full items-start gap-1 border-b border-[var(--gt-border)]/50 px-2 py-1.5 hover:bg-white/5 ${
+                          excluded.has(i) ? 'opacity-45' : ''
+                        }`}
                       >
-                        <div className="flex items-center gap-1.5 truncate font-mono text-[11px] text-zinc-400">
-                          <Icon size={12} strokeWidth={2} className={`shrink-0 ${cls}`} />
-                          <span className="truncate">
-                            {r.file}:{r.line}
-                          </span>
-                        </div>
-                        <div className="truncate pl-[18px] font-mono text-[11px] text-zinc-500">
-                          {r.text.trim()}
-                        </div>
-                      </button>
+                        {replaceOpen && (
+                          <input
+                            type="checkbox"
+                            checked={!excluded.has(i)}
+                            onChange={() =>
+                              setExcluded((ex) => {
+                                const next = new Set(ex)
+                                if (next.has(i)) next.delete(i)
+                                else next.add(i)
+                                return next
+                              })
+                            }
+                            className="mt-0.5 shrink-0 accent-[var(--gt-accent)]"
+                          />
+                        )}
+                        <button
+                          onClick={() => openFile(r.file, r.line)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="flex items-center gap-1.5 truncate font-mono text-[11px] text-zinc-400">
+                            <Icon size={12} strokeWidth={2} className={`shrink-0 ${cls}`} />
+                            <span className="truncate">
+                              {r.file}:{r.line}
+                            </span>
+                          </div>
+                          <div className="truncate pl-[18px] font-mono text-[11px] text-zinc-500">
+                            {matchSegments(line, resultsQuery).map((seg, j) =>
+                              seg.hit ? (
+                                <mark
+                                  key={j}
+                                  className="rounded-sm bg-[var(--gt-accent)]/25 px-px text-zinc-200"
+                                >
+                                  {seg.text}
+                                </mark>
+                              ) : (
+                                <span key={j}>{seg.text}</span>
+                              ),
+                            )}
+                          </div>
+                          {/* per-match preview of what the line becomes */}
+                          {replaceOpen && !excluded.has(i) && (
+                            <div className="truncate pl-[18px] font-mono text-[11px] text-emerald-500/80">
+                              {replaceInLine(line, resultsQuery, replacement).text}
+                            </div>
+                          )}
+                        </button>
+                      </div>
                     )
                   })
                 )}

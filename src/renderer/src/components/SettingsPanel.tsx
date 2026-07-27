@@ -2848,6 +2848,14 @@ export function SettingsPanel({
                     </select>
                   </label>
                 </div>
+                <div className="mt-3">
+                  <Toggle
+                    on={s.apps.formatOnSave}
+                    onToggle={() => save({ apps: { formatOnSave: !s.apps.formatOnSave } })}
+                    label="Format on save (Files tab)"
+                    hint="⌘S runs the project's own prettier before writing. Skipped when the project has no prettier install or prettier doesn't own the file."
+                  />
+                </div>
               </Section>
 
               <PanelsSection

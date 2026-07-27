@@ -83,6 +83,7 @@ export type AppearanceCfg = {
 export type AppsCfg = {
   editor: string // e.g. "Cursor" / "Visual Studio Code" — "Open in editor"
   browser: string // e.g. "Brave Browser" — "Open in browser"
+  formatOnSave: boolean // Files tab: run the project's prettier on ⌘S (opt-in)
 }
 export type SuggestionsCfg = {
   aiEngine: EngineId
@@ -224,7 +225,7 @@ export function defaultSettings(): Settings {
       uiScale: 1,
       tabLayout: 'horizontal',
     },
-    apps: { editor: '', browser: '' },
+    apps: { editor: '', browser: '', formatOnSave: false },
     suggestions: {
       aiEngine: 'claude',
       aiModel: 'haiku',
@@ -399,6 +400,7 @@ export function migrate(raw: unknown): Settings {
   if (r.apps && typeof r.apps === 'object') {
     if (typeof r.apps.editor === 'string') s.apps.editor = r.apps.editor
     if (typeof r.apps.browser === 'string') s.apps.browser = r.apps.browser
+    if (typeof r.apps.formatOnSave === 'boolean') s.apps.formatOnSave = r.apps.formatOnSave
   }
   if (r.suggestions && typeof r.suggestions === 'object') {
     if (ENGINE_IDS.includes(r.suggestions.aiEngine as EngineId)) {

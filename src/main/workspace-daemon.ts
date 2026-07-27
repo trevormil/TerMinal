@@ -10,9 +10,14 @@ import {
   createEntry,
   renameEntry,
   removeEntry,
+  formatFile,
+  replaceInFiles,
   type Entry,
   type ReadResult,
   type ReadBinaryResult,
+  type FormatResult,
+  type ReplaceResult,
+  type ReplaceTarget,
   readFileBinary,
   type SearchHit,
 } from './files'
@@ -151,6 +156,12 @@ export type WorkspaceDaemon = {
   filesReadBinary(rel: string): Promise<ReadBinaryResult> | ReadBinaryResult
   filesWrite(rel: string, content: string): Promise<boolean> | boolean
   filesSearch(q: string): Promise<SearchHit[]>
+  filesFormat(rel: string, content: string): Promise<FormatResult> | FormatResult
+  filesReplace(
+    query: string,
+    replacement: string,
+    targets: ReplaceTarget[],
+  ): Promise<ReplaceResult> | ReplaceResult
   filesCreate(rel: string, dir: boolean): Promise<boolean> | boolean
   filesRename(from: string, to: string): Promise<boolean> | boolean
   filesDelete(rel: string): Promise<boolean> | boolean
@@ -257,6 +268,9 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     filesReadBinary: (rel: string) => readFileBinary(fileRoot(), rel),
     filesWrite: (rel: string, content: string) => writeFile(fileRoot(), rel, content),
     filesSearch: (q: string) => searchRepo(fileRoot(), q),
+    filesFormat: (rel: string, content: string) => formatFile(fileRoot(), rel, content),
+    filesReplace: (query: string, replacement: string, targets: ReplaceTarget[]) =>
+      replaceInFiles(fileRoot(), query, replacement, targets),
     filesCreate: (rel: string, dir: boolean) => createEntry(fileRoot(), rel, dir),
     filesRename: (from: string, to: string) => renameEntry(fileRoot(), from, to),
     filesDelete: (rel: string) => removeEntry(fileRoot(), rel),
@@ -359,6 +373,12 @@ export function createSshWorkspaceDaemon(
     }),
     filesWrite: (rel: string, content: string) => remoteFiles.write(remote, rel, content),
     filesSearch: (q: string) => remoteFiles.search(remote, q),
+    filesFormat: () => ({ ok: false, reason: 'format is not supported on remote hosts yet' }),
+    filesReplace: (_q: string, _r: string, targets: ReplaceTarget[]) => ({
+      files: 0,
+      replaced: 0,
+      skipped: targets.length,
+    }),
     filesCreate: (rel: string, dir: boolean) => remoteFiles.create(remote, rel, dir),
     filesRename: (from: string, to: string) => remoteFiles.rename(remote, from, to),
     filesDelete: (rel: string) => remoteFiles.del(remote, rel),
