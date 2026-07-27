@@ -257,3 +257,138 @@ describe('terminal-mcp-server ticket tools — model tier write path', () => {
     if (files.includes('Typo tier')) expect(files).toContain('model_tier: auto')
   })
 })
+
+describe('comment_ticket', () => {
+  const seed = (dir: string) => {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, '0001-seed.md'),
+      [
+        '---',
+        'id: 1',
+        'title: "Seed"',
+        'status: open',
+        'updated: 2020-01-01',
+        '---',
+        '',
+        'prose',
+      ].join('\n'),
+    )
+    return join(dir, '0001-seed.md')
+  }
+
+  test('appends an agent-attributed entry and leaves the prose body intact', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    const [res] = callTools(home, [
+      {
+        name: 'comment_ticket',
+        arguments: {
+          slug: '0001-seed',
+          body: 'blocked on the rate limiter',
+          author: 'pr-creation',
+        },
+      },
+    ])
+    expect(res.error).toBeUndefined()
+
+    const md = readFileSync(path, 'utf8')
+    expect(md).toContain('## Log')
+    expect(md).toContain('· agent:pr-creation')
+    expect(md).toContain('blocked on the rate limiter')
+    expect(md.indexOf('prose')).toBeLessThan(md.indexOf('## Log'))
+    expect(md).not.toContain('updated: 2020-01-01')
+  })
+
+  test('get_ticket reads the comment back out of the body', () => {
+    const { home, repo } = setup()
+    seed(join(repo, '.TerMinal', 'backlog'))
+    const [, get] = callTools(home, [
+      { name: 'comment_ticket', arguments: { slug: '0001-seed', body: 'note one' } },
+      { name: 'get_ticket', arguments: { slug: '0001-seed' } },
+    ])
+    expect(JSON.stringify(toolJson(get))).toContain('note one')
+  })
+
+  test('two comments accumulate under a single log heading', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    callTools(home, [
+      { name: 'comment_ticket', arguments: { slug: '0001-seed', body: 'first' } },
+      { name: 'comment_ticket', arguments: { slug: '0001-seed', body: 'second' } },
+    ])
+    const md = readFileSync(path, 'utf8')
+    expect(md.match(/^## Log$/gm)?.length).toBe(1)
+    expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'))
+  })
+
+  test('an unknown slug is an error, not a silent success', () => {
+    const { home } = setup()
+    const [res] = callTools(home, [
+      { name: 'comment_ticket', arguments: { slug: '9999-nope', body: 'x' } },
+    ])
+    expect(res.error || res.result?.content?.[0].text).toBeTruthy()
+    expect(JSON.stringify(res)).toMatch(/not found/i)
+  })
+
+  test('an empty body is rejected', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    const [res] = callTools(home, [
+      { name: 'comment_ticket', arguments: { slug: '0001-seed', body: '  ' } },
+    ])
+    expect(JSON.stringify(res)).toMatch(/body/i)
+    expect(readFileSync(path, 'utf8')).not.toContain('## Log')
+  })
+})
+
+describe('update_ticket relations', () => {
+  const seed = (dir: string) => {
+    mkdirSync(dir, { recursive: true })
+    const p = join(dir, '0001-seed.md')
+    writeFileSync(
+      p,
+      ['---', 'id: 1', 'title: "Seed"', 'status: open', '---', '', 'prose'].join('\n'),
+    )
+    return p
+  }
+
+  // get_ticket spreads raw frontmatter (the tool's existing contract), so the
+  // written file is the thing to assert on. The desktop's own reader coerces
+  // these to numbers — covered in backlog.test.ts.
+  test('sets related and duplicate_of in the ticket frontmatter', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    const [res] = callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', related: [2, 3], duplicateOf: 4 } },
+    ])
+    expect(res.error).toBeUndefined()
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^related: \[2, 3\]$/m)
+    expect(md).toMatch(/^duplicate_of: 4$/m)
+  })
+
+  test('duplicateOf 0 clears the link rather than writing a bogus id', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', duplicateOf: 4 } },
+      { name: 'update_ticket', arguments: { slug: '0001-seed', duplicateOf: 0 } },
+    ])
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^duplicate_of:\s*$/m)
+    expect(md).not.toMatch(/^duplicate_of: 4$/m)
+  })
+
+  test('an update that mentions neither relation leaves both untouched', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', related: [9] } },
+      { name: 'update_ticket', arguments: { slug: '0001-seed', status: 'in-progress' } },
+    ])
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^related: \[9\]$/m)
+    expect(md).toMatch(/^status: in-progress$/m)
+  })
+})

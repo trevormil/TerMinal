@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   X,
   FolderOpen,
@@ -126,6 +126,19 @@ const mergeDaemon = (
   ) as DaemonCfg['engines'],
 })
 
+// Which category the content pane is showing. Sections read it themselves so
+// the 20 call sites stay untouched.
+const ActiveSectionContext = createContext('')
+
+/**
+ * One settings category. Only the selected one renders — the panel used to
+ * stack all twenty in a single scroll, which buried whatever you opened it for.
+ *
+ * Since it is now the only thing in the pane, the card chrome is gone: the
+ * sidebar already says which category you are in, so a bordered card and an
+ * icon tile repeating that name were pure noise. The description stays — it is
+ * the one part that says something the sidebar label doesn't.
+ */
 function Section({
   id,
   icon: Icon,
@@ -139,17 +152,13 @@ function Section({
   desc?: string
   children: ReactNode
 }) {
+  if (useContext(ActiveSectionContext) !== id) return null
   return (
-    <section
-      id={id}
-      className="scroll-mt-4 rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/55 p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]"
-    >
-      <div className="mb-3 flex items-start gap-2.5">
-        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
-          <Icon size={15} strokeWidth={2} />
-        </div>
+    <section id={id}>
+      <div className="mb-4 flex items-start gap-2.5 border-b border-[var(--gt-border)] pb-3">
+        <Icon size={15} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--gt-accent-light)]" />
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-semibold text-zinc-100">{title}</div>
+          <div className="text-[13px] font-semibold text-zinc-100">{title}</div>
           {desc && (
             <div className="mt-0.5 max-w-[68ch] text-[11px] leading-relaxed text-zinc-500">
               {desc}
@@ -499,6 +508,7 @@ function PanelsSection({
 }
 
 const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
+  { id: 'daemon', title: 'Daemon', icon: Server },
   { id: 'paths', title: 'Paths', icon: FolderTree },
   { id: 'appearance', title: 'Appearance', icon: Palette },
   { id: 'engines', title: 'Engines', icon: Cpu },
@@ -1551,10 +1561,16 @@ function NotificationMatrix({
 export function SettingsPanel({
   onClose,
   onRerunSetup,
+  initialSection,
 }: {
   onClose: () => void
   onRerunSetup: () => void
+  /** Category to open on — set when something deep-links into settings. */
+  initialSection?: string
 }) {
+  const [active, setActive] = useState(
+    initialSection && SETTING_NAV.some((n) => n.id === initialSection) ? initialSection : 'daemon',
+  )
   const [s, setS] = useState<Settings | null>(null)
   const [env, setEnv] = useState<EnvDetect | null>(null)
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
@@ -2035,9 +2051,17 @@ export function SettingsPanel({
             <SettingsIcon size={16} strokeWidth={2} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[13px] font-semibold text-zinc-100">Settings</h2>
+            <h2 className="text-[13px] font-semibold text-zinc-100">
+              Settings
+              <span className="text-zinc-600"> · </span>
+              <span className="font-normal text-zinc-400">
+                {SETTING_NAV.find((n) => n.id === active)?.title}
+              </span>
+            </h2>
+            {/* Which daemon every pane below reads from — the one piece of
+                context that has to survive switching categories. */}
             <div className="mt-0.5 truncate text-[10.5px] text-zinc-500">
-              Configure engines, workflow surfaces, notifications, and local infrastructure.
+              {selectedHost ? `SSH · ${selectedHost}` : 'Local daemon'}
             </div>
           </div>
           <div
@@ -2064,14 +2088,22 @@ export function SettingsPanel({
             </div>
             <nav className="space-y-0.5">
               {SETTING_NAV.map(({ id, title, icon: Icon }) => (
-                <a
+                <button
                   key={id}
-                  href={`#${id}`}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[11.5px] text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-100"
+                  onClick={() => setActive(id)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11.5px] transition-colors ${
+                    active === id
+                      ? 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                      : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                  }`}
                 >
-                  <Icon size={13} strokeWidth={2} className="text-zinc-600" />
+                  <Icon
+                    size={13}
+                    strokeWidth={2}
+                    className={active === id ? 'text-[var(--gt-accent-light)]' : 'text-zinc-600'}
+                  />
                   <span>{title}</span>
-                </a>
+                </button>
               ))}
             </nav>
             <div className="mt-4 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2 text-[10.5px] leading-relaxed text-zinc-600">
@@ -2082,972 +2114,1115 @@ export function SettingsPanel({
           </aside>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="mx-auto max-w-[760px] space-y-3">
-              <section className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70">
-                <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
-                    <Server size={15} strokeWidth={2} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
-                    <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
-                      Choose where TerMinal reads paths, engines, models, forge settings, and
-                      template defaults.
+            <ActiveSectionContext.Provider value={active}>
+              <div className="mx-auto max-w-[760px] space-y-3">
+                <section
+                  hidden={active !== 'daemon'}
+                  className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70"
+                >
+                  <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
+                      <Server size={15} strokeWidth={2} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
+                      <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
+                        Choose where TerMinal reads paths, engines, models, forge settings, and
+                        template defaults.
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                        {selectedHost ? 'SSH' : 'Local'}
+                      </span>
+                      {selectedHost && (
+                        <button
+                          onClick={() => refreshRemoteProbe(selectedHost)}
+                          className={buttonSoft}
+                        >
+                          {selectedProbe && 'loading' in selectedProbe ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <RotateCcw size={12} />
+                          )}
+                          Probe
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                      {selectedHost ? 'SSH' : 'Local'}
-                    </span>
-                    {selectedHost && (
+                  <div className="space-y-2 p-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
                       <button
-                        onClick={() => refreshRemoteProbe(selectedHost)}
-                        className={buttonSoft}
-                      >
-                        {selectedProbe && 'loading' in selectedProbe ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <RotateCcw size={12} />
-                        )}
-                        Probe
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-2 p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      onClick={() => setProfile('local')}
-                      className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                        profile === 'local'
-                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                          : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
-                      }`}
-                    >
-                      <Monitor
-                        size={16}
-                        strokeWidth={2}
-                        className="shrink-0 text-[var(--gt-accent-light)]"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px] font-semibold">
-                          Local machine
-                        </span>
-                        <span className="block truncate text-[10.5px] text-zinc-600">
-                          this Mac · ~/.config/TerMinal
-                        </span>
-                      </span>
-                      {profile === 'local' && (
-                        <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">
-                          Active
-                        </span>
-                      )}
-                    </button>
-                    {s.remoteHosts.map((h) => (
-                      <button
-                        key={h.id}
-                        onClick={() => setProfile(h.id)}
+                        onClick={() => setProfile('local')}
                         className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-                          profile === h.id
+                          profile === 'local'
                             ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
                             : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                         }`}
                       >
-                        <Server
+                        <Monitor
                           size={16}
                           strokeWidth={2}
-                          className="shrink-0 text-[var(--gt-accent-2)]"
+                          className="shrink-0 text-[var(--gt-accent-light)]"
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[12px] font-semibold">
-                            {h.label || h.id}
+                            Local machine
                           </span>
-                          <span className="block truncate font-mono text-[10.5px] text-zinc-600">
-                            {h.sshTarget}
+                          <span className="block truncate text-[10.5px] text-zinc-600">
+                            this Mac · ~/.config/TerMinal
                           </span>
                         </span>
-                        {profile === h.id && (
+                        {profile === 'local' && (
                           <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">
                             Active
                           </span>
                         )}
                       </button>
-                    ))}
-                  </div>
-                  {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
-                    <div
-                      className={`rounded-md border px-2.5 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] bg-black/20 text-zinc-500' : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-amber-400'}`}
-                    >
-                      {selectedProbe.ok
-                        ? `Connected to ${selectedHost.sshTarget} · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
-                        : selectedProbe.error}
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* Projects & worktrees */}
-              <Section
-                id="paths"
-                icon={FolderTree}
-                title="Projects & worktrees"
-                desc={
-                  selectedIsRemote
-                    ? 'Remote daemon paths. Enter paths as they exist on the SSH host.'
-                    : 'Where the entry screen looks for repos, and where agent worktrees are created.'
-                }
-              >
-                <div className="space-y-2">
-                  <PathSetting
-                    label="Projects directory"
-                    value={selectedDaemon.projectsDir}
-                    fallback={selectedIsRemote ? 'Remote home folder' : 'Home folder'}
-                    detail={
-                      selectedIsRemote
-                        ? 'Default remote workspace directory for this SSH profile.'
-                        : 'Used by the entry screen for new workspaces and scaffold destinations.'
-                    }
-                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
-                    onClear={() => saveDaemon({ projectsDir: '' })}
-                  >
-                    {!selectedIsRemote &&
-                      projectsDirValidation?.ok &&
-                      typeof projectsDirValidation.repoCount === 'number' &&
-                      projectsDirValidation.repoCount > 0 && (
-                        <div className="mb-2 text-[10.5px] text-[var(--gt-green)]">
-                          Manages {projectsDirValidation.repoCount}{' '}
-                          {projectsDirValidation.repoCount === 1 ? 'repo' : 'repos'} in this folder
-                        </div>
-                      )}
-                    {projectsDirValidation &&
-                      !projectsDirValidation.ok &&
-                      projectsDirValidation.reason === 'is-repo' && (
-                        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
-                          <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
-                          {projectsDirValidation.suggestedParent && (
-                            <button
-                              onClick={() =>
-                                saveDaemon({
-                                  projectsDir: projectsDirValidation.suggestedParent || '',
-                                })
-                              }
-                              className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
-                            >
-                              Use parent
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    {!selectedIsRemote &&
-                      projectsDirValidation &&
-                      !projectsDirValidation.ok &&
-                      projectsDirValidation.reason === 'no-repos-found' && (
-                        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
-                          <span className="min-w-0 flex-1">
-                            ⚠ 0 repos found here — they may be nested one level deeper.
-                          </span>
-                          {projectsDirValidation.suggestedChild && (
-                            <button
-                              onClick={() =>
-                                saveDaemon({
-                                  projectsDir: projectsDirValidation.suggestedChild || '',
-                                })
-                              }
-                              className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
-                            >
-                              Use {projectsDirValidation.suggestedChild} (
-                              {projectsDirValidation.suggestedCount}{' '}
-                              {projectsDirValidation.suggestedCount === 1 ? 'repo' : 'repos'})
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    <EditDetails>
-                      <input
-                        key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
-                        defaultValue={selectedDaemon.projectsDir}
-                        onBlur={(e) =>
-                          e.target.value !== selectedDaemon.projectsDir &&
-                          saveDaemon({ projectsDir: e.target.value.trim() })
-                        }
-                        placeholder={selectedIsRemote ? '~/projects' : '/path/to/projects'}
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
-                      />
-                    </EditDetails>
-                  </PathSetting>
-                  <PathSetting
-                    label="Worktrees directory"
-                    value={selectedDaemon.worktreesDir}
-                    fallback={`${tilde(selectedDaemon.projectsDir) || '<projects>'}/.worktrees`}
-                    detail="Agent process worktrees are created here."
-                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('worktreesDir')}
-                    onClear={() => saveDaemon({ worktreesDir: '' })}
-                  >
-                    <EditDetails>
-                      <input
-                        key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
-                        defaultValue={selectedDaemon.worktreesDir}
-                        onBlur={(e) =>
-                          e.target.value !== selectedDaemon.worktreesDir &&
-                          saveDaemon({ worktreesDir: e.target.value.trim() })
-                        }
-                        placeholder={selectedIsRemote ? '~/.worktrees' : '/path/to/worktrees'}
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
-                      />
-                    </EditDetails>
-                  </PathSetting>
-                  <PathSetting
-                    label="Template repository"
-                    value={selectedDaemon.templateRepo}
-                    fallback="trevormil/project-template"
-                    detail="Used when creating a new project from template."
-                    onClear={() => saveDaemon({ templateRepo: '' })}
-                  >
-                    <EditDetails>
-                      <input
-                        key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
-                        defaultValue={selectedDaemon.templateRepo}
-                        onBlur={(e) =>
-                          e.target.value !== selectedDaemon.templateRepo &&
-                          saveDaemon({ templateRepo: e.target.value.trim() })
-                        }
-                        placeholder="owner/repo or https://github.com/owner/repo"
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
-                      />
-                    </EditDetails>
-                  </PathSetting>
-                  <PathSetting
-                    label="Harness directory"
-                    value={selectedDaemon.harnessDir}
-                    fallback="Not set"
-                    detail="Optional review artifact harness path."
-                    onBrowse={selectedIsRemote ? undefined : () => browseDaemon('harnessDir')}
-                    onClear={() => saveDaemon({ harnessDir: '' })}
-                  >
-                    <EditDetails>
-                      <input
-                        key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
-                        defaultValue={selectedDaemon.harnessDir}
-                        onBlur={(e) =>
-                          e.target.value !== selectedDaemon.harnessDir &&
-                          saveDaemon({ harnessDir: e.target.value.trim() })
-                        }
-                        placeholder={
-                          selectedIsRemote ? '~/autopilot-harness' : '/path/to/autopilot-harness'
-                        }
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
-                      />
-                    </EditDetails>
-                  </PathSetting>
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      onClick={() => window.gt.openConfigDir()}
-                      title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
-                      className={buttonSoft}
-                    >
-                      Open TerMinal config dir
-                    </button>
-                    <span className="text-[10.5px] text-zinc-600">
-                      schedules · settings · cron logs · agent state
-                    </span>
-                  </div>
-                </div>
-              </Section>
-
-              <Section
-                id="appearance"
-                icon={Palette}
-                title="Appearance"
-                desc="Color mode and theme tokens. New installs default to dark; system follows the OS setting."
-              >
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    {modeOpt('dark', 'Dark', Moon)}
-                    {modeOpt('light', 'Light', Sun)}
-                    {modeOpt('system', 'System', Monitor)}
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-[1fr_1.2fr]">
-                    <div className="grid grid-cols-2 gap-2">
-                      {tabLayoutOpt(
-                        'horizontal',
-                        'Top tabs',
-                        'Classic row across the session header',
-                      )}
-                      {tabLayoutOpt(
-                        'sidebar',
-                        'Sidebar tabs',
-                        'Vertical nav beside the active view',
-                      )}
-                    </div>
-                    <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2">
-                      <div className="mb-2 flex items-center justify-between">
-                        <div>
-                          <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
-                          <div className="text-[10.5px] text-zinc-500">
-                            Scales the whole app shell.
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => save({ appearance: { uiScale: 1 } })}
-                          className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
-                        >
-                          {scalePct}%
-                        </button>
-                      </div>
-                      <input
-                        type="range"
-                        min={85}
-                        max={135}
-                        step={5}
-                        value={scalePct}
-                        onChange={(e) =>
-                          save({ appearance: { uiScale: Number(e.target.value) / 100 } })
-                        }
-                        className="w-full accent-[var(--gt-accent)]"
-                      />
-                      <div className="mt-1 flex justify-between text-[9.5px] text-zinc-600">
-                        <span>85</span>
-                        <span>100</span>
-                        <span>135</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
-                      Theme
-                      <select
-                        value={s.appearance.theme}
-                        onChange={(e) => save({ appearance: { theme: e.target.value } })}
-                        className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                      >
-                        {THEMES.map((theme) => (
-                          <option key={theme.id} value={theme.id} className="bg-[var(--gt-panel)]">
-                            {theme.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      {ACCENT_SWATCHES.map((swatch) => {
-                        const on = s.appearance.accent === swatch.id
-                        return (
-                          <button
-                            key={swatch.title}
-                            onClick={() => save({ appearance: { accent: swatch.id } })}
-                            title={swatch.title}
-                            className={`h-6 w-6 rounded-md border transition-colors ${
-                              on
-                                ? 'border-[var(--gt-accent-light)]'
-                                : 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60'
-                            }`}
-                            style={{ background: swatch.color || 'var(--gt-grad)' }}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
-                    <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
-                        <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] text-zinc-500">
-                          {s.appearance.mode}
-                        </span>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
-                        <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
-                        <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
-                      <div className="text-[var(--gt-green)]">$ terminal theme check</div>
-                      <div className="text-[var(--gt-text-muted)]">
-                        tokens apply to chrome, panes, scrollbars, and terminals
-                      </div>
-                      <div>
-                        <span className="text-[var(--gt-accent-light)]">accent</span>
-                        <span className="text-[var(--gt-text-muted)]"> / </span>
-                        <span className="text-[var(--gt-blue)]">info</span>
-                        <span className="text-[var(--gt-text-muted)]"> / </span>
-                        <span className="text-[var(--gt-yellow)]">warn</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Section>
-
-              {/* Engines */}
-              <Section
-                id="engines"
-                icon={Cpu}
-                title="Engines"
-                desc={
-                  selectedIsRemote
-                    ? 'Detected on the selected SSH host; override paths as remote paths.'
-                    : 'The agent backends. Detected on your PATH; override the binary path if needed.'
-                }
-              >
-                <div className="space-y-2">
-                  {engineRow('codex')}
-                  {engineRow('claude')}
-                  {engineRow('cursor')}
-                  {!selectedIsRemote && engineRow('openrouter')}
-                  {!selectedIsRemote && engineRow('hermes')}
-                  {!selectedIsRemote && engineRow('openai-compat')}
-                </div>
-                {!selectedIsRemote && (
-                  <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-                    <label className="block text-[11px] font-medium text-zinc-300">
-                      OpenRouter API key
-                    </label>
-                    <div className="mt-0.5 text-[10.5px] text-zinc-600">
-                      Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty →
-                      falls back to the shell&apos;s OPENROUTER_API_KEY.
-                    </div>
-                    <input
-                      key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
-                      type="password"
-                      defaultValue={s?.openrouterApiKey || ''}
-                      onBlur={(ev) =>
-                        ev.target.value !== (s?.openrouterApiKey || '') &&
-                        save({ openrouterApiKey: ev.target.value.trim() })
-                      }
-                      placeholder="sk-or-v1-…"
-                      spellCheck={false}
-                      autoComplete="off"
-                      className={`${inp} mt-1.5 font-mono`}
-                    />
-                  </div>
-                )}
-                {!selectedIsRemote && (
-                  <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
-                    <label className="block text-[11px] font-medium text-zinc-300">
-                      Self-hosted API key
-                    </label>
-                    <div className="mt-0.5 text-[10.5px] text-zinc-600">
-                      Stored in your OS keychain. Sent to the self-hosted (openai-compat) endpoint.
-                      Empty → falls back to the shell&apos;s OPENAI_API_KEY; keyless local servers
-                      need no real value.
-                    </div>
-                    <input
-                      key={`oc-key-${s?.openaiCompatApiKey ? 'set' : 'unset'}`}
-                      type="password"
-                      defaultValue={s?.openaiCompatApiKey || ''}
-                      onBlur={(ev) =>
-                        ev.target.value !== (s?.openaiCompatApiKey || '') &&
-                        save({ openaiCompatApiKey: ev.target.value.trim() })
-                      }
-                      placeholder="sk-… (or any placeholder for keyless servers)"
-                      spellCheck={false}
-                      autoComplete="off"
-                      className={`${inp} mt-1.5 font-mono`}
-                    />
-                  </div>
-                )}
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-[11px] text-zinc-500">Default:</span>
-                  {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
-                    // Grey engines the local machine doesn't have — the default
-                    // engine drives scheduled/agent runs, so an absent one silently
-                    // no-ops. (Remote profiles use the host probe, not local env.)
-                    const missing = !selectedIsRemote && !localEngineFound(e)
-                    return (
-                      <button
-                        key={e}
-                        onClick={() => saveDaemon({ defaultEngine: e })}
-                        title={
-                          missing ? `${engineLabel(e)} is not installed on this machine` : undefined
-                        }
-                        className={`rounded-md border px-2.5 py-1 text-[11px] ${
-                          selectedDaemon.defaultEngine === e
-                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                            : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                        } ${missing ? 'opacity-45' : ''}`}
-                      >
-                        {engineLabel(e)}
-                      </button>
-                    )
-                  })}
-                </div>
-                {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
-                  <div className="mt-1.5 text-[10.5px] text-amber-400">
-                    ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed — scheduled,
-                    ticket, and background agent runs will fail. Install it or pick an installed
-                    engine.
-                  </div>
-                )}
-              </Section>
-
-              {/* Remote hosts */}
-              <Section
-                id="remote"
-                icon={Server}
-                title="SSH hosts"
-                desc="Remote profiles for terminal sessions and daemon-backed tabs. Pick a host here, then use Daemon profile to tune its paths, engines, models, forge mode, and template repo."
-              >
-                <div className="space-y-3">
-                  {s.remoteHosts.length > 0 ? (
-                    <div className="grid gap-2 md:grid-cols-2">
                       {s.remoteHosts.map((h) => (
-                        <div
-                          key={h.id}
-                          className={`rounded-lg border p-3 ${
-                            profile === h.id
-                              ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
-                              : 'border-[var(--gt-border)] bg-black/20'
-                          }`}
-                        >
-                          <div className="mb-2 flex items-start gap-2">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-2)]">
-                              <Server size={14} strokeWidth={2} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[12px] font-semibold text-zinc-100">
-                                {h.label}
-                              </div>
-                              <div className="truncate font-mono text-[10.5px] text-zinc-600">
-                                {h.sshTarget}
-                              </div>
-                            </div>
-                            <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-500">
-                              {h.platform}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-black/20 px-2 py-1.5 text-[10.5px]">
-                            <span className="text-zinc-600">cwd</span>
-                            <span className="truncate font-mono text-zinc-400">
-                              {h.defaultCwd || h.daemon.projectsDir || '~'}
-                            </span>
-                            <span className="text-zinc-600">id</span>
-                            <span className="truncate font-mono text-zinc-500">{h.id}</span>
-                          </div>
-                          <div className="mt-2 flex items-center gap-1">
-                            <button
-                              onClick={() => setProfile(h.id)}
-                              className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                            >
-                              Use profile
-                            </button>
-                            <button
-                              onClick={() =>
-                                setRemoteDraft({
-                                  label: h.label,
-                                  sshTarget: h.sshTarget,
-                                  defaultCwd: h.defaultCwd,
-                                  platform: h.platform,
-                                })
-                              }
-                              className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => removeRemoteHost(h.id)}
-                              className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-[11px] text-zinc-600">
-                      No remote hosts yet. Add one with an SSH config alias like{' '}
-                      <span className="font-mono">tm</span> or a target like{' '}
-                      <span className="font-mono">user@example.com</span>.
-                    </div>
-                  )}
-                  <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-[12px] font-semibold text-zinc-200">
-                          Add or update host
-                        </div>
-                        <div className="text-[10.5px] text-zinc-600">
-                          Using the same label replaces an existing profile.
-                        </div>
-                      </div>
-                      <button
-                        onClick={saveRemoteDraft}
-                        disabled={!remoteDraft.sshTarget.trim()}
-                        className={actionButton}
-                      >
-                        Save host
-                      </button>
-                    </div>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <label className="space-y-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          Label
-                        </span>
-                        <input
-                          value={remoteDraft.label}
-                          onChange={(e) => setRemoteDraft((d) => ({ ...d, label: e.target.value }))}
-                          placeholder="Remote desktop"
-                          className={`${inp} font-mono`}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          SSH target
-                        </span>
-                        <input
-                          value={remoteDraft.sshTarget}
-                          onChange={(e) =>
-                            setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))
-                          }
-                          placeholder="tm or user@example.com"
-                          spellCheck={false}
-                          className={`${inp} font-mono`}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          Default cwd
-                        </span>
-                        <input
-                          value={remoteDraft.defaultCwd}
-                          onChange={(e) =>
-                            setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))
-                          }
-                          placeholder="~"
-                          spellCheck={false}
-                          className={`${inp} font-mono`}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          Platform
-                        </span>
-                        <select
-                          value={remoteDraft.platform}
-                          onChange={(e) =>
-                            setRemoteDraft((d) => ({
-                              ...d,
-                              platform: e.target.value as RemotePlatform,
-                            }))
-                          }
-                          className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                        >
-                          <option value="linux" className="bg-[var(--gt-panel)]">
-                            Linux
-                          </option>
-                          <option value="macos" className="bg-[var(--gt-panel)]">
-                            macOS
-                          </option>
-                          <option value="auto" className="bg-[var(--gt-panel)]">
-                            Auto
-                          </option>
-                        </select>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </Section>
-
-              {/* Forge */}
-              <Section
-                id="forge"
-                icon={GitPullRequest}
-                title="Code forge"
-                desc="Auto picks gh for GitHub remotes and glab otherwise — per repo."
-              >
-                <div className="flex gap-2">
-                  {forgeOpt('auto', 'Auto', 'detect per repo')}
-                  {forgeOpt('github', 'GitHub', 'force gh / PRs')}
-                  {forgeOpt('gitlab', 'GitLab', 'force glab / MRs')}
-                </div>
-                {selectedIsRemote && selectedProbe && !('loading' in selectedProbe) ? (
-                  <div className="mt-3 space-y-1">
-                    <Readiness
-                      ok={!!selectedProbe.tools.gh}
-                      name="gh"
-                      hint={selectedProbe.tools.gh || 'not detected on remote PATH'}
-                    />
-                    <Readiness
-                      ok={!!selectedProbe.tools.glab}
-                      name="glab"
-                      hint={selectedProbe.tools.glab || 'not detected on remote PATH'}
-                    />
-                  </div>
-                ) : (
-                  env && (
-                    <div className="mt-3 space-y-1">
-                      <Readiness
-                        ok={env.gh.found && env.gh.authed}
-                        name="gh"
-                        hint={
-                          env.gh.found
-                            ? env.gh.authed
-                              ? `authenticated${env.gh.authHost ? ` (${env.gh.authHost})` : ''}`
-                              : 'installed — run `gh auth login`'
-                            : 'not installed — `brew install gh`'
-                        }
-                      />
-                      <Readiness
-                        ok={env.glab.found && env.glab.authed}
-                        name="glab"
-                        hint={
-                          env.glab.found
-                            ? env.glab.authed
-                              ? `authenticated${env.glab.authHost ? ` (${env.glab.authHost})` : ''}`
-                              : 'installed — run `glab auth login`'
-                            : 'not installed — `brew install glab`'
-                        }
-                      />
-                    </div>
-                  )
-                )}
-              </Section>
-
-              <Section
-                id="tickets"
-                icon={TicketIcon}
-                title="Tickets"
-                desc="Pick the repo's ticket source of truth. Local backlog is the default; GitHub and Linear use their existing CLIs/MCPs."
-              >
-                <TicketProviderPanel />
-              </Section>
-
-              {/* External apps */}
-              <Section
-                id="apps"
-                icon={AppWindow}
-                title="External apps"
-                desc="Which app the Files tab's 'Open in editor' and the Browser tab's 'Open in browser' hand off to. Runs `open -a <app>` (works for any installed macOS app)."
-              >
-                <div className="flex flex-wrap gap-5">
-                  <label className="flex items-center gap-2 text-[12px] text-zinc-400">
-                    Editor
-                    <select
-                      value={s.apps.editor || 'Cursor'}
-                      onChange={(e) => save({ apps: { editor: e.target.value } })}
-                      className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                    >
-                      {appOptions(
-                        env?.apps.editors,
-                        ['Cursor', 'Visual Studio Code'],
-                        s.apps.editor,
-                      )}
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-2 text-[12px] text-zinc-400">
-                    Browser
-                    <select
-                      value={s.apps.browser || 'Brave Browser'}
-                      onChange={(e) => save({ apps: { browser: e.target.value } })}
-                      className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
-                    >
-                      {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
-                    </select>
-                  </label>
-                </div>
-                <div className="mt-3">
-                  <Toggle
-                    on={s.apps.formatOnSave}
-                    onToggle={() => save({ apps: { formatOnSave: !s.apps.formatOnSave } })}
-                    label="Format on save (Files tab)"
-                    hint="⌘S runs the project's own prettier before writing. Skipped when the project has no prettier install or prettier doesn't own the file."
-                  />
-                </div>
-              </Section>
-
-              <PanelsSection
-                panels={s.pinnedPanels}
-                onSave={(pinnedPanels) => save({ pinnedPanels })}
-              />
-
-              {/* Inbox */}
-              <Section
-                id="inbox"
-                icon={Inbox}
-                title="Inbox"
-                desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
-              >
-                <div className="space-y-2">
-                  <Toggle
-                    on={s.inbox.completionHook}
-                    onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
-                    label="File completion hooks to Inbox"
-                    hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
-                  />
-                  <Toggle
-                    on={s.inbox.agentContextPreamble}
-                    onToggle={() =>
-                      save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })
-                    }
-                    label="Add repo context to prompt agents"
-                    hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
-                  />
-                  <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2">
-                    <div className="text-[11.5px] font-medium text-zinc-200">Notify me for</div>
-                    <div className="mt-0.5 text-[10.5px] text-zinc-500">
-                      Which severities send a notification (phone push · Telegram · desktop). Below
-                      the cutoff, items are inbox-only — email you sweep once or twice a day.
-                    </div>
-                    <div className="mt-2 flex gap-1">
-                      {(
-                        [
-                          ['urgent', 'Urgent only'],
-                          ['normal', 'Urgent + Normal'],
-                          ['low', 'Everything'],
-                        ] as const
-                      ).map(([val, label]) => (
                         <button
-                          key={val}
-                          onClick={() => save({ inbox: { notifyThreshold: val } })}
-                          className={`rounded-md border px-2.5 py-1 text-[11px] ${
-                            s.inbox.notifyThreshold === val
+                          key={h.id}
+                          onClick={() => setProfile(h.id)}
+                          className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                            profile === h.id
                               ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
-                              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                              : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                           }`}
                         >
-                          {label}
+                          <Server
+                            size={16}
+                            strokeWidth={2}
+                            className="shrink-0 text-[var(--gt-accent-2)]"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12px] font-semibold">
+                              {h.label || h.id}
+                            </span>
+                            <span className="block truncate font-mono text-[10.5px] text-zinc-600">
+                              {h.sshTarget}
+                            </span>
+                          </span>
+                          {profile === h.id && (
+                            <span className="rounded bg-[var(--gt-accent)]/20 px-1.5 py-0.5 text-[9.5px] text-[var(--gt-accent-light)]">
+                              Active
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 text-[10.5px] text-zinc-500">
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Urgent</span>
-                      <span>Human blockers, cron failures, daily cap reached</span>
-                    </div>
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Normal</span>
-                      <span>Spend warnings, recurring review-finding digests</span>
-                    </div>
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Low</span>
-                      <span>Post-completion review prompts</span>
-                    </div>
-                  </div>
-                </div>
-              </Section>
-
-              {/* Mobile bridge */}
-              <MobileSection cfg={s.bridge} save={save} buttonClass={actionButton} />
-
-              {/* Suggested replies */}
-              <Section
-                id="suggestions"
-                icon={Sparkles}
-                title="Suggested replies"
-                desc="Per-terminal modes decide when to use these standalone engines. Enhance mode rewrites a draft prompt through the configured AI suggestion engine before sending."
-              >
-                <div className="space-y-2">
-                  <SuggestionModelSetting
-                    label="AI suggestion model"
-                    engine={s.suggestions.aiEngine}
-                    model={s.suggestions.aiModel}
-                    onPick={(aiEngine, aiModel) =>
-                      save({ suggestions: { aiEngine, aiModel: aiModel || '' } })
-                    }
-                    hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
-                  />
-                  <SuggestionModelSetting
-                    label="Auto-send model"
-                    engine={s.suggestions.autoEngine}
-                    model={s.suggestions.autoModel}
-                    onPick={(autoEngine, autoModel) =>
-                      save({ suggestions: { autoEngine, autoModel: autoModel || '' } })
-                    }
-                    hint="Used when a terminal is set to Auto mode. TerMinal asks for one best reply and submits it after completion."
-                  />
-                  <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Rules</span>
-                      <span>Deterministic suggestions only</span>
-                    </div>
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">AI</span>
-                      <span>Shows suggestions for you to choose</span>
-                    </div>
-                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
-                      <span className="block text-zinc-300">Enhance / Auto</span>
-                      <span>Rewrite a draft prompt; auto submits one reply</span>
-                    </div>
-                  </div>
-                </div>
-              </Section>
-
-              {/* Alert channels */}
-              <Section
-                id="alerts"
-                icon={BellRing}
-                title="Alert channels"
-                desc="Turn each channel on/off and test it. What each channel actually fires for is set below in Notification routing; a failing channel never blocks the others."
-              >
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <Toggle
-                        on={s.alerts.desktop.enabled}
-                        onToggle={() =>
-                          save({ alerts: { desktop: { enabled: !s.alerts.desktop.enabled } } })
-                        }
-                        label="Desktop notifications"
-                        hint="Native macOS notification banners"
-                      />
-                      <button
-                        onClick={() => testAlert('desktop')}
-                        disabled={alertTest.desktop?.busy}
-                        className={actionButton}
-                      >
-                        {alertTest.desktop?.busy ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <Send size={13} strokeWidth={2} />
-                        )}
-                        Test
-                      </button>
-                    </div>
-                    {alertTest.desktop && !alertTest.desktop.busy && (
+                    {selectedHost && selectedProbe && !('loading' in selectedProbe) && (
                       <div
-                        className={`text-[11px] ${alertTest.desktop.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        className={`rounded-md border px-2.5 py-1.5 text-[10.5px] ${selectedProbe.ok ? 'border-[var(--gt-border)] bg-black/20 text-zinc-500' : 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-amber-400'}`}
                       >
-                        {alertTest.desktop.ok
-                          ? '✓ Sent — check your notifications.'
-                          : alertTest.desktop.error}
+                        {selectedProbe.ok
+                          ? `Connected to ${selectedHost.sshTarget} · cwd ${selectedProbe.cwd || '~'} · ${Object.values(selectedProbe.engines).filter(Boolean).length}/3 engines detected`
+                          : selectedProbe.error}
                       </div>
                     )}
                   </div>
+                </section>
+
+                {/* Projects & worktrees */}
+                <Section
+                  id="paths"
+                  icon={FolderTree}
+                  title="Projects & worktrees"
+                  desc={
+                    selectedIsRemote
+                      ? 'Remote daemon paths. Enter paths as they exist on the SSH host.'
+                      : 'Where the entry screen looks for repos, and where agent worktrees are created.'
+                  }
+                >
+                  <div className="space-y-2">
+                    <PathSetting
+                      label="Projects directory"
+                      value={selectedDaemon.projectsDir}
+                      fallback={selectedIsRemote ? 'Remote home folder' : 'Home folder'}
+                      detail={
+                        selectedIsRemote
+                          ? 'Default remote workspace directory for this SSH profile.'
+                          : 'Used by the entry screen for new workspaces and scaffold destinations.'
+                      }
+                      onBrowse={selectedIsRemote ? undefined : () => browseDaemon('projectsDir')}
+                      onClear={() => saveDaemon({ projectsDir: '' })}
+                    >
+                      {!selectedIsRemote &&
+                        projectsDirValidation?.ok &&
+                        typeof projectsDirValidation.repoCount === 'number' &&
+                        projectsDirValidation.repoCount > 0 && (
+                          <div className="mb-2 text-[10.5px] text-[var(--gt-green)]">
+                            Manages {projectsDirValidation.repoCount}{' '}
+                            {projectsDirValidation.repoCount === 1 ? 'repo' : 'repos'} in this
+                            folder
+                          </div>
+                        )}
+                      {projectsDirValidation &&
+                        !projectsDirValidation.ok &&
+                        projectsDirValidation.reason === 'is-repo' && (
+                          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+                            <span className="min-w-0 flex-1">{projectsDirValidation.message}</span>
+                            {projectsDirValidation.suggestedParent && (
+                              <button
+                                onClick={() =>
+                                  saveDaemon({
+                                    projectsDir: projectsDirValidation.suggestedParent || '',
+                                  })
+                                }
+                                className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                              >
+                                Use parent
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      {!selectedIsRemote &&
+                        projectsDirValidation &&
+                        !projectsDirValidation.ok &&
+                        projectsDirValidation.reason === 'no-repos-found' && (
+                          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
+                            <span className="min-w-0 flex-1">
+                              ⚠ 0 repos found here — they may be nested one level deeper.
+                            </span>
+                            {projectsDirValidation.suggestedChild && (
+                              <button
+                                onClick={() =>
+                                  saveDaemon({
+                                    projectsDir: projectsDirValidation.suggestedChild || '',
+                                  })
+                                }
+                                className="rounded border border-amber-400/40 bg-black/20 px-2 py-0.5 text-[10.5px] font-semibold text-amber-100 hover:bg-amber-400/10"
+                              >
+                                Use {projectsDirValidation.suggestedChild} (
+                                {projectsDirValidation.suggestedCount}{' '}
+                                {projectsDirValidation.suggestedCount === 1 ? 'repo' : 'repos'})
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      <EditDetails>
+                        <input
+                          key={`${profile}-projectsDir-${selectedDaemon.projectsDir}`}
+                          defaultValue={selectedDaemon.projectsDir}
+                          onBlur={(e) =>
+                            e.target.value !== selectedDaemon.projectsDir &&
+                            saveDaemon({ projectsDir: e.target.value.trim() })
+                          }
+                          placeholder={selectedIsRemote ? '~/projects' : '/path/to/projects'}
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </EditDetails>
+                    </PathSetting>
+                    <PathSetting
+                      label="Worktrees directory"
+                      value={selectedDaemon.worktreesDir}
+                      fallback={`${tilde(selectedDaemon.projectsDir) || '<projects>'}/.worktrees`}
+                      detail="Agent process worktrees are created here."
+                      onBrowse={selectedIsRemote ? undefined : () => browseDaemon('worktreesDir')}
+                      onClear={() => saveDaemon({ worktreesDir: '' })}
+                    >
+                      <EditDetails>
+                        <input
+                          key={`${profile}-worktreesDir-${selectedDaemon.worktreesDir}`}
+                          defaultValue={selectedDaemon.worktreesDir}
+                          onBlur={(e) =>
+                            e.target.value !== selectedDaemon.worktreesDir &&
+                            saveDaemon({ worktreesDir: e.target.value.trim() })
+                          }
+                          placeholder={selectedIsRemote ? '~/.worktrees' : '/path/to/worktrees'}
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </EditDetails>
+                    </PathSetting>
+                    <PathSetting
+                      label="Template repository"
+                      value={selectedDaemon.templateRepo}
+                      fallback="trevormil/project-template"
+                      detail="Used when creating a new project from template."
+                      onClear={() => saveDaemon({ templateRepo: '' })}
+                    >
+                      <EditDetails>
+                        <input
+                          key={`${profile}-templateRepo-${selectedDaemon.templateRepo}`}
+                          defaultValue={selectedDaemon.templateRepo}
+                          onBlur={(e) =>
+                            e.target.value !== selectedDaemon.templateRepo &&
+                            saveDaemon({ templateRepo: e.target.value.trim() })
+                          }
+                          placeholder="owner/repo or https://github.com/owner/repo"
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </EditDetails>
+                    </PathSetting>
+                    <PathSetting
+                      label="Harness directory"
+                      value={selectedDaemon.harnessDir}
+                      fallback="Not set"
+                      detail="Optional review artifact harness path."
+                      onBrowse={selectedIsRemote ? undefined : () => browseDaemon('harnessDir')}
+                      onClear={() => saveDaemon({ harnessDir: '' })}
+                    >
+                      <EditDetails>
+                        <input
+                          key={`${profile}-harnessDir-${selectedDaemon.harnessDir}`}
+                          defaultValue={selectedDaemon.harnessDir}
+                          onBlur={(e) =>
+                            e.target.value !== selectedDaemon.harnessDir &&
+                            saveDaemon({ harnessDir: e.target.value.trim() })
+                          }
+                          placeholder={
+                            selectedIsRemote ? '~/autopilot-harness' : '/path/to/autopilot-harness'
+                          }
+                          spellCheck={false}
+                          className={`${inp} font-mono`}
+                        />
+                      </EditDetails>
+                    </PathSetting>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => window.gt.openConfigDir()}
+                        title="Reveal ~/.config/TerMinal/ in Finder — edit schedules.json, settings.json, or agent-state/ sidecars by hand"
+                        className={buttonSoft}
+                      >
+                        Open TerMinal config dir
+                      </button>
+                      <span className="text-[10.5px] text-zinc-600">
+                        schedules · settings · cron logs · agent state
+                      </span>
+                    </div>
+                  </div>
+                </Section>
+
+                <Section
+                  id="appearance"
+                  icon={Palette}
+                  title="Appearance"
+                  desc="Color mode and theme tokens. New installs default to dark; system follows the OS setting."
+                >
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      {modeOpt('dark', 'Dark', Moon)}
+                      {modeOpt('light', 'Light', Sun)}
+                      {modeOpt('system', 'System', Monitor)}
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-[1fr_1.2fr]">
+                      <div className="grid grid-cols-2 gap-2">
+                        {tabLayoutOpt(
+                          'horizontal',
+                          'Top tabs',
+                          'Classic row across the session header',
+                        )}
+                        {tabLayoutOpt(
+                          'sidebar',
+                          'Sidebar tabs',
+                          'Vertical nav beside the active view',
+                        )}
+                      </div>
+                      <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div>
+                            <div className="text-[12px] font-semibold text-zinc-200">UI scale</div>
+                            <div className="text-[10.5px] text-zinc-500">
+                              Scales the whole app shell.
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => save({ appearance: { uiScale: 1 } })}
+                            className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                          >
+                            {scalePct}%
+                          </button>
+                        </div>
+                        <input
+                          type="range"
+                          min={85}
+                          max={135}
+                          step={5}
+                          value={scalePct}
+                          onChange={(e) =>
+                            save({ appearance: { uiScale: Number(e.target.value) / 100 } })
+                          }
+                          className="w-full accent-[var(--gt-accent)]"
+                        />
+                        <div className="mt-1 flex justify-between text-[9.5px] text-zinc-600">
+                          <span>85</span>
+                          <span>100</span>
+                          <span>135</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                      <label className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-[12px] text-zinc-400">
+                        Theme
+                        <select
+                          value={s.appearance.theme}
+                          onChange={(e) => save({ appearance: { theme: e.target.value } })}
+                          className="min-w-0 flex-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                        >
+                          {THEMES.map((theme) => (
+                            <option
+                              key={theme.id}
+                              value={theme.id}
+                              className="bg-[var(--gt-panel)]"
+                            >
+                              {theme.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        {ACCENT_SWATCHES.map((swatch) => {
+                          const on = s.appearance.accent === swatch.id
+                          return (
+                            <button
+                              key={swatch.title}
+                              onClick={() => save({ appearance: { accent: swatch.id } })}
+                              title={swatch.title}
+                              className={`h-6 w-6 rounded-md border transition-colors ${
+                                on
+                                  ? 'border-[var(--gt-accent-light)]'
+                                  : 'border-[var(--gt-border)] hover:border-[var(--gt-accent)]/60'
+                              }`}
+                              style={{ background: swatch.color || 'var(--gt-grad)' }}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
+                      <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
+                          <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] text-zinc-500">
+                            {s.appearance.mode}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
+                          <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
+                          <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
+                        <div className="text-[var(--gt-green)]">$ terminal theme check</div>
+                        <div className="text-[var(--gt-text-muted)]">
+                          tokens apply to chrome, panes, scrollbars, and terminals
+                        </div>
+                        <div>
+                          <span className="text-[var(--gt-accent-light)]">accent</span>
+                          <span className="text-[var(--gt-text-muted)]"> / </span>
+                          <span className="text-[var(--gt-blue)]">info</span>
+                          <span className="text-[var(--gt-text-muted)]"> / </span>
+                          <span className="text-[var(--gt-yellow)]">warn</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Engines */}
+                <Section
+                  id="engines"
+                  icon={Cpu}
+                  title="Engines"
+                  desc={
+                    selectedIsRemote
+                      ? 'Detected on the selected SSH host; override paths as remote paths.'
+                      : 'The agent backends. Detected on your PATH; override the binary path if needed.'
+                  }
+                >
+                  <div className="space-y-2">
+                    {engineRow('codex')}
+                    {engineRow('claude')}
+                    {engineRow('cursor')}
+                    {!selectedIsRemote && engineRow('openrouter')}
+                    {!selectedIsRemote && engineRow('hermes')}
+                    {!selectedIsRemote && engineRow('openai-compat')}
+                  </div>
+                  {!selectedIsRemote && (
+                    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                      <label className="block text-[11px] font-medium text-zinc-300">
+                        OpenRouter API key
+                      </label>
+                      <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                        Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty
+                        → falls back to the shell&apos;s OPENROUTER_API_KEY.
+                      </div>
+                      <input
+                        key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
+                        type="password"
+                        defaultValue={s?.openrouterApiKey || ''}
+                        onBlur={(ev) =>
+                          ev.target.value !== (s?.openrouterApiKey || '') &&
+                          save({ openrouterApiKey: ev.target.value.trim() })
+                        }
+                        placeholder="sk-or-v1-…"
+                        spellCheck={false}
+                        autoComplete="off"
+                        className={`${inp} mt-1.5 font-mono`}
+                      />
+                    </div>
+                  )}
+                  {!selectedIsRemote && (
+                    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                      <label className="block text-[11px] font-medium text-zinc-300">
+                        Self-hosted API key
+                      </label>
+                      <div className="mt-0.5 text-[10.5px] text-zinc-600">
+                        Stored in your OS keychain. Sent to the self-hosted (openai-compat)
+                        endpoint. Empty → falls back to the shell&apos;s OPENAI_API_KEY; keyless
+                        local servers need no real value.
+                      </div>
+                      <input
+                        key={`oc-key-${s?.openaiCompatApiKey ? 'set' : 'unset'}`}
+                        type="password"
+                        defaultValue={s?.openaiCompatApiKey || ''}
+                        onBlur={(ev) =>
+                          ev.target.value !== (s?.openaiCompatApiKey || '') &&
+                          save({ openaiCompatApiKey: ev.target.value.trim() })
+                        }
+                        placeholder="sk-… (or any placeholder for keyless servers)"
+                        spellCheck={false}
+                        autoComplete="off"
+                        className={`${inp} mt-1.5 font-mono`}
+                      />
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-500">Default:</span>
+                    {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
+                      // Grey engines the local machine doesn't have — the default
+                      // engine drives scheduled/agent runs, so an absent one silently
+                      // no-ops. (Remote profiles use the host probe, not local env.)
+                      const missing = !selectedIsRemote && !localEngineFound(e)
+                      return (
+                        <button
+                          key={e}
+                          onClick={() => saveDaemon({ defaultEngine: e })}
+                          title={
+                            missing
+                              ? `${engineLabel(e)} is not installed on this machine`
+                              : undefined
+                          }
+                          className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                            selectedDaemon.defaultEngine === e
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                          } ${missing ? 'opacity-45' : ''}`}
+                        >
+                          {engineLabel(e)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
+                    <div className="mt-1.5 text-[10.5px] text-amber-400">
+                      ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed —
+                      scheduled, ticket, and background agent runs will fail. Install it or pick an
+                      installed engine.
+                    </div>
+                  )}
+                </Section>
+
+                {/* Remote hosts */}
+                <Section
+                  id="remote"
+                  icon={Server}
+                  title="SSH hosts"
+                  desc="Remote profiles for terminal sessions and daemon-backed tabs. Pick a host here, then use Daemon profile to tune its paths, engines, models, forge mode, and template repo."
+                >
+                  <div className="space-y-3">
+                    {s.remoteHosts.length > 0 ? (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {s.remoteHosts.map((h) => (
+                          <div
+                            key={h.id}
+                            className={`rounded-lg border p-3 ${
+                              profile === h.id
+                                ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10'
+                                : 'border-[var(--gt-border)] bg-black/20'
+                            }`}
+                          >
+                            <div className="mb-2 flex items-start gap-2">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/25 text-[var(--gt-accent-2)]">
+                                <Server size={14} strokeWidth={2} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-[12px] font-semibold text-zinc-100">
+                                  {h.label}
+                                </div>
+                                <div className="truncate font-mono text-[10.5px] text-zinc-600">
+                                  {h.sshTarget}
+                                </div>
+                              </div>
+                              <span className="rounded border border-[var(--gt-border)] px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-zinc-500">
+                                {h.platform}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-black/20 px-2 py-1.5 text-[10.5px]">
+                              <span className="text-zinc-600">cwd</span>
+                              <span className="truncate font-mono text-zinc-400">
+                                {h.defaultCwd || h.daemon.projectsDir || '~'}
+                              </span>
+                              <span className="text-zinc-600">id</span>
+                              <span className="truncate font-mono text-zinc-500">{h.id}</span>
+                            </div>
+                            <div className="mt-2 flex items-center gap-1">
+                              <button
+                                onClick={() => setProfile(h.id)}
+                                className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                              >
+                                Use profile
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setRemoteDraft({
+                                    label: h.label,
+                                    sshTarget: h.sshTarget,
+                                    defaultCwd: h.defaultCwd,
+                                    platform: h.platform,
+                                  })
+                                }
+                                className="rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => removeRemoteHost(h.id)}
+                                className="ml-auto rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-500 hover:border-[var(--gt-red)]/50 hover:text-[var(--gt-red)]"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-[var(--gt-border)] p-3 text-[11px] text-zinc-600">
+                        No remote hosts yet. Add one with an SSH config alias like{' '}
+                        <span className="font-mono">tm</span> or a target like{' '}
+                        <span className="font-mono">user@example.com</span>.
+                      </div>
+                    )}
+                    <div className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[12px] font-semibold text-zinc-200">
+                            Add or update host
+                          </div>
+                          <div className="text-[10.5px] text-zinc-600">
+                            Using the same label replaces an existing profile.
+                          </div>
+                        </div>
+                        <button
+                          onClick={saveRemoteDraft}
+                          disabled={!remoteDraft.sshTarget.trim()}
+                          className={actionButton}
+                        >
+                          Save host
+                        </button>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            Label
+                          </span>
+                          <input
+                            value={remoteDraft.label}
+                            onChange={(e) =>
+                              setRemoteDraft((d) => ({ ...d, label: e.target.value }))
+                            }
+                            placeholder="Remote desktop"
+                            className={`${inp} font-mono`}
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            SSH target
+                          </span>
+                          <input
+                            value={remoteDraft.sshTarget}
+                            onChange={(e) =>
+                              setRemoteDraft((d) => ({ ...d, sshTarget: e.target.value }))
+                            }
+                            placeholder="tm or user@example.com"
+                            spellCheck={false}
+                            className={`${inp} font-mono`}
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            Default cwd
+                          </span>
+                          <input
+                            value={remoteDraft.defaultCwd}
+                            onChange={(e) =>
+                              setRemoteDraft((d) => ({ ...d, defaultCwd: e.target.value }))
+                            }
+                            placeholder="~"
+                            spellCheck={false}
+                            className={`${inp} font-mono`}
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            Platform
+                          </span>
+                          <select
+                            value={remoteDraft.platform}
+                            onChange={(e) =>
+                              setRemoteDraft((d) => ({
+                                ...d,
+                                platform: e.target.value as RemotePlatform,
+                              }))
+                            }
+                            className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                          >
+                            <option value="linux" className="bg-[var(--gt-panel)]">
+                              Linux
+                            </option>
+                            <option value="macos" className="bg-[var(--gt-panel)]">
+                              macOS
+                            </option>
+                            <option value="auto" className="bg-[var(--gt-panel)]">
+                              Auto
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Forge */}
+                <Section
+                  id="forge"
+                  icon={GitPullRequest}
+                  title="Code forge"
+                  desc="Auto picks gh for GitHub remotes and glab otherwise — per repo."
+                >
+                  <div className="flex gap-2">
+                    {forgeOpt('auto', 'Auto', 'detect per repo')}
+                    {forgeOpt('github', 'GitHub', 'force gh / PRs')}
+                    {forgeOpt('gitlab', 'GitLab', 'force glab / MRs')}
+                  </div>
+                  {selectedIsRemote && selectedProbe && !('loading' in selectedProbe) ? (
+                    <div className="mt-3 space-y-1">
+                      <Readiness
+                        ok={!!selectedProbe.tools.gh}
+                        name="gh"
+                        hint={selectedProbe.tools.gh || 'not detected on remote PATH'}
+                      />
+                      <Readiness
+                        ok={!!selectedProbe.tools.glab}
+                        name="glab"
+                        hint={selectedProbe.tools.glab || 'not detected on remote PATH'}
+                      />
+                    </div>
+                  ) : (
+                    env && (
+                      <div className="mt-3 space-y-1">
+                        <Readiness
+                          ok={env.gh.found && env.gh.authed}
+                          name="gh"
+                          hint={
+                            env.gh.found
+                              ? env.gh.authed
+                                ? `authenticated${env.gh.authHost ? ` (${env.gh.authHost})` : ''}`
+                                : 'installed — run `gh auth login`'
+                              : 'not installed — `brew install gh`'
+                          }
+                        />
+                        <Readiness
+                          ok={env.glab.found && env.glab.authed}
+                          name="glab"
+                          hint={
+                            env.glab.found
+                              ? env.glab.authed
+                                ? `authenticated${env.glab.authHost ? ` (${env.glab.authHost})` : ''}`
+                                : 'installed — run `glab auth login`'
+                              : 'not installed — `brew install glab`'
+                          }
+                        />
+                      </div>
+                    )
+                  )}
+                </Section>
+
+                <Section
+                  id="tickets"
+                  icon={TicketIcon}
+                  title="Tickets"
+                  desc="Pick the repo's ticket source of truth. Local backlog is the default; GitHub and Linear use their existing CLIs/MCPs."
+                >
+                  <TicketProviderPanel />
+                </Section>
+
+                {/* External apps */}
+                <Section
+                  id="apps"
+                  icon={AppWindow}
+                  title="External apps"
+                  desc="Which app the Files tab's 'Open in editor' and the Browser tab's 'Open in browser' hand off to. Runs `open -a <app>` (works for any installed macOS app)."
+                >
+                  <div className="flex flex-wrap gap-5">
+                    <label className="flex items-center gap-2 text-[12px] text-zinc-400">
+                      Editor
+                      <select
+                        value={s.apps.editor || 'Cursor'}
+                        onChange={(e) => save({ apps: { editor: e.target.value } })}
+                        className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                      >
+                        {appOptions(
+                          env?.apps.editors,
+                          ['Cursor', 'Visual Studio Code'],
+                          s.apps.editor,
+                        )}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2 text-[12px] text-zinc-400">
+                      Browser
+                      <select
+                        value={s.apps.browser || 'Brave Browser'}
+                        onChange={(e) => save({ apps: { browser: e.target.value } })}
+                        className="rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none"
+                      >
+                        {appOptions(env?.apps.browsers, ['Brave Browser'], s.apps.browser)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-3">
+                    <Toggle
+                      on={s.apps.formatOnSave}
+                      onToggle={() => save({ apps: { formatOnSave: !s.apps.formatOnSave } })}
+                      label="Format on save (Files tab)"
+                      hint="⌘S runs the project's own prettier before writing. Skipped when the project has no prettier install or prettier doesn't own the file."
+                    />
+                  </div>
+                </Section>
+
+                <PanelsSection
+                  panels={s.pinnedPanels}
+                  onSave={(pinnedPanels) => save({ pinnedPanels })}
+                />
+
+                {/* Inbox */}
+                <Section
+                  id="inbox"
+                  icon={Inbox}
+                  title="Inbox"
+                  desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
+                >
                   <div className="space-y-2">
                     <Toggle
-                      on={s.alerts.webhook.enabled}
-                      onToggle={() =>
-                        save({ alerts: { webhook: { enabled: !s.alerts.webhook.enabled } } })
-                      }
-                      label="Outbound webhook"
-                      hint="POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own endpoint"
+                      on={s.inbox.completionHook}
+                      onToggle={() => save({ inbox: { completionHook: !s.inbox.completionHook } })}
+                      label="File completion hooks to Inbox"
+                      hint="Claude, Codex, and Cursor turns launched through TerMinal create review items when they complete."
                     />
+                    <Toggle
+                      on={s.inbox.agentContextPreamble}
+                      onToggle={() =>
+                        save({ inbox: { agentContextPreamble: !s.inbox.agentContextPreamble } })
+                      }
+                      label="Add repo context to prompt agents"
+                      hint="Prompt-style agent runs get a small capped preamble from docs/learnings, docs/decisions, and docs/runbooks. Script agents are unchanged."
+                    />
+                    <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-2">
+                      <div className="text-[11.5px] font-medium text-zinc-200">Notify me for</div>
+                      <div className="mt-0.5 text-[10.5px] text-zinc-500">
+                        Which severities send a notification (phone push · Telegram · desktop).
+                        Below the cutoff, items are inbox-only — email you sweep once or twice a
+                        day.
+                      </div>
+                      <div className="mt-2 flex gap-1">
+                        {(
+                          [
+                            ['urgent', 'Urgent only'],
+                            ['normal', 'Urgent + Normal'],
+                            ['low', 'Everything'],
+                          ] as const
+                        ).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => save({ inbox: { notifyThreshold: val } })}
+                            className={`rounded-md border px-2.5 py-1 text-[11px] ${
+                              s.inbox.notifyThreshold === val
+                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 text-[10.5px] text-zinc-500">
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">Urgent</span>
+                        <span>Human blockers, cron failures, daily cap reached</span>
+                      </div>
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">Normal</span>
+                        <span>Spend warnings, recurring review-finding digests</span>
+                      </div>
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">Low</span>
+                        <span>Post-completion review prompts</span>
+                      </div>
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Mobile bridge */}
+                <MobileSection cfg={s.bridge} save={save} buttonClass={actionButton} />
+
+                {/* Suggested replies */}
+                <Section
+                  id="suggestions"
+                  icon={Sparkles}
+                  title="Suggested replies"
+                  desc="Per-terminal modes decide when to use these standalone engines. Enhance mode rewrites a draft prompt through the configured AI suggestion engine before sending."
+                >
+                  <div className="space-y-2">
+                    <SuggestionModelSetting
+                      label="AI suggestion model"
+                      engine={s.suggestions.aiEngine}
+                      model={s.suggestions.aiModel}
+                      onPick={(aiEngine, aiModel) =>
+                        save({ suggestions: { aiEngine, aiModel: aiModel || '' } })
+                      }
+                      hint="Used when a terminal is set to AI mode and shows 1-5 suggested next replies."
+                    />
+                    <SuggestionModelSetting
+                      label="Auto-send model"
+                      engine={s.suggestions.autoEngine}
+                      model={s.suggestions.autoModel}
+                      onPick={(autoEngine, autoModel) =>
+                        save({ suggestions: { autoEngine, autoModel: autoModel || '' } })
+                      }
+                      hint="Used when a terminal is set to Auto mode. TerMinal asks for one best reply and submits it after completion."
+                    />
+                    <div className="grid gap-1.5 text-[10.5px] text-zinc-500 sm:grid-cols-3">
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">Rules</span>
+                        <span>Deterministic suggestions only</span>
+                      </div>
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">AI</span>
+                        <span>Shows suggestions for you to choose</span>
+                      </div>
+                      <div className="rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1.5">
+                        <span className="block text-zinc-300">Enhance / Auto</span>
+                        <span>Rewrite a draft prompt; auto submits one reply</span>
+                      </div>
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Alert channels */}
+                <Section
+                  id="alerts"
+                  icon={BellRing}
+                  title="Alert channels"
+                  desc="Turn each channel on/off and test it. What each channel actually fires for is set below in Notification routing; a failing channel never blocks the others."
+                >
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                        <Toggle
+                          on={s.alerts.desktop.enabled}
+                          onToggle={() =>
+                            save({ alerts: { desktop: { enabled: !s.alerts.desktop.enabled } } })
+                          }
+                          label="Desktop notifications"
+                          hint="Native macOS notification banners"
+                        />
+                        <button
+                          onClick={() => testAlert('desktop')}
+                          disabled={alertTest.desktop?.busy}
+                          className={actionButton}
+                        >
+                          {alertTest.desktop?.busy ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Send size={13} strokeWidth={2} />
+                          )}
+                          Test
+                        </button>
+                      </div>
+                      {alertTest.desktop && !alertTest.desktop.busy && (
+                        <div
+                          className={`text-[11px] ${alertTest.desktop.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        >
+                          {alertTest.desktop.ok
+                            ? '✓ Sent — check your notifications.'
+                            : alertTest.desktop.error}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Toggle
+                        on={s.alerts.webhook.enabled}
+                        onToggle={() =>
+                          save({ alerts: { webhook: { enabled: !s.alerts.webhook.enabled } } })
+                        }
+                        label="Outbound webhook"
+                        hint="POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own endpoint"
+                      />
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <label className="block min-w-0 space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            Webhook URL
+                          </span>
+                          <input
+                            defaultValue={s.alerts.webhook.url}
+                            onBlur={(e) =>
+                              e.target.value !== s.alerts.webhook.url &&
+                              save({ alerts: { webhook: { url: e.target.value.trim() } } })
+                            }
+                            placeholder="https://hooks.slack.com/services/…"
+                            spellCheck={false}
+                            className={`${inp} font-mono`}
+                          />
+                        </label>
+                        <button
+                          onClick={() => testAlert('webhook')}
+                          disabled={alertTest.webhook?.busy}
+                          className={actionButton}
+                        >
+                          {alertTest.webhook?.busy ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Send size={13} strokeWidth={2} />
+                          )}
+                          Test
+                        </button>
+                      </div>
+                      {alertTest.webhook && !alertTest.webhook.busy && (
+                        <div
+                          className={`text-[11px] ${alertTest.webhook.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        >
+                          {alertTest.webhook.ok
+                            ? '✓ Sent — check the receiver.'
+                            : alertTest.webhook.error}
+                        </div>
+                      )}
+                      <div className="text-[10.5px] text-zinc-600">
+                        Payload: {'{'} source, kind (done|blocked|question|info), title, detail,
+                        refs, ts, text, content {'}'} — <span className="font-mono">text</span>{' '}
+                        renders in Slack, <span className="font-mono">content</span> in Discord.
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                        <Toggle
+                          on={s.telegram.notify}
+                          onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
+                          label="Telegram"
+                          hint="Bot token, chat id and AFK control live in the Telegram section below"
+                        />
+                        <button
+                          onClick={() => testAlert('telegram')}
+                          disabled={alertTest.telegram?.busy}
+                          className={actionButton}
+                        >
+                          {alertTest.telegram?.busy ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Send size={13} strokeWidth={2} />
+                          )}
+                          Test
+                        </button>
+                      </div>
+                      {alertTest.telegram && !alertTest.telegram.busy && (
+                        <div
+                          className={`text-[11px] ${alertTest.telegram.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        >
+                          {alertTest.telegram.ok
+                            ? '✓ Sent — check your chat.'
+                            : alertTest.telegram.error}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Notification routing matrix */}
+                <Section
+                  id="notifications"
+                  icon={BellDot}
+                  title="Notification routing"
+                  desc="Which kinds of events reach which channel. The phone (Push) stays quiet by default — only things that need you and completions."
+                >
+                  <NotificationMatrix
+                    matrix={s.notifications.matrix}
+                    onToggle={(ch, cat) => {
+                      const nextVal = !channelWants(ch, cat, s.notifications.matrix)
+                      const next: NotifyMatrix = {
+                        ...s.notifications.matrix,
+                        [ch]: { ...(s.notifications.matrix[ch] || {}), [cat]: nextVal },
+                      }
+                      save({ notifications: { matrix: next } })
+                    }}
+                    onReset={() => save({ notifications: { matrix: {} } })}
+                  />
+                </Section>
+
+                {/* Telegram */}
+                <Section
+                  id="telegram"
+                  icon={MessageCircle}
+                  title="Telegram"
+                  desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present."
+                >
+                  <div className="space-y-2">
+                    <Toggle
+                      on={s.telegram.notify}
+                      onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
+                      label="Mirror notifications to Telegram"
+                    />
+                    <Toggle
+                      on={s.telegram.control}
+                      onToggle={() => save({ telegram: { control: !s.telegram.control } })}
+                      label="Remote control (AFK)"
+                      hint="Launch/cancel agents by texting the bot"
+                    />
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                        Bot token
+                      </span>
+                      <input
+                        defaultValue={s.telegram.botToken}
+                        onBlur={(e) =>
+                          e.target.value !== s.telegram.botToken &&
+                          save({ telegram: { botToken: e.target.value.trim() } })
+                        }
+                        placeholder="123456:ABC-DEF..."
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                    </label>
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                       <label className="block min-w-0 space-y-1">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                          Webhook URL
+                          Chat id
                         </span>
                         <input
-                          defaultValue={s.alerts.webhook.url}
+                          defaultValue={s.telegram.chatId}
                           onBlur={(e) =>
-                            e.target.value !== s.alerts.webhook.url &&
-                            save({ alerts: { webhook: { url: e.target.value.trim() } } })
+                            e.target.value !== s.telegram.chatId &&
+                            save({ telegram: { chatId: e.target.value.trim() } })
                           }
-                          placeholder="https://hooks.slack.com/services/…"
+                          placeholder="Your numeric chat id"
                           spellCheck={false}
                           className={`${inp} font-mono`}
                         />
                       </label>
-                      <button
-                        onClick={() => testAlert('webhook')}
-                        disabled={alertTest.webhook?.busy}
-                        className={actionButton}
-                      >
-                        {alertTest.webhook?.busy ? (
+                      <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
+                        {tg?.busy ? (
                           <Loader2 size={13} className="animate-spin" />
                         ) : (
                           <Send size={13} strokeWidth={2} />
@@ -3055,338 +3230,214 @@ export function SettingsPanel({
                         Test
                       </button>
                     </div>
-                    {alertTest.webhook && !alertTest.webhook.busy && (
+                    {tg && !tg.busy && (
                       <div
-                        className={`text-[11px] ${alertTest.webhook.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        className={`text-[11px] ${tg.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
                       >
-                        {alertTest.webhook.ok
-                          ? '✓ Sent — check the receiver.'
-                          : alertTest.webhook.error}
+                        {tg.ok ? '✓ Sent — check your chat.' : tg.error}
                       </div>
                     )}
-                    <div className="text-[10.5px] text-zinc-600">
-                      Payload: {'{'} source, kind (done|blocked|question|info), title, detail, refs,
-                      ts, text, content {'}'} — <span className="font-mono">text</span> renders in
-                      Slack, <span className="font-mono">content</span> in Discord.
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <Toggle
-                        on={s.telegram.notify}
-                        onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
-                        label="Telegram"
-                        hint="Bot token, chat id and AFK control live in the Telegram section below"
-                      />
-                      <button
-                        onClick={() => testAlert('telegram')}
-                        disabled={alertTest.telegram?.busy}
-                        className={actionButton}
-                      >
-                        {alertTest.telegram?.busy ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <Send size={13} strokeWidth={2} />
-                        )}
-                        Test
-                      </button>
-                    </div>
-                    {alertTest.telegram && !alertTest.telegram.busy && (
-                      <div
-                        className={`text-[11px] ${alertTest.telegram.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                      >
-                        {alertTest.telegram.ok
-                          ? '✓ Sent — check your chat.'
-                          : alertTest.telegram.error}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Section>
-
-              {/* Notification routing matrix */}
-              <Section
-                id="notifications"
-                icon={BellDot}
-                title="Notification routing"
-                desc="Which kinds of events reach which channel. The phone (Push) stays quiet by default — only things that need you and completions."
-              >
-                <NotificationMatrix
-                  matrix={s.notifications.matrix}
-                  onToggle={(ch, cat) => {
-                    const nextVal = !channelWants(ch, cat, s.notifications.matrix)
-                    const next: NotifyMatrix = {
-                      ...s.notifications.matrix,
-                      [ch]: { ...(s.notifications.matrix[ch] || {}), [cat]: nextVal },
-                    }
-                    save({ notifications: { matrix: next } })
-                  }}
-                  onReset={() => save({ notifications: { matrix: {} } })}
-                />
-              </Section>
-
-              {/* Telegram */}
-              <Section
-                id="telegram"
-                icon={MessageCircle}
-                title="Telegram"
-                desc="Create a bot with @BotFather, paste its token and your chat id. Leave blank to use the legacy ~/.claude scripts if present."
-              >
-                <div className="space-y-2">
-                  <Toggle
-                    on={s.telegram.notify}
-                    onToggle={() => save({ telegram: { notify: !s.telegram.notify } })}
-                    label="Mirror notifications to Telegram"
-                  />
-                  <Toggle
-                    on={s.telegram.control}
-                    onToggle={() => save({ telegram: { control: !s.telegram.control } })}
-                    label="Remote control (AFK)"
-                    hint="Launch/cancel agents by texting the bot"
-                  />
-                  <label className="block space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                      Bot token
-                    </span>
-                    <input
-                      defaultValue={s.telegram.botToken}
-                      onBlur={(e) =>
-                        e.target.value !== s.telegram.botToken &&
-                        save({ telegram: { botToken: e.target.value.trim() } })
-                      }
-                      placeholder="123456:ABC-DEF..."
-                      spellCheck={false}
-                      className={`${inp} font-mono`}
-                    />
-                  </label>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                    <label className="block min-w-0 space-y-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                        Chat id
-                      </span>
-                      <input
-                        defaultValue={s.telegram.chatId}
-                        onBlur={(e) =>
-                          e.target.value !== s.telegram.chatId &&
-                          save({ telegram: { chatId: e.target.value.trim() } })
-                        }
-                        placeholder="Your numeric chat id"
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
-                      />
-                    </label>
-                    <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
-                      {tg?.busy ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Send size={13} strokeWidth={2} />
+                    {!!s.telegram.chatId &&
+                      s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
+                        <div className="text-[11px] text-amber-400">
+                          ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message
+                          @userinfobot to get it.
+                        </div>
                       )}
-                      Test
+                    {s.telegram.control && (
+                      <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
+                        <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">
+                          Command reference (send /help in the chat)
+                        </summary>
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10.5px] text-zinc-500">
+                          <span className="col-span-2 text-[var(--gt-accent-light)]">
+                            /feature &lt;what you want built&gt; [@repo]
+                          </span>
+                          <span>/repos · /cd &lt;repo&gt;</span>
+                          <span>/sessions · /about</span>
+                          <span>/runs · /cancel &lt;n&gt;</span>
+                          <span>/tail &lt;id|n&gt;</span>
+                          <span>/agents [@repo]</span>
+                          <span>/run &lt;agent&gt; [opts]</span>
+                          <span>/tickets [@repo]</span>
+                          <span>/ticket &lt;slug|n&gt;</span>
+                          <span>/ticket new &lt;title&gt;</span>
+                          <span>/close &lt;slug|n&gt;</span>
+                          <span>/schedules</span>
+                          <span>/pause · /resume · /runnow</span>
+                          <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
+                          <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
+                          <span>/state &lt;agent&gt;</span>
+                          <span>/reset-state &lt;agent&gt;</span>
+                          <span>/bg [@repo] &lt;prompt&gt;</span>
+                          <span>/bg list · /bg cancel &lt;n&gt;</span>
+                          <span>/budget [set &lt;usd&gt;]</span>
+                          <span>/status · /harness · /activity</span>
+                          <span>/install &lt;agent&gt;</span>
+                          <span>/rebuild</span>
+                        </div>
+                        <div className="mt-1.5 text-[10px] text-zinc-600">
+                          <span className="text-zinc-500">/feature</span> drafts a ticket from plain
+                          text, then offers a 🚀 Start work button that builds it and links the PR
+                          back. Plain English works too — it's translated to a command. HITL pings
+                          include inline ✅ Resolve / 🪵 Tail run buttons.
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </Section>
+
+                {/* Setup / integrations */}
+                <Section
+                  id="integrations"
+                  icon={PlugZap}
+                  title="Setup & integrations"
+                  desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills."
+                >
+                  <div className="space-y-2">
+                    <button
+                      onClick={copySetupPrompt}
+                      className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
+                    >
+                      {copied ? (
+                        <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" />
+                      ) : (
+                        <ClipboardCopy
+                          size={14}
+                          strokeWidth={2}
+                          className="text-[var(--gt-accent-light)]"
+                        />
+                      )}
+                      Copy global-skills setup prompt
+                      <span className="ml-auto text-[10.5px] text-zinc-600">
+                        {copied ? 'copied — paste into Claude' : 'paste into Claude'}
+                      </span>
+                    </button>
+                    <button
+                      onClick={installNotify}
+                      disabled={notify?.busy}
+                      className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+                    >
+                      {notify?.busy ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <TerminalSquare
+                          size={14}
+                          strokeWidth={2}
+                          className="text-[var(--gt-accent-light)]"
+                        />
+                      )}
+                      Install <span className="font-mono">gt-notify</span> to ~/.local/bin
+                      <span className="ml-auto text-[10.5px] text-zinc-600">
+                        Activity feed hook
+                      </span>
+                    </button>
+                    {notify && !notify.busy && (
+                      <div
+                        className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                      >
+                        {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
+                      </div>
+                    )}
+                    <button
+                      onClick={installMcp}
+                      disabled={mcpState?.busy}
+                      className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+                    >
+                      {mcpState?.busy ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <TerminalSquare
+                          size={14}
+                          strokeWidth={2}
+                          className="text-[var(--gt-accent-light)]"
+                        />
+                      )}
+                      Install MCP server (Claude Code + Codex)
+                      <span className="ml-auto text-[10.5px] text-zinc-600">
+                        Cross-session views
+                      </span>
+                    </button>
+                    {mcpState && !mcpState.busy && (
+                      <div
+                        className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                      >
+                        {mcpState.ok
+                          ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
+                          : mcpState.error}
+                      </div>
+                    )}
+                    <button
+                      onClick={onRerunSetup}
+                      className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
+                    >
+                      <RotateCcw
+                        size={14}
+                        strokeWidth={2}
+                        className="text-[var(--gt-accent-light)]"
+                      />
+                      Re-run first-time setup
                     </button>
                   </div>
-                  {tg && !tg.busy && (
-                    <div
-                      className={`text-[11px] ${tg.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                    >
-                      {tg.ok ? '✓ Sent — check your chat.' : tg.error}
-                    </div>
-                  )}
-                  {!!s.telegram.chatId &&
-                    s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
-                      <div className="text-[11px] text-amber-400">
-                        ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message
-                        @userinfobot to get it.
-                      </div>
-                    )}
-                  {s.telegram.control && (
-                    <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
-                      <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">
-                        Command reference (send /help in the chat)
-                      </summary>
-                      <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10.5px] text-zinc-500">
-                        <span className="col-span-2 text-[var(--gt-accent-light)]">
-                          /feature &lt;what you want built&gt; [@repo]
-                        </span>
-                        <span>/repos · /cd &lt;repo&gt;</span>
-                        <span>/sessions · /about</span>
-                        <span>/runs · /cancel &lt;n&gt;</span>
-                        <span>/tail &lt;id|n&gt;</span>
-                        <span>/agents [@repo]</span>
-                        <span>/run &lt;agent&gt; [opts]</span>
-                        <span>/tickets [@repo]</span>
-                        <span>/ticket &lt;slug|n&gt;</span>
-                        <span>/ticket new &lt;title&gt;</span>
-                        <span>/close &lt;slug|n&gt;</span>
-                        <span>/schedules</span>
-                        <span>/pause · /resume · /runnow</span>
-                        <span>/hitl · /resolve &lt;n|all&gt; · /reopen</span>
-                        <span>/mrs [@repo] · /mr &lt;iid&gt;</span>
-                        <span>/state &lt;agent&gt;</span>
-                        <span>/reset-state &lt;agent&gt;</span>
-                        <span>/bg [@repo] &lt;prompt&gt;</span>
-                        <span>/bg list · /bg cancel &lt;n&gt;</span>
-                        <span>/budget [set &lt;usd&gt;]</span>
-                        <span>/status · /harness · /activity</span>
-                        <span>/install &lt;agent&gt;</span>
-                        <span>/rebuild</span>
-                      </div>
-                      <div className="mt-1.5 text-[10px] text-zinc-600">
-                        <span className="text-zinc-500">/feature</span> drafts a ticket from plain
-                        text, then offers a 🚀 Start work button that builds it and links the PR
-                        back. Plain English works too — it's translated to a command. HITL pings
-                        include inline ✅ Resolve / 🪵 Tail run buttons.
-                      </div>
-                    </details>
-                  )}
-                </div>
-              </Section>
+                </Section>
 
-              {/* Setup / integrations */}
-              <Section
-                id="integrations"
-                icon={PlugZap}
-                title="Setup & integrations"
-                desc="One-time helpers for a fresh machine. Agents inherit your global ~/.claude and ~/.codex config + skills."
-              >
-                <div className="space-y-2">
-                  <button
-                    onClick={copySetupPrompt}
-                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
-                  >
-                    {copied ? (
-                      <CircleCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" />
-                    ) : (
-                      <ClipboardCopy
-                        size={14}
-                        strokeWidth={2}
-                        className="text-[var(--gt-accent-light)]"
-                      />
-                    )}
-                    Copy global-skills setup prompt
-                    <span className="ml-auto text-[10.5px] text-zinc-600">
-                      {copied ? 'copied — paste into Claude' : 'paste into Claude'}
-                    </span>
-                  </button>
-                  <button
-                    onClick={installNotify}
-                    disabled={notify?.busy}
-                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
-                  >
-                    {notify?.busy ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <TerminalSquare
-                        size={14}
-                        strokeWidth={2}
-                        className="text-[var(--gt-accent-light)]"
-                      />
-                    )}
-                    Install <span className="font-mono">gt-notify</span> to ~/.local/bin
-                    <span className="ml-auto text-[10.5px] text-zinc-600">Activity feed hook</span>
-                  </button>
-                  {notify && !notify.busy && (
-                    <div
-                      className={`text-[11px] ${notify.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                    >
-                      {notify.ok ? `✓ Installed at ${tilde(notify.path || '')}` : notify.error}
-                    </div>
-                  )}
-                  <button
-                    onClick={installMcp}
-                    disabled={mcpState?.busy}
-                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
-                  >
-                    {mcpState?.busy ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <TerminalSquare
-                        size={14}
-                        strokeWidth={2}
-                        className="text-[var(--gt-accent-light)]"
-                      />
-                    )}
-                    Install MCP server (Claude Code + Codex)
-                    <span className="ml-auto text-[10.5px] text-zinc-600">Cross-session views</span>
-                  </button>
-                  {mcpState && !mcpState.busy && (
-                    <div
-                      className={`text-[11px] ${mcpState.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                    >
-                      {mcpState.ok
-                        ? `✓ Installed to ${mcpState.installed?.join(', ') || ''}. Restart any open Claude session to pick it up.`
-                        : mcpState.error}
-                    </div>
-                  )}
-                  <button
-                    onClick={onRerunSetup}
-                    className="flex w-full items-center gap-2 rounded-lg border border-[var(--gt-border)] bg-black/20 px-3 py-2 text-left text-[12px] text-zinc-200 hover:border-[var(--gt-accent)]/40"
-                  >
-                    <RotateCcw
-                      size={14}
-                      strokeWidth={2}
-                      className="text-[var(--gt-accent-light)]"
-                    />
-                    Re-run first-time setup
-                  </button>
-                </div>
-              </Section>
+                {/* Tab visibility — hide tabs you never use. */}
+                <Section
+                  id="tabs"
+                  icon={Rows3}
+                  title="Tabs"
+                  desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
+                >
+                  <TabsVisibilityPanel />
+                </Section>
 
-              {/* Tab visibility — hide tabs you never use. */}
-              <Section
-                id="tabs"
-                icon={Rows3}
-                title="Tabs"
-                desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
-              >
-                <TabsVisibilityPanel />
-              </Section>
+                <Section
+                  id="presets"
+                  icon={Eye}
+                  title="Presets"
+                  desc="App-provided snippets and agents update with TerMinal. Hide the ones you do not want; custom global/repo items remain user-owned."
+                >
+                  <PresetVisibilityPanel />
+                </Section>
 
-              <Section
-                id="presets"
-                icon={Eye}
-                title="Presets"
-                desc="App-provided snippets and agents update with TerMinal. Hide the ones you do not want; custom global/repo items remain user-owned."
-              >
-                <PresetVisibilityPanel />
-              </Section>
+                {/* Harness self-status — meta-observability snapshot. */}
+                <Section
+                  id="status"
+                  icon={Activity}
+                  title="Harness status"
+                  desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
+                >
+                  <HarnessStatusPanel />
+                </Section>
 
-              {/* Harness self-status — meta-observability snapshot. */}
-              <Section
-                id="status"
-                icon={Activity}
-                title="Harness status"
-                desc="How TerMinal's own infrastructure is doing right now. Refreshes every 5s."
-              >
-                <HarnessStatusPanel />
-              </Section>
-
-              {/* Installed-build vs origin/main — check + one-click update
+                {/* Installed-build vs origin/main — check + one-click update
               (which reuses the Rebuild flow below). */}
-              <Section
-                id="updates"
-                icon={ArrowUpCircle}
-                title="Updates"
-                desc="Is the installed app behind main? Compares the baked build commit against origin/main (local checkout first, GitHub API fallback)."
-              >
-                <UpdatesPanel />
-              </Section>
+                <Section
+                  id="updates"
+                  icon={ArrowUpCircle}
+                  title="Updates"
+                  desc="Is the installed app behind main? Compares the baked build commit against origin/main (local checkout first, GitHub API fallback)."
+                >
+                  <UpdatesPanel />
+                </Section>
 
-              {/* In-app rebuild — eats own dog food. Spawns bin/release fully
+                {/* In-app rebuild — eats own dog food. Spawns bin/release fully
               detached so it survives the pkill mid-flow + lands a fresh app
               in /Applications + relaunches. */}
-              <Section
-                id="rebuild"
-                icon={PackageOpen}
-                title="Rebuild + reinstall"
-                desc="Run bin/release from inside the app — fetches latest when safe, builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
-              >
-                <RebuildPanel />
-              </Section>
+                <Section
+                  id="rebuild"
+                  icon={PackageOpen}
+                  title="Rebuild + reinstall"
+                  desc="Run bin/release from inside the app — fetches latest when safe, builds, signs, replaces the installed app, relaunches. Source checkout must be on this machine."
+                >
+                  <RebuildPanel />
+                </Section>
 
-              <div className="px-5 py-3 text-center text-[10.5px] text-zinc-600">
-                TerMinal · settings stored in ~/.config/TerMinal/settings.json
+                <div className="px-5 py-3 text-center text-[10.5px] text-zinc-600">
+                  TerMinal · settings stored in ~/.config/TerMinal/settings.json
+                </div>
               </div>
-            </div>
+            </ActiveSectionContext.Provider>
           </div>
         </div>
       </div>

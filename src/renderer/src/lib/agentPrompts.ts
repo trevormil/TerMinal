@@ -4,7 +4,7 @@ import { withLaunchContext } from './launch'
 export function ticketImplementationPrompt(
   ticket: Pick<
     Ticket,
-    'id' | 'title' | 'body' | 'provider' | 'providerLabel' | 'externalKey' | 'url'
+    'id' | 'title' | 'body' | 'provider' | 'providerLabel' | 'externalKey' | 'url' | 'comments'
   >,
   opts: {
     persona?: string
@@ -23,12 +23,24 @@ export function ticketImplementationPrompt(
       : provider === 'linear'
         ? 'Ticket provider: Linear. Use the configured Linear MCP/CLI to update issue status/priority. Do not create or edit local backlog markdown for this ticket.'
         : "Ticket provider: local backlog. Update this repo's .TerMinal/backlog markdown ticket, including status and prs: when a PR is opened."
+  // A ticket's log is what earlier runs learned. Replaying it is the only thing
+  // that stops each run from rediscovering the same dead ends.
+  const log = ticket.comments?.length
+    ? `\nPrior log on this ticket (oldest first) — read before you start:\n${ticket.comments
+        .map(
+          (c) =>
+            `- ${c.author}${c.kind === 'agent' ? ' (agent)' : ''} · ${c.at}\n  ${c.body.replace(/\n/g, '\n  ')}`,
+        )
+        .join('\n')}\n`
+    : ''
   return withLaunchContext(
     `Implement ticket ${ref}: ${ticket.title}
 
 ${ticket.body}
-
+${log}
 ${providerLine}
+
+Record anything a later run would need — findings, dead ends, decisions — back onto the ticket with the comment_ticket MCP tool (or \`terminal-cli ticket comment ${'<slug>'} "<body>"\` from a script). Do not put that in the ticket's prose body.
 
 Implement the ticket end to end. Keep changes surgical, add or adjust tests, commit your work, and open a PR that references ticket ${ref}${ticket.url ? ` (${ticket.url})` : ''}. If fully delivered, set the ticket status to closed; otherwise set it in-progress. Link or reference the PR in the ticket provider when supported. End with a short summary of what changed and the PR URL.`,
     opts,

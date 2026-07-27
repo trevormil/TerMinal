@@ -68,6 +68,21 @@ struct WsTicketDetail: Codable, Hashable {
     /// Acceptance criteria live OUTSIDE the body — render them separately.
     let acceptance: [String]?
     let prs: [String]?
+    /// The ticket's comment log, oldest first. Written by humans and agent runs.
+    let comments: [WsTicketComment]?
+}
+
+/// One entry in a ticket's log. `kind` distinguishes a human note from one an
+/// agent run left behind; `via` is the engine/model that wrote an agent entry.
+struct WsTicketComment: Codable, Hashable, Identifiable {
+    let at: String
+    let author: String
+    let kind: String
+    let via: String?
+    let body: String
+
+    var isAgent: Bool { kind == "agent" }
+    var id: String { "\(at)-\(author)" }
 }
 
 struct WsFinding: Codable, Hashable, Identifiable {

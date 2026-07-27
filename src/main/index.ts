@@ -112,7 +112,10 @@ import {
   getRepoTicket,
   listLinearTeams,
   obsidianRepoVault,
+  commentOnRepoTicket,
+  type NewTicketComment,
   readRepoTicketConfig,
+  resolveHumanAuthor,
   saveRepoTicketConfig,
   scaffoldObsidianVault,
   obsidianRepoDeepLink,
@@ -1624,9 +1627,23 @@ const bridgeDeps: BridgeDeps = {
         body: t.body || '',
         acceptance: t.acceptance,
         prs: t.prs,
+        comments: t.comments,
       }
     } catch {
       return null
+    }
+  },
+  // The phone's one ticket write: leave a note on a ticket an agent is
+  // working, without opening the Mac.
+  commentOnTicket: async (repoPath, slug, body) => {
+    try {
+      return await commentOnRepoTicket(repoPath, slug, {
+        author: await resolveHumanAuthor(repoPath),
+        kind: 'human',
+        body,
+      })
+    } catch {
+      return false
     }
   },
   workspacePr: async (repoPath, iid) => {
@@ -2303,6 +2320,7 @@ ipcMain.handle(
       body: t.body,
       externalKey: t.externalKey,
       url: t.url,
+      comments: t.comments,
       agent: t.agent,
       modelTier: t.modelTier,
     }
@@ -3128,6 +3146,37 @@ ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) =>
   }
   return ok
 })
+ipcMain.handle(
+  'tickets:comment',
+  async (_e, slug: string, input: Partial<NewTicketComment> & { body: string }) => {
+    const daemon = activeDaemon()
+    // The UI never asks who you are — a human comment is signed with the repo's
+    // git identity so the log matches the commits and PRs beside it.
+    const kind = input.kind === 'agent' ? 'agent' : 'human'
+    const comment: NewTicketComment = {
+      ...input,
+      kind,
+      author:
+        input.author?.trim() ||
+        (kind === 'agent'
+          ? 'agent'
+          : await resolveHumanAuthor(daemon.kind === 'local' ? daemon.repoRoot() : process.cwd())),
+    }
+    const ok = await daemon.ticketComment(slug, comment)
+    if (!ok) return false
+    const t = await daemon.ticketGet(slug)
+    emitActivity({
+      kind: 'info',
+      title: `Ticket comment · #${t?.id ?? slug}`,
+      detail: `${comment.author}: ${comment.body.trim().slice(0, 120)}`,
+      repo: daemon.repoLabel(),
+      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
+      sessionId: cur().sessionId,
+      ref: t?.id ? { ticket: t.id } : undefined,
+    })
+    return true
+  },
+)
 ipcMain.handle('skills:list', () => activeDaemon().skillsList())
 ipcMain.handle('mrs:list', () => {
   return activeDaemon().mrsList()

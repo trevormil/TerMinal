@@ -128,6 +128,9 @@ export type BridgeDeps = {
     repoPath: string,
     slug: string,
   ): Promise<BridgeTicketDetail | null> | BridgeTicketDetail | null
+  /** Append to a ticket's log from the phone — the one ticket write the app
+   *  has, so you can steer an in-flight run without opening the Mac. */
+  commentOnTicket?(repoPath: string, slug: string, body: string): Promise<boolean> | boolean
   workspacePr?(
     repoPath: string,
     iid: number,
@@ -217,6 +220,15 @@ export type BridgeTicketDetail = BridgeTicket & {
   body: string
   acceptance?: string[]
   prs?: string[]
+  /** The ticket's comment log, oldest first. */
+  comments?: BridgeTicketComment[]
+}
+export type BridgeTicketComment = {
+  at: string
+  author: string
+  kind: 'human' | 'agent'
+  via?: string
+  body: string
 }
 export type BridgeFinding = {
   severity?: string
@@ -556,6 +568,39 @@ export function createBridgeHandler(
       Promise.resolve(fn(repo))
         .then((items) => json(res, 200, { [kind]: items }))
         .catch((e: Error) => json(res, 500, { error: e.message }))
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/tickets/comment') {
+      if (!deps.commentOnTicket) {
+        json(res, 501, { error: 'ticket commenting not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          const parsed = JSON.parse(raw || '{}') as {
+            repo?: unknown
+            slug?: unknown
+            body?: unknown
+          }
+          const repo = typeof parsed.repo === 'string' ? parsed.repo : ''
+          const slug = typeof parsed.slug === 'string' ? parsed.slug : ''
+          const body = typeof parsed.body === 'string' ? parsed.body.trim() : ''
+          // Same fence as every other repo-scoped route: the token
+          // authenticates the device, never an arbitrary path.
+          if (!repoAllowed(deps, repo)) {
+            json(res, 403, { error: 'workspace not allowed' })
+            return
+          }
+          if (!slug || !body) {
+            json(res, 400, { error: 'slug and a non-empty body are required' })
+            return
+          }
+          return Promise.resolve(deps.commentOnTicket!(repo, slug, body)).then((ok) =>
+            json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'no such ticket' }),
+          )
+        })
+        .catch((e: Error) => json(res, 400, { error: e.message }))
       return
     }
 

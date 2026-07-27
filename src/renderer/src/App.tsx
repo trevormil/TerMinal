@@ -243,6 +243,7 @@ export default function App() {
   const previousFleetStatus = useRef<Record<string, string>>({})
   const [activeCtx, setActiveCtx] = useState<TabContext | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsSection, setSettingsSection] = useState('')
   const [palette, setPalette] = useState(false)
   // Which mode the EntryScreen (New workspace screen) opens in: a normal single
   // session, or a live-paired loop. Set by the paired-loop:new nav trigger;
@@ -274,10 +275,10 @@ export default function App() {
 
   useEffect(() => {
     const openSettings = (ev: Event) => {
+      // Settings shows one category at a time now, so a deep link selects it
+      // rather than scrolling a long column to it.
+      setSettingsSection((ev as CustomEvent<{ section?: string }>).detail?.section || '')
       setShowSettings(true)
-      const section = (ev as CustomEvent<{ section?: string }>).detail?.section
-      if (section)
-        setTimeout(() => document.getElementById(section)?.scrollIntoView({ block: 'start' }), 50)
     }
     window.addEventListener('gt.settings.open', openSettings)
     return () => window.removeEventListener('gt.settings.open', openSettings)
@@ -1880,6 +1881,7 @@ export default function App() {
         <UpdateBanner onOpenSettings={() => setShowSettings(true)} />
         {showSettings && (
           <SettingsPanel
+            initialSection={settingsSection}
             onClose={() => setShowSettings(false)}
             onRerunSetup={() => {
               setShowSettings(false)

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseFrontmatter } from './frontmatter'
+import { appendComment, splitTicketBody, type TicketComment } from './ticket-comments'
 import { normalizeModelTier, type ModelTier } from './resolve-model'
 import {
   ensureProjectArea,
@@ -28,6 +29,10 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[] // ticket ids this one is blocked by (parsed from frontmatter)
+  /** Ticket ids this one is merely related to — no ordering implied. */
+  related: number[]
+  /** The canonical ticket this one duplicates, when it is a duplicate. */
+  duplicateOf?: number
   /** Strict, checkable criteria defining a correct/best implementation.
    *  Optional in general; REQUIRED when the implementer runs >1 lane, since
    *  lanes are gated and ranked against these. See docs: lanes workflow. */
@@ -38,7 +43,10 @@ export type Ticket = {
   workedBy: string[]
   agent: TicketAgent
   run?: TicketRunLink
+  /** Prose only — the `## Log` section is split out into `comments`. */
   body: string
+  /** Timestamped log, oldest first. Written by humans and by agent runs. */
+  comments: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
@@ -70,6 +78,9 @@ export type TicketPatch = {
   status?: string
   priority?: string
   acceptance?: string[]
+  related?: number[]
+  /** 0 (or any non-positive id) clears the duplicate link. */
+  duplicateOf?: number
   /** Replaces the `prs:` list wholesale. Callers that mean "add a PR" must
    *  read the ticket and merge first — see `linkTicketPr`. */
   prs?: string[]
@@ -109,6 +120,7 @@ export function backlogRel(repoRoot: string): string {
 
 function toTicket(slug: string, md: string): Ticket {
   const { fm, body } = parseFrontmatter(md)
+  const { prose, comments } = splitTicketBody(body)
   const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : [])
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
   const type = str(fm.type) || 'feature'
@@ -127,6 +139,10 @@ function toTicket(slug: string, md: string): Ticket {
     prs: arr(fm.prs),
     refs: arr(fm.refs),
     depends_on: depsArr(fm.depends_on),
+    // Relations never point at the ticket itself — a self-reference is a typo
+    // that would otherwise render as a link back to the page you are on.
+    related: depsArr(fm.related).filter((r) => r !== (Number(fm.id) || 0)),
+    duplicateOf: depsArr([fm.duplicate_of]).find((d) => d !== (Number(fm.id) || 0)),
     acceptance: arr(fm.acceptance),
     modelTier: str(fm.model_tier) || 'auto',
     workedBy: Array.isArray(fm.worked_by)
@@ -136,7 +152,8 @@ function toTicket(slug: string, md: string): Ticket {
         : [],
     agent: ticketAgentFromFrontmatter(fm, type),
     run: ticketRunFromFrontmatter(fm),
-    body: body.trim(),
+    body: prose,
+    comments,
     provider: 'local',
     providerLabel: 'Local backlog',
   }
@@ -405,6 +422,9 @@ export function updateTicket(
   // (expensive) policy slot while the file claimed otherwise.
   if (patch.modelTier) setField('model_tier', normalizeModelTier(patch.modelTier))
   if (patch.acceptance) setListField('acceptance', patch.acceptance)
+  if (patch.related) setField('related', `[${patch.related.join(', ')}]`)
+  if (patch.duplicateOf !== undefined)
+    setField('duplicate_of', patch.duplicateOf > 0 ? String(patch.duplicateOf) : '')
   if (patch.prs) setListField('prs', patch.prs)
   if (patch.agent) {
     const current = toTicket(safe, md)
@@ -427,6 +447,35 @@ export function updateTicket(
   } catch {
     return false
   }
+}
+
+/** Append a timestamped comment to a ticket's `## Log`. Frontmatter is left
+ *  alone apart from `updated`, and existing prose is preserved byte-for-byte,
+ *  so this is safe to interleave with `updateTicket`. */
+export function appendTicketComment(
+  repoRoot: string,
+  slug: string,
+  comment: Omit<TicketComment, 'at'> & { at?: string },
+  baseDir?: string,
+): boolean {
+  if (!comment.body.trim() || !comment.author.trim()) return false
+  const safe = slug.replace(/[^\w-]/g, '')
+  const p = ticketReadDirs(repoRoot, baseDir)
+    .map((dir) => join(dir, `${safe}.md`))
+    .find((candidate) => existsSync(candidate))
+  if (!p) return false
+  try {
+    const md = readFileSync(p, 'utf8')
+    const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
+    if (!m) return false
+    const body = appendComment(m[2], { ...comment, at: comment.at || new Date().toISOString() })
+    writeFileSync(p, `${m[1]}\n${body}`)
+  } catch {
+    return false
+  }
+  // Separate write so a failed bump can't lose the comment we just persisted.
+  updateTicket(repoRoot, safe, {}, baseDir)
+  return true
 }
 
 /** Append a PR/MR url to a ticket's `prs:` list (idempotent) and, when the
@@ -475,12 +524,15 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     prs: [],
     refs: [],
     depends_on: [],
+    related: [],
+    duplicateOf: undefined,
     acceptance: input.acceptance || [],
     modelTier: normalizeModelTier(input.modelTier),
     workedBy: [],
     agent: normalizeTicketAgent(input.agent, input.type || 'feature', recommendation),
     run: undefined,
     body: input.body || '',
+    comments: [],
     provider: 'local',
     providerLabel: 'Local backlog',
   }
@@ -498,6 +550,7 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     `prs: []`,
     `refs: []`,
     `depends_on: []`,
+    `related: []`,
     fmList('acceptance', t.acceptance),
     `model_tier: ${t.modelTier}`,
     `worked_by: []`,
@@ -511,4 +564,13 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
   ].join('\n')
   writeFileSync(join(dir, `${slug}.md`), fm)
   return t
+}
+
+/** Which tickets a given id blocks — the reverse of `depends_on`, derived from
+ *  the set rather than stored, so the two directions can never drift apart. */
+export function ticketBlocks(tickets: Ticket[], id: number): number[] {
+  return tickets
+    .filter((t) => t.depends_on.includes(id))
+    .map((t) => t.id)
+    .sort((a, b) => a - b)
 }

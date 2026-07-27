@@ -982,3 +982,77 @@ describe('unknown routes', () => {
     expect((await fetch(`${h.url}/`, { headers: auth })).status).toBe(404)
   })
 })
+
+describe('POST /v1/tickets/comment', () => {
+  const post = (url: string, body: unknown, headers: Record<string, string> = auth) =>
+    fetch(`${url}/v1/tickets/comment`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  it('posts a comment to an advertised workspace', async () => {
+    const got: unknown[] = []
+    const h = await harness({
+      commentOnTicket: (repo, slug, body) => {
+        got.push({ repo, slug, body })
+        return true
+      },
+    })
+    const res = await post(h.url, { repo: '/repos/alpha', slug: '0001-x', body: 'from the phone' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true })
+    expect(got).toEqual([{ repo: '/repos/alpha', slug: '0001-x', body: 'from the phone' }])
+  })
+
+  it('an unadvertised repo is refused before the dep is ever called', async () => {
+    let called = false
+    const h = await harness({
+      repos: () => [{ name: 'alpha', path: '/repos/alpha' }],
+      commentOnTicket: () => {
+        called = true
+        return true
+      },
+    })
+    const res = await post(h.url, { repo: '/etc', slug: '0001-x', body: 'nope' })
+    expect(res.status).toBe(403)
+    expect(called).toBe(false)
+  })
+
+  // Path traversal must not slip past the allowlist.
+  it('a traversal path resolving outside the allowlist is refused', async () => {
+    const h = await harness({ commentOnTicket: () => true })
+    expect(
+      (await post(h.url, { repo: '/repos/alpha/../../etc', slug: 's', body: 'x' })).status,
+    ).toBe(403)
+  })
+
+  it('requires auth', async () => {
+    const h = await harness({ commentOnTicket: () => true })
+    expect((await post(h.url, { repo: '/repos/alpha', slug: 's', body: 'x' }, {})).status).toBe(401)
+  })
+
+  it('an empty body is rejected', async () => {
+    let called = false
+    const h = await harness({
+      commentOnTicket: () => {
+        called = true
+        return true
+      },
+    })
+    expect((await post(h.url, { repo: '/repos/alpha', slug: '0001-x', body: '  ' })).status).toBe(
+      400,
+    )
+    expect(called).toBe(false)
+  })
+
+  it('an unknown ticket is a 404, not a silent success', async () => {
+    const h = await harness({ commentOnTicket: () => false })
+    expect((await post(h.url, { repo: '/repos/alpha', slug: 'nope', body: 'x' })).status).toBe(404)
+  })
+
+  it('501 when the desktop does not expose commenting', async () => {
+    const h = await harness({})
+    expect((await post(h.url, { repo: '/repos/alpha', slug: 's', body: 'x' })).status).toBe(501)
+  })
+})

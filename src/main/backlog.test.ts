@@ -9,6 +9,9 @@ import {
   listTickets,
   recommendTicketAgent,
   updateTicket,
+  appendTicketComment,
+  ticketBlocks,
+  type Ticket,
 } from './backlog'
 
 const ticketMd = (id: number, title: string) =>
@@ -386,5 +389,170 @@ describe('baseDir override (Obsidian vault)', () => {
     expect(getTicket(root, b.slug, dir)?.status).toBe('closed')
     // updating without baseDir must NOT find the vault ticket
     expect(updateTicket(root, b.slug, { status: 'open' })).toBe(false)
+  })
+})
+
+describe('ticket comments', () => {
+  let root: string
+  const New = {
+    title: 'Commented',
+    type: 'feature',
+    priority: 'medium',
+    status: 'open',
+    body: 'Prose.',
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gt-comments-'))
+    mkdirSync(join(root, 'backlog'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  test('a fresh ticket has no comments and its body is unchanged', () => {
+    const t = createTicket(root, New)
+    expect(t.comments).toEqual([])
+    expect(getTicket(root, t.slug)?.body).toBe('Prose.')
+  })
+
+  test('appended comments read back in order, and body excludes the log', () => {
+    const t = createTicket(root, New)
+    expect(
+      appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'first' }),
+    ).toBe(true)
+    expect(
+      appendTicketComment(root, t.slug, {
+        author: 'docs',
+        kind: 'agent',
+        via: 'codex/gpt-5',
+        body: 'second',
+      }),
+    ).toBe(true)
+
+    const got = getTicket(root, t.slug)!
+    expect(got.comments.map((c) => c.body)).toEqual(['first', 'second'])
+    expect(got.comments[1]).toMatchObject({ author: 'docs', kind: 'agent', via: 'codex/gpt-5' })
+    // The log must not leak into the prose body agents are prompted with.
+    expect(got.body).toBe('Prose.')
+    expect(got.comments[0].at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  test('a frontmatter update preserves the comment log', () => {
+    const t = createTicket(root, New)
+    appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'keep me' })
+    expect(updateTicket(root, t.slug, { status: 'closed' })).toBe(true)
+
+    const got = getTicket(root, t.slug)!
+    expect(got.status).toBe('closed')
+    expect(got.comments.map((c) => c.body)).toEqual(['keep me'])
+  })
+
+  test('commenting bumps `updated` but leaves other frontmatter alone', () => {
+    const t = createTicket(root, { ...New, priority: 'high' })
+    writeFileSync(
+      join(root, 'backlog', `${t.slug}.md`),
+      readFileSync(join(root, 'backlog', `${t.slug}.md`), 'utf8').replace(
+        /^updated: .*$/m,
+        'updated: 2020-01-01',
+      ),
+    )
+    appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'x' })
+
+    const got = getTicket(root, t.slug)!
+    expect(got.updated).not.toBe('2020-01-01')
+    expect(got.priority).toBe('high')
+    expect(got.title).toBe('Commented')
+  })
+
+  test('commenting on a missing ticket is a no-op, not a crash', () => {
+    expect(
+      appendTicketComment(root, '9999-nope', { author: 'trevor', kind: 'human', body: 'x' }),
+    ).toBe(false)
+  })
+
+  test('an empty comment body is rejected rather than written', () => {
+    const t = createTicket(root, New)
+    expect(
+      appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: '   ' }),
+    ).toBe(false)
+    expect(getTicket(root, t.slug)?.comments).toEqual([])
+  })
+})
+
+describe('ticket relations', () => {
+  let root: string
+  const New = { title: 'R', type: 'feature', priority: 'medium', status: 'open', body: 'b' }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gt-relations-'))
+    mkdirSync(join(root, 'backlog'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const write = (name: string, fm: string) =>
+    writeFileSync(join(root, 'backlog', name), `---\n${fm}\n---\n\nbody\n`)
+
+  test('related and duplicate_of parse off frontmatter', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nrelated: [2, 3]\nduplicate_of: 4')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([2, 3])
+    expect(t.duplicateOf).toBe(4)
+  })
+
+  test('a ticket without relation frontmatter gets empty defaults, not undefined', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([])
+    expect(t.duplicateOf).toBeUndefined()
+  })
+
+  test('ids given as quoted strings still parse as numbers', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nrelated: ["0002"]\nduplicate_of: "0003"')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([2])
+    expect(t.duplicateOf).toBe(3)
+  })
+
+  test('a self-referential duplicate_of is dropped rather than rendering a loop', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nduplicate_of: 1\nrelated: [1, 2]')
+    const t = getTicket(root, '0001-a')!
+    expect(t.duplicateOf).toBeUndefined()
+    expect(t.related).toEqual([2])
+  })
+
+  test('created tickets round-trip relation patches', () => {
+    const t = createTicket(root, New)
+    expect(t.related).toEqual([])
+    expect(updateTicket(root, t.slug, { related: [7, 9], duplicateOf: 3 })).toBe(true)
+    const got = getTicket(root, t.slug)!
+    expect(got.related).toEqual([7, 9])
+    expect(got.duplicateOf).toBe(3)
+  })
+
+  test('clearing relations writes empty, not a stale value', () => {
+    const t = createTicket(root, New)
+    updateTicket(root, t.slug, { related: [7], duplicateOf: 3 })
+    expect(updateTicket(root, t.slug, { related: [], duplicateOf: 0 })).toBe(true)
+    const got = getTicket(root, t.slug)!
+    expect(got.related).toEqual([])
+    expect(got.duplicateOf).toBeUndefined()
+  })
+})
+
+describe('blockedBy / blocks derivation', () => {
+  test('blocks is the reverse of depends_on across the set', () => {
+    const tickets = [
+      { id: 1, depends_on: [] },
+      { id: 2, depends_on: [1] },
+      { id: 3, depends_on: [1, 2] },
+    ] as Ticket[]
+    expect(ticketBlocks(tickets, 1)).toEqual([2, 3])
+    expect(ticketBlocks(tickets, 2)).toEqual([3])
+    expect(ticketBlocks(tickets, 3)).toEqual([])
+  })
+
+  test('a dangling depends_on id does not invent a blocker', () => {
+    const tickets = [{ id: 2, depends_on: [99] }] as Ticket[]
+    expect(ticketBlocks(tickets, 99)).toEqual([2])
+    expect(ticketBlocks(tickets, 2)).toEqual([])
   })
 })

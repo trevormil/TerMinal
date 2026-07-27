@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  appendTicketComment as appendLocalComment,
   createTicket as createLocalTicket,
   defaultTicketAgent,
   getTicket as getLocalTicket,
@@ -12,7 +13,11 @@ import {
   type TicketAgent,
   type TicketPatch,
 } from './backlog'
+import { commentHeader, type TicketComment } from './ticket-comments'
 import { run as runCli } from './forge'
+
+/** A comment as callers hand it in — the timestamp is stamped at write time. */
+export type NewTicketComment = Omit<TicketComment, 'at'> & { at?: string }
 
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
 
@@ -37,7 +42,14 @@ type GithubConfig = {
 
 export type LinearTicketConfig = {
   mcp?: { command?: string; args?: string[]; env?: Record<string, string> }
-  tools?: { list?: string; get?: string; create?: string; update?: string }
+  tools?: {
+    list?: string
+    get?: string
+    create?: string
+    update?: string
+    /** Defaults to Linear's `save_comment`. */
+    comment?: string
+  }
   team?: string
   teamKey?: string
   listArgs?: Record<string, unknown>
@@ -69,12 +81,28 @@ export type TicketView = {
   default?: boolean
 }
 
+/** A named filter/group/sort lens over this repo's tickets. Distinct from
+ *  `TicketView`, which embeds an external platform's own web UI. Mirrors
+ *  SavedTicketView in src/renderer/src/lib/ticketViews.ts. */
+export type SavedTicketView = {
+  name: string
+  type: string
+  horizon: string
+  priority: string
+  status: string
+  hitl: boolean
+  q: string
+  groupBy: string
+  sortBy: string
+}
+
 export type RepoTicketsConfig = {
   provider?: TicketProviderKind
   github?: GithubConfig
   linear?: LinearTicketConfig
   obsidian?: ObsidianTicketConfig
   views?: TicketView[]
+  savedViews?: SavedTicketView[]
 }
 
 export type TicketProviderTestResult = {
@@ -205,6 +233,43 @@ export function scaffoldObsidianVault(cfg: ObsidianTicketConfig | undefined): vo
 // Views are loaded into a real <webview>, so the url is a capability, not a
 // label: anything but http(s) (javascript:, file:, data:) is dropped here at the
 // config boundary rather than trusted downstream.
+const GROUP_BYS = ['status', 'priority', 'type', 'horizon', 'agent', 'none']
+const SORT_BYS = ['id-desc', 'id-asc', 'updated-desc', 'priority']
+
+// A stored view is user data that ends up driving list rendering, so every axis
+// is normalized to a known value and an unnamed view is dropped — a nameless
+// entry in the view picker would be unselectable and unremovable.
+function sanitizeSavedViews(raw: unknown): SavedTicketView[] {
+  if (!Array.isArray(raw)) return []
+  const out: SavedTicketView[] = []
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue
+    const r = v as Record<string, unknown>
+    const name = String(r.name ?? '').trim()
+    if (!name) continue
+    const str = (k: string, fallback: string) => {
+      const value = String(r[k] ?? '').trim()
+      return value || fallback
+    }
+    const oneOf = (k: string, allowed: string[], fallback: string) => {
+      const value = String(r[k] ?? '').trim()
+      return allowed.includes(value) ? value : fallback
+    }
+    out.push({
+      name,
+      type: str('type', 'all'),
+      horizon: str('horizon', 'all'),
+      priority: str('priority', 'all'),
+      status: str('status', 'all'),
+      hitl: r.hitl === true,
+      q: typeof r.q === 'string' ? r.q : '',
+      groupBy: oneOf('groupBy', GROUP_BYS, 'status'),
+      sortBy: oneOf('sortBy', SORT_BYS, 'id-desc'),
+    })
+  }
+  return out
+}
+
 function sanitizeViews(raw: unknown): TicketView[] {
   if (!Array.isArray(raw)) return []
   const out: TicketView[] = []
@@ -248,6 +313,7 @@ export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
     ...(cfg.linear ? { linear: cfg.linear } : {}),
     ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
     ...(cfg.views?.length ? { views: sanitizeViews(cfg.views) } : {}),
+    ...(cfg.savedViews?.length ? { savedViews: sanitizeSavedViews(cfg.savedViews) } : {}),
   }
 }
 
@@ -285,6 +351,7 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
               get: cfg.linear?.tools?.get || 'get_issue',
               create: cfg.linear?.tools?.create || 'save_issue',
               update: cfg.linear?.tools?.update || 'save_issue',
+              comment: cfg.linear?.tools?.comment || 'save_comment',
             },
             ...(cfg.linear?.team ? { team: cfg.linear.team } : {}),
             ...(cfg.linear?.teamKey ? { teamKey: cfg.linear.teamKey } : {}),
@@ -301,6 +368,15 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
           ? sanitizeViews(readConfig(repoRoot).views)
           : sanitizeViews(cfg.views)
       return next.length ? { views: next } : {}
+    })(),
+    // Same contract as `views`: omitted means unchanged, an explicit array
+    // (including []) replaces. A saved view is a lens, not provider config.
+    ...(() => {
+      const next =
+        cfg.savedViews === undefined
+          ? sanitizeSavedViews(readConfig(repoRoot).savedViews)
+          : sanitizeSavedViews(cfg.savedViews)
+      return next.length ? { savedViews: next } : {}
     })(),
   }
   mkdirSync(join(repoRoot, '.TerMinal'), { recursive: true })
@@ -334,6 +410,28 @@ function firstMappedLabel(labels: string[], map: Record<string, string>, fallbac
   return found?.[0] || fallback
 }
 
+// GitHub and Linear both return a comment list on the issue when we ask for
+// one; their author fields differ, so normalize both into TicketComment. Every
+// remote comment is `human` — an agent commenting through us round-trips as a
+// plain platform comment, which is what the platform's own UI expects.
+function externalComments(raw: unknown): TicketComment[] {
+  if (!Array.isArray(raw)) return []
+  const out: TicketComment[] = []
+  for (const c of raw as any[]) {
+    const body = typeof c?.body === 'string' ? c.body.trim() : ''
+    if (!body) continue
+    out.push({
+      at: String(c.createdAt || c.created_at || ''),
+      author: String(
+        c.author?.login || c.user?.name || c.user?.displayName || c.user?.login || 'unknown',
+      ),
+      kind: 'human',
+      body,
+    })
+  }
+  return out
+}
+
 export function githubIssueToTicket(issue: any, cfg: GithubConfig = {}): Ticket {
   const labels = normLabels(issue.labels)
   const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(cfg.statusLabels || {}) }
@@ -357,11 +455,13 @@ export function githubIssueToTicket(issue: any, cfg: GithubConfig = {}): Ticket 
     prs: [],
     refs: issue.url ? [issue.url] : [],
     depends_on: [],
+    related: [],
     acceptance: [],
     modelTier: 'auto',
     workedBy: [],
     agent: defaultTicketAgent(firstMappedLabel(labels, typeLabels, 'feature')),
     body: issue.body || '',
+    comments: externalComments(issue.comments),
     provider: 'github',
     providerLabel: 'GitHub Issues',
     externalId: String(number),
@@ -419,7 +519,9 @@ async function getGithubTicket(
     'view',
     number,
     '--json',
-    'number,title,state,body,labels,url,createdAt,updatedAt,author',
+    // `comments` is fetched on the detail read only — the list read stays
+    // lean, since nothing renders a comment log from the list.
+    'number,title,state,body,labels,url,createdAt,updatedAt,author,comments',
   ])
   return issue ? githubIssueToTicket(issue, cfg) : null
 }
@@ -559,11 +661,13 @@ export function linearIssueToTicket(issue: any): Ticket {
     prs: [],
     refs: issue.url ? [issue.url] : [],
     depends_on: [],
+    related: [],
     acceptance: [],
     modelTier: 'auto',
     workedBy: [],
     agent: defaultTicketAgent('feature'),
     body: issue.description || issue.body || '',
+    comments: externalComments(issue.comments),
     provider: 'linear',
     providerLabel: 'Linear',
     externalId: String(issue.id || key),
@@ -683,7 +787,22 @@ async function getLinearTicket(linear: LinearTicketConfig, slug: string): Promis
   const key = linearIssueKey(slug)
   const raw = await callMcpTool(linear, tool, { id: key })
   const issue = (raw as any)?.issue || raw
-  return issue ? linearIssueToTicket(issue) : null
+  if (!issue) return null
+  const ticket = linearIssueToTicket(issue)
+  // get_issue does not carry the thread, so pull it separately. A failure here
+  // costs the comment log, not the ticket — degrade rather than throw.
+  if (ticket.comments.length === 0) {
+    try {
+      const rawComments = await callMcpTool(linear, 'list_comments', { issueId: key })
+      const arr = Array.isArray(rawComments)
+        ? rawComments
+        : (rawComments as any)?.comments || (rawComments as any)?.data
+      ticket.comments = externalComments(arr)
+    } catch {
+      /* leave the log empty */
+    }
+  }
+  return ticket
 }
 
 async function createLinearTicket(linear: LinearTicketConfig, input: NewTicket): Promise<Ticket> {
@@ -796,6 +915,62 @@ export async function updateRepoTicket(
     return dir ? updateLocalTicket(repoRoot, slug, patch, dir) : false
   }
   return updateLocalTicket(repoRoot, slug, patch)
+}
+
+/** Who a comment typed in the UI is attributed to. Git identity first — it is
+ *  what the rest of the ticket's history (commits, PRs) is already signed with
+ *  — then the OS user, so the log never falls back to a generic placeholder. */
+export async function resolveHumanAuthor(repoRoot: string): Promise<string> {
+  try {
+    const r = await runCli('git', ['config', 'user.name'], repoRoot, { timeout: 3_000 })
+    const name = (r.stdout || '').trim()
+    if (name) return name
+  } catch {
+    /* fall through to the OS user */
+  }
+  return (process.env.USER || process.env.LOGNAME || 'you').trim()
+}
+
+/**
+ * Append a comment to a ticket's log, wherever that ticket actually lives.
+ * Local/Obsidian tickets get a `## Log` entry in their markdown; GitHub and
+ * Linear get a real platform comment, so the thread stays where that platform's
+ * own UI shows it. An agent comment is prefixed on the remote providers, which
+ * have no notion of a non-human author.
+ */
+export async function commentOnRepoTicket(
+  repoRoot: string,
+  slug: string,
+  comment: NewTicketComment,
+): Promise<boolean> {
+  if (!comment.body.trim() || !comment.author.trim()) return false
+  const cfg = readConfig(repoRoot)
+  if (cfg.provider === 'github') {
+    const number = parseExternalNumber(slug)
+    if (!/^\d+$/.test(number)) return false
+    await ghRun(repoRoot, ['issue', 'comment', number, '--body', remoteCommentBody(comment)])
+    return true
+  }
+  if (cfg.provider === 'linear') {
+    const linear = cfg.linear || {}
+    await callMcpTool(linear, linear.tools?.comment || 'save_comment', {
+      issueId: linearIssueKey(slug),
+      body: remoteCommentBody(comment),
+    })
+    return true
+  }
+  if (cfg.provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    return dir ? appendLocalComment(repoRoot, slug, comment, dir) : false
+  }
+  return appendLocalComment(repoRoot, slug, comment)
+}
+
+/** GitHub/Linear attribute every comment to the authenticated account, so an
+ *  agent's identity has to ride along in the body or it is lost. */
+function remoteCommentBody(comment: NewTicketComment): string {
+  if (comment.kind !== 'agent') return comment.body.trim()
+  return `${commentHeader({ ...comment, at: comment.at || new Date().toISOString() })}\n\n${comment.body.trim()}`
 }
 
 export function ticketProviderInstructions(provider: RepoTicketProvider): string {

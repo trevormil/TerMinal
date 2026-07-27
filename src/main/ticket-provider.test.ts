@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  commentOnRepoTicket,
   createRepoTicket,
   getRepoTicket,
   githubIssueToTicket,
@@ -367,5 +368,197 @@ describe('saveRepoTicketConfig view preservation', () => {
     const saved = saveRepoTicketConfig(repo, { provider: 'local', views: [] })
     expect(saved.views ?? []).toEqual([])
     expect(readRepoTicketConfig(repo).views ?? []).toEqual([])
+  })
+})
+
+describe('provider comment mapping', () => {
+  test('GitHub issue comments map into the shared comment shape', () => {
+    const t = githubIssueToTicket({
+      number: 42,
+      title: 'Fix cache race',
+      state: 'OPEN',
+      body: 'Race details',
+      labels: [],
+      comments: [
+        { author: { login: 'trevor' }, body: 'first', createdAt: '2026-06-01T12:00:00Z' },
+        { author: { login: 'octobot' }, body: 'second', createdAt: '2026-06-02T12:00:00Z' },
+      ],
+    })
+    expect(t.comments.map((c) => [c.author, c.body, c.at])).toEqual([
+      ['trevor', 'first', '2026-06-01T12:00:00Z'],
+      ['octobot', 'second', '2026-06-02T12:00:00Z'],
+    ])
+    expect(t.comments.every((c) => c.kind === 'human')).toBe(true)
+  })
+
+  test('an issue with no comments field yields an empty log, not undefined', () => {
+    expect(
+      githubIssueToTicket({ number: 1, title: 'x', state: 'OPEN', labels: [] }).comments,
+    ).toEqual([])
+    expect(linearIssueToTicket({ id: 'TRE-5', title: 'x' }).comments).toEqual([])
+  })
+
+  test('Linear issue comments map into the shared comment shape', () => {
+    const t = linearIssueToTicket({
+      id: 'TRE-5',
+      title: 'x',
+      comments: [
+        { user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
+      ],
+    })
+    expect(t.comments).toEqual([
+      { at: '2026-06-07T20:41:17.329Z', author: 'Trevor', kind: 'human', body: 'linear note' },
+    ])
+  })
+})
+
+describe('commentOnRepoTicket', () => {
+  test('a local-provider comment lands in the repo backlog file', async () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const t = await createRepoTicket(repo, {
+        title: 'Local comment',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
+      expect(
+        await commentOnRepoTicket(repo, t.slug, { author: 'trevor', kind: 'human', body: 'noted' }),
+      ).toBe(true)
+      expect((await getRepoTicket(repo, t.slug))?.comments.map((c) => c.body)).toEqual(['noted'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an Obsidian comment is written into the vault, not the repo', async () => {
+    const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
+    const repo = repoWithTicketConfig({ provider: 'obsidian', obsidian: { vaultPath: vault } })
+    try {
+      const t = await createRepoTicket(repo, {
+        title: 'Vault comment',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: 'b',
+      })
+      expect(
+        await commentOnRepoTicket(repo, t.slug, {
+          author: 'docs',
+          kind: 'agent',
+          via: 'codex/gpt-5',
+          body: 'from a run',
+        }),
+      ).toBe(true)
+      expect(readFileSync(join(vault, 'tickets', `${t.slug}.md`), 'utf8')).toContain(
+        'agent:docs (codex/gpt-5)',
+      )
+      const got = await getRepoTicket(repo, t.slug)
+      expect(got?.comments.map((c) => c.body)).toEqual(['from a run'])
+      expect(got?.body).toBe('b')
+    } finally {
+      rmSync(vault, { recursive: true, force: true })
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('saved ticket views', () => {
+  const view = (name: string, over: Record<string, unknown> = {}) => ({
+    name,
+    type: 'all',
+    horizon: 'all',
+    priority: 'all',
+    status: 'all',
+    hitl: false,
+    q: '',
+    groupBy: 'status',
+    sortBy: 'id-desc',
+    ...over,
+  })
+
+  test('round-trips saved views through save/read', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [view('My bugs', { type: 'bug' }), view('Urgent', { priority: 'critical' })],
+      } as never)
+      expect(saved.savedViews?.map((v) => v.name)).toEqual(['My bugs', 'Urgent'])
+      expect(readRepoTicketConfig(repo).savedViews?.[0].type).toBe('bug')
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  // A provider-only edit from the Settings pane must not wipe views the user
+  // saved from the Tickets toolbar.
+  test('omitting savedViews preserves the stored ones', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      saveRepoTicketConfig(repo, { provider: 'local', savedViews: [view('Keep me')] } as never)
+      const after = saveRepoTicketConfig(repo, { provider: 'github' })
+      expect(after.savedViews?.map((v) => v.name)).toEqual(['Keep me'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an explicit empty array clears them', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      saveRepoTicketConfig(repo, { provider: 'local', savedViews: [view('Bye')] } as never)
+      expect(
+        saveRepoTicketConfig(repo, { provider: 'local', savedViews: [] }).savedViews,
+      ).toBeUndefined()
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('an unnamed or malformed view is dropped rather than stored', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [view(''), view('   '), 'nope', null, view('Good')],
+      } as never)
+      expect(saved.savedViews?.map((v) => v.name)).toEqual(['Good'])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('a saved view falls back to defaults for missing axes', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'local',
+        savedViews: [{ name: 'Sparse', type: 'bug' }],
+      } as never)
+      expect(saved.savedViews?.[0]).toMatchObject({
+        name: 'Sparse',
+        type: 'bug',
+        priority: 'all',
+        groupBy: 'status',
+        sortBy: 'id-desc',
+        hitl: false,
+        q: '',
+      })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('the linear comment tool gets a default so commenting works out of the box', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      expect(saveRepoTicketConfig(repo, { provider: 'linear' }).linear?.tools?.comment).toBe(
+        'save_comment',
+      )
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
   })
 })

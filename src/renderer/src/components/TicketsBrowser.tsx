@@ -9,6 +9,7 @@ import {
   Play,
   RotateCcw,
   SquareTerminal,
+  BookmarkPlus,
 } from 'lucide-react'
 import { Badge } from './ui'
 import { EnginePicker } from './EnginePicker'
@@ -36,6 +37,14 @@ import {
 import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompts'
 import type { BadgeTone } from './ui'
+import {
+  DEFAULT_TICKET_VIEW,
+  filterTickets,
+  groupTickets,
+  matchesView,
+  type SavedTicketView,
+  type TicketViewSpec,
+} from '../lib/ticketViews'
 import type { Ticket, TicketRunLink, TabContext, Mr, Engine, Persona } from '../lib/types'
 
 // Subtle text color (no badge chrome) for a BadgeTone — used by the ticket MR
@@ -63,9 +72,9 @@ const runSourceTone = (source: TicketRunLink['source']): BadgeTone =>
 
 const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'performance']
 const HORIZONS = ['now', 'next', 'future']
-// Tickets are grouped by status (active work up top); closed/icebox start
-// collapsed so you don't wade through finished tickets by default.
-const STATUS_GROUPS = ['open', 'in-progress', 'stuck', 'closed', 'icebox']
+const PRIORITIES = ['critical', 'high', 'medium', 'low']
+// Group ordering lives in ticketViews.ts. These groups start collapsed so you
+// don't wade through finished tickets by default.
 const COLLAPSED_BY_DEFAULT = ['closed', 'icebox']
 
 function Chip({
@@ -233,10 +242,13 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [ticketError, setTicketError] = useState('')
   const [sel, setSel] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [fType, setFType] = useState('all')
-  const [fHorizon, setFHorizon] = useState('all')
-  const [fHitl, setFHitl] = useState(false)
-  const [q, setQ] = useState('')
+  // One spec drives filtering, grouping and sorting — so a saved view is just
+  // this object, and the toolbar and a saved view can't drift apart.
+  const [view, setView] = useState<TicketViewSpec>(DEFAULT_TICKET_VIEW)
+  const patchView = (p: Partial<TicketViewSpec>) => setView((v) => ({ ...v, ...p }))
+  const [savedViews, setSavedViews] = useState<SavedTicketView[]>([])
+  const [naming, setNaming] = useState(false)
+  const [viewName, setViewName] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(COLLAPSED_BY_DEFAULT))
   const [pickImpl, setPickImpl] = useState(false)
   const [started, setStarted] = useState(false)
@@ -257,6 +269,10 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   useEffect(() => {
     loadTickets()
     window.gt.agents.personas().then(setAgentContexts)
+    void window.gt.tickets
+      .providerGet()
+      .then((cfg) => setSavedViews('error' in cfg ? [] : cfg.savedViews || []))
+      .catch(() => setSavedViews([]))
     // Enrich ticket MR links with live state/verdict badges. All-states list, so
     // merged/closed MRs (the common case for a closed ticket) resolve too.
     window.gt
@@ -299,24 +315,32 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     })
   }, [])
 
-  const filtered = (tickets || []).filter((t) => {
-    if (hitlOnly && !t.hitl) return false
-    if (!hitlOnly) {
-      if (fType !== 'all' && t.type !== fType) return false
-      if (fHorizon !== 'all' && t.horizon !== fHorizon) return false
-      if (fHitl && !t.hitl) return false
-    }
-    if (q && !(t.title.toLowerCase().includes(q.toLowerCase()) || String(t.id).includes(q)))
-      return false
-    return true
-  })
+  // The HITL view is a fixed lens on the same data: hitl-only, and none of the
+  // browsing chrome, so it ignores everything but the search box.
+  const effectiveView: TicketViewSpec = hitlOnly
+    ? { ...DEFAULT_TICKET_VIEW, hitl: true, q: view.q }
+    : view
+  const filtered = filterTickets(tickets || [], effectiveView)
   const selected = tickets?.find((t) => t.slug === sel) || null
+  const groups = groupTickets(filtered, effectiveView)
+  // Saved views live in .TerMinal/tickets.json next to the provider config, so
+  // they follow the repo rather than the machine.
+  const persistViews = async (next: SavedTicketView[]) => {
+    setSavedViews(next)
+    const cfg = await window.gt.tickets.providerGet()
+    if ('error' in cfg) return
+    await window.gt.tickets.providerSave({ ...cfg, savedViews: next })
+  }
+  const saveCurrentView = () => {
+    const name = viewName.trim()
+    if (!name) return
+    // Re-saving an existing name overwrites it rather than making a duplicate
+    // the picker can't tell apart.
+    void persistViews([...savedViews.filter((v) => v.name !== name), { ...view, name }])
+    setViewName('')
+    setNaming(false)
+  }
 
-  // group filtered tickets by status, active statuses first
-  const rank = (s: string) => (STATUS_GROUPS.indexOf(s) < 0 ? 99 : STATUS_GROUPS.indexOf(s))
-  const groups = [...new Set(filtered.map((t) => t.status))]
-    .sort((a, b) => rank(a) - rank(b))
-    .map((status) => ({ status, items: filtered.filter((t) => t.status === status) }))
   const toggleGroup = (s: string) =>
     setCollapsed((c) => {
       const n = new Set(c)
@@ -339,18 +363,22 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* toolbar: type/horizon filters (left) + search / New (right). Status is
-          the grouping axis now, so no status chips here. */}
+      {/* toolbar: filter chips + saved views (left), display options and search
+          (right). Status is a filter AND the default grouping axis. */}
       <div className="flex shrink-0 flex-nowrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         {!hitlOnly && (
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
             <span className="mx-1 text-zinc-700">·</span>
-            <Chip active={fType === 'all'} onClick={() => setFType('all')}>
+            <Chip active={view.type === 'all'} onClick={() => patchView({ type: 'all' })}>
               Any type
             </Chip>
             {TYPES.map((t) => (
-              <Chip key={t} active={fType === t} onClick={() => setFType(t)}>
+              <Chip
+                key={t}
+                active={view.type === t}
+                onClick={() => patchView({ type: view.type === t ? 'all' : t })}
+              >
                 {t}
               </Chip>
             ))}
@@ -358,13 +386,23 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             {HORIZONS.map((h) => (
               <Chip
                 key={h}
-                active={fHorizon === h}
-                onClick={() => setFHorizon(fHorizon === h ? 'all' : h)}
+                active={view.horizon === h}
+                onClick={() => patchView({ horizon: view.horizon === h ? 'all' : h })}
               >
                 {h}
               </Chip>
             ))}
-            <Chip active={fHitl} onClick={() => setFHitl((v) => !v)}>
+            <span className="mx-1 text-zinc-700">·</span>
+            {PRIORITIES.map((pr) => (
+              <Chip
+                key={pr}
+                active={view.priority === pr}
+                onClick={() => patchView({ priority: view.priority === pr ? 'all' : pr })}
+              >
+                {pr}
+              </Chip>
+            ))}
+            <Chip active={view.hitl} onClick={() => patchView({ hitl: !view.hitl })}>
               <span className="inline-flex items-center gap-1">
                 <Hand size={11} strokeWidth={2} />
                 HITL
@@ -373,6 +411,92 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           </div>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!hitlOnly && savedViews.length > 0 && (
+            <select
+              value={savedViews.find((v) => matchesView(v, view))?.name || ''}
+              onChange={(e) => {
+                const found = savedViews.find((v) => v.name === e.target.value)
+                if (found) {
+                  const { name: _name, ...spec } = found
+                  setView(spec)
+                }
+              }}
+              title="Saved views"
+              className="max-w-[130px] rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+            >
+              <option value="" className="bg-[var(--gt-panel)]">
+                Views…
+              </option>
+              {savedViews.map((v) => (
+                <option key={v.name} value={v.name} className="bg-[var(--gt-panel)]">
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {!hitlOnly && (
+            <>
+              <select
+                value={view.groupBy}
+                onChange={(e) =>
+                  patchView({ groupBy: e.target.value as TicketViewSpec['groupBy'] })
+                }
+                title="Group the list by"
+                className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                {(['status', 'priority', 'type', 'horizon', 'agent', 'none'] as const).map((g) => (
+                  <option key={g} value={g} className="bg-[var(--gt-panel)]">
+                    by {g}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={view.sortBy}
+                onChange={(e) => patchView({ sortBy: e.target.value as TicketViewSpec['sortBy'] })}
+                title="Sort within each group"
+                className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+              >
+                <option value="id-desc" className="bg-[var(--gt-panel)]">
+                  newest
+                </option>
+                <option value="id-asc" className="bg-[var(--gt-panel)]">
+                  oldest
+                </option>
+                <option value="updated-desc" className="bg-[var(--gt-panel)]">
+                  updated
+                </option>
+                <option value="priority" className="bg-[var(--gt-panel)]">
+                  priority
+                </option>
+              </select>
+            </>
+          )}
+          {!hitlOnly &&
+            (naming ? (
+              <input
+                autoFocus
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveCurrentView()
+                  if (e.key === 'Escape') setNaming(false)
+                }}
+                onBlur={() => setNaming(false)}
+                placeholder="View name…"
+                className="w-28 rounded-lg border border-[var(--gt-accent)]/60 bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none"
+              />
+            ) : (
+              <button
+                onClick={() => {
+                  setViewName(savedViews.find((v) => matchesView(v, view))?.name || '')
+                  setNaming(true)
+                }}
+                title="Save these filters as a named view"
+                className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+              >
+                <BookmarkPlus size={13} strokeWidth={2} />
+              </button>
+            ))}
           {!hitlOnly && (
             <button
               onClick={() =>
@@ -386,9 +510,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             </button>
           )}
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
+            value={view.q}
+            onChange={(e) => patchView({ q: e.target.value })}
+            placeholder="Search title, id, body…"
             className="w-40 rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
           />
           {!hitlOnly && (
@@ -440,7 +564,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               </div>
             )
           ) : (
-            groups.map(({ status, items }) => {
+            groups.map(({ key: status, items }) => {
               const isOpen = !collapsed.has(status)
               return (
                 <div key={status}>

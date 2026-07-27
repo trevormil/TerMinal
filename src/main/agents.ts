@@ -43,6 +43,7 @@ import { createAgentStreamDecoder } from './agent-stream'
 import { evaluateAgentRun } from './agent-run-evaluation'
 import { withAgentContextPreamble } from './context-preamble'
 import { getRepoTicket, repoTicketProvider, ticketProviderInstructions } from './ticket-provider'
+import { promptLogBlock, type TicketComment } from './ticket-comments'
 import { getTicket as getLocalTicket, updateTicket as updateLocalTicket } from './backlog'
 import type { TicketAgent } from './backlog'
 
@@ -2064,6 +2065,9 @@ type TicketRunInput = {
   body: string
   externalKey?: string
   url?: string
+  /** Prior log entries, replayed into the prompt so a run inherits what
+   *  earlier runs on this ticket learned. */
+  comments?: TicketComment[]
   agent?: TicketAgent
   /** The ticket's model_tier frontmatter — mapped through the owner agent's
    *  modelPolicy by resolveModel at spawn time. */
@@ -2111,7 +2115,12 @@ export function runTicketAgent(
   const laneFraming = lane
     ? `\n\n--- LANE ${lane.index} of ${lane.total} ---\nYou are one of ${lane.total} independent variant attempts at this ticket, each in its own worktree and branch. Pursue a genuinely distinct, high-quality approach — don't converge on the obvious one. Satisfy every acceptance criterion in the ticket.`
     : ''
-  const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr} End with a short summary of what changed and the PR URL.${extraContextBlock(extraContext)}`
+  // A lane must not write to the ticket (concurrent frontmatter writes race),
+  // so only a solo run is told to leave one behind.
+  const logInstr = lane
+    ? ''
+    : ` Record anything a later run would need — findings, dead ends, decisions — back onto the ticket with the comment_ticket MCP tool, not in the ticket's prose body.`
+  const base = `Implement ticket ${ref}: ${ticket.title}\n\n${ticket.body}\n${promptLogBlock(ticket.comments)}\n${ticketProviderInstructions(provider)}${laneFraming}\n\nWork in this worktree on its branch. Implement the ticket end to end — keep changes surgical and add/adjust tests. ${ticketWriteInstr}${logInstr} End with a short summary of what changed and the PR URL.${extraContextBlock(extraContext)}`
   const resolvedPersonaId = personaId || ticketAgentContextId(ticket.agent)
   const { steps, persona, pipeline } = buildSteps(
     repoRoot,
@@ -2344,6 +2353,7 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
             body: t.body,
             externalKey: t.externalKey,
             url: t.url,
+            comments: t.comments,
             agent: t.agent,
             modelTier: t.modelTier,
           },

@@ -578,23 +578,30 @@ export function EntryScreen({
                 </div>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
-                {scratchEngine === 'local' ? (
-                  <SquareTerminal size={14} strokeWidth={2} className="shrink-0 text-zinc-400" />
-                ) : (
-                  <EngineLogo engine={scratchEngine} size={14} />
-                )}
-                <select
-                  value={scratchEngine}
-                  onChange={(e) => setScratchEngine(e.target.value as SessionEngine)}
-                  aria-label="Scratch session engine"
-                  className={sel}
-                >
-                  {engineOptions.map((e) => (
-                    <option key={e} value={e}>
-                      {sessionEngineLabel(e)}
-                    </option>
-                  ))}
-                </select>
+                {/* The engine mark sits inside the select's box rather than
+                    beside it — a native <select> can't hold an element, so it
+                    is overlaid and the select is padded to clear it. */}
+                <div className="relative shrink-0">
+                  <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center">
+                    {scratchEngine === 'local' ? (
+                      <SquareTerminal size={14} strokeWidth={2} className="text-zinc-400" />
+                    ) : (
+                      <EngineLogo engine={scratchEngine} size={14} />
+                    )}
+                  </span>
+                  <select
+                    value={scratchEngine}
+                    onChange={(e) => setScratchEngine(e.target.value as SessionEngine)}
+                    aria-label="Scratch session engine"
+                    className={`${sel} pl-8`}
+                  >
+                    {engineOptions.map((e) => (
+                      <option key={e} value={e}>
+                        {sessionEngineLabel(e)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   onClick={() => startScratch(scratchEngine)}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--gt-accent)] px-3 py-2 text-[12px] font-semibold text-white hover:opacity-90"

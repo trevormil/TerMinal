@@ -271,6 +271,16 @@ actor BridgeClient {
             from: try await get("v1/workspace/ticket?repo=\(Self.q(repo))&slug=\(Self.q(slug))"))
     }
 
+    /// The app's one ticket write: leave a note an in-flight agent run will read.
+    func commentOnTicket(repo: String, slug: String, body: String) async throws {
+        struct Body: Encodable {
+            let repo: String
+            let slug: String
+            let body: String
+        }
+        try await post("v1/tickets/comment", body: Body(repo: repo, slug: slug, body: body))
+    }
+
     func pr(repo: String, iid: Int) async throws -> WsPrDetail {
         try JSONDecoder().decode(
             WsPrDetail.self, from: try await get("v1/workspace/pr?repo=\(Self.q(repo))&iid=\(iid)"))

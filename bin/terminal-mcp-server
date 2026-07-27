@@ -744,6 +744,34 @@ function locateTicket(slug) {
   return path ? { path, repoRoot } : null
 }
 
+// Append to a ticket's `## Log`. This is how a run leaves context for the next
+// one - findings, dead ends, decisions - without editing the ticket's prose.
+// Mirrors appendComment in src/main/ticket-comments.ts.
+function commentTicket(args) {
+  const { slug } = args
+  if (!slug) throw new Error('slug is required')
+  const body = String(args.body || '').trim()
+  if (!body) throw new Error('body is required and cannot be empty')
+  const located = locateTicket(slug)
+  if (!located) throw new Error(`ticket ${slug} not found in any known repo`)
+  const raw = readFileSync(located.path, 'utf8')
+  const m = raw.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
+  if (!m) throw new Error(`malformed frontmatter in ${located.path}`)
+  const via = String(args.via || '').trim()
+  const header = `### ${new Date().toISOString()} \u00b7 agent:${String(args.author || 'agent').trim()}${
+    via ? ` (${via})` : ''
+  }`
+  // Appending only needs to know whether a log has been opened, never to parse
+  // one - so the parser stays in exactly one place.
+  const prose = m[2].trim()
+  const head = m[1].replace(/^(updated:[ \t]*).*$/m, `$1${todayStr()}`)
+  const next = /^## Log$/m.test(m[2])
+    ? `${head}\n${prose}\n\n${header}\n${body}\n`
+    : `${head}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${body}\n`
+  writeFileSync(located.path, next)
+  return { ok: true, slug, path: located.path, repoRoot: located.repoRoot }
+}
+
 function updateTicket(args) {
   const { slug, status, priority, appendPrUrl, removePrUrl } = args
   if (!slug) throw new Error('slug is required')
@@ -767,6 +795,10 @@ function updateTicket(args) {
   if (status) setField('status', status)
   if (priority) setField('priority', priority)
   if (args.modelTier) setField('model_tier', normalizeModelTier(args.modelTier))
+  if (Array.isArray(args.related)) setField('related', `[${args.related.join(', ')}]`)
+  // 0 clears the link; anything else sets it. `undefined` leaves it untouched.
+  if (args.duplicateOf !== undefined)
+    setField('duplicate_of', Number(args.duplicateOf) > 0 ? String(args.duplicateOf) : '')
   if (args.agentId || args.agentScope || args.agentKind) {
     const agent = normalizeTicketAgent(args, (fm.match(/^type:\s*(.*)$/m)?.[1] || 'feature').trim())
     setField('agent_id', agent.id)
@@ -1765,12 +1797,39 @@ const TOOLS = [
         },
         agentScope: { type: 'string', enum: ['repo', 'global'] },
         agentKind: { type: 'string', enum: ['classic', 'persistent'] },
+        related: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Ticket ids this one is related to. Replaces the list wholesale.',
+        },
+        duplicateOf: {
+          type: 'number',
+          description: 'Canonical ticket id this one duplicates. 0 clears the link.',
+        },
         modelTier: {
           type: 'string',
           enum: ['auto', 'top', 'cheap-agentic', 'cheap-raw'],
           description:
             'Routing tier resolved against the owner agent modelPolicy at spawn: top→deep, cheap-agentic/cheap-raw→cheap, auto→default. Defaults to auto.',
         },
+      },
+    },
+  },
+  {
+    name: 'comment_ticket',
+    description:
+      "Append a timestamped entry to a ticket's `## Log` - the durable per-ticket context later runs read. Use it for findings, dead ends, and decisions that the next agent working this ticket needs; do NOT use it to edit the ticket's prose body. Auto-bumps `updated:`. Repo is auto-resolved from the slug.",
+    inputSchema: {
+      type: 'object',
+      required: ['slug', 'body'],
+      properties: {
+        slug: { type: 'string' },
+        body: { type: 'string', description: 'Markdown. What a later run needs to know.' },
+        author: {
+          type: 'string',
+          description: 'Agent id to attribute the entry to. Defaults to "agent".',
+        },
+        via: { type: 'string', description: 'engine/model that wrote it, e.g. "codex/gpt-5".' },
       },
     },
   },
@@ -2075,6 +2134,7 @@ const HANDLERS = {
   ai_spend_today: aiSpendToday,
   // writes
   file_ticket: fileTicket,
+  comment_ticket: commentTicket,
   update_ticket: updateTicket,
   update_ticket_agent: updateTicketAgent,
   update_ticket_run: updateTicketRun,
@@ -2106,7 +2166,8 @@ const HANDLERS = {
 const TOOL_PRESETS = {
   write: [
     'file_ticket',
-    'update_ticket',
+    'comment_ticket',
+  'update_ticket',
     'update_ticket_agent',
     'update_ticket_run',
     'file_hitl',

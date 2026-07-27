@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import type { NewTicket, Ticket, TicketPatch } from './backlog'
+import type { NewTicketComment } from './ticket-provider'
 import { listDocs, readDoc, type DocsTree } from './docs'
 import {
   listDir,
@@ -70,6 +71,7 @@ import {
   getRepoTicket,
   listRepoTickets,
   repoTicketProvider,
+  commentOnRepoTicket,
   updateRepoTicket,
   type TicketProviderKind,
 } from './ticket-provider'
@@ -138,6 +140,7 @@ export type WorkspaceDaemon = {
   ticketGet(slug: string): Promise<Ticket | null> | Ticket | null
   ticketCreate(input: NewTicket): Promise<Ticket> | Ticket
   ticketUpdate(slug: string, patch: TicketPatch): Promise<boolean> | boolean
+  ticketComment(slug: string, comment: NewTicketComment): Promise<boolean> | boolean
   skillsList(): Promise<SkillInfo[]> | SkillInfo[]
   mrsList(): Promise<MrListResult> | MrListResult
   mrGet(iid: number): Promise<MrDetail | null> | MrDetail | null
@@ -254,6 +257,8 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     ticketGet: (slug: string) => getRepoTicket(root(), slug),
     ticketCreate: (input: NewTicket) => createRepoTicket(root(), input),
     ticketUpdate: (slug: string, patch: TicketPatch) => updateRepoTicket(root(), slug, patch),
+    ticketComment: (slug: string, comment: NewTicketComment) =>
+      commentOnRepoTicket(root(), slug, comment),
     skillsList: () => listSkills(root()),
     mrsList: () => listMrs(root()),
     mrGet: (iid: number) => getMr(root(), iid),
@@ -353,6 +358,8 @@ export function createSshWorkspaceDaemon(
     ticketGet: (slug: string) => remoteTickets.get(remote, slug),
     ticketCreate: (input: NewTicket) => remoteTickets.create(remote, input),
     ticketUpdate: (slug: string, patch: TicketPatch) => remoteTickets.update(remote, slug, patch),
+    ticketComment: (slug: string, comment: NewTicketComment) =>
+      remoteTickets.comment(remote, slug, comment),
     skillsList: () => [],
     mrsList: () => remoteMrs.list(remote),
     mrGet: (iid: number) => remoteMrs.get(remote, iid),

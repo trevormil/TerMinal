@@ -354,6 +354,10 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[]
+  /** Ticket ids this one is merely related to — no ordering implied. */
+  related?: number[]
+  /** The canonical ticket this one duplicates. */
+  duplicateOf?: number
   /** Strict, checkable criteria for a correct/best implementation. Required
    *  when running >1 lane (lanes are gated + ranked against these). */
   acceptance: string[]
@@ -363,7 +367,10 @@ export type Ticket = {
   workedBy: string[]
   agent: TicketAgent
   run?: TicketRunLink
+  /** Prose only — the `## Log` section is split out into `comments`. */
   body: string
+  /** Timestamped log, oldest first. Remote workspaces may omit it. */
+  comments?: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
@@ -371,6 +378,25 @@ export type Ticket = {
   url?: string
 }
 export type TicketAgent = { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
+/** Mirrors TicketComment in src/main/ticket-comments.ts. */
+export type TicketComment = {
+  /** ISO-8601 UTC. */
+  at: string
+  /** Human username, or the agent id when `kind` is 'agent'. */
+  author: string
+  kind: 'human' | 'agent'
+  /** engine/model behind an agent comment, e.g. `codex/gpt-5`. */
+  via?: string
+  body: string
+}
+/** A comment as the renderer submits it. `at` is stamped in main, and `author`
+ *  defaults to the repo's git identity, so the UI only has to send a body. */
+export type NewTicketComment = {
+  body: string
+  author?: string
+  kind?: 'human' | 'agent'
+  via?: string
+}
 export type TicketAgentRecommendation = {
   agent: TicketAgent
   reason: string
@@ -412,6 +438,8 @@ export type NewTicket = {
 /** Mirrors ModelTier in src/main/resolve-model.ts — the renderer cannot import
  *  from main, so the union is restated here and must stay in step. */
 export type ModelTier = 'auto' | 'top' | 'cheap-agentic' | 'cheap-raw'
+import type { SavedTicketView } from './ticketViews'
+
 export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
 export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
 export type TicketProviderConfig = {
@@ -430,6 +458,8 @@ export type TicketProviderConfig = {
   }
   obsidian?: ObsidianTicketConfig
   views?: TicketView[]
+  /** Named filter/group/sort lenses. See SavedTicketView in ticketViews.ts. */
+  savedViews?: SavedTicketView[]
 }
 // A read-only embedded web view of an external ticket platform, rendered as a
 // source sub-tab in the Tickets tab. Independent of `provider` — see
@@ -1922,11 +1952,14 @@ export type GtApi = {
         status?: string
         priority?: string
         acceptance?: string[]
+        related?: number[]
+        duplicateOf?: number
         agent?: Partial<TicketAgent>
         run?: Partial<TicketRunLink>
         modelTier?: ModelTier
       },
     ) => Promise<boolean>
+    comment: (slug: string, comment: NewTicketComment) => Promise<boolean>
     spawn: (
       text: string,
       engine: Engine,
