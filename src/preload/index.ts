@@ -361,6 +361,10 @@ const gt = {
     list: () => ipcRenderer.invoke('checkpoints:list'),
     create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
     restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
+    file: (sha: string, rel: string) => ipcRenderer.invoke('checkpoints:file', sha, rel),
+    ranges: (sha: string) => ipcRenderer.invoke('checkpoints:ranges', sha),
+    reviewBase: (rel: string, buffer: string) =>
+      ipcRenderer.invoke('checkpoints:review-base', rel, buffer),
   },
   getWorkingStructuralDiff: (path: string, width?: number) =>
     ipcRenderer.invoke('git:working-structural-diff', path, width),

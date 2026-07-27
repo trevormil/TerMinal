@@ -1,7 +1,7 @@
 ---
 id: 49
 title: "Agent↔file integration: inline AI-edit diffs, per-turn checkpoints, line-pinned diff comments, AI attribution"
-status: open
+status: in-progress
 priority: high
 horizon: now
 hitl: false
@@ -9,7 +9,8 @@ type: feature
 source: manual
 created: 2026-07-25
 updated: 2026-07-26
-prs: []
+prs:
+  - https://github.com/trevormil/TerMinal/pull/153
 refs:
   - src/renderer/src/tabs/files/index.tsx
   - src/main/agents.ts
@@ -64,3 +65,17 @@ repo that never touches the user's own .git, with restore itself undoable.
 **Remaining:** inline AI-edit diffs with per-hunk accept/reject, line-pinned
 diff comments batched into one revision prompt, and AI-attribution gutter
 markers.
+
+## Update (2026-07-26, PR #153)
+
+The three remaining pieces shipped:
+- **Inline AI-edit diffs**: Review mode on the active file — editable unified
+  merge view vs the latest checkpoint (HEAD fallback) with @codemirror/merge's
+  per-chunk accept/reject controls, plus accept-all / reject-all.
+- **Line-pinned comments → one prompt**: comment-at-cursor in review mode;
+  pins re-anchor by line text; "Send to agent" batches everything into a
+  single revision prompt injected into the session pty (bracketed paste).
+- **AI-attribution gutters**: each new checkpoint's changed line ranges
+  (git diff --unified=0 in the shadow repo) mark lines as AI-written
+  (violet edge); typing into one flips it back to human. localStorage only —
+  never touches git. Ticket complete pending merge.

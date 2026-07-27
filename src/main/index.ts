@@ -397,7 +397,14 @@ import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
 import { processSpawnCwd } from './spawn-cwd'
-import { createCheckpoint, listCheckpoints, restoreCheckpoint } from './checkpoints'
+import {
+  checkpointChangedRanges,
+  createCheckpoint,
+  fileAtCheckpoint,
+  listCheckpoints,
+  restoreCheckpoint,
+  reviewBaseFor,
+} from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 import { resolveWithin } from './path-guard'
 import { modelArgs, resumeArgs } from '../shared/engines'
@@ -3160,6 +3167,15 @@ ipcMain.handle('checkpoints:create', (_e, label: string) =>
 )
 ipcMain.handle('checkpoints:restore', (_e, sha: string) =>
   restoreCheckpoint(activeDaemon().repoRoot(), sha),
+)
+ipcMain.handle('checkpoints:file', (_e, sha: string, rel: string) =>
+  fileAtCheckpoint(activeDaemon().repoRoot(), sha, rel),
+)
+ipcMain.handle('checkpoints:ranges', (_e, sha: string) =>
+  checkpointChangedRanges(activeDaemon().repoRoot(), sha),
+)
+ipcMain.handle('checkpoints:review-base', (_e, rel: string, buffer: string) =>
+  reviewBaseFor(activeDaemon().repoRoot(), rel, buffer),
 )
 ipcMain.handle('git:working-structural-diff', (_e, path: string, width?: number) => {
   return activeDaemon().workingStructuralDiff(path, width)

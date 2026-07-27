@@ -5,10 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   checkpointDir,
+  checkpointChangedRanges,
   createCheckpoint,
+  fileAtCheckpoint,
   listCheckpoints,
   parseCheckpointLog,
   restoreCheckpoint,
+  reviewBaseFor,
 } from './checkpoints'
 
 // These run against REAL git in a temp workspace — the mechanism is only
@@ -128,6 +131,74 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(() =>
       execFileSync('git', ['-C', ws, 'rev-parse', 'HEAD'], { stdio: 'ignore' }),
     ).toThrow() // no commits were made there
+  })
+
+  test('reads a file at a checkpoint, and empty where it did not exist', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'v1\n')
+    const v1 = createCheckpoint(ws, 'v1').sha
+    writeFileSync(join(ws, 'a.txt'), 'v2\n')
+    writeFileSync(join(ws, 'b.txt'), 'new\n')
+    const v2 = createCheckpoint(ws, 'v2').sha
+
+    expect(fileAtCheckpoint(ws, v1, 'a.txt')).toEqual({ ok: true, content: 'v1\n' })
+    expect(fileAtCheckpoint(ws, v2, 'a.txt')).toEqual({ ok: true, content: 'v2\n' })
+    expect(fileAtCheckpoint(ws, v1, 'b.txt')).toEqual({ ok: true, content: '' })
+    // traversal + junk shas refused
+    expect(fileAtCheckpoint(ws, v1, '../escape').ok).toBe(false)
+    expect(fileAtCheckpoint(ws, 'HEAD; rm -rf', 'a.txt').ok).toBe(false)
+  })
+
+  test('reports the line ranges a checkpoint touched (AI attribution)', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'one\ntwo\nthree\n')
+    createCheckpoint(ws, 'base')
+    writeFileSync(join(ws, 'a.txt'), 'one\nTWO CHANGED\nthree\nfour added\n')
+    const turn = createCheckpoint(ws, 'agent turn').sha
+
+    const ranges = checkpointChangedRanges(ws, turn)
+    expect(ranges['a.txt']).toEqual([
+      { from: 2, to: 2 },
+      { from: 4, to: 4 },
+    ])
+  })
+
+  test('the very first checkpoint attributes every line', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'x\ny\n')
+    const first = createCheckpoint(ws, 'first').sha
+    expect(checkpointChangedRanges(ws, first)['a.txt']).toEqual([{ from: 1, to: 2 }])
+  })
+
+  test('review base survives local edits after the agent turn', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'v1\n')
+    createCheckpoint(ws, 'turn 1')
+    writeFileSync(join(ws, 'a.txt'), 'agent v2\n')
+    createCheckpoint(ws, 'turn 2')
+    // The human edits ON TOP of the agent's turn — the turn's edits must
+    // still be visible, so the base is turn 1's content, not turn 2's.
+    const base = reviewBaseFor(ws, 'a.txt', 'agent v2 plus my tweak\n')
+    expect(base).toMatchObject({ ok: true, content: 'v1\n' })
+    // No local edits at all: same answer — the turn's edits are the diff.
+    expect(reviewBaseFor(ws, 'a.txt', 'agent v2\n')).toMatchObject({ ok: true, content: 'v1\n' })
+  })
+
+  test('review base is the newest checkpoint when the last turn skipped the file', () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'stable\n')
+    writeFileSync(join(ws, 'b.txt'), 'x\n')
+    createCheckpoint(ws, 'turn 1')
+    writeFileSync(join(ws, 'b.txt'), 'y\n') // the turn touched only b.txt
+    const second = createCheckpoint(ws, 'turn 2').sha
+    // a.txt drifted locally — base is the newest checkpoint, showing just that.
+    expect(reviewBaseFor(ws, 'a.txt', 'stable + local\n')).toMatchObject({
+      ok: true,
+      sha: second,
+      content: 'stable\n',
+    })
+    // …and with no drift either, checkpoints have nothing to show.
+    expect(reviewBaseFor(ws, 'a.txt', 'stable\n')).toEqual({ ok: false })
   })
 
   test('unknown workspace or sha fails cleanly', () => {

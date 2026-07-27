@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { parseUnifiedRanges } from '../shared/diff-ranges'
 
 // Per-turn workspace checkpoints — "one click rolls back to before the agent
 // did that", the thing that makes letting an agent run unattended feel safe.
@@ -99,6 +100,74 @@ export function listCheckpoints(repoRoot: string, limit = 50): Checkpoint[] {
   } catch {
     return []
   }
+}
+
+/** A file's content at a checkpoint ('' when it didn't exist there). */
+export function fileAtCheckpoint(
+  repoRoot: string,
+  sha: string,
+  rel: string,
+): { ok: boolean; content: string } {
+  if (!repoRoot || !sha || !existsSync(checkpointDir(repoRoot))) return { ok: false, content: '' }
+  if (!/^[0-9a-f]{4,40}$/i.test(sha) || rel.includes('..')) return { ok: false, content: '' }
+  try {
+    return { ok: true, content: git(repoRoot, ['show', `${sha}:${rel}`]) }
+  } catch {
+    // Absent from that checkpoint — an empty original is the correct base.
+    return { ok: true, content: '' }
+  }
+}
+
+/**
+ * The line ranges a checkpoint touched, per file — what the agent's turn
+ * wrote, for the AI-attribution gutter. Diffs the commit against its parent
+ * (or the empty tree for the very first checkpoint).
+ */
+export function checkpointChangedRanges(
+  repoRoot: string,
+  sha: string,
+): Record<string, { from: number; to: number }[]> {
+  if (!repoRoot || !/^[0-9a-f]{4,40}$/i.test(sha) || !existsSync(checkpointDir(repoRoot))) return {}
+  try {
+    let base = ''
+    try {
+      base = git(repoRoot, ['rev-parse', `${sha}^`]).trim()
+    } catch {
+      // First checkpoint: git's well-known empty tree object.
+      base = git(repoRoot, ['hash-object', '-t', 'tree', '/dev/null']).trim()
+    }
+    return parseUnifiedRanges(git(repoRoot, ['diff', '--unified=0', '--no-color', base, sha]))
+  } catch {
+    return {}
+  }
+}
+
+export type ReviewBase = { ok: true; sha: string; content: string } | { ok: false }
+
+/**
+ * The baseline Review mode should diff the current buffer against.
+ *
+ * Checkpoints are POST-turn snapshots, so when the newest one touched this
+ * file, its PARENT is the base that shows that turn's edits — picking the
+ * newest itself would hide them behind any later local edit (or diff the
+ * file against itself when there were none). When the last turn left the
+ * file alone, the newest checkpoint is the right base for showing local
+ * drift; when even that matches the buffer, checkpoints have nothing to
+ * show and the caller falls back to HEAD.
+ */
+export function reviewBaseFor(repoRoot: string, rel: string, buffer: string): ReviewBase {
+  const cps = listCheckpoints(repoRoot, 2)
+  if (!cps.length) return { ok: false }
+  const newest = fileAtCheckpoint(repoRoot, cps[0].sha, rel)
+  if (!newest.ok) return { ok: false }
+  if (cps.length > 1) {
+    const prev = fileAtCheckpoint(repoRoot, cps[1].sha, rel)
+    if (prev.ok && prev.content !== newest.content) {
+      return { ok: true, sha: cps[1].sha, content: prev.content }
+    }
+  }
+  if (newest.content !== buffer) return { ok: true, sha: cps[0].sha, content: newest.content }
+  return { ok: false }
 }
 
 /**
