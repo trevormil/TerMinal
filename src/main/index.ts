@@ -112,6 +112,7 @@ import {
   getRepoTicket,
   listLinearTeams,
   obsidianRepoVault,
+  commentOnRepoTicket,
   type NewTicketComment,
   readRepoTicketConfig,
   resolveHumanAuthor,
@@ -1626,9 +1627,23 @@ const bridgeDeps: BridgeDeps = {
         body: t.body || '',
         acceptance: t.acceptance,
         prs: t.prs,
+        comments: t.comments,
       }
     } catch {
       return null
+    }
+  },
+  // The phone's one ticket write: leave a note on a ticket an agent is
+  // working, without opening the Mac.
+  commentOnTicket: async (repoPath, slug, body) => {
+    try {
+      return await commentOnRepoTicket(repoPath, slug, {
+        author: await resolveHumanAuthor(repoPath),
+        kind: 'human',
+        body,
+      })
+    } catch {
+      return false
     }
   },
   workspacePr: async (repoPath, iid) => {

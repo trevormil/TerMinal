@@ -99,6 +99,13 @@ struct TicketDetailView: View {
     let repo: String
     let slug: String
 
+    @State private var draft = ""
+    @State private var posting = false
+    @State private var postError: String?
+    /// Bumped after a successful post so DetailLoader refetches and the new
+    /// entry appears without leaving the screen.
+    @State private var reloadToken = 0
+
     var body: some View {
         DetailLoader { try await client.ticket(repo: repo, slug: slug) } content: { t in
             VStack(alignment: .leading, spacing: 14) {
@@ -126,12 +133,79 @@ struct TicketDetailView: View {
                 }
                 sectionLabel("Body")
                 MarkdownText(raw: t.body.isEmpty ? "_No body._" : t.body)
+                logSection(t.comments ?? [])
             }
         }
+        .id(reloadToken)
         .navigationTitle(slug)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+}
+
+extension TicketDetailView {
+    /// The ticket's log, plus the one write the phone can make. Posting from
+    /// here is how you steer a run that is already working the ticket.
+    @ViewBuilder
+    fileprivate func logSection(_ comments: [WsTicketComment]) -> some View {
+        sectionLabel("Log")
+        if comments.isEmpty {
+            Text("No entries yet.").font(GT.sans(13)).foregroundStyle(GT.textFaint)
+        }
+        ForEach(comments) { c in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(c.author)
+                        .font(GT.sans(12, .semibold))
+                        .foregroundStyle(c.isAgent ? GT.accentLight : GT.textSoft)
+                    if c.isAgent { pill("agent", tint: GT.accent2) }
+                    if let via = c.via {
+                        Text(via).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                    }
+                    Spacer()
+                    Text(c.at.prefix(10)).font(GT.mono(10)).foregroundStyle(GT.textFaint)
+                }
+                MarkdownText(raw: c.body)
+            }
+            .padding(10)
+            .background(GT.panel, in: RoundedRectangle(cornerRadius: 8))
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Leave a note — agents working this ticket read it", text: $draft, axis: .vertical)
+                .font(GT.sans(13))
+                .foregroundStyle(GT.text)
+                .lineLimit(2...6)
+                .textFieldStyle(.plain)
+                .padding(10)
+                .background(GT.panel, in: RoundedRectangle(cornerRadius: 8))
+            if let postError {
+                Text(postError).font(GT.sans(12)).foregroundStyle(GT.red)
+            }
+            HStack {
+                Spacer()
+                Button(posting ? "Posting…" : "Comment") { post() }
+                    .font(GT.sans(13, .semibold))
+                    .disabled(posting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private func post() {
+        let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, !posting else { return }
+        posting = true
+        postError = nil
+        Task {
+            do {
+                try await client.commentOnTicket(repo: repo, slug: slug, body: body)
+                draft = ""
+                reloadToken += 1
+            } catch {
+                postError = error.localizedDescription
+            }
+            posting = false
+        }
     }
 }
 
