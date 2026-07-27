@@ -14,6 +14,8 @@ into `[Unreleased]` as they merge.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-27
+
 ### Added
 - Versioned releases: `bun run cut-release` (auto semver from conventional
   commits), a tag-triggered Release workflow publishing the DMG + checksums to
@@ -48,3 +50,4 @@ into `[Unreleased]` as they merge.
 
 Earlier history predates this file; see `git log` and the build stamp for the
 full record.
+
