@@ -112,4 +112,5 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 | Agent runtime | `src/main/agents.ts` is the heart; `runSpec` is the spawn entry |
 | Schedules | `src/main/schedules.ts` + `bin/terminal-cron` — keep state shapes in sync |
 | Per-(repo, agent) state | `.agents/scripts.md` in `project-template` — the canonical convention doc |
+| A ticket's comment log | `src/main/ticket-comments.ts` (the only parser) + [ADR-0012](./docs/decisions/0012-ticket-log-in-markdown.md); every writer appends, never parses |
 | Run records | `src/main/cron-runs.ts` (cron) + `agents.ts` (in-process) — `UnifiedRun` type bridges both for the Runs tab |
