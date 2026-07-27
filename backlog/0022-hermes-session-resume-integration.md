@@ -9,8 +9,7 @@ type: feature
 source: brainstorm
 created: 2026-07-09
 updated: 2026-07-10
-prs:
-  - "https://github.com/trevormil/TerMinal/pull/24"
+prs: []
 refs:
   - "Follow-up to the fix that stopped listSessions('hermes') from leaking Claude/Codex/Cursor sessions (returns [] for now)"
 depends_on: []

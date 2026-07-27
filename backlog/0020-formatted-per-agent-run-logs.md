@@ -9,8 +9,7 @@ type: feature
 source: brainstorm
 created: 2026-07-09
 updated: 2026-07-25
-prs:
-  - https://github.com/trevormil/TerMinal/pull/91
+prs: []
 refs: []
 depends_on: []
 acceptance:

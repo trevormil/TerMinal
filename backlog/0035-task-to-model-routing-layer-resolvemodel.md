@@ -1,16 +1,15 @@
 ---
 id: 35
 title: "Task→model routing layer: wire modelTier + modelPolicy into a resolveModel() seam"
-status: in-progress
+status: closed
 priority: medium
 horizon: next
 hitl: false
 type: feature
 source: manual
 created: 2026-07-20
-updated: 2026-07-20
-prs:
-  - https://github.com/trevormil/TerMinal/pull/116
+updated: 2026-07-26
+prs: []
 worked_by:
   - claude-fable-5
 refs:

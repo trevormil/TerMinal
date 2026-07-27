@@ -1,14 +1,14 @@
 ---
 id: 41
 title: "Phone-sent multi-line prompts: bracketed paste / newline handling in autoSubmit"
-status: done
+status: closed
 priority: low
 horizon: later
 hitl: false
 type: bug
 source: manual
 created: 2026-07-23
-updated: 2026-07-24
+updated: 2026-07-26
 prs: []
 refs:
   - src/renderer/src/components/Terminal.tsx
