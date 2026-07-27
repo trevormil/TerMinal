@@ -26,6 +26,7 @@ import { badgeClasses } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import { InlineMd } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
+import { relativeTime } from '../../lib/time'
 
 // Decide where clicking an activity row should take you. Priority:
 //   runId  → Runs tab + pre-select that run
@@ -88,12 +89,8 @@ const KIND_LABEL: Record<ActivityKind, string> = {
 }
 
 function reltime(ts: number): string {
-  const s = (Date.now() - ts) / 1000
-  if (s < 10) return 'just now'
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  // The feed ticks constantly; a 10s floor stops the newest row flickering.
+  return Date.now() - ts < 10_000 ? 'just now' : relativeTime(ts)
 }
 
 // Day bucket label for the timeline dividers (Today / Yesterday / weekday / date).

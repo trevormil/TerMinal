@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { logTimestamp, fullTimestamp } from './time'
+import { logTimestamp, fullTimestamp, relativeTime } from './time'
 
 // A fixed "now" so these never depend on when the suite runs.
 const NOW = new Date('2026-07-27T15:00:00.000Z').getTime()
@@ -61,5 +61,33 @@ describe('fullTimestamp', () => {
 
   test('falls back to the raw string when unparseable', () => {
     expect(fullTimestamp('nope')).toBe('nope')
+  })
+})
+
+describe('relativeTime', () => {
+  test('the ladder every tab was hand-rolling: s → m → h → d', () => {
+    expect(relativeTime(NOW - 5 * SEC, NOW)).toBe('5s ago')
+    expect(relativeTime(NOW - 59 * SEC, NOW)).toBe('59s ago')
+    expect(relativeTime(NOW - 1 * MIN, NOW)).toBe('1m ago')
+    expect(relativeTime(NOW - 59 * MIN, NOW)).toBe('59m ago')
+    expect(relativeTime(NOW - 1 * HOUR, NOW)).toBe('1h ago')
+    expect(relativeTime(NOW - 23 * HOUR, NOW)).toBe('23h ago')
+    expect(relativeTime(NOW - 1 * DAY, NOW)).toBe('1d ago')
+    expect(relativeTime(NOW - 400 * DAY, NOW)).toBe('400d ago')
+  })
+
+  test('boundaries floor rather than round, matching the copies it replaces', () => {
+    expect(relativeTime(NOW - 90 * SEC, NOW)).toBe('1m ago')
+    expect(relativeTime(NOW - 90 * MIN, NOW)).toBe('1h ago')
+    expect(relativeTime(NOW - 47 * HOUR, NOW)).toBe('1d ago')
+  })
+
+  test('now reads as 0s, not empty or negative', () => {
+    expect(relativeTime(NOW, NOW)).toBe('0s ago')
+  })
+
+  // Clock skew between a remote host and this Mac shouldn't render backwards.
+  test('a future timestamp clamps instead of going negative', () => {
+    expect(relativeTime(NOW + 5 * MIN, NOW)).toBe('0s ago')
   })
 })

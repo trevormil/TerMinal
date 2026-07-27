@@ -5,6 +5,7 @@ import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
+import { relativeTime } from '../../lib/time'
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -66,13 +67,7 @@ const SOURCE_TONE: Record<string, BadgeTone> = {
   manual: 'mute',
 }
 
-function reltime(ts: number): string {
-  const s = (Date.now() - ts) / 1000
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
+const reltime = relativeTime
 
 function cleanPath(path?: string): string {
   return (path || '').replace(/\/$/, '')

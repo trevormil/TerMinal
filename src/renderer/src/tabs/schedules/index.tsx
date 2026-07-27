@@ -38,6 +38,7 @@ import type {
   Engine,
 } from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
+import { relativeTime } from '../../lib/time'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const FIELD =
@@ -62,12 +63,7 @@ function fmtDuration(ms: number): string {
   return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`
 }
 function reltime(ts?: number): string {
-  if (!ts) return ''
-  const s = (Date.now() - ts) / 1000
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  return ts ? relativeTime(ts) : ''
 }
 function untilFire(ts?: number | null): string {
   if (!ts) return ''

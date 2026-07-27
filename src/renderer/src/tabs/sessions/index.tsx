@@ -8,6 +8,8 @@ import type { Tab, TabContext, ProjectSession } from '../../lib/types'
 
 const STATUSES = ['active', 'closed', 'abandoned']
 
+// NOT relativeTime: a session has no seconds tier — it starts at minutes,
+// since "an active session 40s old" is noise at this granularity.
 function reldate(iso: string): string {
   if (!iso) return ''
   const t = Date.parse(iso)

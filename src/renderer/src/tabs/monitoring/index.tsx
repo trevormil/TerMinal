@@ -15,6 +15,7 @@ import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { SkillHint } from '../../components/SkillHint'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
+import { relativeTime } from '../../lib/time'
 import type {
   Tab,
   TabContext,
@@ -88,13 +89,7 @@ function healthColor(health: string): string {
   return '#52525b'
 }
 function reltime(ms?: number): string {
-  if (!ms) return 'never'
-  const s = (Date.now() - ms) / 1000
-  if (s < 0) return 'just now'
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  return ms ? relativeTime(ms) : 'never'
 }
 function isStale(m: MonitorWithState): boolean {
   if (!m.state?.lastCheckedAt) return false

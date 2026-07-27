@@ -48,3 +48,21 @@ export function fullTimestamp(iso: string): string {
     timeStyle: 'short',
   })
 }
+
+/**
+ * The compact `5s / 12m / 3h / 2d ago` ladder, shared by every tab that shows
+ * a "last seen" stamp. Deliberately has **no** empty/missing-input handling:
+ * each call site means something different by "no timestamp" ('', 'never',
+ * 'unknown'), so that stays at the call site and only the ladder is shared.
+ *
+ * For the ticket log — which switches to absolute dates once entries age —
+ * see `logTimestamp`.
+ */
+export function relativeTime(ms: number, now: number = Date.now()): string {
+  // Clamp: a remote host's clock running ahead shouldn't render backwards.
+  const s = Math.max(0, (now - ms) / 1000)
+  if (s < 60) return `${Math.floor(s)}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
