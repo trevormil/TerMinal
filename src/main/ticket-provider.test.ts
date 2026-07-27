@@ -392,7 +392,9 @@ describe('provider comment mapping', () => {
   })
 
   test('an issue with no comments field yields an empty log, not undefined', () => {
-    expect(githubIssueToTicket({ number: 1, title: 'x', state: 'OPEN', labels: [] }).comments).toEqual([])
+    expect(
+      githubIssueToTicket({ number: 1, title: 'x', state: 'OPEN', labels: [] }).comments,
+    ).toEqual([])
     expect(linearIssueToTicket({ id: 'TRE-5', title: 'x' }).comments).toEqual([])
   })
 
@@ -400,7 +402,9 @@ describe('provider comment mapping', () => {
     const t = linearIssueToTicket({
       id: 'TRE-5',
       title: 'x',
-      comments: [{ user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' }],
+      comments: [
+        { user: { name: 'Trevor' }, body: 'linear note', createdAt: '2026-06-07T20:41:17.329Z' },
+      ],
     })
     expect(t.comments).toEqual([
       { at: '2026-06-07T20:41:17.329Z', author: 'Trevor', kind: 'human', body: 'linear note' },
@@ -440,9 +444,16 @@ describe('commentOnRepoTicket', () => {
         body: 'b',
       })
       expect(
-        await commentOnRepoTicket(repo, t.slug, { author: 'docs', kind: 'agent', via: 'codex/gpt-5', body: 'from a run' }),
+        await commentOnRepoTicket(repo, t.slug, {
+          author: 'docs',
+          kind: 'agent',
+          via: 'codex/gpt-5',
+          body: 'from a run',
+        }),
       ).toBe(true)
-      expect(readFileSync(join(vault, 'tickets', `${t.slug}.md`), 'utf8')).toContain('agent:docs (codex/gpt-5)')
+      expect(readFileSync(join(vault, 'tickets', `${t.slug}.md`), 'utf8')).toContain(
+        'agent:docs (codex/gpt-5)',
+      )
       const got = await getRepoTicket(repo, t.slug)
       expect(got?.comments.map((c) => c.body)).toEqual(['from a run'])
       expect(got?.body).toBe('b')

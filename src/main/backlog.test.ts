@@ -392,7 +392,13 @@ describe('baseDir override (Obsidian vault)', () => {
 
 describe('ticket comments', () => {
   let root: string
-  const New = { title: 'Commented', type: 'feature', priority: 'medium', status: 'open', body: 'Prose.' }
+  const New = {
+    title: 'Commented',
+    type: 'feature',
+    priority: 'medium',
+    status: 'open',
+    body: 'Prose.',
+  }
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'gt-comments-'))
@@ -408,8 +414,17 @@ describe('ticket comments', () => {
 
   test('appended comments read back in order, and body excludes the log', () => {
     const t = createTicket(root, New)
-    expect(appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'first' })).toBe(true)
-    expect(appendTicketComment(root, t.slug, { author: 'docs', kind: 'agent', via: 'codex/gpt-5', body: 'second' })).toBe(true)
+    expect(
+      appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'first' }),
+    ).toBe(true)
+    expect(
+      appendTicketComment(root, t.slug, {
+        author: 'docs',
+        kind: 'agent',
+        via: 'codex/gpt-5',
+        body: 'second',
+      }),
+    ).toBe(true)
 
     const got = getTicket(root, t.slug)!
     expect(got.comments.map((c) => c.body)).toEqual(['first', 'second'])
@@ -433,7 +448,10 @@ describe('ticket comments', () => {
     const t = createTicket(root, { ...New, priority: 'high' })
     writeFileSync(
       join(root, 'backlog', `${t.slug}.md`),
-      readFileSync(join(root, 'backlog', `${t.slug}.md`), 'utf8').replace(/^updated: .*$/m, 'updated: 2020-01-01'),
+      readFileSync(join(root, 'backlog', `${t.slug}.md`), 'utf8').replace(
+        /^updated: .*$/m,
+        'updated: 2020-01-01',
+      ),
     )
     appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: 'x' })
 
@@ -444,12 +462,16 @@ describe('ticket comments', () => {
   })
 
   test('commenting on a missing ticket is a no-op, not a crash', () => {
-    expect(appendTicketComment(root, '9999-nope', { author: 'trevor', kind: 'human', body: 'x' })).toBe(false)
+    expect(
+      appendTicketComment(root, '9999-nope', { author: 'trevor', kind: 'human', body: 'x' }),
+    ).toBe(false)
   })
 
   test('an empty comment body is rejected rather than written', () => {
     const t = createTicket(root, New)
-    expect(appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: '   ' })).toBe(false)
+    expect(
+      appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: '   ' }),
+    ).toBe(false)
     expect(getTicket(root, t.slug)?.comments).toEqual([])
   })
 })

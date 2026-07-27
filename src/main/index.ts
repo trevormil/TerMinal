@@ -112,7 +112,9 @@ import {
   getRepoTicket,
   listLinearTeams,
   obsidianRepoVault,
+  type NewTicketComment,
   readRepoTicketConfig,
+  resolveHumanAuthor,
   saveRepoTicketConfig,
   scaffoldObsidianVault,
   obsidianRepoDeepLink,
@@ -3128,6 +3130,37 @@ ipcMain.handle('tickets:update', async (_e, slug: string, patch: TicketPatch) =>
   }
   return ok
 })
+ipcMain.handle(
+  'tickets:comment',
+  async (_e, slug: string, input: Partial<NewTicketComment> & { body: string }) => {
+    const daemon = activeDaemon()
+    // The UI never asks who you are — a human comment is signed with the repo's
+    // git identity so the log matches the commits and PRs beside it.
+    const kind = input.kind === 'agent' ? 'agent' : 'human'
+    const comment: NewTicketComment = {
+      ...input,
+      kind,
+      author:
+        input.author?.trim() ||
+        (kind === 'agent'
+          ? 'agent'
+          : await resolveHumanAuthor(daemon.kind === 'local' ? daemon.repoRoot() : process.cwd())),
+    }
+    const ok = await daemon.ticketComment(slug, comment)
+    if (!ok) return false
+    const t = await daemon.ticketGet(slug)
+    emitActivity({
+      kind: 'info',
+      title: `Ticket comment · #${t?.id ?? slug}`,
+      detail: `${comment.author}: ${comment.body.trim().slice(0, 120)}`,
+      repo: daemon.repoLabel(),
+      repoRoot: daemon.kind === 'local' ? daemon.repoRoot() : '',
+      sessionId: cur().sessionId,
+      ref: t?.id ? { ticket: t.id } : undefined,
+    })
+    return true
+  },
+)
 ipcMain.handle('skills:list', () => activeDaemon().skillsList())
 ipcMain.handle('mrs:list', () => {
   return activeDaemon().mrsList()

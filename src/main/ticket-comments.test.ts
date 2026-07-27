@@ -1,5 +1,10 @@
 import { test, expect, describe } from 'bun:test'
-import { splitTicketBody, renderTicketLog, appendComment, type TicketComment } from './ticket-comments'
+import {
+  splitTicketBody,
+  renderTicketLog,
+  appendComment,
+  type TicketComment,
+} from './ticket-comments'
 
 const human = (at: string, body: string): TicketComment => ({
   at,
@@ -17,7 +22,15 @@ describe('splitTicketBody', () => {
 
   test('parses a human comment', () => {
     const { prose, comments } = splitTicketBody(
-      ['Prose here.', '', '## Log', '', '### 2026-07-27T14:02:11.000Z · trevor', 'Punting retries.', ''].join('\n'),
+      [
+        'Prose here.',
+        '',
+        '## Log',
+        '',
+        '### 2026-07-27T14:02:11.000Z · trevor',
+        'Punting retries.',
+        '',
+      ].join('\n'),
     )
     expect(prose).toBe('Prose here.')
     expect(comments).toEqual([
@@ -27,9 +40,13 @@ describe('splitTicketBody', () => {
 
   test('parses an agent comment with its engine/model', () => {
     const { comments } = splitTicketBody(
-      ['## Log', '', '### 2026-07-27T15:40:03.000Z · agent:pr-creation (codex/gpt-5)', 'Acceptance #2 fails.', ''].join(
-        '\n',
-      ),
+      [
+        '## Log',
+        '',
+        '### 2026-07-27T15:40:03.000Z · agent:pr-creation (codex/gpt-5)',
+        'Acceptance #2 fails.',
+        '',
+      ].join('\n'),
     )
     expect(comments).toEqual([
       {
@@ -67,9 +84,16 @@ describe('splitTicketBody', () => {
   // that happens to contain an h3 would silently split one comment into two.
   test('an h3 inside a comment body is not a delimiter', () => {
     const { comments } = splitTicketBody(
-      ['## Log', '', '### 2026-07-01T00:00:00.000Z · trevor', 'Findings:', '', '### Root cause', 'it was DNS', ''].join(
-        '\n',
-      ),
+      [
+        '## Log',
+        '',
+        '### 2026-07-01T00:00:00.000Z · trevor',
+        'Findings:',
+        '',
+        '### Root cause',
+        'it was DNS',
+        '',
+      ].join('\n'),
     )
     expect(comments.length).toBe(1)
     expect(comments[0].body).toBe('Findings:\n\n### Root cause\nit was DNS')
@@ -143,7 +167,13 @@ describe('renderTicketLog', () => {
   test('renders a header line per comment', () => {
     const out = renderTicketLog([
       human('2026-07-01T00:00:00.000Z', 'a'),
-      { at: '2026-07-02T00:00:00.000Z', author: 'docs', kind: 'agent', via: 'claude/opus', body: 'b' },
+      {
+        at: '2026-07-02T00:00:00.000Z',
+        author: 'docs',
+        kind: 'agent',
+        via: 'claude/opus',
+        body: 'b',
+      },
     ])
     expect(out).toContain('### 2026-07-01T00:00:00.000Z · trevor')
     expect(out).toContain('### 2026-07-02T00:00:00.000Z · agent:docs (claude/opus)')

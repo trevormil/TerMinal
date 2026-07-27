@@ -851,6 +851,20 @@ export async function updateRepoTicket(
   return updateLocalTicket(repoRoot, slug, patch)
 }
 
+/** Who a comment typed in the UI is attributed to. Git identity first — it is
+ *  what the rest of the ticket's history (commits, PRs) is already signed with
+ *  — then the OS user, so the log never falls back to a generic placeholder. */
+export async function resolveHumanAuthor(repoRoot: string): Promise<string> {
+  try {
+    const r = await runCli('git', ['config', 'user.name'], repoRoot, { timeout: 3_000 })
+    const name = (r.stdout || '').trim()
+    if (name) return name
+  } catch {
+    /* fall through to the OS user */
+  }
+  return (process.env.USER || process.env.LOGNAME || 'you').trim()
+}
+
 /**
  * Append a comment to a ticket's log, wherever that ticket actually lives.
  * Local/Obsidian tickets get a `## Log` entry in their markdown; GitHub and

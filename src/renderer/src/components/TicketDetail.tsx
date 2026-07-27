@@ -8,6 +8,8 @@ import {
   ListChecks,
   Check,
   X,
+  MessageSquare,
+  Bot,
 } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
@@ -21,7 +23,14 @@ import {
   testTone,
 } from '../lib/badges'
 import type { BadgeTone } from './ui'
-import type { Ticket, TicketAgent, TicketAgentRecommendation, Mr, Persona } from '../lib/types'
+import type {
+  Ticket,
+  TicketAgent,
+  TicketAgentRecommendation,
+  TicketComment,
+  Mr,
+  Persona,
+} from '../lib/types'
 
 // A ticket's `prs:` entries are forge URLs (…/-/merge_requests/N or …/pull/N).
 // Parse the change number so we can link to the in-app MR view instead of
@@ -178,6 +187,111 @@ function AcceptanceSection({
       )}
     </div>
   )
+}
+
+// A ticket's comment log. Not a collaboration feature — it is the durable
+// per-ticket context that survives between agent runs, so entries written by an
+// agent are marked as such and carry the engine/model that wrote them.
+function LogSection({
+  comments,
+  slug,
+  onSaved,
+}: {
+  comments: TicketComment[]
+  slug: string
+  onSaved: () => void
+}) {
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const post = async () => {
+    const body = draft.trim()
+    if (!body || saving) return
+    setSaving(true)
+    try {
+      if (await window.gt.tickets.comment(slug, { body })) {
+        setDraft('')
+        onSaved()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-5 border-t border-[var(--gt-border)] pt-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
+        <MessageSquare size={12} strokeWidth={2} /> Log
+        {comments.length > 0 && (
+          <span className="tabular-nums text-zinc-600">{comments.length}</span>
+        )}
+      </div>
+      {comments.length > 0 && (
+        <div className="mb-3 space-y-3">
+          {comments.map((c, i) => (
+            <div
+              key={`${c.at}:${i}`}
+              className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5"
+            >
+              <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                {c.kind === 'agent' ? (
+                  <Badge tone="accent">
+                    <Bot size={10} strokeWidth={2.25} />
+                    {c.author}
+                  </Badge>
+                ) : (
+                  <span className="font-semibold text-zinc-300">{c.author}</span>
+                )}
+                {c.via && <span className="font-mono text-[10px] text-zinc-600">{c.via}</span>}
+                <span className="ml-auto text-[10px] text-zinc-600" title={c.at}>
+                  {relativeTime(c.at)}
+                </span>
+              </div>
+              <Markdown>{c.body}</Markdown>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void post()
+        }}
+        rows={2}
+        placeholder="Leave a note on this ticket — agents working it will read this. ⌘↵ to post."
+        className="w-full resize-y rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+      />
+      <div className="mt-1.5 flex justify-end">
+        <button
+          onClick={post}
+          disabled={!draft.trim() || saving}
+          className="rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20 disabled:opacity-40"
+        >
+          {saving ? 'Posting…' : 'Comment'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Compact "3h ago" for the log. Falls back to the raw stamp if unparseable —
+ *  a remote or hand-edited entry should still render something readable. */
+function relativeTime(iso: string): string {
+  const then = Date.parse(iso)
+  if (!Number.isFinite(then)) return iso
+  const secs = Math.max(0, (Date.now() - then) / 1000)
+  const units: [number, string][] = [
+    [60, 's'],
+    [3600, 'm'],
+    [86400, 'h'],
+    [604800, 'd'],
+  ]
+  if (secs < 60) return 'just now'
+  for (let i = 1; i < units.length; i++) {
+    if (secs < units[i][0]) return `${Math.floor(secs / units[i - 1][0])}${units[i][1]} ago`
+  }
+  return `${Math.floor(secs / 604800)}w ago`
 }
 
 /**
@@ -446,6 +560,7 @@ export function TicketDetail({
       {/* Run detail lives in the Runs view (via "View run" above) — the
           ticket view stays purely ticket content. */}
       <Markdown>{selected.body}</Markdown>
+      <LogSection comments={selected.comments || []} slug={selected.slug} onSaved={onChanged} />
     </div>
   )
 }

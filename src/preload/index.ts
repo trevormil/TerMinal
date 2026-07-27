@@ -340,6 +340,8 @@ const gt = {
     create: (input: unknown) => ipcRenderer.invoke('tickets:create', input),
     recommendAgent: (input: unknown) => ipcRenderer.invoke('tickets:recommend-agent', input),
     update: (slug: string, patch: unknown) => ipcRenderer.invoke('tickets:update', slug, patch),
+    comment: (slug: string, comment: unknown) =>
+      ipcRenderer.invoke('tickets:comment', slug, comment),
     spawn: (text: string, engine: string, model?: string, remote?: unknown) =>
       ipcRenderer.invoke('tickets:spawn', text, engine, model, remote),
   },

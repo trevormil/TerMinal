@@ -363,7 +363,10 @@ export type Ticket = {
   workedBy: string[]
   agent: TicketAgent
   run?: TicketRunLink
+  /** Prose only — the `## Log` section is split out into `comments`. */
   body: string
+  /** Timestamped log, oldest first. Remote workspaces may omit it. */
+  comments?: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
   externalId?: string
@@ -371,6 +374,25 @@ export type Ticket = {
   url?: string
 }
 export type TicketAgent = { id: string; scope: 'repo' | 'global'; kind: 'classic' | 'persistent' }
+/** Mirrors TicketComment in src/main/ticket-comments.ts. */
+export type TicketComment = {
+  /** ISO-8601 UTC. */
+  at: string
+  /** Human username, or the agent id when `kind` is 'agent'. */
+  author: string
+  kind: 'human' | 'agent'
+  /** engine/model behind an agent comment, e.g. `codex/gpt-5`. */
+  via?: string
+  body: string
+}
+/** A comment as the renderer submits it. `at` is stamped in main, and `author`
+ *  defaults to the repo's git identity, so the UI only has to send a body. */
+export type NewTicketComment = {
+  body: string
+  author?: string
+  kind?: 'human' | 'agent'
+  via?: string
+}
 export type TicketAgentRecommendation = {
   agent: TicketAgent
   reason: string
@@ -1927,6 +1949,7 @@ export type GtApi = {
         modelTier?: ModelTier
       },
     ) => Promise<boolean>
+    comment: (slug: string, comment: NewTicketComment) => Promise<boolean>
     spawn: (
       text: string,
       engine: Engine,

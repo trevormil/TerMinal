@@ -239,3 +239,96 @@ describe('REMOTE_SCRIPT stale-run sweep', () => {
     }
   })
 })
+
+describe('REMOTE_SCRIPT tickets.comment', () => {
+  const seed = (dir: string, slug: string, body: string) => {
+    const backlog = join(dir, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, `${slug}.md`),
+      [
+        '---',
+        'id: 1',
+        'title: "Test"',
+        'status: open',
+        'priority: medium',
+        'updated: 2020-01-01',
+        '---',
+        '',
+        body,
+      ].join('\n'),
+    )
+    return join(backlog, `${slug}.md`)
+  }
+
+  test('appends a comment that the remote reader parses back out of the body', () => {
+    const dir = mkRepo()
+    try {
+      const slug = '0001-test'
+      seed(dir, slug, 'prose body')
+      expect(
+        runRemoteScript(
+          {
+            op: 'tickets.comment',
+            slug,
+            comment: { author: 'trevor', kind: 'human', body: 'first note' },
+          },
+          { cwd: dir },
+        ).trim(),
+      ).toBe('true')
+
+      const got = JSON.parse(runRemoteScript({ op: 'tickets.get', slug }, { cwd: dir }))
+      expect(got.comments.map((c: any) => c.body)).toEqual(['first note'])
+      expect(got.comments[0].author).toBe('trevor')
+      // The log must not bleed into the prose body agents are prompted with.
+      expect(got.body.trim()).toBe('prose body')
+      expect(got.updated).not.toBe('2020-01-01')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a second comment appends rather than replacing, and agent authors round-trip', () => {
+    const dir = mkRepo()
+    try {
+      const slug = '0001-test'
+      seed(dir, slug, 'prose body')
+      runRemoteScript(
+        { op: 'tickets.comment', slug, comment: { author: 'trevor', kind: 'human', body: 'one' } },
+        { cwd: dir },
+      )
+      runRemoteScript(
+        {
+          op: 'tickets.comment',
+          slug,
+          comment: { author: 'docs', kind: 'agent', via: 'codex/gpt-5', body: 'two' },
+        },
+        { cwd: dir },
+      )
+      const got = JSON.parse(runRemoteScript({ op: 'tickets.get', slug }, { cwd: dir }))
+      expect(got.comments.map((c: any) => c.body)).toEqual(['one', 'two'])
+      expect(got.comments[1]).toMatchObject({ author: 'docs', kind: 'agent', via: 'codex/gpt-5' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('a missing ticket returns false instead of throwing', () => {
+    const dir = mkRepo()
+    try {
+      mkdirSync(join(dir, '.TerMinal', 'backlog'), { recursive: true })
+      expect(
+        runRemoteScript(
+          {
+            op: 'tickets.comment',
+            slug: '9999-nope',
+            comment: { author: 'trevor', kind: 'human', body: 'x' },
+          },
+          { cwd: dir },
+        ).trim(),
+      ).toBe('false')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
