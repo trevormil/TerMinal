@@ -15,6 +15,7 @@ import {
   postMessage,
   readMessages,
   readRemoteSession,
+  __remoteLogStats,
   registerRemoteSession,
   takeReplies,
 } from './remote-sessions'
@@ -126,6 +127,57 @@ describe('messages', () => {
     postMessage(s.id, 'agent', 'one', [], dir)
     writeFileSync(join(dir, `${s.id}.jsonl`), readMessagesRaw(dir, s.id) + '{"at":1,"fr')
     expect(readMessages(s.id, {}, dir).map((m) => m.text)).toEqual(['one'])
+  })
+
+  it('picks up the completed line once the torn tail finishes writing', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    postMessage(s.id, 'agent', 'one', [], dir)
+    const settled = readMessagesRaw(dir, s.id)
+    writeFileSync(join(dir, `${s.id}.jsonl`), settled + '{"at":1,"fr')
+    expect(readMessages(s.id, {}, dir).map((m) => m.text)).toEqual(['one'])
+    writeFileSync(join(dir, `${s.id}.jsonl`), settled + '{"at":1,"from":"agent","text":"two"}\n')
+    expect(readMessages(s.id, {}, dir).map((m) => m.text)).toEqual(['one', 'two'])
+  })
+
+  it('does not re-parse the whole log on every poll', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    for (let i = 0; i < 50; i++) postMessage(s.id, 'agent', `m${i}`, [], dir)
+    readMessages(s.id, {}, dir)
+
+    // A no-change poll parses nothing.
+    let before = __remoteLogStats.linesParsed
+    expect(readMessages(s.id, { after: 49 }, dir).map((m) => m.text)).toEqual(['m49'])
+    expect(__remoteLogStats.linesParsed - before).toBe(0)
+
+    // One new message costs one parsed line, not fifty-one.
+    postMessage(s.id, 'agent', 'fresh', [], dir)
+    before = __remoteLogStats.linesParsed
+    expect(readMessages(s.id, { after: 50 }, dir).map((m) => m.text)).toEqual(['fresh'])
+    expect(__remoteLogStats.linesParsed - before).toBe(1)
+  })
+
+  it('re-parses from scratch when the log shrinks (rewritten, not appended)', () => {
+    const dir = tmp()
+    const s = registerRemoteSession({ title: 'x' }, dir)
+    postMessage(s.id, 'agent', 'one', [], dir)
+    postMessage(s.id, 'agent', 'two', [], dir)
+    readMessages(s.id, {}, dir)
+    writeFileSync(join(dir, `${s.id}.jsonl`), '{"at":1,"from":"agent","text":"only"}\n')
+    expect(readMessages(s.id, {}, dir).map((m) => m.text)).toEqual(['only'])
+  })
+
+  it('forgets its parse position when the session is deleted', () => {
+    const dir = tmp()
+    registerRemoteSession({ id: 'reborn', title: 'x' }, dir)
+    postMessage('reborn', 'agent', 'old-one', [], dir)
+    postMessage('reborn', 'agent', 'old-two', [], dir)
+    readMessages('reborn', {}, dir)
+    deleteRemoteSession('reborn', dir)
+    registerRemoteSession({ id: 'reborn', title: 'again' }, dir)
+    postMessage('reborn', 'agent', 'fresh', [], dir)
+    expect(readMessages('reborn', {}, dir).map((m) => m.text)).toEqual(['fresh'])
   })
 })
 

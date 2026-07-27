@@ -26,8 +26,12 @@ enum BridgeError: LocalizedError, Equatable {
 
 /// Talks to one paired Mac. Every request carries the bearer token and every
 /// connection is pinned to the certificate from the pairing code.
-final class BridgeClient {
-    let pairing: PairingPayload
+///
+/// An actor: the cached `host` is read and written by many concurrent tasks
+/// (tab polls, the thread poll, image loads), so isolation makes those races
+/// impossible instead of merely unobserved.
+actor BridgeClient {
+    nonisolated let pairing: PairingPayload
     private let session: URLSession
     private let delegate: PinnedSessionDelegate
 

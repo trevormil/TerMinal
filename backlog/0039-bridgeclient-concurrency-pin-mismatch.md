@@ -1,15 +1,16 @@
 ---
 id: 39
 title: "Harden BridgeClient concurrency + surface pin-mismatch errors distinctly"
-status: backlog
+status: in-progress
 priority: low
 horizon: later
 hitl: false
 type: refactor
 source: manual
 created: 2026-07-23
-updated: 2026-07-23
-prs: []
+updated: 2026-07-26
+prs:
+  - https://github.com/trevormil/TerMinal/pull/150
 refs:
   - ios/TerMinalRemote/Networking/BridgeClient.swift
 depends_on: [34]
