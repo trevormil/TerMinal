@@ -341,3 +341,54 @@ describe('comment_ticket', () => {
     expect(readFileSync(path, 'utf8')).not.toContain('## Log')
   })
 })
+
+describe('update_ticket relations', () => {
+  const seed = (dir: string) => {
+    mkdirSync(dir, { recursive: true })
+    const p = join(dir, '0001-seed.md')
+    writeFileSync(
+      p,
+      ['---', 'id: 1', 'title: "Seed"', 'status: open', '---', '', 'prose'].join('\n'),
+    )
+    return p
+  }
+
+  // get_ticket spreads raw frontmatter (the tool's existing contract), so the
+  // written file is the thing to assert on. The desktop's own reader coerces
+  // these to numbers — covered in backlog.test.ts.
+  test('sets related and duplicate_of in the ticket frontmatter', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    const [res] = callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', related: [2, 3], duplicateOf: 4 } },
+    ])
+    expect(res.error).toBeUndefined()
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^related: \[2, 3\]$/m)
+    expect(md).toMatch(/^duplicate_of: 4$/m)
+  })
+
+  test('duplicateOf 0 clears the link rather than writing a bogus id', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', duplicateOf: 4 } },
+      { name: 'update_ticket', arguments: { slug: '0001-seed', duplicateOf: 0 } },
+    ])
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^duplicate_of:\s*$/m)
+    expect(md).not.toMatch(/^duplicate_of: 4$/m)
+  })
+
+  test('an update that mentions neither relation leaves both untouched', () => {
+    const { home, repo } = setup()
+    const path = seed(join(repo, '.TerMinal', 'backlog'))
+    callTools(home, [
+      { name: 'update_ticket', arguments: { slug: '0001-seed', related: [9] } },
+      { name: 'update_ticket', arguments: { slug: '0001-seed', status: 'in-progress' } },
+    ])
+    const md = readFileSync(path, 'utf8')
+    expect(md).toMatch(/^related: \[9\]$/m)
+    expect(md).toMatch(/^status: in-progress$/m)
+  })
+})

@@ -10,6 +10,8 @@ import {
   recommendTicketAgent,
   updateTicket,
   appendTicketComment,
+  ticketBlocks,
+  type Ticket,
 } from './backlog'
 
 const ticketMd = (id: number, title: string) =>
@@ -473,5 +475,84 @@ describe('ticket comments', () => {
       appendTicketComment(root, t.slug, { author: 'trevor', kind: 'human', body: '   ' }),
     ).toBe(false)
     expect(getTicket(root, t.slug)?.comments).toEqual([])
+  })
+})
+
+describe('ticket relations', () => {
+  let root: string
+  const New = { title: 'R', type: 'feature', priority: 'medium', status: 'open', body: 'b' }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gt-relations-'))
+    mkdirSync(join(root, 'backlog'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const write = (name: string, fm: string) =>
+    writeFileSync(join(root, 'backlog', name), `---\n${fm}\n---\n\nbody\n`)
+
+  test('related and duplicate_of parse off frontmatter', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nrelated: [2, 3]\nduplicate_of: 4')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([2, 3])
+    expect(t.duplicateOf).toBe(4)
+  })
+
+  test('a ticket without relation frontmatter gets empty defaults, not undefined', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([])
+    expect(t.duplicateOf).toBeUndefined()
+  })
+
+  test('ids given as quoted strings still parse as numbers', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nrelated: ["0002"]\nduplicate_of: "0003"')
+    const t = getTicket(root, '0001-a')!
+    expect(t.related).toEqual([2])
+    expect(t.duplicateOf).toBe(3)
+  })
+
+  test('a self-referential duplicate_of is dropped rather than rendering a loop', () => {
+    write('0001-a.md', 'id: 1\ntitle: "A"\nduplicate_of: 1\nrelated: [1, 2]')
+    const t = getTicket(root, '0001-a')!
+    expect(t.duplicateOf).toBeUndefined()
+    expect(t.related).toEqual([2])
+  })
+
+  test('created tickets round-trip relation patches', () => {
+    const t = createTicket(root, New)
+    expect(t.related).toEqual([])
+    expect(updateTicket(root, t.slug, { related: [7, 9], duplicateOf: 3 })).toBe(true)
+    const got = getTicket(root, t.slug)!
+    expect(got.related).toEqual([7, 9])
+    expect(got.duplicateOf).toBe(3)
+  })
+
+  test('clearing relations writes empty, not a stale value', () => {
+    const t = createTicket(root, New)
+    updateTicket(root, t.slug, { related: [7], duplicateOf: 3 })
+    expect(updateTicket(root, t.slug, { related: [], duplicateOf: 0 })).toBe(true)
+    const got = getTicket(root, t.slug)!
+    expect(got.related).toEqual([])
+    expect(got.duplicateOf).toBeUndefined()
+  })
+})
+
+describe('blockedBy / blocks derivation', () => {
+  test('blocks is the reverse of depends_on across the set', () => {
+    const tickets = [
+      { id: 1, depends_on: [] },
+      { id: 2, depends_on: [1] },
+      { id: 3, depends_on: [1, 2] },
+    ] as Ticket[]
+    expect(ticketBlocks(tickets, 1)).toEqual([2, 3])
+    expect(ticketBlocks(tickets, 2)).toEqual([3])
+    expect(ticketBlocks(tickets, 3)).toEqual([])
+  })
+
+  test('a dangling depends_on id does not invent a blocker', () => {
+    const tickets = [{ id: 2, depends_on: [99] }] as Ticket[]
+    expect(ticketBlocks(tickets, 99)).toEqual([2])
+    expect(ticketBlocks(tickets, 2)).toEqual([])
   })
 })

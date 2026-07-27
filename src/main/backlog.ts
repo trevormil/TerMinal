@@ -29,6 +29,10 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[] // ticket ids this one is blocked by (parsed from frontmatter)
+  /** Ticket ids this one is merely related to — no ordering implied. */
+  related: number[]
+  /** The canonical ticket this one duplicates, when it is a duplicate. */
+  duplicateOf?: number
   /** Strict, checkable criteria defining a correct/best implementation.
    *  Optional in general; REQUIRED when the implementer runs >1 lane, since
    *  lanes are gated and ranked against these. See docs: lanes workflow. */
@@ -74,6 +78,9 @@ export type TicketPatch = {
   status?: string
   priority?: string
   acceptance?: string[]
+  related?: number[]
+  /** 0 (or any non-positive id) clears the duplicate link. */
+  duplicateOf?: number
   /** Replaces the `prs:` list wholesale. Callers that mean "add a PR" must
    *  read the ticket and merge first — see `linkTicketPr`. */
   prs?: string[]
@@ -132,6 +139,10 @@ function toTicket(slug: string, md: string): Ticket {
     prs: arr(fm.prs),
     refs: arr(fm.refs),
     depends_on: depsArr(fm.depends_on),
+    // Relations never point at the ticket itself — a self-reference is a typo
+    // that would otherwise render as a link back to the page you are on.
+    related: depsArr(fm.related).filter((r) => r !== (Number(fm.id) || 0)),
+    duplicateOf: depsArr([fm.duplicate_of]).find((d) => d !== (Number(fm.id) || 0)),
     acceptance: arr(fm.acceptance),
     modelTier: str(fm.model_tier) || 'auto',
     workedBy: Array.isArray(fm.worked_by)
@@ -411,6 +422,9 @@ export function updateTicket(
   // (expensive) policy slot while the file claimed otherwise.
   if (patch.modelTier) setField('model_tier', normalizeModelTier(patch.modelTier))
   if (patch.acceptance) setListField('acceptance', patch.acceptance)
+  if (patch.related) setField('related', `[${patch.related.join(', ')}]`)
+  if (patch.duplicateOf !== undefined)
+    setField('duplicate_of', patch.duplicateOf > 0 ? String(patch.duplicateOf) : '')
   if (patch.prs) setListField('prs', patch.prs)
   if (patch.agent) {
     const current = toTicket(safe, md)
@@ -510,6 +524,8 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     prs: [],
     refs: [],
     depends_on: [],
+    related: [],
+    duplicateOf: undefined,
     acceptance: input.acceptance || [],
     modelTier: normalizeModelTier(input.modelTier),
     workedBy: [],
@@ -534,6 +550,7 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
     `prs: []`,
     `refs: []`,
     `depends_on: []`,
+    `related: []`,
     fmList('acceptance', t.acceptance),
     `model_tier: ${t.modelTier}`,
     `worked_by: []`,
@@ -547,4 +564,13 @@ export function createTicket(repoRoot: string, input: NewTicket, baseDir?: strin
   ].join('\n')
   writeFileSync(join(dir, `${slug}.md`), fm)
   return t
+}
+
+/** Which tickets a given id blocks — the reverse of `depends_on`, derived from
+ *  the set rather than stored, so the two directions can never drift apart. */
+export function ticketBlocks(tickets: Ticket[], id: number): number[] {
+  return tickets
+    .filter((t) => t.depends_on.includes(id))
+    .map((t) => t.id)
+    .sort((a, b) => a - b)
 }

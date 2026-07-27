@@ -354,6 +354,10 @@ export type Ticket = {
   prs: string[]
   refs: string[]
   depends_on: number[]
+  /** Ticket ids this one is merely related to — no ordering implied. */
+  related?: number[]
+  /** The canonical ticket this one duplicates. */
+  duplicateOf?: number
   /** Strict, checkable criteria for a correct/best implementation. Required
    *  when running >1 lane (lanes are gated + ranked against these). */
   acceptance: string[]
@@ -1944,6 +1948,8 @@ export type GtApi = {
         status?: string
         priority?: string
         acceptance?: string[]
+        related?: number[]
+        duplicateOf?: number
         agent?: Partial<TicketAgent>
         run?: Partial<TicketRunLink>
         modelTier?: ModelTier

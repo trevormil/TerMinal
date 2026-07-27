@@ -189,6 +189,43 @@ function AcceptanceSection({
   )
 }
 
+// One row of ticket-to-ticket relations (blocks / related / duplicate of).
+// Renders nothing when empty so a ticket with no relations stays uncluttered.
+// `depends_on` keeps its own bespoke row — only that one flags a live blocker.
+function RelationRow({
+  label,
+  ids,
+  allTickets,
+  onSelectTicket,
+}: {
+  label: string
+  ids: number[]
+  allTickets?: Ticket[] | null
+  onSelectTicket?: (slug: string) => void
+}) {
+  if (ids.length === 0) return null
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">{label}</span>
+      {ids.map((id) => {
+        const t = allTickets?.find((x) => x.id === id)
+        return (
+          <button
+            key={id}
+            onClick={() => t && onSelectTicket?.(t.slug)}
+            title={t ? `${t.title} · ${t.status}` : `#${id} not found in this backlog`}
+            disabled={!t}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-0.5 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="font-mono">#{String(id).padStart(4, '0')}</span>
+            {t && <span className="text-[10px] text-zinc-500">{t.status}</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // A ticket's comment log. Not a collaboration feature — it is the durable
 // per-ticket context that survives between agent runs, so entries written by an
 // agent are marked as such and carry the engine/model that wrote them.
@@ -502,6 +539,27 @@ export function TicketDetail({
           })}
         </div>
       )}
+      {/* The other three relations. `blocks` is derived from every other
+          ticket's depends_on rather than stored, so the two directions of one
+          dependency can never disagree. */}
+      <RelationRow
+        label="blocks"
+        ids={(allTickets || []).filter((t) => t.depends_on.includes(selected.id)).map((t) => t.id)}
+        allTickets={allTickets}
+        onSelectTicket={onSelectTicket}
+      />
+      <RelationRow
+        label="related"
+        ids={selected.related || []}
+        allTickets={allTickets}
+        onSelectTicket={onSelectTicket}
+      />
+      <RelationRow
+        label="duplicate of"
+        ids={selected.duplicateOf ? [selected.duplicateOf] : []}
+        allTickets={allTickets}
+        onSelectTicket={onSelectTicket}
+      />
       {(selected.prs.length > 0 || selected.workedBy.length > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {selected.prs.map((p) => {
