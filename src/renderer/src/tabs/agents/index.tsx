@@ -82,14 +82,9 @@ import type {
   PersistentArtifactRead,
 } from '../../lib/types'
 import { RunOutputView } from '../../components/StructuredRunLog'
+import { relativeTime } from '../../lib/time'
 
-function fmtRelative(ts: number): string {
-  const s = (Date.now() - ts) / 1000
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
+const fmtRelative = relativeTime
 function fmtDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '—'
   if (ms < 1000) return `${ms}ms`

@@ -30,6 +30,7 @@ import { ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
 import { repoOrientationPendingKey } from '../lib/orientation'
+import { relativeTime } from '../lib/time'
 
 export type Choice = {
   mode: 'new' | 'resume'
@@ -125,11 +126,8 @@ function RoleCard({
 }
 
 function rel(ms: number): string {
-  const s = (Date.now() - ms) / 1000
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  // No seconds tier here — a repo opened 12s ago is just "recent".
+  return Date.now() - ms < 60_000 ? 'just now' : relativeTime(ms)
 }
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const isRemotePath = (p: string) => p.startsWith('ssh://')

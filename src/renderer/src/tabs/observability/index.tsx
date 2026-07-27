@@ -26,6 +26,7 @@ import { Badge, Gauge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { EngineLogo } from '../../components/EngineLogo'
 import type { BadgeTone } from '../../components/ui'
+import { relativeTime } from '../../lib/time'
 import type {
   ObservabilitySession,
   ObservabilitySessionDetail,
@@ -56,12 +57,7 @@ const usd = new Intl.NumberFormat('en-US', {
 const GRID_RENDER_CAP = 1000
 
 function reltime(ms: number): string {
-  if (!ms) return 'unknown'
-  const s = (Date.now() - ms) / 1000
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  return ms ? relativeTime(ms) : 'unknown'
 }
 
 function EnginePill({ engine }: { engine: string }) {

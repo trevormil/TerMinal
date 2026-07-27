@@ -10,6 +10,7 @@ import {
 import type { BadgeTone } from '../../components/ui'
 import type { CiRunStatus } from '../../lib/types'
 import type { CiSpan } from '../../lib/ciLogFormat'
+import { relativeTime } from '../../lib/time'
 
 // Shared presentation helpers for the native CI "Runs" view: status → icon/
 // tone, duration + relative-time formatting, and the ANSI-span → GT-colour
@@ -72,12 +73,9 @@ export function formatDuration(ms: number | null): string {
 /** epoch-ms → "5m ago". */
 export function reltime(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return ''
-  const s = (Date.now() - ms) / 1000
-  if (s < 0) return 'just now'
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
+  // A CI timestamp ahead of our clock reads as 'just now', not '0s ago'.
+  if (ms > Date.now()) return 'just now'
+  return relativeTime(ms)
 }
 
 /** Map a parsed log span's fg name to a GT colour; undefined = inherit (zinc-300). */

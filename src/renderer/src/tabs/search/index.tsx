@@ -80,6 +80,8 @@ function route(result: WorkspaceSearchResult) {
   setTimeout(() => navigateTo(target, routedPayload), 50)
 }
 
+// NOT relativeTime: search results stay in hours out to 48h, so "36h ago"
+// reads as clearly-yesterday rather than collapsing to "1d ago".
 function timeAgo(ts?: number) {
   if (!ts) return ''
   const sec = Math.max(1, Math.floor((Date.now() - ts) / 1000))
