@@ -225,6 +225,40 @@ The assigned agent:
 4. Implements the smallest scoped change.
 5. Runs the relevant local checks.
 6. Reviews the diff for unrelated changes or leaked files.
+7. Records anything a later run would need on the ticket's log.
+
+## Ticket Log
+
+Every ticket carries a `## Log` — a timestamped record of what runs on it have
+learned. It is not a comment thread for people; it is how context survives a
+run ending. See [ADR-0012](../decisions/0012-ticket-log-in-markdown.md).
+
+An agent's implementation prompt replays prior entries, so **read the log before
+starting** — it is where the last run's dead ends are recorded.
+
+Write to it with the `comment_ticket` MCP tool, or from a script body:
+
+```bash
+terminal-cli ticket comment <slug> "<body>"
+```
+
+Entries are stamped with the running agent and its engine/model automatically.
+
+What belongs in the log:
+
+- findings a later run would otherwise rediscover ("redis isn't available in CI")
+- dead ends and why they failed
+- decisions that narrow scope, and what was deferred
+- anything the PR description won't carry because it isn't about the diff
+
+What does **not**:
+
+- the ticket's own description or acceptance criteria — those are the prose body
+  and `acceptance:` frontmatter, and edits belong there
+- status changes, which the frontmatter already records
+
+**Lanes never write to the log.** Lanes share one ticket, so concurrent writes
+would race; only a solo run leaves an entry, and the judge step links the winner.
 
 ## Follow-Up Phase
 

@@ -120,9 +120,19 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   (frontmatter incl. `horizon`/`hitl`); create/update write back. An optional
   `baseDir` override points the same store at an arbitrary folder (an Obsidian
   vault's `tickets/`), reusing id allocation + frontmatter unchanged.
+  Relations: `depends_on` + `related` + `duplicate_of` are frontmatter, while
+  `blocks` is **derived** (`ticketBlocks`) from other tickets' `depends_on` so
+  the two directions can't drift.
+- `ticket-comments.ts` — the ticket comment log. A `## Log` section in the
+  ticket's own markdown, split out of the body into `Ticket.comments` on read
+  (see [ADR-0012](decisions/0012-ticket-log-in-markdown.md)). Agents write via
+  the `comment_ticket` MCP tool or `terminal-cli ticket comment`, and
+  `promptLogBlock` replays prior entries into a ticket's implementation prompt —
+  that replay is what makes the log context rather than a write-only diary. The
+  parser is the single copy; every writer only appends.
 - `ticket-provider.ts` — per-repo provider abstraction (`local | github |
   linear | obsidian`, in gitignored `.TerMinal/tickets.json`) routing
-  list/get/create/update. **Obsidian** points `backlog.ts` at a dedicated
+  list/get/create/update/comment. **Obsidian** points `backlog.ts` at a dedicated
   per-repo vault (1 repo ↔ 1 vault, tickets private + outside git); it seeds a
   Dataview board + Templater template, exposes `obsidian://` deep links, and
   surfaces the vault to sessions via `OBSIDIAN_VAULT_PATH`/`OBSIDIAN_TICKETS_DIR`
