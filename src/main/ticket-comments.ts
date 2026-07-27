@@ -75,6 +75,20 @@ export function renderTicketLog(comments: TicketComment[]): string {
   return comments.map((c) => `${commentHeader(c)}\n${c.body.trim()}`).join('\n\n')
 }
 
+/** Replay a ticket's log into an agent prompt. This is what stops every run
+ *  from rediscovering the same dead ends the last one already hit. Empty when
+ *  there is no log, so a fresh ticket's prompt is unchanged. */
+export function promptLogBlock(comments: TicketComment[] | undefined): string {
+  if (!comments?.length) return ''
+  const entries = comments
+    .map(
+      (c) =>
+        `- ${c.author}${c.kind === 'agent' ? ' (agent)' : ''} · ${c.at}\n  ${c.body.replace(/\n/g, '\n  ')}`,
+    )
+    .join('\n')
+  return `\nPrior log on this ticket (oldest first) — read before you start:\n${entries}\n`
+}
+
 /** Append one comment to a ticket's raw markdown body, creating the `## Log`
  *  section if this is the first one. Prose is left byte-identical. */
 export function appendComment(body: string, comment: TicketComment): string {

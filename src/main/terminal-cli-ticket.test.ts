@@ -203,3 +203,85 @@ describe('terminal-cli mcp — ticket tools route to the obsidian vault', () => 
     expect(files.join('')).not.toContain('cheep-raw')
   })
 })
+
+describe('terminal-cli ticket comment', () => {
+  const seedLocalTicket = (repo: string) => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0001-seed.md'),
+      [
+        '---',
+        'id: 1',
+        'title: "Seed"',
+        'status: open',
+        'priority: medium',
+        '---',
+        '',
+        'prose',
+      ].join('\n'),
+    )
+    return join(backlog, '0001-seed.md')
+  }
+
+  test('an agent comment is attributed to TERMINAL_AGENT_ID and appended to the log', () => {
+    const { home, repo } = setup()
+    const path = seedLocalTicket(repo)
+    const r = runCli(
+      ['ticket', 'comment', '0001-seed', 'acceptance #2 fails on empty input'],
+      home,
+      repo,
+    )
+    expect(r.status).toBe(0)
+
+    const md = readFileSync(path, 'utf8')
+    expect(md).toContain('## Log')
+    expect(md).toContain('· agent:test-agent')
+    expect(md).toContain('acceptance #2 fails on empty input')
+    // Prose must be preserved above the log, not replaced by it.
+    expect(md.indexOf('prose')).toBeLessThan(md.indexOf('## Log'))
+  })
+
+  test('a second comment appends instead of overwriting the first', () => {
+    const { home, repo } = setup()
+    const path = seedLocalTicket(repo)
+    runCli(['ticket', 'comment', '0001-seed', 'first'], home, repo)
+    runCli(['ticket', 'comment', '0001-seed', 'second'], home, repo)
+
+    const md = readFileSync(path, 'utf8')
+    expect(md).toContain('first')
+    expect(md).toContain('second')
+    expect(md.match(/^## Log$/gm)?.length).toBe(1)
+    expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'))
+  })
+
+  test('an unknown slug exits non-zero rather than silently succeeding', () => {
+    const { home, repo } = setup()
+    seedLocalTicket(repo)
+    const r = runCli(['ticket', 'comment', '9999-nope', 'x'], home, repo)
+    expect(r.status).not.toBe(0)
+  })
+
+  test('an empty body exits non-zero rather than writing a blank entry', () => {
+    const { home, repo } = setup()
+    const path = seedLocalTicket(repo)
+    const r = runCli(['ticket', 'comment', '0001-seed', '   '], home, repo)
+    expect(r.status).not.toBe(0)
+    expect(readFileSync(path, 'utf8')).not.toContain('## Log')
+  })
+
+  test('an Obsidian repo comments into the vault, never the repo backlog', () => {
+    const { home, repo, vault } = setup()
+    writeTicketsConfig(repo, { provider: 'obsidian', obsidian: { vaultPath: vault } })
+    const tickets = join(vault, 'tickets')
+    mkdirSync(tickets, { recursive: true })
+    writeFileSync(
+      join(tickets, '0001-seed.md'),
+      ['---', 'id: 1', 'title: "Seed"', 'status: open', '---', '', 'prose'].join('\n'),
+    )
+    const r = runCli(['ticket', 'comment', '0001-seed', 'from the vault'], home, repo)
+    expect(r.status).toBe(0)
+    expect(readFileSync(join(tickets, '0001-seed.md'), 'utf8')).toContain('from the vault')
+    expect(existsSync(join(repo, '.TerMinal', 'backlog', '0001-seed.md'))).toBe(false)
+  })
+})

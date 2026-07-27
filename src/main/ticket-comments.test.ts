@@ -3,6 +3,7 @@ import {
   splitTicketBody,
   renderTicketLog,
   appendComment,
+  promptLogBlock,
   type TicketComment,
 } from './ticket-comments'
 
@@ -177,5 +178,37 @@ describe('renderTicketLog', () => {
     ])
     expect(out).toContain('### 2026-07-01T00:00:00.000Z · trevor')
     expect(out).toContain('### 2026-07-02T00:00:00.000Z · agent:docs (claude/opus)')
+  })
+})
+
+describe('promptLogBlock', () => {
+  test('no comments contributes nothing to the prompt', () => {
+    expect(promptLogBlock([])).toBe('')
+    expect(promptLogBlock(undefined)).toBe('')
+  })
+
+  test('renders each entry with author, agent marker, and body', () => {
+    const out = promptLogBlock([
+      human('2026-07-01T00:00:00.000Z', 'redis is unavailable in CI'),
+      {
+        at: '2026-07-02T00:00:00.000Z',
+        author: 'pr-creation',
+        kind: 'agent',
+        via: 'codex/gpt-5',
+        body: 'in-memory bucket works',
+      },
+    ])
+    expect(out).toContain('redis is unavailable in CI')
+    expect(out).toContain('in-memory bucket works')
+    expect(out).toContain('trevor')
+    expect(out).toContain('pr-creation (agent)')
+    // Oldest first, so the prompt reads as a history.
+    expect(out.indexOf('redis')).toBeLessThan(out.indexOf('in-memory'))
+  })
+
+  test('multi-line bodies stay attached to their entry', () => {
+    const out = promptLogBlock([human('2026-07-01T00:00:00.000Z', 'line one\nline two')])
+    expect(out).toContain('line one')
+    expect(out).toContain('line two')
   })
 })

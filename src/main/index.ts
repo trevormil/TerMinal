@@ -2305,6 +2305,7 @@ ipcMain.handle(
       body: t.body,
       externalKey: t.externalKey,
       url: t.url,
+      comments: t.comments,
       agent: t.agent,
       modelTier: t.modelTier,
     }

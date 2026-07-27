@@ -884,6 +884,55 @@ ${body || ''}
   console.log(path)
 }
 
+// Append to a ticket's `## Log` — the durable per-ticket context an agent run
+// leaves behind for the next one. Mirrors appendComment in
+// src/main/ticket-comments.ts; kept in sync by the round-trip tests.
+function commentOnTicket(slug, body) {
+  if (!repo) {
+    console.error(
+      'terminal-cli ticket comment: TERMINAL_REPO not set — scripts must be invoked by the TerMinal runner',
+    )
+    process.exit(2)
+  }
+  const text = String(body || '').trim()
+  if (!text) {
+    console.error('terminal-cli ticket comment: empty comment body')
+    process.exit(2)
+  }
+  const cfg = readTicketConfig()
+  if (cfg.provider === 'github' || cfg.provider === 'linear') {
+    console.error(
+      `terminal-cli ticket comment: ${cfg.provider} repos must comment through their own CLI/MCP, not local backlog markdown`,
+    )
+    process.exit(2)
+  }
+  const dir = obsidianTicketsDir(cfg) || areaPath(repo, 'backlog')
+  const safe = String(slug || '').replace(/[^\w-]/g, '')
+  const path = join(dir, `${safe}.md`)
+  if (!safe || !existsSync(path)) {
+    console.error(`terminal-cli ticket comment: no such ticket "${slug}" in ${dir}`)
+    process.exit(2)
+  }
+  const md = readFileSync(path, 'utf8')
+  const m = md.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/)
+  if (!m) {
+    console.error(`terminal-cli ticket comment: ${safe}.md has no frontmatter block`)
+    process.exit(2)
+  }
+  const header = `### ${new Date().toISOString()} · agent:${agentId || 'factory'}${
+    process.env.TERMINAL_ENGINE ? ` (${process.env.TERMINAL_ENGINE})` : ''
+  }`
+  // Appending never needs to parse the existing log — only to find whether one
+  // has been opened yet — so the parser stays in exactly one place.
+  const hasLog = /^## Log$/m.test(m[2])
+  const prose = m[2].trim()
+  const next = hasLog
+    ? `${m[1]}\n${prose}\n\n${header}\n${text}\n`
+    : `${m[1]}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${text}\n`
+  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${new Date().toISOString().slice(0, 10)}`))
+  console.log(path)
+}
+
 function readTicketConfig() {
   try {
     const p = join(repo, '.TerMinal', 'tickets.json')
@@ -1641,7 +1690,8 @@ switch (cmd) {
     loopCommand(args[0], args.slice(1))
     break
   case 'ticket':
-    fileTicket(args[0], args[1], args[2])
+    if (args[0] === 'comment') commentOnTicket(args[1], args[2])
+    else fileTicket(args[0], args[1], args[2])
     break
   case 'hitl': {
     const sevFlag = args.find((a) => a.startsWith('--severity='))
@@ -1686,6 +1736,7 @@ switch (cmd) {
       'usage: terminal-cli <ticket|hitl|activity|deploy|notify|inbox|state|mcp|classify|remote> [args...]\n' +
         '  ticket "<title>" "<body>" [tier]         file a backlog ticket on TERMINAL_REPO\n' +
         '                                           tier: auto|top|cheap-agentic|cheap-raw (default auto)\n' +
+        '  ticket comment <slug> "<body>"           append to a ticket\'s log (read by later runs)\n' +
         '  hitl "<title>" "<action>"                file a global HITL item + Telegram ping\n' +
         '  completion-hitl <engine>                 read hook JSON on stdin and file default-on Inbox item\n' +
         '  activity <kind> "<title>" "<detail>"     emit one activity-feed event\n' +
