@@ -1,6 +1,9 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
 
 export type RepoId = { host: string; path: string }
+
+const execFileAsync = promisify(execFile)
 
 export function parseRemote(url: string): RepoId | null {
   const u = url.trim().replace(/\.git$/, '')
@@ -39,20 +42,35 @@ export function repoRootOf(cwd: string): string {
 }
 
 /** The repo's base branch: origin/HEAD's target, else main, else master, else ''. */
-function defaultBase(repoRoot: string): string {
-  const git = (args: string[]) =>
-    execFileSync('git', ['-C', repoRoot, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
+async function gitText(
+  repoRoot: string,
+  args: string[],
+  maxBuffer = 8 * 1024 * 1024,
+): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', repoRoot, ...args], {
+    encoding: 'utf8',
+    maxBuffer,
+  })
+  return stdout.toString()
+}
+
+function errorStdout(e: unknown): string {
+  const stdout = (e as { stdout?: string | Buffer }).stdout
+  if (!stdout) return ''
+  return Buffer.isBuffer(stdout) ? stdout.toString('utf8') : stdout
+}
+
+async function defaultBase(repoRoot: string): Promise<string> {
   try {
-    return git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).replace(/^origin\//, '')
+    return (await gitText(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']))
+      .trim()
+      .replace(/^origin\//, '')
   } catch {
     /* no origin HEAD */
   }
   for (const b of ['main', 'master']) {
     try {
-      git(['rev-parse', '--verify', b])
+      await gitText(repoRoot, ['rev-parse', '--verify', b])
       return b
     } catch {
       /* not present */
@@ -62,14 +80,10 @@ function defaultBase(repoRoot: string): string {
 }
 
 /** Raw `git status --porcelain` for per-file tree decorations ('' when not a repo). */
-export function getStatusPorcelain(repoRoot: string): string {
+export async function getStatusPorcelain(repoRoot: string): Promise<string> {
   if (!repoRoot) return ''
   try {
-    return execFileSync('git', ['-C', repoRoot, 'status', '--porcelain'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 8 * 1024 * 1024,
-    })
+    return await gitText(repoRoot, ['status', '--porcelain'])
   } catch {
     return ''
   }
@@ -80,14 +94,10 @@ export type HeadFile = { ok: boolean; content: string; reason?: string }
  * A file's content at HEAD, for a per-file working-tree diff ("Changes View").
  * A file that is new (not in HEAD) is not an error — it diffs against empty.
  */
-export function getFileAtHead(repoRoot: string, rel: string): HeadFile {
+export async function getFileAtHead(repoRoot: string, rel: string): Promise<HeadFile> {
   if (!repoRoot) return { ok: false, content: '', reason: 'Not a git repository.' }
   try {
-    const content = execFileSync('git', ['-C', repoRoot, 'show', `HEAD:${rel}`], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 16 * 1024 * 1024,
-    })
+    const content = await gitText(repoRoot, ['show', `HEAD:${rel}`], 16 * 1024 * 1024)
     return { ok: true, content }
   } catch {
     // Untracked/new file — an empty original is the correct diff base.
@@ -100,14 +110,18 @@ export type HeadFileBinary = { ok: boolean; base64: string; reason?: string }
  * Raw bytes at HEAD as base64 — the image-diff original. A file absent from
  * HEAD (newly added) is not an error: it diffs against nothing.
  */
-export function getFileAtHeadBinary(repoRoot: string, rel: string): HeadFileBinary {
+export async function getFileAtHeadBinary(repoRoot: string, rel: string): Promise<HeadFileBinary> {
   if (!repoRoot) return { ok: false, base64: '', reason: 'Not a git repository.' }
   try {
-    const buf = execFileSync('git', ['-C', repoRoot, 'show', `HEAD:${rel}`], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+    const { stdout } = await execFileAsync('git', ['-C', repoRoot, 'show', `HEAD:${rel}`], {
       maxBuffer: 25_000_000,
     })
-    return { ok: true, base64: Buffer.from(buf).toString('base64') }
+    return {
+      ok: true,
+      base64: Buffer.isBuffer(stdout)
+        ? stdout.toString('base64')
+        : Buffer.from(stdout).toString('base64'),
+    }
   } catch {
     return { ok: true, base64: '' }
   }
@@ -125,33 +139,30 @@ export type WorkingDiff = {
 // the working tree (committed branch work + staged + unstaged), plus untracked
 // files rendered as full additions. On the base branch this collapses to just
 // uncommitted changes. Read-only — never touches the index.
-export function getWorkingDiff(repoRoot: string): WorkingDiff {
+export async function getWorkingDiff(repoRoot: string): Promise<WorkingDiff> {
   if (!repoRoot)
     return { ok: false, diff: '', base: '', branch: '', error: 'Not a git repository.' }
   // Returns stdout even on a non-zero exit (git diff --no-index exits 1 when
   // files differ, which is the normal case for an untracked file).
-  const git = (args: string[]): string => {
+  const git = async (args: string[]): Promise<string> => {
     try {
-      return execFileSync('git', ['-C', repoRoot, ...args], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        maxBuffer: 64 * 1024 * 1024,
-      })
+      return await gitText(repoRoot, args, 64 * 1024 * 1024)
     } catch (e) {
-      return (e as { stdout?: string }).stdout ?? ''
+      return errorStdout(e)
     }
   }
   try {
-    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).trim()
-    const base = defaultBase(repoRoot)
-    const mergeBase = base ? git(['merge-base', 'HEAD', base]).trim() : ''
-    const tracked = mergeBase ? git(['diff', mergeBase]) : git(['diff', 'HEAD'])
-    const untracked = git(['ls-files', '--others', '--exclude-standard'])
+    const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+    const base = await defaultBase(repoRoot)
+    const mergeBase = base ? (await git(['merge-base', 'HEAD', base])).trim() : ''
+    const tracked = mergeBase ? await git(['diff', mergeBase]) : await git(['diff', 'HEAD'])
+    let untracked = ''
+    for (const f of (await git(['ls-files', '--others', '--exclude-standard']))
       .split('\n')
       .filter(Boolean)
-      .slice(0, 200) // guardrail: don't fan out over a huge untracked tree
-      .map((f) => git(['diff', '--no-index', '--', '/dev/null', f]))
-      .join('')
+      .slice(0, 200)) {
+      untracked += await git(['diff', '--no-index', '--', '/dev/null', f])
+    }
     return { ok: true, diff: tracked + untracked, base: base || branch, branch }
   } catch (e) {
     return { ok: false, diff: '', base: '', branch: '', error: (e as Error).message || String(e) }
@@ -171,16 +182,12 @@ export const GIT_STATUS_TTL_MS = 1_000
 
 type GitStatusDeps = {
   now: () => number
-  runGit: (cwd: string, args: string[]) => string
+  runGit: (cwd: string, args: string[]) => Promise<string> | string
 }
 
 const defaultGitStatusDeps: GitStatusDeps = {
   now: () => Date.now(),
-  runGit: (cwd, args) =>
-    execFileSync('git', ['-C', cwd, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim(),
+  runGit: (cwd, args) => gitText(cwd, args).then((out) => out.trim()),
 }
 
 const GIT_STATUS_CACHE_MAX_ENTRIES = 16
@@ -212,7 +219,7 @@ function parseGitStatusPorcelain(stdout: string): GitStatus {
   return out
 }
 
-export function gitStatus(cwd: string, deps = defaultGitStatusDeps): GitStatus {
+export async function gitStatus(cwd: string, deps = defaultGitStatusDeps): Promise<GitStatus> {
   const out: GitStatus = { ok: false, branch: '', ahead: 0, behind: 0, dirty: 0, upstream: false }
   if (!cwd) return out
   const now = deps.now()
@@ -222,7 +229,9 @@ export function gitStatus(cwd: string, deps = defaultGitStatusDeps): GitStatus {
   }
   let status = out
   try {
-    status = parseGitStatusPorcelain(deps.runGit(cwd, ['status', '--porcelain=v2', '--branch']))
+    status = parseGitStatusPorcelain(
+      await deps.runGit(cwd, ['status', '--porcelain=v2', '--branch']),
+    )
   } catch {
     status = out
   }

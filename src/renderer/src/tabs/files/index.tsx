@@ -89,6 +89,12 @@ type NodeActions = {
 
 /** The drag payload key for tree-internal moves. */
 const DND_REL = 'application/x-terminal-rel'
+const FILES_GIT_STATUS_POLL_MS = 5_000
+const FILES_CHECKPOINT_POLL_MS = 5_000
+
+function filesTabPollsActive(): boolean {
+  return document.visibilityState === 'visible' && document.hasFocus()
+}
 
 function TreeNode({
   entry,
@@ -461,7 +467,16 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     window.gt.files.list('').then(setRoots)
   }, [ctx.repoRoot, version])
   useEffect(() => {
-    const load = () =>
+    let id: ReturnType<typeof setInterval> | null = null
+    let inFlight = false
+    const stop = () => {
+      if (!id) return
+      clearInterval(id)
+      id = null
+    }
+    const load = () => {
+      if (inFlight) return
+      inFlight = true
       window.gt
         .getStatusPorcelain()
         .then((p) => {
@@ -469,9 +484,28 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           setStatuses(fileStatuses(p))
         })
         .catch(() => {})
-    load()
-    const id = setInterval(load, 2000)
-    return () => clearInterval(id)
+        .finally(() => {
+          inFlight = false
+        })
+    }
+    const sync = () => {
+      if (!filesTabPollsActive()) {
+        stop()
+        return
+      }
+      load()
+      if (!id) id = setInterval(load, FILES_GIT_STATUS_POLL_MS)
+    }
+    sync()
+    window.addEventListener('focus', sync)
+    window.addEventListener('blur', stop)
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      stop()
+      window.removeEventListener('focus', sync)
+      window.removeEventListener('blur', stop)
+      document.removeEventListener('visibilitychange', sync)
+    }
   }, [ctx.repoRoot, version])
   // Watch for new agent-turn checkpoints and fold their changed line ranges
   // into the local attribution store (never git — see aiAttribution.ts).
@@ -479,22 +513,50 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     ckptRef.current = null
     const root = ctx.repoRoot
     if (!root) return
-    const check = async () => {
-      const cps = await window.gt.checkpoints.list().catch(() => [])
-      const latest = cps[0]?.sha || ''
-      if (ckptRef.current === latest) return
-      const first = ckptRef.current === null
-      ckptRef.current = latest
-      // The checkpoints that existed before this tab opened are history, not
-      // news — only attribute turns that land while we're watching.
-      if (first || !latest) return
-      const ranges = await window.gt.checkpoints.ranges(latest).catch(() => ({}))
-      recordAttr(root, ranges)
-      setLastCkpt(latest)
+    let id: ReturnType<typeof setInterval> | null = null
+    let inFlight = false
+    const stop = () => {
+      if (!id) return
+      clearInterval(id)
+      id = null
     }
-    check()
-    const id = setInterval(check, 3000)
-    return () => clearInterval(id)
+    const check = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const cps = await window.gt.checkpoints.list().catch(() => [])
+        const latest = cps[0]?.sha || ''
+        if (ckptRef.current === latest) return
+        const first = ckptRef.current === null
+        ckptRef.current = latest
+        // The checkpoints that existed before this tab opened are history, not
+        // news — only attribute turns that land while we're watching.
+        if (first || !latest) return
+        const ranges = await window.gt.checkpoints.ranges(latest).catch(() => ({}))
+        recordAttr(root, ranges)
+        setLastCkpt(latest)
+      } finally {
+        inFlight = false
+      }
+    }
+    const sync = () => {
+      if (!filesTabPollsActive()) {
+        stop()
+        return
+      }
+      void check()
+      if (!id) id = setInterval(check, FILES_CHECKPOINT_POLL_MS)
+    }
+    sync()
+    window.addEventListener('focus', sync)
+    window.addEventListener('blur', stop)
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      stop()
+      window.removeEventListener('focus', sync)
+      window.removeEventListener('blur', stop)
+      document.removeEventListener('visibilitychange', sync)
+    }
   }, [ctx.repoRoot])
   useEffect(() => {
     window.gt.settings.get().then((s) => {

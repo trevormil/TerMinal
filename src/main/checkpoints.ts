@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -31,29 +31,6 @@ export function checkpointDir(repoRoot: string): string {
     checkpointRoot(),
     `${createHash('sha256').update(repoRoot).digest('hex').slice(0, 16)}.git`,
   )
-}
-
-function git(repoRoot: string, args: string[], timeoutMs = 20000): string {
-  return execFileSync(
-    'git',
-    ['--git-dir', checkpointDir(repoRoot), '--work-tree', repoRoot, ...args],
-    {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: timeoutMs,
-      maxBuffer: 32 * 1024 * 1024,
-      // Never let the user's identity/hooks/signing config affect the shadow repo.
-      env: {
-        ...process.env,
-        GIT_CONFIG_GLOBAL: '/dev/null',
-        GIT_CONFIG_SYSTEM: '/dev/null',
-        GIT_AUTHOR_NAME: 'TerMinal',
-        GIT_AUTHOR_EMAIL: 'checkpoint@terminal.local',
-        GIT_COMMITTER_NAME: 'TerMinal',
-        GIT_COMMITTER_EMAIL: 'checkpoint@terminal.local',
-      },
-    },
-  ).toString()
 }
 
 async function gitAsync(repoRoot: string, args: string[], timeoutMs = 20000): Promise<string> {
@@ -132,25 +109,27 @@ export function parseCheckpointLog(out: string): Checkpoint[] {
   return list
 }
 
-export function listCheckpoints(repoRoot: string, limit = 50): Checkpoint[] {
+export async function listCheckpoints(repoRoot: string, limit = 50): Promise<Checkpoint[]> {
   if (!repoRoot || !existsSync(checkpointDir(repoRoot))) return []
   try {
-    return parseCheckpointLog(git(repoRoot, ['log', `-${limit}`, '--format=%H%x00%at%x00%s']))
+    return parseCheckpointLog(
+      await gitAsync(repoRoot, ['log', `-${limit}`, '--format=%H%x00%at%x00%s']),
+    )
   } catch {
     return []
   }
 }
 
 /** A file's content at a checkpoint ('' when it didn't exist there). */
-export function fileAtCheckpoint(
+export async function fileAtCheckpoint(
   repoRoot: string,
   sha: string,
   rel: string,
-): { ok: boolean; content: string } {
+): Promise<{ ok: boolean; content: string }> {
   if (!repoRoot || !sha || !existsSync(checkpointDir(repoRoot))) return { ok: false, content: '' }
   if (!/^[0-9a-f]{4,40}$/i.test(sha) || rel.includes('..')) return { ok: false, content: '' }
   try {
-    return { ok: true, content: git(repoRoot, ['show', `${sha}:${rel}`]) }
+    return { ok: true, content: await gitAsync(repoRoot, ['show', `${sha}:${rel}`]) }
   } catch {
     // Absent from that checkpoint — an empty original is the correct base.
     return { ok: true, content: '' }
@@ -162,20 +141,22 @@ export function fileAtCheckpoint(
  * wrote, for the AI-attribution gutter. Diffs the commit against its parent
  * (or the empty tree for the very first checkpoint).
  */
-export function checkpointChangedRanges(
+export async function checkpointChangedRanges(
   repoRoot: string,
   sha: string,
-): Record<string, { from: number; to: number }[]> {
+): Promise<Record<string, { from: number; to: number }[]>> {
   if (!repoRoot || !/^[0-9a-f]{4,40}$/i.test(sha) || !existsSync(checkpointDir(repoRoot))) return {}
   try {
     let base = ''
     try {
-      base = git(repoRoot, ['rev-parse', `${sha}^`]).trim()
+      base = (await gitAsync(repoRoot, ['rev-parse', `${sha}^`])).trim()
     } catch {
       // First checkpoint: git's well-known empty tree object.
-      base = git(repoRoot, ['hash-object', '-t', 'tree', '/dev/null']).trim()
+      base = (await gitAsync(repoRoot, ['hash-object', '-t', 'tree', '/dev/null'])).trim()
     }
-    return parseUnifiedRanges(git(repoRoot, ['diff', '--unified=0', '--no-color', base, sha]))
+    return parseUnifiedRanges(
+      await gitAsync(repoRoot, ['diff', '--unified=0', '--no-color', base, sha]),
+    )
   } catch {
     return {}
   }
@@ -194,13 +175,17 @@ export type ReviewBase = { ok: true; sha: string; content: string } | { ok: fals
  * drift; when even that matches the buffer, checkpoints have nothing to
  * show and the caller falls back to HEAD.
  */
-export function reviewBaseFor(repoRoot: string, rel: string, buffer: string): ReviewBase {
-  const cps = listCheckpoints(repoRoot, 2)
+export async function reviewBaseFor(
+  repoRoot: string,
+  rel: string,
+  buffer: string,
+): Promise<ReviewBase> {
+  const cps = await listCheckpoints(repoRoot, 2)
   if (!cps.length) return { ok: false }
-  const newest = fileAtCheckpoint(repoRoot, cps[0].sha, rel)
+  const newest = await fileAtCheckpoint(repoRoot, cps[0].sha, rel)
   if (!newest.ok) return { ok: false }
   if (cps.length > 1) {
-    const prev = fileAtCheckpoint(repoRoot, cps[1].sha, rel)
+    const prev = await fileAtCheckpoint(repoRoot, cps[1].sha, rel)
     if (prev.ok && prev.content !== newest.content) {
       return { ok: true, sha: cps[1].sha, content: prev.content }
     }

@@ -73,7 +73,7 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(second.sha).not.toBe('')
     expect(second.sha).not.toBe(first.sha)
 
-    expect(listCheckpoints(ws).map((c) => c.label)).toEqual(['turn 2', 'turn 1'])
+    expect((await listCheckpoints(ws)).map((c) => c.label)).toEqual(['turn 2', 'turn 1'])
 
     // Roll back to before the agent's edit.
     const r = await restoreCheckpoint(ws, first.sha)
@@ -90,7 +90,30 @@ describe('checkpoint lifecycle (real git)', () => {
     const again = await createCheckpoint(ws, 'nothing changed')
     expect(again.ok).toBe(true)
     expect(again.sha).toBe('') // no empty commit spam
-    expect(listCheckpoints(ws)).toHaveLength(1)
+    expect(await listCheckpoints(ws)).toHaveLength(1)
+  })
+
+  test('checkpoint read helpers return promises', async () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'v1\n')
+    const first = (await createCheckpoint(ws, 'v1')).sha
+    writeFileSync(join(ws, 'a.txt'), 'v2\n')
+    const second = (await createCheckpoint(ws, 'v2')).sha
+
+    const list = listCheckpoints(ws)
+    const file = fileAtCheckpoint(ws, first, 'a.txt')
+    const ranges = checkpointChangedRanges(ws, second)
+    const base = reviewBaseFor(ws, 'a.txt', 'v2 plus local\n')
+
+    expect(list).toBeInstanceOf(Promise)
+    expect(file).toBeInstanceOf(Promise)
+    expect(ranges).toBeInstanceOf(Promise)
+    expect(base).toBeInstanceOf(Promise)
+
+    expect((await list).map((c) => c.label)).toEqual(['v2', 'v1'])
+    expect(await file).toEqual({ ok: true, content: 'v1\n' })
+    expect((await ranges)['a.txt']).toEqual([{ from: 1, to: 1 }])
+    expect(await base).toMatchObject({ ok: true, sha: first, content: 'v1\n' })
   })
 
   test('restoring is itself undoable — it checkpoints first', async () => {
@@ -149,12 +172,12 @@ describe('checkpoint lifecycle (real git)', () => {
     writeFileSync(join(ws, 'b.txt'), 'new\n')
     const v2 = (await createCheckpoint(ws, 'v2')).sha
 
-    expect(fileAtCheckpoint(ws, v1, 'a.txt')).toEqual({ ok: true, content: 'v1\n' })
-    expect(fileAtCheckpoint(ws, v2, 'a.txt')).toEqual({ ok: true, content: 'v2\n' })
-    expect(fileAtCheckpoint(ws, v1, 'b.txt')).toEqual({ ok: true, content: '' })
+    expect(await fileAtCheckpoint(ws, v1, 'a.txt')).toEqual({ ok: true, content: 'v1\n' })
+    expect(await fileAtCheckpoint(ws, v2, 'a.txt')).toEqual({ ok: true, content: 'v2\n' })
+    expect(await fileAtCheckpoint(ws, v1, 'b.txt')).toEqual({ ok: true, content: '' })
     // traversal + junk shas refused
-    expect(fileAtCheckpoint(ws, v1, '../escape').ok).toBe(false)
-    expect(fileAtCheckpoint(ws, 'HEAD; rm -rf', 'a.txt').ok).toBe(false)
+    expect((await fileAtCheckpoint(ws, v1, '../escape')).ok).toBe(false)
+    expect((await fileAtCheckpoint(ws, 'HEAD; rm -rf', 'a.txt')).ok).toBe(false)
   })
 
   test('reports the line ranges a checkpoint touched (AI attribution)', async () => {
@@ -164,7 +187,7 @@ describe('checkpoint lifecycle (real git)', () => {
     writeFileSync(join(ws, 'a.txt'), 'one\nTWO CHANGED\nthree\nfour added\n')
     const turn = (await createCheckpoint(ws, 'agent turn')).sha
 
-    const ranges = checkpointChangedRanges(ws, turn)
+    const ranges = await checkpointChangedRanges(ws, turn)
     expect(ranges['a.txt']).toEqual([
       { from: 2, to: 2 },
       { from: 4, to: 4 },
@@ -175,7 +198,7 @@ describe('checkpoint lifecycle (real git)', () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'x\ny\n')
     const first = (await createCheckpoint(ws, 'first')).sha
-    expect(checkpointChangedRanges(ws, first)['a.txt']).toEqual([{ from: 1, to: 2 }])
+    expect((await checkpointChangedRanges(ws, first))['a.txt']).toEqual([{ from: 1, to: 2 }])
   })
 
   test('review base survives local edits after the agent turn', async () => {
@@ -186,10 +209,13 @@ describe('checkpoint lifecycle (real git)', () => {
     await createCheckpoint(ws, 'turn 2')
     // The human edits ON TOP of the agent's turn — the turn's edits must
     // still be visible, so the base is turn 1's content, not turn 2's.
-    const base = reviewBaseFor(ws, 'a.txt', 'agent v2 plus my tweak\n')
+    const base = await reviewBaseFor(ws, 'a.txt', 'agent v2 plus my tweak\n')
     expect(base).toMatchObject({ ok: true, content: 'v1\n' })
     // No local edits at all: same answer — the turn's edits are the diff.
-    expect(reviewBaseFor(ws, 'a.txt', 'agent v2\n')).toMatchObject({ ok: true, content: 'v1\n' })
+    expect(await reviewBaseFor(ws, 'a.txt', 'agent v2\n')).toMatchObject({
+      ok: true,
+      content: 'v1\n',
+    })
   })
 
   test('review base is the newest checkpoint when the last turn skipped the file', async () => {
@@ -200,13 +226,13 @@ describe('checkpoint lifecycle (real git)', () => {
     writeFileSync(join(ws, 'b.txt'), 'y\n') // the turn touched only b.txt
     const second = (await createCheckpoint(ws, 'turn 2')).sha
     // a.txt drifted locally — base is the newest checkpoint, showing just that.
-    expect(reviewBaseFor(ws, 'a.txt', 'stable + local\n')).toMatchObject({
+    expect(await reviewBaseFor(ws, 'a.txt', 'stable + local\n')).toMatchObject({
       ok: true,
       sha: second,
       content: 'stable\n',
     })
     // …and with no drift either, checkpoints have nothing to show.
-    expect(reviewBaseFor(ws, 'a.txt', 'stable\n')).toEqual({ ok: false })
+    expect(await reviewBaseFor(ws, 'a.txt', 'stable\n')).toEqual({ ok: false })
   })
 
   test('overlapping checkpoints for the same repo drop instead of running concurrently', async () => {
@@ -218,12 +244,12 @@ describe('checkpoint lifecycle (real git)', () => {
 
     expect(second).toEqual({ ok: true, sha: '' })
     expect((await first).sha).not.toBe('')
-    expect(listCheckpoints(ws).map((c) => c.label)).toEqual(['first'])
+    expect((await listCheckpoints(ws)).map((c) => c.label)).toEqual(['first'])
   })
 
   test('unknown workspace or sha fails cleanly', async () => {
     expect((await createCheckpoint('', 'x')).ok).toBe(false)
     expect((await restoreCheckpoint(workspace(), '')).ok).toBe(false)
-    expect(listCheckpoints(workspace())).toEqual([])
+    expect(await listCheckpoints(workspace())).toEqual([])
   })
 })
