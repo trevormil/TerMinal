@@ -19,7 +19,10 @@ const git = (cmd: string): string => {
 }
 const BUILD_SHA = git('git rev-parse --short HEAD') || 'unknown'
 const BUILD_BRANCH = git('git rev-parse --abbrev-ref HEAD') || 'unknown'
-const BUILD_DIRTY = git('git status --porcelain') ? '-dirty' : ''
+// Tracked changes only. Plain --porcelain also counts UNTRACKED files, so
+// build artifacts made every release report -dirty, which made the flag
+// useless as the "built from an uncommitted tree" signal it documents.
+const BUILD_DIRTY = git('git status --porcelain --untracked-files=no') ? '-dirty' : ''
 const BUILD_TIME = new Date().toISOString()
 // The owner/repo this build was made from (git origin), baked in so provisioned
 // hosts self-update from THIS repo — a fork's hosts track the fork, not upstream.
