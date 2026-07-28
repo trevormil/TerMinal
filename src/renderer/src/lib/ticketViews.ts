@@ -35,6 +35,20 @@ export const DEFAULT_TICKET_VIEW: TicketViewSpec = {
   sortBy: 'id-desc',
 }
 
+export function activeTicketFilterCount(view: TicketViewSpec): number {
+  return [
+    view.type !== DEFAULT_TICKET_VIEW.type,
+    view.horizon !== DEFAULT_TICKET_VIEW.horizon,
+    view.priority !== DEFAULT_TICKET_VIEW.priority,
+    view.status !== DEFAULT_TICKET_VIEW.status,
+    view.hitl !== DEFAULT_TICKET_VIEW.hitl,
+  ].filter(Boolean).length
+}
+
+export function ticketFilterRailStorageKey(repoRoot: string): string {
+  return `gt.tickets.filterRail.${repoRoot}`
+}
+
 // Active work first; finished states sink. Anything unrecognized sorts last
 // rather than disappearing.
 const STATUS_ORDER = ['open', 'in-progress', 'stuck', 'closed', 'icebox']

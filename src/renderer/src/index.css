@@ -58,6 +58,24 @@ body,
   overflow: hidden;
 }
 
+.tickets-browser {
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .tickets-filter-body[data-rail-state='open'] .tickets-filter-rail {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: min(16rem, calc(100cqw - 1rem));
+    box-shadow: 18px 0 32px rgb(0 0 0 / 0.35);
+  }
+
+  .tickets-filter-body[data-rail-state='open'] .tickets-filter-scrim {
+    display: block;
+  }
+}
+
 /* the one brand flourish: gradient text for the wordmark */
 .gt-grad-text {
   background: var(--gt-grad);
