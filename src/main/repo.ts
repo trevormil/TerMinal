@@ -167,31 +167,75 @@ export type GitStatus = {
   upstream: boolean
 }
 
-export function gitStatus(cwd: string): GitStatus {
+export const GIT_STATUS_TTL_MS = 1_000
+
+type GitStatusDeps = {
+  now: () => number
+  runGit: (cwd: string, args: string[]) => string
+}
+
+const defaultGitStatusDeps: GitStatusDeps = {
+  now: () => Date.now(),
+  runGit: (cwd, args) =>
+    execFileSync('git', ['-C', cwd, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim(),
+}
+
+const GIT_STATUS_CACHE_MAX_ENTRIES = 16
+
+let gitStatusCache = new Map<string, { expiresAt: number; status: GitStatus }>()
+
+function parseGitStatusPorcelain(stdout: string): GitStatus {
   const out: GitStatus = { ok: false, branch: '', ahead: 0, behind: 0, dirty: 0, upstream: false }
-  if (!cwd) return out
-  const run = (args: string[]) => {
-    try {
-      return execFileSync('git', ['-C', cwd, ...args], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim()
-    } catch {
-      return ''
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('# branch.head ')) {
+      out.branch = line.slice('# branch.head '.length)
+      out.ok = !!out.branch
+    } else if (line.startsWith('# branch.upstream ')) {
+      out.upstream = true
+    } else if (line.startsWith('# branch.ab ')) {
+      const m = line.match(/\+(\d+)\s+-(\d+)/)
+      if (m) {
+        out.ahead = Number(m[1]) || 0
+        out.behind = Number(m[2]) || 0
+        out.upstream = true
+      }
+    } else if (!line.startsWith('#')) {
+      out.dirty++
     }
   }
-  const branch = run(['rev-parse', '--abbrev-ref', 'HEAD'])
-  if (!branch) return out
-  out.ok = true
-  out.branch = branch
-  const ab = run(['rev-list', '--left-right', '--count', '@{upstream}...HEAD'])
-  if (ab) {
-    const [behind, ahead] = ab.split(/\s+/).map(Number)
-    out.behind = behind || 0
-    out.ahead = ahead || 0
-    out.upstream = true
-  }
-  const porcelain = run(['status', '--porcelain'])
-  out.dirty = porcelain ? porcelain.split('\n').filter(Boolean).length : 0
+  if (out.branch === '(detached)') out.branch = 'HEAD'
   return out
+}
+
+export function gitStatus(cwd: string, deps = defaultGitStatusDeps): GitStatus {
+  const out: GitStatus = { ok: false, branch: '', ahead: 0, behind: 0, dirty: 0, upstream: false }
+  if (!cwd) return out
+  const now = deps.now()
+  const cached = gitStatusCache.get(cwd)
+  if (cached && now < cached.expiresAt) {
+    return cached.status
+  }
+  let status = out
+  try {
+    status = parseGitStatusPorcelain(deps.runGit(cwd, ['status', '--porcelain=v2', '--branch']))
+  } catch {
+    status = out
+  }
+  gitStatusCache.delete(cwd)
+  gitStatusCache.set(cwd, { expiresAt: now + GIT_STATUS_TTL_MS, status })
+  while (gitStatusCache.size > GIT_STATUS_CACHE_MAX_ENTRIES) {
+    const oldest = gitStatusCache.keys().next().value
+    if (!oldest) break
+    gitStatusCache.delete(oldest)
+  }
+  return status
+}
+
+export function resetGitStatusCacheForTests(): void {
+  gitStatusCache.clear()
 }
