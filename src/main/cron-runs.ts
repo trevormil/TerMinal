@@ -1,5 +1,4 @@
 import {
-  appendFileSync,
   closeSync,
   openSync,
   readdirSync,
@@ -17,9 +16,16 @@ import { listBgTasks, type BgTask } from './bg-tasks'
 import { bucketRunTrends, type RunTrendPoint } from './run-trends'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
-const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
-const SESSION_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'session-runs')
+const DEFAULT_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
+const DEFAULT_SESSION_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'session-runs')
 const STALE_MS = 2 * 60 * 60 * 1000 // matches terminal-cron's STALE_MS
+export const SESSION_RUN_LOG_MAX_BYTES = 1024 * 1024
+const SESSION_RUN_LOG_FLUSH_MS = 250
+const SESSION_RUN_LOG_TRUNCATED = '[TerMinal: earlier session log truncated]\n'
+
+const cronRunsDir = (): string => process.env.TERMINAL_CRON_RUNS_DIR || DEFAULT_RUNS_DIR
+const sessionRunsDir = (): string =>
+  process.env.TERMINAL_SESSION_RUNS_DIR || DEFAULT_SESSION_RUNS_DIR
 
 export type CronRun = {
   id: string
@@ -59,13 +65,33 @@ export type SessionRun = {
   ticketSlug?: string
 }
 
+function recentJsonFiles(dir: string, limit: number): string[] {
+  if (limit <= 0) return []
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => {
+      try {
+        return { file: f, mtimeMs: statSync(join(dir, f)).mtimeMs }
+      } catch {
+        return null
+      }
+    })
+    .filter((entry): entry is { file: string; mtimeMs: number } => !!entry)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, limit)
+    .map((entry) => entry.file)
+}
+
 export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
-  if (!existsSync(RUNS_DIR)) return []
+  const dir = cronRunsDir()
+  if (!existsSync(dir)) return []
   const out: CronRun[] = []
-  for (const f of readdirSync(RUNS_DIR)) {
-    if (!f.endsWith('.json')) continue
+  const files = scheduleId
+    ? readdirSync(dir).filter((f) => f.endsWith('.json'))
+    : recentJsonFiles(dir, limit)
+  for (const f of files) {
     try {
-      const r = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8')) as CronRun
+      const r = JSON.parse(readFileSync(join(dir, f), 'utf8')) as CronRun
       if (!scheduleId || r.scheduleId === scheduleId) out.push(r)
     } catch {
       /* skip */
@@ -85,12 +111,13 @@ export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
 // process check is a coarse pgrep — false positives would mean leaving a
 // real run alone (safer than killing it accidentally).
 export function sweepStaleCronRuns(): { swept: number } {
-  if (!existsSync(RUNS_DIR)) return { swept: 0 }
+  const dir = cronRunsDir()
+  if (!existsSync(dir)) return { swept: 0 }
   const now = Date.now()
   let swept = 0
-  for (const f of readdirSync(RUNS_DIR)) {
+  for (const f of readdirSync(dir)) {
     if (!f.endsWith('.json')) continue
-    const path = join(RUNS_DIR, f)
+    const path = join(dir, f)
     try {
       const r = JSON.parse(readFileSync(path, 'utf8')) as CronRun & { worktree?: string }
       if (r.status !== 'running') continue
@@ -116,7 +143,7 @@ export function sweepStaleCronRuns(): { swept: number } {
 
 export function readCronRunLog(runId: string): string {
   const safe = runId.replace(/[^\w-]/g, '')
-  const f = join(RUNS_DIR, `${safe}.log`)
+  const f = join(cronRunsDir(), `${safe}.log`)
   try {
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
@@ -125,14 +152,50 @@ export function readCronRunLog(runId: string): string {
 }
 
 const safeRunId = (runId: string): string => runId.replace(/[^\w-]/g, '')
+const pendingSessionLogChunks = new Map<
+  string,
+  { chunks: string[]; timer?: ReturnType<typeof setTimeout> }
+>()
+
+function capSessionRunLog(text: string): string {
+  if (Buffer.byteLength(text) <= SESSION_RUN_LOG_MAX_BYTES) return text
+  const markerBytes = Buffer.byteLength(SESSION_RUN_LOG_TRUNCATED)
+  const tailBytes = Math.max(0, SESSION_RUN_LOG_MAX_BYTES - markerBytes)
+  const tail = Buffer.from(text).subarray(-tailBytes).toString('utf8')
+  return SESSION_RUN_LOG_TRUNCATED + tail
+}
+
+function flushSessionRunLog(runId: string): void {
+  const safe = safeRunId(runId)
+  if (!safe) return
+  const pending = pendingSessionLogChunks.get(safe)
+  if (!pending || pending.chunks.length === 0) return
+  if (pending.timer) clearTimeout(pending.timer)
+  pendingSessionLogChunks.delete(safe)
+  try {
+    const dir = sessionRunsDir()
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, `${safe}.log`)
+    const current = existsSync(path) ? readFileSync(path, 'utf8') : ''
+    writeFileSync(path, capSessionRunLog(current + pending.chunks.join('')))
+  } catch {
+    /* best-effort observability */
+  }
+}
+
+export function flushAllSessionRunLogs(): void {
+  for (const safe of [...pendingSessionLogChunks.keys()]) flushSessionRunLog(safe)
+}
 
 export function beginSessionRun(run: SessionRun): void {
   const safe = safeRunId(run.id)
   if (!safe) return
-  mkdirSync(SESSION_RUNS_DIR, { recursive: true })
-  writeFileSync(join(SESSION_RUNS_DIR, `${safe}.json`), JSON.stringify(run, null, 2))
+  pendingSessionLogChunks.delete(safe)
+  const dir = sessionRunsDir()
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `${safe}.json`), JSON.stringify(run, null, 2))
   writeFileSync(
-    join(SESSION_RUNS_DIR, `${safe}.log`),
+    join(dir, `${safe}.log`),
     [
       `session: ${run.sessionId}`,
       `engine: ${run.engine}`,
@@ -149,12 +212,13 @@ export function beginSessionRun(run: SessionRun): void {
 export function appendSessionRunLog(runId: string, chunk: string): void {
   const safe = safeRunId(runId)
   if (!safe || !chunk) return
-  try {
-    mkdirSync(SESSION_RUNS_DIR, { recursive: true })
-    appendFileSync(join(SESSION_RUNS_DIR, `${safe}.log`), chunk)
-  } catch {
-    /* best-effort observability */
+  const pending = pendingSessionLogChunks.get(safe) ?? { chunks: [] }
+  pending.chunks.push(chunk)
+  if (!pending.timer) {
+    pending.timer = setTimeout(() => flushSessionRunLog(safe), SESSION_RUN_LOG_FLUSH_MS)
+    pending.timer.unref?.()
   }
+  pendingSessionLogChunks.set(safe, pending)
 }
 
 export function finalizeSessionRun(
@@ -163,7 +227,8 @@ export function finalizeSessionRun(
 ): void {
   const safe = safeRunId(runId)
   if (!safe) return
-  const path = join(SESSION_RUNS_DIR, `${safe}.json`)
+  flushSessionRunLog(safe)
+  const path = join(sessionRunsDir(), `${safe}.json`)
   try {
     const current = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as SessionRun) : null
     if (!current) return
@@ -174,12 +239,12 @@ export function finalizeSessionRun(
 }
 
 export function readSessionRuns(limit = 200): SessionRun[] {
-  if (!existsSync(SESSION_RUNS_DIR)) return []
+  const dir = sessionRunsDir()
+  if (!existsSync(dir)) return []
   const out: SessionRun[] = []
-  for (const f of readdirSync(SESSION_RUNS_DIR)) {
-    if (!f.endsWith('.json')) continue
+  for (const f of recentJsonFiles(dir, limit)) {
     try {
-      out.push(JSON.parse(readFileSync(join(SESSION_RUNS_DIR, f), 'utf8')) as SessionRun)
+      out.push(JSON.parse(readFileSync(join(dir, f), 'utf8')) as SessionRun)
     } catch {
       /* skip */
     }
@@ -193,12 +258,13 @@ export function readSessionRuns(limit = 200): SessionRun[] {
 // Call once at startup, BEFORE the user can open new sessions, to finalize them
 // as 'interrupted' — otherwise they pile up and inflate the Runs "running" count.
 export function sweepStaleSessionRuns(): { swept: number } {
-  if (!existsSync(SESSION_RUNS_DIR)) return { swept: 0 }
+  const dir = sessionRunsDir()
+  if (!existsSync(dir)) return { swept: 0 }
   const now = Date.now()
   let swept = 0
-  for (const f of readdirSync(SESSION_RUNS_DIR)) {
+  for (const f of readdirSync(dir)) {
     if (!f.endsWith('.json')) continue
-    const path = join(SESSION_RUNS_DIR, f)
+    const path = join(dir, f)
     try {
       const r = JSON.parse(readFileSync(path, 'utf8')) as SessionRun
       if (r.status !== 'running') continue
@@ -225,7 +291,7 @@ export function sweepStaleSessionRuns(): { swept: number } {
 
 export function readSessionRunLog(runId: string): string {
   const safe = safeRunId(runId)
-  const f = join(SESSION_RUNS_DIR, `${safe}.log`)
+  const f = join(sessionRunsDir(), `${safe}.log`)
   try {
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
@@ -244,7 +310,7 @@ export function readSessionRunLogTail(
 ): { text: string; updatedAt: number } | null {
   const safe = safeRunId(runId)
   if (!safe) return null
-  const f = join(SESSION_RUNS_DIR, `${safe}.log`)
+  const f = join(sessionRunsDir(), `${safe}.log`)
   try {
     const stat = statSync(f)
     const length = Math.min(stat.size, maxBytes)
