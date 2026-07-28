@@ -1,4 +1,4 @@
-import { test, expect, describe } from 'bun:test'
+import { test, expect, describe, beforeEach } from 'bun:test'
 import {
   forgeKindForHost,
   forgeMeta,
@@ -10,7 +10,15 @@ import {
   overallStatus,
   parseGhFileContent,
   parseGlabFileContent,
+  listRaw,
+  resetForgeListRawInFlightForTests,
+  setForgeRunForTests,
 } from './forge'
+
+beforeEach(() => {
+  resetForgeListRawInFlightForTests()
+  setForgeRunForTests(null)
+})
 
 describe('forgeKindForHost', () => {
   test('github.com (+ subdomains) → github when auto', () => {
@@ -129,6 +137,41 @@ describe('parseList', () => {
   test('garbage / non-array → []', () => {
     expect(parseList('github', 'not json')).toEqual([])
     expect(parseList('gitlab', '{"not":"array"}')).toEqual([])
+  })
+})
+
+describe('listRaw in-flight coalescing', () => {
+  test('shares concurrent same-repo list calls without caching completed reads', async () => {
+    const calls: { cli: string; args: string[]; cwd: string }[] = []
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    setForgeRunForTests(async (cli, args, cwd) => {
+      calls.push({ cli, args, cwd })
+      await gate
+      return {
+        err: null,
+        stdout:
+          cli === 'gh'
+            ? JSON.stringify([{ number: 1, state: 'OPEN', author: { login: 'a' } }])
+            : JSON.stringify([{ iid: 1, state: 'opened', author: { username: 'a' } }]),
+        stderr: '',
+      }
+    })
+
+    const repoRoot = process.cwd()
+    const pending = [listRaw(repoRoot), listRaw(repoRoot), listRaw(repoRoot)]
+
+    expect(calls).toHaveLength(1)
+    release()
+
+    const results = await Promise.all(pending)
+    expect(results.map((r) => r.items[0].iid)).toEqual([1, 1, 1])
+    expect(calls).toHaveLength(1)
+
+    await listRaw(repoRoot)
+    expect(calls).toHaveLength(2)
   })
 })
 

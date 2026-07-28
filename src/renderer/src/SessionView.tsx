@@ -27,7 +27,7 @@ import { useResizableWidth, ResizeHandle } from './components/ResizeHandle'
 import { ALL_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
-import { commandWidgetToPlugin } from './lib/commandWidget'
+import { commandWidgetsToPlugins } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
 import { createTickCoalescer } from './lib/tickCoalescer'
 import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
@@ -333,6 +333,8 @@ export function SessionView({
         : [],
     [ctx, hiddenTabs, customTabs],
   )
+  const badgeTabs = useMemo(() => tabs.filter((t) => t.badge), [tabs])
+  const badgeTabKey = badgeTabs.map((t) => t.id).join('\0')
 
   useEffect(() => localStorage.setItem('gt.enabled', JSON.stringify(enabled)), [enabled])
   useEffect(() => localStorage.setItem('gt.known', JSON.stringify(known)), [known])
@@ -444,7 +446,7 @@ export function SessionView({
         window.gt
           .listCommandWidgets()
           .then((ws) => {
-            if (alive) setCmdPlugins(ws.map(commandWidgetToPlugin))
+            if (alive) setCmdPlugins((prev) => commandWidgetsToPlugins(ws, prev))
           })
           .catch(() => {})
       }
@@ -527,12 +529,11 @@ export function SessionView({
   // one frame to spread the post-switch IPC burst.
   useEffect(() => {
     if (!active || !ctx) return
-    const withBadge = tabs.filter((t) => t.badge)
-    if (withBadge.length === 0) return
+    if (badgeTabs.length === 0) return
     let alive = true
     const run = async () => {
       const entries = await Promise.all(
-        withBadge.map(async (t) => [t.id, await t.badge!(window.gt).catch(() => 0)] as const),
+        badgeTabs.map(async (t) => [t.id, await t.badge!(window.gt).catch(() => 0)] as const),
       )
       if (alive) setTabBadges((b) => ({ ...b, ...Object.fromEntries(entries) }))
     }
@@ -547,7 +548,7 @@ export function SessionView({
       off()
       clearInterval(id)
     }
-  }, [active, ctx, tabs])
+  }, [active, ctx?.sessionId, ctx?.repoRoot, badgeTabKey])
 
   const toggle = (id: string) =>
     setEnabled((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]))

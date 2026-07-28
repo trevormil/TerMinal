@@ -57,3 +57,23 @@ export function commandWidgetToPlugin(w: CommandWidget): Plugin {
     ),
   }
 }
+
+function commandWidgetSignature(w: CommandWidget): string {
+  return JSON.stringify([w.id, w.title, w.command, w.intervalMs, w.mode, w.source, w.icon ?? ''])
+}
+
+export function commandWidgetsToPlugins(
+  widgets: CommandWidget[],
+  previous: Plugin[] = [],
+): Plugin[] {
+  const previousById = new Map(previous.map((plugin) => [plugin.id, plugin]))
+  return widgets.map((widget) => {
+    const previousPlugin = previousById.get(widget.id) as
+      (Plugin & { __widgetSig?: string }) | undefined
+    const signature = commandWidgetSignature(widget)
+    if (previousPlugin?.__widgetSig === signature) return previousPlugin
+    const plugin = commandWidgetToPlugin(widget) as Plugin & { __widgetSig?: string }
+    Object.defineProperty(plugin, '__widgetSig', { value: signature, enumerable: false })
+    return plugin
+  })
+}
