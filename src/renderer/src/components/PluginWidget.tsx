@@ -7,6 +7,10 @@ import { createTickCoalescer } from '../lib/tickCoalescer'
 // Runs one plugin's poll loop and renders its card. `prev` is threaded into poll
 // so rate/delta widgets (burn-rate) can diff against the last sample. A hover ×
 // hides (disables) the widget inline.
+export function pluginPollSubscriptionKey(plugin: Plugin): string {
+  return `${plugin.id}\0${plugin.intervalMs}\0${plugin.realtime ? '1' : '0'}`
+}
+
 export function PluginWidget({
   plugin,
   onHide,
@@ -16,6 +20,9 @@ export function PluginWidget({
 }) {
   const [data, setData] = useState<unknown>(null)
   const prevRef = useRef<unknown>(null)
+  const pluginRef = useRef(plugin)
+  pluginRef.current = plugin
+  const subscriptionKey = pluginPollSubscriptionKey(plugin)
 
   useEffect(() => {
     let alive = true
@@ -28,7 +35,7 @@ export function PluginWidget({
       }
       inFlight = true
       try {
-        const next = await plugin.poll(window.gt, prevRef.current as never)
+        const next = await pluginRef.current.poll(window.gt, prevRef.current as never)
         if (!alive) return
         prevRef.current = next
         setData(next)
@@ -45,10 +52,10 @@ export function PluginWidget({
     // Defer the first poll by one frame so the cockpit mount (8+ widgets)
     // doesn't dump N IPCs in the same tick as a session switch.
     const raf = requestAnimationFrame(tick)
-    const id = setInterval(tick, plugin.intervalMs)
+    const id = setInterval(tick, pluginRef.current.intervalMs)
     // realtime widgets also refresh the instant the transcript changes
     const coalescedTick = createTickCoalescer(tick)
-    const offTick = plugin.realtime ? window.gt.onTick(coalescedTick.trigger) : undefined
+    const offTick = pluginRef.current.realtime ? window.gt.onTick(coalescedTick.trigger) : undefined
     return () => {
       alive = false
       cancelAnimationFrame(raf)
@@ -56,7 +63,7 @@ export function PluginWidget({
       coalescedTick.cancel()
       offTick?.()
     }
-  }, [plugin])
+  }, [subscriptionKey])
 
   return (
     <div className="group relative gt-pop-in">

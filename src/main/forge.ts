@@ -137,12 +137,25 @@ export function overallStatus(statuses: string[]): string {
 // --- CLI execution -----------------------------------------------------------
 
 export type RunResult = { err: Error | null; stdout: string; stderr: string }
+type RunFn = (
+  cli: string,
+  args: string[],
+  cwd: string,
+  opts?: { timeout?: number; maxBuffer?: number },
+) => Promise<RunResult>
+let runForTests: RunFn | null = null
+
+export function setForgeRunForTests(fn: RunFn | null): void {
+  runForTests = fn
+}
+
 export function run(
   cli: string,
   args: string[],
   cwd: string,
   opts?: { timeout?: number; maxBuffer?: number },
 ): Promise<RunResult> {
+  if (runForTests) return runForTests(cli, args, cwd, opts)
   return new Promise((resolve) => {
     execFile(
       cli,
@@ -159,6 +172,7 @@ export function run(
 }
 
 const GH_LIST_FIELDS = 'number,title,state,author,headRefName,isDraft,url,headRefOid,labels'
+const listRawInFlight = new Map<string, Promise<ListResult>>()
 
 // Labels normalizer — gh returns [{name,color,...}], glab returns strings or
 // [{name,...}]. Coerce to a flat string[] either way.
@@ -177,8 +191,15 @@ const GH_VIEW_FIELDS = `${GH_LIST_FIELDS},baseRefName,baseRefOid,body`
 // Fetch all lifecycle states (open + merged + closed) so the UI can browse past
 // MRs and their review artifacts, not just open ones. The renderer filters by
 // state client-side (default: open), so this single call backs every filter.
-export async function listRaw(repoRoot: string): Promise<ListResult> {
-  const f = forgeFor(repoRoot)
+function listRawInFlightKey(repoRoot: string, f: ForgeMeta): string {
+  return `${repoRoot}\0${f.kind}\0list`
+}
+
+export function resetForgeListRawInFlightForTests(): void {
+  listRawInFlight.clear()
+}
+
+async function listRawUncoalesced(repoRoot: string, f: ForgeMeta): Promise<ListResult> {
   if (f.kind === 'github') {
     const r = await run(
       'gh',
@@ -191,6 +212,18 @@ export async function listRaw(repoRoot: string): Promise<ListResult> {
   const r = await run('glab', ['mr', 'list', '--all', '-F', 'json', '-P', '100'], repoRoot)
   if (r.err) return { items: [], error: forgeErrorReason('glab', r.err, r.stderr) }
   return { items: parseList('gitlab', r.stdout) }
+}
+
+export async function listRaw(repoRoot: string): Promise<ListResult> {
+  const f = forgeFor(repoRoot)
+  const key = listRawInFlightKey(repoRoot, f)
+  const existing = listRawInFlight.get(key)
+  if (existing) return existing
+  const promise = listRawUncoalesced(repoRoot, f).finally(() => {
+    if (listRawInFlight.get(key) === promise) listRawInFlight.delete(key)
+  })
+  listRawInFlight.set(key, promise)
+  return promise
 }
 
 export async function detailRaw(repoRoot: string, iid: number): Promise<RawMrDetail | null> {
