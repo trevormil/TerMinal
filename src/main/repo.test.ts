@@ -3,7 +3,13 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseRemote, getWorkingDiff } from './repo'
+import {
+  parseRemote,
+  getWorkingDiff,
+  getStatusPorcelain,
+  getFileAtHead,
+  getFileAtHeadBinary,
+} from './repo'
 
 describe('parseRemote', () => {
   test('https URL → host + path, strips .git', () => {
@@ -67,11 +73,11 @@ describe('getWorkingDiff', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  test('non-repo path → ok:false', () => {
-    expect(getWorkingDiff('').ok).toBe(false)
+  test('non-repo path → ok:false', async () => {
+    expect((await getWorkingDiff('')).ok).toBe(false)
   })
 
-  test('on a feature branch: committed branch work + uncommitted + untracked all appear, base-only does not', () => {
+  test('on a feature branch: committed branch work + uncommitted + untracked all appear, base-only does not', async () => {
     git('checkout', '-b', 'feature')
     // main advances after the fork (while feature's tree is still clean, so the
     // branch switch is safe) — this change is not on the branch and must be excluded
@@ -89,7 +95,7 @@ describe('getWorkingDiff', () => {
     // untracked, never git-added
     write('untracked.txt', 'brand new\n')
 
-    const r = getWorkingDiff(dir)
+    const r = await getWorkingDiff(dir)
     expect(r.ok).toBe(true)
     expect(r.branch).toBe('feature')
     expect(r.diff).toContain('committed.txt') // committed branch work
@@ -98,18 +104,40 @@ describe('getWorkingDiff', () => {
     expect(r.diff).not.toContain('more-on-main') // base-branch-only change excluded
   })
 
-  test('on the base branch: only uncommitted/untracked changes appear', () => {
+  test('on the base branch: only uncommitted/untracked changes appear', async () => {
     write('base.txt', 'base\nlocal-edit\n')
     write('new.txt', 'new file\n')
-    const r = getWorkingDiff(dir)
+    const r = await getWorkingDiff(dir)
     expect(r.ok).toBe(true)
     expect(r.diff).toContain('local-edit')
     expect(r.diff).toContain('new.txt')
   })
 
-  test('clean base branch → empty diff', () => {
-    const r = getWorkingDiff(dir)
+  test('clean base branch → empty diff', async () => {
+    const r = await getWorkingDiff(dir)
     expect(r.ok).toBe(true)
     expect(r.diff.trim()).toBe('')
+  })
+
+  test('git read helpers return promises', async () => {
+    write('base.txt', 'base\nlocal-edit\n')
+
+    const diff = getWorkingDiff(dir)
+    const porcelain = getStatusPorcelain(dir)
+    const head = getFileAtHead(dir, 'base.txt')
+    const headBinary = getFileAtHeadBinary(dir, 'base.txt')
+
+    expect(diff).toBeInstanceOf(Promise)
+    expect(porcelain).toBeInstanceOf(Promise)
+    expect(head).toBeInstanceOf(Promise)
+    expect(headBinary).toBeInstanceOf(Promise)
+
+    expect((await diff).diff).toContain('local-edit')
+    expect(await porcelain).toContain(' M base.txt')
+    expect(await head).toEqual({ ok: true, content: 'base\n' })
+    expect(await headBinary).toEqual({
+      ok: true,
+      base64: Buffer.from('base\n').toString('base64'),
+    })
   })
 })

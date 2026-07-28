@@ -6,7 +6,18 @@ describe('gitStatus cache', () => {
     resetGitStatusCacheForTests()
   })
 
-  test('coalesces interleaved cwd calls inside the TTL per repo', () => {
+  test('returns a promise', async () => {
+    const deps = {
+      now: () => 1_000,
+      runGit: () => ['# branch.oid abc123', '# branch.head main'].join('\n'),
+    }
+
+    const status = gitStatus('/repo', deps)
+    expect(status).toBeInstanceOf(Promise)
+    expect(await status).toMatchObject({ ok: true, branch: 'main' })
+  })
+
+  test('coalesces interleaved cwd calls inside the TTL per repo', async () => {
     let now = 1_000
     const calls: string[] = []
     const deps = {
@@ -20,19 +31,19 @@ describe('gitStatus cache', () => {
       },
     }
 
-    expect(gitStatus('/repo-a', deps).branch).toBe('main')
-    expect(gitStatus('/repo-b', deps).branch).toBe('feature')
-    expect(gitStatus('/repo-a', deps).branch).toBe('main')
-    expect(gitStatus('/repo-b', deps).branch).toBe('feature')
+    expect((await gitStatus('/repo-a', deps)).branch).toBe('main')
+    expect((await gitStatus('/repo-b', deps)).branch).toBe('feature')
+    expect((await gitStatus('/repo-a', deps)).branch).toBe('main')
+    expect((await gitStatus('/repo-b', deps)).branch).toBe('feature')
 
     expect(calls).toEqual(['/repo-a', '/repo-b'])
     now += GIT_STATUS_TTL_MS - 1
-    expect(gitStatus('/repo-a', deps).branch).toBe('main')
-    expect(gitStatus('/repo-b', deps).branch).toBe('feature')
+    expect((await gitStatus('/repo-a', deps)).branch).toBe('main')
+    expect((await gitStatus('/repo-b', deps)).branch).toBe('feature')
     expect(calls).toEqual(['/repo-a', '/repo-b'])
   })
 
-  test('coalesces back-to-back calls for the same cwd inside the TTL', () => {
+  test('coalesces back-to-back calls for the same cwd inside the TTL', async () => {
     let now = 1_000
     const calls: string[][] = []
     const deps = {
@@ -51,7 +62,7 @@ describe('gitStatus cache', () => {
     }
 
     for (let i = 0; i < 5; i++) {
-      expect(gitStatus('/repo', deps)).toMatchObject({
+      expect(await gitStatus('/repo', deps)).toMatchObject({
         ok: true,
         branch: 'main',
         ahead: 2,
@@ -63,24 +74,24 @@ describe('gitStatus cache', () => {
     expect(calls).toHaveLength(1)
 
     now += GIT_STATUS_TTL_MS - 1
-    gitStatus('/repo', deps)
+    await gitStatus('/repo', deps)
     expect(calls).toHaveLength(1)
 
     now += 1
-    gitStatus('/repo', deps)
+    await gitStatus('/repo', deps)
     expect(calls).toHaveLength(2)
   })
 
-  test('reports detached HEAD as HEAD', () => {
+  test('reports detached HEAD as HEAD', async () => {
     const deps = {
       now: () => 1_000,
       runGit: () => ['# branch.oid abc123', '# branch.head (detached)'].join('\n'),
     }
 
-    expect(gitStatus('/repo', deps)).toMatchObject({ ok: true, branch: 'HEAD' })
+    expect(await gitStatus('/repo', deps)).toMatchObject({ ok: true, branch: 'HEAD' })
   })
 
-  test('returns ok false for non-git directories', () => {
+  test('returns ok false for non-git directories', async () => {
     const deps = {
       now: () => 1_000,
       runGit: () => {
@@ -88,6 +99,6 @@ describe('gitStatus cache', () => {
       },
     }
 
-    expect(gitStatus('/not-git', deps)).toMatchObject({ ok: false })
+    expect(await gitStatus('/not-git', deps)).toMatchObject({ ok: false })
   })
 })
