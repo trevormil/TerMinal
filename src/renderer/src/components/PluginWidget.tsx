@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { Plugin } from '../lib/types'
+import { createTickCoalescer } from '../lib/tickCoalescer'
 
 // Runs one plugin's poll loop and renders its card. `prev` is threaded into poll
 // so rate/delta widgets (burn-rate) can diff against the last sample. A hover ×
@@ -46,11 +47,13 @@ export function PluginWidget({
     const raf = requestAnimationFrame(tick)
     const id = setInterval(tick, plugin.intervalMs)
     // realtime widgets also refresh the instant the transcript changes
-    const offTick = plugin.realtime ? window.gt.onTick(tick) : undefined
+    const coalescedTick = createTickCoalescer(tick)
+    const offTick = plugin.realtime ? window.gt.onTick(coalescedTick.trigger) : undefined
     return () => {
       alive = false
       cancelAnimationFrame(raf)
       clearInterval(id)
+      coalescedTick.cancel()
       offTick?.()
     }
   }, [plugin])

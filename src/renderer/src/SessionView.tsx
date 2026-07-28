@@ -29,6 +29,7 @@ import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetToPlugin } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
+import { createTickCoalescer } from './lib/tickCoalescer'
 import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
@@ -536,11 +537,13 @@ export function SessionView({
       if (alive) setTabBadges((b) => ({ ...b, ...Object.fromEntries(entries) }))
     }
     const raf = requestAnimationFrame(run)
-    const off = window.gt.onTick(run)
+    const coalescedTick = createTickCoalescer(run)
+    const off = window.gt.onTick(coalescedTick.trigger)
     const id = setInterval(run, 8000)
     return () => {
       alive = false
       cancelAnimationFrame(raf)
+      coalescedTick.cancel()
       off()
       clearInterval(id)
     }

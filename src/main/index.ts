@@ -105,6 +105,7 @@ import { installStatuslineShim, statuslineSettingsArg } from './statusline'
 import { listCommandWidgets, runCommand } from './widgets'
 import { listCustomTabs, runTabCommand } from './tabs'
 import { repoRootOf, repoForCwd } from './repo'
+import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
 import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
 import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
@@ -1212,8 +1213,9 @@ ipcMain.handle('session:stop', (_e, key: string) => stopSession(key))
 // Fleet snapshot: a summary of every live session (for the cross-session
 // overview + the live status dots on the session tabs).
 function fleetSnapshot() {
+  const entries = [...sessions]
   const out = []
-  for (const [key, s] of sessions) {
+  for (const [key, s] of orderFleetSnapshotEntries(entries, activeKey)) {
     const sid = s.pinned.sessionId
     const st = readTranscriptStats(sid)
     let status: 'working' | 'idle' = 'idle'
@@ -1246,7 +1248,7 @@ function fleetSnapshot() {
       lastAction: st.lastAction,
     })
   }
-  return out
+  return restoreFleetSnapshotEntryOrder(out, entries)
 }
 ipcMain.handle('fleet:list', () => fleetSnapshot())
 

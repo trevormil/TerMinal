@@ -747,6 +747,237 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
   }
 }
 
+export type TranscriptStatsAccumulator = {
+  sessionId: string
+  model: string
+  cwd: string
+  gitBranch: string
+  firstUserText: string
+  contextTokens: number
+  totalInput: number
+  totalOutput: number
+  totalCacheRead: number
+  turns: number
+  lastAction: { tool: string; detail: string } | null
+  aiTitle: string
+  permissionMode: string
+  lastPrompt: string
+  toolCounts: Record<string, number>
+  seenUsage: Set<string>
+  seenToolUses: Set<string>
+}
+
+export type TranscriptStatsFileParseState = {
+  file: string
+  size: number
+  mtime: number
+  offset: number
+  pending: string
+  accumulator: TranscriptStatsAccumulator
+  stats: TranscriptStats
+}
+
+type TranscriptRangeReader = (file: string, start: number, end: number) => string
+
+export function createTranscriptStatsAccumulator(sessionId = ''): TranscriptStatsAccumulator {
+  return {
+    sessionId,
+    model: 'unknown',
+    cwd: '',
+    gitBranch: '',
+    firstUserText: '',
+    contextTokens: 0,
+    totalInput: 0,
+    totalOutput: 0,
+    totalCacheRead: 0,
+    turns: 0,
+    lastAction: null,
+    aiTitle: '',
+    permissionMode: '',
+    lastPrompt: '',
+    toolCounts: {},
+    seenUsage: new Set<string>(),
+    seenToolUses: new Set<string>(),
+  }
+}
+
+export function foldTranscriptStatsLines(
+  accumulator: TranscriptStatsAccumulator,
+  lines: string | string[],
+): TranscriptStatsAccumulator {
+  const source = Array.isArray(lines) ? lines : lines.split('\n')
+  for (const line of source) {
+    if (!line.trim()) continue
+    let obj: any
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (!accumulator.cwd && typeof obj.cwd === 'string') accumulator.cwd = obj.cwd
+    if (!accumulator.gitBranch && typeof obj.gitBranch === 'string')
+      accumulator.gitBranch = obj.gitBranch
+    // Claude writes standalone lines (no message); keep latest.
+    if (obj.type === 'ai-title' && obj.aiTitle) accumulator.aiTitle = obj.aiTitle
+    else if (obj.type === 'permission-mode' && obj.permissionMode)
+      accumulator.permissionMode = obj.permissionMode
+    else if (obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string')
+      accumulator.lastPrompt = obj.lastPrompt
+
+    const msg = obj.message
+    if (!msg) continue
+
+    if (msg.role === 'user' && !accumulator.firstUserText) {
+      const t = textOf(msg.content).trim()
+      // skip tool_result-only / command-noise lines
+      if (t && !t.startsWith('<') && !Array.isArray(msg.content))
+        accumulator.firstUserText = t.slice(0, 140)
+      if (t && Array.isArray(msg.content) && !t.startsWith('<'))
+        accumulator.firstUserText = t.slice(0, 140)
+    }
+
+    if (msg.role !== 'assistant') continue
+    const u = msg.usage
+    const usageKey = String(
+      msg.id || obj.requestId || obj.uuid || `${obj.timestamp || ''}:${JSON.stringify(u || {})}`,
+    )
+    if (u && !accumulator.seenUsage.has(usageKey)) {
+      accumulator.seenUsage.add(usageKey)
+      accumulator.turns++
+      if (msg.model) accumulator.model = msg.model
+      const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
+      const cacheRead = u.cache_read_input_tokens || 0
+      const output = u.output_tokens || 0
+      accumulator.totalInput += input
+      accumulator.totalCacheRead += cacheRead
+      accumulator.totalOutput += output
+      accumulator.contextTokens = input + cacheRead + output
+    }
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block?.type === 'tool_use') {
+          const toolKey =
+            typeof block.id === 'string'
+              ? block.id
+              : `${obj.uuid || ''}:${block.name}:${JSON.stringify(block.input || {})}`
+          if (accumulator.seenToolUses.has(toolKey)) continue
+          accumulator.seenToolUses.add(toolKey)
+          accumulator.lastAction = {
+            tool: block.name,
+            detail: summarizeToolInput(block.name, block.input),
+          }
+          accumulator.toolCounts[block.name] = (accumulator.toolCounts[block.name] || 0) + 1
+        }
+      }
+    }
+  }
+  return accumulator
+}
+
+export function transcriptStatsFromAccumulator(
+  accumulator: TranscriptStatsAccumulator,
+  mtime: number,
+): TranscriptStats {
+  const contextLimit = contextLimitFor(accumulator.model, accumulator.contextTokens)
+  return {
+    ok: accumulator.turns > 0,
+    sessionId: accumulator.sessionId,
+    model: accumulator.model,
+    cwd: accumulator.cwd,
+    gitBranch: accumulator.gitBranch,
+    contextTokens: accumulator.contextTokens,
+    contextLimit,
+    contextPct: Math.min(100, (accumulator.contextTokens / contextLimit) * 100),
+    totalInputTokens: accumulator.totalInput + accumulator.totalCacheRead,
+    totalOutputTokens: accumulator.totalOutput,
+    estCostUsd:
+      accumulator.totalInput * PRICE.input +
+      accumulator.totalCacheRead * PRICE.cacheRead +
+      accumulator.totalOutput * PRICE.output,
+    turns: accumulator.turns,
+    lastAction: accumulator.lastAction,
+    firstUserText: accumulator.firstUserText,
+    aiTitle: accumulator.aiTitle,
+    permissionMode: accumulator.permissionMode,
+    lastPrompt: accumulator.lastPrompt,
+    toolCounts: accumulator.toolCounts,
+    mtime,
+    ts: Date.now(),
+  }
+}
+
+function readTranscriptRange(file: string, start: number, end: number): string {
+  const length = Math.max(0, end - start)
+  if (!length) return ''
+  const fd = openSync(file, 'r')
+  try {
+    const buf = Buffer.alloc(length)
+    const bytes = readSync(fd, buf, 0, length, start)
+    return buf.subarray(0, bytes).toString('utf8')
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function splitCompleteTranscriptLines(raw: string): { lines: string[]; pending: string } {
+  const lines = raw.split('\n')
+  if (raw.endsWith('\n')) return { lines, pending: '' }
+
+  const tail = lines.pop() ?? ''
+  if (!tail.trim()) return { lines, pending: tail }
+  try {
+    JSON.parse(tail)
+    lines.push(tail)
+    return { lines, pending: '' }
+  } catch {
+    return { lines, pending: tail }
+  }
+}
+
+export function parseTranscriptFileIncremental(
+  file: string,
+  sessionId: string,
+  previous: TranscriptStatsFileParseState | null,
+  size: number,
+  mtime: number,
+  readRange: TranscriptRangeReader = readTranscriptRange,
+): TranscriptStatsFileParseState {
+  const reset =
+    !previous ||
+    previous.file !== file ||
+    size < previous.offset ||
+    (size === previous.offset && mtime !== previous.mtime)
+  const base = reset
+    ? {
+        file,
+        size: 0,
+        mtime: 0,
+        offset: 0,
+        pending: '',
+        accumulator: createTranscriptStatsAccumulator(sessionId),
+        stats: emptyStats(sessionId),
+      }
+    : previous
+
+  let pending = base.pending
+  if (size > base.offset) {
+    const chunk = readRange(file, base.offset, size)
+    const split = splitCompleteTranscriptLines(pending + chunk)
+    foldTranscriptStatsLines(base.accumulator, split.lines)
+    pending = split.pending
+  }
+
+  return {
+    file,
+    size,
+    mtime,
+    offset: size,
+    pending,
+    accumulator: base.accumulator,
+    stats: transcriptStatsFromAccumulator(base.accumulator, mtime),
+  }
+}
+
 export function parseTranscriptDetailFile(
   file: string,
   sessionId: string,
@@ -1068,20 +1299,51 @@ export function parseTranscriptDetailFile(
  * widgets that poll the transcript share one parse and fast polling stays cheap
  * — we only re-parse when the transcript actually grows.
  */
-let tCache: { id: string; mtime: number; stats: TranscriptStats } | null = null
+const TRANSCRIPT_STATS_PARSE_STATE_MAX_ENTRIES = 8
+const transcriptStatsParseStates = new Map<string, TranscriptStatsFileParseState>()
+
+function rememberTranscriptStatsParseState(
+  sessionId: string,
+  state: TranscriptStatsFileParseState,
+): void {
+  transcriptStatsParseStates.delete(sessionId)
+  transcriptStatsParseStates.set(sessionId, state)
+  while (transcriptStatsParseStates.size > TRANSCRIPT_STATS_PARSE_STATE_MAX_ENTRIES) {
+    const oldest = transcriptStatsParseStates.keys().next().value
+    if (!oldest) return
+    transcriptStatsParseStates.delete(oldest)
+  }
+}
+
 export function readTranscriptStats(sessionId: string): TranscriptStats {
   const file = sessionId ? findSessionFile(sessionId) : null
   if (!file) return emptyStats(sessionId)
+  let size = 0
   let mtime = 0
   try {
-    mtime = statSync(file).mtimeMs
+    const st = statSync(file)
+    size = st.size
+    mtime = st.mtimeMs
   } catch {
     return emptyStats(sessionId)
   }
-  if (tCache && tCache.id === sessionId && tCache.mtime === mtime) return tCache.stats
-  const stats = withStatusLineContext(parseTranscriptFile(file, sessionId), sessionId)
-  tCache = { id: sessionId, mtime, stats }
-  return stats
+  const cached = transcriptStatsParseStates.get(sessionId)
+  if (cached && cached.file === file && cached.size === size && cached.mtime === mtime) {
+    rememberTranscriptStatsParseState(sessionId, cached)
+    return withStatusLineContext(cached.stats, sessionId)
+  }
+  try {
+    const next = parseTranscriptFileIncremental(file, sessionId, cached || null, size, mtime)
+    rememberTranscriptStatsParseState(sessionId, next)
+    return withStatusLineContext(next.stats, sessionId)
+  } catch {
+    transcriptStatsParseStates.delete(sessionId)
+    return emptyStats(sessionId)
+  }
+}
+
+export function resetTranscriptStatsCacheForTests(): void {
+  transcriptStatsParseStates.clear()
 }
 
 // Claude's statusLine reports the authoritative context_window_size, which
@@ -1385,6 +1647,7 @@ function listHermesSessions(): SessionMeta[] {
 // `else` doubled as both "no engine given" and "engine I don't recognise", so
 // registering opencode silently opted it into the all-engines list. An engine
 // that isn't listed here now defaults to none, which is the safe direction.
+// prettier-ignore
 const SESSION_LISTERS: Partial<Record<import('../shared/engines').EngineId, () => SessionMeta[]>> = {
   claude: listClaudeSessions,
   codex: listCodexSessions,
