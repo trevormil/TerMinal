@@ -58,6 +58,9 @@ const gt = {
     validateProjectsDir: (input: { dir?: string; hostId?: string }) =>
       ipcRenderer.invoke('settings:validate-projects-dir', input),
     suggestProjectsDir: () => ipcRenderer.invoke('settings:suggest-projects-dir'),
+    storageReport: () => ipcRenderer.invoke('settings:storage-report'),
+    reclaimStorage: () => ipcRenderer.invoke('settings:storage-reclaim'),
+    clearScratch: () => ipcRenderer.invoke('settings:scratch-clear'),
   },
   snippets: {
     list: (repoRoot?: string) => ipcRenderer.invoke('snippets:list', repoRoot),
