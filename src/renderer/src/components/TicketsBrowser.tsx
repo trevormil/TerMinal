@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   Plus,
   Hand,
@@ -10,6 +10,8 @@ import {
   RotateCcw,
   SquareTerminal,
   BookmarkPlus,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { Badge } from './ui'
 import { EnginePicker } from './EnginePicker'
@@ -39,9 +41,11 @@ import { fileTicketPrompt, ticketImplementationPrompt } from '../lib/agentPrompt
 import type { BadgeTone } from './ui'
 import {
   DEFAULT_TICKET_VIEW,
+  activeTicketFilterCount,
   filterTickets,
   groupTickets,
   matchesView,
+  ticketFilterRailStorageKey,
   type SavedTicketView,
   type TicketViewSpec,
 } from '../lib/ticketViews'
@@ -73,6 +77,7 @@ const runSourceTone = (source: TicketRunLink['source']): BadgeTone =>
 const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'performance']
 const HORIZONS = ['now', 'next', 'future']
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
+const STATUSES = ['open', 'in-progress', 'stuck', 'closed', 'icebox']
 // Group ordering lives in ticketViews.ts. These groups start collapsed so you
 // don't wade through finished tickets by default.
 const COLLAPSED_BY_DEFAULT = ['closed', 'icebox']
@@ -246,6 +251,15 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   // this object, and the toolbar and a saved view can't drift apart.
   const [view, setView] = useState<TicketViewSpec>(DEFAULT_TICKET_VIEW)
   const patchView = (p: Partial<TicketViewSpec>) => setView((v) => ({ ...v, ...p }))
+  const filterRailKey = ticketFilterRailStorageKey(ctx.repoRoot)
+  const [filterRailCollapsed, setFilterRailCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(filterRailKey) === '1'
+    } catch {
+      return false
+    }
+  })
+  const filterRailToggleRef = useRef<HTMLButtonElement>(null)
   const [savedViews, setSavedViews] = useState<SavedTicketView[]>([])
   const [naming, setNaming] = useState(false)
   const [viewName, setViewName] = useState('')
@@ -280,6 +294,13 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       .then((r) => setMrByIid(new Map((r.mrs || []).map((m) => [m.iid, m]))))
       .catch(() => setMrByIid(new Map()))
   }, [ctx.sessionId])
+  useEffect(() => {
+    try {
+      localStorage.setItem(filterRailKey, filterRailCollapsed ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [filterRailCollapsed, filterRailKey])
 
   // Refresh the list when a ticket is filed/closed anywhere (e.g. the spawn
   // agent finishing) so a spawned ticket appears without a manual reload.
@@ -320,6 +341,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const effectiveView: TicketViewSpec = hitlOnly
     ? { ...DEFAULT_TICKET_VIEW, hitl: true, q: view.q }
     : view
+  const hiddenFilterCount = activeTicketFilterCount(effectiveView)
+  const filterRailId = `tickets-filter-rail-${ctx.sessionId}`
   const filtered = filterTickets(tickets || [], effectiveView)
   const selected = tickets?.find((t) => t.slug === sel) || null
   const groups = groupTickets(filtered, effectiveView)
@@ -339,6 +362,17 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     void persistViews([...savedViews.filter((v) => v.name !== name), { ...view, name }])
     setViewName('')
     setNaming(false)
+  }
+
+  const collapseFilterRail = () => {
+    setFilterRailCollapsed(true)
+    requestAnimationFrame(() => filterRailToggleRef.current?.focus())
+  }
+
+  const onFilterRailKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Escape') return
+    e.stopPropagation()
+    collapseFilterRail()
   }
 
   const toggleGroup = (s: string) =>
@@ -362,55 +396,31 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* toolbar: filter chips + saved views (left), display options and search
-          (right). Status is a filter AND the default grouping axis. */}
-      <div className="flex shrink-0 flex-nowrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
+    <div className="tickets-browser flex h-full min-h-0 flex-col overflow-hidden">
+      {/* toolbar: rail disclosure + saved views, display options, search, and create. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         {!hitlOnly && (
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-            <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
-            <span className="mx-1 text-zinc-700">·</span>
-            <Chip active={view.type === 'all'} onClick={() => patchView({ type: 'all' })}>
-              Any type
-            </Chip>
-            {TYPES.map((t) => (
-              <Chip
-                key={t}
-                active={view.type === t}
-                onClick={() => patchView({ type: view.type === t ? 'all' : t })}
-              >
-                {t}
-              </Chip>
-            ))}
-            <span className="mx-1 text-zinc-700">·</span>
-            {HORIZONS.map((h) => (
-              <Chip
-                key={h}
-                active={view.horizon === h}
-                onClick={() => patchView({ horizon: view.horizon === h ? 'all' : h })}
-              >
-                {h}
-              </Chip>
-            ))}
-            <span className="mx-1 text-zinc-700">·</span>
-            {PRIORITIES.map((pr) => (
-              <Chip
-                key={pr}
-                active={view.priority === pr}
-                onClick={() => patchView({ priority: view.priority === pr ? 'all' : pr })}
-              >
-                {pr}
-              </Chip>
-            ))}
-            <Chip active={view.hitl} onClick={() => patchView({ hitl: !view.hitl })}>
-              <span className="inline-flex items-center gap-1">
-                <Hand size={11} strokeWidth={2} />
-                HITL
+          <button
+            ref={filterRailToggleRef}
+            onClick={() => setFilterRailCollapsed((v) => !v)}
+            aria-expanded={!filterRailCollapsed}
+            aria-controls={filterRailId}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+          >
+            {filterRailCollapsed ? (
+              <PanelLeftOpen size={13} strokeWidth={2} />
+            ) : (
+              <PanelLeftClose size={13} strokeWidth={2} />
+            )}
+            Filters
+            {hiddenFilterCount > 0 && (
+              <span className="ml-0.5 rounded-full bg-[var(--gt-accent)] px-1.5 py-px text-[10px] font-semibold text-white">
+                {hiddenFilterCount}
               </span>
-            </Chip>
-          </div>
+            )}
+          </button>
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
           {!hitlOnly && savedViews.length > 0 && (
             <select
               value={savedViews.find((v) => matchesView(v, view))?.name || ''}
@@ -513,7 +523,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             value={view.q}
             onChange={(e) => patchView({ q: e.target.value })}
             placeholder="Search title, id, body…"
-            className="w-40 rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+            className="min-w-[12rem] max-w-[24rem] flex-1 basis-52 rounded-lg border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[12px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
           />
           {!hitlOnly && (
             <button
@@ -530,8 +540,135 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
         </div>
       </div>
 
-      {/* master-detail */}
-      <div className="flex min-h-0 flex-1">
+      {/* filters + master-detail */}
+      <div
+        className="tickets-filter-body relative flex min-h-0 flex-1 overflow-hidden"
+        data-rail-state={filterRailCollapsed ? 'closed' : 'open'}
+      >
+        {!hitlOnly && !filterRailCollapsed && (
+          <>
+            <button
+              type="button"
+              aria-label="Close filters"
+              className="tickets-filter-scrim absolute inset-0 z-10 hidden bg-black/40"
+              onClick={collapseFilterRail}
+            />
+            <div
+              id={filterRailId}
+              role="region"
+              aria-label="Ticket filters"
+              onKeyDown={onFilterRailKeyDown}
+              className="tickets-filter-rail z-20 flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
+                {hiddenFilterCount > 0 && (
+                  <span className="rounded-full bg-[var(--gt-accent)] px-1.5 py-px text-[10px] font-semibold text-white">
+                    {hiddenFilterCount}
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Type
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Chip active={view.type === 'all'} onClick={() => patchView({ type: 'all' })}>
+                    Any type
+                  </Chip>
+                  {TYPES.map((t) => (
+                    <Chip
+                      key={t}
+                      active={view.type === t}
+                      onClick={() => patchView({ type: view.type === t ? 'all' : t })}
+                    >
+                      {t}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Horizon
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Chip
+                    active={view.horizon === 'all'}
+                    onClick={() => patchView({ horizon: 'all' })}
+                  >
+                    Any horizon
+                  </Chip>
+                  {HORIZONS.map((h) => (
+                    <Chip
+                      key={h}
+                      active={view.horizon === h}
+                      onClick={() => patchView({ horizon: view.horizon === h ? 'all' : h })}
+                    >
+                      {h}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Priority
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Chip
+                    active={view.priority === 'all'}
+                    onClick={() => patchView({ priority: 'all' })}
+                  >
+                    Any priority
+                  </Chip>
+                  {PRIORITIES.map((pr) => (
+                    <Chip
+                      key={pr}
+                      active={view.priority === pr}
+                      onClick={() => patchView({ priority: view.priority === pr ? 'all' : pr })}
+                    >
+                      {pr}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Status
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Chip active={view.status === 'all'} onClick={() => patchView({ status: 'all' })}>
+                    Any status
+                  </Chip>
+                  {STATUSES.map((s) => (
+                    <Chip
+                      key={s}
+                      active={view.status === s}
+                      onClick={() => patchView({ status: view.status === s ? 'all' : s })}
+                    >
+                      {s}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Attention
+                </div>
+                <Chip active={view.hitl} onClick={() => patchView({ hitl: !view.hitl })}>
+                  <span className="inline-flex items-center gap-1">
+                    <Hand size={11} strokeWidth={2} />
+                    HITL
+                  </span>
+                </Chip>
+              </div>
+            </div>
+          </>
+        )}
         <div
           className="shrink-0 overflow-y-auto border-r border-[var(--gt-border)]"
           style={{ width: listW.width }}

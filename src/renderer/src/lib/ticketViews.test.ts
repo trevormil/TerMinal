@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import {
   DEFAULT_TICKET_VIEW,
+  activeTicketFilterCount,
   filterTickets,
   groupTickets,
   matchesView,
+  ticketFilterRailStorageKey,
   type TicketViewSpec,
 } from './ticketViews'
 import type { Ticket } from './types'
@@ -151,5 +153,48 @@ describe('matchesView', () => {
     expect(matchesView(saved({ sortBy: 'id-asc' }), view({ sortBy: 'id-desc' }))).toBe(false)
     expect(matchesView(saved({ hitl: true }), view({ hitl: false }))).toBe(false)
     expect(matchesView(saved({ q: 'redis' }), view({ q: '' }))).toBe(false)
+  })
+})
+
+describe('activeTicketFilterCount', () => {
+  test('the default view has no hidden rail filters active', () => {
+    expect(activeTicketFilterCount(view())).toBe(0)
+  })
+
+  test('counts only rail filters, not search or display controls', () => {
+    expect(
+      activeTicketFilterCount(
+        view({
+          type: 'bug',
+          horizon: 'next',
+          priority: 'critical',
+          status: 'open',
+          hitl: true,
+          q: 'visible search',
+          groupBy: 'priority',
+          sortBy: 'updated-desc',
+        }),
+      ),
+    ).toBe(5)
+  })
+
+  test('saved views update the collapsed badge count from the applied spec', () => {
+    const saved = {
+      name: 'Critical bugs',
+      ...DEFAULT_TICKET_VIEW,
+      type: 'bug',
+      priority: 'critical',
+    }
+    const { name: _name, ...spec } = saved
+
+    expect(matchesView(saved, spec)).toBe(true)
+    expect(activeTicketFilterCount(spec)).toBe(2)
+  })
+})
+
+describe('ticketFilterRailStorageKey', () => {
+  test('is a gt-prefixed repo-scoped key', () => {
+    expect(ticketFilterRailStorageKey('/repo/a')).toBe('gt.tickets.filterRail./repo/a')
+    expect(ticketFilterRailStorageKey('/repo/b')).toBe('gt.tickets.filterRail./repo/b')
   })
 })
