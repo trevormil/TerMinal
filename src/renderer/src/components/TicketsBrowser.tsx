@@ -439,6 +439,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             ) : (
               <PanelLeftClose size={13} strokeWidth={2} />
             )}
+            Filters
             {hiddenFilterCount > 0 && (
               <span className="ml-0.5 rounded-full bg-[var(--gt-accent)] px-1.5 py-px text-[10px] font-semibold text-white">
                 {hiddenFilterCount}
@@ -465,7 +466,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               New
             </button>
           )}
-          {!hitlOnly && <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>}
           {!hitlOnly && (
             <button
               onClick={() =>
