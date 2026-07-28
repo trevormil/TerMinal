@@ -1395,7 +1395,13 @@ function resolveRemoteId(flagId, cwd, { quiet = false, soft = false, agentSessio
     ''
   const byAgent = sid ? active.find((s) => s.agentSessionId === sid) : null
   const here = cwd ? active.find((s) => s.cwd === cwd) : null
-  const current = byAgent || here || active[0]
+  // `active[0]` is a convenience for a HUMAN typing `terminal-cli remote ...`
+  // when there is one obvious session. It must NEVER apply to the automated
+  // callers — `quiet` is the Stop hook, which runs on every session on the
+  // machine. Otherwise a single stale registration in any repo resolves for
+  // every unrelated session and parks each of their turns for the full wait
+  // timeout, which reads as the agent hanging.
+  const current = byAgent || here || (quiet || soft ? null : active[0])
   if (!current) {
     if (quiet || soft) return ''
     console.error('no registered remote session — run: terminal-cli remote register')
