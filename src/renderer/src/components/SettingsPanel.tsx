@@ -91,6 +91,17 @@ import {
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
+const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
+}
 const emptyDaemon = (): DaemonCfg => ({
   projectsDir: '',
   worktreesDir: '',
@@ -1573,6 +1584,10 @@ export function SettingsPanel({
   )
   const [s, setS] = useState<Settings | null>(null)
   const [env, setEnv] = useState<EnvDetect | null>(null)
+  const [storage, setStorage] = useState<Awaited<
+    ReturnType<typeof window.gt.settings.storageReport>
+  > | null>(null)
+  const [storageBusy, setStorageBusy] = useState<'scan' | 'reclaim' | 'scratch' | null>(null)
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
   const [notify, setNotify] = useState<{
     busy?: boolean
@@ -1595,9 +1610,35 @@ export function SettingsPanel({
     platform: 'linux' as RemotePlatform,
   })
 
+  const refreshStorage = async () => {
+    setStorageBusy('scan')
+    try {
+      setStorage(await window.gt.settings.storageReport())
+    } finally {
+      setStorageBusy(null)
+    }
+  }
+  const reclaimStorage = async () => {
+    setStorageBusy('reclaim')
+    try {
+      setStorage(await window.gt.settings.reclaimStorage())
+    } finally {
+      setStorageBusy(null)
+    }
+  }
+  const clearScratch = async () => {
+    setStorageBusy('scratch')
+    try {
+      await window.gt.settings.clearScratch()
+      setStorage(await window.gt.settings.storageReport())
+    } finally {
+      setStorageBusy(null)
+    }
+  }
   useEffect(() => {
     window.gt.settings.get().then(setS)
     window.gt.detectEnv().then(setEnv)
+    void refreshStorage()
   }, [])
   useEffect(() => {
     if (s && profile !== 'local' && !s.remoteHosts.some((h) => h.id === profile))
@@ -2391,6 +2432,67 @@ export function SettingsPanel({
                       <span className="text-[10.5px] text-zinc-600">
                         schedules · settings · cron logs · agent state
                       </span>
+                    </div>
+                    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                            TerMinal storage
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-zinc-300">
+                            {storage
+                              ? `${formatBytes(storage.totalBytes)} total · ${formatBytes(storage.reclaimableBytes)} reclaimable`
+                              : 'Dry-run estimate not loaded'}
+                          </div>
+                          {storage && (
+                            <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">
+                              Worktrees {formatBytes(storage.worktrees.bytes)} · checkpoints{' '}
+                              {formatBytes(storage.checkpoints.bytes)} · scratch{' '}
+                              {formatBytes(storage.scratch.bytes)}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => void refreshStorage()}
+                          disabled={storageBusy !== null}
+                          className={buttonSoft}
+                        >
+                          {storageBusy === 'scan' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={12} strokeWidth={2} />
+                          )}
+                          Dry-run estimate
+                        </button>
+                        <button
+                          onClick={() => void reclaimStorage()}
+                          disabled={
+                            storageBusy !== null || !storage || storage.reclaimableBytes === 0
+                          }
+                          className={buttonSoft}
+                          title="Deletes only eligible finished cron worktrees and checkpoint tmp_obj_* files, then runs git gc on large checkpoint stores. Running worktrees are protected."
+                        >
+                          {storageBusy === 'reclaim' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} strokeWidth={2} />
+                          )}
+                          Reclaim leaked state
+                        </button>
+                        <button
+                          onClick={() => void clearScratch()}
+                          disabled={storageBusy !== null || !storage?.scratch.clearable}
+                          className={buttonSoft}
+                          title="Explicitly deletes ~/.config/TerMinal/scratch. This is separate from leaked-state reclaim."
+                        >
+                          {storageBusy === 'scratch' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} strokeWidth={2} />
+                          )}
+                          Clear scratch
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </Section>

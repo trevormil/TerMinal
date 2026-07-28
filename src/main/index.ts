@@ -291,6 +291,7 @@ import {
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
+import { clearTerminalScratch, sweepTerminalState } from './run-retention'
 import {
   bridgeStatus,
   startBridge,
@@ -1958,6 +1959,20 @@ ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') 
   return { ok: false, error: `unknown alert channel: ${channel}` }
 })
 ipcMain.handle('settings:get', () => readSettings())
+ipcMain.handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
+ipcMain.handle('settings:storage-reclaim', () => {
+  const report = sweepTerminalState(undefined, { dryRun: false })
+  emitActivity(
+    {
+      kind: 'info',
+      title: 'Storage reclaim completed',
+      detail: `${report.reclaimedBytes} bytes reclaimed`,
+    },
+    { notify: false },
+  )
+  return report
+})
+ipcMain.handle('settings:scratch-clear', () => clearTerminalScratch())
 ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   const before = readSettings()
   const next = patchSettings(patch)

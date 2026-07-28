@@ -43,3 +43,12 @@ describe('settings categories', () => {
     expect(navIds).toContain(fallback ?? 'daemon')
   })
 })
+
+describe('settings storage controls', () => {
+  test('paths pane exposes explicit storage reclaim controls', () => {
+    expect(src).toContain('storageReport')
+    expect(src).toContain('Reclaim leaked state')
+    expect(src).toContain('Dry-run estimate')
+    expect(src).toContain('Clear scratch')
+  })
+})

@@ -661,6 +661,48 @@ export type SettingsPatch = Partial<
   noteFolders?: NoteFolder[]
 }
 
+export type StorageEntry = {
+  path: string
+  bytes: number
+}
+
+export type TerminalStateSweepReport = {
+  root: string
+  dryRun: boolean
+  totalBytes: number
+  reclaimableBytes: number
+  reclaimedBytes: number
+  worktrees: {
+    bytes: number
+    thresholdBytes: number
+    planned: StorageEntry[]
+    deleted: StorageEntry[]
+    protectedRunning: StorageEntry[]
+  }
+  checkpoints: {
+    bytes: number
+    thresholdBytes: number
+    gc: {
+      planned: StorageEntry[]
+      completed: (StorageEntry & { error?: string })[]
+    }
+    tmpObjects: {
+      planned: StorageEntry[]
+      deleted: StorageEntry[]
+    }
+  }
+  scratch: {
+    bytes: number
+    clearable: boolean
+  }
+}
+
+export type ScratchClearReport = {
+  path: string
+  bytes: number
+  deleted: boolean
+}
+
 /** Tool/engine readiness probed by the main process (env:detect). */
 export type EnvDetect = {
   codex: { found: boolean; path: string }
@@ -1662,6 +1704,9 @@ export type GtApi = {
       hostId?: string
     }) => Promise<ProjectsDirValidation>
     suggestProjectsDir: () => Promise<ProjectsDirSuggestion>
+    storageReport: () => Promise<TerminalStateSweepReport>
+    reclaimStorage: () => Promise<TerminalStateSweepReport>
+    clearScratch: () => Promise<ScratchClearReport>
   }
   snippets: {
     list: (repoRoot?: string) => Promise<{
