@@ -35,12 +35,14 @@ Because we no longer release on every commit, the installed
 `/Applications/TerMinal.app` can lag `main`. Keep them reconciled:
 
 - **Release from `main`, after a PR merges** — not from feature branches. Pull
-  `main`, then `bun run release`, so the installed app reflects merged code.
+  `main`, then `bun run dist && bun run release`, so the installed app reflects
+  merged code. `bin/release` only packages an existing `dist/` build — it does
+  not build, and hard-fails if `dist/mac*/TerMinal.app` is missing.
 - **Know what's installed:** the build stamp (commit sha + build time) is baked
   in at build (`electron.vite.config.ts`) and shown in **Settings** (top-right).
   Compare it against `git log` on `main` to see if the installed app is current.
   A `-dirty` suffix means it was built from an uncommitted working tree.
-- While iterating on a branch, `bun run release` builds *that branch* — the stamp
+- While iterating on a branch, `bun run dist && bun run release` builds *that branch* — the stamp
   will show the branch name; re-release from `main` once merged.
 
 Runbook: [`docs/runbooks/build-and-release.md`](./docs/runbooks/build-and-release.md).
@@ -50,7 +52,8 @@ Runbook: [`docs/runbooks/build-and-release.md`](./docs/runbooks/build-and-releas
 ```bash
 bun install               # at repo root
 bun run dev               # dev server with HMR
-bun run release           # FULL rebuild → sign → reinstall /Applications/TerMinal.app (from main, post-merge)
+bun run dist              # build + package (electron-vite + electron-builder)
+bun run release           # sign → reinstall /Applications/TerMinal.app (needs a prior `dist`)
 bun run test              # test suite
 bunx tsc --noEmit         # typecheck
 ```
