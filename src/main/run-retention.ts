@@ -185,6 +185,38 @@ function removeEntry(root: string, entry: StorageEntry): boolean {
   return !existsSync(entry.path)
 }
 
+/**
+ * The cron-worktrees entries are REGISTERED git worktrees, not loose dirs — so
+ * deleting the directory leaves `.git/worktrees/<name>` behind and git keeps
+ * treating the branch as checked out (it then refuses to reuse or delete it).
+ * Resolve each one's owning repo BEFORE removal so we can prune afterwards.
+ */
+export function worktreeOwnerRepo(worktreePath: string): string {
+  try {
+    return execFileSync('git', ['-C', worktreePath, 'rev-parse', '--git-common-dir'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    }).trim()
+  } catch {
+    return '' // not a worktree (or already broken) — nothing to prune
+  }
+}
+
+function pruneWorktreeOwners(gitDirs: Set<string>): void {
+  for (const gitDir of gitDirs) {
+    if (!gitDir) continue
+    try {
+      execFileSync('git', ['--git-dir', gitDir, 'worktree', 'prune'], {
+        stdio: 'ignore',
+        timeout: 30_000,
+      })
+    } catch {
+      // Best-effort: a stale registration is untidy, not dangerous.
+    }
+  }
+}
+
 function gitGc(repo: StorageEntry): CheckpointGcEntry {
   try {
     execFileSync('git', ['--git-dir', repo.path, 'gc', '--prune=now'], {
@@ -219,9 +251,13 @@ export function sweepTerminalState(
   const completedGc: CheckpointGcEntry[] = []
 
   if (!dryRun) {
+    // Resolve owners first — once the directory is gone, the link back to the
+    // repo that registered it is gone too.
+    const owners = new Set(worktrees.planned.map((entry) => worktreeOwnerRepo(entry.path)))
     for (const entry of worktrees.planned) {
       if (removeEntry(root, entry)) deletedWorktrees.push(entry)
     }
+    if (deletedWorktrees.length) pruneWorktreeOwners(owners)
     for (const entry of tmpObjects) {
       if (removeEntry(root, entry)) deletedTmpObjects.push(entry)
     }
