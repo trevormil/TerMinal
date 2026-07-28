@@ -9,7 +9,6 @@ import {
   Play,
   RotateCcw,
   SquareTerminal,
-  BookmarkPlus,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -44,9 +43,7 @@ import {
   activeTicketFilterCount,
   filterTickets,
   groupTickets,
-  matchesView,
   ticketFilterRailStorageKey,
-  type SavedTicketView,
   type TicketViewSpec,
 } from '../lib/ticketViews'
 import type { Ticket, TicketRunLink, TabContext, Mr, Engine, Persona } from '../lib/types'
@@ -78,6 +75,59 @@ const TYPES = ['feature', 'bug', 'security', 'docs', 'dx', 'testing', 'ux', 'per
 const HORIZONS = ['now', 'next', 'future']
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
 const STATUSES = ['open', 'in-progress', 'stuck', 'closed', 'icebox']
+const TYPE_LABELS: Record<string, string> = {
+  bug: 'Bug',
+  feature: 'Feature',
+  security: 'Security',
+  docs: 'Docs',
+  ci: 'CI',
+  dx: 'DX',
+  testing: 'Testing',
+  ux: 'UX',
+  performance: 'Performance',
+}
+const HORIZON_LABELS: Record<string, string> = {
+  now: 'Now',
+  next: 'Next',
+  future: 'Future',
+}
+const PRIORITY_LABELS: Record<string, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+}
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Open',
+  'in-progress': 'In progress',
+  stuck: 'Stuck',
+  closed: 'Closed',
+  icebox: 'Icebox',
+}
+const GROUP_LABELS: Record<TicketViewSpec['groupBy'], string> = {
+  status: 'By status',
+  priority: 'By priority',
+  type: 'By type',
+  horizon: 'By horizon',
+  agent: 'By agent',
+  none: 'No grouping',
+}
+const SORT_LABELS: Record<TicketViewSpec['sortBy'], string> = {
+  'id-desc': 'Newest',
+  'id-asc': 'Oldest',
+  'updated-desc': 'Updated',
+  priority: 'Priority',
+}
+const labelFrom = (labels: Record<string, string>, value: string) =>
+  labels[value] || value.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+const ticketGroupLabel = (groupBy: TicketViewSpec['groupBy'], key: string) => {
+  if (groupBy === 'status') return labelFrom(STATUS_LABELS, key)
+  if (groupBy === 'priority') return labelFrom(PRIORITY_LABELS, key)
+  if (groupBy === 'type') return labelFrom(TYPE_LABELS, key)
+  if (groupBy === 'horizon') return labelFrom(HORIZON_LABELS, key)
+  if (groupBy === 'none') return 'All tickets'
+  return labelFrom({}, key)
+}
 // Group ordering lives in ticketViews.ts. These groups start collapsed so you
 // don't wade through finished tickets by default.
 const COLLAPSED_BY_DEFAULT = ['closed', 'icebox']
@@ -94,7 +144,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize transition-colors ${
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
         active
           ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
           : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
@@ -247,8 +297,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const [ticketError, setTicketError] = useState('')
   const [sel, setSel] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  // One spec drives filtering, grouping and sorting — so a saved view is just
-  // this object, and the toolbar and a saved view can't drift apart.
+  // One spec drives filtering, grouping and sorting so toolbar and rail state
+  // can't drift apart.
   const [view, setView] = useState<TicketViewSpec>(DEFAULT_TICKET_VIEW)
   const patchView = (p: Partial<TicketViewSpec>) => setView((v) => ({ ...v, ...p }))
   const filterRailKey = ticketFilterRailStorageKey(ctx.repoRoot)
@@ -260,9 +310,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
     }
   })
   const filterRailToggleRef = useRef<HTMLButtonElement>(null)
-  const [savedViews, setSavedViews] = useState<SavedTicketView[]>([])
-  const [naming, setNaming] = useState(false)
-  const [viewName, setViewName] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(COLLAPSED_BY_DEFAULT))
   const [pickImpl, setPickImpl] = useState(false)
   const [started, setStarted] = useState(false)
@@ -283,10 +330,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   useEffect(() => {
     loadTickets()
     window.gt.agents.personas().then(setAgentContexts)
-    void window.gt.tickets
-      .providerGet()
-      .then((cfg) => setSavedViews('error' in cfg ? [] : cfg.savedViews || []))
-      .catch(() => setSavedViews([]))
     // Enrich ticket MR links with live state/verdict badges. All-states list, so
     // merged/closed MRs (the common case for a closed ticket) resolve too.
     window.gt
@@ -346,23 +389,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
   const filtered = filterTickets(tickets || [], effectiveView)
   const selected = tickets?.find((t) => t.slug === sel) || null
   const groups = groupTickets(filtered, effectiveView)
-  // Saved views live in .TerMinal/tickets.json next to the provider config, so
-  // they follow the repo rather than the machine.
-  const persistViews = async (next: SavedTicketView[]) => {
-    setSavedViews(next)
-    const cfg = await window.gt.tickets.providerGet()
-    if ('error' in cfg) return
-    await window.gt.tickets.providerSave({ ...cfg, savedViews: next })
-  }
-  const saveCurrentView = () => {
-    const name = viewName.trim()
-    if (!name) return
-    // Re-saving an existing name overwrites it rather than making a duplicate
-    // the picker can't tell apart.
-    void persistViews([...savedViews.filter((v) => v.name !== name), { ...view, name }])
-    setViewName('')
-    setNaming(false)
-  }
 
   const collapseFilterRail = () => {
     setFilterRailCollapsed(true)
@@ -397,12 +423,13 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
 
   return (
     <div className="tickets-browser flex h-full min-h-0 flex-col overflow-hidden">
-      {/* toolbar: rail disclosure + saved views, display options, search, and create. */}
+      {/* toolbar: rail disclosure, search, create, provider, and config. */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         {!hitlOnly && (
           <button
             ref={filterRailToggleRef}
             onClick={() => setFilterRailCollapsed((v) => !v)}
+            aria-label={filterRailCollapsed ? 'Show filters' : 'Hide filters'}
             aria-expanded={!filterRailCollapsed}
             aria-controls={filterRailId}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
@@ -412,7 +439,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             ) : (
               <PanelLeftClose size={13} strokeWidth={2} />
             )}
-            Filters
             {hiddenFilterCount > 0 && (
               <span className="ml-0.5 rounded-full bg-[var(--gt-accent)] px-1.5 py-px text-[10px] font-semibold text-white">
                 {hiddenFilterCount}
@@ -421,104 +447,6 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           </button>
         )}
         <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
-          {!hitlOnly && savedViews.length > 0 && (
-            <select
-              value={savedViews.find((v) => matchesView(v, view))?.name || ''}
-              onChange={(e) => {
-                const found = savedViews.find((v) => v.name === e.target.value)
-                if (found) {
-                  const { name: _name, ...spec } = found
-                  setView(spec)
-                }
-              }}
-              title="Saved views"
-              className="max-w-[130px] rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-            >
-              <option value="" className="bg-[var(--gt-panel)]">
-                Views…
-              </option>
-              {savedViews.map((v) => (
-                <option key={v.name} value={v.name} className="bg-[var(--gt-panel)]">
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          )}
-          {!hitlOnly && (
-            <>
-              <select
-                value={view.groupBy}
-                onChange={(e) =>
-                  patchView({ groupBy: e.target.value as TicketViewSpec['groupBy'] })
-                }
-                title="Group the list by"
-                className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-              >
-                {(['status', 'priority', 'type', 'horizon', 'agent', 'none'] as const).map((g) => (
-                  <option key={g} value={g} className="bg-[var(--gt-panel)]">
-                    by {g}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={view.sortBy}
-                onChange={(e) => patchView({ sortBy: e.target.value as TicketViewSpec['sortBy'] })}
-                title="Sort within each group"
-                className="rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-              >
-                <option value="id-desc" className="bg-[var(--gt-panel)]">
-                  newest
-                </option>
-                <option value="id-asc" className="bg-[var(--gt-panel)]">
-                  oldest
-                </option>
-                <option value="updated-desc" className="bg-[var(--gt-panel)]">
-                  updated
-                </option>
-                <option value="priority" className="bg-[var(--gt-panel)]">
-                  priority
-                </option>
-              </select>
-            </>
-          )}
-          {!hitlOnly &&
-            (naming ? (
-              <input
-                autoFocus
-                value={viewName}
-                onChange={(e) => setViewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveCurrentView()
-                  if (e.key === 'Escape') setNaming(false)
-                }}
-                onBlur={() => setNaming(false)}
-                placeholder="View name…"
-                className="w-28 rounded-lg border border-[var(--gt-accent)]/60 bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none"
-              />
-            ) : (
-              <button
-                onClick={() => {
-                  setViewName(savedViews.find((v) => matchesView(v, view))?.name || '')
-                  setNaming(true)
-                }}
-                title="Save these filters as a named view"
-                className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-              >
-                <BookmarkPlus size={13} strokeWidth={2} />
-              </button>
-            ))}
-          {!hitlOnly && (
-            <button
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }),
-                )
-              }
-              className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
-            >
-              Configure
-            </button>
-          )}
           <input
             value={view.q}
             onChange={(e) => patchView({ q: e.target.value })}
@@ -535,6 +463,19 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
             >
               <Plus size={14} strokeWidth={2.5} />
               New
+            </button>
+          )}
+          {!hitlOnly && <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>}
+          {!hitlOnly && (
+            <button
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('gt.settings.open', { detail: { section: 'tickets' } }),
+                )
+              }
+              className="rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-100"
+            >
+              Configure
             </button>
           )}
         </div>
@@ -560,13 +501,46 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               onKeyDown={onFilterRailKeyDown}
               className="tickets-filter-rail z-20 flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-3"
             >
-              <div className="flex items-center justify-between gap-2">
-                <Badge tone="mute">{ctx.ticketProviderLabel || 'Local backlog'}</Badge>
-                {hiddenFilterCount > 0 && (
-                  <span className="rounded-full bg-[var(--gt-accent)] px-1.5 py-px text-[10px] font-semibold text-white">
-                    {hiddenFilterCount}
-                  </span>
-                )}
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Group
+                </div>
+                <select
+                  value={view.groupBy}
+                  onChange={(e) =>
+                    patchView({ groupBy: e.target.value as TicketViewSpec['groupBy'] })
+                  }
+                  title="Group the list by"
+                  className="w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                >
+                  {(['status', 'priority', 'type', 'horizon', 'agent', 'none'] as const).map(
+                    (group) => (
+                      <option key={group} value={group} className="bg-[var(--gt-panel)]">
+                        {GROUP_LABELS[group]}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Sort
+                </div>
+                <select
+                  value={view.sortBy}
+                  onChange={(e) =>
+                    patchView({ sortBy: e.target.value as TicketViewSpec['sortBy'] })
+                  }
+                  title="Sort within each group"
+                  className="w-full rounded-lg border border-[var(--gt-border)] bg-black/30 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
+                >
+                  {(['id-desc', 'id-asc', 'updated-desc', 'priority'] as const).map((sort) => (
+                    <option key={sort} value={sort} className="bg-[var(--gt-panel)]">
+                      {SORT_LABELS[sort]}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
@@ -583,7 +557,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       active={view.type === t}
                       onClick={() => patchView({ type: view.type === t ? 'all' : t })}
                     >
-                      {t}
+                      {TYPE_LABELS[t]}
                     </Chip>
                   ))}
                 </div>
@@ -606,7 +580,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       active={view.horizon === h}
                       onClick={() => patchView({ horizon: view.horizon === h ? 'all' : h })}
                     >
-                      {h}
+                      {HORIZON_LABELS[h]}
                     </Chip>
                   ))}
                 </div>
@@ -629,7 +603,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       active={view.priority === pr}
                       onClick={() => patchView({ priority: view.priority === pr ? 'all' : pr })}
                     >
-                      {pr}
+                      {PRIORITY_LABELS[pr]}
                     </Chip>
                   ))}
                 </div>
@@ -649,7 +623,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       active={view.status === s}
                       onClick={() => patchView({ status: view.status === s ? 'all' : s })}
                     >
-                      {s}
+                      {STATUS_LABELS[s]}
                     </Chip>
                   ))}
                 </div>
@@ -714,7 +688,9 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     ) : (
                       <ChevronRight size={12} strokeWidth={2} className="text-zinc-500" />
                     )}
-                    <Badge tone={statusTone(status)}>{status}</Badge>
+                    <Badge tone={statusTone(status)}>
+                      {ticketGroupLabel(effectiveView.groupBy, status)}
+                    </Badge>
                     <span className="text-[11px] tabular-nums text-zinc-600">{items.length}</span>
                   </button>
                   {isOpen &&
@@ -742,12 +718,16 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                             </Badge>
                           )}
                           {t.horizon !== 'now' && (
-                            <Badge tone={horizonTone(t.horizon)}>{t.horizon}</Badge>
+                            <Badge tone={horizonTone(t.horizon)}>
+                              {labelFrom(HORIZON_LABELS, t.horizon)}
+                            </Badge>
                           )}
                           {t.modelTier !== 'auto' && (
                             <Badge tone={modelTierTone(t.modelTier)}>{t.modelTier}</Badge>
                           )}
-                          <Badge tone={priorityTone(t.priority)}>{t.priority}</Badge>
+                          <Badge tone={priorityTone(t.priority)}>
+                            {labelFrom(PRIORITY_LABELS, t.priority)}
+                          </Badge>
                           {t.depends_on.length > 0 &&
                             t.depends_on.some((id) => {
                               const dep = tickets?.find((x) => x.id === id)
