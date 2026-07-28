@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,6 +18,9 @@ import {
 // trustworthy if restore actually restores, so mocking it would prove nothing.
 
 const made: string[] = []
+const checkpointRoot = mkdtempSync(join(tmpdir(), 'tm-ckpt-root-'))
+process.env.TERMINAL_CHECKPOINT_ROOT = checkpointRoot
+
 function workspace(): string {
   const dir = mkdtempSync(join(tmpdir(), 'tm-ckpt-'))
   made.push(dir)
@@ -32,6 +35,11 @@ afterEach(() => {
       /* best effort */
     }
   }
+})
+
+afterAll(() => {
+  rmSync(checkpointRoot, { recursive: true, force: true })
+  delete process.env.TERMINAL_CHECKPOINT_ROOT
 })
 
 describe('parseCheckpointLog', () => {
@@ -50,65 +58,65 @@ describe('parseCheckpointLog', () => {
 })
 
 describe('checkpoint lifecycle (real git)', () => {
-  test('snapshots, lists, and restores the working tree', () => {
+  test('snapshots, lists, and restores the working tree', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'original')
 
-    const first = createCheckpoint(ws, 'turn 1')
+    const first = await createCheckpoint(ws, 'turn 1')
     expect(first.ok).toBe(true)
     expect(first.sha).not.toBe('')
 
     // The agent "edits" and adds a file.
     writeFileSync(join(ws, 'a.txt'), 'agent rewrote this')
     writeFileSync(join(ws, 'b.txt'), 'agent added this')
-    const second = createCheckpoint(ws, 'turn 2')
+    const second = await createCheckpoint(ws, 'turn 2')
     expect(second.sha).not.toBe('')
     expect(second.sha).not.toBe(first.sha)
 
     expect(listCheckpoints(ws).map((c) => c.label)).toEqual(['turn 2', 'turn 1'])
 
     // Roll back to before the agent's edit.
-    const r = restoreCheckpoint(ws, first.sha)
+    const r = await restoreCheckpoint(ws, first.sha)
     expect(r.ok).toBe(true)
     expect(readFileSync(join(ws, 'a.txt'), 'utf8')).toBe('original')
     // A file the agent created is removed by the restore.
     expect(existsSync(join(ws, 'b.txt'))).toBe(false)
   })
 
-  test('an unchanged tree does not create a checkpoint', () => {
+  test('an unchanged tree does not create a checkpoint', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'x')
-    expect(createCheckpoint(ws, 'first').sha).not.toBe('')
-    const again = createCheckpoint(ws, 'nothing changed')
+    expect((await createCheckpoint(ws, 'first')).sha).not.toBe('')
+    const again = await createCheckpoint(ws, 'nothing changed')
     expect(again.ok).toBe(true)
     expect(again.sha).toBe('') // no empty commit spam
     expect(listCheckpoints(ws)).toHaveLength(1)
   })
 
-  test('restoring is itself undoable — it checkpoints first', () => {
+  test('restoring is itself undoable — it checkpoints first', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'v1')
-    const v1 = createCheckpoint(ws, 'v1').sha
+    const v1 = (await createCheckpoint(ws, 'v1')).sha
     writeFileSync(join(ws, 'a.txt'), 'v2')
-    createCheckpoint(ws, 'v2')
+    await createCheckpoint(ws, 'v2')
 
-    const r = restoreCheckpoint(ws, v1)
+    const r = await restoreCheckpoint(ws, v1)
     expect(r.ok).toBe(true)
     expect(r.backup).not.toBe('') // the pre-restore state was saved
     expect(readFileSync(join(ws, 'a.txt'), 'utf8')).toBe('v1')
 
     // …and that backup can be restored, recovering the "lost" v2.
-    expect(restoreCheckpoint(ws, r.backup!).ok).toBe(true)
+    expect((await restoreCheckpoint(ws, r.backup!)).ok).toBe(true)
     expect(readFileSync(join(ws, 'a.txt'), 'utf8')).toBe('v2')
   })
 
-  test('honours .gitignore, so build output is not snapshotted', () => {
+  test('honours .gitignore, so build output is not snapshotted', async () => {
     const ws = workspace()
     writeFileSync(join(ws, '.gitignore'), 'dist/\n')
     mkdirSync(join(ws, 'dist'))
     writeFileSync(join(ws, 'dist', 'bundle.js'), 'huge')
     writeFileSync(join(ws, 'src.ts'), 'code')
-    const sha = createCheckpoint(ws, 'with ignore').sha
+    const sha = (await createCheckpoint(ws, 'with ignore')).sha
     expect(sha).not.toBe('')
 
     const listed = execFileSync(
@@ -120,11 +128,11 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(listed).not.toContain('bundle.js')
   })
 
-  test('never touches the workspace own .git', () => {
+  test('never touches the workspace own .git', async () => {
     const ws = workspace()
     execFileSync('git', ['init', '--quiet', ws], { stdio: 'ignore' })
     writeFileSync(join(ws, 'a.txt'), 'x')
-    createCheckpoint(ws, 'turn')
+    await createCheckpoint(ws, 'turn')
     // The real repo has no commits and nothing staged — the shadow repo took it.
     const status = execFileSync('git', ['-C', ws, 'status', '--porcelain'], { encoding: 'utf8' })
     expect(status).toContain('?? a.txt') // still untracked in the USER's repo
@@ -133,13 +141,13 @@ describe('checkpoint lifecycle (real git)', () => {
     ).toThrow() // no commits were made there
   })
 
-  test('reads a file at a checkpoint, and empty where it did not exist', () => {
+  test('reads a file at a checkpoint, and empty where it did not exist', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'v1\n')
-    const v1 = createCheckpoint(ws, 'v1').sha
+    const v1 = (await createCheckpoint(ws, 'v1')).sha
     writeFileSync(join(ws, 'a.txt'), 'v2\n')
     writeFileSync(join(ws, 'b.txt'), 'new\n')
-    const v2 = createCheckpoint(ws, 'v2').sha
+    const v2 = (await createCheckpoint(ws, 'v2')).sha
 
     expect(fileAtCheckpoint(ws, v1, 'a.txt')).toEqual({ ok: true, content: 'v1\n' })
     expect(fileAtCheckpoint(ws, v2, 'a.txt')).toEqual({ ok: true, content: 'v2\n' })
@@ -149,12 +157,12 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(fileAtCheckpoint(ws, 'HEAD; rm -rf', 'a.txt').ok).toBe(false)
   })
 
-  test('reports the line ranges a checkpoint touched (AI attribution)', () => {
+  test('reports the line ranges a checkpoint touched (AI attribution)', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'one\ntwo\nthree\n')
-    createCheckpoint(ws, 'base')
+    await createCheckpoint(ws, 'base')
     writeFileSync(join(ws, 'a.txt'), 'one\nTWO CHANGED\nthree\nfour added\n')
-    const turn = createCheckpoint(ws, 'agent turn').sha
+    const turn = (await createCheckpoint(ws, 'agent turn')).sha
 
     const ranges = checkpointChangedRanges(ws, turn)
     expect(ranges['a.txt']).toEqual([
@@ -163,19 +171,19 @@ describe('checkpoint lifecycle (real git)', () => {
     ])
   })
 
-  test('the very first checkpoint attributes every line', () => {
+  test('the very first checkpoint attributes every line', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'x\ny\n')
-    const first = createCheckpoint(ws, 'first').sha
+    const first = (await createCheckpoint(ws, 'first')).sha
     expect(checkpointChangedRanges(ws, first)['a.txt']).toEqual([{ from: 1, to: 2 }])
   })
 
-  test('review base survives local edits after the agent turn', () => {
+  test('review base survives local edits after the agent turn', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'v1\n')
-    createCheckpoint(ws, 'turn 1')
+    await createCheckpoint(ws, 'turn 1')
     writeFileSync(join(ws, 'a.txt'), 'agent v2\n')
-    createCheckpoint(ws, 'turn 2')
+    await createCheckpoint(ws, 'turn 2')
     // The human edits ON TOP of the agent's turn — the turn's edits must
     // still be visible, so the base is turn 1's content, not turn 2's.
     const base = reviewBaseFor(ws, 'a.txt', 'agent v2 plus my tweak\n')
@@ -184,13 +192,13 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(reviewBaseFor(ws, 'a.txt', 'agent v2\n')).toMatchObject({ ok: true, content: 'v1\n' })
   })
 
-  test('review base is the newest checkpoint when the last turn skipped the file', () => {
+  test('review base is the newest checkpoint when the last turn skipped the file', async () => {
     const ws = workspace()
     writeFileSync(join(ws, 'a.txt'), 'stable\n')
     writeFileSync(join(ws, 'b.txt'), 'x\n')
-    createCheckpoint(ws, 'turn 1')
+    await createCheckpoint(ws, 'turn 1')
     writeFileSync(join(ws, 'b.txt'), 'y\n') // the turn touched only b.txt
-    const second = createCheckpoint(ws, 'turn 2').sha
+    const second = (await createCheckpoint(ws, 'turn 2')).sha
     // a.txt drifted locally — base is the newest checkpoint, showing just that.
     expect(reviewBaseFor(ws, 'a.txt', 'stable + local\n')).toMatchObject({
       ok: true,
@@ -201,9 +209,21 @@ describe('checkpoint lifecycle (real git)', () => {
     expect(reviewBaseFor(ws, 'a.txt', 'stable\n')).toEqual({ ok: false })
   })
 
-  test('unknown workspace or sha fails cleanly', () => {
-    expect(createCheckpoint('', 'x').ok).toBe(false)
-    expect(restoreCheckpoint(workspace(), '').ok).toBe(false)
+  test('overlapping checkpoints for the same repo drop instead of running concurrently', async () => {
+    const ws = workspace()
+    writeFileSync(join(ws, 'a.txt'), 'x')
+
+    const first = createCheckpoint(ws, 'first')
+    const second = await createCheckpoint(ws, 'overlap')
+
+    expect(second).toEqual({ ok: true, sha: '' })
+    expect((await first).sha).not.toBe('')
+    expect(listCheckpoints(ws).map((c) => c.label)).toEqual(['first'])
+  })
+
+  test('unknown workspace or sha fails cleanly', async () => {
+    expect((await createCheckpoint('', 'x')).ok).toBe(false)
+    expect((await restoreCheckpoint(workspace(), '')).ok).toBe(false)
     expect(listCheckpoints(workspace())).toEqual([])
   })
 })

@@ -1,8 +1,9 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { parseUnifiedRanges } from '../shared/diff-ranges'
 
 // Per-turn workspace checkpoints — "one click rolls back to before the agent
@@ -16,11 +17,20 @@ import { parseUnifiedRanges } from '../shared/diff-ranges'
 
 export type Checkpoint = { sha: string; at: number; label: string }
 
-const ROOT = join(homedir(), '.config', 'TerMinal', 'checkpoints')
+const DEFAULT_ROOT = join(homedir(), '.config', 'TerMinal', 'checkpoints')
+const execFileAsync = promisify(execFile)
+const checkpointInFlight = new Set<string>()
+
+function checkpointRoot(): string {
+  return process.env.TERMINAL_CHECKPOINT_ROOT || DEFAULT_ROOT
+}
 
 /** One shadow repo per workspace, keyed by a hash of its absolute path. */
 export function checkpointDir(repoRoot: string): string {
-  return join(ROOT, `${createHash('sha256').update(repoRoot).digest('hex').slice(0, 16)}.git`)
+  return join(
+    checkpointRoot(),
+    `${createHash('sha256').update(repoRoot).digest('hex').slice(0, 16)}.git`,
+  )
 }
 
 function git(repoRoot: string, args: string[], timeoutMs = 20000): string {
@@ -46,14 +56,35 @@ function git(repoRoot: string, args: string[], timeoutMs = 20000): string {
   ).toString()
 }
 
-function ensureRepo(repoRoot: string): boolean {
+async function gitAsync(repoRoot: string, args: string[], timeoutMs = 20000): Promise<string> {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['--git-dir', checkpointDir(repoRoot), '--work-tree', repoRoot, ...args],
+    {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 32 * 1024 * 1024,
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_AUTHOR_NAME: 'TerMinal',
+        GIT_AUTHOR_EMAIL: 'checkpoint@terminal.local',
+        GIT_COMMITTER_NAME: 'TerMinal',
+        GIT_COMMITTER_EMAIL: 'checkpoint@terminal.local',
+      },
+    },
+  )
+  return stdout.toString()
+}
+
+async function ensureRepoAsync(repoRoot: string): Promise<boolean> {
   const dir = checkpointDir(repoRoot)
   if (existsSync(dir)) return true
   try {
-    mkdirSync(ROOT, { recursive: true })
-    execFileSync('git', ['init', '--bare', '--quiet', dir], { stdio: 'ignore', timeout: 20000 })
-    // A bare repo has no work tree by default; we supply one per command.
-    git(repoRoot, ['config', 'core.bare', 'false'])
+    mkdirSync(checkpointRoot(), { recursive: true })
+    await execFileAsync('git', ['init', '--bare', '--quiet', dir], { timeout: 20000 })
+    await gitAsync(repoRoot, ['config', 'core.bare', 'false'])
     return true
   } catch {
     return false
@@ -64,20 +95,28 @@ function ensureRepo(repoRoot: string): boolean {
  * Snapshot the working tree. Returns the new commit's sha, or '' when nothing
  * changed since the last checkpoint (so an idle turn doesn't spam history).
  */
-export function createCheckpoint(repoRoot: string, label: string): { ok: boolean; sha: string } {
-  if (!repoRoot || !ensureRepo(repoRoot)) return { ok: false, sha: '' }
+export async function createCheckpoint(
+  repoRoot: string,
+  label: string,
+): Promise<{ ok: boolean; sha: string }> {
+  if (!repoRoot) return { ok: false, sha: '' }
+  if (checkpointInFlight.has(repoRoot)) return { ok: true, sha: '' }
+  checkpointInFlight.add(repoRoot)
   try {
-    git(repoRoot, ['add', '-A'])
+    if (!(await ensureRepoAsync(repoRoot))) return { ok: false, sha: '' }
+    await gitAsync(repoRoot, ['add', '-A'])
     // --allow-empty is deliberately NOT passed: an unchanged tree should not
     // create a checkpoint. git commit exits non-zero in that case.
     try {
-      git(repoRoot, ['commit', '-m', label.slice(0, 200), '--quiet'])
+      await gitAsync(repoRoot, ['commit', '-m', label.slice(0, 200), '--quiet'])
     } catch {
       return { ok: true, sha: '' } // nothing to snapshot — not an error
     }
-    return { ok: true, sha: git(repoRoot, ['rev-parse', 'HEAD']).trim() }
+    return { ok: true, sha: (await gitAsync(repoRoot, ['rev-parse', 'HEAD'])).trim() }
   } catch {
     return { ok: false, sha: '' }
+  } finally {
+    checkpointInFlight.delete(repoRoot)
   }
 }
 
@@ -176,10 +215,10 @@ export function reviewBaseFor(repoRoot: string, rel: string, buffer: string): Re
  * A checkpoint is taken FIRST, so restoring is itself undoable — rolling back
  * can never be the thing that loses work.
  */
-export function restoreCheckpoint(
+export async function restoreCheckpoint(
   repoRoot: string,
   sha: string,
-): { ok: boolean; error?: string; backup?: string } {
+): Promise<{ ok: boolean; error?: string; backup?: string }> {
   if (!repoRoot || !sha) return { ok: false, error: 'no checkpoint given' }
   if (!existsSync(checkpointDir(repoRoot)))
     return { ok: false, error: 'no checkpoints for this workspace' }
@@ -187,16 +226,16 @@ export function restoreCheckpoint(
     // Capture the pre-restore state. When nothing has changed since the last
     // checkpoint there's no new commit — HEAD already *is* that state, so
     // return it rather than '' (the caller's undo must always have a target).
-    const fresh = createCheckpoint(repoRoot, `before restoring ${sha.slice(0, 8)}`).sha
-    const backup = fresh || git(repoRoot, ['rev-parse', 'HEAD']).trim()
+    const fresh = (await createCheckpoint(repoRoot, `before restoring ${sha.slice(0, 8)}`)).sha
+    const backup = fresh || (await gitAsync(repoRoot, ['rev-parse', 'HEAD'])).trim()
 
     // read-tree --reset -u makes the INDEX and the working tree match the
     // target. Plain `checkout <sha> -- .` restores file contents but leaves
     // index entries for files added afterwards, so those files survive as
     // tracked — and `clean` then won't remove them. That was the bug.
-    git(repoRoot, ['read-tree', '--reset', '-u', sha])
+    await gitAsync(repoRoot, ['read-tree', '--reset', '-u', sha])
     // Anything still untracked (created since, and never checkpointed) goes too.
-    git(repoRoot, ['clean', '-fd'])
+    await gitAsync(repoRoot, ['clean', '-fd'])
     return { ok: true, backup }
   } catch (e) {
     return { ok: false, error: (e as Error).message }

@@ -280,6 +280,7 @@ import {
   appendSessionRunLog,
   beginSessionRun,
   finalizeSessionRun,
+  flushAllSessionRunLogs,
   readCronRuns,
   readCronRunLog,
   readSessionRunLog,
@@ -1018,12 +1019,8 @@ function pollActivity() {
     const headline = summary.length > 72 ? `${summary.slice(0, 71)}…` : summary
     // Snapshot the workspace at each turn boundary so the turn is undoable.
     // Best-effort and silent: a checkpoint failing must never disrupt a run.
-    try {
-      const root = repoRootOf(s.pinned.cwd)
-      if (root) createCheckpoint(root, `${label} — ${headline}`)
-    } catch {
-      /* checkpoints are best-effort */
-    }
+    const root = repoRootOf(s.pinned.cwd)
+    if (root) void createCheckpoint(root, `${label} — ${headline}`).catch(() => {})
     emitActivity(
       {
         kind: 'task-complete',
@@ -3886,6 +3883,7 @@ app.whenReady().then(() => {
 })
 
 app.on('will-quit', () => {
+  flushAllSessionRunLogs()
   void stopBridge() // never leave the port bound after the app goes away
 })
 
