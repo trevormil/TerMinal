@@ -859,9 +859,16 @@ export default function App() {
   const closeSession = (key: string) => {
     window.gt.stopSession(key)
     setSessions((s) => {
+      const closed = s.find((x) => x.key === key)
       const next = s.filter((x) => x.key !== key)
       if (activeKey === key) {
-        const fallback = next[next.length - 1]?.key ?? null
+        // Stay in the closed session's workspace when it has other sessions —
+        // only jump to another workspace when this one is now empty.
+        const closedRoot = closed ? cwdOf(closed) : ''
+        const sibling = closedRoot
+          ? [...next].reverse().find((x) => cwdOf(x) === closedRoot)
+          : undefined
+        const fallback = sibling?.key ?? next[next.length - 1]?.key ?? null
         if (fallback) activate(fallback)
         else setActiveKey(null)
       }
