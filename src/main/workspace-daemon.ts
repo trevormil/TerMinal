@@ -21,6 +21,7 @@ import {
   type ReplaceTarget,
   readFileBinary,
   type SearchHit,
+  type SearchOptions,
 } from './files'
 import { forgeFor, type CiInfo } from './forge'
 import {
@@ -161,12 +162,13 @@ export type WorkspaceDaemon = {
   filesRead(rel: string): Promise<ReadResult> | ReadResult
   filesReadBinary(rel: string): Promise<ReadBinaryResult> | ReadBinaryResult
   filesWrite(rel: string, content: string): Promise<boolean> | boolean
-  filesSearch(q: string): Promise<SearchHit[]>
+  filesSearch(q: string, opts?: SearchOptions): Promise<SearchHit[]>
   filesFormat(rel: string, content: string): Promise<FormatResult> | FormatResult
   filesReplace(
     query: string,
     replacement: string,
     targets: ReplaceTarget[],
+    opts?: SearchOptions,
   ): Promise<ReplaceResult> | ReplaceResult
   filesCreate(rel: string, dir: boolean): Promise<boolean> | boolean
   filesRename(from: string, to: string): Promise<boolean> | boolean
@@ -276,10 +278,14 @@ export function createLocalWorkspaceDaemon(cwd: string): WorkspaceDaemon {
     filesRead: (rel: string) => readFile(fileRoot(), rel),
     filesReadBinary: (rel: string) => readFileBinary(fileRoot(), rel),
     filesWrite: (rel: string, content: string) => writeFile(fileRoot(), rel, content),
-    filesSearch: (q: string) => searchRepo(fileRoot(), q),
+    filesSearch: (q: string, opts?: SearchOptions) => searchRepo(fileRoot(), q, opts),
     filesFormat: (rel: string, content: string) => formatFile(fileRoot(), rel, content),
-    filesReplace: (query: string, replacement: string, targets: ReplaceTarget[]) =>
-      replaceInFiles(fileRoot(), query, replacement, targets),
+    filesReplace: (
+      query: string,
+      replacement: string,
+      targets: ReplaceTarget[],
+      opts?: SearchOptions,
+    ) => replaceInFiles(fileRoot(), query, replacement, targets, opts),
     filesCreate: (rel: string, dir: boolean) => createEntry(fileRoot(), rel, dir),
     filesRename: (from: string, to: string) => renameEntry(fileRoot(), from, to),
     filesDelete: (rel: string) => removeEntry(fileRoot(), rel),
@@ -388,7 +394,7 @@ export function createSshWorkspaceDaemon(
       reason: 'binary preview is not supported on remote hosts yet',
     }),
     filesWrite: (rel: string, content: string) => remoteFiles.write(remote, rel, content),
-    filesSearch: (q: string) => remoteFiles.search(remote, q),
+    filesSearch: (q: string, opts?: SearchOptions) => remoteFiles.search(remote, q, opts),
     filesFormat: () => ({ ok: false, reason: 'format is not supported on remote hosts yet' }),
     filesReplace: (_q: string, _r: string, targets: ReplaceTarget[]) => ({
       files: 0,

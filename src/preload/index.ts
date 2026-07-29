@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+type FilesSearchOptions = {
+  regex?: boolean
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  include?: string
+  exclude?: string
+}
+
 type StartOpts = {
   mode: 'new' | 'resume'
   engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
@@ -512,10 +520,14 @@ const gt = {
     readBinary: (rel: string) => ipcRenderer.invoke('files:readBinary', rel),
     reveal: (rel: string) => ipcRenderer.invoke('files:reveal', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('files:write', rel, content),
-    search: (q: string) => ipcRenderer.invoke('files:search', q),
+    search: (q: string, opts?: FilesSearchOptions) => ipcRenderer.invoke('files:search', q, opts),
     format: (rel: string, content: string) => ipcRenderer.invoke('files:format', rel, content),
-    replace: (q: string, replacement: string, targets: { file: string; line: number }[]) =>
-      ipcRenderer.invoke('files:replace', q, replacement, targets),
+    replace: (
+      q: string,
+      replacement: string,
+      targets: { file: string; line: number }[],
+      opts?: FilesSearchOptions,
+    ) => ipcRenderer.invoke('files:replace', q, replacement, targets, opts),
     create: (rel: string, dir: boolean) => ipcRenderer.invoke('files:create', rel, dir),
     rename: (from: string, to: string) => ipcRenderer.invoke('files:rename', from, to),
     del: (rel: string) => ipcRenderer.invoke('files:delete', rel),

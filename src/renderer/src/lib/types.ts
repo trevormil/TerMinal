@@ -2243,18 +2243,23 @@ export type GtApi = {
     /** Reveal in Finder. Fenced to the workspace root in main. */
     reveal: (rel: string) => Promise<boolean>
     write: (rel: string, content: string) => Promise<boolean>
-    search: (q: string) => Promise<{ file: string; line: number; text: string }[]>
+    search: (
+      q: string,
+      opts?: FilesSearchOptions,
+    ) => Promise<{ file: string; line: number; text: string }[]>
     /** Format through the project's own prettier; ok:false when it has none
      *  or doesn't own the file. */
     format: (
       rel: string,
       content: string,
     ) => Promise<{ ok: boolean; content?: string; reason?: string }>
-    /** Apply search & replace to specific (file, line) targets. */
+    /** Apply search & replace to specific (file, line) targets, using the
+     *  same options the search ran with. */
     replace: (
       q: string,
       replacement: string,
       targets: { file: string; line: number }[],
+      opts?: FilesSearchOptions,
     ) => Promise<{ files: number; replaced: number; skipped: number }>
     create: (rel: string, dir: boolean) => Promise<boolean>
     rename: (from: string, to: string) => Promise<boolean>
@@ -2269,6 +2274,15 @@ export type GtApi = {
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
 export type SearchHit = { file: string; line: number; text: string }
+export type FilesSearchOptions = {
+  regex?: boolean
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  /** Comma-separated glob patterns to include, e.g. "src/**\/*.ts, *.md" */
+  include?: string
+  /** Comma-separated glob patterns to exclude, e.g. "**\/*.test.ts, dist/**" */
+  exclude?: string
+}
 export type GitStatus = {
   ok: boolean
   branch: string
