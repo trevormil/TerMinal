@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import type { KnowledgeScope, Tab, TabContext } from '../../lib/types'
 import { appendKnowledgeItem, singleHttpUrl } from '../../lib/knowledge'
-import { useWebSurface, BrowserToolbar, normalizeUrl } from './webSurface'
+import { useWebSurface, BrowserToolbar, FindBar, normalizeUrl } from './webSurface'
 import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
 import claudeLogo from '../../assets/ai-tools/claude.png'
 import geminiLogo from '../../assets/ai-tools/gemini.png'
@@ -131,6 +131,21 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
   useEffect(() => {
     window.gt.settings.get().then((s) => setBrowserName(s.apps?.browser || 'Brave Browser'))
   }, [])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        surface.openFind()
+      } else if (mod && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        surface.focusAddr()
+      }
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  })
 
   useEffect(() => {
     try {
@@ -448,7 +463,10 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
             })}
           </div>
         </aside>
-        <div ref={surface.hostRef} className="min-h-0 min-w-0 flex-1" />
+        <div className="relative min-h-0 min-w-0 flex-1">
+          <div ref={surface.hostRef} className="absolute inset-0" />
+          {surface.findOpen && <FindBar surface={surface} />}
+        </div>
       </div>
       {kbToast && (
         <div className="pointer-events-none fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 px-3 py-1.5 text-[11.5px] text-zinc-300 shadow-2xl backdrop-blur">
