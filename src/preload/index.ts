@@ -531,6 +531,13 @@ const gt = {
     create: (rel: string, dir: boolean) => ipcRenderer.invoke('files:create', rel, dir),
     rename: (from: string, to: string) => ipcRenderer.invoke('files:rename', from, to),
     del: (rel: string) => ipcRenderer.invoke('files:delete', rel),
+    watch: (root: string) => ipcRenderer.invoke('files:watch', root),
+    unwatch: (root: string) => ipcRenderer.invoke('files:unwatch', root),
+    onChanged: (cb: (ev: { root: string; paths: string[] }) => void) => {
+      const h = (_e: unknown, ev: { root: string; paths: string[] }) => cb(ev)
+      ipcRenderer.on('files:changed', h)
+      return () => ipcRenderer.removeListener('files:changed', h)
+    },
   },
   workflow: {
     list: (rel: string) => ipcRenderer.invoke('workflow:list', rel),
