@@ -174,7 +174,8 @@ struct GTPinnedHeader<Trailing: View>: View {
             trailing()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
         .background(GT.panel)
         .overlay(alignment: .bottom) {
             Divider().overlay(GT.border)
