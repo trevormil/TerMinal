@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 // Cursor's model catalog, read from the CLI instead of hand-maintained.
 //
@@ -45,35 +48,45 @@ export function parseCursorModels(stdout: string): CursorModel[] {
 }
 
 let cache: { at: number; models: CursorModel[] } | null = null
+let failedAt = 0
 /** Long enough that a picker open doesn't shell out repeatedly, short enough
  *  that a newly-released model shows up the same day. */
 const TTL_MS = 30 * 60 * 1000
+/** A flaky CLI shouldn't be re-probed on every picker open — but a full TTL
+ *  would pin the fallback for 30 minutes after e.g. a brief re-auth. */
+const FAILURE_TTL_MS = 60 * 1000
 
 /**
  * The account's live Cursor models. Returns [] when the CLI is missing, not
  * logged in, or slow — callers fall back to the static catalog, so a failure
- * degrades to today's behaviour rather than an empty picker.
+ * degrades to today's behaviour rather than an empty picker. Async: the CLI
+ * hits the network and can run to its 8s timeout, which used to block every
+ * IPC in the main process.
  */
-export function listCursorModels(now = Date.now()): CursorModel[] {
+export async function listCursorModels(now = Date.now()): Promise<CursorModel[]> {
   if (cache && now - cache.at < TTL_MS) return cache.models
+  if (failedAt && now - failedAt < FAILURE_TTL_MS) return []
   let models: CursorModel[] = []
   try {
-    const stdout = execFileSync('cursor-agent', ['--list-models'], {
+    const { stdout } = await execFileAsync('cursor-agent', ['--list-models'], {
       encoding: 'utf8',
       timeout: 8000,
-      stdio: ['ignore', 'pipe', 'ignore'],
     })
     models = parseCursorModels(stdout)
   } catch {
     models = []
   }
-  // Only cache a real answer: caching [] would pin the fallback for 30 minutes
-  // after a transient failure (e.g. the CLI briefly re-authenticating).
-  if (models.length) cache = { at: now, models }
+  if (models.length) {
+    cache = { at: now, models }
+    failedAt = 0
+  } else {
+    failedAt = now
+  }
   return models
 }
 
 /** Test seam — drop the memoised catalog. */
 export function resetCursorModelCache(): void {
   cache = null
+  failedAt = 0
 }
