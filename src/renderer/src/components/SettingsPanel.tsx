@@ -155,12 +155,14 @@ function Section({
   icon: Icon,
   title,
   desc,
+  actions,
   children,
 }: {
   id: string
   icon: LucideIcon
   title: string
   desc?: string
+  actions?: ReactNode
   children: ReactNode
 }) {
   if (useContext(ActiveSectionContext) !== id) return null
@@ -176,6 +178,7 @@ function Section({
             </div>
           )}
         </div>
+        {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
       </div>
       {children}
     </section>
@@ -2157,22 +2160,13 @@ export function SettingsPanel({
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <ActiveSectionContext.Provider value={active}>
               <div className="mx-auto max-w-[760px] space-y-3">
-                <section
-                  hidden={active !== 'daemon'}
-                  className="overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)]/70"
-                >
-                  <div className="flex items-start gap-3 border-b border-[var(--gt-border)] px-3 py-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--gt-border)] bg-black/30 text-[var(--gt-accent-light)]">
-                      <Server size={15} strokeWidth={2} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-semibold text-zinc-100">Daemon profile</div>
-                      <div className="mt-0.5 max-w-[58ch] text-[10.5px] leading-relaxed text-zinc-500">
-                        Choose where TerMinal reads paths, engines, models, forge settings, and
-                        template defaults.
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                <Section
+                  id="daemon"
+                  icon={Server}
+                  title="Daemon profile"
+                  desc="Choose where TerMinal reads paths, engines, models, forge settings, and template defaults."
+                  actions={
+                    <>
                       <span className="rounded-md border border-[var(--gt-border)] bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
                         {selectedHost ? 'SSH' : 'Local'}
                       </span>
@@ -2189,9 +2183,10 @@ export function SettingsPanel({
                           Probe
                         </button>
                       )}
-                    </div>
-                  </div>
-                  <div className="space-y-2 p-3">
+                    </>
+                  }
+                >
+                  <div className="space-y-2">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <button
                         onClick={() => setProfile('local')}
@@ -2261,7 +2256,7 @@ export function SettingsPanel({
                       </div>
                     )}
                   </div>
-                </section>
+                </Section>
 
                 {/* Projects & worktrees */}
                 <Section
