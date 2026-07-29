@@ -1,4 +1,5 @@
 import {
+  Bug,
   LifeBuoy,
   Play,
   Ticket as TicketIcon,
@@ -427,6 +428,21 @@ function HelpTab(_props: { ctx: TabContext }) {
               <code className="font-mono text-[var(--gt-accent-light)]">/session-end</code>.
             </li>
           </ol>
+        </Section>
+
+        <Section icon={Bug} title="Found a bug? Have an idea?">
+          <p className="mb-3 text-[12px] leading-relaxed text-zinc-400">
+            TerMinal is open source — bugs and feature requests go straight to the GitHub tracker.
+          </p>
+          <button
+            onClick={() =>
+              window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1.5 text-[12px] font-medium text-zinc-200 hover:bg-white/5"
+          >
+            <Bug size={13} strokeWidth={2} />
+            Report a bug or request a feature
+          </button>
         </Section>
       </div>
     </div>
