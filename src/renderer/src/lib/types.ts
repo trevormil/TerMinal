@@ -1757,6 +1757,8 @@ export type GtApi = {
   }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
+    /** Count of running non-session runs — badge polling without the 400-row payload. */
+    runningCount: () => Promise<number>
     remoteAllRuns: () => Promise<{
       runs: UnifiedRun[]
       errors: { hostId: string; label: string; error: string }[]
@@ -1954,6 +1956,8 @@ export type GtApi = {
   }
   activity: {
     list: () => Promise<ActivityEvent[]>
+    /** Count of events newer than `since` with kind in `kinds` — badge polling. */
+    unseenCount: (since: number, kinds: string[]) => Promise<number>
     clear: () => Promise<void>
     onEvent: (cb: (ev: ActivityEvent) => void) => () => void
   }

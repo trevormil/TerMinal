@@ -105,6 +105,7 @@ const gt = {
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
+    runningCount: () => ipcRenderer.invoke('runs:running-count'),
     remoteAllRuns: () => ipcRenderer.invoke('runs:remote-all'),
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
       ipcRenderer.invoke('runs:log', source, runId, hostId),
@@ -297,6 +298,8 @@ const gt = {
   // activity feed + notifications
   activity: {
     list: () => ipcRenderer.invoke('activity:list'),
+    unseenCount: (since: number, kinds: string[]) =>
+      ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),
     onEvent: (cb: (ev: unknown) => void) => {
       const h = (_e: unknown, ev: unknown) => cb(ev)

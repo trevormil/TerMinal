@@ -447,8 +447,8 @@ const tab: Tab = {
   // badge = unseen high-signal events (errors, blockers, test fails) since last view
   badge: async (gt) => {
     const seen = Number(localStorage.getItem('gt.activity.lastSeen') || 0)
-    const hi = new Set(['error', 'blocked', 'tests-fail'])
-    return (await gt.activity.list()).filter((e) => e.ts > seen && hi.has(e.kind)).length
+    // Count-only endpoint — the 500-event list was fetched just to count 3 kinds.
+    return gt.activity.unseenCount(seen, ['error', 'blocked', 'tests-fail'])
   },
   Component: ActivityTab,
 }

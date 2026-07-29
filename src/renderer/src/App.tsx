@@ -359,14 +359,14 @@ export default function App() {
   // Activity button badge: unseen high-signal events (errors, blockers, test
   // fails) since the feed was last opened. Mirrors the old Activity-tab badge.
   useEffect(() => {
-    const hi = new Set(['error', 'blocked', 'tests-fail'])
     const tick = () =>
       window.gt.activity
-        .list()
-        .then((items) => {
-          const seen = Number(localStorage.getItem('gt.activity.lastSeen') || 0)
-          setActivityUnread(items.filter((e) => e.ts > seen && hi.has(e.kind)).length)
-        })
+        .unseenCount(Number(localStorage.getItem('gt.activity.lastSeen') || 0), [
+          'error',
+          'blocked',
+          'tests-fail',
+        ])
+        .then(setActivityUnread)
         .catch(() => {})
     tick()
     const off = window.gt.activity.onEvent(() => tick())
@@ -887,32 +887,40 @@ export default function App() {
   // landed, we stop polling for that session — the user can either keep the
   // auto-name or override with double-click rename.
   const [autoNamesByKey, setAutoNamesByKey] = useState<Map<string, string>>(() => new Map())
+  // Read via a ref inside the poll: with the Map in the effect deps, every
+  // landed name tore the interval down and immediately re-polled everything.
+  const autoNamesRef = useRef(autoNamesByKey)
+  autoNamesRef.current = autoNamesByKey
   useEffect(() => {
-    const sessionsToPoll = sessions.filter(
-      (s) =>
-        !s.choice.name && (s.info.sessionId || s.choice.sessionId) && !autoNamesByKey.has(s.key),
+    const candidates = sessions.filter(
+      (s) => !s.choice.name && (s.info.sessionId || s.choice.sessionId),
     )
-    if (sessionsToPoll.length === 0) return
+    if (candidates.length === 0) return
     let cancelled = false
     const poll = async () => {
-      for (const s of sessionsToPoll) {
-        const sid = s.info.sessionId || s.choice.sessionId
-        if (!sid) continue
-        try {
-          const first = await window.gt.firstPrompt(sid)
-          const label = labelFromPrompt(first || '')
-          if (!cancelled && label) {
-            setAutoNamesByKey((prev) => {
-              if (prev.has(s.key)) return prev
-              const next = new Map(prev)
-              next.set(s.key, label)
-              return next
-            })
+      const pending = candidates.filter((s) => !autoNamesRef.current.has(s.key))
+      if (pending.length === 0) return
+      // Concurrent, not serialized — each fetch reads a transcript in main.
+      await Promise.all(
+        pending.map(async (s) => {
+          const sid = s.info.sessionId || s.choice.sessionId
+          if (!sid) return
+          try {
+            const first = await window.gt.firstPrompt(sid)
+            const label = labelFromPrompt(first || '')
+            if (!cancelled && label) {
+              setAutoNamesByKey((prev) => {
+                if (prev.has(s.key)) return prev
+                const next = new Map(prev)
+                next.set(s.key, label)
+                return next
+              })
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
-        }
-      }
+        }),
+      )
     }
     poll()
     const id = setInterval(poll, 4000)
@@ -920,7 +928,7 @@ export default function App() {
       cancelled = true
       clearInterval(id)
     }
-  }, [sessions, autoNamesByKey])
+  }, [sessions])
 
   // Clear auto-name for a session when it's removed so the Map doesn't grow
   // forever as sessions cycle through.

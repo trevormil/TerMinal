@@ -877,10 +877,10 @@ const tab: Tab = {
   order: 3.45, // between Agents (3) and Schedules (3.5)
   appliesTo: () => true,
   badge: async (gt) => {
+    // Count-only endpoint — this polls ~1/s while a terminal streams, and the
+    // full 400-row list was fetched just to count the running ones.
     try {
-      const rs = await gt.agents.allRuns()
-      // Runs = fire-and-forget processes only; interactive sessions live in Terminal.
-      return rs.filter((r) => r.source !== 'session' && r.status === 'running').length
+      return await gt.agents.runningCount()
     } catch {
       return 0
     }

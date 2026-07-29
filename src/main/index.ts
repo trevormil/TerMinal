@@ -1951,6 +1951,13 @@ ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, paren
 })
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 ipcMain.handle('activity:list', () => readActivity())
+// Count-only badge endpoints — the tab badges poll ~1/s while a terminal
+// streams; shipping the full lists over IPC just to count them was ~1MB/s of
+// renderer-side JSON deserialization.
+ipcMain.handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
+  const hi = new Set(kinds)
+  return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
+})
 ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
@@ -2746,6 +2753,10 @@ ipcMain.handle('schedules:runs', (_e, id?: string) => {
 // separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
 // without switching the session's daemon profile.
 ipcMain.handle('runs:all', () => listAllRuns())
+ipcMain.handle(
+  'runs:running-count',
+  () => listAllRuns().filter((r) => r.source !== 'session' && r.status === 'running').length,
+)
 // Fan out to every configured remote host in parallel, stamped with hostId so
 // the tab can merge them with local runs and badge/filter by host. Best-effort:
 // an unreachable host contributes an error entry, not a failed view.
