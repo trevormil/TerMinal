@@ -355,9 +355,7 @@ export function ActivityTab({
                       // back out of the title/detail text where it's an exact,
                       // mechanically-detected repeat (see declutterTitle/Detail).
                       const showRepoChip = !!(e.repo && scope === 'all')
-                      const displayTitle = showRepoChip
-                        ? declutterTitle(e.title, e.repo)
-                        : e.title
+                      const displayTitle = showRepoChip ? declutterTitle(e.title, e.repo) : e.title
                       const displayDetail = e.detail
                         ? showRepoChip
                           ? declutterDetail(e.detail, e.repo)
@@ -371,7 +369,9 @@ export function ActivityTab({
                             {/* line-clamp instead of truncate — nothing here is
                                 ever fully cut off with no way to read the rest;
                                 hovering the row reveals the full text. */}
-                            <span className={`${clamp} min-w-0 flex-1 break-words text-[13px] text-zinc-100`}>
+                            <span
+                              className={`${clamp} min-w-0 flex-1 break-words text-[13px] text-zinc-100`}
+                            >
                               <InlineMd text={displayTitle} keepLineBreaks={expanded} />
                             </span>
                             <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">

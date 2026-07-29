@@ -610,7 +610,11 @@ describe('webview provider', () => {
       ).rejects.toThrow()
       expect(await updateRepoTicket(repo, '0001-anything', { status: 'closed' })).toBe(false)
       expect(
-        await commentOnRepoTicket(repo, '0001-anything', { author: 'me', body: 'hi', kind: 'human' }),
+        await commentOnRepoTicket(repo, '0001-anything', {
+          author: 'me',
+          body: 'hi',
+          kind: 'human',
+        }),
       ).toBe(false)
     } finally {
       rmSync(repo, { recursive: true, force: true })

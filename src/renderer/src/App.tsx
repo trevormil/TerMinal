@@ -859,9 +859,16 @@ export default function App() {
   const closeSession = (key: string) => {
     window.gt.stopSession(key)
     setSessions((s) => {
+      const closed = s.find((x) => x.key === key)
       const next = s.filter((x) => x.key !== key)
       if (activeKey === key) {
-        const fallback = next[next.length - 1]?.key ?? null
+        // Stay in the closed session's workspace when it has other sessions —
+        // only jump to another workspace when this one is now empty.
+        const closedRoot = closed ? cwdOf(closed) : ''
+        const sibling = closedRoot
+          ? [...next].reverse().find((x) => cwdOf(x) === closedRoot)
+          : undefined
+        const fallback = sibling?.key ?? next[next.length - 1]?.key ?? null
         if (fallback) activate(fallback)
         else setActiveKey(null)
       }
@@ -1556,7 +1563,9 @@ export default function App() {
           </button>
           <button
             style={noDrag}
-            onClick={() => window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')}
+            onClick={() =>
+              window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')
+            }
             title="Report a bug or request a feature on GitHub"
             className="ml-1 flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
           >

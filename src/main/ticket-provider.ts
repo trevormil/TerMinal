@@ -1060,7 +1060,8 @@ export async function testRepoTicketProvider(
   try {
     if (provider === 'webview') {
       const webview = sanitizeWebview(cfg.webview)
-      if (!webview) return { ok: false, provider, message: 'Enter a valid http(s) URL before saving.' }
+      if (!webview)
+        return { ok: false, provider, message: 'Enter a valid http(s) URL before saving.' }
       return { ok: true, provider, message: `Webview ready (${webview.url}).` }
     }
     if (provider === 'obsidian') {

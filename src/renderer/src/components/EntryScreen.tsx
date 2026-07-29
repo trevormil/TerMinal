@@ -158,6 +158,19 @@ const readWorkspaceList = (key: string): string[] => {
     return []
   }
 }
+// Last engine picked on this screen — restored as the preselected default
+// (with a "Recent" tag) the next time the screen opens.
+const LAST_ENGINE_KEY = 'gt.lastEngine'
+const readLastEngine = (): SessionEngine | null => {
+  try {
+    const v = localStorage.getItem(LAST_ENGINE_KEY)
+    return v && (v === 'local' || (ENGINE_IDS as readonly string[]).includes(v))
+      ? (v as SessionEngine)
+      : null
+  } catch {
+    return null
+  }
+}
 
 export function EntryScreen({
   onChoose,
@@ -203,7 +216,10 @@ export function EntryScreen({
   const [sessionSearch, setSessionSearch] = useState('')
   const [cwd, setCwd] = useState(lockedRemote?.cwd || lockedCwd || '') // new-session target
   const [filterDir, setFilterDir] = useState(lockedCwd || '') // resume filter ('' = all)
-  const [engine, setEngine] = useState<SessionEngine>('local')
+  // Captured once at mount — the tag stays on the restored engine even as the
+  // user clicks around; clicks persist for the NEXT open via selectEngine.
+  const [recentEngine] = useState<SessionEngine | null>(readLastEngine)
+  const [engine, setEngine] = useState<SessionEngine>(recentEngine ?? 'local')
   const [scratchEngine, setScratchEngine] = useState<SessionEngine>('claude')
   const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
@@ -327,9 +343,19 @@ export function EntryScreen({
       setLoadingSessions((cur) => ({ ...cur, [next]: false }))
     }
   }
+  // A restored recent engine should behave like a click — load its resume list.
+  useEffect(() => {
+    if (isAiEngine(engine)) loadEngineSessions(engine)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const selectEngine = (next: SessionEngine) => {
     setEngine(next)
+    try {
+      localStorage.setItem(LAST_ENGINE_KEY, next)
+    } catch {
+      /* ignore */
+    }
     setModel(undefined) // model is engine-specific — reset to the new engine's default
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (isAiEngine(next)) loadEngineSessions(next)
@@ -900,6 +926,11 @@ export function EntryScreen({
                       <span className="min-w-0 truncate text-[12.5px] font-semibold">
                         {sessionEngineLabel(e)}
                       </span>
+                      {e === recentEngine && (
+                        <span className="ml-auto shrink-0 rounded-full border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--gt-accent-2)]">
+                          Recent
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

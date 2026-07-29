@@ -316,14 +316,15 @@ function splitGlobs(s?: string): string[] {
 function pathspecArgs(opts?: SearchOptions): string[] {
   const include = splitGlobs(opts?.include)
   const exclude = splitGlobs(opts?.exclude)
-  const specs = [
-    ...include.map((g) => `:(glob)${g}`),
-    ...exclude.map((g) => `:(exclude,glob)${g}`),
-  ]
+  const specs = [...include.map((g) => `:(glob)${g}`), ...exclude.map((g) => `:(exclude,glob)${g}`)]
   return specs.length ? ['--', ...specs] : []
 }
 
-export function searchRepo(root: string, query: string, opts?: SearchOptions): Promise<SearchHit[]> {
+export function searchRepo(
+  root: string,
+  query: string,
+  opts?: SearchOptions,
+): Promise<SearchHit[]> {
   return new Promise((res) => {
     const q = query.trim()
     if (q.length < 2) return res([]) // 1-char queries match everything — skip
@@ -356,7 +357,13 @@ export function searchRepo(root: string, query: string, opts?: SearchOptions): P
           const gflags = ['-rnI']
           if (!opts?.caseSensitive) gflags.push('-i')
           if (opts?.wholeWord) gflags.push('-w')
-          gflags.push(opts?.regex ? '-E' : '-F', '-m', '30', '--exclude-dir=.git', '--exclude-dir=node_modules')
+          gflags.push(
+            opts?.regex ? '-E' : '-F',
+            '-m',
+            '30',
+            '--exclude-dir=.git',
+            '--exclude-dir=node_modules',
+          )
           for (const g of splitGlobs(opts?.include)) gflags.push(`--include=${g}`)
           for (const g of splitGlobs(opts?.exclude)) gflags.push(`--exclude=${g}`)
           execFile(

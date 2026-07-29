@@ -3,9 +3,9 @@ import { declutterTitle, declutterDetail } from './index'
 
 describe('declutterTitle', () => {
   test('strips an exact "repo · " prefix that repeats the repo chip', () => {
-    expect(declutterTitle('trevormil/knowledge-app · local · exited', 'trevormil/knowledge-app')).toBe(
-      'local · exited',
-    )
+    expect(
+      declutterTitle('trevormil/knowledge-app · local · exited', 'trevormil/knowledge-app'),
+    ).toBe('local · exited')
   })
 
   test('leaves the title untouched when there is no repo', () => {
@@ -15,17 +15,20 @@ describe('declutterTitle', () => {
   })
 
   test('leaves the title untouched when it does not start with the repo prefix', () => {
-    expect(declutterTitle('knowledge-app — Ran the full path from edge to pod', 'trevormil/knowledge-app')).toBe(
-      'knowledge-app — Ran the full path from edge to pod',
-    )
+    expect(
+      declutterTitle(
+        'knowledge-app — Ran the full path from edge to pod',
+        'trevormil/knowledge-app',
+      ),
+    ).toBe('knowledge-app — Ran the full path from edge to pod')
   })
 })
 
 describe('declutterDetail', () => {
   test('strips a trailing path segment that repeats the repo basename', () => {
-    expect(declutterDetail('exit 1 · ~/CompSci/gauntlet/knowledge-app', 'trevormil/knowledge-app')).toBe(
-      'exit 1',
-    )
+    expect(
+      declutterDetail('exit 1 · ~/CompSci/gauntlet/knowledge-app', 'trevormil/knowledge-app'),
+    ).toBe('exit 1')
   })
 
   test('drops the whole detail when it is only the repeated path', () => {
