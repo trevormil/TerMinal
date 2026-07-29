@@ -70,19 +70,45 @@ final class PushRegistrar: NSObject {
 extension PushRegistrar: UNUserNotificationCenterDelegate {
     /// Show the banner even with the app open — you may be looking at a
     /// different session than the one that needs you.
+    ///
+    /// Explicit completion-handler form, not `async` — see the note on
+    /// `didReceive` below; both delegate methods get the same treatment for
+    /// the same reason.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound, .badge]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) ->
+            Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
     }
 
+    /// Explicit completion-handler form, NOT `async`. A device crash log
+    /// caught the real bug: the Swift compiler's auto-generated Objective-C
+    /// thunk for the `async` variant of this delegate method calls its
+    /// completion handler at a point that can race UIKit's own window-scene
+    /// connection bookkeeping on a cold launch — crashing (SIGABRT via an
+    /// uncaught NSException) inside
+    /// `-[UIApplication _updateStateRestorationArchiveForBackgroundEvent:
+    /// saveState:exitIfCouldNotRestoreState:updateSnapshot:windowScene:]`,
+    /// called from *inside* `@objc closure #1 in
+    /// PushRegistrar.userNotificationCenter(_:didReceive:)` — i.e. inside our
+    /// own delegate callback's thunk, not anywhere in SwiftUI view code (the
+    /// AppLock-timing fixes elsewhere were plausible but addressed a
+    /// different, secondary race — this is a completely separate, earlier
+    /// point in the launch sequence). Implementing the completion-handler
+    /// signature instead bypasses that thunk entirely: we call
+    /// completionHandler() ourselves, once we're actually ready.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         let route = NotificationRoute(userInfo: response.notification.request.content.userInfo)
-        await MainActor.run { self.pendingRoute = route }
+        Task { @MainActor in
+            self.pendingRoute = route
+            completionHandler()
+        }
     }
 }
 
