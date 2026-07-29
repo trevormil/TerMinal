@@ -27,6 +27,17 @@ final class AppLock {
     private(set) var isEnabled: Bool
     private(set) var passcodeLength: Int
 
+    /// Guards against a concurrent second Face ID prompt. LockView has two
+    /// independent triggers (.task on appear, .onChange(scenePhase) going
+    /// .active) that can both fire within the same beat on a cold launch —
+    /// especially via a notification tap, where the view mounting and the
+    /// scene settling to .active don't happen in lockstep. Two overlapping
+    /// LAContext.evaluatePolicy calls is a known crash, not just a double
+    /// prompt. Mutated only inside the MainActor.run block below, so the
+    /// check-and-set in unlockWithBiometrics() is atomic against a second
+    /// concurrent caller.
+    private var authenticating = false
+
     private init() {
         isEnabled = Self.passcodeSet()
         passcodeLength = UserDefaults.standard.integer(forKey: "appLock.length")
@@ -95,16 +106,22 @@ final class AppLock {
     /// In-app Face ID / Touch ID — succeeds silently or falls back to the pad.
     func unlockWithBiometrics() async {
         guard isEnabled, biometricsOptIn, locked else { return }
-        // Only ever prompt when the app is genuinely front-and-center. A
-        // scenePhase blip behind the iOS lock screen, or a background wake for a
-        // notification, must NOT pop the Face ID sheet — that's the "prompted on
-        // the lock screen" bug. `.active` means foreground+interactive;
-        // `isProtectedDataAvailable == false` means the device itself is locked.
-        let visible = await MainActor.run {
-            UIApplication.shared.applicationState == .active
-                && UIApplication.shared.isProtectedDataAvailable
+        // Only ever prompt when the app is genuinely front-and-center (a
+        // scenePhase blip behind the iOS lock screen, or a background wake for
+        // a notification, must NOT pop the Face ID sheet), AND only when no
+        // other call is already mid-prompt — checked and claimed atomically on
+        // the MainActor so LockView's two triggers (.task + .onChange) can't
+        // both win the race and fire LAContext.evaluatePolicy concurrently.
+        let shouldPrompt = await MainActor.run { () -> Bool in
+            guard UIApplication.shared.applicationState == .active,
+                UIApplication.shared.isProtectedDataAvailable,
+                !authenticating
+            else { return false }
+            authenticating = true
+            return true
         }
-        guard visible else { return }
+        guard shouldPrompt else { return }
+        defer { Task { @MainActor in authenticating = false } }
         let ctx = LAContext()
         var err: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {
