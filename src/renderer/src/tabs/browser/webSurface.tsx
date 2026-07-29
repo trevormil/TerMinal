@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, Globe, X, ChevronUp, ChevronDown } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  Globe,
+  X,
+  ChevronUp,
+  ChevronDown,
+  Copy,
+  Link as LinkIcon,
+  ExternalLink,
+  Code2,
+} from 'lucide-react'
 
 // The Electron <webview> surface we drive imperatively (created below) so we
 // don't fight React/TS over the custom element. Shared by the Browser and CI
@@ -18,9 +30,25 @@ export type Webview = HTMLElement & {
   canGoForward(): boolean
   findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number
   stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void
+  openDevTools(): void
 }
 
 type FoundInPageEvent = Event & { result?: { activeMatchOrdinal: number; matches: number } }
+// Keyboard/mouse events that happen INSIDE the guest page never bubble to the
+// host window — the <webview> is effectively a separate renderer process, not
+// an iframe. Electron surfaces them as these two DOM events on the <webview>
+// element itself instead.
+type BeforeInputEvent = Event & {
+  input: { type: string; key: string; meta: boolean; control: boolean; shift: boolean }
+}
+export type ContextMenuParams = {
+  x: number
+  y: number
+  linkURL?: string
+  selectionText?: string
+  editFlags?: { canCopy?: boolean }
+}
+type WebviewContextMenuEvent = Event & { params: ContextMenuParams }
 
 // Turn arbitrary address-bar input into a URL: pass through http(s), promote a
 // bare domain to https, otherwise Google-search it.
@@ -56,6 +84,8 @@ export type WebSurface = {
   closeFind: () => void
   findNext: () => void
   findPrev: () => void
+  contextMenu: { x: number; y: number; params: ContextMenuParams } | null
+  closeContextMenu: () => void
 }
 
 // Owns the imperative <webview> lifecycle + navigation state (back/forward,
@@ -73,6 +103,17 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
   const [findMatch, setFindMatch] = useState<{ active: number; total: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    params: ContextMenuParams
+  } | null>(null)
+  // openFind/focusAddr are assigned fresh each render but never change
+  // behavior (they only call stable setters/refs), so the effect below can
+  // safely close over whichever render's copy was current when it mounted —
+  // same reasoning as the other webview listeners in this effect.
+  const openFindRef = useRef<() => void>(() => {})
+  const focusAddrRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     const host = hostRef.current
@@ -112,6 +153,33 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
       const r = (e as FoundInPageEvent).result
       if (r) setFindMatch({ active: r.activeMatchOrdinal, total: r.matches })
     }
+    // Keyboard shortcuts pressed while focus is INSIDE the page (the common
+    // case once you're actually browsing) never reach a host `window`
+    // keydown listener — before-input-event is Electron's hook for
+    // intercepting them before the guest page sees them.
+    const onBeforeInput = (e: Event) => {
+      const input = (e as BeforeInputEvent).input
+      if (input.type !== 'keyDown') return
+      const mod = input.meta || input.control
+      const key = input.key.toLowerCase()
+      if (mod && key === 'f') {
+        e.preventDefault()
+        openFindRef.current()
+      } else if (mod && key === 'l') {
+        e.preventDefault()
+        focusAddrRef.current()
+      }
+    }
+    // Same story for right-click: the guest page's own context menu never
+    // reaches a host onContextMenu handler, so build ours from this event.
+    // params.x/y are relative to the webview's own content area, not the
+    // window — offset by the webview's on-screen position (it's `fixed`-
+    // positioned in the DOM, so window coordinates are what we need).
+    const onContextMenu = (e: Event) => {
+      const params = (e as WebviewContextMenuEvent).params
+      const rect = wv.getBoundingClientRect()
+      setContextMenu({ x: rect.left + params.x, y: rect.top + params.y, params })
+    }
     // pop-ups / target=_blank containment lives in the main process
     // (did-attach-webview → guest.setWindowOpenHandler): the DOM <webview> emits
     // no 'new-window' event on Electron 41, so a renderer listener never fired.
@@ -121,6 +189,8 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     wv.addEventListener('did-navigate-in-page', onNav)
     wv.addEventListener('page-title-updated', onTitle as EventListener)
     wv.addEventListener('found-in-page', onFound)
+    wv.addEventListener('before-input-event', onBeforeInput)
+    wv.addEventListener('context-menu', onContextMenu)
     return () => {
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStop)
@@ -128,6 +198,8 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
       wv.removeEventListener('did-navigate-in-page', onNav)
       wv.removeEventListener('page-title-updated', onTitle as EventListener)
       wv.removeEventListener('found-in-page', onFound)
+      wv.removeEventListener('before-input-event', onBeforeInput)
+      wv.removeEventListener('context-menu', onContextMenu)
       wv.remove()
       wvRef.current = null
     }
@@ -161,6 +233,12 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     addrInputRef.current?.select()
   }
   const openFind = () => setFindOpen(true)
+  // Keep the refs current every render — the mount-only webview effect above
+  // calls through them so before-input-event always reaches the latest
+  // versions instead of whatever closure existed at mount time.
+  openFindRef.current = openFind
+  focusAddrRef.current = focusAddr
+  const closeContextMenu = () => setContextMenu(null)
   const closeFind = () => {
     setFindOpen(false)
     setFindMatch(null)
@@ -197,6 +275,8 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     closeFind,
     findNext,
     findPrev,
+    contextMenu,
+    closeContextMenu,
   }
 }
 
@@ -290,6 +370,115 @@ export function FindBar({ surface }: { surface: WebSurface }) {
       </button>
       <button onClick={closeFind} className={iconBtn} title="Close (Esc)">
         <X size={13} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+const menuItem =
+  'flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent'
+
+// Right-click menu for the embedded page — the guest's own native context menu
+// never surfaces (see the `context-menu` webview event above), so this is the
+// only one a user gets: Back/Forward/Reload, copy selection/link, open
+// externally, and a devtools escape hatch for anything that looks broken.
+export function WebviewContextMenu({ surface }: { surface: WebSurface }) {
+  const { contextMenu, closeContextMenu, back, canBack, forward, canFwd, reloadOrStop, wvRef } =
+    surface
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => closeContextMenu()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu, closeContextMenu])
+  if (!contextMenu) return null
+  const { params } = contextMenu
+  return (
+    <div
+      className="fixed z-[70] min-w-44 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[12px] text-zinc-200 shadow-2xl"
+      style={{ left: contextMenu.x, top: contextMenu.y }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button
+        disabled={!canBack}
+        onClick={() => {
+          back()
+          closeContextMenu()
+        }}
+        className={menuItem}
+      >
+        <ArrowLeft size={13} strokeWidth={2} />
+        Back
+      </button>
+      <button
+        disabled={!canFwd}
+        onClick={() => {
+          forward()
+          closeContextMenu()
+        }}
+        className={menuItem}
+      >
+        <ArrowRight size={13} strokeWidth={2} />
+        Forward
+      </button>
+      <button
+        onClick={() => {
+          reloadOrStop()
+          closeContextMenu()
+        }}
+        className={menuItem}
+      >
+        <RotateCw size={13} strokeWidth={2} />
+        Reload
+      </button>
+      {params.selectionText && (
+        <button
+          onClick={() => {
+            window.gt.clipboardWrite(params.selectionText || '')
+            closeContextMenu()
+          }}
+          className={menuItem}
+        >
+          <Copy size={13} strokeWidth={2} />
+          Copy
+        </button>
+      )}
+      {params.linkURL && (
+        <button
+          onClick={() => {
+            window.gt.clipboardWrite(params.linkURL || '')
+            closeContextMenu()
+          }}
+          className={menuItem}
+        >
+          <LinkIcon size={13} strokeWidth={2} />
+          Copy link
+        </button>
+      )}
+      <button
+        onClick={() => {
+          window.gt.openExternal(params.linkURL || wvRef.current?.getURL() || '')
+          closeContextMenu()
+        }}
+        className={menuItem}
+      >
+        <ExternalLink size={13} strokeWidth={2} />
+        Open {params.linkURL ? 'link' : 'page'} in system browser
+      </button>
+      <button
+        onClick={() => {
+          wvRef.current?.openDevTools()
+          closeContextMenu()
+        }}
+        className={menuItem}
+      >
+        <Code2 size={13} strokeWidth={2} />
+        Inspect element
       </button>
     </div>
   )
