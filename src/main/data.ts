@@ -10,6 +10,7 @@ import {
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import Database from 'better-sqlite3'
+import { createMetaCache } from './session-meta-cache'
 import { repoForCwd, repoRootOf } from './repo'
 import { reviewForPrDir, newestReviewDirForRepo } from './review'
 import { readStatusLine } from './statusline'
@@ -462,14 +463,27 @@ function statMtimeMs(file: string): number {
   }
 }
 
-function newestFiles(files: string[], limit = SESSION_PICKER_LIMIT): string[] {
-  return files
-    .map((file) => ({ file, mtime: statMtimeMs(file) }))
-    .filter((f) => f.mtime > 0)
-    .sort((a, b) => b.mtime - a.mtime)
-    .slice(0, limit)
-    .map((f) => f.file)
+type FileStat = { file: string; size: number; mtimeMs: number }
+
+function newestFileStats(files: string[], limit = SESSION_PICKER_LIMIT): FileStat[] {
+  const out: FileStat[] = []
+  for (const file of files) {
+    try {
+      const st = statSync(file)
+      if (st.mtimeMs > 0) out.push({ file, size: st.size, mtimeMs: st.mtimeMs })
+    } catch {
+      /* skip */
+    }
+  }
+  return out.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, limit)
 }
+
+// Picker metadata is cached per transcript keyed by (size, mtime) — see
+// session-meta-cache.ts. Without this every picker open re-read a ~384KB
+// window of every transcript (hundreds of MB of I/O + parse per call).
+const sessionMetaCache = createMetaCache<SessionMeta>(
+  join(homedir(), '.config', 'TerMinal', 'session-meta-cache.json'),
+)
 
 function readPickerWindow(file: string): { raw: string; mtime: number } | null {
   try {
@@ -1299,7 +1313,12 @@ export function parseTranscriptDetailFile(
  * widgets that poll the transcript share one parse and fast polling stays cheap
  * — we only re-parse when the transcript actually grows.
  */
-const TRANSCRIPT_STATS_PARSE_STATE_MAX_ENTRIES = 8
+// Must cover the observability snapshot/rebuild sweeps (up to ~500 sessions
+// per pass) — at 8 entries those sweeps evicted everything every pass and each
+// session took the cold full-file re-parse path (tens of seconds over a GB
+// archive). Parse states are small (counters + per-turn id sets), so ~512
+// stays in the tens of MB even for heavy archives.
+const TRANSCRIPT_STATS_PARSE_STATE_MAX_ENTRIES = 512
 const transcriptStatsParseStates = new Map<string, TranscriptStatsFileParseState>()
 
 function rememberTranscriptStatsParseState(
@@ -1425,8 +1444,12 @@ function listClaudeSessions(): SessionMeta[] {
     }
   }
   const idsByFile = new Map(files.map((f) => [f.file, f.id]))
-  return newestFiles(files.map((f) => f.file))
-    .map((file) => parseClaudeSessionMeta(file, idsByFile.get(file) || ''))
+  return newestFileStats(files.map((f) => f.file))
+    .map((st) =>
+      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () =>
+        parseClaudeSessionMeta(st.file, idsByFile.get(st.file) || ''),
+      ),
+    )
     .filter((s): s is SessionMeta => !!s)
 }
 
@@ -1509,8 +1532,10 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
 
 function listCodexSessions(): SessionMeta[] {
   if (!existsSync(CODEX_SESSIONS_DIR)) return []
-  return newestFiles(walkJsonlFiles(CODEX_SESSIONS_DIR))
-    .map(parseCodexSessionFile)
+  return newestFileStats(walkJsonlFiles(CODEX_SESSIONS_DIR))
+    .map((st) =>
+      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () => parseCodexSessionFile(st.file)),
+    )
     .filter((s): s is SessionMeta => !!s)
 }
 
@@ -1580,8 +1605,10 @@ function listCursorSessions(): SessionMeta[] {
       if (existsSync(f)) files.push(f)
     }
   }
-  return newestFiles(files)
-    .map(parseCursorSessionFile)
+  return newestFileStats(files)
+    .map((st) =>
+      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () => parseCursorSessionFile(st.file)),
+    )
     .filter((s): s is SessionMeta => !!s)
 }
 
