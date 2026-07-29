@@ -139,13 +139,10 @@ private struct PairedView: View {
                 // scene is still becoming key — presenting `.sheet(item:)`
                 // (the .thread route) that early is a known SwiftUI crash
                 // ("tried to present a view controller whose view is not in
-                // the window hierarchy"), and matches "opens to nowhere" /
-                // crashes only via a notification tap, never a warm tap. Give
-                // the initial TabView/window one beat to finish settling
-                // first. The .onChange path below needs no such delay — by
-                // the time it can fire, the app is already warm.
+                // the window hierarchy"). Give the initial TabView/window one
+                // beat to finish settling first.
                 try? await Task.sleep(for: .milliseconds(400))
-                await follow(route)
+                await followWhenUnlocked(route)
             }
         }
         .task {
@@ -167,8 +164,26 @@ private struct PairedView: View {
         .onChange(of: push.pendingRoute) { _, route in
             guard let route else { return }
             push.pendingRoute = nil
-            Task { await follow(route) }
+            Task { await followWhenUnlocked(route) }
         }
+    }
+
+    /// Wait out the in-app passcode/biometric gate (AppLock) before acting on
+    /// a tapped notification. LockView covers the whole screen for as long as
+    /// the user takes to authenticate — arbitrarily longer than any fixed
+    /// startup delay — and presenting `.sheet(item:)` (the .thread route)
+    /// while it's still on top is the same "not in the window hierarchy"
+    /// crash the cold-launch settle delay above already guards against, just
+    /// gated on authentication instead of animation. This is the actual fix
+    /// for "crashes when I tap a notification from the lock screen and sign
+    /// in" — the previous fixed-delay version fired long before the user
+    /// finished unlocking.
+    private func followWhenUnlocked(_ route: NotificationRoute) async {
+        while AppLock.shared.locked {
+            if Task.isCancelled { return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        await follow(route)
     }
 
     /// Take a tapped notification somewhere. Never a no-op: an unresolvable
