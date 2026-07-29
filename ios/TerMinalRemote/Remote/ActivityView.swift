@@ -32,9 +32,10 @@ final class ActivityViewModel {
 
 /// The global live feed — session starts, tickets, PRs, reviews, test runs,
 /// checks, docs, agent runs — newest first. Mirrors the desktop's top-right
-/// Activity drawer; read-only. Reached from the Inbox tab, its sibling.
+/// Activity drawer; read-only. Its own tab, a peer of Inbox.
 struct ActivityView: View {
     @State var model: ActivityViewModel
+    var onSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -51,16 +52,18 @@ struct ActivityView: View {
                         }
                     }
                     ForEach(model.items) { item in
-                        // Chevron lives INSIDE the card (ActivityRow draws it);
-                        // the native accessory is suppressed by hiding the link —
-                        // same pattern as InboxView's row -> detail push.
-                        ActivityRow(item: item)
-                            .background(
-                                NavigationLink {
-                                    ActivityDetailView(item: item)
-                                } label: { EmptyView() }
-                                .opacity(0)
-                            )
+                        // The row itself IS the link's label (not a hidden
+                        // link behind it) — this view is a ScrollView +
+                        // LazyVStack, not a List, so it doesn't get List's
+                        // row-wide hit-testing that makes the hidden-link
+                        // trick tappable. Without this the chevron shows but
+                        // taps land on nothing.
+                        NavigationLink {
+                            ActivityDetailView(item: item)
+                        } label: {
+                            ActivityRow(item: item)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(14)
@@ -68,8 +71,12 @@ struct ActivityView: View {
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
-        .navigationTitle("Activity")
-        .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Activity") {
+                Button(action: onSettings) { Image(systemName: "gearshape") }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task {

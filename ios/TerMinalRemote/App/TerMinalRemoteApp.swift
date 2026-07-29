@@ -49,9 +49,12 @@ struct RootView: View {
     }
 }
 
-/// The paired app: Active + Workspaces + Inbox tabs, plus a root-level deep-link
-/// so a tapped notification opens its thread regardless of which tab/workspace is
-/// showing (threads are nested under workspaces, so this can't live there).
+/// The paired app: Active + Workspaces + Inbox + Activity + Monitoring tabs,
+/// plus a root-level deep-link so a tapped notification opens its thread
+/// regardless of which tab/workspace is showing (threads are nested under
+/// workspaces, so this can't live there). Settings has no tab of its own —
+/// each tab's pinned header (GTPinnedHeader) carries a gear button wired to
+/// a shared sheet instead.
 private struct PairedView: View {
     let pairing: PairingPayload
     let onUnpair: () -> Void
@@ -67,8 +70,11 @@ private struct PairedView: View {
     @State private var tab: Tab = .active
     /// Inbox item a notification named, so the Inbox can scroll to / open it.
     @State private var focusedHitlId: String?
+    /// Settings gave up its tab slot to Activity — it's one gear tap away from
+    /// every remaining tab instead, via this shared sheet.
+    @State private var showingSettings = false
 
-    private enum Tab: Hashable { case active, workspaces, inbox, monitoring, settings }
+    private enum Tab: Hashable { case active, workspaces, inbox, activity, monitoring }
 
     init(pairing: PairingPayload, onUnpair: @escaping () -> Void) {
         self.pairing = pairing
@@ -86,36 +92,42 @@ private struct PairedView: View {
     var body: some View {
         TabView(selection: $tab) {
             NavigationStack {
-                ActiveSessionsView(model: active)
+                ActiveSessionsView(model: active, onSettings: { showingSettings = true })
             }
             .tabItem { Label("Active", systemImage: "bolt.horizontal") }
             .tag(Tab.active)
             .badge(active.awaitingCount)
 
             NavigationStack {
-                WorkspacesView(model: WorkspacesViewModel(client: client))
+                WorkspacesView(
+                    model: WorkspacesViewModel(client: client),
+                    onSettings: { showingSettings = true })
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
             .tag(Tab.workspaces)
 
             NavigationStack {
-                InboxView(model: InboxViewModel(feed: feed), focusedId: focusedHitlId)
+                InboxView(
+                    model: InboxViewModel(feed: feed), onSettings: { showingSettings = true },
+                    focusedId: focusedHitlId)
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
             .tag(Tab.inbox)
 
             NavigationStack {
-                MonitoringView(model: monitoring)
+                ActivityView(
+                    model: ActivityViewModel(client: client), onSettings: { showingSettings = true }
+                )
+            }
+            .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }
+            .tag(Tab.activity)
+
+            NavigationStack {
+                MonitoringView(model: monitoring, onSettings: { showingSettings = true })
             }
             .tabItem { Label("Monitoring", systemImage: "chart.line.uptrend.xyaxis") }
             .tag(Tab.monitoring)
             .badge(monitoring.failingCount)
-
-            NavigationStack {
-                SettingsView(pairing: pairing, onUnpair: onUnpair)
-            }
-            .tabItem { Label("Settings", systemImage: "gearshape") }
-            .tag(Tab.settings)
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.
@@ -125,6 +137,17 @@ private struct PairedView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Close") { deepLinked = nil }
+                        }
+                    }
+            }
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView(pairing: pairing, onUnpair: onUnpair)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { showingSettings = false }
                         }
                     }
             }

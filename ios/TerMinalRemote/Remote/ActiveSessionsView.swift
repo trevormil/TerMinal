@@ -57,6 +57,7 @@ final class ActiveSessionsViewModel {
 /// agents waiting on an answer — sort to the top; tap one to jump into its thread.
 struct ActiveSessionsView: View {
     @State var model: ActiveSessionsViewModel
+    var onSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -111,11 +112,20 @@ struct ActiveSessionsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // List reserves its own default top content margin regardless of
+            // the first row's insets — contentMargins is the one API that
+            // actually sets it, matching Workspaces' 14pt VStack padding
+            // exactly instead of stacking on top of a default we don't see.
+            .contentMargins(.top, 10, for: .scrollContent)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
-        .navigationTitle("Active")
-        .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Active") {
+                Button(action: onSettings) { Image(systemName: "gearshape") }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationDestination(for: RemoteSession.self) { s in

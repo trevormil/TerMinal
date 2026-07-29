@@ -45,6 +45,7 @@ final class InboxViewModel {
 /// of subjects; tap one to read the full body.
 struct InboxView: View {
     @State var model: InboxViewModel
+    var onSettings: () -> Void
     /// Item a tapped notification named. The list scrolls to it once loaded so
     /// the alert lands on the thing it was about, not just the tab.
     var focusedId: String?
@@ -116,30 +117,28 @@ struct InboxView: View {
             .task { scrollTo(focusedId, proxy) }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // List reserves its own default top content margin regardless of
+            // the first row's insets — contentMargins is the one API that
+            // actually sets it, matching Workspaces' 14pt VStack padding
+            // exactly instead of stacking on top of a default we don't see.
+            .contentMargins(.top, 10, for: .scrollContent)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
             }
         }
-        .navigationTitle("Inbox")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarBackground(GT.panel, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            // Activity is the Inbox's sibling (same pairing as the desktop's
-            // top-right): a global live feed, one tap away.
-            ToolbarItem(placement: .topBarLeading) {
-                NavigationLink {
-                    ActivityView(model: ActivityViewModel(client: model.feed.client))
-                } label: {
-                    Image(systemName: "waveform.path.ecg")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                if !model.unread.isEmpty {
-                    Button("Read all") { model.markAllRead() }.font(GT.sans(13))
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Inbox") {
+                HStack(spacing: 14) {
+                    if !model.unread.isEmpty {
+                        Button("Read all") { model.markAllRead() }.font(GT.sans(13))
+                    }
+                    Button(action: onSettings) { Image(systemName: "gearshape") }
                 }
             }
         }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(GT.panel, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     /// Bring a notification's item into view once the feed contains it. A no-op
