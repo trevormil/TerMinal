@@ -161,7 +161,7 @@ private struct InboxRow: View {
                     .fill(item.isUnread ? GT.accent : Color.clear)
                     .frame(width: 6, height: 6)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
+                    Text(inlineMarkdown(item.title))
                         .font(GT.sans(14, item.isUnread ? .semibold : .medium))
                         .foregroundStyle(item.isUnread ? GT.text : GT.textMuted)
                         .lineLimit(1)
@@ -203,7 +203,7 @@ private struct InboxDetailView: View {
             GT.bg.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(item.title).font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
+                    Text(inlineMarkdown(item.title)).font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
                     HStack(spacing: 6) {
                         SeverityTag(severity: item.severity)
                         Text(item.source).font(GT.mono(11)).foregroundStyle(GT.textFaint)
