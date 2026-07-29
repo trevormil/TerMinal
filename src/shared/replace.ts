@@ -43,7 +43,9 @@ export function replaceInLine(
   const text = line.replace(re, (...args) => {
     count++
     if (!opts?.regex) return replacement
-    return replacement.replace(/\$(\d+|&)/g, (_, d) => (d === '&' ? args[0] : (args[Number(d)] ?? '')))
+    return replacement.replace(/\$(\d+|&)/g, (_, d) =>
+      d === '&' ? args[0] : (args[Number(d)] ?? ''),
+    )
   })
   return { text, count }
 }

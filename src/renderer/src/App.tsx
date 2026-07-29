@@ -1556,7 +1556,9 @@ export default function App() {
           </button>
           <button
             style={noDrag}
-            onClick={() => window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')}
+            onClick={() =>
+              window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')
+            }
             title="Report a bug or request a feature on GitHub"
             className="ml-1 flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
           >

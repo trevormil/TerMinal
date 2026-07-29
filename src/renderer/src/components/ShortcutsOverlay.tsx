@@ -18,7 +18,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: '⌘⇧[ / ⌘⇧]', label: 'Cycle sessions directly' },
       { keys: '⌘1 – ⌘9', label: 'Jump to session by number' },
       { keys: '⌘⇧T', label: 'New local terminal tab' },
-      { keys: 'Right-click a tab', label: "Close Other Tabs / Close All Tabs" },
+      { keys: 'Right-click a tab', label: 'Close Other Tabs / Close All Tabs' },
     ],
   },
   {
