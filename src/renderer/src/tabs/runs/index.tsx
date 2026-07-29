@@ -17,7 +17,6 @@ import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
-import { AutomationInboxView } from './AutomationInboxView'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
 
 // One global view across every run TerMinal has fired — cron (launchd, via
@@ -58,7 +57,28 @@ const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
 const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
 
 function RunsTab({ ctx }: { ctx: TabContext }) {
-  const [view, setView] = useState<'runs' | 'inbox'>('runs')
+  // Which runs originated from the automation inbox — a filter dimension on
+  // the same list, not a separate view/tab. Only entries with a runId ARE
+  // runs; the inbox's non-run event log (webhooks etc that never spawned a
+  // run) has no home here since this is a runs list, not an event log.
+  const [inboxRunIds, setInboxRunIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let live = true
+    const load = () =>
+      window.gt.listeners
+        .status()
+        .then((s) => {
+          if (live) setInboxRunIds(new Set(s.recent.filter((r) => r.runId).map((r) => r.runId!)))
+        })
+        .catch(() => {})
+    load()
+    const id = setInterval(load, 5000)
+    return () => {
+      live = false
+      clearInterval(id)
+    }
+  }, [])
+  const [inboxOnly, setInboxOnly] = useState(false)
   // Local and remote runs are fetched separately (local is cheap + pollable;
   // remote is an SSH fan-out) then merged into one list so the operator sees
   // both without switching the session's daemon profile.
@@ -212,6 +232,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     !!agentFilter ||
     !!engineFilter ||
     forceFilter !== 'all' ||
+    inboxOnly ||
     !!search.trim()
 
   const filtered = useMemo(() => {
@@ -227,6 +248,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       if (engineFilter && r.engine !== engineFilter) return false
       if (forceFilter === 'force' && !r.force) return false
       if (forceFilter === 'normal' && r.force) return false
+      if (inboxOnly && !inboxRunIds.has(r.id)) return false
       if (!q) return true
       return (
         r.agentTitle.toLowerCase().includes(q) ||
@@ -238,7 +260,19 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
         r.id.toLowerCase().includes(q)
       )
     })
-  }, [runs, source, host, status, repo, agentFilter, engineFilter, forceFilter, search])
+  }, [
+    runs,
+    source,
+    host,
+    status,
+    repo,
+    agentFilter,
+    engineFilter,
+    forceFilter,
+    inboxOnly,
+    inboxRunIds,
+    search,
+  ])
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
 
@@ -326,22 +360,9 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <ListChecks size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Runs</span>
-        {/* A filter, not a second tab — the automation inbox is a view of the
-            same run history, scoped by source, not a distinct destination. */}
-        <select
-          value={view}
-          onChange={(e) => setView(e.target.value as 'runs' | 'inbox')}
-          className="ml-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
-        >
-          <option value="runs">All runs</option>
-          <option value="inbox">Automation inbox</option>
-        </select>
       </div>
 
-      {view === 'inbox' ? (
-        <AutomationInboxView ctx={ctx} />
-      ) : (
-        <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1">
           {/* List */}
           <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
             {/* Header */}
@@ -442,6 +463,17 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <option value="force">Force only</option>
                   <option value="normal">Normal only</option>
                 </select>
+                <button
+                  onClick={() => setInboxOnly((v) => !v)}
+                  title="Runs triggered by the automation inbox (/enqueue-request, terminal-cli inbox enqueue)"
+                  className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
+                    inboxOnly
+                      ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                      : 'border-[var(--gt-border)] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300'
+                  }`}
+                >
+                  Automation inbox
+                </button>
                 {filtersActive && (
                   <button
                     onClick={() => {
@@ -452,6 +484,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                       setAgentFilter('')
                       setEngineFilter('')
                       setForceFilter('all')
+                      setInboxOnly(false)
                       setSearch('')
                     }}
                     className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
@@ -807,8 +840,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
               </>
             )}
           </section>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
