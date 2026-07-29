@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   Activity as ActivityIcon,
   Bell,
+  Bug,
   ChevronDown,
   Columns2,
   Grid2x2,
@@ -1482,6 +1483,14 @@ export default function App() {
                 {inboxUnreadCount}
               </span>
             )}
+          </button>
+          <button
+            style={noDrag}
+            onClick={() => window.gt.openExternal('https://github.com/trevormil/TerMinal/issues/new/choose')}
+            title="Report a bug or request a feature on GitHub"
+            className="ml-1 flex shrink-0 items-center rounded-md p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
+          >
+            <Bug size={14} strokeWidth={2} />
           </button>
           <button
             style={noDrag}
