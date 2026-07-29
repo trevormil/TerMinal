@@ -34,15 +34,16 @@ zero findings at severity ≥ medium. The human runs the merge.
 Because we no longer release on every commit, the installed
 `/Applications/TerMinal.app` can lag `main`. Keep them reconciled:
 
-- **Release from `main`, after a PR merges** — not from feature branches. Pull
-  `main`, then `bun run dist && bun run release`, so the installed app reflects
-  merged code. `bin/release` only packages an existing `dist/` build — it does
-  not build, and hard-fails if `dist/mac*/TerMinal.app` is missing.
+- **Release from `main`, after a PR merges** — not from feature branches. Easiest:
+  Settings → Updates → **Update now** (shown once the app detects it's behind
+  `main`) does a full pull + rebuild + reinstall + relaunch with no manual
+  commands. `bin/release` builds it itself (runs `bun run dist` as its first
+  step) — `bun run release` alone is enough, no separate `bun run dist` needed.
 - **Know what's installed:** the build stamp (commit sha + build time) is baked
   in at build (`electron.vite.config.ts`) and shown in **Settings** (top-right).
   Compare it against `git log` on `main` to see if the installed app is current.
   A `-dirty` suffix means it was built from an uncommitted working tree.
-- While iterating on a branch, `bun run dist && bun run release` builds *that branch* — the stamp
+- While iterating on a branch, `bun run release` builds *that branch* — the stamp
   will show the branch name; re-release from `main` once merged.
 
 Runbook: [`docs/runbooks/build-and-release.md`](./docs/runbooks/build-and-release.md).
@@ -53,7 +54,7 @@ Runbook: [`docs/runbooks/build-and-release.md`](./docs/runbooks/build-and-releas
 bun install               # at repo root
 bun run dev               # dev server with HMR
 bun run dist              # build + package (electron-vite + electron-builder)
-bun run release           # sign → reinstall /Applications/TerMinal.app (needs a prior `dist`)
+bun run release           # FULL: pull latest → build → sign → reinstall /Applications/TerMinal.app → relaunch
 bun run test              # test suite
 bunx tsc --noEmit         # typecheck
 ```

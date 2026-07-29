@@ -110,13 +110,24 @@ codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 
 echo "▸ installing → ${DEST}…"
+# Stage the new build alongside the old one FIRST, so the multi-second cp -R
+# never runs with no working app in place — if it fails or is interrupted,
+# $DEST is untouched. The actual swap below is then just two directory
+# renames (fast, effectively atomic), not the whole copy.
+STAGE="${DEST}.new"
+rm -rf "$STAGE"
+cp -R "$APP" "$STAGE"
+xattr -cr "$STAGE"
+
 if [[ "${TERMINAL_RELEASE_NO_RELAUNCH:-}" != "1" ]]; then
   pkill -f "$DEST/Contents/MacOS" 2>/dev/null || true
   sleep 1
 fi
-rm -rf "$DEST"
-cp -R "$APP" "$DEST"
-xattr -cr "$DEST"
+OLD="${DEST}.old"
+rm -rf "$OLD"
+[[ -d "$DEST" ]] && mv "$DEST" "$OLD"
+mv "$STAGE" "$DEST"
+rm -rf "$OLD"
 
 if [[ "${TERMINAL_RELEASE_NO_RELAUNCH:-}" == "1" ]]; then
   # The running copy keeps its in-memory code; the new build takes effect on
