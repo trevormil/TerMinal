@@ -3856,7 +3856,23 @@ process.on('uncaughtException', (e) => console.error('[gt] uncaught:', e))
 // font-zoom keys and fights the app's uiScale. Dropping just those three items
 // frees the keys for the terminal; every other default role (Edit copy/paste,
 // Window, app menu) is preserved verbatim.
+//
+// app.setName + package.json's productName both matter here: role: 'appMenu'
+// fills in "About/Hide/Quit ${app.name}", and Electron's app.name falls back
+// to package.json's lowercase "name" ("terminal") unless productName is set
+// or setName is called — hence the previously-lowercase "About terminal".
+declare const __BUILD_BRANCH__: string
+declare const __BUILD_TIME__: string
+declare const __APP_VERSION__: string
 function installAppMenu() {
+  app.setName('TerMinal')
+  app.setAboutPanelOptions({
+    applicationName: 'TerMinal',
+    applicationVersion: __APP_VERSION__,
+    version: `${__BUILD_SHA__} on ${__BUILD_BRANCH__} · built ${__BUILD_TIME__.slice(0, 16).replace('T', ' ')}`,
+    copyright: 'MIT License',
+    website: 'https://github.com/trevormil/TerMinal',
+  })
   const isMac = process.platform === 'darwin'
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
