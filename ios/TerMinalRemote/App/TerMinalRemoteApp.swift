@@ -53,7 +53,8 @@ struct RootView: View {
 /// plus a root-level deep-link so a tapped notification opens its thread
 /// regardless of which tab/workspace is showing (threads are nested under
 /// workspaces, so this can't live there). Settings has no tab of its own —
-/// it's one gear tap away from any tab instead, via a shared sheet.
+/// each tab's pinned header (GTPinnedHeader) carries a gear button wired to
+/// a shared sheet instead.
 private struct PairedView: View {
     let pairing: PairingPayload
     let onUnpair: () -> Void
@@ -91,37 +92,38 @@ private struct PairedView: View {
     var body: some View {
         TabView(selection: $tab) {
             NavigationStack {
-                ActiveSessionsView(model: active)
-                    .toolbar { settingsToolbarItem }
+                ActiveSessionsView(model: active, onSettings: { showingSettings = true })
             }
             .tabItem { Label("Active", systemImage: "bolt.horizontal") }
             .tag(Tab.active)
             .badge(active.awaitingCount)
 
             NavigationStack {
-                WorkspacesView(model: WorkspacesViewModel(client: client))
-                    .toolbar { settingsToolbarItem }
+                WorkspacesView(
+                    model: WorkspacesViewModel(client: client),
+                    onSettings: { showingSettings = true })
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
             .tag(Tab.workspaces)
 
             NavigationStack {
-                InboxView(model: InboxViewModel(feed: feed), focusedId: focusedHitlId)
-                    .toolbar { settingsToolbarItem }
+                InboxView(
+                    model: InboxViewModel(feed: feed), onSettings: { showingSettings = true },
+                    focusedId: focusedHitlId)
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
             .tag(Tab.inbox)
 
             NavigationStack {
-                ActivityView(model: ActivityViewModel(client: client))
-                    .toolbar { settingsToolbarItem }
+                ActivityView(
+                    model: ActivityViewModel(client: client), onSettings: { showingSettings = true }
+                )
             }
             .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }
             .tag(Tab.activity)
 
             NavigationStack {
-                MonitoringView(model: monitoring)
-                    .toolbar { settingsToolbarItem }
+                MonitoringView(model: monitoring, onSettings: { showingSettings = true })
             }
             .tabItem { Label("Monitoring", systemImage: "chart.line.uptrend.xyaxis") }
             .tag(Tab.monitoring)
@@ -189,21 +191,6 @@ private struct PairedView: View {
             guard let route else { return }
             push.pendingRoute = nil
             Task { await follow(route) }
-        }
-    }
-
-    /// Settings dropped out of the tab bar to make room for Activity — this
-    /// gear button, repeated on every remaining tab's toolbar, keeps it
-    /// reachable in one tap from wherever you are instead of confined to a
-    /// tab you'd have to switch to first.
-    @ToolbarContentBuilder
-    private var settingsToolbarItem: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-            }
         }
     }
 

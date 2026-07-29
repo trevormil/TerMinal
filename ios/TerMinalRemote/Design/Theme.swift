@@ -152,3 +152,32 @@ extension View {
             .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
     }
 }
+
+/// A screen's title, pinned above its scrollable content — title flush left,
+/// a trailing accessory (the settings gear, on every tab root) flush right,
+/// same row. UIKit's own large-title nav bar can't do this: its trailing
+/// toolbar buttons live in the compact strip ABOVE the large title text, not
+/// beside it, so the pairing is custom-built rather than system-provided.
+/// Pinned via `.safeAreaInset(edge: .top)` on the root view, which is
+/// sticky by construction — it never scrolls away, so there's no separate
+/// collapse animation to get right (or wrong).
+struct GTPinnedHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(GT.sans(24, .bold))
+                .foregroundStyle(GT.text)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(GT.panel)
+        .overlay(alignment: .bottom) {
+            Divider().overlay(GT.border)
+        }
+    }
+}

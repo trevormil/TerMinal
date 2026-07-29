@@ -68,6 +68,7 @@ final class MonitoringViewModel {
 /// Read-only — monitors are added and edited in TerMinal on the Mac.
 struct MonitoringView: View {
     @State var model: MonitoringViewModel
+    var onSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -105,8 +106,12 @@ struct MonitoringView: View {
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
-        .navigationTitle("Monitoring")
-        .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Monitoring") {
+                Button(action: onSettings) { Image(systemName: "gearshape") }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationDestination(for: MonitorWithState.self) { monitor in

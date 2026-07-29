@@ -57,6 +57,7 @@ final class ActiveSessionsViewModel {
 /// agents waiting on an answer — sort to the top; tap one to jump into its thread.
 struct ActiveSessionsView: View {
     @State var model: ActiveSessionsViewModel
+    var onSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -114,8 +115,12 @@ struct ActiveSessionsView: View {
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
-        .navigationTitle("Active")
-        .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Active") {
+                Button(action: onSettings) { Image(systemName: "gearshape") }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationDestination(for: RemoteSession.self) { s in

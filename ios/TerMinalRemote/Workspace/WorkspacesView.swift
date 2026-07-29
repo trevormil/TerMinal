@@ -22,6 +22,7 @@ final class WorkspacesViewModel {
 /// Top level: pick a repo to open its cockpit. Each is its own workspace.
 struct WorkspacesView: View {
     @State var model: WorkspacesViewModel
+    var onSettings: () -> Void
     @State private var pins: [String] = PinnedReposStore.all()
 
     // The Mac already returns repos recency-first; the phone layers its own
@@ -94,8 +95,12 @@ struct WorkspacesView: View {
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
         }
-        .navigationTitle("Workspaces")
-        .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            GTPinnedHeader(title: "Workspaces") {
+                Button(action: onSettings) { Image(systemName: "gearshape") }
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(GT.panel, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationDestination(for: RepoOption.self) { repo in
