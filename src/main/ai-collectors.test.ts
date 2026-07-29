@@ -24,7 +24,11 @@ const turnLine = (tokens: number) =>
   JSON.stringify({
     cwd: '/repo',
     timestamp: Date.now(),
-    message: { role: 'assistant', model: 'claude-sonnet-5', usage: { input_tokens: tokens, output_tokens: 5 } },
+    message: {
+      role: 'assistant',
+      model: 'claude-sonnet-5',
+      usage: { input_tokens: tokens, output_tokens: 5 },
+    },
   }) + '\n'
 
 function harness() {
