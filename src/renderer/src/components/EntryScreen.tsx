@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   X,
   FolderOpen,
@@ -432,8 +432,16 @@ export function EntryScreen({
   const canResume =
     isAiEngine(engine) && engine !== 'openrouter' && location === 'local' && !lockedRemote
   const sessions = canResume ? sessionsByEngine[engine] : undefined
-  const scopedSessionCount = sessions ? filterSessionMetas(sessions, { filterDir }).length : 0
-  const shown = sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []
+  // Memoized — these scans (6 fields per session) used to re-run on every
+  // keystroke AND every unrelated re-render of this large component.
+  const scopedSessionCount = useMemo(
+    () => (sessions ? filterSessionMetas(sessions, { filterDir }).length : 0),
+    [sessions, filterDir],
+  )
+  const shown = useMemo(
+    () => (sessions ? filterSessionMetas(sessions, { filterDir, query: sessionSearch }) : []),
+    [sessions, filterDir, sessionSearch],
+  )
   const visibleShown = shown.slice(0, visibleSessionCount)
   const hiddenShown = Math.max(0, shown.length - visibleShown.length)
   const isLoadingThisEngine = canResume ? !!loadingSessions[engine] : false
