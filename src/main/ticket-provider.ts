@@ -19,9 +19,9 @@ import { run as runCli } from './forge'
 /** A comment as callers hand it in — the timestamp is stamped at write time. */
 export type NewTicketComment = Omit<TicketComment, 'at'> & { at?: string }
 
-export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
+export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian' | 'webview'
 
-const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian']
+const PROVIDER_KINDS: TicketProviderKind[] = ['local', 'github', 'linear', 'obsidian', 'webview']
 // Normalize an unknown stored value to a known provider kind — anything
 // unrecognized falls back to local (never silently misroute reads/writes).
 function normProvider(p: unknown): TicketProviderKind {
@@ -66,6 +66,15 @@ export type ObsidianTicketConfig = {
   vaultName?: string
 }
 
+// A repo whose tickets live ENTIRELY in some external platform's own web UI —
+// no schema mapping, no CRUD, just an embedded <webview> as the Tickets tab
+// itself. Unlike `TicketView` (below), this IS the provider: there's no local
+// backlog running alongside it, so there's nothing to show but the page.
+export type WebviewTicketConfig = {
+  url: string
+  label?: string
+}
+
 // A read-only web view of some ticket platform (Linear, Jira, GitHub Projects,
 // a Notion board — anything with a URL), rendered in the Tickets tab as an
 // embedded <webview>. Deliberately NOT a provider: a view never changes where
@@ -101,6 +110,7 @@ export type RepoTicketsConfig = {
   github?: GithubConfig
   linear?: LinearTicketConfig
   obsidian?: ObsidianTicketConfig
+  webview?: WebviewTicketConfig
   views?: TicketView[]
   savedViews?: SavedTicketView[]
 }
@@ -143,6 +153,7 @@ const PROVIDER_LABEL: Record<TicketProviderKind, string> = {
   github: 'GitHub Issues',
   linear: 'Linear',
   obsidian: 'Obsidian',
+  webview: 'Webview',
 }
 
 // Resolve the on-disk ticket folder for an Obsidian vault: <vaultPath>/<subdir>.
@@ -270,6 +281,22 @@ function sanitizeSavedViews(raw: unknown): SavedTicketView[] {
   return out
 }
 
+// Same http(s)-only rule as sanitizeViews (below) — the url is a capability
+// (loaded into a real <webview>), not a label, so it's validated at the config
+// boundary rather than trusted downstream.
+function sanitizeWebview(raw: unknown): WebviewTicketConfig | null {
+  const url = String((raw as WebviewTicketConfig)?.url ?? '').trim()
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+  } catch {
+    return null
+  }
+  const label = String((raw as WebviewTicketConfig)?.label ?? '').trim()
+  return { url, ...(label ? { label } : {}) }
+}
+
 function sanitizeViews(raw: unknown): TicketView[] {
   if (!Array.isArray(raw)) return []
   const out: TicketView[] = []
@@ -312,6 +339,7 @@ export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
     ...(cfg.github ? { github: cfg.github } : {}),
     ...(cfg.linear ? { linear: cfg.linear } : {}),
     ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
+    ...(cfg.webview ? { webview: cfg.webview } : {}),
     ...(cfg.views?.length ? { views: sanitizeViews(cfg.views) } : {}),
     ...(cfg.savedViews?.length ? { savedViews: sanitizeSavedViews(cfg.savedViews) } : {}),
   }
@@ -357,6 +385,9 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
             ...(cfg.linear?.teamKey ? { teamKey: cfg.linear.teamKey } : {}),
           },
         }
+      : {}),
+    ...(provider === 'webview' && sanitizeWebview(cfg.webview)
+      ? { webview: sanitizeWebview(cfg.webview)! }
       : {}),
     // Outside the provider-conditional blocks on purpose: a view is a lens, not
     // a provider, so it must survive whichever provider is configured. An omitted
@@ -867,6 +898,12 @@ function linearPriority(priority: string): number {
 
 export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
   const cfg = readConfig(repoRoot)
+  // A webview provider has no queryable ticket store — the page itself IS the
+  // Tickets tab (see tabs/tickets/index.tsx). Every CRUD entry point below
+  // degrades the same way rather than erroring, since callers (ticket-spawn,
+  // agent tooling) already treat "no tickets" as a valid, if uninteresting,
+  // answer for a repo with an empty backlog.
+  if (cfg.provider === 'webview') return []
   if (cfg.provider === 'github') return listGithubTickets(repoRoot, cfg.github || {})
   if (cfg.provider === 'linear') return listLinearTickets(cfg.linear || {})
   if (cfg.provider === 'obsidian') {
@@ -878,6 +915,7 @@ export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
 
 export async function getRepoTicket(repoRoot: string, slug: string): Promise<Ticket | null> {
   const cfg = readConfig(repoRoot)
+  if (cfg.provider === 'webview') return null
   if (cfg.provider === 'github')
     return getGithubTicket(repoRoot, cfg.github || {}, parseExternalNumber(slug))
   if (cfg.provider === 'linear') return getLinearTicket(cfg.linear || {}, slug)
@@ -892,6 +930,8 @@ export async function getRepoTicket(repoRoot: string, slug: string): Promise<Tic
 
 export async function createRepoTicket(repoRoot: string, input: NewTicket): Promise<Ticket> {
   const cfg = readConfig(repoRoot)
+  if (cfg.provider === 'webview')
+    throw new Error('This repo has no ticket store — its Tickets tab is a webview.')
   if (cfg.provider === 'github') return createGithubTicket(repoRoot, cfg.github || {}, input)
   if (cfg.provider === 'linear') return createLinearTicket(cfg.linear || {}, input)
   if (cfg.provider === 'obsidian') {
@@ -908,6 +948,7 @@ export async function updateRepoTicket(
   patch: TicketPatch,
 ): Promise<boolean> {
   const cfg = readConfig(repoRoot)
+  if (cfg.provider === 'webview') return false
   if (cfg.provider === 'github') return updateGithubTicket(repoRoot, cfg.github || {}, slug, patch)
   if (cfg.provider === 'linear') return updateLinearTicket(cfg.linear || {}, slug, patch)
   if (cfg.provider === 'obsidian') {
@@ -945,6 +986,7 @@ export async function commentOnRepoTicket(
 ): Promise<boolean> {
   if (!comment.body.trim() || !comment.author.trim()) return false
   const cfg = readConfig(repoRoot)
+  if (cfg.provider === 'webview') return false
   if (cfg.provider === 'github') {
     const number = parseExternalNumber(slug)
     if (!/^\d+$/.test(number)) return false
@@ -974,6 +1016,9 @@ function remoteCommentBody(comment: NewTicketComment): string {
 }
 
 export function ticketProviderInstructions(provider: RepoTicketProvider): string {
+  if (provider.kind === 'webview') {
+    return 'Ticket provider: webview. This repo has no queryable ticket store — the Tickets tab embeds an external page directly. Do not create or edit local backlog markdown files for ticket state, and do not expect any ticket CLI/tool to return results here.'
+  }
   if (provider.kind === 'github') {
     return 'Ticket provider: GitHub Issues. Use the gh CLI in this repository for ticket reads/writes. Do not create or edit local backlog markdown files for ticket state.'
   }
@@ -1013,6 +1058,11 @@ export async function testRepoTicketProvider(
 ): Promise<TicketProviderTestResult> {
   const provider = normProvider(cfg.provider)
   try {
+    if (provider === 'webview') {
+      const webview = sanitizeWebview(cfg.webview)
+      if (!webview) return { ok: false, provider, message: 'Enter a valid http(s) URL before saving.' }
+      return { ok: true, provider, message: `Webview ready (${webview.url}).` }
+    }
     if (provider === 'obsidian') {
       const dir = obsidianBaseDir(cfg.obsidian)
       if (!dir)

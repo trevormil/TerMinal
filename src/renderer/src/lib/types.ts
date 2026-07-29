@@ -440,8 +440,11 @@ export type NewTicket = {
 export type ModelTier = 'auto' | 'top' | 'cheap-agentic' | 'cheap-raw'
 import type { SavedTicketView } from './ticketViews'
 
-export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian'
+export type TicketProviderKind = 'local' | 'github' | 'linear' | 'obsidian' | 'webview'
 export type ObsidianTicketConfig = { vaultPath: string; ticketsSubdir?: string; vaultName?: string }
+/** A repo whose Tickets tab IS an embedded page — no local backlog, no CRUD.
+ *  See WebviewTicketConfig in src/main/ticket-provider.ts for the full contract. */
+export type WebviewTicketConfig = { url: string; label?: string }
 export type TicketProviderConfig = {
   provider?: TicketProviderKind
   github?: {
@@ -457,6 +460,7 @@ export type TicketProviderConfig = {
     listArgs?: Record<string, unknown>
   }
   obsidian?: ObsidianTicketConfig
+  webview?: WebviewTicketConfig
   views?: TicketView[]
   /** Named filter/group/sort lenses. See SavedTicketView in ticketViews.ts. */
   savedViews?: SavedTicketView[]

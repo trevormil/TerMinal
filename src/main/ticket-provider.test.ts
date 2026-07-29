@@ -15,6 +15,8 @@ import {
   repoTicketProvider,
   saveRepoTicketConfig,
   scaffoldObsidianVault,
+  testRepoTicketProvider,
+  ticketProviderInstructions,
   updateRepoTicket,
 } from './ticket-provider'
 import { readFileSync } from 'node:fs'
@@ -560,5 +562,80 @@ describe('saved ticket views', () => {
     } finally {
       rmSync(repo, { recursive: true, force: true })
     }
+  })
+})
+
+describe('webview provider', () => {
+  test('recognizes the webview provider', () => {
+    const repo = repoWithTicketConfig({ provider: 'webview', webview: { url: 'https://x.test' } })
+    try {
+      expect(repoTicketProvider(repo)).toMatchObject({ kind: 'webview', label: 'Webview' })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('saveRepoTicketConfig keeps a valid http(s) url and drops an invalid one', () => {
+    const repo = repoWithTicketConfig({ provider: 'local' })
+    try {
+      const saved = saveRepoTicketConfig(repo, {
+        provider: 'webview',
+        webview: { url: 'https://linear.app/team/eng', label: 'Eng board' },
+      })
+      expect(saved.webview).toEqual({ url: 'https://linear.app/team/eng', label: 'Eng board' })
+
+      const rejected = saveRepoTicketConfig(repo, {
+        provider: 'webview',
+        webview: { url: 'javascript:alert(1)' },
+      })
+      expect(rejected.webview).toBeUndefined()
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('every CRUD entry point degrades gracefully instead of touching the repo', async () => {
+    const repo = repoWithTicketConfig({ provider: 'webview', webview: { url: 'https://x.test' } })
+    try {
+      expect(await listRepoTickets(repo)).toEqual([])
+      expect(await getRepoTicket(repo, '0001-anything')).toBeNull()
+      expect(
+        createRepoTicket(repo, {
+          title: 'x',
+          type: 'feature',
+          priority: 'low',
+          status: 'open',
+          body: '',
+        }),
+      ).rejects.toThrow()
+      expect(await updateRepoTicket(repo, '0001-anything', { status: 'closed' })).toBe(false)
+      expect(
+        await commentOnRepoTicket(repo, '0001-anything', { author: 'me', body: 'hi', kind: 'human' }),
+      ).toBe(false)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('testRepoTicketProvider requires a valid url before saving', async () => {
+    const repo = repoWithTicketConfig({ provider: 'webview' })
+    try {
+      const empty = await testRepoTicketProvider(repo, { provider: 'webview' })
+      expect(empty.ok).toBe(false)
+
+      const ok = await testRepoTicketProvider(repo, {
+        provider: 'webview',
+        webview: { url: 'https://linear.app/team/eng' },
+      })
+      expect(ok).toMatchObject({ ok: true, provider: 'webview' })
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test('ticketProviderInstructions tells the agent there is no local ticket store', () => {
+    expect(ticketProviderInstructions({ kind: 'webview', label: 'Webview' })).toContain(
+      'no queryable ticket store',
+    )
   })
 })

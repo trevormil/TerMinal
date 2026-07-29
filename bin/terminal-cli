@@ -840,6 +840,12 @@ function fileTicket(title, body, modelTier) {
     )
     process.exit(2)
   }
+  if (cfg.provider === 'webview') {
+    console.error(
+      'terminal-cli ticket: this repo has no ticket store — its Tickets tab is a webview, not a queryable backlog',
+    )
+    process.exit(2)
+  }
   // Obsidian repos keep tickets in their vault, not the repo's local backlog.
   // A misconfigured vault fails closed — never silently fall back to the repo.
   if (cfg.provider === 'obsidian' && !obsidianTicketsDir(cfg)) {
@@ -903,6 +909,12 @@ function commentOnTicket(slug, body) {
   if (cfg.provider === 'github' || cfg.provider === 'linear') {
     console.error(
       `terminal-cli ticket comment: ${cfg.provider} repos must comment through their own CLI/MCP, not local backlog markdown`,
+    )
+    process.exit(2)
+  }
+  if (cfg.provider === 'webview') {
+    console.error(
+      'terminal-cli ticket comment: this repo has no ticket store — its Tickets tab is a webview, not a queryable backlog',
     )
     process.exit(2)
   }
