@@ -121,7 +121,7 @@ struct InboxView: View {
             // the first row's insets — contentMargins is the one API that
             // actually sets it, matching Workspaces' 14pt VStack padding
             // exactly instead of stacking on top of a default we don't see.
-            .contentMargins(.top, 12, for: .scrollContent)
+            .contentMargins(.top, 10, for: .scrollContent)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
             }
