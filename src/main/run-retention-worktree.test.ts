@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 describe('worktreeOwnerRepo', () => {
-  test('resolves the owning repo of a registered worktree, so it can be pruned after removal', () => {
+  test('resolves the owning repo of a registered worktree, so it can be pruned after removal', async () => {
     const repo = tmp()
     git(repo, ['init', '--quiet', '-b', 'main'])
     git(repo, ['config', 'user.email', 't@example.com'])
@@ -40,7 +40,7 @@ describe('worktreeOwnerRepo', () => {
     git(repo, ['worktree', 'add', '-q', '-b', 'cron/x', wt])
     expect(existsSync(wt)).toBe(true)
 
-    const owner = worktreeOwnerRepo(wt)
+    const owner = await worktreeOwnerRepo(wt)
     expect(owner).not.toBe('')
     // Must point at the ORIGINAL repo's git dir, not the worktree's own stub.
     // realpath both sides: on macOS /var is a symlink to /private/var.
@@ -54,7 +54,7 @@ describe('worktreeOwnerRepo', () => {
     expect(git(repo, ['worktree', 'list'])).not.toContain('cron/x')
   })
 
-  test('returns empty for a plain directory that was never a worktree', () => {
-    expect(worktreeOwnerRepo(tmp())).toBe('')
+  test('returns empty for a plain directory that was never a worktree', async () => {
+    expect(await worktreeOwnerRepo(tmp())).toBe('')
   })
 })

@@ -1697,8 +1697,14 @@ export function SettingsPanel({
   useEffect(() => {
     window.gt.settings.get().then(setS)
     window.gt.detectEnv().then(setEnv)
-    void refreshStorage()
   }, [])
+  // The storage estimate walks all of ~/.config/TerMinal (can be many GB /
+  // hundreds of thousands of files) — scan only when the section showing it
+  // opens, never on Settings open.
+  useEffect(() => {
+    if (active === 'paths' && !storage && storageBusy === null) void refreshStorage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
   useEffect(() => {
     if (s && profile !== 'local' && !s.remoteHosts.some((h) => h.id === profile))
       setProfile('local')
@@ -2490,10 +2496,17 @@ export function SettingsPanel({
                           <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                             TerMinal storage
                           </div>
-                          <div className="mt-0.5 text-[11px] text-zinc-300">
-                            {storage
-                              ? `${formatBytes(storage.totalBytes)} total · ${formatBytes(storage.reclaimableBytes)} reclaimable`
-                              : 'Dry-run estimate not loaded'}
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-300">
+                            {storage ? (
+                              `${formatBytes(storage.totalBytes)} total · ${formatBytes(storage.reclaimableBytes)} reclaimable`
+                            ) : storageBusy === 'scan' ? (
+                              <>
+                                <Loader2 size={11} className="animate-spin" />
+                                Scanning storage…
+                              </>
+                            ) : (
+                              'Dry-run estimate not loaded'
+                            )}
                           </div>
                           {storage && (
                             <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">

@@ -47,7 +47,7 @@ afterEach(() => {
 })
 
 describe('sweepTerminalState', () => {
-  test('dry-run reports reclaimable worktrees without deleting them', () => {
+  test('dry-run reports reclaimable worktrees without deleting them', async () => {
     const root = tempRoot()
     const worktree = join(root, 'cron-worktrees', 'done-run')
     writeBytes(join(worktree, 'big.bin'), 10)
@@ -57,7 +57,7 @@ describe('sweepTerminalState', () => {
       JSON.stringify({ id: 'done', status: 'done', worktree }),
     )
 
-    const report = sweepTerminalState(root, {
+    const report = await sweepTerminalState(root, {
       dryRun: true,
       cronWorktreesMaxBytes: 1,
       checkpointGcMinBytes: 1,
@@ -70,7 +70,7 @@ describe('sweepTerminalState', () => {
     expect(existsSync(worktree)).toBe(true)
   })
 
-  test('reclaim deletes eligible cron worktrees but never running worktrees', () => {
+  test('reclaim deletes eligible cron worktrees but never running worktrees', async () => {
     const root = tempRoot()
     const doneWorktree = join(root, 'cron-worktrees', 'done-run')
     const runningWorktree = join(root, 'cron-worktrees', 'running-run')
@@ -86,7 +86,7 @@ describe('sweepTerminalState', () => {
       JSON.stringify({ id: 'running', status: 'running', worktree: runningWorktree }),
     )
 
-    const report = sweepTerminalState(root, {
+    const report = await sweepTerminalState(root, {
       dryRun: false,
       cronWorktreesMaxBytes: 1,
       checkpointGcMinBytes: 1,
@@ -98,12 +98,12 @@ describe('sweepTerminalState', () => {
     expect(existsSync(runningWorktree)).toBe(true)
   })
 
-  test('checkpoint pass removes interrupted git tmp objects only on reclaim', () => {
+  test('checkpoint pass removes interrupted git tmp objects only on reclaim', async () => {
     const root = tempRoot()
     const tmpObject = join(root, 'checkpoints', 'repo.git', 'objects', '5e', 'tmp_obj_UcUQ2g')
     writeBytes(tmpObject, 7)
 
-    const dry = sweepTerminalState(root, {
+    const dry = await sweepTerminalState(root, {
       dryRun: true,
       cronWorktreesMaxBytes: 1,
       checkpointGcMinBytes: 1,
@@ -111,7 +111,7 @@ describe('sweepTerminalState', () => {
     expect(dry.checkpoints.tmpObjects.planned).toHaveLength(1)
     expect(existsSync(tmpObject)).toBe(true)
 
-    const report = sweepTerminalState(root, {
+    const report = await sweepTerminalState(root, {
       dryRun: false,
       cronWorktreesMaxBytes: 1,
       checkpointGcMinBytes: 1,
@@ -120,12 +120,12 @@ describe('sweepTerminalState', () => {
     expect(existsSync(tmpObject)).toBe(false)
   })
 
-  test('reports scratch size without clearing it as part of reclaim', () => {
+  test('reports scratch size without clearing it as part of reclaim', async () => {
     const root = tempRoot()
     const scratchFile = join(root, 'scratch', 'keep.txt')
     writeBytes(scratchFile, 5)
 
-    const report = sweepTerminalState(root, {
+    const report = await sweepTerminalState(root, {
       dryRun: false,
       cronWorktreesMaxBytes: 1,
       checkpointGcMinBytes: 1,
@@ -136,12 +136,12 @@ describe('sweepTerminalState', () => {
     expect(existsSync(scratchFile)).toBe(true)
   })
 
-  test('clearTerminalScratch is a separate explicit delete action', () => {
+  test('clearTerminalScratch is a separate explicit delete action', async () => {
     const root = tempRoot()
     const scratchFile = join(root, 'scratch', 'keep.txt')
     writeBytes(scratchFile, 5)
 
-    const report = clearTerminalScratch(root)
+    const report = await clearTerminalScratch(root)
 
     expect(report.bytes).toBe(5)
     expect(report.deleted).toBe(true)
