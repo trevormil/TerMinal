@@ -387,7 +387,16 @@ function CompareView({ a, b, onClose }: { a: string; b: string; onClose: () => v
   )
 }
 
-type OpenFile = { path: string; content: string; dirty: boolean; err?: string; scrollLine?: number }
+type OpenFile = {
+  path: string
+  content: string
+  dirty: boolean
+  err?: string
+  scrollLine?: number
+  /** Changed on disk (e.g. by an agent) while this buffer had unsaved edits —
+   *  surfaced as a banner instead of silently overwriting either side. */
+  external?: boolean
+}
 type Prompt = { kind: 'new-file' | 'new-folder' | 'rename'; parent?: string; target?: string }
 
 function FilesTab({ ctx }: { ctx: TabContext }) {
@@ -486,6 +495,33 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   useEffect(() => {
     window.gt.files.list('').then(setRoots)
   }, [ctx.repoRoot, version])
+  // Auto-refresh: watch the workspace root for external changes (an agent
+  // editing files, a git checkout, etc). A clean open buffer reloads silently;
+  // a dirty one gets flagged for a conflict banner instead of being clobbered.
+  useEffect(() => {
+    const root = ctx.repoRoot
+    if (!root) return // SSH workspaces aren't on this machine's filesystem
+    window.gt.files.watch(root)
+    const unsub = window.gt.files.onChanged((ev) => {
+      if (ev.root !== root) return
+      bump()
+      const changed = new Set(ev.paths)
+      for (const f of openRef.current) {
+        if (!changed.has(f.path)) continue
+        if (f.dirty) {
+          patch(f.path, { external: true })
+          continue
+        }
+        window.gt.files.read(f.path).then((r) => {
+          if (r.ok) patch(f.path, { content: r.content, external: false })
+        })
+      }
+    })
+    return () => {
+      unsub()
+      window.gt.files.unwatch(root)
+    }
+  }, [ctx.repoRoot])
   useEffect(() => {
     let id: ReturnType<typeof setInterval> | null = null
     let inFlight = false
@@ -952,6 +988,29 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           </span>
         )}
       </div>
+
+      {activeFile?.external && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-400">
+          <span className="flex-1">
+            This file changed on disk while you had unsaved edits.
+          </span>
+          <button
+            onClick={async () => {
+              const r = await window.gt.files.read(activeFile.path)
+              if (r.ok) patch(activeFile.path, { content: r.content, dirty: false, external: false })
+            }}
+            className="rounded border border-amber-500/40 px-2 py-0.5 font-medium hover:bg-amber-500/15"
+          >
+            Reload from disk
+          </button>
+          <button
+            onClick={() => patch(activeFile.path, { external: false })}
+            className="rounded border border-[var(--gt-border)] px-2 py-0.5 text-zinc-400 hover:text-zinc-200"
+          >
+            Keep mine
+          </button>
+        </div>
+      )}
 
       {/* breadcrumbs — the active file's path, each segment clickable to reveal
           that folder in the tree. Also carries the detected indentation. */}

@@ -2264,6 +2264,10 @@ export type GtApi = {
     create: (rel: string, dir: boolean) => Promise<boolean>
     rename: (from: string, to: string) => Promise<boolean>
     del: (rel: string) => Promise<boolean>
+    /** Ref-counted per root — call unwatch once for every watch. */
+    watch: (root: string) => Promise<boolean>
+    unwatch: (root: string) => Promise<boolean>
+    onChanged: (cb: (ev: { root: string; paths: string[] }) => void) => () => void
   }
   workflow: {
     list: (rel: string) => Promise<FileEntry[]>

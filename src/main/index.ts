@@ -399,6 +399,7 @@ import {
   remoteTickets,
 } from './remote'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
+import { watchRoot, unwatchRoot } from './files-watch'
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
@@ -3838,6 +3839,19 @@ ipcMain.handle('files:rename', (_e, from: string, to: string) => {
 })
 ipcMain.handle('files:delete', (_e, rel: string) => {
   return activeDaemon().filesDelete(rel)
+})
+// Auto-refresh: the renderer watches whatever root the Files tab has open
+// (ref-counted in files-watch.ts, so switching between sessions on the same
+// repo doesn't double-watch). Local workspaces only — SSH roots aren't on
+// this machine's filesystem.
+ipcMain.handle('files:watch', (_e, root: string) => {
+  if (!root) return false
+  watchRoot(root, (r, paths) => send('files:changed', { root: r, paths }))
+  return true
+})
+ipcMain.handle('files:unwatch', (_e, root: string) => {
+  if (root) unwatchRoot(root)
+  return true
 })
 
 // ---- my workflow (local Claude/Codex configuration) ----
