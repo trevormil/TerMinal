@@ -15,6 +15,7 @@ import {
   Square,
   SquareTerminal,
   X,
+  XCircle,
   type LucideIcon,
 } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
@@ -272,6 +273,7 @@ export function SessionView({
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const [draggingKey, setDraggingKey] = useState<string | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ key: string; x: number; y: number } | null>(null)
   const [branch, setBranch] = useState('')
   const [ctx, setCtx] = useState<TabContext | null>(null)
   const [activeTab, setActiveTab] = useState('terminal')
@@ -320,6 +322,17 @@ export function SessionView({
     window.addEventListener('gt.tabs.hidden.changed', onChange)
     return () => window.removeEventListener('gt.tabs.hidden.changed', onChange)
   }, [])
+  useEffect(() => {
+    if (!tabMenu) return
+    const close = () => setTabMenu(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [tabMenu])
   const customTabs = useCustomTabs(ctx?.cwd || '')
   const tabs = useMemo(
     () =>
@@ -708,6 +721,11 @@ export function SessionView({
           setEditingKey(p.key)
           setEditingValue(p.label)
         }}
+        onContextMenu={(e) => {
+          if (isEditing || !onCloseSession) return
+          e.preventDefault()
+          setTabMenu({ key: p.key, x: e.clientX, y: e.clientY })
+        }}
         title="Double-click to rename"
         className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 ${
           variant === 'side' ? 'w-full ' : ''
@@ -1081,6 +1099,35 @@ export function SessionView({
           )}
         </div>
       </div>
+      {tabMenu && onCloseSession && (
+        <div
+          className="fixed z-[70] min-w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] py-1 text-[12px] text-zinc-200 shadow-2xl"
+          style={{ left: tabMenu.x, top: tabMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            disabled={peerSessions.length < 2}
+            onClick={() => {
+              for (const s of peerSessions) if (s.key !== tabMenu.key) onCloseSession(s.key)
+              setTabMenu(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
+          >
+            <X size={13} strokeWidth={2} />
+            Close Other Tabs
+          </button>
+          <button
+            onClick={() => {
+              for (const s of peerSessions) onCloseSession(s.key)
+              setTabMenu(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/5"
+          >
+            <XCircle size={13} strokeWidth={2} />
+            Close All Tabs
+          </button>
+        </div>
+      )}
     </div>
   )
 }
