@@ -92,40 +92,40 @@ private struct PairedView: View {
         TabView(selection: $tab) {
             NavigationStack {
                 ActiveSessionsView(model: active)
+                    .toolbar { settingsToolbarItem }
             }
             .tabItem { Label("Active", systemImage: "bolt.horizontal") }
             .tag(Tab.active)
             .badge(active.awaitingCount)
-            .toolbar { settingsToolbarItem }
 
             NavigationStack {
                 WorkspacesView(model: WorkspacesViewModel(client: client))
+                    .toolbar { settingsToolbarItem }
             }
             .tabItem { Label("Workspaces", systemImage: "folder") }
             .tag(Tab.workspaces)
-            .toolbar { settingsToolbarItem }
 
             NavigationStack {
                 InboxView(model: InboxViewModel(feed: feed), focusedId: focusedHitlId)
+                    .toolbar { settingsToolbarItem }
             }
             .tabItem { Label("Inbox", systemImage: "tray") }
             .tag(Tab.inbox)
-            .toolbar { settingsToolbarItem }
 
             NavigationStack {
                 ActivityView(model: ActivityViewModel(client: client))
+                    .toolbar { settingsToolbarItem }
             }
             .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }
             .tag(Tab.activity)
-            .toolbar { settingsToolbarItem }
 
             NavigationStack {
                 MonitoringView(model: monitoring)
+                    .toolbar { settingsToolbarItem }
             }
             .tabItem { Label("Monitoring", systemImage: "chart.line.uptrend.xyaxis") }
             .tag(Tab.monitoring)
             .badge(monitoring.failingCount)
-            .toolbar { settingsToolbarItem }
         }
         .tint(GT.accentLight)
         // A tapped notification names a thread; open it over everything.
