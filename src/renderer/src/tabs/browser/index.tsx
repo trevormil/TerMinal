@@ -10,7 +10,13 @@ import {
 } from 'lucide-react'
 import type { KnowledgeScope, Tab, TabContext } from '../../lib/types'
 import { appendKnowledgeItem, singleHttpUrl } from '../../lib/knowledge'
-import { useWebSurface, BrowserToolbar, FindBar, normalizeUrl } from './webSurface'
+import {
+  useWebSurface,
+  BrowserToolbar,
+  FindBar,
+  WebviewContextMenu,
+  normalizeUrl,
+} from './webSurface'
 import chatgptLogo from '../../assets/ai-tools/chatgpt.png'
 import claudeLogo from '../../assets/ai-tools/claude.png'
 import geminiLogo from '../../assets/ai-tools/gemini.png'
@@ -468,6 +474,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
           {surface.findOpen && <FindBar surface={surface} />}
         </div>
       </div>
+      <WebviewContextMenu surface={surface} />
       {kbToast && (
         <div className="pointer-events-none fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)]/95 px-3 py-1.5 text-[11.5px] text-zinc-300 shadow-2xl backdrop-blur">
           {kbToast}
