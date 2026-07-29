@@ -101,7 +101,6 @@ const gt = {
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
       ipcRenderer.invoke('runs:log', source, runId, hostId),
     runArtifacts: (repoRoot: string) => ipcRenderer.invoke('runs:artifacts', repoRoot),
-    runTrends: (days?: number) => ipcRenderer.invoke('runs:trends', days),
     cancelCron: (id: string, hostId?: string) => ipcRenderer.invoke('runs:cancel-cron', id, hostId),
     list: () => ipcRenderer.invoke('agents:list'),
     definitions: () => ipcRenderer.invoke('agents:definitions'),

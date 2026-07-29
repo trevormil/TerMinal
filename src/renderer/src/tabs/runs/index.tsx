@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Inbox,
   ListChecks,
   RefreshCw,
   FolderOpen,
@@ -16,7 +15,7 @@ import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
-import type { Tab, TabContext, UnifiedRun, RunArtifact, RunTrendPoint } from '../../lib/types'
+import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { AutomationInboxView } from './AutomationInboxView'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -117,8 +116,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
   // Cost per runId from the AI ledger — joined into each row so the operator
   // sees "this run cost $X" without flipping tabs.
   const [costByRunId, setCostByRunId] = useState<Map<string, number>>(new Map())
-  // 14-day success-rate / duration trend (#6) — GitHub Insights equivalent.
-  const [trends, setTrends] = useState<RunTrendPoint[]>([])
   const reloadCosts = async () => {
     try {
       const ai = await window.gt.observability.runs(500)
@@ -133,10 +130,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     reloadLocal()
     reloadRemote()
     reloadCosts()
-    window.gt.agents
-      .runTrends(14)
-      .then(setTrends)
-      .catch(() => {})
     // Always refresh local + costs (cheap local IPC). Gating local refresh on
     // "something is already running" latched the poll OFF whenever the snapshot
     // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
@@ -333,30 +326,16 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <ListChecks size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Runs</span>
-        <div className="ml-1 inline-flex rounded-lg border border-[var(--gt-border)] bg-black/20 p-0.5">
-          <button
-            onClick={() => setView('runs')}
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
-              view === 'runs'
-                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            <ListChecks size={10} strokeWidth={2} />
-            Runs
-          </button>
-          <button
-            onClick={() => setView('inbox')}
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ${
-              view === 'inbox'
-                ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            <Inbox size={10} strokeWidth={2} />
-            Automation Inbox
-          </button>
-        </div>
+        {/* A filter, not a second tab — the automation inbox is a view of the
+            same run history, scoped by source, not a distinct destination. */}
+        <select
+          value={view}
+          onChange={(e) => setView(e.target.value as 'runs' | 'inbox')}
+          className="ml-1 rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[10.5px] text-zinc-300 outline-none"
+        >
+          <option value="runs">All runs</option>
+          <option value="inbox">Automation inbox</option>
+        </select>
       </div>
 
       {view === 'inbox' ? (
@@ -392,42 +371,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <RefreshCw size={11} strokeWidth={2} />
                 </button>
               </div>
-              {/* 14-day trend strip (#6): one cell per day, height ∝ volume, color by
-              success rate. Hover for the numbers. A quick "is the factory healthy?" */}
-              {trends.some((d) => d.total > 0) && (
-                <div className="flex items-end gap-[3px]" title="Run success rate — last 14 days">
-                  {trends.map((d) => {
-                    const rate = d.succeeded + d.failed > 0 ? d.successRate : null
-                    const h =
-                      d.total === 0 ? 3 : 4 + Math.min(16, Math.round(Math.log2(d.total + 1) * 6))
-                    const color =
-                      rate === null
-                        ? 'var(--gt-border)'
-                        : rate >= 0.99
-                          ? 'var(--gt-green)'
-                          : rate >= 0.75
-                            ? '#d4a017'
-                            : 'var(--gt-red)'
-                    return (
-                      <div
-                        key={d.date}
-                        style={{
-                          height: h,
-                          backgroundColor: color,
-                          opacity: d.total === 0 ? 0.35 : 0.85,
-                        }}
-                        className="w-[7px] rounded-[1.5px]"
-                        title={`${d.date} · ${d.total} run${d.total === 1 ? '' : 's'}${
-                          d.succeeded + d.failed > 0
-                            ? ` · ${Math.round(d.successRate * 100)}% ok`
-                            : ''
-                        }${d.avgDurationMs ? ` · ~${fmtDuration(d.avgDurationMs)}` : ''}`}
-                      />
-                    )
-                  })}
-                  <span className="ml-1.5 text-[9.5px] text-zinc-600">14d</span>
-                </div>
-              )}
               <div className="flex flex-wrap items-center gap-1.5">
                 <input
                   value={search}

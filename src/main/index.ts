@@ -287,7 +287,6 @@ import {
   readSessionRunLogTail,
   readSessionRuns,
   listAllRuns,
-  runTrends,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
@@ -2773,8 +2772,6 @@ ipcMain.handle(
 // .TerMinal/agent-requests/ (#8). Local runs only; a remote run's artifacts live
 // on its host. The renderer opens a report via openExternal(file://…).
 ipcMain.handle('runs:artifacts', (_e, repoRoot: string) => listRepoArtifacts(repoRoot))
-// Success-rate / duration trend over the last N days (#6) for the Runs tab.
-ipcMain.handle('runs:trends', (_e, days?: number) => runTrends(days ?? 14))
 // Cancel a running CRON run (#9). Local: SIGTERM the runner's own pid — its
 // cooperative handler kills the current attempt and stops retrying, recording the
 // run as canceled. Remote: route to the host's runs.cancel op.
