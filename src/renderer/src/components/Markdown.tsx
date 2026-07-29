@@ -15,10 +15,31 @@ import { parseInline } from '../../../shared/inline-md'
 //
 // The parsing lives in src/shared/inline-md.ts so it can be unit-tested without
 // a DOM; this component only maps tokens to elements.
-export function InlineMd({ text }: { text: string }): ReactNode {
+export function InlineMd({
+  text,
+  keepLineBreaks,
+}: {
+  text: string
+  /** Render the source's paragraph breaks instead of flattening to one line —
+   *  pass this once a row is no longer clamped to a single/fixed line count. */
+  keepLineBreaks?: boolean
+}): ReactNode {
+  // A plain-text token can itself contain \n when keepLineBreaks is set —
+  // split it into <br />-separated fragments rather than letting the browser
+  // silently collapse the newline the way default `white-space` handling does.
+  const withBreaks = (key: string | number, text: string): ReactNode => {
+    const lines = text.split('\n')
+    if (lines.length === 1) return text
+    return lines.map((line, j) => (
+      <span key={`${key}-${j}`}>
+        {line}
+        {j < lines.length - 1 && <br />}
+      </span>
+    ))
+  }
   return (
     <>
-      {parseInline(text).map((t, i) => {
+      {parseInline(text, { keepLineBreaks }).map((t, i) => {
         switch (t.kind) {
           case 'code':
             return (
@@ -62,7 +83,7 @@ export function InlineMd({ text }: { text: string }): ReactNode {
               </a>
             )
           default:
-            return <span key={i}>{t.text}</span>
+            return <span key={i}>{withBreaks(i, t.text)}</span>
         }
       })}
     </>

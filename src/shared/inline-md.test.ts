@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { parseInline } from './inline-md'
 
 const kinds = (s: string) => parseInline(s).map((t) => t.kind)
-const texts = (s: string) => parseInline(s).map((t) => t.text)
+const texts = (s: string, opts?: { keepLineBreaks?: boolean }) =>
+  parseInline(s, opts).map((t) => t.text)
 
 describe('parseInline', () => {
   test('plain text is a single text token', () => {
@@ -45,6 +46,16 @@ describe('parseInline', () => {
 
   test('collapses newlines so it fits one truncated row', () => {
     expect(texts('line one\n\n  line two')).toEqual(['line one line two'])
+  })
+
+  test('keepLineBreaks preserves paragraph breaks instead of flattening', () => {
+    expect(texts('line one\n\nline two', { keepLineBreaks: true })).toEqual([
+      'line one\n\nline two',
+    ])
+  })
+
+  test('keepLineBreaks still collapses runs of horizontal whitespace', () => {
+    expect(texts('a    b\nc\t\td', { keepLineBreaks: true })).toEqual(['a b\nc d'])
   })
 
   test('strips a leading heading marker', () => {

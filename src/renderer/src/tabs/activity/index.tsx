@@ -183,6 +183,12 @@ export function ActivityTab({
   const [kindFilter, setKindFilter] = useState<string>('all')
   const [query, setQuery] = useState('')
   const [, force] = useState(0) // re-tick relative times
+  // Which row is expanded (title/detail unclamped). JS-driven rather than a
+  // CSS group-hover toggle — line-clamp's -webkit-box display type combined
+  // with a hover-only class swap was unreliable in practice (rows stayed
+  // clamped on hover), so this makes "expanded or not" an explicit, provable
+  // state instead of something to debug in devtools per-row.
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const newest = useRef<string>('') // id of the most recent event, for the live flash
 
   useEffect(() => {
@@ -317,6 +323,8 @@ export function ActivityTab({
                   <div
                     key={e.id}
                     onClick={hasNav ? () => navForEvent(e) : undefined}
+                    onMouseEnter={() => setExpandedId(e.id)}
+                    onMouseLeave={() => setExpandedId((id) => (id === e.id ? null : id))}
                     role={hasNav ? 'button' : undefined}
                     title={
                       hasNav
@@ -355,22 +363,24 @@ export function ActivityTab({
                           ? declutterDetail(e.detail, e.repo)
                           : e.detail
                         : ''
+                      const expanded = expandedId === e.id
+                      const clamp = expanded ? '' : 'line-clamp-2'
                       return (
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2">
                             {/* line-clamp instead of truncate — nothing here is
                                 ever fully cut off with no way to read the rest;
                                 hovering the row reveals the full text. */}
-                            <span className="line-clamp-2 min-w-0 flex-1 text-[13px] text-zinc-100 group-hover:line-clamp-none">
-                              <InlineMd text={displayTitle} />
+                            <span className={`${clamp} min-w-0 flex-1 break-words text-[13px] text-zinc-100`}>
+                              <InlineMd text={displayTitle} keepLineBreaks={expanded} />
                             </span>
                             <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
                               {reltime(e.ts)}
                             </span>
                           </div>
                           {displayDetail && (
-                            <div className="line-clamp-2 text-[11.5px] text-zinc-500 group-hover:line-clamp-none">
-                              <InlineMd text={displayDetail} />
+                            <div className={`${clamp} break-words text-[11.5px] text-zinc-500`}>
+                              <InlineMd text={displayDetail} keepLineBreaks={expanded} />
                             </div>
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">

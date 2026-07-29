@@ -33,11 +33,17 @@ const INLINE_RE = new RegExp(
   'g',
 )
 
-/** Tokenise `text` into inline spans, in source order. */
-export function parseInline(text: string): InlineToken[] {
-  // Collapse to one line + drop a leading heading marker so a `## Title` detail
-  // doesn't render its hashes inside a single-line row.
-  const clean = text.replace(/\s*\n+\s*/g, ' ').replace(/^\s*#{1,6}\s+/, '')
+/** Tokenise `text` into inline spans, in source order.
+ *
+ *  `keepLineBreaks` (default false): the clamped/collapsed preview still
+ *  flattens to one line so it fits the compact row; an expanded row passes
+ *  `true` to keep the source's paragraph breaks instead of rendering
+ *  everything as one run-on line. Either way a leading `## Title` marker is
+ *  stripped so its hashes don't render literally. */
+export function parseInline(text: string, opts?: { keepLineBreaks?: boolean }): InlineToken[] {
+  const clean = opts?.keepLineBreaks
+    ? text.replace(/[ \t]+/g, ' ').replace(/^\s*#{1,6}\s+/, '')
+    : text.replace(/\s*\n+\s*/g, ' ').replace(/^\s*#{1,6}\s+/, '')
   const out: InlineToken[] = []
   let last = 0
   let m: RegExpExecArray | null
