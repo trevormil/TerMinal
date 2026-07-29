@@ -60,8 +60,12 @@ struct InboxView: View {
             List {
                 // List's row insets are tighter than the padded VStacks the
                 // other tabs use — without this the first card sits almost
-                // flush against the pinned header.
-                Color.clear.frame(height: 6).plainRow()
+                // flush against the pinned header. 14pt matches Workspaces'
+                // own top padding exactly, so every tab reads consistently.
+                Color.clear.frame(height: 0)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 14, leading: 0, bottom: 0, trailing: 0))
                 if let error = model.error {
                     GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                         .plainRow()
