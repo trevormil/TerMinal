@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, RotateCw, Globe, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCw, Globe, X, ChevronUp, ChevronDown } from 'lucide-react'
 
 // The Electron <webview> surface we drive imperatively (created below) so we
 // don't fight React/TS over the custom element. Shared by the Browser and CI
@@ -16,7 +16,11 @@ export type Webview = HTMLElement & {
   getTitle(): string
   canGoBack(): boolean
   canGoForward(): boolean
+  findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number
+  stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void
 }
+
+type FoundInPageEvent = Event & { result?: { activeMatchOrdinal: number; matches: number } }
 
 // Turn arbitrary address-bar input into a URL: pass through http(s), promote a
 // bare domain to https, otherwise Google-search it.
@@ -42,6 +46,16 @@ export type WebSurface = {
   forward: () => void
   reloadOrStop: () => void
   loadUrl: (url: string) => void
+  addrInputRef: React.RefObject<HTMLInputElement | null>
+  focusAddr: () => void
+  findOpen: boolean
+  findQuery: string
+  setFindQuery: (v: string) => void
+  findMatch: { active: number; total: number } | null
+  openFind: () => void
+  closeFind: () => void
+  findNext: () => void
+  findPrev: () => void
 }
 
 // Owns the imperative <webview> lifecycle + navigation state (back/forward,
@@ -55,6 +69,10 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canFwd, setCanFwd] = useState(false)
+  const addrInputRef = useRef<HTMLInputElement | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findMatch, setFindMatch] = useState<{ active: number; total: number } | null>(null)
 
   useEffect(() => {
     const host = hostRef.current
@@ -90,6 +108,10 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     const onNav = () => sync()
     const onTitle = (e: Event & { title?: string }) =>
       setPageTitle(e.title || wv.getTitle?.() || '')
+    const onFound = (e: Event) => {
+      const r = (e as FoundInPageEvent).result
+      if (r) setFindMatch({ active: r.activeMatchOrdinal, total: r.matches })
+    }
     // pop-ups / target=_blank containment lives in the main process
     // (did-attach-webview → guest.setWindowOpenHandler): the DOM <webview> emits
     // no 'new-window' event on Electron 41, so a renderer listener never fired.
@@ -98,16 +120,29 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     wv.addEventListener('did-navigate', onNav)
     wv.addEventListener('did-navigate-in-page', onNav)
     wv.addEventListener('page-title-updated', onTitle as EventListener)
+    wv.addEventListener('found-in-page', onFound)
     return () => {
       wv.removeEventListener('did-start-loading', onStart)
       wv.removeEventListener('did-stop-loading', onStop)
       wv.removeEventListener('did-navigate', onNav)
       wv.removeEventListener('did-navigate-in-page', onNav)
       wv.removeEventListener('page-title-updated', onTitle as EventListener)
+      wv.removeEventListener('found-in-page', onFound)
       wv.remove()
       wvRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Search-as-you-type, mirroring a normal browser's find bar.
+  useEffect(() => {
+    if (!findOpen) return
+    if (!findQuery) {
+      wvRef.current?.stopFindInPage('clearSelection')
+      setFindMatch(null)
+      return
+    }
+    wvRef.current?.findInPage(findQuery)
+  }, [findQuery, findOpen])
 
   const loadUrl = (url: string) => {
     setAddr(url)
@@ -121,6 +156,22 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
   const back = () => wvRef.current?.goBack()
   const forward = () => wvRef.current?.goForward()
   const reloadOrStop = () => (loading ? wvRef.current?.stop() : wvRef.current?.reload())
+  const focusAddr = () => {
+    addrInputRef.current?.focus()
+    addrInputRef.current?.select()
+  }
+  const openFind = () => setFindOpen(true)
+  const closeFind = () => {
+    setFindOpen(false)
+    setFindMatch(null)
+    wvRef.current?.stopFindInPage('clearSelection')
+  }
+  const runFind = (forward: boolean) => {
+    if (!findQuery) return
+    wvRef.current?.findInPage(findQuery, { forward, findNext: true })
+  }
+  const findNext = () => runFind(true)
+  const findPrev = () => runFind(false)
 
   return {
     hostRef,
@@ -136,6 +187,16 @@ export function useWebSurface(opts: { initialUrl: string; partition: string }): 
     forward,
     reloadOrStop,
     loadUrl,
+    addrInputRef,
+    focusAddr,
+    findOpen,
+    findQuery,
+    setFindQuery,
+    findMatch,
+    openFind,
+    closeFind,
+    findNext,
+    findPrev,
   }
 }
 
@@ -154,7 +215,8 @@ export function BrowserToolbar({
   leftAccessory?: ReactNode
   rightAccessory?: ReactNode
 }) {
-  const { addr, setAddr, loading, canBack, canFwd, go, back, forward, reloadOrStop } = surface
+  const { addr, setAddr, loading, canBack, canFwd, go, back, forward, reloadOrStop, addrInputRef } =
+    surface
   return (
     <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1.5">
       {leftAccessory}
@@ -180,6 +242,7 @@ export function BrowserToolbar({
           className={`shrink-0 ${loading ? 'text-[var(--gt-accent-2)]' : 'text-zinc-600'}`}
         />
         <input
+          ref={addrInputRef}
           value={addr}
           onChange={(e) => setAddr(e.target.value)}
           onFocus={(e) => e.target.select()}
@@ -189,6 +252,45 @@ export function BrowserToolbar({
         />
       </form>
       {rightAccessory}
+    </div>
+  )
+}
+
+// Cmd+F find-in-page bar — floats over the page like a normal browser's.
+export function FindBar({ surface }: { surface: WebSurface }) {
+  const { findQuery, setFindQuery, findMatch, closeFind, findNext, findPrev } = surface
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+  return (
+    <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-1.5 shadow-lg">
+      <input
+        ref={inputRef}
+        value={findQuery}
+        onChange={(e) => setFindQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.shiftKey ? findPrev() : findNext()
+          if (e.key === 'Escape') closeFind()
+        }}
+        placeholder="Find in page"
+        spellCheck={false}
+        className="w-40 bg-transparent text-[12px] text-zinc-200 outline-none"
+      />
+      {findMatch && (
+        <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-500">
+          {findMatch.total ? `${findMatch.active}/${findMatch.total}` : '0/0'}
+        </span>
+      )}
+      <button onClick={findPrev} className={iconBtn} title="Previous match (Shift+Enter)">
+        <ChevronUp size={13} strokeWidth={2} />
+      </button>
+      <button onClick={findNext} className={iconBtn} title="Next match (Enter)">
+        <ChevronDown size={13} strokeWidth={2} />
+      </button>
+      <button onClick={closeFind} className={iconBtn} title="Close (Esc)">
+        <X size={13} strokeWidth={2} />
+      </button>
     </div>
   )
 }
