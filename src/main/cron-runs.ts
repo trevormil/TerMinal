@@ -81,9 +81,30 @@ function recentJsonFiles(dir: string, limit: number): string[] {
     .map((entry) => entry.file)
 }
 
+// These disk-backed lists are re-read by several pollers at once (Runs tab,
+// tab badges, harness status, the mobile bridge) — each call stats + parses
+// hundreds of files. A short TTL bounds that to one sweep per interval; the
+// module's own writers bust it so in-app status changes surface immediately.
+const RUNS_LIST_TTL_MS = 3000
+let cronRunsCache: { at: number; limit: number; runs: CronRun[] } | null = null
+let sessionRunsCache: { at: number; limit: number; runs: SessionRun[] } | null = null
+
+function bustRunsListCache(): void {
+  cronRunsCache = null
+  sessionRunsCache = null
+}
+
 export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
   const dir = cronRunsDir()
   if (!existsSync(dir)) return []
+  if (
+    !scheduleId &&
+    cronRunsCache &&
+    cronRunsCache.limit >= limit &&
+    Date.now() - cronRunsCache.at < RUNS_LIST_TTL_MS
+  ) {
+    return cronRunsCache.runs.slice(0, limit)
+  }
   const out: CronRun[] = []
   const files = scheduleId
     ? readdirSync(dir).filter((f) => f.endsWith('.json'))
@@ -96,7 +117,9 @@ export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
       /* skip */
     }
   }
-  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  const runs = out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  if (!scheduleId) cronRunsCache = { at: Date.now(), limit, runs }
+  return runs
 }
 
 // App-side watchdog. Mirrors bin/terminal-cron's sweep but runs whenever the
@@ -132,12 +155,18 @@ export function sweepStaleCronRuns(): { swept: number } {
         error: 'stale: app-side watchdog finalized (>2h with no in-app activity)',
       }
       writeFileSync(path, JSON.stringify(finalized, null, 2))
+      bustRunsListCache()
       swept++
     } catch {
       /* skip unreadable record */
     }
   }
   return { swept }
+}
+
+/** On-disk log path for the runs:log-tail IPC. */
+export function cronRunLogPath(runId: string): string {
+  return join(cronRunsDir(), `${runId.replace(/[^\w-]/g, '')}.log`)
 }
 
 export function readCronRunLog(runId: string): string {
@@ -193,6 +222,7 @@ export function beginSessionRun(run: SessionRun): void {
   const dir = sessionRunsDir()
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, `${safe}.json`), JSON.stringify(run, null, 2))
+  bustRunsListCache()
   writeFileSync(
     join(dir, `${safe}.log`),
     [
@@ -232,6 +262,7 @@ export function finalizeSessionRun(
     const current = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as SessionRun) : null
     if (!current) return
     writeFileSync(path, JSON.stringify({ ...current, ...patch }, null, 2))
+    bustRunsListCache()
   } catch {
     /* best-effort observability */
   }
@@ -240,6 +271,13 @@ export function finalizeSessionRun(
 export function readSessionRuns(limit = 200): SessionRun[] {
   const dir = sessionRunsDir()
   if (!existsSync(dir)) return []
+  if (
+    sessionRunsCache &&
+    sessionRunsCache.limit >= limit &&
+    Date.now() - sessionRunsCache.at < RUNS_LIST_TTL_MS
+  ) {
+    return sessionRunsCache.runs.slice(0, limit)
+  }
   const out: SessionRun[] = []
   for (const f of recentJsonFiles(dir, limit)) {
     try {
@@ -248,7 +286,9 @@ export function readSessionRuns(limit = 200): SessionRun[] {
       /* skip */
     }
   }
-  return out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  const runs = out.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, limit)
+  sessionRunsCache = { at: Date.now(), limit, runs }
+  return runs
 }
 
 // Session runs are IN-PROCESS — their PTY lives and dies with this app. So after
@@ -280,12 +320,18 @@ export function sweepStaleSessionRuns(): { swept: number } {
           2,
         ),
       )
+      bustRunsListCache()
       swept++
     } catch {
       /* skip unreadable record */
     }
   }
   return { swept }
+}
+
+/** On-disk log path for the runs:log-tail IPC. */
+export function sessionRunLogPath(runId: string): string {
+  return join(sessionRunsDir(), `${safeRunId(runId)}.log`)
 }
 
 export function readSessionRunLog(runId: string): string {

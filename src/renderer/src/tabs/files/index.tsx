@@ -416,6 +416,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // the parent-dir rollup the tree decorations use.
   const [statuses, setStatuses] = useState<StatusMap>({})
   const [porcelain, setPorcelain] = useState('')
+  // Parsed once per poll result, not inline per render — after a big agent run
+  // the porcelain can list thousands of paths.
+  const porcelainEntries = useMemo(() => Object.entries(parsePorcelain(porcelain)), [porcelain])
   // Back/forward across files — the editor-location stack every IDE has, and
   // the thing you miss instantly when it's absent. Held in a ref so pushing a
   // visit never re-renders.
@@ -1206,12 +1209,12 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 All changes · patch view
               </button>
               <div className="min-h-0 flex-1 overflow-y-auto py-1">
-                {Object.entries(parsePorcelain(porcelain)).length === 0 ? (
+                {porcelainEntries.length === 0 ? (
                   <div className="p-3 text-[11px] leading-relaxed text-zinc-600">
                     No uncommitted changes. The pane shows everything since the base branch.
                   </div>
                 ) : (
-                  Object.entries(parsePorcelain(porcelain)).map(([path, st]) => {
+                  porcelainEntries.map(([path, st]) => {
                     const { Icon, cls } = fileIcon(base(path), false)
                     return (
                       <button

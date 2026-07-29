@@ -19,6 +19,7 @@ import {
   readdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
+import { readFileTail } from './fs-tail'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execSync } from 'node:child_process'
@@ -691,8 +692,9 @@ export function startLoopWatcher(): void {
       if (!logFile || !existsSync(logFile)) continue
       let tail = ''
       try {
-        const buf = readFileSync(logFile, 'utf8')
-        tail = buf.slice(-4000)
+        // Tail-read only: the active log grows for the whole run — reading it
+        // in full every 5s degraded monotonically as the loop progressed.
+        tail = readFileTail(logFile, 4000).text
       } catch {
         continue
       }

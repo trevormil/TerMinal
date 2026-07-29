@@ -1757,6 +1757,8 @@ export type GtApi = {
   }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
+    /** Count of running non-session runs — badge polling without the 400-row payload. */
+    runningCount: () => Promise<number>
     remoteAllRuns: () => Promise<{
       runs: UnifiedRun[]
       errors: { hostId: string; label: string; error: string }[]
@@ -1766,6 +1768,13 @@ export type GtApi = {
       runId: string,
       hostId?: string,
     ) => Promise<string>
+    /** Last `maxBytes` of a run log — the live pane polls this instead of runLog. */
+    runLogTail: (
+      source: 'cron' | 'agent' | 'bg' | 'session',
+      runId: string,
+      hostId?: string,
+      maxBytes?: number,
+    ) => Promise<{ text: string; size: number; truncated: boolean }>
     runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
     cancelCron: (id: string, hostId?: string) => Promise<{ ok: boolean; error?: string }>
     list: () => Promise<Agent[]>
@@ -1947,6 +1956,8 @@ export type GtApi = {
   }
   activity: {
     list: () => Promise<ActivityEvent[]>
+    /** Count of events newer than `since` with kind in `kinds` — badge polling. */
+    unseenCount: (since: number, kinds: string[]) => Promise<number>
     clear: () => Promise<void>
     onEvent: (cb: (ev: ActivityEvent) => void) => () => void
   }

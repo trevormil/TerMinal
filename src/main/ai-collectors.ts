@@ -7,13 +7,64 @@
 //   claude-p     → parses the usage summary line from `claude -p` stdout
 //   codex-exec   → parses the usage summary line from `codex exec` stdout
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { listAIRuns, writeAIRun, makeAIRun, type AIRunSource } from './ai-runs'
+import { writeAIRun, makeAIRun, type AIRun, type AIRunSource } from './ai-runs'
 
 const CLAUDE_PROJECTS = join(homedir(), '.claude', 'projects')
 const CODEX_SESSIONS = join(homedir(), '.codex', 'sessions')
+const COLLECTOR_STATE_FILE = join(
+  homedir(),
+  '.config',
+  'TerMinal',
+  'ai-runs',
+  'collector-state.json',
+)
+
+// ---------------------------------------------------------------------------
+// Incremental collection state.
+//
+// The transcript archives these collectors walk reach into the GB range, and
+// the loop re-runs every 5 minutes — re-reading everything froze the main
+// process for tens of seconds per tick. Persist (size, mtimeMs) per file and
+// skip any file that hasn't changed since its last collection; only files
+// that actually grew are re-read. State survives restarts so app boot pays
+// only for what changed while the app was closed.
+// ---------------------------------------------------------------------------
+
+type CollectorFileState = { size: number; mtimeMs: number }
+type CollectorState = Record<string, CollectorFileState>
+
+async function loadCollectorState(file: string): Promise<CollectorState> {
+  try {
+    const parsed = JSON.parse(await readFile(file, 'utf8'))
+    return parsed && typeof parsed === 'object' ? (parsed as CollectorState) : {}
+  } catch {
+    return {}
+  }
+}
+
+async function saveCollectorState(file: string, state: CollectorState): Promise<void> {
+  try {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, JSON.stringify(state))
+  } catch {
+    /* best effort — worst case the next run re-reads */
+  }
+}
+
+export type CollectorOptions = {
+  /** Transcript root override (tests). */
+  root?: string
+  /** Incremental-state file override (tests). */
+  stateFile?: string
+  /** Run sink override (tests). */
+  writeRun?: (run: AIRun) => void
+}
+
+export type CollectorResult = { written: number; skipped: number }
 
 // ---------------------------------------------------------------------------
 // Claude transcripts → AIRuns
@@ -44,7 +95,10 @@ type ClaudeSessionSummary = {
   turns: number
 }
 
-function parseClaudeSession(file: string, sessionId: string): ClaudeSessionSummary | null {
+async function parseClaudeSession(
+  file: string,
+  sessionId: string,
+): Promise<ClaudeSessionSummary | null> {
   let cwd = ''
   let model = ''
   let input = 0
@@ -56,7 +110,7 @@ function parseClaudeSession(file: string, sessionId: string): ClaudeSessionSumma
   let turns = 0
   let raw = ''
   try {
-    raw = readFileSync(file, 'utf8')
+    raw = await readFile(file, 'utf8')
   } catch {
     return null
   }
@@ -102,37 +156,53 @@ function parseClaudeSession(file: string, sessionId: string): ClaudeSessionSumma
 
 /** Walk the Claude projects dir and persist an AIRun per session.
  *  Idempotent: AIRun.id = `claude-${sessionId}` so re-runs overwrite the
- *  same record with fresh totals as the transcript grows. */
-export function collectClaudeSessions(maxAgeMs = 30 * 86_400_000): { written: number } {
-  if (!existsSync(CLAUDE_PROJECTS)) return { written: 0 }
+ *  same record with fresh totals as the transcript grows. Incremental:
+ *  files whose (size, mtime) match the persisted state are never re-read. */
+export async function collectClaudeSessions(
+  maxAgeMs = 30 * 86_400_000,
+  opts: CollectorOptions = {},
+): Promise<CollectorResult> {
+  const rootDir = opts.root ?? CLAUDE_PROJECTS
+  const stateFile = opts.stateFile ?? COLLECTOR_STATE_FILE
+  const writeRun = opts.writeRun ?? writeAIRun
+  if (!existsSync(rootDir)) return { written: 0, skipped: 0 }
+  const state = await loadCollectorState(stateFile)
   let written = 0
+  let skipped = 0
   const cutoff = Date.now() - maxAgeMs
   let dirs: string[] = []
   try {
-    dirs = readdirSync(CLAUDE_PROJECTS)
+    dirs = await readdir(rootDir)
   } catch {
-    return { written: 0 }
+    return { written: 0, skipped: 0 }
   }
   for (const dir of dirs) {
-    const p = join(CLAUDE_PROJECTS, dir)
+    const p = join(rootDir, dir)
     let files: string[] = []
     try {
-      files = readdirSync(p)
+      files = await readdir(p)
     } catch {
       continue
     }
     for (const f of files) {
       if (!f.endsWith('.jsonl')) continue
       const file = join(p, f)
-      let mtime = 0
+      let st: { size: number; mtimeMs: number }
       try {
-        mtime = statSync(file).mtimeMs
+        st = await stat(file)
       } catch {
         continue
       }
-      if (mtime < cutoff) continue // ancient — don't bother
+      if (st.mtimeMs < cutoff) continue // ancient — don't bother
+      const prev = state[file]
+      if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) {
+        skipped++
+        continue
+      }
       const sessionId = f.replace(/\.jsonl$/, '')
-      const summary = parseClaudeSession(file, sessionId)
+      const summary = await parseClaudeSession(file, sessionId)
+      // Remember no-usage files too — they'd otherwise be re-read every tick.
+      state[file] = { size: st.size, mtimeMs: st.mtimeMs }
       if (!summary) continue
       const run = makeAIRun({
         source: 'claude-code',
@@ -149,11 +219,12 @@ export function collectClaudeSessions(maxAgeMs = 30 * 86_400_000): { written: nu
       })
       // Override id with deterministic key for idempotent overwrite
       run.id = `claude-${sessionId}`
-      writeAIRun(run)
+      writeRun(run)
       written++
     }
   }
-  return { written }
+  await saveCollectorState(stateFile, state)
+  return { written, skipped }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,38 +233,61 @@ export function collectClaudeSessions(maxAgeMs = 30 * 86_400_000): { written: nu
 // per-message `usage` fields like Claude's; absent that, skip.
 // ---------------------------------------------------------------------------
 
-export function collectCodexSessions(maxAgeMs = 30 * 86_400_000): { written: number } {
-  if (!existsSync(CODEX_SESSIONS)) return { written: 0 }
-  let written = 0
-  const cutoff = Date.now() - maxAgeMs
-  let sessionDirs: string[] = []
+/** Recursively find .jsonl files under `dir`. Codex nests sessions by date
+ *  (`YYYY/MM/DD/rollout-*.jsonl`) — the old one-level scan found nothing. */
+async function walkCodexJsonl(dir: string, depth: number, out: string[]): Promise<void> {
+  if (depth < 0) return
+  let entries: string[] = []
   try {
-    sessionDirs = readdirSync(CODEX_SESSIONS)
+    entries = await readdir(dir)
   } catch {
-    return { written: 0 }
+    return
   }
-  for (const sid of sessionDirs) {
-    const sessionDir = join(CODEX_SESSIONS, sid)
-    let files: string[] = []
+  for (const name of entries) {
+    const path = join(dir, name)
+    let st
     try {
-      files = readdirSync(sessionDir)
+      st = await stat(path)
     } catch {
       continue
     }
-    // Common locations: messages.jsonl, transcript.jsonl
-    const candidate =
-      files.find((f) => f === 'messages.jsonl') ||
-      files.find((f) => f === 'transcript.jsonl') ||
-      files.find((f) => f.endsWith('.jsonl'))
-    if (!candidate) continue
-    const file = join(sessionDir, candidate)
-    let mtime = 0
+    if (st.isDirectory()) await walkCodexJsonl(path, depth - 1, out)
+    else if (name.endsWith('.jsonl')) out.push(path)
+  }
+}
+
+export async function collectCodexSessions(
+  maxAgeMs = 30 * 86_400_000,
+  opts: CollectorOptions = {},
+): Promise<CollectorResult> {
+  const rootDir = opts.root ?? CODEX_SESSIONS
+  const stateFile = opts.stateFile ?? COLLECTOR_STATE_FILE
+  const writeRun = opts.writeRun ?? writeAIRun
+  if (!existsSync(rootDir)) return { written: 0, skipped: 0 }
+  const state = await loadCollectorState(stateFile)
+  let written = 0
+  let skipped = 0
+  const cutoff = Date.now() - maxAgeMs
+  const files: string[] = []
+  await walkCodexJsonl(rootDir, 6, files)
+  for (const file of files) {
+    let st: { size: number; mtimeMs: number }
     try {
-      mtime = statSync(file).mtimeMs
+      st = await stat(file)
     } catch {
       continue
     }
+    const mtime = st.mtimeMs
     if (mtime < cutoff) continue
+    const prev = state[file]
+    if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) {
+      skipped++
+      continue
+    }
+    // Session id: the file's own name, except for generic names where the
+    // parent directory is the session id (old `<sid>/messages.jsonl` layout).
+    const base = basename(file, '.jsonl')
+    const sid = base === 'messages' || base === 'transcript' ? basename(dirname(file)) : base
     let input = 0
     let output = 0
     let model = ''
@@ -203,7 +297,7 @@ export function collectCodexSessions(maxAgeMs = 30 * 86_400_000): { written: num
     let turns = 0
     let raw = ''
     try {
-      raw = readFileSync(file, 'utf8')
+      raw = await readFile(file, 'utf8')
     } catch {
       continue
     }
@@ -229,6 +323,7 @@ export function collectCodexSessions(maxAgeMs = 30 * 86_400_000): { written: num
         output += u.output_tokens || u.completion_tokens || 0
       }
     }
+    state[file] = { size: st.size, mtimeMs: st.mtimeMs }
     if (turns === 0) continue
     const run = makeAIRun({
       source: 'codex-cli',
@@ -242,10 +337,11 @@ export function collectCodexSessions(maxAgeMs = 30 * 86_400_000): { written: num
       durationMs: endedAt - (startedAt || endedAt),
     })
     run.id = `codex-${sid}`
-    writeAIRun(run)
+    writeRun(run)
     written++
   }
-  return { written }
+  await saveCollectorState(stateFile, state)
+  return { written, skipped }
 }
 
 // ---------------------------------------------------------------------------
@@ -337,23 +433,16 @@ export function recordRunnerInvocation(opts: {
  *  schedule periodic re-scans so growing transcripts update their totals. */
 export function startAICollectionLoop(): void {
   // Initial scan immediately so the Observability tab shows real data at
-  // app start. Then poll every 5 min — cheap (only reads transcripts
-  // modified within the last 30 days).
-  try {
-    collectClaudeSessions()
-    collectCodexSessions()
-  } catch {
-    /* best effort */
+  // app start. Then poll every 5 min. Both are async and incremental —
+  // only transcripts that changed since the last collection are re-read.
+  const collect = async () => {
+    try {
+      await collectClaudeSessions()
+      await collectCodexSessions()
+    } catch {
+      /* best effort */
+    }
   }
-  setInterval(
-    () => {
-      try {
-        collectClaudeSessions()
-        collectCodexSessions()
-      } catch {
-        /* best effort */
-      }
-    },
-    5 * 60 * 1000,
-  )
+  void collect()
+  setInterval(() => void collect(), 5 * 60 * 1000)
 }

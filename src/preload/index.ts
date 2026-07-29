@@ -105,9 +105,16 @@ const gt = {
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
+    runningCount: () => ipcRenderer.invoke('runs:running-count'),
     remoteAllRuns: () => ipcRenderer.invoke('runs:remote-all'),
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
       ipcRenderer.invoke('runs:log', source, runId, hostId),
+    runLogTail: (
+      source: 'cron' | 'agent' | 'bg' | 'session',
+      runId: string,
+      hostId?: string,
+      maxBytes?: number,
+    ) => ipcRenderer.invoke('runs:log-tail', source, runId, hostId, maxBytes),
     runArtifacts: (repoRoot: string) => ipcRenderer.invoke('runs:artifacts', repoRoot),
     cancelCron: (id: string, hostId?: string) => ipcRenderer.invoke('runs:cancel-cron', id, hostId),
     list: () => ipcRenderer.invoke('agents:list'),
@@ -291,6 +298,8 @@ const gt = {
   // activity feed + notifications
   activity: {
     list: () => ipcRenderer.invoke('activity:list'),
+    unseenCount: (since: number, kinds: string[]) =>
+      ipcRenderer.invoke('activity:unseen-count', since, kinds),
     clear: () => ipcRenderer.invoke('activity:clear'),
     onEvent: (cb: (ev: unknown) => void) => {
       const h = (_e: unknown, ev: unknown) => cb(ev)

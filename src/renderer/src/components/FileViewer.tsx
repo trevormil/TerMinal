@@ -82,10 +82,17 @@ function MarkdownView({ text }: { text: string }) {
 }
 
 /** Delimited data as a real table. Row 1 is treated as the header. */
+const CSV_ROW_PAGE = 500
+
 function CsvView({ text, path }: { text: string; path: string }) {
   const rows = useMemo(() => parseDelimited(text, delimiterFor(path)), [text, path])
   const [sort, setSort] = useState<{ col: number; dir: 1 | -1 } | null>(null)
   const [q, setQ] = useState('')
+  // A large CSV fully materialized as table cells janks — page the render.
+  const [visibleRowCount, setVisibleRowCount] = useState(CSV_ROW_PAGE)
+  useEffect(() => {
+    setVisibleRowCount(CSV_ROW_PAGE)
+  }, [q, sort, path])
 
   const header = rows[0] || []
   const body = useMemo(() => {
@@ -151,7 +158,7 @@ function CsvView({ text, path }: { text: string; path: string }) {
             </tr>
           </thead>
           <tbody>
-            {body.map((r, ri) => (
+            {body.slice(0, visibleRowCount).map((r, ri) => (
               <tr key={ri} className="hover:bg-white/5">
                 <td className="border border-[var(--gt-border)] px-2 py-0.5 text-right text-[10px] tabular-nums text-zinc-700">
                   {ri + 1}
@@ -168,6 +175,15 @@ function CsvView({ text, path }: { text: string; path: string }) {
             ))}
           </tbody>
         </table>
+        {body.length > visibleRowCount && (
+          <button
+            onClick={() => setVisibleRowCount((v) => v + CSV_ROW_PAGE)}
+            className="w-full px-2 py-1.5 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5"
+          >
+            Show {Math.min(body.length - visibleRowCount, CSV_ROW_PAGE)} more rows (
+            {body.length - visibleRowCount} hidden)
+          </button>
+        )}
       </div>
     </div>
   )

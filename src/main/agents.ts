@@ -15,6 +15,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
 import { scriptWrapperArgs } from './script-wrapper'
 import { inMemoryWorkingSet } from './run-retention'
+import { readFileTail } from './fs-tail'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona, type Persona } from './personas'
@@ -823,6 +824,8 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'agent-runs')
 const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
 const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+/** On-disk log path for the runs:log-tail IPC (tail-reads without loading the file). */
+export const agentRunLogPath = logPath
 
 // Read a persisted agent run's full log from disk by id — so a run that aged out
 // of the in-memory working set is still viewable in the Runs tab. Returns '' if
@@ -869,14 +872,7 @@ export function loadPersistedRuns() {
     try {
       const m = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8')) as AgentRun
       if (m.status === 'running') m.status = 'interrupted'
-      let output = ''
-      try {
-        const buf = readFileSync(logPath(m.id), 'utf8')
-        output = buf.length > OUTPUT_CAP ? buf.slice(-OUTPUT_CAP) : buf
-      } catch {
-        /* no log */
-      }
-      metas.push({ ...m, output })
+      metas.push(m)
     } catch {
       /* skip corrupt */
     }
@@ -884,11 +880,20 @@ export function loadPersistedRuns() {
   // Never delete run files (storage is cheap — the user prunes manually). Only
   // load the most recent N into memory to bound RAM; older runs stay on disk and
   // remain viewable via readAgentRunLog. 0 = load all.
+  // Logs are read AFTER the cap is applied, and only their last OUTPUT_CAP
+  // bytes — run history grows without bound, and reading every log in full at
+  // startup blocked the main process linearly with it.
   const cap = readSettings().runMemoryCap
   const inMemory = inMemoryWorkingSet(metas, cap)
   for (const m of inMemory) {
     if (runs.has(m.id)) continue // never clobber a live (in-memory) run
-    runs.set(m.id, m)
+    let output = ''
+    try {
+      output = readFileTail(logPath(m.id), OUTPUT_CAP).text
+    } catch {
+      /* no log */
+    }
+    runs.set(m.id, { ...m, output })
     if (m.status === 'interrupted') persistMeta(m) // persist the corrected status
   }
 }

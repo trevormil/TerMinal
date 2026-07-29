@@ -15,6 +15,7 @@ import {
 } from 'node:fs'
 import { applySweepFinals } from './bg-sweep'
 import { join, basename } from 'node:path'
+import { readFileTail } from './fs-tail'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn } from 'node:child_process'
@@ -111,6 +112,11 @@ export function listBgTasks(): BgTask[] {
 
 export function getBgTask(id: string): BgTask | null {
   return readTasks().find((t) => t.id === id) ?? null
+}
+
+/** On-disk log path for the runs:log-tail IPC. */
+export function bgTaskLogPath(id: string): string {
+  return join(LOG_DIR, `${id}.log`)
 }
 
 export function readBgTaskLog(id: string): string {
@@ -393,7 +399,8 @@ function isAlive(pid?: number): boolean {
 
 function tailLog(file: string, lines: number = 50): string {
   try {
-    const text = readFileSync(file, 'utf8')
+    // 64KB comfortably covers 50 lines; bg-agent logs run to tens of MB.
+    const text = readFileTail(file, 64 * 1024).text
     const split = text.split('\n')
     return split.slice(-lines).join('\n')
   } catch {

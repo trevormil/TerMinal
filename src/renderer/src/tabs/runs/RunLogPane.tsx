@@ -18,6 +18,12 @@ import { StructuredRunLog } from '../../components/StructuredRunLog'
 
 type RunSource = 'cron' | 'agent' | 'bg' | 'session'
 
+/** Tail size the pane polls while a run streams. */
+const TAIL_BYTES = 512 * 1024
+/** Raw-view render bound — one <div> per line, so unbounded render janks. */
+const RAW_LINE_CAP = 3000
+const RAW_LINE_STEP = 5000
+
 export function RunLogPane({
   source,
   runId,
@@ -33,7 +39,17 @@ export function RunLogPane({
   engine?: string
   className?: string
 }) {
-  const [log, setLog] = useState<{ runId: string; text: string } | null>(null)
+  const [log, setLog] = useState<{
+    runId: string
+    text: string
+    size: number
+    truncated: boolean
+  } | null>(null)
+  // Full-log escape hatch: the pane polls a bounded tail (TAIL_BYTES) so a
+  // multi-MB streaming log never freezes either process; "Load full log"
+  // switches this run to the unbounded fetch.
+  const [full, setFull] = useState(false)
+  const [rawLineCap, setRawLineCap] = useState(RAW_LINE_CAP)
   const [logQuery, setLogQuery] = useState('')
   // Structured vs raw view. 'auto' resolves to structured when the parser found
   // real structure, raw otherwise — so unparseable logs degrade gracefully.
@@ -44,15 +60,32 @@ export function RunLogPane({
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    let alive = true
     setLog(null)
+    setFull(false)
+    setRawLineCap(RAW_LINE_CAP)
+  }, [runId])
+
+  useEffect(() => {
+    let alive = true
     const fetch = async () => {
       try {
-        const text = await window.gt.agents.runLog(source, runId, hostId)
-        if (alive) setLog({ runId, text })
+        if (full) {
+          const text = await window.gt.agents.runLog(source, runId, hostId)
+          if (alive) setLog({ runId, text, size: text.length, truncated: false })
+          return
+        }
+        const t = await window.gt.agents.runLogTail(source, runId, hostId, TAIL_BYTES)
+        // Unchanged tail → keep the same state object so nothing re-parses.
+        if (alive)
+          setLog((cur) =>
+            cur && cur.runId === runId && cur.text === t.text && cur.truncated === t.truncated
+              ? cur
+              : { runId, ...t },
+          )
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        if (alive) setLog({ runId, text: `Unable to load run log: ${message}` })
+        if (alive)
+          setLog({ runId, text: `Unable to load run log: ${message}`, size: 0, truncated: false })
       }
     }
     fetch()
@@ -66,7 +99,17 @@ export function RunLogPane({
       alive = false
       clearInterval(t)
     }
-  }, [runId, source, status, hostId])
+  }, [runId, source, status, hostId, full])
+
+  // Export buttons always deliver the FULL log, even while the pane shows a tail.
+  const fetchFullText = async (): Promise<string> => {
+    if (full || !log?.truncated) return log?.text ?? ''
+    try {
+      return await window.gt.agents.runLog(source, runId, hostId)
+    } catch {
+      return log?.text ?? ''
+    }
+  }
 
   const visibleLog = useMemo(() => {
     const raw = stripAnsi(log?.text || '')
@@ -93,7 +136,16 @@ export function RunLogPane({
     return out.join('\n') || `(no lines match "${logQuery}")`
   }, [log?.text, logQuery])
 
-  const formatted = useMemo(() => formatRunLog(visibleLog), [visibleLog])
+  // Raw view renders one node per line — cap it, with "show earlier" paging.
+  const { cappedLog, hiddenLines } = useMemo(() => {
+    const lines = visibleLog.split('\n')
+    if (lines.length <= rawLineCap) return { cappedLog: visibleLog, hiddenLines: 0 }
+    return {
+      cappedLog: lines.slice(-rawLineCap).join('\n'),
+      hiddenLines: lines.length - rawLineCap,
+    }
+  }, [visibleLog, rawLineCap])
+  const formatted = useMemo(() => formatRunLog(cappedLog), [cappedLog])
   const parsed = useMemo(() => parseRunLog(log?.text || '', engine), [log?.text, engine])
   const view = viewPref === 'auto' ? (parsed.structured ? 'structured' : 'raw') : viewPref
 
@@ -182,7 +234,7 @@ export function RunLogPane({
         {/* Raw-log export: copy the full RAW log (pre-filter, pre-format) to the
             clipboard, or download it as <runId>.log — GitHub's "download raw logs". */}
         <button
-          onClick={() => window.gt.clipboardWrite(log?.text || '')}
+          onClick={async () => window.gt.clipboardWrite(await fetchFullText())}
           disabled={!log?.text}
           className="rounded-md p-0.5 text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
           title="Copy raw log"
@@ -190,8 +242,10 @@ export function RunLogPane({
           <Copy size={11} strokeWidth={2} />
         </button>
         <button
-          onClick={() => {
-            const url = URL.createObjectURL(new Blob([log?.text || ''], { type: 'text/plain' }))
+          onClick={async () => {
+            const url = URL.createObjectURL(
+              new Blob([await fetchFullText()], { type: 'text/plain' }),
+            )
             const a = document.createElement('a')
             a.href = url
             a.download = `run-${runId}.log`
@@ -305,10 +359,30 @@ export function RunLogPane({
             <div className="border-b border-[var(--gt-border)]/35 bg-black/10 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
               Output
             </div>
+            {log?.truncated && !full && (
+              <div className="flex items-center gap-2 border-b border-[var(--gt-border)]/35 bg-black/10 px-4 py-1.5 text-[10.5px] text-zinc-500">
+                Showing the last {Math.round(TAIL_BYTES / 1024)} KB of{' '}
+                {(log.size / (1024 * 1024)).toFixed(1)} MB
+                <button
+                  onClick={() => setFull(true)}
+                  className="text-[var(--gt-accent-2)] hover:underline"
+                >
+                  Load full log
+                </button>
+              </div>
+            )}
             {view === 'structured' ? (
               <StructuredRunLog parsed={parsed} filter={logQuery} hideMeta className="px-4 py-3" />
             ) : (
               <div className="px-4 py-3 font-mono text-[11px] leading-relaxed">
+                {hiddenLines > 0 && (
+                  <button
+                    onClick={() => setRawLineCap((c) => c + RAW_LINE_STEP)}
+                    className="mb-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2 py-1 text-[10.5px] text-[var(--gt-accent-2)] hover:border-[var(--gt-accent)]/50"
+                  >
+                    Show {Math.min(hiddenLines, RAW_LINE_STEP)} earlier lines ({hiddenLines} hidden)
+                  </button>
+                )}
                 {formatted.lines.map((line, i) => (
                   <div
                     key={i}

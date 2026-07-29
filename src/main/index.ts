@@ -218,6 +218,7 @@ import {
   listPipelines,
   listRuns,
   readAgentRunLog,
+  agentRunLogPath,
   rerunAgentRun,
   cancelRun,
   removeWorktree,
@@ -283,7 +284,9 @@ import {
   flushAllSessionRunLogs,
   readCronRuns,
   readCronRunLog,
+  cronRunLogPath,
   readSessionRunLog,
+  sessionRunLogPath,
   readSessionRunLogTail,
   readSessionRuns,
   listAllRuns,
@@ -348,6 +351,7 @@ import {
   getBgTask,
   cancelBgTask,
   readBgTaskLog,
+  bgTaskLogPath,
   startBgWatcher,
   type BgTask,
 } from './bg-tasks'
@@ -401,6 +405,7 @@ import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspac
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
+import { readFileTail } from './fs-tail'
 import { processSpawnCwd } from './spawn-cwd'
 import {
   checkpointChangedRanges,
@@ -1946,6 +1951,13 @@ ipcMain.handle('remote:scaffold', async (_e, hostId: string, name: string, paren
 })
 ipcMain.handle('window:is-fullscreen', () => win?.isFullScreen() ?? false)
 ipcMain.handle('activity:list', () => readActivity())
+// Count-only badge endpoints — the tab badges poll ~1/s while a terminal
+// streams; shipping the full lists over IPC just to count them was ~1MB/s of
+// renderer-side JSON deserialization.
+ipcMain.handle('activity:unseen-count', (_e, since: number, kinds: string[]) => {
+  const hi = new Set(kinds)
+  return readActivity().filter((ev) => ev.ts > since && hi.has(ev.kind)).length
+})
 ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
@@ -2741,6 +2753,10 @@ ipcMain.handle('schedules:runs', (_e, id?: string) => {
 // separate `runs:remote-all` fan-out so the Runs tab can show BOTH in one view
 // without switching the session's daemon profile.
 ipcMain.handle('runs:all', () => listAllRuns())
+ipcMain.handle(
+  'runs:running-count',
+  () => listAllRuns().filter((r) => r.source !== 'session' && r.status === 'running').length,
+)
 // Fan out to every configured remote host in parallel, stamped with hostId so
 // the tab can merge them with local runs and badge/filter by host. Best-effort:
 // an unreachable host contributes an error entry, not a failed view.
@@ -2766,6 +2782,41 @@ ipcMain.handle(
     // on-disk log for a run that aged out of the in-memory working set (runs are
     // never deleted, so an archived run is still viewable).
     return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+  },
+)
+// Bounded log fetch for the live run pane: only the last `maxBytes` of the log
+// are read and shipped over IPC. The pane polls every 1.5s while a run streams
+// — full-file reads of multi-MB agent logs froze both processes. runs:log stays
+// the full-fidelity path (export buttons, "load full log").
+ipcMain.handle(
+  'runs:log-tail',
+  async (
+    _e,
+    source: 'cron' | 'agent' | 'bg' | 'session',
+    runId: string,
+    hostId?: string,
+    maxBytes = 512 * 1024,
+  ) => {
+    const tail = (path: string) => {
+      try {
+        const { text, size } = readFileTail(path, maxBytes)
+        return { text, size, truncated: size > maxBytes }
+      } catch {
+        return { text: '', size: 0, truncated: false }
+      }
+    }
+    const remote = hostId ? remoteFromHostId(hostId) : curRemote()
+    if (remote) {
+      const text = await remoteRuns.log(remote, runId).catch(() => '')
+      return { text: text.slice(-maxBytes), size: text.length, truncated: text.length > maxBytes }
+    }
+    if (source === 'cron') return tail(cronRunLogPath(runId))
+    if (source === 'session') return tail(sessionRunLogPath(runId))
+    if (source === 'bg') return tail(bgTaskLogPath(runId))
+    const mem = listRuns().find((r) => r.id === runId)?.output
+    if (mem != null && mem !== '')
+      return { text: mem.slice(-maxBytes), size: mem.length, truncated: mem.length > maxBytes }
+    return tail(agentRunLogPath(runId))
   },
 )
 // Artifacts a run produced — agent-request reports under the repo's
