@@ -1008,6 +1008,8 @@ function normalizeTicketConfig(
     }
   if (cfg.provider === 'obsidian')
     return { provider: 'obsidian', obsidian: cfg.obsidian || { vaultPath: '' }, ...views }
+  if (cfg.provider === 'webview')
+    return { provider: 'webview', webview: cfg.webview || { url: '' }, ...views }
   return { provider: 'local', ...views }
 }
 
@@ -1058,6 +1060,7 @@ function TicketProviderPanel() {
     else if (next === 'github') setDraft({ provider: next, github: draft.github || {} })
     else if (next === 'obsidian')
       setDraft({ provider: next, obsidian: draft.obsidian || { vaultPath: '' } })
+    else if (next === 'webview') setDraft({ provider: next, webview: draft.webview || { url: '' } })
     else setDraft({ provider: 'local' })
   }
   const pickVault = async () => {
@@ -1182,6 +1185,11 @@ function TicketProviderPanel() {
           'obsidian',
           'Obsidian',
           'Private local vault. Tickets are markdown in a vault folder, never in git.',
+        )}
+        {providerOpt(
+          'webview',
+          'Webview',
+          'Any URL — a team board that doesn’t map to our schema. No CRUD, just the page.',
         )}
       </div>
 
@@ -1362,6 +1370,52 @@ function TicketProviderPanel() {
         </div>
       )}
 
+      {provider === 'webview' && (
+        <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+          <div className="grid gap-2 md:grid-cols-[0.5fr_1.5fr]">
+            <label className="space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                Label
+              </span>
+              <input
+                value={draft.webview?.label ?? ''}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'webview',
+                    webview: { ...(draft.webview || { url: '' }), label: e.target.value },
+                  })
+                }
+                placeholder="Tickets"
+                className={inp}
+                spellCheck={false}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                URL
+              </span>
+              <input
+                value={draft.webview?.url ?? ''}
+                onChange={(e) =>
+                  setDraft({
+                    provider: 'webview',
+                    webview: { ...(draft.webview || { url: '' }), url: e.target.value },
+                  })
+                }
+                placeholder="https://linear.app/your-team/team/ENG/active"
+                className={`${inp} font-mono`}
+                spellCheck={false}
+              />
+            </label>
+          </div>
+          <div className="text-[10.5px] leading-snug text-zinc-500">
+            No schema requirements — this repo has no local backlog. Tickets are read and written
+            entirely through this page (and, in an agent session, through that platform&apos;s own
+            MCP), not through TerMinal&apos;s ticket tools.
+          </div>
+        </div>
+      )}
+
       <div className="space-y-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -1451,23 +1505,25 @@ function TicketProviderPanel() {
           )}
           Test
         </button>
-        <button
-          onClick={() => runTest(true)}
-          disabled={busy === 'smoke' || providerChanged}
-          className={action}
-          title={
-            providerChanged
-              ? 'Save before running smoke.'
-              : 'Creates, updates, and closes a real smoke ticket.'
-          }
-        >
-          {busy === 'smoke' ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Send size={13} strokeWidth={2} />
-          )}
-          Smoke
-        </button>
+        {provider !== 'webview' && (
+          <button
+            onClick={() => runTest(true)}
+            disabled={busy === 'smoke' || providerChanged}
+            className={action}
+            title={
+              providerChanged
+                ? 'Save before running smoke.'
+                : 'Creates, updates, and closes a real smoke ticket.'
+            }
+          >
+            {busy === 'smoke' ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Send size={13} strokeWidth={2} />
+            )}
+            Smoke
+          </button>
+        )}
         {providerChanged && (
           <span className="text-[10.5px] text-amber-300">Save changes before testing.</span>
         )}

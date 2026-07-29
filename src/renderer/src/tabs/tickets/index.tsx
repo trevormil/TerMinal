@@ -41,7 +41,11 @@ function TicketWebView({ url }: { url: string }) {
 
 function TicketsTab({ ctx }: { ctx: TabContext }) {
   const [views, setViews] = useState<TicketView[]>([])
-  // 0 = the real backlog; 1..n = configured views.
+  // Set when the provider itself is a webview (no backlog at all) — the tab's
+  // first slot becomes this page instead of TicketsBrowser.
+  const [providerWebview, setProviderWebview] = useState<TicketView | null>(null)
+  // 0 = the primary slot (backlog, or the webview provider's own page);
+  // 1..n = configured `views[]`.
   const [active, setActive] = useState(0)
 
   useEffect(() => {
@@ -51,9 +55,19 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       .providerGet()
       .then((cfg) => {
         if (!live) return
-        const vs = 'error' in cfg ? [] : cfg.views || []
+        if ('error' in cfg) {
+          setViews([])
+          setProviderWebview(null)
+          return
+        }
+        const vs = cfg.views || []
         setViews(vs)
-        // A view flagged `default` opens first; index+1 since 0 is the backlog.
+        setProviderWebview(
+          cfg.provider === 'webview' && cfg.webview?.url
+            ? { label: cfg.webview.label || 'Tickets', url: cfg.webview.url }
+            : null,
+        )
+        // A view flagged `default` opens first; index+1 since 0 is the primary slot.
         const di = vs.findIndex((v) => v.default)
         if (di >= 0) setActive(di + 1)
       })
@@ -63,12 +77,17 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [ctx.repoRoot])
 
-  const view = active > 0 ? views[active - 1] : null
+  const primary = providerWebview ?? { label: 'Backlog', url: '' }
+  const view = active > 0 ? views[active - 1] : providerWebview
+  // A single webview provider with no extra views is the whole tab — no strip,
+  // same "just show the page" feel as the Browser tab, not a second sub-tab.
+  const showStrip = views.length > 0
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      {views.length > 0 && (
+      {showStrip && (
         <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-3 py-1.5 text-[11px]">
-          {[{ label: 'Backlog', url: '' }, ...views].map((v, i) => (
+          {[primary, ...views].map((v, i) => (
             <button
               key={`${v.label}:${i}`}
               onClick={() => setActive(i)}
