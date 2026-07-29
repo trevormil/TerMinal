@@ -108,6 +108,12 @@ const gt = {
     remoteAllRuns: () => ipcRenderer.invoke('runs:remote-all'),
     runLog: (source: 'cron' | 'agent' | 'bg' | 'session', runId: string, hostId?: string) =>
       ipcRenderer.invoke('runs:log', source, runId, hostId),
+    runLogTail: (
+      source: 'cron' | 'agent' | 'bg' | 'session',
+      runId: string,
+      hostId?: string,
+      maxBytes?: number,
+    ) => ipcRenderer.invoke('runs:log-tail', source, runId, hostId, maxBytes),
     runArtifacts: (repoRoot: string) => ipcRenderer.invoke('runs:artifacts', repoRoot),
     cancelCron: (id: string, hostId?: string) => ipcRenderer.invoke('runs:cancel-cron', id, hostId),
     list: () => ipcRenderer.invoke('agents:list'),

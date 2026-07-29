@@ -1766,6 +1766,13 @@ export type GtApi = {
       runId: string,
       hostId?: string,
     ) => Promise<string>
+    /** Last `maxBytes` of a run log — the live pane polls this instead of runLog. */
+    runLogTail: (
+      source: 'cron' | 'agent' | 'bg' | 'session',
+      runId: string,
+      hostId?: string,
+      maxBytes?: number,
+    ) => Promise<{ text: string; size: number; truncated: boolean }>
     runArtifacts: (repoRoot: string) => Promise<RunArtifact[]>
     cancelCron: (id: string, hostId?: string) => Promise<{ ok: boolean; error?: string }>
     list: () => Promise<Agent[]>

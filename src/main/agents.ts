@@ -824,6 +824,8 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
 const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'agent-runs')
 const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
 const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+/** On-disk log path for the runs:log-tail IPC (tail-reads without loading the file). */
+export const agentRunLogPath = logPath
 
 // Read a persisted agent run's full log from disk by id — so a run that aged out
 // of the in-memory working set is still viewable in the Runs tab. Returns '' if

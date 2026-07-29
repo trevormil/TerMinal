@@ -164,6 +164,11 @@ export function sweepStaleCronRuns(): { swept: number } {
   return { swept }
 }
 
+/** On-disk log path for the runs:log-tail IPC. */
+export function cronRunLogPath(runId: string): string {
+  return join(cronRunsDir(), `${runId.replace(/[^\w-]/g, '')}.log`)
+}
+
 export function readCronRunLog(runId: string): string {
   const safe = runId.replace(/[^\w-]/g, '')
   const f = join(cronRunsDir(), `${safe}.log`)
@@ -322,6 +327,11 @@ export function sweepStaleSessionRuns(): { swept: number } {
     }
   }
   return { swept }
+}
+
+/** On-disk log path for the runs:log-tail IPC. */
+export function sessionRunLogPath(runId: string): string {
+  return join(sessionRunsDir(), `${safeRunId(runId)}.log`)
 }
 
 export function readSessionRunLog(runId: string): string {

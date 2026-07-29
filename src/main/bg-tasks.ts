@@ -114,6 +114,11 @@ export function getBgTask(id: string): BgTask | null {
   return readTasks().find((t) => t.id === id) ?? null
 }
 
+/** On-disk log path for the runs:log-tail IPC. */
+export function bgTaskLogPath(id: string): string {
+  return join(LOG_DIR, `${id}.log`)
+}
+
 export function readBgTaskLog(id: string): string {
   const f = join(LOG_DIR, `${id}.log`)
   try {

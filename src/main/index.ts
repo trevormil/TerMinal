@@ -218,6 +218,7 @@ import {
   listPipelines,
   listRuns,
   readAgentRunLog,
+  agentRunLogPath,
   rerunAgentRun,
   cancelRun,
   removeWorktree,
@@ -283,7 +284,9 @@ import {
   flushAllSessionRunLogs,
   readCronRuns,
   readCronRunLog,
+  cronRunLogPath,
   readSessionRunLog,
+  sessionRunLogPath,
   readSessionRunLogTail,
   readSessionRuns,
   listAllRuns,
@@ -348,6 +351,7 @@ import {
   getBgTask,
   cancelBgTask,
   readBgTaskLog,
+  bgTaskLogPath,
   startBgWatcher,
   type BgTask,
 } from './bg-tasks'
@@ -401,6 +405,7 @@ import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspac
 import { sanitizeLog } from '../shared/run-log/sanitize'
 import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
+import { readFileTail } from './fs-tail'
 import { processSpawnCwd } from './spawn-cwd'
 import {
   checkpointChangedRanges,
@@ -2766,6 +2771,41 @@ ipcMain.handle(
     // on-disk log for a run that aged out of the in-memory working set (runs are
     // never deleted, so an archived run is still viewable).
     return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
+  },
+)
+// Bounded log fetch for the live run pane: only the last `maxBytes` of the log
+// are read and shipped over IPC. The pane polls every 1.5s while a run streams
+// — full-file reads of multi-MB agent logs froze both processes. runs:log stays
+// the full-fidelity path (export buttons, "load full log").
+ipcMain.handle(
+  'runs:log-tail',
+  async (
+    _e,
+    source: 'cron' | 'agent' | 'bg' | 'session',
+    runId: string,
+    hostId?: string,
+    maxBytes = 512 * 1024,
+  ) => {
+    const tail = (path: string) => {
+      try {
+        const { text, size } = readFileTail(path, maxBytes)
+        return { text, size, truncated: size > maxBytes }
+      } catch {
+        return { text: '', size: 0, truncated: false }
+      }
+    }
+    const remote = hostId ? remoteFromHostId(hostId) : curRemote()
+    if (remote) {
+      const text = await remoteRuns.log(remote, runId).catch(() => '')
+      return { text: text.slice(-maxBytes), size: text.length, truncated: text.length > maxBytes }
+    }
+    if (source === 'cron') return tail(cronRunLogPath(runId))
+    if (source === 'session') return tail(sessionRunLogPath(runId))
+    if (source === 'bg') return tail(bgTaskLogPath(runId))
+    const mem = listRuns().find((r) => r.id === runId)?.output
+    if (mem != null && mem !== '')
+      return { text: mem.slice(-maxBytes), size: mem.length, truncated: mem.length > maxBytes }
+    return tail(agentRunLogPath(runId))
   },
 )
 // Artifacts a run produced — agent-request reports under the repo's
