@@ -10,6 +10,7 @@ import {
   FolderPlus,
   ExternalLink,
   GitCompare,
+  GitBranch,
   ArrowLeft,
   ArrowRight,
   Copy,
@@ -58,7 +59,14 @@ import {
   type ReviewComment,
 } from '../../../../shared/review-comments'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
-import type { Tab, TabContext, FileEntry, SearchHit, FilesSearchOptions } from '../../lib/types'
+import type {
+  Tab,
+  TabContext,
+  FileEntry,
+  SearchHit,
+  FilesSearchOptions,
+  GitStatus as GitStatusInfo,
+} from '../../lib/types'
 
 // Language grammars come from the shared resolver (src/shared/languages.ts),
 // which covers ~100 extensions plus extensionless files like Dockerfile and
@@ -425,6 +433,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   // the parent-dir rollup the tree decorations use.
   const [statuses, setStatuses] = useState<StatusMap>({})
   const [porcelain, setPorcelain] = useState('')
+  const [gitStatus, setGitStatus] = useState<GitStatusInfo | null>(null)
   // Back/forward across files — the editor-location stack every IDE has, and
   // the thing you miss instantly when it's absent. Held in a ref so pushing a
   // visit never re-renders.
@@ -543,6 +552,9 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
         .finally(() => {
           inFlight = false
         })
+      // Branch + ahead/behind, same cadence — already cheap and cached
+      // server-side (repo.ts's gitStatus has its own 1s TTL).
+      window.gt.gitStatus().then(setGitStatus).catch(() => {})
     }
     const sync = () => {
       if (!filesTabPollsActive()) {
@@ -1216,6 +1228,37 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
           className="flex shrink-0 flex-col border-l border-[var(--gt-border)]"
           style={{ width: filesSidebar.width }}
         >
+          {gitStatus?.ok && (
+            <button
+              onClick={() => setSidebar('changes')}
+              title={
+                gitStatus.upstream
+                  ? `${gitStatus.ahead} ahead · ${gitStatus.behind} behind upstream`
+                  : 'No upstream'
+              }
+              className="flex shrink-0 items-center gap-1.5 border-b border-[var(--gt-border)] px-2.5 py-1.5 text-left hover:bg-white/5"
+            >
+              <GitBranch size={12} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-300">
+                {gitStatus.branch}
+              </span>
+              {gitStatus.upstream && (gitStatus.ahead > 0 || gitStatus.behind > 0) && (
+                <span className="shrink-0 font-mono text-[10.5px] tabular-nums">
+                  {gitStatus.ahead > 0 && (
+                    <span className="text-[var(--gt-green)]">↑{gitStatus.ahead}</span>
+                  )}
+                  {gitStatus.behind > 0 && (
+                    <span className="ml-1 text-[var(--gt-red)]">↓{gitStatus.behind}</span>
+                  )}
+                </span>
+              )}
+              {gitStatus.dirty > 0 && (
+                <span className="shrink-0 rounded bg-[var(--gt-yellow)]/20 px-1.5 py-0.5 text-[10px] text-[var(--gt-yellow)]">
+                  {gitStatus.dirty}
+                </span>
+              )}
+            </button>
+          )}
           <div className="flex shrink-0 border-b border-[var(--gt-border)] p-1.5">
             <button
               onClick={() => setSidebar('files')}
