@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   CircleCheck,
@@ -165,6 +165,8 @@ function Chip({
 
 type Scope = 'all' | 'repo' | 'session'
 
+const FEED_PAGE_SIZE = 200
+
 export function ActivityTab({
   ctx,
   global,
@@ -209,21 +211,38 @@ export function ActivityTab({
     }
   }, [])
 
-  const scoped = events.filter((e) =>
-    scope === 'all'
-      ? true
-      : scope === 'repo'
-        ? e.repoRoot === ctx?.repoRoot
-        : e.sessionId === ctx?.sessionId,
+  // The feed holds up to 1000 events — memoize the filter chain (it used to
+  // re-run inline on every keystroke and every 30s time-tick) and let typing
+  // stay responsive by filtering against the deferred query value.
+  const deferredQuery = useDeferredValue(query)
+  const scoped = useMemo(
+    () =>
+      events.filter((e) =>
+        scope === 'all'
+          ? true
+          : scope === 'repo'
+            ? e.repoRoot === ctx?.repoRoot
+            : e.sessionId === ctx?.sessionId,
+      ),
+    [events, scope, ctx?.repoRoot, ctx?.sessionId],
   )
   // kind chips reflect what's actually present in the current scope
-  const kindsPresent = [...new Set(scoped.map((e) => e.kind))].sort()
-  const q = query.trim().toLowerCase()
-  const shown = scoped.filter(
-    (e) =>
-      (kindFilter === 'all' || e.kind === kindFilter) &&
-      (!q || `${e.title} ${e.detail || ''} ${e.repo || ''}`.toLowerCase().includes(q)),
-  )
+  const kindsPresent = useMemo(() => [...new Set(scoped.map((e) => e.kind))].sort(), [scoped])
+  const shown = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase()
+    return scoped.filter(
+      (e) =>
+        (kindFilter === 'all' || e.kind === kindFilter) &&
+        (!q || `${e.title} ${e.detail || ''} ${e.repo || ''}`.toLowerCase().includes(q)),
+    )
+  }, [scoped, kindFilter, deferredQuery])
+  // Bounded render with show-more — 1000 rows re-reconciled per tick janks.
+  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE)
+  useEffect(() => {
+    setVisibleCount(FEED_PAGE_SIZE)
+  }, [scope, kindFilter, deferredQuery])
+  const visibleShown = useMemo(() => shown.slice(0, visibleCount), [shown, visibleCount])
+  const hiddenCount = Math.max(0, shown.length - visibleShown.length)
 
   const clear = async () => {
     await window.gt.activity.clear()
@@ -305,7 +324,7 @@ export function ActivityTab({
               : 'No activity matches the current filters.'}
           </div>
         ) : (
-          groupByDay(shown).map((g) => (
+          groupByDay(visibleShown).map((g) => (
             <div key={g.label}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-[var(--gt-bg)]/90 px-4 py-1.5 backdrop-blur">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -405,6 +424,14 @@ export function ActivityTab({
               })}
             </div>
           ))
+        )}
+        {hiddenCount > 0 && (
+          <button
+            onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
+            className="w-full px-4 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5"
+          >
+            Show {Math.min(hiddenCount, FEED_PAGE_SIZE)} more ({hiddenCount} hidden)
+          </button>
         )}
       </div>
     </div>
