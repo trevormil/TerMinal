@@ -32,7 +32,7 @@ final class ActivityViewModel {
 
 /// The global live feed — session starts, tickets, PRs, reviews, test runs,
 /// checks, docs, agent runs — newest first. Mirrors the desktop's top-right
-/// Activity drawer; read-only. Reached from the Inbox tab, its sibling.
+/// Activity drawer; read-only. Its own tab, a peer of Inbox.
 struct ActivityView: View {
     @State var model: ActivityViewModel
 
