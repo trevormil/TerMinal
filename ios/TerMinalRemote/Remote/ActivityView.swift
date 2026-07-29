@@ -51,16 +51,19 @@ struct ActivityView: View {
                         }
                     }
                     ForEach(model.items) { item in
-                        // Chevron lives INSIDE the card (ActivityRow draws it);
-                        // the native accessory is suppressed by hiding the link —
-                        // same pattern as InboxView's row -> detail push.
-                        ActivityRow(item: item)
-                            .background(
-                                NavigationLink {
-                                    ActivityDetailView(item: item)
-                                } label: { EmptyView() }
-                                .opacity(0)
-                            )
+                        // NOT a List here (ScrollView + LazyVStack instead), so
+                        // the hidden-background-NavigationLink trick InboxRow
+                        // uses doesn't get List's row-wide hit-testing — it ends
+                        // up with next to no tappable area. Making the row
+                        // itself the link's label gives the whole card a real
+                        // hit target; .plain keeps NavigationLink from applying
+                        // its own tint/highlight to the row's content.
+                        NavigationLink {
+                            ActivityDetailView(item: item)
+                        } label: {
+                            ActivityRow(item: item)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(14)
