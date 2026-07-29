@@ -93,6 +93,30 @@ function reltime(ts: number): string {
   return Date.now() - ts < 10_000 ? 'just now' : relativeTime(ts)
 }
 
+// Titles/details are free text composed at emit time and often already start
+// with (or embed) the exact repo label that's also rendered as its own chip
+// below — e.g. title "trevormil/foo · local · exited" + a "trevormil/foo"
+// chip. These trim ONLY an exact, mechanically-detected overlap with the
+// chip's own string — display-only, the underlying event data (also used for
+// Telegram notifications) is untouched.
+export function declutterTitle(title: string, repo?: string): string {
+  if (!repo) return title
+  const prefix = `${repo} · `
+  return title.startsWith(prefix) ? title.slice(prefix.length) : title
+}
+
+export function declutterDetail(detail: string, repo?: string): string {
+  if (!repo) return detail
+  const base = repo.split('/').pop()
+  if (!base) return detail
+  // Strip a "~/some/path/<repo-basename>" segment — whether it's the whole
+  // detail or trails other content after " · " — the repo chip already names
+  // the repo, so restating its path adds nothing.
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(^|\\s*·\\s*)~?[^·]*/${escaped}$`)
+  return detail.replace(re, '').trim()
+}
+
 // Day bucket label for the timeline dividers (Today / Yesterday / weekday / date).
 function dayLabel(ts: number): string {
   const d = new Date(ts)
@@ -318,35 +342,54 @@ export function ActivityTab({
                         <Icon size={11} strokeWidth={2.25} />
                       </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">
-                          <InlineMd text={e.title} />
-                        </span>
-                        <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
-                          {reltime(e.ts)}
-                        </span>
-                      </div>
-                      {e.detail && (
-                        <div className="truncate text-[11.5px] text-zinc-500" title={e.detail}>
-                          <InlineMd text={e.detail} />
+                    {(() => {
+                      // The repo chip below already names the repo — trim it
+                      // back out of the title/detail text where it's an exact,
+                      // mechanically-detected repeat (see declutterTitle/Detail).
+                      const showRepoChip = !!(e.repo && scope === 'all')
+                      const displayTitle = showRepoChip
+                        ? declutterTitle(e.title, e.repo)
+                        : e.title
+                      const displayDetail = e.detail
+                        ? showRepoChip
+                          ? declutterDetail(e.detail, e.repo)
+                          : e.detail
+                        : ''
+                      return (
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline gap-2">
+                            {/* line-clamp instead of truncate — nothing here is
+                                ever fully cut off with no way to read the rest;
+                                hovering the row reveals the full text. */}
+                            <span className="line-clamp-2 min-w-0 flex-1 text-[13px] text-zinc-100 group-hover:line-clamp-none">
+                              <InlineMd text={displayTitle} />
+                            </span>
+                            <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
+                              {reltime(e.ts)}
+                            </span>
+                          </div>
+                          {displayDetail && (
+                            <div className="line-clamp-2 text-[11.5px] text-zinc-500 group-hover:line-clamp-none">
+                              <InlineMd text={displayDetail} />
+                            </div>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide ${badgeClasses(
+                                tone,
+                              )}`}
+                            >
+                              {KIND_LABEL[e.kind] || e.kind}
+                            </span>
+                            {showRepoChip && (
+                              <span className="truncate font-mono text-[10px] text-zinc-600">
+                                {e.repo}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={`rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide ${badgeClasses(
-                            tone,
-                          )}`}
-                        >
-                          {KIND_LABEL[e.kind] || e.kind}
-                        </span>
-                        {e.repo && scope === 'all' && (
-                          <span className="truncate font-mono text-[10px] text-zinc-600">
-                            {e.repo}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
