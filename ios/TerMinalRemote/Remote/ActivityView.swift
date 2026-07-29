@@ -50,7 +50,18 @@ struct ActivityView: View {
                                 .font(GT.sans(12)).foregroundStyle(GT.textMuted)
                         }
                     }
-                    ForEach(model.items) { ActivityRow(item: $0) }
+                    ForEach(model.items) { item in
+                        // Chevron lives INSIDE the card (ActivityRow draws it);
+                        // the native accessory is suppressed by hiding the link —
+                        // same pattern as InboxView's row -> detail push.
+                        ActivityRow(item: item)
+                            .background(
+                                NavigationLink {
+                                    ActivityDetailView(item: item)
+                                } label: { EmptyView() }
+                                .opacity(0)
+                            )
+                    }
                 }
                 .padding(14)
             }
@@ -108,10 +119,50 @@ private struct ActivityRow: View {
                     }
                 }
                 Spacer(minLength: 4)
-                Text(relativeTime(item.ts))
-                    .font(GT.mono(9)).foregroundStyle(GT.textFaint)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(relativeTime(item.ts))
+                        .font(GT.mono(9)).foregroundStyle(GT.textFaint)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(GT.textFaint)
+                }
             }
         }
+    }
+}
+
+/// The opened event: full title + detail, never clamped. Same pattern as
+/// InboxView's InboxDetailView — a tap always lands here, reading the whole
+/// thing, matching the desktop's click-through detail screen.
+private struct ActivityDetailView: View {
+    let item: ActivityItem
+
+    var body: some View {
+        ZStack {
+            GT.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(inlineMarkdown(item.title))
+                        .font(GT.sans(18, .semibold)).foregroundStyle(GT.text)
+                    HStack(spacing: 6) {
+                        if let repo = item.repo, !repo.isEmpty {
+                            Text(repo).font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                        }
+                        Text(relativeTime(item.ts)).font(GT.mono(11)).foregroundStyle(GT.textFaint)
+                    }
+                    if let detail = item.detail, !detail.isEmpty {
+                        MarkdownText(raw: detail)
+                    } else {
+                        Text("No details.").font(GT.sans(13)).foregroundStyle(GT.textMuted)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(GT.panel, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 
