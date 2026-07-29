@@ -111,6 +111,18 @@ const loadTerminalSessionOrder = (): Record<string, string[]> => {
     return {}
   }
 }
+// User-dragged order of the top bar's workspace pills, keyed by repoRoot —
+// global (one list), unlike terminalSessionOrder which is per-workspace.
+const loadWorkspaceOrder = (): string[] => {
+  try {
+    const raw = localStorage.getItem('gt.workspaceOrder')
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 // A workspace groups every session that lives under the same repo root. The
 // top tab bar shows ONE pill per workspace with the sessions rendered inline
@@ -237,6 +249,8 @@ export default function App() {
   const [sessionRail, setSessionRail] = useState<SessionRail>(loadSessionRail)
   const [terminalSessionOrder, setTerminalSessionOrder] =
     useState<Record<string, string[]>>(loadTerminalSessionOrder)
+  const [workspaceOrder, setWorkspaceOrder] = useState<string[]>(loadWorkspaceOrder)
+  const [draggingWorkspaceRoot, setDraggingWorkspaceRoot] = useState<string | null>(null)
   const [gridKeys, setGridKeys] = useState<string[]>(loadTerminalGridKeys)
   const [gridPickerOpen, setGridPickerOpen] = useState(false)
   const [fleetData, setFleetData] = useState<FleetSession[]>([])
@@ -371,6 +385,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gt.terminalSessionOrder', JSON.stringify(terminalSessionOrder))
   }, [terminalSessionOrder])
+  useEffect(() => {
+    localStorage.setItem('gt.workspaceOrder', JSON.stringify(workspaceOrder))
+  }, [workspaceOrder])
   useEffect(() => {
     localStorage.setItem('gt.terminalGridKeys', JSON.stringify(gridKeys))
   }, [gridKeys])
@@ -927,7 +944,7 @@ export default function App() {
         })
       map.get(root)!.sessions.push(s)
     }
-    return [...map.values()].map((ws) => {
+    const withOrderedSessions = [...map.values()].map((ws) => {
       const order = terminalSessionOrder[ws.repoRoot] ?? []
       const rank = new Map(order.map((key, i) => [key, i]))
       return {
@@ -945,7 +962,22 @@ export default function App() {
           .map(({ session }) => session),
       }
     })
-  }, [sessions, terminalSessionOrder])
+    // User-dragged top-bar order, same rank-with-fallback pattern as the
+    // per-workspace session order above — unranked (new) workspaces keep
+    // their discovery order, appended after any ranked ones.
+    const wsRank = new Map(workspaceOrder.map((root, i) => [root, i]))
+    return withOrderedSessions
+      .map((ws, originalIndex) => ({ ws, originalIndex }))
+      .sort((a, b) => {
+        const aRank = wsRank.get(a.ws.repoRoot)
+        const bRank = wsRank.get(b.ws.repoRoot)
+        if (aRank !== undefined || bRank !== undefined) {
+          return (aRank ?? Number.MAX_SAFE_INTEGER) - (bRank ?? Number.MAX_SAFE_INTEGER)
+        }
+        return a.originalIndex - b.originalIndex
+      })
+      .map(({ ws }) => ws)
+  }, [sessions, terminalSessionOrder, workspaceOrder])
   const activeWorkspaceRoot = useMemo(() => {
     const s = sessions.find((x) => x.key === activeKey)
     return s ? cwdOf(s) : ''
@@ -1091,6 +1123,17 @@ export default function App() {
     const [moved] = keys.splice(fromIndex, 1)
     keys.splice(keys.indexOf(toKey), 0, moved)
     setTerminalSessionOrder((prev) => ({ ...prev, [ws.repoRoot]: keys }))
+  }
+
+  const reorderWorkspace = (fromRoot: string, toRoot: string) => {
+    if (fromRoot === toRoot) return
+    const roots = workspaces.map((w) => w.repoRoot)
+    const fromIndex = roots.indexOf(fromRoot)
+    const toIndex = roots.indexOf(toRoot)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [moved] = roots.splice(fromIndex, 1)
+    roots.splice(roots.indexOf(toRoot), 0, moved)
+    setWorkspaceOrder(roots)
   }
 
   const showEntry = adding !== false || sessions.length === 0
@@ -1242,6 +1285,25 @@ export default function App() {
                   key={ws.repoRoot}
                   style={noDrag}
                   title={ws.repoRoot}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingWorkspaceRoot(ws.repoRoot)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('application/x-terminal-workspace', ws.repoRoot)
+                  }}
+                  onDragOver={(e) => {
+                    if (draggingWorkspaceRoot && draggingWorkspaceRoot !== ws.repoRoot) {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const fromRoot = e.dataTransfer.getData('application/x-terminal-workspace')
+                    if (fromRoot) reorderWorkspace(fromRoot, ws.repoRoot)
+                    setDraggingWorkspaceRoot(null)
+                  }}
+                  onDragEnd={() => setDraggingWorkspaceRoot(null)}
                   onClick={() => {
                     const target =
                       ws.sessions.find((s) => s.key === activeKey)?.key || ws.sessions[0].key
@@ -1259,7 +1321,7 @@ export default function App() {
                       : needsAttention
                         ? 'border-[var(--gt-yellow)]/60 bg-[var(--gt-yellow)]/10 text-zinc-200'
                         : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
-                  }`}
+                  } ${draggingWorkspaceRoot === ws.repoRoot ? 'opacity-50' : ''}`}
                 >
                   <span
                     title={
