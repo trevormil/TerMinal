@@ -29,6 +29,7 @@ import { InboxDrawer } from './tabs/hitl'
 import { ActivityTab } from './tabs/activity'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
+import { ShortcutsOverlay } from './components/ShortcutsOverlay'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { navigateTo, onNavigate } from './lib/nav'
@@ -245,6 +246,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState('')
   const [palette, setPalette] = useState(false)
+  const [shortcuts, setShortcuts] = useState(false)
   // Which mode the EntryScreen (New workspace screen) opens in: a normal single
   // session, or a live-paired loop. Set by the paired-loop:new nav trigger;
   // reset to 'single' whenever the screen closes so the next open defaults right.
@@ -466,6 +468,12 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
         setPalette((p) => !p)
+      }
+      // ⌘/ — every shortcut in the app was previously undiscoverable outside
+      // the source; this is the in-app reference for them.
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault()
+        setShortcuts((s) => !s)
       }
       // ⌘⇧T (Brave-style New Tab) → spin up a fresh base local shell, not an
       // AI engine. Reuses the terminal:new nav path so it inherits the active
@@ -1905,6 +1913,7 @@ export default function App() {
             onClose={() => setPalette(false)}
           />
         )}
+        {shortcuts && <ShortcutsOverlay onClose={() => setShortcuts(false)} />}
       </div>
     </div>
   )
