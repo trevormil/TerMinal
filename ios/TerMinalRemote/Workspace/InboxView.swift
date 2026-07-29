@@ -58,14 +58,6 @@ struct InboxView: View {
             // A real List (not a LazyVStack) so rows get native swipe actions.
             ScrollViewReader { proxy in
             List {
-                // List's row insets are tighter than the padded VStacks the
-                // other tabs use — without this the first card sits almost
-                // flush against the pinned header. 14pt matches Workspaces'
-                // own top padding exactly, so every tab reads consistently.
-                Color.clear.frame(height: 0)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 14, leading: 0, bottom: 0, trailing: 0))
                 if let error = model.error {
                     GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                         .plainRow()
@@ -125,6 +117,11 @@ struct InboxView: View {
             .task { scrollTo(focusedId, proxy) }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // List reserves its own default top content margin regardless of
+            // the first row's insets — contentMargins is the one API that
+            // actually sets it, matching Workspaces' 14pt VStack padding
+            // exactly instead of stacking on top of a default we don't see.
+            .contentMargins(.top, 14, for: .scrollContent)
             .overlay { if model.loading { ProgressView().tint(GT.accentLight) } }
             .refreshable { await model.refresh() }
             }
