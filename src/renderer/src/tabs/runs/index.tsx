@@ -55,6 +55,7 @@ function fmtDuration(ms: number): string {
 }
 const repoOf = (root: string) => root.split('/').filter(Boolean).pop() || root
 const RUNS_REPO_FILTER_KEY = 'gt.runs.repoFilter'
+const ROW_PAGE_SIZE = 100
 
 function RunsTab({ ctx }: { ctx: TabContext }) {
   // Which runs originated from the automation inbox — a filter dimension on
@@ -101,8 +102,13 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
 
   // Runs are fire-and-forget processes only (cron/agent/bg) — interactive
   // terminal sessions belong to the Terminal tab, not here.
+  // Keep the previous array when nothing changed — a fresh array every 2s
+  // re-rendered all ~400 rows even on idle ticks.
   const reloadLocal = () =>
-    window.gt.agents.allRuns().then((rs) => setLocalRuns(rs.filter((r) => r.source !== 'session')))
+    window.gt.agents.allRuns().then((rs) => {
+      const next = rs.filter((r) => r.source !== 'session')
+      setLocalRuns((cur) => (cur && JSON.stringify(cur) === JSON.stringify(next) ? cur : next))
+    })
   // Remote is an SSH fan-out across every configured host — best-effort, and
   // guarded so overlapping slow SSH calls don't stack up.
   const remoteInFlight = useRef(false)
@@ -141,7 +147,10 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       const ai = await window.gt.observability.runs(500)
       const m = new Map<string, number>()
       for (const a of ai) if (a.runId) m.set(a.runId, (m.get(a.runId) || 0) + a.costUsd)
-      setCostByRunId(m)
+      setCostByRunId((cur) => {
+        if (cur.size === m.size && [...m].every(([k, v]) => cur.get(k) === v)) return cur
+        return m
+      })
     } catch {
       /* ignore */
     }
@@ -150,7 +159,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     reloadLocal()
     reloadRemote()
     reloadCosts()
-    // Always refresh local + costs (cheap local IPC). Gating local refresh on
+    // Always refresh local (cheap local IPC). Gating local refresh on
     // "something is already running" latched the poll OFF whenever the snapshot
     // was all-idle, so a run STARTED while idle (a cron firing, an agent launched
     // from another tab) never appeared and never flipped to done. Only the SSH
@@ -160,9 +169,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       reloadLocal()
       const cur = runsRef.current
       if (cur && cur.some((r) => r.status === 'running' && r.hostId)) reloadRemote()
-      reloadCosts()
     }, 2000)
-    return () => clearInterval(t)
+    // Costs come from the AI ledger (500-record read) and only change when a
+    // run finishes — no need to refetch them every 2s with the statuses.
+    const tc = setInterval(reloadCosts, 15000)
+    return () => {
+      clearInterval(t)
+      clearInterval(tc)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmtUsd = (n: number) => {
@@ -273,6 +287,15 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
     inboxRunIds,
     search,
   ])
+
+  // Row pagination — the list can hold 400+ runs; render a page and grow on
+  // demand. Reset when the filter shape changes so a new query starts at the top.
+  const [visibleRows, setVisibleRows] = useState(ROW_PAGE_SIZE)
+  useEffect(() => {
+    setVisibleRows(ROW_PAGE_SIZE)
+  }, [source, host, status, repo, agentFilter, engineFilter, forceFilter, inboxOnly, search])
+  const pagedRows = filtered ? filtered.slice(0, visibleRows) : null
+  const hiddenRows = filtered ? Math.max(0, filtered.length - visibleRows) : 0
 
   const selectedRun = (runs || []).find((r) => r.id === sel) || null
 
@@ -524,7 +547,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 <div className="p-4 text-[12px] text-zinc-600">No runs match these filters.</div>
               )
             ) : (
-              (filtered || []).map((r) => {
+              (pagedRows || []).map((r) => {
                 const dur = r.endedAt
                   ? fmtDuration(r.endedAt - r.startedAt)
                   : r.status === 'running'
@@ -580,6 +603,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   </button>
                 )
               })
+            )}
+            {hiddenRows > 0 && (
+              <button
+                onClick={() => setVisibleRows((v) => v + ROW_PAGE_SIZE)}
+                className="w-full border-b border-[var(--gt-border)]/40 px-3 py-2 text-center text-[11px] text-[var(--gt-accent-2)] hover:bg-white/5"
+              >
+                Show {Math.min(hiddenRows, ROW_PAGE_SIZE)} more ({hiddenRows} hidden)
+              </button>
             )}
           </div>
         </div>
