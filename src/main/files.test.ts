@@ -2,6 +2,7 @@ import { test, expect, describe } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { writeFile, createEntry, renameEntry, removeEntry } from './files'
 
 // The safe(root, rel) guard is the sole thing keeping the Files tab's
@@ -85,6 +86,56 @@ describe('replaceInFiles', () => {
     const { replaceInFiles } = await import('./files')
     const r = await replaceInFiles(root, 'foo', 'qux', [{ file: '../outside.txt', line: 1 }])
     expect(r).toEqual({ files: 0, replaced: 0, skipped: 1 })
+    rmSync(root, { recursive: true, force: true })
+  })
+})
+
+describe('searchRepo', () => {
+  const setup = () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'terminal-search-')))
+    execFileSync('git', ['-C', root, 'init', '-q'])
+    writeFileSync(join(root, 'a.ts'), 'const foo123 = 1\nconst BAR = foo123\n')
+    writeFileSync(join(root, 'a.test.ts'), 'const foo123 = 2 // test file\n')
+    execFileSync('git', ['-C', root, 'add', '-A'])
+    return root
+  }
+
+  test('defaults are literal and case-insensitive', async () => {
+    const root = setup()
+    const { searchRepo } = await import('./files')
+    const hits = await searchRepo(root, 'bar')
+    expect(hits).toEqual([{ file: 'a.ts', line: 2, text: 'const BAR = foo123' }])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('caseSensitive: true stops matching a different case', async () => {
+    const root = setup()
+    const { searchRepo } = await import('./files')
+    expect(await searchRepo(root, 'bar', { caseSensitive: true })).toEqual([])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('regex: true treats the query as a pattern', async () => {
+    const root = setup()
+    const { searchRepo } = await import('./files')
+    const hits = await searchRepo(root, 'foo[0-9]+', { regex: true })
+    expect(hits.map((h) => h.file).sort()).toEqual(['a.test.ts', 'a.ts', 'a.ts'])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('exclude glob filters out matching files', async () => {
+    const root = setup()
+    const { searchRepo } = await import('./files')
+    const hits = await searchRepo(root, 'foo123', { exclude: '*.test.ts' })
+    expect(hits.map((h) => h.file)).toEqual(['a.ts', 'a.ts'])
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  test('include glob narrows to matching files only', async () => {
+    const root = setup()
+    const { searchRepo } = await import('./files')
+    const hits = await searchRepo(root, 'foo123', { include: '*.test.ts' })
+    expect(hits.map((h) => h.file)).toEqual(['a.test.ts'])
     rmSync(root, { recursive: true, force: true })
   })
 })

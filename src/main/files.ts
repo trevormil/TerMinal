@@ -184,15 +184,17 @@ export type ReplaceResult = { files: number; replaced: number; skipped: number }
 
 /**
  * Apply a project-wide search & replace to specific (file, line) targets from
- * a prior search. Literal and case-insensitive, mirroring searchRepo's
- * `git grep -F -i`. A target line that no longer contains the query (the file
- * changed since the search) is skipped rather than blindly rewritten.
+ * a prior search, using the same SearchOptions that search ran with so the
+ * preview a match showed is exactly what gets written. A target line that no
+ * longer matches (the file changed since the search) is skipped rather than
+ * blindly rewritten.
  */
 export async function replaceInFiles(
   root: string,
   query: string,
   replacement: string,
   targets: ReplaceTarget[],
+  opts?: SearchOptions,
 ): Promise<ReplaceResult> {
   const { replaceInLine } = await import('../shared/replace')
   const byFile = new Map<string, number[]>()
@@ -221,7 +223,7 @@ export async function replaceInFiles(
         result.skipped++
         continue
       }
-      const { text, count } = replaceInLine(lines[at], query, replacement)
+      const { text, count } = replaceInLine(lines[at], query, replacement, opts)
       if (count === 0) {
         result.skipped++
         continue
@@ -290,8 +292,38 @@ export async function formatFile(
 }
 
 export type SearchHit = { file: string; line: number; text: string }
+export type SearchOptions = {
+  regex?: boolean
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  /** Comma-separated glob patterns, e.g. "src/**\/*.ts, *.md" */
+  include?: string
+  /** Comma-separated glob patterns, e.g. "**\/*.test.ts, dist/**" */
+  exclude?: string
+}
 const MAX_HITS = 300
-export function searchRepo(root: string, query: string): Promise<SearchHit[]> {
+
+function splitGlobs(s?: string): string[] {
+  return (s || '')
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean)
+}
+
+// git pathspec magic: `:(glob)pattern` for a glob include, `:(exclude,glob)pattern`
+// to exclude — this is what gives us VS Code-style "files to include/exclude"
+// without shelling out to a separate tool.
+function pathspecArgs(opts?: SearchOptions): string[] {
+  const include = splitGlobs(opts?.include)
+  const exclude = splitGlobs(opts?.exclude)
+  const specs = [
+    ...include.map((g) => `:(glob)${g}`),
+    ...exclude.map((g) => `:(exclude,glob)${g}`),
+  ]
+  return specs.length ? ['--', ...specs] : []
+}
+
+export function searchRepo(root: string, query: string, opts?: SearchOptions): Promise<SearchHit[]> {
   return new Promise((res) => {
     const q = query.trim()
     if (q.length < 2) return res([]) // 1-char queries match everything — skip
@@ -305,45 +337,31 @@ export function searchRepo(root: string, query: string): Promise<SearchHit[]> {
           return m ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 240) } : null
         })
         .filter((x): x is SearchHit => !!x)
-    // git grep first (respects .gitignore, fast). `-F` = fixed string (literal,
-    // no regex surprises from special chars); `-m 30` caps matches per file so a
-    // common term can't flood the buffer. Falls back to plain grep outside a repo.
+    // git grep first (respects .gitignore, fast). `-F`/`-E` = fixed string vs
+    // extended regex; `-m 30` caps matches per file so a common term can't
+    // flood the buffer. Falls back to plain grep outside a repo.
+    const flags = ['-n', '-I', '--no-color', '--untracked']
+    if (!opts?.caseSensitive) flags.push('-i')
+    if (opts?.wholeWord) flags.push('-w')
+    flags.push(opts?.regex ? '-E' : '-F')
     execFile(
       'git',
-      [
-        '-C',
-        root,
-        'grep',
-        '-n',
-        '-I',
-        '--no-color',
-        '--untracked',
-        '-F',
-        '-i',
-        '-m',
-        '30',
-        '-e',
-        q,
-      ],
+      ['-C', root, 'grep', ...flags, '-m', '30', '-e', q, ...pathspecArgs(opts)],
       { timeout: 8_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
       (gerr, gout) => {
         if (gout) return res(parse(gout))
         // git grep exit 1 = no matches (in a repo). If git failed entirely
-        // (not a repo), try plain grep.
+        // (not a repo, or a pattern git's regex engine rejects), try plain grep.
         if (gerr && (gerr as { code?: number }).code !== 1) {
+          const gflags = ['-rnI']
+          if (!opts?.caseSensitive) gflags.push('-i')
+          if (opts?.wholeWord) gflags.push('-w')
+          gflags.push(opts?.regex ? '-E' : '-F', '-m', '30', '--exclude-dir=.git', '--exclude-dir=node_modules')
+          for (const g of splitGlobs(opts?.include)) gflags.push(`--include=${g}`)
+          for (const g of splitGlobs(opts?.exclude)) gflags.push(`--exclude=${g}`)
           execFile(
             'grep',
-            [
-              '-rnI',
-              '-F',
-              '-i',
-              '-m',
-              '30',
-              '--exclude-dir=.git',
-              '--exclude-dir=node_modules',
-              q,
-              root,
-            ],
+            [...gflags, q, root],
             { timeout: 8_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
             (_e, out) => res(out ? parse(out.replaceAll(root + sep, '')) : []),
           )

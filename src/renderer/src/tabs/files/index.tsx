@@ -17,6 +17,7 @@ import {
   Replace,
   Send,
   Sparkles,
+  SlidersHorizontal,
   X,
 } from 'lucide-react'
 import { langs } from '@uiw/codemirror-extensions-langs'
@@ -57,7 +58,7 @@ import {
   type ReviewComment,
 } from '../../../../shared/review-comments'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
-import type { Tab, TabContext, FileEntry, SearchHit } from '../../lib/types'
+import type { Tab, TabContext, FileEntry, SearchHit, FilesSearchOptions } from '../../lib/types'
 
 // Language grammars come from the shared resolver (src/shared/languages.ts),
 // which covers ~100 extensions plus extensionless files like Dockerfile and
@@ -437,6 +438,25 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const [excluded, setExcluded] = useState<Set<number>>(new Set())
   const [replaceMsg, setReplaceMsg] = useState('')
   const [replacing, setReplacing] = useState(false)
+  const [searchRegex, setSearchRegex] = useState(false)
+  const [searchCase, setSearchCase] = useState(false)
+  const [searchWord, setSearchWord] = useState(false)
+  const [searchInclude, setSearchInclude] = useState('')
+  const [searchExclude, setSearchExclude] = useState('')
+  const [globsOpen, setGlobsOpen] = useState(false)
+  const searchOpts = useMemo(
+    (): FilesSearchOptions => ({
+      regex: searchRegex,
+      caseSensitive: searchCase,
+      wholeWord: searchWord,
+      include: searchInclude,
+      exclude: searchExclude,
+    }),
+    [searchRegex, searchCase, searchWord, searchInclude, searchExclude],
+  )
+  // The options the current results answer — replace previews/apply must use
+  // these, not whatever the toggles are live-set to since (mirrors resultsQuery).
+  const [resultsOpts, setResultsOpts] = useState<FilesSearchOptions>({})
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [pv, setPv] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -766,10 +786,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     const q = query.trim()
     const seq = ++searchSeq.current
     setSearching(true)
-    const r = q.length < 2 ? [] : await window.gt.files.search(q)
+    const r = q.length < 2 ? [] : await window.gt.files.search(q, searchOpts)
     if (seq !== searchSeq.current) return // superseded
     setResults(r)
     setResultsQuery(q)
+    setResultsOpts(searchOpts)
     setExcluded(new Set())
     setReplaceMsg('')
     setSearching(false)
@@ -792,7 +813,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
       delete saveTimers.current[f.path]
       if (f.dirty && !f.err) await window.gt.files.write(f.path, f.content)
     }
-    const res = await window.gt.files.replace(resultsQuery, replacement, targets)
+    const res = await window.gt.files.replace(resultsQuery, replacement, targets, resultsOpts)
     const touched = new Set(targets.map((t) => t.file))
     for (const f of open) {
       if (!touched.has(f.path)) continue
@@ -1350,6 +1371,57 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     <Replace size={13} strokeWidth={2} />
                   </button>
                 </div>
+                <div className="flex items-center gap-1">
+                  {(
+                    [
+                      ['Aa', 'Match case', searchCase, setSearchCase],
+                      ['ab', 'Match whole word', searchWord, setSearchWord],
+                      ['.*', 'Use regular expression', searchRegex, setSearchRegex],
+                    ] as const
+                  ).map(([label, title, on, set]) => (
+                    <button
+                      key={label}
+                      onClick={() => set((v) => !v)}
+                      title={title}
+                      className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                        on
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setGlobsOpen((o) => !o)}
+                    title="Files to include / exclude"
+                    className={`ml-auto flex shrink-0 items-center rounded-md border p-1.5 ${
+                      globsOpen
+                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                        : 'border-[var(--gt-border)] text-zinc-500 hover:text-zinc-200'
+                    }`}
+                  >
+                    <SlidersHorizontal size={12} strokeWidth={2} />
+                  </button>
+                </div>
+                {globsOpen && (
+                  <div className="space-y-1">
+                    <input
+                      value={searchInclude}
+                      onChange={(e) => setSearchInclude(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                      placeholder="files to include (e.g. src/**/*.ts)"
+                      className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                    />
+                    <input
+                      value={searchExclude}
+                      onChange={(e) => setSearchExclude(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                      placeholder="files to exclude (e.g. **/*.test.ts)"
+                      className="w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-[var(--gt-accent)]/60"
+                    />
+                  </div>
+                )}
                 {replaceOpen && (
                   <div className="flex items-center gap-1.5">
                     <input
@@ -1424,7 +1496,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                             </span>
                           </div>
                           <div className="truncate pl-[18px] font-mono text-[11px] text-zinc-500">
-                            {matchSegments(line, resultsQuery).map((seg, j) =>
+                            {matchSegments(line, resultsQuery, resultsOpts).map((seg, j) =>
                               seg.hit ? (
                                 <mark
                                   key={j}
@@ -1440,7 +1512,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                           {/* per-match preview of what the line becomes */}
                           {replaceOpen && !excluded.has(i) && (
                             <div className="truncate pl-[18px] font-mono text-[11px] text-emerald-500/80">
-                              {replaceInLine(line, resultsQuery, replacement).text}
+                              {replaceInLine(line, resultsQuery, replacement, resultsOpts).text}
                             </div>
                           )}
                         </button>

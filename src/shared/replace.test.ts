@@ -22,6 +22,31 @@ describe('replaceInLine', () => {
   test('empty query replaces nothing', () => {
     expect(replaceInLine('anything', '', 'x')).toEqual({ text: 'anything', count: 0 })
   })
+
+  test('caseSensitive: true stops matching a different case', () => {
+    expect(replaceInLine('Foo foo', 'foo', 'x', { caseSensitive: true })).toEqual({
+      text: 'Foo x',
+      count: 1,
+    })
+  })
+
+  test('wholeWord: true skips partial-word matches', () => {
+    expect(replaceInLine('foo foobar', 'foo', 'x', { wholeWord: true })).toEqual({
+      text: 'x foobar',
+      count: 1,
+    })
+  })
+
+  test('regex: true treats the query as a pattern and supports $1 capture refs', () => {
+    expect(replaceInLine('foo123 bar456', '(\\w+?)(\\d+)', '$2-$1', { regex: true })).toEqual({
+      text: '123-foo 456-bar',
+      count: 2,
+    })
+  })
+
+  test('regex: true with an invalid pattern replaces nothing instead of throwing', () => {
+    expect(replaceInLine('abc', '(', 'x', { regex: true })).toEqual({ text: 'abc', count: 0 })
+  })
 })
 
 describe('matchSegments', () => {
@@ -44,5 +69,22 @@ describe('matchSegments', () => {
 
   test('no match yields one plain segment', () => {
     expect(matchSegments('abc', 'zzz')).toEqual([{ text: 'abc', hit: false }])
+  })
+
+  test('wholeWord: true does not highlight a partial-word match', () => {
+    expect(matchSegments('foobar', 'foo', { wholeWord: true })).toEqual([
+      { text: 'foobar', hit: false },
+    ])
+  })
+
+  test('regex: true matches a pattern, not a literal string', () => {
+    expect(matchSegments('a1 b22 c333', '\\d+', { regex: true })).toEqual([
+      { text: 'a', hit: false },
+      { text: '1', hit: true },
+      { text: ' b', hit: false },
+      { text: '22', hit: true },
+      { text: ' c', hit: false },
+      { text: '333', hit: true },
+    ])
   })
 })

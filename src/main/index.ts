@@ -3802,16 +3802,29 @@ ipcMain.handle('files:readBinary', (_e, rel: string) => {
 ipcMain.handle('files:write', (_e, rel: string, content: string) => {
   return activeDaemon().filesWrite(rel, content)
 })
-ipcMain.handle('files:search', (_e, q: string) => {
-  return activeDaemon().filesSearch(q)
+type FilesSearchOptions = {
+  regex?: boolean
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  include?: string
+  exclude?: string
+}
+ipcMain.handle('files:search', (_e, q: string, opts?: FilesSearchOptions) => {
+  return activeDaemon().filesSearch(q, opts)
 })
 ipcMain.handle('files:format', (_e, rel: string, content: string) => {
   return activeDaemon().filesFormat(rel, content)
 })
 ipcMain.handle(
   'files:replace',
-  (_e, q: string, replacement: string, targets: { file: string; line: number }[]) => {
-    return activeDaemon().filesReplace(q, replacement, targets)
+  (
+    _e,
+    q: string,
+    replacement: string,
+    targets: { file: string; line: number }[],
+    opts?: FilesSearchOptions,
+  ) => {
+    return activeDaemon().filesReplace(q, replacement, targets, opts)
   },
 )
 ipcMain.handle('workspace:search', (_e, q: string, kinds?: WorkspaceSearchKind[]) => {
