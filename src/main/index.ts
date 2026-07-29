@@ -1959,8 +1959,8 @@ ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') 
 })
 ipcMain.handle('settings:get', () => readSettings())
 ipcMain.handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
-ipcMain.handle('settings:storage-reclaim', () => {
-  const report = sweepTerminalState(undefined, { dryRun: false })
+ipcMain.handle('settings:storage-reclaim', async () => {
+  const report = await sweepTerminalState(undefined, { dryRun: false })
   emitActivity(
     {
       kind: 'info',

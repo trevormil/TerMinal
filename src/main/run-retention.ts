@@ -1,7 +1,15 @@
-import { execFileSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { lstat, readdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
+
+// The sweep walks ~/.config/TerMinal, which can hold hundreds of thousands of
+// files (worktrees, checkpoint stores). Everything below is async fs on
+// purpose: a sync walk runs on the Electron main process and blocks EVERY IPC
+// for its duration — the whole app visibly hangs.
+const execFileAsync = promisify(execFile)
 
 // Run retention policy (pure -- no electron/fs, so it's unit-testable).
 //
@@ -75,20 +83,20 @@ export function terminalConfigRoot(): string {
   return join(homedir(), '.config', 'TerMinal')
 }
 
-function safeChildren(dir: string): string[] {
+async function safeChildren(dir: string): Promise<string[]> {
   try {
-    return readdirSync(dir)
+    return await readdir(dir)
   } catch {
     return []
   }
 }
 
-function sizeOfPath(path: string): number {
+async function sizeOfPath(path: string): Promise<number> {
   try {
-    const st = lstatSync(path)
+    const st = await lstat(path)
     if (!st.isDirectory() || st.isSymbolicLink()) return st.size
     let total = 0
-    for (const child of safeChildren(path)) total += sizeOfPath(join(path, child))
+    for (const child of await safeChildren(path)) total += await sizeOfPath(join(path, child))
     return total
   } catch {
     return 0
@@ -100,24 +108,25 @@ function isInside(parent: string, child: string): boolean {
   return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
-function immediateDirs(dir: string): StorageEntry[] {
-  return safeChildren(dir)
-    .map((child) => join(dir, child))
-    .filter((path) => {
-      try {
-        const st = lstatSync(path)
-        return st.isDirectory() && !st.isSymbolicLink()
-      } catch {
-        return false
-      }
-    })
-    .map((path) => ({ path, bytes: sizeOfPath(path) }))
+async function immediateDirs(dir: string): Promise<StorageEntry[]> {
+  const out: StorageEntry[] = []
+  for (const child of await safeChildren(dir)) {
+    const path = join(dir, child)
+    try {
+      const st = await lstat(path)
+      if (!st.isDirectory() || st.isSymbolicLink()) continue
+    } catch {
+      continue
+    }
+    out.push({ path, bytes: await sizeOfPath(path) })
+  }
+  return out
 }
 
-function runningWorktrees(root: string): Set<string> {
+async function runningWorktrees(root: string): Promise<Set<string>> {
   const runsDir = join(root, 'cron-runs')
   const out = new Set<string>()
-  for (const file of safeChildren(runsDir)) {
+  for (const file of await safeChildren(runsDir)) {
     if (!file.endsWith('.json')) continue
     try {
       const run = JSON.parse(readFileSync(join(runsDir, file), 'utf8')) as {
@@ -133,20 +142,20 @@ function runningWorktrees(root: string): Set<string> {
   return out
 }
 
-function planWorktrees(
+async function planWorktrees(
   root: string,
   thresholdBytes: number,
-): { bytes: number; planned: StorageEntry[]; protectedRunning: StorageEntry[] } {
+): Promise<{ bytes: number; planned: StorageEntry[]; protectedRunning: StorageEntry[] }> {
   const dir = join(root, 'cron-worktrees')
-  const bytes = sizeOfPath(dir)
-  const protectedPaths = runningWorktrees(root)
+  const bytes = await sizeOfPath(dir)
+  const protectedPaths = await runningWorktrees(root)
   const planned: StorageEntry[] = []
   const protectedRunning: StorageEntry[] = []
 
   if (bytes <= thresholdBytes) return { bytes, planned, protectedRunning }
 
   let projected = bytes
-  for (const entry of immediateDirs(dir).sort((a, b) => a.bytes - b.bytes)) {
+  for (const entry of (await immediateDirs(dir)).sort((a, b) => a.bytes - b.bytes)) {
     if (protectedPaths.has(resolve(entry.path))) {
       protectedRunning.push(entry)
       continue
@@ -158,13 +167,14 @@ function planWorktrees(
   return { bytes, planned, protectedRunning }
 }
 
-function findCheckpointTmpObjects(dir: string): StorageEntry[] {
+async function findCheckpointTmpObjects(dir: string): Promise<StorageEntry[]> {
   const out: StorageEntry[] = []
-  for (const child of safeChildren(dir)) {
+  for (const child of await safeChildren(dir)) {
     const path = join(dir, child)
     try {
-      const st = lstatSync(path)
-      if (st.isDirectory() && !st.isSymbolicLink()) out.push(...findCheckpointTmpObjects(path))
+      const st = await lstat(path)
+      if (st.isDirectory() && !st.isSymbolicLink())
+        out.push(...(await findCheckpointTmpObjects(path)))
       else if (st.isFile() && basename(path).startsWith('tmp_obj_'))
         out.push({ path, bytes: st.size })
     } catch {
@@ -174,14 +184,14 @@ function findCheckpointTmpObjects(dir: string): StorageEntry[] {
   return out
 }
 
-function checkpointRepos(dir: string, thresholdBytes: number): StorageEntry[] {
-  if (sizeOfPath(dir) < thresholdBytes) return []
-  return immediateDirs(dir).filter((entry) => existsSync(join(entry.path, 'objects')))
+async function checkpointRepos(dir: string, thresholdBytes: number): Promise<StorageEntry[]> {
+  if ((await sizeOfPath(dir)) < thresholdBytes) return []
+  return (await immediateDirs(dir)).filter((entry) => existsSync(join(entry.path, 'objects')))
 }
 
-function removeEntry(root: string, entry: StorageEntry): boolean {
+async function removeEntry(root: string, entry: StorageEntry): Promise<boolean> {
   if (!isInside(root, entry.path)) return false
-  rmSync(entry.path, { recursive: true, force: true })
+  await rm(entry.path, { recursive: true, force: true })
   return !existsSync(entry.path)
 }
 
@@ -191,24 +201,24 @@ function removeEntry(root: string, entry: StorageEntry): boolean {
  * treating the branch as checked out (it then refuses to reuse or delete it).
  * Resolve each one's owning repo BEFORE removal so we can prune afterwards.
  */
-export function worktreeOwnerRepo(worktreePath: string): string {
+export async function worktreeOwnerRepo(worktreePath: string): Promise<string> {
   try {
-    return execFileSync('git', ['-C', worktreePath, 'rev-parse', '--git-common-dir'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 10_000,
-    }).trim()
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', worktreePath, 'rev-parse', '--git-common-dir'],
+      { encoding: 'utf8', timeout: 10_000 },
+    )
+    return stdout.trim()
   } catch {
     return '' // not a worktree (or already broken) — nothing to prune
   }
 }
 
-function pruneWorktreeOwners(gitDirs: Set<string>): void {
+async function pruneWorktreeOwners(gitDirs: Set<string>): Promise<void> {
   for (const gitDir of gitDirs) {
     if (!gitDir) continue
     try {
-      execFileSync('git', ['--git-dir', gitDir, 'worktree', 'prune'], {
-        stdio: 'ignore',
+      await execFileAsync('git', ['--git-dir', gitDir, 'worktree', 'prune'], {
         timeout: 30_000,
       })
     } catch {
@@ -217,10 +227,9 @@ function pruneWorktreeOwners(gitDirs: Set<string>): void {
   }
 }
 
-function gitGc(repo: StorageEntry): CheckpointGcEntry {
+async function gitGc(repo: StorageEntry): Promise<CheckpointGcEntry> {
   try {
-    execFileSync('git', ['--git-dir', repo.path, 'gc', '--prune=now'], {
-      stdio: 'ignore',
+    await execFileAsync('git', ['--git-dir', repo.path, 'gc', '--prune=now'], {
       timeout: 120_000,
       env: {
         ...process.env,
@@ -228,24 +237,24 @@ function gitGc(repo: StorageEntry): CheckpointGcEntry {
         GIT_CONFIG_SYSTEM: '/dev/null',
       },
     })
-    return { path: repo.path, bytes: sizeOfPath(repo.path) }
+    return { path: repo.path, bytes: await sizeOfPath(repo.path) }
   } catch (e) {
     return { ...repo, error: (e as Error).message }
   }
 }
 
-export function sweepTerminalState(
+export async function sweepTerminalState(
   root = terminalConfigRoot(),
   options: TerminalStateSweepOptions = {},
-): TerminalStateSweepReport {
+): Promise<TerminalStateSweepReport> {
   const dryRun = options.dryRun ?? true
   const cronWorktreesMaxBytes = options.cronWorktreesMaxBytes ?? DEFAULT_CRON_WORKTREES_MAX_BYTES
   const checkpointGcMinBytes = options.checkpointGcMinBytes ?? DEFAULT_CHECKPOINT_GC_MIN_BYTES
   const checkpointDir = join(root, 'checkpoints')
   const scratchDir = join(root, 'scratch')
-  const worktrees = planWorktrees(root, cronWorktreesMaxBytes)
-  const tmpObjects = findCheckpointTmpObjects(checkpointDir)
-  const gcRepos = checkpointRepos(checkpointDir, checkpointGcMinBytes)
+  const worktrees = await planWorktrees(root, cronWorktreesMaxBytes)
+  const tmpObjects = await findCheckpointTmpObjects(checkpointDir)
+  const gcRepos = await checkpointRepos(checkpointDir, checkpointGcMinBytes)
   const deletedWorktrees: StorageEntry[] = []
   const deletedTmpObjects: StorageEntry[] = []
   const completedGc: CheckpointGcEntry[] = []
@@ -253,15 +262,16 @@ export function sweepTerminalState(
   if (!dryRun) {
     // Resolve owners first — once the directory is gone, the link back to the
     // repo that registered it is gone too.
-    const owners = new Set(worktrees.planned.map((entry) => worktreeOwnerRepo(entry.path)))
+    const owners = new Set<string>()
+    for (const entry of worktrees.planned) owners.add(await worktreeOwnerRepo(entry.path))
     for (const entry of worktrees.planned) {
-      if (removeEntry(root, entry)) deletedWorktrees.push(entry)
+      if (await removeEntry(root, entry)) deletedWorktrees.push(entry)
     }
-    if (deletedWorktrees.length) pruneWorktreeOwners(owners)
+    if (deletedWorktrees.length) await pruneWorktreeOwners(owners)
     for (const entry of tmpObjects) {
-      if (removeEntry(root, entry)) deletedTmpObjects.push(entry)
+      if (await removeEntry(root, entry)) deletedTmpObjects.push(entry)
     }
-    for (const repo of gcRepos) completedGc.push(gitGc(repo))
+    for (const repo of gcRepos) completedGc.push(await gitGc(repo))
   }
 
   const reclaimableBytes =
@@ -271,7 +281,7 @@ export function sweepTerminalState(
   return {
     root,
     dryRun,
-    totalBytes: sizeOfPath(root),
+    totalBytes: await sizeOfPath(root),
     reclaimableBytes,
     reclaimedBytes:
       deletedWorktrees.reduce((sum, item) => sum + item.bytes, 0) +
@@ -284,23 +294,25 @@ export function sweepTerminalState(
       protectedRunning: worktrees.protectedRunning,
     },
     checkpoints: {
-      bytes: sizeOfPath(checkpointDir),
+      bytes: await sizeOfPath(checkpointDir),
       thresholdBytes: checkpointGcMinBytes,
       gc: { planned: gcRepos, completed: completedGc },
       tmpObjects: { planned: tmpObjects, deleted: deletedTmpObjects },
     },
     scratch: {
-      bytes: sizeOfPath(scratchDir),
+      bytes: await sizeOfPath(scratchDir),
       clearable: existsSync(scratchDir),
     },
   }
 }
 
-export function clearTerminalScratch(root = terminalConfigRoot()): ScratchClearReport {
+export async function clearTerminalScratch(
+  root = terminalConfigRoot(),
+): Promise<ScratchClearReport> {
   const scratchDir = join(root, 'scratch')
-  const bytes = sizeOfPath(scratchDir)
+  const bytes = await sizeOfPath(scratchDir)
   if (!existsSync(scratchDir)) return { path: scratchDir, bytes: 0, deleted: false }
   mkdirSync(root, { recursive: true })
-  rmSync(scratchDir, { recursive: true, force: true })
+  await rm(scratchDir, { recursive: true, force: true })
   return { path: scratchDir, bytes, deleted: !existsSync(scratchDir) }
 }
