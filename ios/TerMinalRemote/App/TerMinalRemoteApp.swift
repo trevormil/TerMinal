@@ -135,6 +135,16 @@ private struct PairedView: View {
             // view exists, so .onChange never fires — consume it once here.
             if let route = push.pendingRoute {
                 push.pendingRoute = nil
+                // On a cold launch this task can resolve while the window
+                // scene is still becoming key — presenting `.sheet(item:)`
+                // (the .thread route) that early is a known SwiftUI crash
+                // ("tried to present a view controller whose view is not in
+                // the window hierarchy"), and matches "opens to nowhere" /
+                // crashes only via a notification tap, never a warm tap. Give
+                // the initial TabView/window one beat to finish settling
+                // first. The .onChange path below needs no such delay — by
+                // the time it can fire, the app is already warm.
+                try? await Task.sleep(for: .milliseconds(400))
                 await follow(route)
             }
         }
