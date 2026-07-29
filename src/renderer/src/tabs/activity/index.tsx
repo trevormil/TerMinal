@@ -19,6 +19,8 @@ import {
   Info,
   Search,
   X,
+  ArrowLeft,
+  ArrowUpRight,
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
@@ -91,6 +93,15 @@ const KIND_LABEL: Record<ActivityKind, string> = {
 function reltime(ts: number): string {
   // The feed ticks constantly; a 10s floor stops the newest row flickering.
   return Date.now() - ts < 10_000 ? 'just now' : relativeTime(ts)
+}
+
+function fmtAbs(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 // Titles/details are free text composed at emit time and often already start
@@ -183,12 +194,11 @@ export function ActivityTab({
   const [kindFilter, setKindFilter] = useState<string>('all')
   const [query, setQuery] = useState('')
   const [, force] = useState(0) // re-tick relative times
-  // Which row is expanded (title/detail unclamped). JS-driven rather than a
-  // CSS group-hover toggle — line-clamp's -webkit-box display type combined
-  // with a hover-only class swap was unreliable in practice (rows stayed
-  // clamped on hover), so this makes "expanded or not" an explicit, provable
-  // state instead of something to debug in devtools per-row.
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  // The open event, if any — clicking a row pushes a full detail screen
+  // (title/detail unclamped, no ellipsis) with a Back button, same pattern as
+  // the iOS app's Inbox list -> detail. Rows stay clamped/compact in the list;
+  // nothing tries to expand in place anymore.
+  const [openId, setOpenId] = useState<string | null>(null)
   const newest = useRef<string>('') // id of the most recent event, for the live flash
 
   useEffect(() => {
@@ -224,10 +234,21 @@ export function ActivityTab({
       (kindFilter === 'all' || e.kind === kindFilter) &&
       (!q || `${e.title} ${e.detail || ''} ${e.repo || ''}`.toLowerCase().includes(q)),
   )
+  const openEvent = events.find((e) => e.id === openId) || null
 
   const clear = async () => {
     await window.gt.activity.clear()
     setEvents([])
+  }
+
+  if (openEvent) {
+    return (
+      <ActivityDetailScreen
+        event={openEvent}
+        onBack={() => setOpenId(null)}
+        onNavigate={() => navForEvent(openEvent)}
+      />
+    )
   }
 
   return (
@@ -318,26 +339,15 @@ export function ActivityTab({
                 const Icon = ICON[e.kind] || Info
                 const tone = activityTone(e.kind)
                 const isNew = e.id === newest.current
-                const hasNav = !!(e.runId || e.ref?.pr || e.ref?.ticket)
                 return (
                   <div
                     key={e.id}
-                    onClick={hasNav ? () => navForEvent(e) : undefined}
-                    onMouseEnter={() => setExpandedId(e.id)}
-                    onMouseLeave={() => setExpandedId((id) => (id === e.id ? null : id))}
-                    role={hasNav ? 'button' : undefined}
-                    title={
-                      hasNav
-                        ? e.runId
-                          ? 'Jump to this run'
-                          : e.ref?.pr
-                            ? 'Open this PR/MR'
-                            : 'Open this ticket'
-                        : undefined
-                    }
-                    className={`group relative flex gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03] ${
+                    onClick={() => setOpenId(e.id)}
+                    role="button"
+                    title="Open this activity"
+                    className={`group relative flex cursor-pointer gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03] ${
                       isNew ? 'gt-pop-in' : ''
-                    } ${hasNav ? 'cursor-pointer' : ''}`}
+                    }`}
                   >
                     {/* timeline rail: a continuous line with the kind node sitting on it */}
                     <div className="relative flex w-5 shrink-0 justify-center">
@@ -363,24 +373,21 @@ export function ActivityTab({
                           ? declutterDetail(e.detail, e.repo)
                           : e.detail
                         : ''
-                      const expanded = expandedId === e.id
-                      const clamp = expanded ? '' : 'line-clamp-2'
                       return (
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2">
-                            {/* line-clamp instead of truncate — nothing here is
-                                ever fully cut off with no way to read the rest;
-                                hovering the row reveals the full text. */}
-                            <span className={`${clamp} min-w-0 flex-1 break-words text-[13px] text-zinc-100`}>
-                              <InlineMd text={displayTitle} keepLineBreaks={expanded} />
+                            {/* Clamped preview only — click the row for the full
+                                content on its own screen (never truncated there). */}
+                            <span className="line-clamp-2 min-w-0 flex-1 break-words text-[13px] text-zinc-100">
+                              <InlineMd text={displayTitle} />
                             </span>
                             <span className="shrink-0 text-[10.5px] tabular-nums text-zinc-600">
                               {reltime(e.ts)}
                             </span>
                           </div>
                           {displayDetail && (
-                            <div className={`${clamp} break-words text-[11.5px] text-zinc-500`}>
-                              <InlineMd text={displayDetail} keepLineBreaks={expanded} />
+                            <div className="line-clamp-2 break-words text-[11.5px] text-zinc-500">
+                              <InlineMd text={displayDetail} />
                             </div>
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -406,6 +413,78 @@ export function ActivityTab({
             </div>
           ))
         )}
+      </div>
+    </div>
+  )
+}
+
+// Full-screen detail: click a row, land here — never a partial/clamped view of
+// this content. Mirrors the iOS app's Inbox list -> detail push, so the
+// pattern reads the same on both platforms.
+function ActivityDetailScreen({
+  event,
+  onBack,
+  onNavigate,
+}: {
+  event: ActivityEvent
+  onBack: () => void
+  onNavigate: () => void
+}) {
+  const Icon = ICON[event.kind] || Info
+  const tone = activityTone(event.kind)
+  const hasNav = !!(event.runId || event.ref?.pr || event.ref?.ticket)
+  const navLabel = event.runId ? 'Jump to run' : event.ref?.pr ? 'Open PR/MR' : 'Open ticket'
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+        >
+          <ArrowLeft size={14} strokeWidth={2} />
+          Activity
+        </button>
+        <div className="flex-1" />
+        {hasNav && (
+          <button
+            onClick={onNavigate}
+            className="flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11.5px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
+          >
+            {navLabel}
+            <ArrowUpRight size={12} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-3 flex items-center gap-2">
+            <span
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-[var(--gt-bg)] ${badgeClasses(tone)}`}
+            >
+              <Icon size={14} strokeWidth={2.25} />
+            </span>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wide ${badgeClasses(tone)}`}
+            >
+              {KIND_LABEL[event.kind] || event.kind}
+            </span>
+            {event.repo && (
+              <span className="truncate font-mono text-[11px] text-zinc-600">{event.repo}</span>
+            )}
+            <div className="flex-1" />
+            <span className="shrink-0 text-[11px] text-zinc-500" title={new Date(event.ts).toISOString()}>
+              {fmtAbs(event.ts)}
+            </span>
+          </div>
+          <div className="text-[15px] leading-relaxed text-zinc-100">
+            <InlineMd text={event.title} keepLineBreaks />
+          </div>
+          {event.detail && (
+            <div className="mt-3 text-[13px] leading-relaxed text-zinc-400">
+              <InlineMd text={event.detail} keepLineBreaks />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
