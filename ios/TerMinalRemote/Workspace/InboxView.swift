@@ -58,6 +58,10 @@ struct InboxView: View {
             // A real List (not a LazyVStack) so rows get native swipe actions.
             ScrollViewReader { proxy in
             List {
+                // List's row insets are tighter than the padded VStacks the
+                // other tabs use — without this the first card sits almost
+                // flush against the pinned header.
+                Color.clear.frame(height: 6).plainRow()
                 if let error = model.error {
                     GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                         .plainRow()
