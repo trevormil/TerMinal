@@ -260,6 +260,15 @@ export type ObservabilityQueryFilter = {
   model?: string
 }
 
+/** Mirror of DeliveryRecord in src/main/notify-log.ts. */
+export type DeliveryRecord = {
+  ts: number
+  channel: string
+  ok: boolean
+  title: string
+  error?: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -2141,6 +2150,13 @@ export type GtApi = {
       filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  inbox: {
+    snoozes: () => Promise<Record<string, number>>
+    snoozePresets: () => Promise<{ id: string; label: string; until: number }[]>
+    snooze: (id: string, until: number) => Promise<Record<string, number>>
+    unsnooze: (id: string) => Promise<Record<string, number>>
+    deliveryLog: (channel?: string, limit?: number) => Promise<DeliveryRecord[]>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>

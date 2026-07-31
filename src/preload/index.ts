@@ -475,6 +475,14 @@ const gt = {
       ipcRenderer.invoke('observability:index-query', query, arg, filter),
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
+  inbox: {
+    snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
+    snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),
+    snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
+    unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),
+    deliveryLog: (channel?: string, limit?: number) =>
+      ipcRenderer.invoke('inbox:delivery-log', channel, limit),
+  },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),
     session: (sessionId: string) => ipcRenderer.invoke('agentview:session', sessionId),
