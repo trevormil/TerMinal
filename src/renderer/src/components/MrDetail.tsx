@@ -23,13 +23,25 @@ import { Badge, CopyButton } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
+import { evaluateMergeGate } from '../lib/mergeGate'
+import { MergeReadyBadge } from './MergeReadyBadge'
+import { StackMap } from './StackMap'
+import { StackMergeButton } from './StackMergeButton'
 import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
 import { shouldRerun, RESIZE_DEBOUNCE_MS, COL_THRESHOLD } from '../lib/structuralReflow'
 import { useResizableWidth, ResizeHandle } from './ResizeHandle'
 import { stateTone, verdictTone, testTone, sevTone, ciTone } from '../lib/badges'
-import type { MrDetail, Finding, CiInfo, StructuralDiffResult, Screenshot } from '../lib/types'
+import type {
+  MrDetail,
+  Finding,
+  CiInfo,
+  Mr,
+  PrStack,
+  StructuralDiffResult,
+  Screenshot,
+} from '../lib/types'
 
 const HLJS_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -894,6 +906,11 @@ function Screenshots({ items }: { items: Screenshot[] }) {
 export function MrDetailView({
   iid,
   repoLabel,
+  repoRoot = '',
+  stacks = [],
+  canMergeStacks = false,
+  mrs = [],
+  onOpenMr,
   label = 'MR',
   sym = '!',
   onBack,
@@ -901,6 +918,16 @@ export function MrDetailView({
 }: {
   iid: number
   repoLabel: string
+  /** Needed by `gh stack merge`, which is repo-scoped. */
+  repoRoot?: string
+  /** GitHub native stacks for this repo. Empty when the preview hasn't rolled
+   *  out, which renders exactly as before. */
+  stacks?: PrStack[]
+  /** Whether the `gh stack` extension is installed — without it the cascade
+   *  cannot run, so the button must not be offered. */
+  canMergeStacks?: boolean
+  mrs?: Mr[]
+  onOpenMr?: (iid: number) => void
   label?: string
   sym?: string
   onBack: () => void
@@ -956,6 +983,11 @@ export function MrDetailView({
     </button>
   )
 
+  // Native stack this PR belongs to, or null. Null is the normal case: an
+  // unstacked PR, or a repo where the preview has not rolled out.
+  const stack = stacks.find((s) => s.layers.some((l) => l.iid === mr.iid)) || null
+  const mrByIid = new Map(mrs.map((m) => [m.iid, m]))
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
@@ -973,8 +1005,25 @@ export function MrDetailView({
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
         <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>
         {mr.draft && <Badge tone="warn">Draft</Badge>}
+        {mr.state === 'opened' && (
+          // The detail view HAS loaded findings, so this is the only place the
+          // full three-axis bar can be evaluated — and the only place the badge
+          // can legitimately read "Merge-ready".
+          <MergeReadyBadge
+            gate={evaluateMergeGate({ review: mr.reviewMeta, findings: mr.findings })}
+          />
+        )}
         <div className="flex items-center gap-1.5">
           <PrAgentActions pr={mr} sym={sym} />
+          {mr.state === 'opened' && stack && canMergeStacks && (
+            <StackMergeButton
+              stack={stack}
+              iid={mr.iid}
+              repoRoot={repoRoot}
+              sym={sym}
+              onMerged={onMerged ?? onBack}
+            />
+          )}
           {mr.state === 'opened' && (
             <MrMergeButton iid={mr.iid} sym={sym} onMerged={onMerged ?? onBack} />
           )}
@@ -1053,6 +1102,17 @@ export function MrDetailView({
           → {mr.targetBranch}
         </span>
       </div>
+      {stack && (
+        <div className="shrink-0 border-b border-[var(--gt-border)] px-4 py-2">
+          <StackMap
+            stack={stack}
+            currentIid={mr.iid}
+            mrByIid={mrByIid}
+            sym={sym}
+            onOpen={onOpenMr}
+          />
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === 'overview' && <Overview mr={mr} ci={ci} />}
         {view === 'review' && <ReviewBody mr={mr} />}

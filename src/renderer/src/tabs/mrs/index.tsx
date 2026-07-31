@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   GitPullRequest,
   TriangleAlert,
   GitBranch,
+  Layers,
   ArrowUpRight,
   ChevronDown,
   ChevronRight,
@@ -19,8 +20,20 @@ import { Badge } from '../../components/ui'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
+import { MergeReadyBadge } from '../../components/MergeReadyBadge'
 import { stateTone } from '../../lib/badges'
-import type { Tab, Mr, TabContext } from '../../lib/types'
+import {
+  applyRiskFilters,
+  countByTier,
+  isListMergeReady,
+  listMergeGate,
+  RISK_TIERS,
+  sortMrs,
+  type MrSort,
+  type RiskTier,
+} from '../../lib/mrRisk'
+import { StackMap } from '../../components/StackMap'
+import type { Tab, Mr, TabContext, PrStack } from '../../lib/types'
 
 // Three buckets, Tickets-style. Default-collapsed groups match the "closed +
 // icebox collapsed" UX of the Tickets tab. Each group's header reuses
@@ -107,6 +120,7 @@ function MrRow({
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-600">
+            {m.state === 'opened' && !m.draft && <MergeReadyBadge gate={listMergeGate(m)} />}
             {r ? (
               <span className="font-medium" style={{ color: verdictColor(r.verdict) }}>
                 {r.verdict}
@@ -178,12 +192,102 @@ function MrRow({
   )
 }
 
+/**
+ * Render the open queue with native stacks kept together.
+ *
+ * A stacked PR belongs to exactly one stack, so each stack is emitted once — at
+ * the position of its highest-ranked member under the active sort — with its
+ * layers bottom-to-top inside a bordered group. Unstacked PRs render exactly as
+ * before, which is also what every PR does when the preview has not rolled out.
+ */
+function renderOpenItems(
+  items: Mr[],
+  {
+    stacks,
+    sym,
+    mrByIid,
+    onOpen,
+    onMerged,
+  }: {
+    stacks: PrStack[]
+    sym: string
+    mrByIid: Map<number, Mr>
+    onOpen: (iid: number) => void
+    onMerged: () => void
+  },
+) {
+  const stackOf = new Map<number, PrStack>()
+  for (const st of stacks) for (const l of st.layers) stackOf.set(l.iid, st)
+
+  const out: ReactNode[] = []
+  const emitted = new Set<number>()
+  for (const m of items) {
+    const st = stackOf.get(m.iid)
+    if (!st) {
+      out.push(<MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />)
+      continue
+    }
+    if (emitted.has(st.id)) continue
+    emitted.add(st.id)
+    // Bottom-to-top: the layer that lands on the base branch first is listed
+    // first, which is the order you have to merge them in.
+    const layers = [...st.layers].sort((a, b) => a.position - b.position)
+    out.push(
+      <div
+        key={`stack-${st.id}`}
+        className="rounded-xl border border-[var(--gt-accent)]/30 bg-[var(--gt-accent)]/[0.04] p-2"
+      >
+        <div className="mb-1.5 flex items-center gap-1.5 px-1">
+          <Layers size={12} strokeWidth={2.2} className="text-[var(--gt-accent-light)]" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+            Stack
+          </span>
+          <span className="text-[10.5px] tabular-nums text-zinc-600">
+            {st.size} {st.size === 1 ? 'PR' : 'PRs'} → {st.baseRef}
+          </span>
+        </div>
+        <div className="space-y-2">
+          {layers.map((l) => {
+            const layerMr = mrByIid.get(l.iid)
+            if (!layerMr)
+              return (
+                <div
+                  key={l.iid}
+                  className="px-3 py-1.5 text-[11px] text-zinc-600"
+                  title="This layer is not in the current list (closed, or filtered out)."
+                >
+                  {l.position}/{st.size} · {sym}
+                  {l.iid} — not shown
+                </div>
+              )
+            return (
+              <div key={l.iid} className="flex items-start gap-2">
+                <span className="mt-4 w-8 shrink-0 text-right text-[10px] tabular-nums text-zinc-600">
+                  {l.position}/{st.size}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <MrRow m={layerMr} sym={sym} onOpen={onOpen} onMerged={onMerged} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>,
+    )
+  }
+  return out
+}
+
 function GroupedMrList({
   mrs,
   error,
   label,
   sym,
   cli,
+  stacks,
+  sort,
+  tiers,
+  readyOnly,
   collapsed,
   onToggle,
   onOpen,
@@ -194,6 +298,10 @@ function GroupedMrList({
   label: string
   sym: string
   cli: string
+  stacks: PrStack[]
+  sort: MrSort
+  tiers: Set<RiskTier>
+  readyOnly: boolean
   collapsed: Set<GroupId>
   onToggle: (id: GroupId) => void
   onOpen: (iid: number) => void
@@ -218,15 +326,24 @@ function GroupedMrList({
   if (mrs.length === 0)
     return <div className="p-6 text-[12px] text-zinc-600">No {label}s for this repo.</div>
 
-  // Sort opened MRs by risk first so high-risk reviews surface up top.
-  // Other groups (closed/merged) keep their original order.
-  const riskWeight = (r?: string) => (r === 'high' ? 0 : r === 'medium' ? 1 : r === 'low' ? 2 : 3)
+  // Built from the full list only for the stack MAP (which legitimately shows
+  // layers outside the current filter). The open-queue grouping uses a map of
+  // the filtered open items instead — see renderOpenItems — so a merged PR can
+  // never surface in the Open group with a live merge button.
+  const mrByIid = new Map(mrs.map((m) => [m.iid, m]))
+  // The open group is the review queue: it obeys the chips and the sort control
+  // (risk-first by default). Merged/closed keep their original order — triage
+  // filters make no sense once the decision has been made.
   const groups = GROUPS.map((g) => ({
     ...g,
     items:
       g.id === 'open'
-        ? [...mrs.filter((m) => g.match(m.state))].sort(
-            (a, b) => riskWeight(a.review?.riskTier) - riskWeight(b.review?.riskTier),
+        ? sortMrs(
+            applyRiskFilters(
+              mrs.filter((m) => g.match(m.state)),
+              { tiers, readyOnly },
+            ),
+            sort,
           )
         : mrs.filter((m) => g.match(m.state)),
   })).filter((g) => g.items.length > 0)
@@ -251,9 +368,17 @@ function GroupedMrList({
             </button>
             {isOpen && (
               <div className="space-y-2 p-4">
-                {g.items.map((m) => (
-                  <MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />
-                ))}
+                {g.id === 'open'
+                  ? renderOpenItems(g.items, {
+                      stacks,
+                      sym,
+                      mrByIid: new Map(g.items.map((m) => [m.iid, m])),
+                      onOpen,
+                      onMerged,
+                    })
+                  : g.items.map((m) => (
+                      <MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />
+                    ))}
               </div>
             )}
           </div>
@@ -268,28 +393,60 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
   const [error, setError] = useState<string | undefined>(undefined)
   const [selectedMrIid, setSelectedMrIid] = useState<number | null>(null)
   const [collapsed, setCollapsed] = useState<Set<GroupId>>(() => new Set(DEFAULT_COLLAPSED))
+  const [tiers, setTiers] = useState<Set<RiskTier>>(() => new Set())
+  const [readyOnly, setReadyOnly] = useState(false)
+  const [sort, setSort] = useState<MrSort>('risk')
+  // GitHub native stacks (preview). Absent everywhere it hasn't rolled out, in
+  // which case this stays empty and the list renders exactly as before.
+  const [stacks, setStacks] = useState<PrStack[]>([])
+  // `gh stack merge` needs the official extension. Probe once so we never offer
+  // a cascade the CLI cannot perform — otherwise the user finds out two clicks
+  // past a confirm, with a raw "unknown command" in the error slot.
+  const [canMergeStacks, setCanMergeStacks] = useState(false)
 
   const hasRemote = !!ctx.repoPath
   const label = ctx.forgeLabel
   const sym = ctx.forgeSym
   const cli = ctx.forgeKind === 'github' ? 'gh' : 'glab'
   const fullName = label === 'PR' ? 'Pull Requests' : 'Merge Requests'
-  const openCount = mrs ? mrs.filter((m) => m.state === 'opened').length : 0
+  const openMrs = mrs ? mrs.filter((m) => m.state === 'opened') : []
+  const openCount = openMrs.length
+  const tierCounts = countByTier(openMrs)
+  const readyCount = openMrs.filter(isListMergeReady).length
+  const toggleTier = (t: RiskTier) =>
+    setTiers((cur) => {
+      const next = new Set(cur)
+      next.has(t) ? next.delete(t) : next.add(t)
+      return next
+    })
   const toggleGroup = (id: GroupId) =>
     setCollapsed((c) => {
       const n = new Set(c)
       n.has(id) ? n.delete(id) : n.add(id)
       return n
     })
-  const refresh = () =>
-    window.gt.listMrs().then((r) => {
+  const refresh = () => {
+    // Stacks are best-effort and strictly additive: any failure (old gh, preview
+    // not rolled out, not authenticated) leaves the list untouched.
+    window.gt.stacks
+      .list(ctx.repoRoot, ctx.repoPath)
+      .then((r) => setStacks(r.stacks || []))
+      .catch(() => setStacks([]))
+    window.gt.stacks
+      .extension(ctx.repoRoot)
+      .then(setCanMergeStacks)
+      .catch(() => setCanMergeStacks(false))
+    return window.gt.listMrs().then((r) => {
       setMrs(r.mrs)
       setError(r.error)
     })
+  }
   useEffect(() => {
     setMrs(null)
     setError(undefined)
     setSelectedMrIid(null)
+    setStacks([])
+    setCanMergeStacks(false)
     if (!hasRemote) {
       setMrs([]) // no forge remote → nothing to fetch (e.g. a local-only repo)
       return
@@ -314,6 +471,11 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
       <MrDetailView
         iid={selectedMrIid}
         repoLabel={ctx.repoPath || 'repo'}
+        repoRoot={ctx.repoRoot}
+        stacks={stacks}
+        canMergeStacks={canMergeStacks}
+        mrs={mrs || []}
+        onOpenMr={setSelectedMrIid}
         label={label}
         sym={sym}
         onBack={() => setSelectedMrIid(null)}
@@ -339,6 +501,64 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
           </span>
         )}
       </div>
+      {hasRemote && openCount > 0 && (
+        <div className="flex h-9 shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-4">
+          <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-700">
+            Risk
+          </span>
+          {RISK_TIERS.map((t) => {
+            const on = tiers.has(t)
+            const n = tierCounts[t]
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTier(t)}
+                disabled={n === 0 && !on}
+                className={`h-6 rounded-md border px-1.5 text-[10.5px] font-semibold capitalize disabled:opacity-30 ${
+                  on
+                    ? 'border-transparent text-zinc-950'
+                    : 'border-[var(--gt-border)] bg-black/25 text-zinc-400 hover:text-zinc-200'
+                }`}
+                style={on ? { background: riskColor(t) } : undefined}
+              >
+                {t}
+                <span className={on ? 'ml-1 opacity-70' : 'ml-1 text-zinc-600'}>{n}</span>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setReadyOnly((v) => !v)}
+            title="Only PRs that clear the verdict and test axes of the merge bar. Findings are only loaded in the detail view — each row's badge says whether they were checked."
+            className={`h-6 rounded-md border px-1.5 text-[10.5px] font-semibold ${
+              readyOnly
+                ? 'border-[var(--gt-green)]/60 bg-[var(--gt-green)]/20 text-[var(--gt-green)]'
+                : 'border-[var(--gt-border)] bg-black/25 text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Merge-ready
+            <span className="ml-1 text-zinc-600">{readyCount}</span>
+          </button>
+          {(tiers.size > 0 || readyOnly) && (
+            <button
+              onClick={() => {
+                setTiers(new Set())
+                setReadyOnly(false)
+              }}
+              className="h-6 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] font-semibold text-zinc-500 hover:text-zinc-200"
+            >
+              Clear
+            </button>
+          )}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as MrSort)}
+            className="ml-auto h-6 rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 text-[10.5px] font-semibold text-zinc-400 outline-none"
+          >
+            <option value="risk">Sort: risk first</option>
+            <option value="number">Sort: newest</option>
+          </select>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!hasRemote ? (
           <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
@@ -352,6 +572,10 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             label={label}
             sym={sym}
             cli={cli}
+            stacks={stacks}
+            sort={sort}
+            tiers={tiers}
+            readyOnly={readyOnly}
             collapsed={collapsed}
             onToggle={toggleGroup}
             onOpen={setSelectedMrIid}
