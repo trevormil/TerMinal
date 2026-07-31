@@ -86,12 +86,10 @@ jobs:
       - name: Package
         run: bun run dist
 
-      # Advisory for now: packaging + install above are proven (release.yml runs
-      # the same steps at tag time), but launching a GUI app on a hosted runner
-      # is not. Flip continue-on-error off once this has been green on a handful
-      # of PRs.
+      # Blocking: verified on the hosted runner (the app opens 1 window and
+      # stays up in ~9s). If this ever goes flaky, fix the script rather than
+      # demoting the assertion — an unenforced smoke test is worse than none.
       - name: Launch the packaged app
-        continue-on-error: true
         run: scripts/ci/smoke-packaged-app.sh
 
   # Flags vulnerable or newly-risky dependencies introduced by a PR's diff.
