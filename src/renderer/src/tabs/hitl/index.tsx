@@ -1,11 +1,25 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, Mail, X, Trash2, ListChecks, SquareTerminal, Ticket } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Mail,
+  X,
+  Trash2,
+  ListChecks,
+  SquareTerminal,
+  Ticket,
+} from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
+import { ageColor, ageLabel, ageTierOf, untilLabel } from '../../lib/inboxAge'
+import { snoozePresets } from '../../../../shared/snooze'
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -119,6 +133,17 @@ export function InboxDrawer({
   const [items, setItems] = useState<HitlItem[] | null>(null)
   // One list, one axis: unread (bold) vs read. No archive.
   const [reading, setReading] = useState<string | null>(null)
+  // id → ms-epoch the item comes due again. Persisted in main (survives restart)
+  // and consulted by the alert dispatcher, so a snoozed item is silent too.
+  const [snoozes, setSnoozes] = useState<Record<string, number>>({})
+  // Presets are computed fresh on every open, never cached: fetched once at
+  // mount, "1 hour" is an absolute instant that silently drifts into the past
+  // on a long-running window, and snoozing to the past is a no-op.
+  const [presetsOpenedAt, setPresetsOpenedAt] = useState(0)
+  const presets = useMemo(() => snoozePresets(presetsOpenedAt || Date.now()), [presetsOpenedAt])
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [snoozeOpen, setSnoozeOpen] = useState(false)
+  const [showSnoozed, setShowSnoozed] = useState(false)
 
   // Merge local HITL with open items fanned out from every host (#14), so a run
   // that failed on a host and filed a block there shows here with a host badge.
@@ -131,13 +156,24 @@ export function InboxDrawer({
         .then((r) => r.items)
         .catch(() => [] as HitlItem[]),
     ]).then(([local, remote]) => setItems([...local, ...remote]))
+  const reloadSnoozes = () =>
+    window.gt.inbox
+      .snoozes()
+      .then(setSnoozes)
+      .catch(() => {})
   useEffect(() => {
     reload()
+    reloadSnoozes()
     // pick up newly auto-filed items (e.g. a failed cron) live
     const off = window.gt.activity.onEvent((ev) => {
       if (ev.kind === 'blocked' || ev.kind === 'task-complete') reload()
     })
-    const t = setInterval(reload, 15_000)
+    const t = setInterval(() => {
+      reload()
+      // Also re-reads snoozes, so an item that comes due reappears in the main
+      // list within one poll rather than waiting for a manual refresh.
+      reloadSnoozes()
+    }, 15_000)
     return () => {
       off()
       clearInterval(t)
@@ -152,8 +188,13 @@ export function InboxDrawer({
     .slice()
     .sort((a, b) => b.createdAt - a.createdAt)
   const isUnread = (h: HitlItem) => !h.readAt
-  const unread = all.filter(isUnread)
-  const shown = all
+  const now = Date.now()
+  const isSnoozed = (h: HitlItem) => (snoozes[h.id] || 0) > now
+  const snoozedItems = all.filter(isSnoozed)
+  // A snoozed item is off your plate: out of the list AND out of the unread
+  // count, or "ask me tomorrow" would still nag you today.
+  const shown = all.filter((h) => !isSnoozed(h))
+  const unread = shown.filter(isUnread)
 
   // Group ids by owning host — a remote item's readAt must persist on the host
   // that owns it (like resolve), or the 15s reload flips it back to unread.
@@ -195,6 +236,45 @@ export function InboxDrawer({
     setItems((prev) => (prev || []).filter((x) => x.id !== h.id))
     setReading(null)
     await window.gt.hitl.remove(h.id, h.hostId).catch(() => false)
+  }
+
+  const snooze = async (ids: string[], until: number) => {
+    setSnoozes((prev) => {
+      const next = { ...prev }
+      for (const id of ids) next[id] = until
+      return next
+    })
+    setSelected(new Set())
+    setSnoozeOpen(false)
+    setReading(null)
+    for (const id of ids) await window.gt.inbox.snooze(id, until).catch(() => ({}))
+  }
+  const unsnooze = async (id: string) => {
+    setSnoozes((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    await window.gt.inbox.unsnooze(id).catch(() => ({}))
+  }
+
+  const toggleSelect = (id: string) =>
+    setSelected((cur) => {
+      const next = new Set(cur)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  const selectedIds = [...selected].filter((id) => shown.some((h) => h.id === id))
+  // Bulk resolve is the "clear the queue" gesture: mark read, then resolve each
+  // on its owning host so a remote item doesn't bounce back on the next poll.
+  const resolveSelected = async () => {
+    const targets = shown.filter((h) => selectedIds.includes(h.id))
+    if (!targets.length) return
+    setItems((prev) => (prev || []).filter((h) => !selectedIds.includes(h.id)))
+    setSelected(new Set())
+    await Promise.all(
+      targets.map((h) => window.gt.hitl.resolve(h.id, true, h.hostId).catch(() => false)),
+    )
   }
 
   // Mail-client model: the list is the inbox; opening an item replaces the
@@ -300,6 +380,31 @@ export function InboxDrawer({
             </button>
           )}
           <div className="flex-1" />
+          <div className="relative">
+            <button
+              onClick={() => {
+                setPresetsOpenedAt(Date.now())
+                setSnoozeOpen((v) => !v)
+              }}
+              className={ACTION_BTN}
+            >
+              <Clock size={11} strokeWidth={2} />
+              Snooze
+            </button>
+            {snoozeOpen && (
+              <div className="absolute bottom-9 right-0 z-20 w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-lg">
+                {presets.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => snooze([h.id], p.until)}
+                    className="block w-full px-2.5 py-1.5 text-left text-[11.5px] text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {h.readAt ? (
             <button onClick={() => markUnread(h)} title="Mark unread" className={ACTION_BTN}>
               <Mail size={11} strokeWidth={2} />
@@ -341,7 +446,53 @@ export function InboxDrawer({
           one global inbox · everything that needs you
         </span>
         <div className="flex-1" />
-        {unread.length > 0 && (
+        {selectedIds.length > 0 && (
+          <>
+            <span className="text-[10.5px] font-semibold text-[var(--gt-accent-light)]">
+              {selectedIds.length} selected
+            </span>
+            <button onClick={() => markRead(selectedIds)} className={ACTION_BTN}>
+              <Check size={11} strokeWidth={2.5} />
+              Read
+            </button>
+            <button onClick={resolveSelected} className={ACTION_BTN}>
+              <Check size={11} strokeWidth={2.5} />
+              Resolve
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setPresetsOpenedAt(Date.now())
+                  setSnoozeOpen((v) => !v)
+                }}
+                className={ACTION_BTN}
+              >
+                <Clock size={11} strokeWidth={2} />
+                Snooze
+              </button>
+              {snoozeOpen && (
+                <div className="absolute right-0 top-8 z-20 w-40 overflow-hidden rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-lg">
+                  {presets.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => snooze(selectedIds, p.until)}
+                      className="block w-full px-2.5 py-1.5 text-left text-[11.5px] text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-[10.5px] text-zinc-600 hover:text-zinc-300"
+            >
+              Clear
+            </button>
+          </>
+        )}
+        {selectedIds.length === 0 && unread.length > 0 && (
           <button
             onClick={markAllRead}
             title="Mark every unread item read"
@@ -350,7 +501,7 @@ export function InboxDrawer({
             Mark all read
           </button>
         )}
-        {unread.length > 0 && (
+        {selectedIds.length === 0 && unread.length > 0 && (
           <span className="rounded-full bg-[var(--gt-accent)]/25 px-2 py-0.5 text-[10px] font-bold text-[var(--gt-accent-light)]">
             {unread.length} unread
           </span>
@@ -381,47 +532,115 @@ export function InboxDrawer({
             {shown.map((h) => {
               const unreadRow = isUnread(h)
               const snippet = snippetOf(h)
+              const tier = ageTierOf(h.createdAt, now)
+              const tierColor = ageColor(tier)
+              const picked = selected.has(h.id)
               return (
-                <button
+                <div
                   key={h.id}
-                  onClick={() => {
-                    setReading(h.id)
-                    if (unreadRow) markRead([h.id])
-                  }}
-                  className="group flex w-full cursor-pointer items-start gap-2.5 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.04]"
+                  className={`group flex w-full items-start gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-white/[0.04] ${
+                    picked ? 'bg-[var(--gt-accent)]/10' : ''
+                  }`}
+                  // Aging stripe: the item's whole left edge reddens as it sits.
+                  style={tierColor ? { boxShadow: `inset 2px 0 0 0 ${tierColor}` } : undefined}
                 >
-                  <span
-                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}
+                  <input
+                    type="checkbox"
+                    checked={picked}
+                    onChange={() => toggleSelect(h.id)}
+                    title="Select for bulk actions"
+                    className={`mt-[5px] h-3 w-3 shrink-0 cursor-pointer accent-[var(--gt-accent)] ${
+                      picked || selectedIds.length > 0
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100'
+                    }`}
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={`min-w-0 flex-1 truncate text-[12.5px] ${unreadRow ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
-                      >
-                        {h.title}
+                  <button
+                    onClick={() => {
+                      setReading(h.id)
+                      if (unreadRow) markRead([h.id])
+                    }}
+                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 text-left"
+                  >
+                    <span
+                      className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`min-w-0 flex-1 truncate text-[12.5px] ${unreadRow ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
+                        >
+                          {h.title}
+                        </span>
+                        <SeverityTag sev={severityOf(h)} />
+                        <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                        {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
+                          <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
+                            x{h.occurrenceCount}
+                          </span>
+                        )}
+                        <span
+                          title={ageLabel(tier)}
+                          className="shrink-0 text-[10px] font-medium tabular-nums"
+                          style={{ color: tierColor || 'var(--color-zinc-600, #52525b)' }}
+                        >
+                          {reltime(h.createdAt)}
+                        </span>
                       </span>
-                      <SeverityTag sev={severityOf(h)} />
-                      <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
-                      {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
-                        <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
-                          x{h.occurrenceCount}
+                      {(snippet || h.repo) && (
+                        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
+                          {h.repo && <span className="shrink-0 text-zinc-500">{h.repo}</span>}
+                          {h.repo && snippet && <span>—</span>}
+                          <span className="truncate">{snippet}</span>
                         </span>
                       )}
-                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
-                        {reltime(h.createdAt)}
-                      </span>
                     </span>
-                    {(snippet || h.repo) && (
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
-                        {h.repo && <span className="shrink-0 text-zinc-500">{h.repo}</span>}
-                        {h.repo && snippet && <span>—</span>}
-                        <span className="truncate">{snippet}</span>
-                      </span>
-                    )}
-                  </span>
-                </button>
+                  </button>
+                </div>
               )
             })}
+          </div>
+        )}
+
+        {snoozedItems.length > 0 && (
+          <div className="border-t border-[var(--gt-border)]">
+            <button
+              onClick={() => setShowSnoozed((v) => !v)}
+              className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+            >
+              {showSnoozed ? (
+                <ChevronDown size={12} strokeWidth={2} />
+              ) : (
+                <ChevronRight size={12} strokeWidth={2} />
+              )}
+              <Clock size={11} strokeWidth={2} />
+              Snoozed
+              <span className="tabular-nums text-zinc-600">{snoozedItems.length}</span>
+            </button>
+            {showSnoozed && (
+              <div className="divide-y divide-[var(--gt-border)]/60">
+                {snoozedItems.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left opacity-70"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-400">
+                      {h.title}
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                      due in {untilLabel(snoozes[h.id], now)}
+                    </span>
+                    <button
+                      onClick={() => unsnooze(h.id)}
+                      title="Bring this back to the inbox now"
+                      className="shrink-0 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                    >
+                      Wake
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -436,8 +655,17 @@ const tab: Tab = {
   order: 4,
   appliesTo: () => true, // global inbox — always available
   // Badge the UNREAD count — a seen-but-unresolved item shouldn't keep nagging.
-  badge: async (gt) =>
-    (await gt.hitl.list()).filter((h) => h.status === 'open' && !h.readAt).length,
+  // Snoozed items are off your plate, so they must not keep the badge lit —
+  // otherwise "ask me tomorrow" still nags you today.
+  badge: async (gt) => {
+    const [items, snoozes] = await Promise.all([
+      gt.hitl.list(),
+      gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),
+    ])
+    const now = Date.now()
+    return items.filter((h) => h.status === 'open' && !h.readAt && !((snoozes[h.id] || 0) > now))
+      .length
+  },
   Component: InboxDrawer,
 }
 export default tab

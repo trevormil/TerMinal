@@ -74,6 +74,20 @@ export function notifyKindFor(ev: Pick<AlertSource, 'kind' | 'title'>): NotifyKi
 
 const message = (title: string, detail?: string) => (detail ? `${title} — ${detail}` : title)
 
+/**
+ * Turn a non-2xx HTTP response into a rejection.
+ *
+ * `fetch` only rejects on transport failure, so a revoked Telegram token (401)
+ * or a dead webhook (404) resolved normally and was recorded as a SUCCESSFUL
+ * delivery — the delivery log could not detect the exact failure it exists to
+ * catch. Rejecting routes it through the same path as any other channel error.
+ */
+async function assertDelivered(res: Response): Promise<undefined> {
+  if (res.ok) return undefined
+  const body = await res.text().catch(() => '')
+  throw new Error(`HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`)
+}
+
 // --- snooze gate + delivery recorder ----------------------------------------
 //
 // Both are settable hooks with inert defaults rather than direct imports: this
@@ -88,7 +102,12 @@ export function setSnoozeGate(fn: (hitlId: string) => boolean): void {
   snoozeGate = fn
 }
 
-export type DeliveryOutcome = { channel: NotifyChannelId; ok: boolean; title: string; error?: string }
+export type DeliveryOutcome = {
+  channel: NotifyChannelId
+  ok: boolean
+  title: string
+  error?: string
+}
 
 let deliveryRecorder: (outcome: DeliveryOutcome) => void = () => {}
 
@@ -199,7 +218,7 @@ export function createTelegramChannel(
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(telegramSendBody(telegram.chatId, kind, title, detail, refs)),
           signal: AbortSignal.timeout(8000),
-        }).then(() => undefined)
+        }).then(assertDelivered)
       }
       if (!existsSync(scriptPath)) return // no native config + no script → skip silently
       spawnFn(scriptPath, [`--kind=${kind}`, message(title, detail)], { stdio: 'ignore' }).unref()
@@ -320,7 +339,7 @@ export function createWebhookChannel(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(webhookPayload(kind, title, detail, refs)),
         signal: AbortSignal.timeout(8000),
-      }).then(() => undefined)
+      }).then(assertDelivered)
     },
   }
 }
