@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readFileSync, existsSync } from 'node:fs'
 import { configPath } from './config-dir'
+import { withFileLock, writeJsonAtomic } from './atomic-write'
 
 // Kill-switch / circuit-breaker registry. A scheduleId in this list is
 // skipped by bin/terminal-cron at run time. Headless runner writes here when
@@ -53,9 +53,7 @@ function readStored(): Stored {
 
 function writeStored(s: Stored): void {
   try {
-    const file = disabledFile()
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, JSON.stringify({ scheduleIds: s.ids, reasons: s.reasons }, null, 2))
+    writeJsonAtomic(disabledFile(), { scheduleIds: s.ids, reasons: s.reasons })
   } catch {
     /* best effort — the runner re-creates as needed */
   }
@@ -93,11 +91,17 @@ function apply(s: Stored, id: string, disabled: boolean, reason?: string, at = D
   }
 }
 
+// Read-modify-write under the SAME advisory lock bin/terminal-cron takes on
+// this file (`<file>.lock`, identical protocol). Unlocked, a torn write reads
+// back as "nothing disabled" and every paused schedule fires. The state is
+// re-read INSIDE the lock — a snapshot taken before acquiring it can be stale.
 export function setDisabled(id: string, disabled: boolean, reason?: string): string[] {
-  const s = readStored()
-  apply(s, id, disabled, reason)
-  writeStored(s)
-  return s.ids
+  return withFileLock(disabledFile(), () => {
+    const s = readStored()
+    apply(s, id, disabled, reason)
+    writeStored(s)
+    return s.ids
+  })
 }
 
 // Bulk variant. Lets the Schedules tab's "Pause all" button kill-switch every
@@ -105,9 +109,11 @@ export function setDisabled(id: string, disabled: boolean, reason?: string): str
 // The runner re-reads this file every fire, so paused state takes effect on
 // the next launchd tick without an app/launchd restart.
 export function setAllDisabled(ids: string[], disabled: boolean, reason?: string): string[] {
-  const s = readStored()
-  const at = Date.now()
-  for (const id of ids) apply(s, id, disabled, reason, at)
-  writeStored(s)
-  return s.ids
+  return withFileLock(disabledFile(), () => {
+    const s = readStored()
+    const at = Date.now()
+    for (const id of ids) apply(s, id, disabled, reason, at)
+    writeStored(s)
+    return s.ids
+  })
 }

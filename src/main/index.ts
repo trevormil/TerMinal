@@ -92,7 +92,10 @@ import {
   type ObservabilityIndexQueryId,
   type ObservabilityQueryFilter,
 } from './observability-index'
+import { registerAgentInsightsIpc } from './ipc/agent-insights'
 import { registerInboxIpc } from './ipc/inbox'
+import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
+import { registerSessionSearchIpc } from './ipc/session-search'
 import { registerStacksIpc } from './ipc/stacks'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import {
@@ -188,6 +191,7 @@ import {
   countGitReposOneLevel,
   pickDensestRoot,
   CANDIDATE_ROOT_NAMES,
+  type Settings,
   type SettingsPatch,
   type RemotePlatform,
   type DaemonCfg,
@@ -1731,6 +1735,9 @@ const bridgeDeps: BridgeDeps = {
         // Required to fetch the log — the store can't be derived from the id.
         source: r.source,
         hostId: r.hostId,
+        // The outcome side-car listAllRuns() already joined. Without this the
+        // phone's run-summary half renders nothing.
+        summary: r.summary,
       }))
   },
 
@@ -2113,7 +2120,24 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   // The renderer now holds masks where secrets used to be. If one is echoed back
   // (a form that re-submits every field, say), persisting it would overwrite a
   // real credential with '••••••••'. Strip those before patching.
-  const next = patchSettings(stripMaskedSecrets(patch))
+  //
+  // patchSettings THROWS on a corrupt settings.json (it quarantines the file
+  // rather than overwriting real config with defaults). Surface that in the
+  // Activity feed and hand back the unchanged settings — an uncaught throw here
+  // is an unhandled rejection in the renderer and the user sees nothing at all.
+  let next: Settings
+  try {
+    next = patchSettings(stripMaskedSecrets(patch))
+  } catch (e) {
+    emitActivity({
+      kind: 'blocked',
+      title: 'Settings not saved',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+    // Masked for the same reason settings:get is — the renderer must never
+    // receive a real credential back, least of all on the failure path.
+    return maskSettingsSecrets(before)
+  }
   // react when the AFK-control toggle actually flips
   if (next.telegram.control !== before.telegram.control) {
     markTelegramControlEnabled(next.telegram.control)
@@ -2135,7 +2159,10 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   if (next.bridge.enabled !== before.bridge.enabled || next.bridge.port !== before.bridge.port) {
     void applyBridgeSetting()
   }
-  return next
+  // Mask on the way back out too. The renderer feeds this straight into its
+  // settings state, so returning raw `next` would both leak cleartext secrets
+  // and drop `secretsSet` — making all five secret fields render "not set".
+  return maskSettingsSecrets(next)
 })
 ipcMain.handle('settings:remote-probe', async (_e, hostId: string) => {
   const host = readSettings().remoteHosts.find((h) => h.id === hostId)
@@ -3943,6 +3970,17 @@ registerInboxIpc()
 // GitHub native stacked PRs. Reads only; degrades to no stacks everywhere the
 // preview has not rolled out.
 registerStacksIpc()
+// Agent scorecards, the disabled roster with WHY/WHEN, and manual memory
+// compaction. Unregistered, the Agents tab's reliability column is empty and
+// a circuit-broken agent can never be re-enabled from the UI.
+registerAgentInsightsIpc()
+// Repo-widget trust denials. Unregistered, "don't trust this repo" is silently
+// forgotten and the prompt re-appears on every session switch.
+registerRepoTrustDenialIpc(ipcMain)
+// Full-text transcript search for the Sessions tab. `thisRepoOnly` scopes to
+// whichever repo is currently active, the same accessor the rest of the
+// repo-scoped handlers use.
+registerSessionSearchIpc({ cwd: () => activeDaemon().repoRoot() })
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {
