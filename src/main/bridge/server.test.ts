@@ -739,6 +739,65 @@ describe('monitors', () => {
     const empty = await fetch(`${(await harness()).url}/v1/activity`, { headers: auth })
     expect((await empty.json()).activity).toEqual([])
   })
+
+  it('GET /v1/briefing returns the briefing and requires auth', async () => {
+    const briefing = {
+      date: '2026-07-31',
+      path: '/x/2026-07-31.md',
+      status: 'ok',
+      summary: 'Two PRs opened overnight.',
+      items: [{ id: 'pr-1', kind: 'pr', title: 'Backfill tests' }],
+    }
+    const h = await harness({ briefing: () => briefing })
+    expect((await fetch(`${h.url}/v1/briefing`)).status).toBe(401)
+    const res = await fetch(`${h.url}/v1/briefing`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).briefing).toEqual(briefing)
+  })
+
+  it('GET /v1/briefing is 200 with briefing:null when none exists', async () => {
+    // NOT a 404: BridgeClient maps 404 to sessionGone, which would surface
+    // "that session is no longer registered" on a normal no-briefing-yet day.
+    const res = await fetch(`${(await harness()).url}/v1/briefing`, { headers: auth })
+    expect(res.status).toBe(200)
+    expect((await res.json()).briefing).toBeNull()
+  })
+
+  it('POST /v1/briefing/act forwards a verdict and validates its body', async () => {
+    const calls: unknown[] = []
+    const h = await harness({
+      briefingAct: (date: string, itemId: string, verdict: string) => {
+        calls.push([date, itemId, verdict])
+        return { ok: true as const }
+      },
+    })
+    expect((await fetch(`${h.url}/v1/briefing/act`, { method: 'POST' })).status).toBe(401)
+
+    const ok = await fetch(`${h.url}/v1/briefing/act`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ date: '2026-07-31', itemId: 'idea-1', verdict: 'dismissed' }),
+    })
+    expect(ok.status).toBe(200)
+    expect(calls).toEqual([['2026-07-31', 'idea-1', 'dismissed']])
+
+    const bad = await fetch(`${h.url}/v1/briefing/act`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ date: '2026-07-31' }),
+    })
+    expect(bad.status).toBe(400)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('POST /v1/briefing/act is 501 when the dep is unwired', async () => {
+    const res = await fetch(`${(await harness()).url}/v1/briefing/act`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ date: '2026-07-31', itemId: 'idea-1', verdict: 'dismissed' }),
+    })
+    expect(res.status).toBe(501)
+  })
 })
 
 describe('workspace path authorization', () => {

@@ -87,6 +87,16 @@ export type BridgeDeps = {
   monitors?(): unknown[]
   /** The global activity feed — recent events across every repo/session. */
   activity?(): unknown[]
+  /** Today's morning briefing, or null when none has been generated. The
+   *  highest-value AFK surface: it is the one artifact that answers "what did
+   *  the overnight agents do" without opening five tabs. */
+  briefing?(): unknown | null
+  /** Record a Promote/Dismiss verdict from the phone. */
+  briefingAct?(
+    date: string,
+    itemId: string,
+    verdict: string,
+  ): { ok: true } | { ok: false; error: string }
   /** Resolve one HITL item through the app's existing write path. */
   resolveHitl?(id: string, resolved: boolean): boolean
   /** Mark HITL items read (viewed on the phone). */
@@ -442,6 +452,47 @@ export function createBridgeHandler(
       } catch (e) {
         json(res, 500, { error: (e as Error).message })
       }
+      return
+    }
+
+    // Today's morning briefing. `briefing: null` (not a 404) when none has been
+    // generated, so the phone can render "no briefing yet" without treating it
+    // as an error — a fresh install has no briefing and that is normal.
+    if (req.method === 'GET' && url.pathname === '/v1/briefing') {
+      try {
+        json(res, 200, { briefing: deps.briefing?.() ?? null })
+      } catch (e) {
+        json(res, 500, { error: (e as Error).message })
+      }
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/briefing/act') {
+      if (!deps.briefingAct) {
+        json(res, 501, { error: 'briefing verdicts not available' })
+        return
+      }
+      readBody(req)
+        .then((raw) => {
+          let date = ''
+          let itemId = ''
+          let verdict = ''
+          try {
+            const p = JSON.parse(raw || '{}') as Record<string, unknown>
+            date = typeof p.date === 'string' ? p.date : ''
+            itemId = typeof p.itemId === 'string' ? p.itemId : ''
+            verdict = typeof p.verdict === 'string' ? p.verdict : ''
+          } catch {
+            /* fall through to the validation below */
+          }
+          if (!date || !itemId || !verdict) {
+            json(res, 400, { error: 'date, itemId and verdict are required' })
+            return
+          }
+          const r = deps.briefingAct!(date, itemId, verdict)
+          json(res, r.ok ? 200 : 400, r)
+        })
+        .catch((e: Error) => json(res, 500, { error: e.message }))
       return
     }
 

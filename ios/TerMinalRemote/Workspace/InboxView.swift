@@ -52,12 +52,19 @@ struct InboxView: View {
 
     private var shown: [HitlItem] { model.items }
 
+    /// The morning briefing rides the Inbox rather than taking a sixth tab —
+    /// same call the desktop made, and iOS would bury a sixth tab under "More".
+    @State private var briefing: BriefingViewModel?
+
     var body: some View {
         ZStack {
             GT.bg.ignoresSafeArea()
             // A real List (not a LazyVStack) so rows get native swipe actions.
             ScrollViewReader { proxy in
             List {
+                if let briefing {
+                    BriefingSection(model: briefing).plainRow()
+                }
                 if let error = model.error {
                     GTPanel { Text(error).font(GT.sans(12)).foregroundStyle(GT.yellow) }
                         .plainRow()
@@ -111,6 +118,11 @@ struct InboxView: View {
                             }
                         }
                 }
+            }
+            .task {
+                // Built here, not injected, so the app root stays unchanged and
+                // the briefing costs nothing until the Inbox tab is opened.
+                if briefing == nil { briefing = BriefingViewModel(client: model.feed.client) }
             }
             .onChange(of: focusedId) { _, id in scrollTo(id, proxy) }
             .onChange(of: model.items.count) { _, _ in scrollTo(focusedId, proxy) }

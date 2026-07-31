@@ -263,6 +263,27 @@ actor BridgeClient {
         return try JSONDecoder().decode(Envelope.self, from: try await get("v1/activity")).activity
     }
 
+    /// Today's morning briefing, or nil when none has been generated. The Mac
+    /// answers 200 with `briefing: null` rather than 404 on a no-briefing day,
+    /// so a fresh install reads as "nothing yet" and not as an error.
+    func briefing() async throws -> Briefing? {
+        struct Envelope: Decodable { let briefing: Briefing? }
+        return try JSONDecoder().decode(Envelope.self, from: try await get("v1/briefing")).briefing
+    }
+
+    /// Record a Promote/Dismiss verdict from the phone. Dismissing a proposal
+    /// teaches the producing agent never to propose it again, so this is a real
+    /// write — not a local UI toggle.
+    func actOnBriefing(date: String, itemId: String, verdict: String) async throws {
+        struct Body: Encodable {
+            let date: String
+            let itemId: String
+            let verdict: String
+        }
+        try await post(
+            "v1/briefing/act", body: Body(date: date, itemId: itemId, verdict: verdict))
+    }
+
     // ---- drill-downs: full readable content -----------------------------
 
     func ticket(repo: String, slug: String) async throws -> WsTicketDetail {
