@@ -92,12 +92,53 @@ describe('parseBriefing', () => {
     expect(b.items[2].ledgerKey).toBeUndefined()
   })
 
-  test('item ids are stable across reparses so verdicts survive', async () => {
+  test('ids are unique within a briefing', async () => {
+    const { parseBriefing } = await import('./briefings')
+    const b = parseBriefing(SAMPLE, '2026-07-31', '/x')
+    expect(new Set(b.items.map((i) => i.id)).size).toBe(3)
+  })
+
+  test('an item keeps its id when OTHER items are inserted above it', async () => {
+    // The real hazard, and the reason ordinal ids are wrong: a forced re-run
+    // reorders the list, `pr-2` now names a different item, and a verdict
+    // recorded yesterday silently lands on the wrong row. If that row carried a
+    // ledgerKey, Dismiss would then write the WRONG key — permanently
+    // suppressing an idea the human never rejected, with no audit trail.
+    const { parseBriefing } = await import('./briefings')
+    const before = parseBriefing(SAMPLE, '2026-07-31', '/x')
+
+    const withExtra = SAMPLE.replace(
+      '## Items\n',
+      `## Items
+
+### [pr] A brand new PR that landed first
+- agent: coverage
+- repo: TerMinal
+`,
+    )
+    const after = parseBriefing(withExtra, '2026-07-31', '/x')
+    expect(after.items).toHaveLength(4)
+
+    // Every item that existed before must still carry the same id.
+    for (const old of before.items) {
+      const match = after.items.find((i) => i.title === old.title)
+      expect(match).toBeTruthy()
+      expect(match!.id).toBe(old.id)
+    }
+  })
+
+  test('ids are derived from the title, so they survive a reorder', async () => {
     const { parseBriefing } = await import('./briefings')
     const a = parseBriefing(SAMPLE, '2026-07-31', '/x')
-    const b = parseBriefing(SAMPLE, '2026-07-31', '/x')
-    expect(a.items.map((i) => i.id)).toEqual(b.items.map((i) => i.id))
-    expect(new Set(a.items.map((i) => i.id)).size).toBe(3)
+    // Same three items, reversed order in the file.
+    const blocks = SAMPLE.split('### ').slice(1).reverse()
+    const reordered =
+      SAMPLE.slice(0, SAMPLE.indexOf('### ')) + blocks.map((b) => `### ${b}`).join('')
+    const b = parseBriefing(reordered, '2026-07-31', '/x')
+
+    for (const item of a.items) {
+      expect(b.items.find((i) => i.title === item.title)!.id).toBe(item.id)
+    }
   })
 
   test('an unknown [kind] tag degrades to note rather than dropping the item', async () => {
@@ -170,7 +211,7 @@ describe('actOnBriefingItem', () => {
     expect(r.ok).toBe(true)
 
     const ledger = JSON.parse(
-      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.json'), 'utf8'),
+      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.dismissed.json'), 'utf8'),
     )
     expect(ledger.dismissed).toHaveLength(1)
     expect(ledger.dismissed[0].key).toBe('workspace-daemon-cache-invalidation')
@@ -180,17 +221,13 @@ describe('actOnBriefingItem', () => {
     expect(ledger.proposedIdeas).toBeUndefined()
   })
 
-  test('dismiss preserves pre-existing ledger content instead of clobbering it', async () => {
+  test('dismiss appends to existing dismissals without clobbering them', async () => {
     const { briefings, agentState } = tempRoot()
     writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
     mkdirSync(join(agentState, 'TerMinal'), { recursive: true })
     writeFileSync(
-      join(agentState, 'TerMinal', 'ticket-ideas.json'),
-      JSON.stringify({
-        lastScannedSha: 'abc123',
-        proposedIdeas: [{ key: 'workspace-daemon-cache-invalidation', ticket: '0130', at: 1 }],
-        dismissed: [{ key: 'older-thing', at: 1 }],
-      }),
+      join(agentState, 'TerMinal', 'ticket-ideas.dismissed.json'),
+      JSON.stringify({ dismissed: [{ key: 'older-thing', at: 1 }] }),
     )
     const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-e`)
     const idea = latestBriefing()!.items.find(
@@ -199,14 +236,36 @@ describe('actOnBriefingItem', () => {
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
 
     const ledger = JSON.parse(
-      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.json'), 'utf8'),
+      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.dismissed.json'), 'utf8'),
     )
-    expect(ledger.lastScannedSha).toBe('abc123')
-    expect(ledger.proposedIdeas).toHaveLength(1)
     expect(ledger.dismissed.map((d: { key: string }) => d.key)).toEqual([
       'older-thing',
       'workspace-daemon-cache-invalidation',
     ])
+  })
+
+  test("the app NEVER writes the agent's own state file", async () => {
+    // The whole point of the two-file split: both sides read-modify-write the
+    // whole document, so sharing a file means a 04:00 run and a 04:00 Dismiss
+    // silently revert each other — potentially rolling back lastScannedSha.
+    const { briefings, agentState } = tempRoot()
+    writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
+    mkdirSync(join(agentState, 'TerMinal'), { recursive: true })
+    const agentFile = join(agentState, 'TerMinal', 'ticket-ideas.json')
+    const agentOwned = JSON.stringify({
+      lastScannedSha: 'abc123',
+      proposedIdeas: [{ key: 'workspace-daemon-cache-invalidation', ticket: '0130', at: 1 }],
+    })
+    writeFileSync(agentFile, agentOwned)
+
+    const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-e2`)
+    const idea = latestBriefing()!.items.find(
+      (i: { kind: string; id: string }) => i.kind === 'idea',
+    )!
+    actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
+
+    // Byte-identical: not merely "the fields survived", but "never touched".
+    expect(readFileSync(agentFile, 'utf8')).toBe(agentOwned)
   })
 
   test('dismissing the same key twice does not double-append', async () => {
@@ -219,7 +278,7 @@ describe('actOnBriefingItem', () => {
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
     const ledger = JSON.parse(
-      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.json'), 'utf8'),
+      readFileSync(join(agentState, 'TerMinal', 'ticket-ideas.dismissed.json'), 'utf8'),
     )
     expect(ledger.dismissed).toHaveLength(1)
   })
@@ -231,7 +290,9 @@ describe('actOnBriefingItem', () => {
     const run = latestBriefing()!.items.find((i: { kind: string; id: string }) => i.kind === 'run')!
     expect(actOnBriefingItem('2026-07-31', run.id, 'dismissed').ok).toBe(true)
     // deps-quality has no ledgerKey on this item, so no ledger file is created.
-    expect(() => readFileSync(join(agentState, 'beacon', 'deps-quality.json'), 'utf8')).toThrow()
+    expect(() =>
+      readFileSync(join(agentState, 'beacon', 'deps-quality.dismissed.json'), 'utf8'),
+    ).toThrow()
   })
 
   test('verdicts persist in a sidecar and are reflected on the next read', async () => {
@@ -258,6 +319,23 @@ describe('actOnBriefingItem', () => {
     const mod = await import(`./briefings.ts?t=${Date.now()}-i`)
     mod.actOnBriefingItem('2026-07-31', mod.latestBriefing()!.items[0].id, 'promoted')
     expect(readFileSync(path, 'utf8')).toBe(SAMPLE)
+  })
+
+  test('an array-shaped verdicts file does not silently swallow verdicts', async () => {
+    // `typeof [] === 'object'`, and a string key set on an array is dropped by
+    // JSON.stringify — so this used to return ok, show the verdict optimistically,
+    // and revert on the next reload with no error anywhere.
+    const { briefings } = tempRoot()
+    writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
+    writeFileSync(join(briefings, '2026-07-31.verdicts.json'), '[]')
+
+    const mod = await import(`./briefings.ts?t=${Date.now()}-arr`)
+    const first = mod.latestBriefing()!.items[0]
+    expect(mod.actOnBriefingItem('2026-07-31', first.id, 'promoted').ok).toBe(true)
+    // The verdict must actually survive a reload.
+    expect(
+      mod.latestBriefing()!.items.find((i: { id: string }) => i.id === first.id)!.verdict,
+    ).toBe('promoted')
   })
 
   test('an unknown item id is an error, not a silent no-op', async () => {

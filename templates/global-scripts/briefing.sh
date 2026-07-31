@@ -53,11 +53,37 @@ trap 'rm -f "$facts_file" "${prompt_file:-}"' EXIT
   gather "Recent activity" list_activity limit=80
 } > "$facts_file"
 
-# Report artifacts written in the last 24h, across every repo TerMinal knows
-# about. `find -mtime -1` is the cheapest possible "what's new".
+# Report artifacts written in the last 24h.
+#
+# Scoped to the workspaces TerMinal already knows about, NOT a walk of $HOME.
+# Walking $HOME on macOS traverses ~/Library, iCloud Drive, and every
+# node_modules on the disk at 07:00, and can trip TCC permission prompts on
+# Desktop/Documents. It was also WRONG in the other direction: a fixed
+# -maxdepth silently missed worktree reports, which sit several levels deeper
+# than a plain checkout (<worktrees-root>/<repo>/<branch>/.TerMinal/reports/...).
+#
+# Roots come from the schedules TerMinal is actually running, plus any worktrees
+# of those repos, so depth stops mattering.
+roots=$(jq -r '.[].repoRoot // empty' "$CFG/schedules.json" 2>/dev/null | sort -u)
+
 {
   echo "### Report artifacts written in the last 24h"
-  find "$HOME" -maxdepth 6 -path '*/.TerMinal/reports/*' -name '*.md' -mtime -1 2>/dev/null | head -40
+  if [ -n "$roots" ]; then
+    while IFS= read -r root; do
+      [ -d "$root" ] || continue
+      # The repo itself…
+      find "$root/.TerMinal/reports" -name '*.md' -mtime -1 2>/dev/null | head -20
+      # …and every worktree attached to it, wherever they live.
+      git -C "$root" worktree list --porcelain 2>/dev/null \
+        | sed -n 's/^worktree //p' \
+        | while IFS= read -r wt; do
+            [ "$wt" = "$root" ] && continue
+            find "$wt/.TerMinal/reports" -name '*.md' -mtime -1 2>/dev/null | head -10
+          done
+    done <<< "$roots" | head -40
+  else
+    echo "(no scheduled workspaces to scan)"
+  fi
   echo
   echo "### Persistent-agent artifacts written in the last 24h"
   find "$CFG/persistent-agents" -name 'report.md' -mtime -1 2>/dev/null | head -20
@@ -100,7 +126,8 @@ Rules that matter most:
 - Emit \`ledgerKey\` on every item an agent PROPOSED (ideas, suggested tickets,
   lessons) and on NO item that merely happened (a PR opening, a run failing).
   Read the producing agent's proposedIdeas ledger at
-  ~/.config/TerMinal/agent-state/<repo>/<agent>.json to get the exact key —
+  ~/.config/TerMinal/agent-state/<repo>/<agent>.json (the proposedIdeas array,
+  agent-owned) to get the exact key —
   a guessed key silently breaks Dismiss.
 - One item per THING, not per event. A run that opened a PR is one [pr] item.
 - Rank: blockers first, then PRs awaiting review, then proposals, then the rest.

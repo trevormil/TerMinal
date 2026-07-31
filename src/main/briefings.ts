@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -113,8 +114,18 @@ export function parseBriefing(md: string, date: string, path: string): Briefing 
     if (heading && seenItemsHeading) {
       const raw = heading[1].toLowerCase()
       const kind = (KINDS as string[]).includes(raw) ? (raw as BriefingItemKind) : 'note'
-      counts[kind] = (counts[kind] || 0) + 1
-      current = { id: `${kind}-${counts[kind]}`, kind, title: heading[2] }
+      const title = heading[2]
+      // Content-derived, NOT positional. An ordinal id (`pr-2`) renames itself
+      // the moment a re-run emits the items in a different order, so a verdict
+      // recorded yesterday lands on a different row today — and if that row
+      // carries a ledgerKey, Dismiss writes the WRONG key, permanently
+      // suppressing an idea the human never rejected, with no audit trail.
+      let id = `${kind}-${createHash('sha1').update(title).digest('hex').slice(0, 8)}`
+      // Two identical (kind, title) pairs in one briefing would collide; suffix
+      // the later ones so ids stay unique. Still deterministic for a given file.
+      if (counts[id]) id = `${id}-${counts[id]}`
+      counts[id] = (counts[id] || 0) + 1
+      current = { id, kind, title }
       items.push(current)
       continue
     }
@@ -160,7 +171,13 @@ function verdictsPath(date: string): string {
 function readVerdicts(date: string): Record<string, BriefingVerdict> {
   try {
     const raw = JSON.parse(readFileSync(verdictsPath(date), 'utf8'))
-    return raw && typeof raw === 'object' ? (raw as Record<string, BriefingVerdict>) : {}
+    // `typeof [] === 'object'`, and setting a string key on an array is dropped
+    // by JSON.stringify — so an array-shaped file would swallow every verdict
+    // while actOnBriefingItem still returned ok, the optimistic UI showed it,
+    // and the next reload silently reverted it. Treat it as corrupt instead.
+    return raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, BriefingVerdict>)
+      : {}
   } catch {
     return {}
   }
@@ -222,26 +239,37 @@ export function getBriefing(date: string): Briefing | null {
 }
 
 /**
- * Append a dismissal to the producing agent's ledger, closing the loop with
- * the ticket-ideas dedup convention in `.agents/scripts.md`: the agent appends
- * to `proposedIdeas`, this appends to `dismissed`, and neither reads the
- * other's key. Read-modify-write preserves every field the agent owns.
+ * Append a dismissal to the producing agent's ledger, closing the loop with the
+ * dedup convention in `.agents/scripts.md`.
+ *
+ * This writes `<agent>.dismissed.json`, NOT the agent's own `<agent>.json`, and
+ * that separation is load-bearing rather than tidy. Every writer here does a
+ * read-modify-write of the whole document — there is no field-level update. If
+ * both arrays shared a file, a 04:00 agent run and a 04:00 Dismiss tap would
+ * each read it, each modify their own array, and each write the whole thing
+ * back; the later write would silently revert the earlier one, losing a
+ * just-filed idea or a just-recorded dismissal, and potentially reverting
+ * `lastScannedSha` into a re-scan.
+ *
+ * One file per writer means the two processes touch disjoint paths, so the race
+ * cannot happen at all. The agent reads this file directly (it is documented in
+ * scripts.md); `terminal-cli state` never touches it.
  */
 function appendDismissal(repo: string, agent: string, key: string): void {
   const dir = join(agentStateDir(), repo)
-  const file = join(dir, `${agent}.json`)
-  let state: Record<string, unknown> = {}
+  const file = join(dir, `${agent}.dismissed.json`)
+  let doc: Record<string, unknown> = {}
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) state = raw
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) doc = raw
   } catch {
     /* first dismissal for this agent */
   }
-  const existing = Array.isArray(state.dismissed) ? (state.dismissed as { key?: string }[]) : []
+  const existing = Array.isArray(doc.dismissed) ? (doc.dismissed as { key?: string }[]) : []
   if (existing.some((d) => d && d.key === key)) return
-  state.dismissed = [...existing, { key, at: Date.now() }]
+  doc.dismissed = [...existing, { key, at: Date.now() }]
   mkdirSync(dir, { recursive: true })
-  writeJsonAtomic(file, state)
+  writeJsonAtomic(file, doc)
 }
 
 export function actOnBriefingItem(

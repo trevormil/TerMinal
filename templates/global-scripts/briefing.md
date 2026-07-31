@@ -156,6 +156,8 @@ Rank by *what would he want to see first if he only read three lines*:
 2. **`--severity=low`.** Anything louder defeats the design.
 3. **Never write `<date>.verdicts.json`.** That file belongs to the app. The
    agent owns the `.md`; the app owns the verdicts. Neither parses the other.
+   The same split applies in agent-state: `<agent>.dismissed.json` is app-owned,
+   `<agent>.json` is agent-owned. Read the dismissals; never write them.
 4. **Never edit source, open a PR, or merge.**
 5. **Always write the file**, even on a zero-item day.
 6. **Emit `ledgerKey` on every proposal.** See above.

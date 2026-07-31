@@ -57,9 +57,17 @@ nobody parses what they didn't write.
 
 **Dismiss writes back to the producing agent's ledger.** A briefing item that
 an agent *proposed* carries a `ledgerKey`; dismissing it appends that key to
-`dismissed[]` in the agent's state, and the agent subtracts it forever after.
-Without this the review surface would be decorative — the SHA gate prevents an
-agent re-*running*, not re-*proposing*, so the same idea would return tomorrow.
+`dismissed[]` and the agent subtracts it forever after. Without this the review
+surface would be decorative — the SHA gate prevents an agent re-*running*, not
+re-*proposing*, so the same idea would return tomorrow.
+
+That ledger lives in `<agent>.dismissed.json`, a **separate file from the
+agent's own `<agent>.json`**, for exactly the reason the briefing markdown and
+its verdicts are separate: every writer here read-modify-writes a whole JSON
+document, with no field-level update. Two writers sharing one file would
+silently revert each other — losing a just-filed idea, or rolling back
+`lastScannedSha` into a re-scan. One file per writer makes the race impossible
+rather than merely unlikely.
 
 ## Consequences
 
