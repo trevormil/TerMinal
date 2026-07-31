@@ -156,16 +156,28 @@ async function safeChildren(dir: string): Promise<string[]> {
   }
 }
 
-async function sizeOfPath(path: string): Promise<number> {
+// One sweep walks the same subtrees several times over — the store total, then
+// each child of that store, then the grand total at the end. On a 6.6 GB config
+// dir that turned a scan into minutes of lstat churn. A sweep is a point-in-time
+// snapshot anyway, so memoising every level makes the repeat walks free.
+// Scoped per sweep, never module-global: a stale size would misreport a budget.
+type SizeCache = Map<string, number>
+
+async function sizeOfPath(path: string, cache?: SizeCache): Promise<number> {
+  const hit = cache?.get(path)
+  if (hit !== undefined) return hit
+  let total = 0
   try {
     const st = await lstat(path)
-    if (!st.isDirectory() || st.isSymbolicLink()) return st.size
-    let total = 0
-    for (const child of await safeChildren(path)) total += await sizeOfPath(join(path, child))
-    return total
+    if (!st.isDirectory() || st.isSymbolicLink()) total = st.size
+    else
+      for (const child of await safeChildren(path))
+        total += await sizeOfPath(join(path, child), cache)
   } catch {
-    return 0
+    total = 0
   }
+  cache?.set(path, total)
+  return total
 }
 
 function isInside(parent: string, child: string): boolean {
@@ -173,7 +185,7 @@ function isInside(parent: string, child: string): boolean {
   return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
-async function immediateDirs(dir: string): Promise<StorageEntry[]> {
+async function immediateDirs(dir: string, cache?: SizeCache): Promise<StorageEntry[]> {
   const out: StorageEntry[] = []
   for (const child of await safeChildren(dir)) {
     const path = join(dir, child)
@@ -183,7 +195,7 @@ async function immediateDirs(dir: string): Promise<StorageEntry[]> {
     } catch {
       continue
     }
-    out.push({ path, bytes: await sizeOfPath(path) })
+    out.push({ path, bytes: await sizeOfPath(path, cache) })
   }
   return out
 }
@@ -217,10 +229,15 @@ async function runningWorktrees(root: string): Promise<Set<string>> {
 }
 
 /** Leaf worktree dirs. `.worktrees` nests one level (`<repo>/<branch>`). */
-async function worktreeCandidates(dir: string, nested: boolean): Promise<StorageEntry[]> {
-  if (!nested) return immediateDirs(dir)
+async function worktreeCandidates(
+  dir: string,
+  nested: boolean,
+  cache?: SizeCache,
+): Promise<StorageEntry[]> {
+  if (!nested) return immediateDirs(dir, cache)
   const out: StorageEntry[] = []
-  for (const repo of await immediateDirs(dir)) out.push(...(await immediateDirs(repo.path)))
+  for (const repo of await immediateDirs(dir, cache))
+    out.push(...(await immediateDirs(repo.path, cache)))
   return out
 }
 
@@ -249,15 +266,16 @@ async function planWorktreeStore(
     running: Set<string>
     isDirty?: (p: string) => Promise<boolean>
     nested?: boolean
+    cache?: SizeCache
   },
 ): Promise<Omit<WorktreeStoreReport, 'deleted' | 'thresholdBytes'>> {
-  const bytes = await sizeOfPath(dir)
+  const bytes = await sizeOfPath(dir, opts.cache)
   const planned: StorageEntry[] = []
   const protectedRunning: StorageEntry[] = []
   const protectedDirty: StorageEntry[] = []
 
   const candidates: StorageEntry[] = []
-  for (const entry of await worktreeCandidates(dir, !!opts.nested)) {
+  for (const entry of await worktreeCandidates(dir, !!opts.nested, opts.cache)) {
     if (opts.running.has(resolve(entry.path))) {
       protectedRunning.push(entry)
       continue
@@ -440,18 +458,28 @@ async function findCheckpointTmpObjects(dir: string): Promise<StorageEntry[]> {
  * truncating history inside a live one would rewrite the checkpoint shas that
  * run records point at.
  */
-async function staleCheckpointStores(dir: string, maxAgeMs: number): Promise<StorageEntry[]> {
+async function staleCheckpointStores(
+  dir: string,
+  maxAgeMs: number,
+  cache?: SizeCache,
+): Promise<StorageEntry[]> {
   const now = Date.now()
   const out: StorageEntry[] = []
-  for (const entry of await immediateDirs(dir)) {
+  for (const entry of await immediateDirs(dir, cache)) {
     if (now - (await mtimeOf(entry.path)) > maxAgeMs) out.push(entry)
   }
   return out
 }
 
-async function checkpointRepos(dir: string, thresholdBytes: number): Promise<StorageEntry[]> {
-  if ((await sizeOfPath(dir)) < thresholdBytes) return []
-  return (await immediateDirs(dir)).filter((entry) => existsSync(join(entry.path, 'objects')))
+async function checkpointRepos(
+  dir: string,
+  thresholdBytes: number,
+  cache?: SizeCache,
+): Promise<StorageEntry[]> {
+  if ((await sizeOfPath(dir, cache)) < thresholdBytes) return []
+  return (await immediateDirs(dir, cache)).filter((entry) =>
+    existsSync(join(entry.path, 'objects')),
+  )
 }
 
 async function removeEntry(root: string, entry: StorageEntry): Promise<boolean> {
@@ -523,12 +551,14 @@ export async function sweepTerminalState(
   // (ticket 69 P8) without every caller having to know about it.
   const agentWorktreesDir = options.agentWorktreesDir ?? safeAgentWorktreesDir()
   const running = await runningWorktrees(root)
+  const sizes: SizeCache = new Map()
   const isDirty = options.isDirty ?? gitWorktreeDirty
 
   const worktrees = await planWorktreeStore(join(root, 'cron-worktrees'), {
     thresholdBytes: cronWorktreesMaxBytes,
     maxAgeMs: worktreeMaxAgeMs,
     running,
+    cache: sizes,
   })
   // `.worktrees` holds hand-checked-out branches, so unlike cron worktrees it
   // gets the dirty check. Size is not a trigger there — only age.
@@ -539,6 +569,7 @@ export async function sweepTerminalState(
         running,
         isDirty,
         nested: true,
+        cache: sizes,
       })
     : { bytes: 0, planned: [], protectedRunning: [], protectedDirty: [] }
 
@@ -546,18 +577,18 @@ export async function sweepTerminalState(
   const logFiles = [join(root, 'monitor.log'), join(root, 'cron.log')]
   const plannedLogs: StorageEntry[] = []
   for (const path of logFiles) {
-    const bytes = await sizeOfPath(path)
+    const bytes = await sizeOfPath(path, sizes)
     if (bytes > logMaxBytes) plannedLogs.push({ path, bytes: bytes - logMaxBytes })
   }
 
   const checkpointMaxAgeMs = options.checkpointMaxAgeMs ?? DEFAULT_CHECKPOINT_MAX_AGE_MS
-  const staleStores = await staleCheckpointStores(checkpointDir, checkpointMaxAgeMs)
+  const staleStores = await staleCheckpointStores(checkpointDir, checkpointMaxAgeMs, sizes)
   const stalePaths = new Set(staleStores.map((e) => resolve(e.path)))
   const tmpObjects = (await findCheckpointTmpObjects(checkpointDir)).filter(
     (e) => ![...stalePaths].some((p) => isInside(p, e.path)),
   )
   // No point gc-ing a store that is about to be deleted outright.
-  const gcRepos = (await checkpointRepos(checkpointDir, checkpointGcMinBytes)).filter(
+  const gcRepos = (await checkpointRepos(checkpointDir, checkpointGcMinBytes, sizes)).filter(
     (e) => !stalePaths.has(resolve(e.path)),
   )
   const deletedWorktrees: StorageEntry[] = []
@@ -609,7 +640,7 @@ export async function sweepTerminalState(
   return {
     root,
     dryRun,
-    totalBytes: await sizeOfPath(root),
+    totalBytes: await sizeOfPath(root, dryRun ? sizes : undefined),
     reclaimableBytes,
     reclaimedBytes:
       sum(deletedWorktrees) +
@@ -641,14 +672,14 @@ export async function sweepTerminalState(
       rotated: rotatedLogs,
     },
     checkpoints: {
-      bytes: await sizeOfPath(checkpointDir),
+      bytes: await sizeOfPath(checkpointDir, dryRun ? sizes : undefined),
       thresholdBytes: checkpointGcMinBytes,
       stores: { maxAgeMs: checkpointMaxAgeMs, planned: staleStores, deleted: deletedStores },
       gc: { planned: gcRepos, completed: completedGc },
       tmpObjects: { planned: tmpObjects, deleted: deletedTmpObjects },
     },
     scratch: {
-      bytes: await sizeOfPath(scratchDir),
+      bytes: await sizeOfPath(scratchDir, dryRun ? sizes : undefined),
       clearable: existsSync(scratchDir),
     },
   }
