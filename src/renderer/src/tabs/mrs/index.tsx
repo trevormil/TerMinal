@@ -19,13 +19,11 @@ import { Badge } from '../../components/ui'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
-import { MergeReadyBadge } from '../../components/MergeReadyBadge'
 import { stateTone } from '../../lib/badges'
 import {
   applyRiskFilters,
   countByTier,
   isListMergeReady,
-  listMergeGate,
   RISK_TIERS,
   sortMrs,
   type MrSort,
@@ -118,7 +116,6 @@ function MrRow({
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-600">
-            {m.state === 'opened' && !m.draft && <MergeReadyBadge gate={listMergeGate(m)} />}
             {r ? (
               <span className="font-medium" style={{ color: verdictColor(r.verdict) }}>
                 {r.verdict}

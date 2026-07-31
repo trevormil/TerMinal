@@ -25,11 +25,10 @@ export function countByTier(mrs: Mr[]): Record<RiskTier, number> {
 }
 
 /**
- * The gate behind a list row's merge-ready badge. The findings axis is always
+ * The gate behind the list's merge-ready filter. The findings axis is always
  * unmet here, because the list has not loaded findings and cannot prove their
  * absence — so a row can never claim the full §8 bar, only "nothing known to be
- * wrong". The detail view, which does load findings, is the only place the
- * badge can go green.
+ * wrong".
  */
 export function listMergeGate(mr: Mr) {
   return evaluateMergeGate({ review: mr.review, findings: FINDINGS_UNVERIFIED })
@@ -39,11 +38,9 @@ export function listMergeGate(mr: Mr) {
  * The "Merge-ready" filter: hide the PRs the list can already tell are not
  * ready, and keep the ones with nothing known against them.
  *
- * Defined as the badge's own state so the filter and the badge can never
- * disagree — a row the filter keeps is exactly a row whose badge is not red.
  * It is a triage filter ("which PRs are worth opening"), never a statement that
- * the bar is met: everything it keeps still shows an amber badge until someone
- * opens the PR and the findings actually load.
+ * the bar is met: the list cannot verify findings, so everything it keeps is at
+ * best "nothing known against it" until someone opens the PR.
  */
 export function isListMergeReady(mr: Mr): boolean {
   if (mr.state !== 'opened' || mr.draft) return false

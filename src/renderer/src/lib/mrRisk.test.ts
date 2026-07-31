@@ -136,19 +136,17 @@ describe('listMergeGate', () => {
     expect(mergeReadyChip(gate).state).toBe('unverified')
   })
 
-  test('it still reports the other axes so the badge can name them', () => {
+  test('a known-failing axis outweighs the unverifiable one', () => {
     const gate = listMergeGate(mr({ iid: 1, review: review({ testStatus: 'fail' }) }))
     expect(gate.blockers.map((b) => b.kind).sort()).toEqual(['findings', 'tests'])
-    expect(mergeReadyChip(gate).label).toBe('Not ready · tests failing')
+    expect(mergeReadyChip(gate).state).toBe('not-ready')
   })
 
   test('the list and the detail view must never disagree in the unsafe direction', () => {
     // The original bug in one assertion: the SAME PR, with two unresolved
-    // criticals, read as not-ready in the detail view (which loads findings)
-    // and green in the list (which does not). The list may be more cautious
-    // than the detail view; it may never be more confident. Turning the gate
-    // into a badge does not change that — an over-confident badge is now the
-    // MORE dangerous failure, because it is what the human acts on.
+    // criticals, read as not-ready when findings were loaded and ready in the
+    // list (which does not load them). The list may be more cautious than a
+    // findings-loaded evaluation; it may never be more confident.
     const criticals = [{ severity: 'critical' }, { severity: 'critical' }]
     const row = mr({ iid: 1, review: review() })
 
@@ -161,8 +159,7 @@ describe('listMergeGate', () => {
     expect(list.state === 'ready' && detail.state !== 'ready').toBe(false)
   })
 
-  test('the filter keeps exactly the rows whose badge is not red', () => {
-    // The filter is defined in terms of the badge, so they cannot drift apart.
+  test('the filter keeps exactly the rows with no known-failing axis', () => {
     const rows = [
       mr({ iid: 1, review: review() }),
       mr({ iid: 2, review: review({ verdict: 'comment' }) }),
@@ -176,7 +173,7 @@ describe('listMergeGate', () => {
 
   test('passing the filter is not a claim that the bar is met', () => {
     // isListMergeReady drives the "Merge-ready" filter (which PRs are worth
-    // opening); the row it keeps still shows an amber, un-green badge.
+    // opening); the row it keeps is still only "nothing known against it".
     const ready = mr({ iid: 1, review: review() })
     expect(isListMergeReady(ready)).toBe(true)
     expect(mergeReadyChip(listMergeGate(ready)).state).toBe('unverified')

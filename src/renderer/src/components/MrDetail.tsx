@@ -23,8 +23,6 @@ import { Badge, CopyButton } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
-import { evaluateMergeGate } from '../lib/mergeGate'
-import { MergeReadyBadge } from './MergeReadyBadge'
 import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
@@ -975,14 +973,6 @@ export function MrDetailView({
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
         <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>
         {mr.draft && <Badge tone="warn">Draft</Badge>}
-        {mr.state === 'opened' && (
-          // The detail view HAS loaded findings, so this is the only place the
-          // full three-axis bar can be evaluated — and the only place the badge
-          // can legitimately read "Merge-ready".
-          <MergeReadyBadge
-            gate={evaluateMergeGate({ review: mr.reviewMeta, findings: mr.findings })}
-          />
-        )}
         <div className="flex items-center gap-1.5">
           <PrAgentActions pr={mr} sym={sym} />
           {mr.state === 'opened' && (
