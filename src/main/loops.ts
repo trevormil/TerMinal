@@ -27,6 +27,7 @@ import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 import { gateSpawn } from './budgets'
 import { decideOutcome } from './loop-decide'
+import { readLoopHistoryAt, type LoopHistory } from './loop-history'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const LOOPS_FILE = join(CFG, 'loops.json')
@@ -704,4 +705,30 @@ export function startLoopWatcher(): void {
     }
   }, 5000)
   watcherTimer.unref?.()
+}
+
+// ---------------------------------------------------------------------------
+// Read-only history (the Loops tab). Assembly lives in loop-history.ts; these
+// wrappers only resolve an id to its on-disk directory.
+// ---------------------------------------------------------------------------
+
+export function readLoopHistory(id: string): LoopHistory | { error: string } {
+  const rec = getLoop(id)
+  if (!rec) return { error: 'unknown loop' }
+  return readLoopHistoryAt(loopDir(rec))
+}
+
+/** One turn log, by filename. Read-only and confined to the loop's turns dir. */
+export function readLoopTurnLog(id: string, file: string): string | { error: string } {
+  const rec = getLoop(id)
+  if (!rec) return { error: 'unknown loop' }
+  // basename() so a crafted `file` can never escape the turns directory.
+  const p = join(loopDir(rec), 'turns', basename(file))
+  if (!existsSync(p)) return { error: 'unknown turn log' }
+  try {
+    // Tail-only: a turn log can be very large and the end is the useful part.
+    return readFileTail(p, 400_000).text
+  } catch {
+    return { error: 'unreadable' }
+  }
 }

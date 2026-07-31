@@ -1209,6 +1209,27 @@ export type LoopState = {
   tail: string[]
 }
 
+// Mirrors src/main/loop-history.ts — the full audit trail of a finished loop,
+// as opposed to LoopState's bounded live snapshot.
+export type LoopScore = { file: string; iteration: number; weighted: number | null }
+export type LoopTurn = {
+  file: string
+  iteration: number
+  role: string
+  runId: string
+  bytes: number
+}
+export type PlateauInfo = { plateaued: boolean; sinceImprovement: number; best: number | null }
+export type LoopHistory = {
+  contract: string
+  progress: string
+  log: string
+  scores: LoopScore[]
+  turns: LoopTurn[]
+  assertions: { total: number; pass: number; fail: number; todo: number }
+  plateau: PlateauInfo
+}
+
 export type RunArtifact = {
   slug: string
   title: string
@@ -2186,6 +2207,8 @@ export type GtApi = {
     step: (id: string) => Promise<LoopRecord | { error: string }>
     restart: (id: string) => Promise<LoopRecord | { error: string }>
     stop: (id: string) => Promise<LoopRecord | { error: string }>
+    history: (id: string) => Promise<LoopHistory | { error: string }>
+    turnLog: (id: string, file: string) => Promise<string | { error: string }>
   }
   harnessStatus: () => Promise<{
     cronRunFiles: number

@@ -462,6 +462,8 @@ const gt = {
     step: (id: string) => ipcRenderer.invoke('loops:step', id),
     restart: (id: string) => ipcRenderer.invoke('loops:restart', id),
     stop: (id: string) => ipcRenderer.invoke('loops:stop', id),
+    history: (id: string) => ipcRenderer.invoke('loops:history', id),
+    turnLog: (id: string, file: string) => ipcRenderer.invoke('loops:turn-log', id, file),
   },
   observability: {
     summary: (range: string = 'today') => ipcRenderer.invoke('observability:summary', range),

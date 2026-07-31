@@ -140,3 +140,179 @@ describe('decideOutcome — termination guarantee', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Loop history (read-only surface behind the Loops tab)
+// ---------------------------------------------------------------------------
+
+describe('parseScoreValue', () => {
+  test('pulls the weighted score out of an evaluator score file', async () => {
+    const { parseScoreValue } = await import('./loop-history')
+    expect(parseScoreValue('# score\nweighted: 0.82\nnotes: ok')).toBe(0.82)
+  })
+
+  test('handles an integer score and a score of zero', async () => {
+    const { parseScoreValue } = await import('./loop-history')
+    expect(parseScoreValue('weighted: 1')).toBe(1)
+    expect(parseScoreValue('weighted: 0')).toBe(0)
+  })
+
+  test('does not mistake an "unweighted:" line for the weighted total', async () => {
+    // Evaluators report both a raw and a weighted number; a substring match on
+    // "weighted:" silently reads the wrong one, poisoning the trend and the
+    // plateau verdict with no error.
+    const { parseScoreValue } = await import('./loop-history')
+    expect(parseScoreValue('unweighted: 0.30\nweighted: 0.82\n')).toBe(0.82)
+    expect(parseScoreValue('unweighted: 0.30\n')).toBeNull()
+  })
+
+  test('returns null when there is no weighted line, rather than 0', async () => {
+    // 0 and "unscored" must stay distinguishable — a missing score is not a bad score.
+    const { parseScoreValue } = await import('./loop-history')
+    expect(parseScoreValue('no score here')).toBeNull()
+    expect(parseScoreValue('')).toBeNull()
+  })
+})
+
+describe('detectPlateau', () => {
+  test('a steadily improving run has not plateaued', async () => {
+    const { detectPlateau } = await import('./loop-history')
+    const p = detectPlateau([0.2, 0.4, 0.6, 0.8], 3)
+    expect(p.plateaued).toBe(false)
+    expect(p.sinceImprovement).toBe(0)
+    expect(p.best).toBe(0.8)
+  })
+
+  test('flat scores across the window plateau', async () => {
+    const { detectPlateau } = await import('./loop-history')
+    const p = detectPlateau([0.5, 0.81, 0.81, 0.815, 0.82], 3)
+    expect(p.plateaued).toBe(true)
+    expect(p.best).toBe(0.82)
+  })
+
+  test('a late improvement resets the counter', async () => {
+    const { detectPlateau } = await import('./loop-history')
+    const p = detectPlateau([0.5, 0.5, 0.5, 0.9], 3)
+    expect(p.plateaued).toBe(false)
+    expect(p.sinceImprovement).toBe(0)
+  })
+
+  test('counts turns since the best score, not since the last change', async () => {
+    // Regressing is not improving — a dip after the peak still counts as stalled.
+    const { detectPlateau } = await import('./loop-history')
+    const p = detectPlateau([0.9, 0.4, 0.5, 0.6], 3)
+    expect(p.sinceImprovement).toBe(3)
+    expect(p.plateaued).toBe(true)
+    expect(p.best).toBe(0.9)
+  })
+
+  test('too few samples cannot conclude a plateau', async () => {
+    const { detectPlateau } = await import('./loop-history')
+    expect(detectPlateau([], 3).plateaued).toBe(false)
+    expect(detectPlateau([0.5], 3).plateaued).toBe(false)
+    expect(detectPlateau([0.5, 0.5], 3).plateaued).toBe(false)
+    expect(detectPlateau([], 3).best).toBeNull()
+  })
+
+  test('improvement must clear epsilon to count', async () => {
+    const { detectPlateau } = await import('./loop-history')
+    // +0.001 per turn is noise, not progress.
+    expect(detectPlateau([0.8, 0.801, 0.802, 0.803], 3).plateaued).toBe(true)
+    expect(detectPlateau([0.8, 0.9, 1.0, 1.1], 3).plateaued).toBe(false)
+  })
+})
+
+describe('readLoopHistoryAt', () => {
+  const seed = (): string => {
+    const { mkdirSync, writeFileSync } = require('node:fs')
+    const dir = mkdtempSync(join(tmpdir(), 'loop-hist-'))
+    mkdirSync(join(dir, 'scores'), { recursive: true })
+    mkdirSync(join(dir, 'turns'), { recursive: true })
+    writeFileSync(join(dir, 'contract.md'), '# Contract\nGoal: ship it\n')
+    writeFileSync(
+      join(dir, 'feature_list.json'),
+      JSON.stringify({ assertions: [{ status: 'pass' }, { status: 'fail' }, { status: 'todo' }] }),
+    )
+    writeFileSync(join(dir, 'log.md'), '## [2026-07-31] init\n')
+    writeFileSync(join(dir, 'scores', '0001.md'), 'weighted: 0.4\n')
+    writeFileSync(join(dir, 'scores', '0002.md'), 'weighted: 0.7\n')
+    writeFileSync(join(dir, 'turns', '1-generator-abc.log'), 'hello')
+    writeFileSync(join(dir, 'turns', '2-evaluator-def.log'), 'world')
+    return dir
+  }
+
+  test('reads the contract, scores, turns and assertion counts off disk', async () => {
+    const { readLoopHistoryAt } = await import('./loop-history')
+    const dir = seed()
+    try {
+      const h = readLoopHistoryAt(dir)
+      expect(h.contract).toContain('Goal: ship it')
+      expect(h.scores.map((s) => s.weighted)).toEqual([0.4, 0.7])
+      expect(h.assertions).toEqual({ total: 3, pass: 1, fail: 1, todo: 1 })
+      expect(h.turns).toHaveLength(2)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('parses iteration and role out of turn filenames', async () => {
+    const { readLoopHistoryAt } = await import('./loop-history')
+    const dir = seed()
+    try {
+      const t = readLoopHistoryAt(dir).turns
+      expect(t[0]).toMatchObject({ iteration: 1, role: 'generator' })
+      expect(t[1]).toMatchObject({ iteration: 2, role: 'evaluator' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('reads the turn number out of a zero-padded score filename', async () => {
+    // The evaluator writes scores/NNNN.md (loop-driver SKILL.md step 4), so the
+    // trend's x-axis depends on "0010" parsing as 10, not on the string order.
+    const { writeFileSync } = require('node:fs')
+    const { readLoopHistoryAt } = await import('./loop-history')
+    const dir = seed()
+    try {
+      writeFileSync(join(dir, 'scores', '0010.md'), 'weighted: 0.9\n')
+      const s = readLoopHistoryAt(dir).scores
+      expect(s.map((x) => x.iteration)).toEqual([1, 2, 10])
+      expect(s.map((x) => x.weighted)).toEqual([0.4, 0.7, 0.9])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('an empty or missing loop directory yields empty history, not a throw', async () => {
+    const { readLoopHistoryAt } = await import('./loop-history')
+    const dir = mkdtempSync(join(tmpdir(), 'loop-empty-'))
+    try {
+      const h = readLoopHistoryAt(dir)
+      expect(h.scores).toEqual([])
+      expect(h.turns).toEqual([])
+      expect(h.contract).toBe('')
+      expect(h.plateau.plateaued).toBe(false)
+      expect(readLoopHistoryAt(join(dir, 'nope')).scores).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('reports a plateau computed from the score series', async () => {
+    const { writeFileSync } = require('node:fs')
+    const { readLoopHistoryAt } = await import('./loop-history')
+    const dir = seed()
+    try {
+      // Real gain at turn 2 (0.4 -> 0.7), then three turns of sub-epsilon noise.
+      writeFileSync(join(dir, 'scores', '0003.md'), 'weighted: 0.705\n')
+      writeFileSync(join(dir, 'scores', '0004.md'), 'weighted: 0.71\n')
+      writeFileSync(join(dir, 'scores', '0005.md'), 'weighted: 0.712\n')
+      const h = readLoopHistoryAt(dir)
+      expect(h.plateau.sinceImprovement).toBe(3)
+      expect(h.plateau.plateaued).toBe(true)
+      expect(h.plateau.best).toBe(0.712)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
