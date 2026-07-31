@@ -623,6 +623,10 @@ function readState() {
 function writeState(obj) {
   const f = stateFile()
   mkdirSync(dirname(f), { recursive: true })
+  // Locked + atomic (write sibling temp, then rename) via the shared helpers. A
+  // plain writeFileSync truncates first, so a crash mid-write leaves a
+  // truncated, unparseable ledger — and an unparseable proposedIdeas array
+  // means every previously-rejected idea gets re-proposed.
   withFileLockShared(f, () => writeJsonAtomicShared(f, obj))
 }
 function coerce(v) {
