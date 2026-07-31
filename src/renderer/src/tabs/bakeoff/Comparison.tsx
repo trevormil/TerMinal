@@ -174,22 +174,36 @@ export function Comparison({
   const act = async (key: string, fn: () => Promise<BakeOff | { error: string } | null>) => {
     setBusy(key)
     setErr('')
-    const r = await fn()
-    setBusy('')
-    if (!r) return
-    if ('error' in r) setErr(r.error)
-    else onChanged(r)
+    try {
+      const r = await fn()
+      if (!r) return
+      if ('error' in r) setErr(r.error)
+      else onChanged(r)
+    } catch (e) {
+      // Without this the spinner spins forever on a rejected invoke.
+      setErr((e as Error)?.message || 'the bake-off IPC is unavailable')
+    } finally {
+      setBusy('')
+    }
   }
 
-  const refresh = () => act('refresh', () => window.gt.bakeoff.get(b.id))
+  // Refresh is the ONLY path that re-diffs the entrant worktrees (3 git calls
+  // each). It is user-initiated for exactly that reason.
+  const refresh = () => act('refresh', () => window.gt.bakeoff.get(b.id, { withDiffs: true }))
   const judge = () => act('judge', () => window.gt.bakeoff.judge(b.id))
   const pick = (entrantId: string) => act('pick', () => window.gt.bakeoff.pick(b.id, entrantId))
 
   // A bake-off that is still spawning is worth polling — the candidate cards
-  // fill in as each lane lands.
+  // fill in as each lane lands. STATUS ONLY: re-diffing four worktrees every
+  // 10s would be 12 git subprocesses a tick on the main process.
   useEffect(() => {
     if (!running) return
-    const t = setInterval(() => window.gt.bakeoff.get(b.id).then((r) => r && onChanged(r)), 10_000)
+    const t = setInterval(() => {
+      window.gt.bakeoff
+        .get(b.id)
+        .then((r) => r && onChanged(r))
+        .catch(() => undefined)
+    }, 10_000)
     return () => clearInterval(t)
   }, [running, b.id, onChanged])
 
@@ -246,7 +260,11 @@ export function Comparison({
           </button>
           <button
             onClick={async () => {
-              await window.gt.bakeoff.del(b.id)
+              try {
+                await window.gt.bakeoff.del(b.id)
+              } catch {
+                /* the record may already be gone; fall through to the list */
+              }
               onDeleted()
             }}
             className="rounded px-1.5 py-0.5 text-zinc-600 hover:bg-white/10 hover:text-rose-400"

@@ -17,6 +17,8 @@ const {
   applyRunStatuses,
   buildJudgePrompt,
   saveBakeOff,
+  refreshBakeOffStatus,
+  ESTIMATED_ENTRANT_USD,
   getBakeOff,
   listBakeOffs,
   pickWinner,
@@ -81,10 +83,44 @@ describe('planBakeOff', () => {
     expect('error' in p && p.error).toContain('daily cap of $5.00 reached')
   })
 
-  test('a warning budget gate still allows the run', () => {
+  test('a warning budget gate still allows the run, but surfaces the reason', () => {
     const p = planBakeOff([{ engine: 'claude' }, { engine: 'codex' }], {
       decision: 'warn',
       reason: 'at 80% of daily cap',
+    })
+    if ('error' in p) throw new Error(p.error)
+    // Swallowing the warn would let N runs launch with no signal at all.
+    expect(p.warning).toBe('at 80% of daily cap')
+  })
+
+  test('an allowing gate carries no warning', () => {
+    const p = planBakeOff([{ engine: 'claude' }, { engine: 'codex' }], allow)
+    if ('error' in p) throw new Error(p.error)
+    expect(p.warning).toBeUndefined()
+  })
+
+  // gateSpawn is retrospective: at $19.90 of a $20 cap it says "allow", which is
+  // true for ONE run and catastrophically wrong for four.
+  test('refuses when N entrants project past the remaining cap, even on an "allow"', () => {
+    const p = planBakeOff([{ engine: 'claude' }, { engine: 'codex' }, { engine: 'cursor' }], {
+      decision: 'allow',
+      capRemainingUsd: 0.1,
+    })
+    expect('error' in p && p.error).toMatch(/only \$0\.10 is left/)
+  })
+
+  test('allows the same fan-out when the remaining cap actually covers it', () => {
+    const p = planBakeOff([{ engine: 'claude' }, { engine: 'codex' }], {
+      decision: 'allow',
+      capRemainingUsd: 2 * ESTIMATED_ENTRANT_USD,
+    })
+    expect('error' in p).toBe(false)
+  })
+
+  test('an unlimited cap (Infinity remaining) is never projected against', () => {
+    const p = planBakeOff([{ engine: 'claude' }, { engine: 'codex' }], {
+      decision: 'allow',
+      capRemainingUsd: Infinity,
     })
     expect('error' in p).toBe(false)
   })
@@ -330,19 +366,55 @@ describe('startBakeOff', () => {
     expect(b.entrants[1].status).toBe('running')
   })
 
-  test('errors (and persists nothing) when every entrant fails to start', () => {
-    const before = listBakeOffs().length
+  test('errors when every entrant fails to start, but still leaves a record', () => {
     const b = startBakeOff(
       '/repo',
       ticket,
       [{ engine: 'claude' }, { engine: 'codex' }],
       allow,
-      () => ({
-        error: 'boom',
-      }),
+      () => ({ error: 'boom' }),
     )
     expect('error' in b).toBe(true)
-    expect(listBakeOffs()).toHaveLength(before)
+    expect(listBakeOffs().some((x) => x.status === 'failed')).toBe(true)
+  })
+
+  // runTicketAgent shells out with execFileSync, which THROWS on a worktree
+  // failure. If entrant 2 throws after entrant 1 already launched, entrant 1 is
+  // burning money in a real worktree — losing the record makes it invisible.
+  test('a THROWING spawn does not orphan entrants that already started', () => {
+    const b = startBakeOff(
+      '/repo',
+      ticket,
+      [{ engine: 'claude' }, { engine: 'codex' }, { engine: 'cursor' }],
+      allow,
+      (_r, _t, e) => {
+        if (e.id === 'e2') throw new Error('git worktree add failed: already exists')
+        return fakeRun(e.id)
+      },
+    )
+    if ('error' in b) throw new Error(b.error)
+    expect(b.entrants[0]).toMatchObject({ status: 'running', runId: 'e1' })
+    expect(b.entrants[1].status).toBe('failed')
+    expect(b.entrants[1].error).toContain('already exists')
+    // e3 must still have been attempted — a throw at e2 cannot abort the loop.
+    expect(b.entrants[2]).toMatchObject({ status: 'running', runId: 'e3' })
+    // And the whole thing is on disk, so the started runs are discoverable.
+    expect(getBakeOff(b.id)?.entrants).toHaveLength(3)
+  })
+
+  test('persists the record even when the FIRST spawn throws and a later one starts', () => {
+    const b = startBakeOff(
+      '/repo',
+      ticket,
+      [{ engine: 'claude' }, { engine: 'codex' }],
+      allow,
+      (_r, _t, e) => {
+        if (e.id === 'e1') throw new Error('boom')
+        return fakeRun(e.id)
+      },
+    )
+    if ('error' in b) throw new Error(b.error)
+    expect(getBakeOff(b.id)?.entrants[1].runId).toBe('e2')
   })
 
   test('never spawns anything when the budget gate refuses', () => {
@@ -359,6 +431,32 @@ describe('startBakeOff', () => {
     )
     expect(spawned).toBe(0)
     expect('error' in b).toBe(true)
+  })
+})
+
+describe('refreshBakeOffStatus', () => {
+  beforeEach(() => {
+    for (const b of listBakeOffs()) rmSync(join(ROOT, `${b.id}.json`), { force: true })
+  })
+
+  test('folds run status without touching git or diffs', () => {
+    saveBakeOff(seed())
+    const b = refreshBakeOffStatus('bo-test-1', { r1: { status: 'done' }, r2: { status: 'done' } })
+    expect(b?.status).toBe('ready')
+    // The polled path must never invent diff data — that is the expensive path.
+    expect(b?.entrants[0].diff).toBeUndefined()
+    expect(b?.entrants[0].patch).toBeUndefined()
+  })
+
+  test('is a no-op write when nothing moved', () => {
+    saveBakeOff(seed())
+    const first = refreshBakeOffStatus('bo-test-1', { r1: { status: 'running' } })
+    const second = refreshBakeOffStatus('bo-test-1', { r1: { status: 'running' } })
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second))
+  })
+
+  test('an unknown id is null, not a throw', () => {
+    expect(refreshBakeOffStatus('nope', {})).toBeNull()
   })
 })
 

@@ -17,6 +17,7 @@ import {
   listBakeOffs,
   pickWinner,
   refreshBakeOff,
+  refreshBakeOffStatus,
   startBakeOff,
   type BakeOff,
   type BakeOffEntrantSpec,
@@ -32,7 +33,8 @@ function runSnapshots(b: BakeOff): Record<string, RunSnapshot> {
   return out
 }
 
-function refreshed(id: string): BakeOff | null {
+/** Diffs every entrant worktree — user-initiated paths ONLY. */
+async function refreshedWithDiffs(id: string): Promise<BakeOff | null> {
   const cur = getBakeOff(id)
   return cur ? refreshBakeOff(id, runSnapshots(cur)) : null
 }
@@ -42,7 +44,16 @@ export function registerBakeOffIpc(deps: { repoRoot: () => string }): void {
     listBakeOffs(repoRoot ?? deps.repoRoot()),
   )
 
-  ipcMain.handle('bakeoff:get', (_e, id: string) => refreshed(id))
+  // `withDiffs` is opt-in and user-initiated (the Refresh button, and once
+  // before judging). The 10s poll while a bake-off is running passes nothing,
+  // so it costs one status fold and no git at all.
+  ipcMain.handle('bakeoff:get', async (_e, id: string, opts?: { withDiffs?: boolean }) => {
+    if (!opts?.withDiffs) {
+      const cur = getBakeOff(id)
+      return cur ? refreshBakeOffStatus(id, runSnapshots(cur)) : null
+    }
+    return refreshedWithDiffs(id)
+  })
 
   ipcMain.handle(
     'bakeoff:start',
@@ -86,7 +97,7 @@ export function registerBakeOffIpc(deps: { repoRoot: () => string }): void {
     'bakeoff:judge',
     async (_e, id: string, opts?: { engine?: Engine; model?: string }) => {
       // Judge the freshest diffs, not whatever was cached at start time.
-      if (!refreshed(id)) return { error: 'bake-off not found' }
+      if (!(await refreshedWithDiffs(id))) return { error: 'bake-off not found' }
       return judgeBakeOff(id, opts || {})
     },
   )

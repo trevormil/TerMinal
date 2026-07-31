@@ -5,7 +5,14 @@ import { EngineLogo } from '../../components/EngineLogo'
 import { SkillHint } from '../../components/SkillHint'
 import { Comparison } from './Comparison'
 import { NewBakeOff } from './NewBakeOff'
+import { capabilityMissing, probeCapability } from '../../lib/capability'
 import type { BakeOff, Tab, TabContext } from '../../lib/types'
+
+const CAP = 'bakeoff'
+// Kick the probe at module load so `appliesTo` has an answer before the tab bar
+// settles. The tab folder auto-registers via import.meta.glob, but the main
+// handlers are wired by hand in index.ts — until they are, every invoke rejects.
+probeCapability(CAP, () => window.gt.bakeoff.pendingCount())
 
 // Bake-off gets its own tab rather than living inside Runs or Tickets: it is a
 // WORKFLOW (choose entrants → watch → compare → decide), not another list of
@@ -25,20 +32,53 @@ function BakeOffTab({ ctx }: { ctx: TabContext }) {
   const [selId, setSelId] = useState('')
   const [sel, setSel] = useState<BakeOff | null>(null)
   const [creating, setCreating] = useState(false)
+  const [fatal, setFatal] = useState('')
 
-  const load = useCallback(() => window.gt.bakeoff.list().then(setList), [ctx.repoRoot])
+  const load = useCallback(
+    () =>
+      window.gt.bakeoff
+        .list()
+        .then((r) => {
+          setList(r)
+          setFatal('')
+        })
+        // A rejected invoke must resolve the "Loading…" state, not hang on it.
+        .catch((e: Error) => {
+          setList([])
+          setFatal(e?.message || 'bake-off IPC is unavailable')
+        }),
+    [ctx.repoRoot],
+  )
   useEffect(() => {
     load()
   }, [load])
 
-  // Opening a bake-off refreshes it (re-reads each candidate's worktree).
+  // Opening a bake-off syncs its run statuses. Diffs are NOT re-read here —
+  // that is the Refresh button's job (12 git spawns is not a page-open cost).
   useEffect(() => {
     if (!selId) {
       setSel(null)
       return
     }
-    window.gt.bakeoff.get(selId).then(setSel)
+    window.gt.bakeoff
+      .get(selId)
+      .then(setSel)
+      .catch(() => setSel(null))
   }, [selId])
+
+  if (fatal)
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 bg-[var(--gt-bg)] p-8 text-center">
+        <Swords size={20} strokeWidth={2} className="text-zinc-600" />
+        <p className="text-[12.5px] text-zinc-300">Bake-off is not available in this build.</p>
+        <p className="max-w-md text-[11px] leading-relaxed text-zinc-600">
+          The renderer tab shipped but its main-process handlers are not registered (
+          <code className="font-mono">registerBakeOffIpc</code> in{' '}
+          <code className="font-mono">src/main/index.ts</code>).
+        </p>
+        <p className="font-mono text-[10.5px] text-zinc-700">{fatal}</p>
+      </div>
+    )
 
   const onChanged = useCallback((b: BakeOff) => {
     setSel(b)
@@ -158,8 +198,10 @@ const tab: Tab = {
   // Sits with the other run-shaped surfaces: Runs (3.45) → Bake-off (3.46) →
   // Schedules (3.5).
   order: 3.46,
-  appliesTo: (ctx) => !!ctx.repoRoot,
-  badge: (gt) => gt.bakeoff.pendingCount(),
+  // Hidden entirely once the probe confirms the IPC is absent, so a
+  // half-landed feature never puts a dead tab in the tab bar.
+  appliesTo: (ctx) => !!ctx.repoRoot && !capabilityMissing(CAP),
+  badge: (gt) => gt.bakeoff.pendingCount().catch(() => 0),
   Component: BakeOffTab,
 }
 export default tab

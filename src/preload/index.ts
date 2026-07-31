@@ -547,7 +547,8 @@ const gt = {
   },
   bakeoff: {
     list: (repoRoot?: string) => ipcRenderer.invoke('bakeoff:list', repoRoot),
-    get: (id: string) => ipcRenderer.invoke('bakeoff:get', id),
+    get: (id: string, opts?: { withDiffs?: boolean }) =>
+      ipcRenderer.invoke('bakeoff:get', id, opts),
     start: (
       ticketSlug: string,
       entrants: { engine: string; model?: string; personaId?: string }[],

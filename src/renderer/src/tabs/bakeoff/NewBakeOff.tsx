@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Loader2, Plus, X } from 'lucide-react'
 import { EngineLogo } from '../../components/EngineLogo'
 import { ENGINE_IDS, ENGINE_MODELS, engineLabel } from '../../lib/engines'
+import { MAX_BAKEOFF_ENTRANTS } from '../../../../shared/bakeoff'
 import type { BakeOff, BakeOffEntrantSpec, Engine, Ticket } from '../../lib/types'
 
 // Starting a bake-off spends real money on N parallel agent runs, so the fan-out
 // is always explicit: you add each entrant by hand and see the count before you
 // commit. There is no "run everything" button on purpose.
 
-const MAX_ENTRANTS = 4
+const MAX_ENTRANTS = MAX_BAKEOFF_ENTRANTS
 
 function EntrantRow({
   spec,
@@ -70,22 +71,33 @@ export function NewBakeOff({ onStarted }: { onStarted: (b: BakeOff) => void }) {
   ])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [gateWarn, setGateWarn] = useState('')
 
   useEffect(() => {
     window.gt.tickets
       .list()
       .then((t) => setTickets(t.filter((x) => x.status === 'open' || x.status === 'in-progress')))
       .catch(() => setTickets([]))
+    // Surface a budget WARN before N runs launch, not after.
+    window.gt.budgets
+      ?.gate?.()
+      .then((g) => setGateWarn(g?.decision === 'warn' ? g.reason || '' : ''))
+      .catch(() => undefined)
   }, [])
 
   const start = async () => {
     if (!slug) return
     setBusy(true)
     setErr('')
-    const r = await window.gt.bakeoff.start(slug, entrants)
-    setBusy(false)
-    if ('error' in r) setErr(r.error)
-    else onStarted(r)
+    try {
+      const r = await window.gt.bakeoff.start(slug, entrants)
+      if ('error' in r) setErr(r.error)
+      else onStarted(r)
+    } catch (e) {
+      setErr((e as Error)?.message || 'the bake-off IPC is unavailable')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -148,6 +160,12 @@ export function NewBakeOff({ onStarted }: { onStarted: (b: BakeOff) => void }) {
           budget cap.
         </p>
       </div>
+
+      {gateWarn && (
+        <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11.5px] text-amber-300">
+          Budget: {gateWarn}. This launches {entrants.length} runs at once.
+        </div>
+      )}
 
       {err && <div className="mt-4 text-[12px] text-amber-400">{err}</div>}
 

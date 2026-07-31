@@ -8,10 +8,12 @@
 // ticket; lanes each open their own PR and the human's pick is recorded on the
 // bake-off record, exactly as the lane contract already assumes.
 
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { MAX_BAKEOFF_ENTRANTS } from '../shared/bakeoff'
 import type { AgentRun, Engine } from './agents'
 
 // NOTE: no value imports from './agents' or './cheap-llm'. Both reach electron
@@ -22,7 +24,7 @@ import type { AgentRun, Engine } from './agents'
 /** Hard ceiling on parallel entrants. A bake-off is N real agent runs against
  *  real money and real CPU — the count is always explicit and user-chosen, and
  *  never silently large. */
-export const MAX_ENTRANTS = 4
+export const MAX_ENTRANTS = MAX_BAKEOFF_ENTRANTS
 
 /** Cap on how much of each candidate patch goes to the judge, so a runaway diff
  *  can't blow the context window (or the bill). */
@@ -150,13 +152,26 @@ export function deleteBakeOff(id: string): boolean {
 // ---- planning --------------------------------------------------------------
 
 /** Just the shape of budgets.gateSpawn's decision we care about — keeps this
- *  module testable without touching the real spend ledger. */
-export type SpawnGate = { decision: 'allow' | 'warn' | 'refuse'; reason?: string }
+ *  module testable without touching the real spend ledger. `capRemainingUsd` is
+ *  what lets us scale the check by N: gateSpawn is retrospective (`total >= cap`
+ *  on already-recorded spend) and knows nothing about how many runs are about to
+ *  launch, so at $19.90 of a $20 cap it returns `allow` for a 4-way fan-out. */
+export type SpawnGate = {
+  decision: 'allow' | 'warn' | 'refuse'
+  reason?: string
+  capRemainingUsd?: number
+}
+
+/** Rough ceiling for one ticket-implementing agent run, used only to size the
+ *  N-way projection above. Intentionally crude — it exists to catch "four runs
+ *  against $0.10 of headroom", not to price anything. */
+export const ESTIMATED_ENTRANT_USD = 1
 
 export function planBakeOff(
   specs: BakeOffEntrantSpec[],
   gate: SpawnGate,
-): { entrants: BakeOffEntrant[] } | { error: string } {
+  estimatePerEntrantUsd = ESTIMATED_ENTRANT_USD,
+): { entrants: BakeOffEntrant[]; warning?: string } | { error: string } {
   const seen = new Set<string>()
   const uniq: BakeOffEntrantSpec[] = []
   for (const s of specs || []) {
@@ -171,6 +186,14 @@ export function planBakeOff(
     return { error: `A bake-off runs at most ${MAX_ENTRANTS} entrants — you chose ${uniq.length}.` }
   if (gate.decision === 'refuse')
     return { error: `Budget gate refused the bake-off: ${gate.reason || 'over cap'}` }
+
+  const projected = uniq.length * Math.max(0, estimatePerEntrantUsd)
+  const remaining = gate.capRemainingUsd
+  if (typeof remaining === 'number' && Number.isFinite(remaining) && projected > remaining)
+    return {
+      error: `Budget: ${uniq.length} entrants project ~$${projected.toFixed(2)} but only $${remaining.toFixed(2)} is left under today's cap. Drop an entrant or raise the cap.`,
+    }
+
   return {
     entrants: uniq.map((s, i) => ({
       id: `e${i + 1}`,
@@ -179,6 +202,9 @@ export function planBakeOff(
       personaId: s.personaId,
       status: 'pending' as const,
     })),
+    // A warn is not a refusal, but the operator should see it BEFORE N runs
+    // launch rather than discovering it in the spend ledger afterwards.
+    warning: gate.decision === 'warn' ? gate.reason || 'close to the daily budget cap' : undefined,
   }
 }
 
@@ -207,20 +233,28 @@ export function startBakeOff(
   const entrants = plan.entrants
   const total = entrants.length
   entrants.forEach((e, i) => {
-    const r = spawn(repoRoot, ticket, e, { group, index: i + 1, total })
-    if ('error' in r) {
+    // runTicketAgent → runSpec shells out to git with execFileSync, which THROWS
+    // when `git worktree add` fails (dirty tree, branch collision, disk full).
+    // An uncaught throw here would abandon entrants that already started —
+    // real worktrees, real spend — with no record of them anywhere. Catch per
+    // entrant so the loop always completes and the record always persists.
+    try {
+      const r = spawn(repoRoot, ticket, e, { group, index: i + 1, total })
+      if ('error' in r) {
+        e.status = 'failed'
+        e.error = r.error
+      } else {
+        e.status = 'running'
+        e.runId = r.id
+        e.branch = r.branch
+        e.worktree = r.worktree
+      }
+    } catch (err) {
       e.status = 'failed'
-      e.error = r.error
-    } else {
-      e.status = 'running'
-      e.runId = r.id
-      e.branch = r.branch
-      e.worktree = r.worktree
+      e.error = (err as Error)?.message || String(err)
     }
   })
-  if (!entrants.some((e) => e.runId))
-    return { error: entrants.map((e) => `${e.id}: ${e.error}`).join('; ') || 'no entrants started' }
-  return saveBakeOff({
+  const record: BakeOff = {
     id: `bo-${ticket.id}-${stamp}`,
     repoRoot,
     ticket: {
@@ -231,9 +265,15 @@ export function startBakeOff(
     },
     group,
     createdAt: Date.now(),
-    status: 'running',
+    status: entrants.some((e) => e.runId) ? 'running' : 'failed',
     entrants,
-  })
+  }
+  // Persist even a fully-failed fan-out: if ANY entrant started before a later
+  // one blew up, that run exists and must be discoverable.
+  saveBakeOff(record)
+  if (!entrants.some((e) => e.runId))
+    return { error: entrants.map((e) => `${e.id}: ${e.error}`).join('; ') || 'no entrants started' }
+  return record
 }
 
 // ---- status sync -----------------------------------------------------------
@@ -287,26 +327,31 @@ export function parseNumstat(raw: string): BakeOffDiff {
   return { files: perFile.length, insertions, deletions, perFile }
 }
 
-function git(cwd: string, args: string[], maxBuffer = 8 * 1024 * 1024): string {
-  return execFileSync('git', ['-C', cwd, ...args], {
+// Every git call is ASYNC. These run on the electron main process, and a
+// bake-off refresh is 3 calls per entrant — 12 blocking spawns for a 4-way
+// fan-out. execFileSync here would stall the whole app (see aa7d852).
+const execFileAsync = promisify(execFile)
+
+async function git(cwd: string, args: string[], maxBuffer = 8 * 1024 * 1024): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', cwd, ...args], {
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer,
   })
+  return stdout
 }
 
 /** The ref every lane worktree branched off — origin/HEAD when known, else
  *  main/master. Mirrors agents.ts's private defaultBase; duplicated (8 lines)
  *  rather than widening that module's export surface. */
-function baseRef(repoRoot: string): string {
+async function baseRef(repoRoot: string): Promise<string> {
   try {
-    return git(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim()
+    return (await git(repoRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim()
   } catch {
     /* no origin HEAD */
   }
   for (const b of ['main', 'master']) {
     try {
-      git(repoRoot, ['rev-parse', '--verify', b])
+      await git(repoRoot, ['rev-parse', '--verify', b])
       return b
     } catch {
       /* next */
@@ -319,36 +364,57 @@ function baseRef(repoRoot: string): string {
  *  branch — i.e. exactly what this entrant contributed. Returns null when the
  *  worktree is gone (the run's branch/PR still exists; the diff view degrades
  *  to stats-from-last-refresh). */
-export function entrantDiff(
+export async function entrantDiff(
   repoRoot: string,
   worktree: string,
-): { diff: BakeOffDiff; patch: string } | null {
+): Promise<{ diff: BakeOffDiff; patch: string } | null> {
   if (!worktree || !existsSync(worktree)) return null
   try {
-    const base = git(worktree, ['merge-base', 'HEAD', baseRef(repoRoot)]).trim()
+    const base = (await git(worktree, ['merge-base', 'HEAD', await baseRef(repoRoot)])).trim()
     // `git add -A -n` is not a thing; include working-tree changes by diffing
     // base..worktree (no ref on the right side) so uncommitted lane work counts.
-    const diff = parseNumstat(git(worktree, ['diff', '--numstat', base]))
-    const patch = git(worktree, ['diff', base]).slice(0, PATCH_BUDGET_CHARS)
+    const diff = parseNumstat(await git(worktree, ['diff', '--numstat', base]))
+    const patch = (await git(worktree, ['diff', base])).slice(0, PATCH_BUDGET_CHARS)
     return { diff, patch }
   } catch {
     return null
   }
 }
 
-/** Refresh statuses AND diffs, then persist. */
-export function refreshBakeOff(id: string, runs: Record<string, RunSnapshot>): BakeOff | null {
+/** Sync statuses only — no git, no disk write unless something actually moved.
+ *  This is what the polled path calls; re-diffing four worktrees every 10s is
+ *  exactly the kind of main-process stall aa7d852 removed. */
+export function refreshBakeOffStatus(
+  id: string,
+  runs: Record<string, RunSnapshot>,
+): BakeOff | null {
   const cur = getBakeOff(id)
   if (!cur) return null
   const next = applyRunStatuses(cur, runs)
-  for (const e of next.entrants) {
-    if (!e.worktree) continue
-    const d = entrantDiff(next.repoRoot, e.worktree)
-    if (d) {
-      e.diff = d.diff
-      e.patch = d.patch
-    }
-  }
+  if (JSON.stringify(next) === JSON.stringify(cur)) return cur
+  return saveBakeOff(next)
+}
+
+/** Statuses AND diffs. Explicit/user-initiated only (the Refresh button, and
+ *  once before judging) — never on a timer. Entrants are diffed concurrently;
+ *  the fan-out is hard-capped at MAX_ENTRANTS so this is at most 4 in flight. */
+export async function refreshBakeOff(
+  id: string,
+  runs: Record<string, RunSnapshot>,
+): Promise<BakeOff | null> {
+  const cur = getBakeOff(id)
+  if (!cur) return null
+  const next = applyRunStatuses(cur, runs)
+  await Promise.all(
+    next.entrants.map(async (e) => {
+      if (!e.worktree) return
+      const d = await entrantDiff(next.repoRoot, e.worktree)
+      if (d) {
+        e.diff = d.diff
+        e.patch = d.patch
+      }
+    }),
+  )
   return saveBakeOff(next)
 }
 

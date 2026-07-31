@@ -2278,7 +2278,9 @@ export type GtApi = {
   }
   bakeoff: {
     list: (repoRoot?: string) => Promise<BakeOff[]>
-    get: (id: string) => Promise<BakeOff | null>
+    /** `withDiffs` re-reads every entrant worktree (3 git calls each) — pass it
+     *  only from user-initiated paths, never from a poll. */
+    get: (id: string, opts?: { withDiffs?: boolean }) => Promise<BakeOff | null>
     start: (
       ticketSlug: string,
       entrants: BakeOffEntrantSpec[],
