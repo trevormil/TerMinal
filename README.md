@@ -218,7 +218,10 @@ Panels) are one toggle away.
 Everything user-facing is a folder or a JSON file — no plugin API to learn
 beyond one object shape.
 
-**A cockpit widget** is a folder under `src/renderer/src/plugins/<id>/`:
+**A widget** is a folder under `src/renderer/src/plugins/<id>/`. It renders in
+the cockpit by default; the work column's accordion hosts the same spec for the
+few widgets listed in `COLUMN_PLUGIN_IDS` (Tickets, PRs/MRs), and each widget
+belongs to exactly one host:
 
 ```tsx
 import { Brain } from 'lucide-react'
@@ -325,8 +328,9 @@ src/main/            Electron main: PTY spawn, IPC, all fs/CLI readers
 src/preload/         the typed `gt` bridge (contextBridge)
 src/renderer/src/
   App.tsx            multi-session shell (workspace tab bar)
-  SessionView.tsx    one session: terminal + cockpit + tabs
-  plugins/<id>/      one folder = one cockpit widget (auto-discovered)
+  SessionView.tsx    one session: terminal + work column + cockpit + tabs
+  plugins/<id>/      one folder = one widget (auto-discovered; hosted by the
+                     cockpit, or by the work column's accordion)
   tabs/<id>/         one folder = one full-screen tab (auto-discovered)
 bin/                 headless runners: terminal-cron, terminal-cli, MCP server, or-agent tier
 templates/           project-template (embedded workflow scaffold)

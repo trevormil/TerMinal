@@ -1,7 +1,29 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Check, type LucideIcon } from 'lucide-react'
 
 // Shared widget primitives. Plugins compose these so cards look consistent.
+
+/**
+ * How much frame a `Card` draws. 'card' is the cockpit's boxed widget. 'bare'
+ * is for a host that already shows the icon, title and count in its own chrome
+ * — the work column's accordion — where a second bordered header inside the
+ * section would just be the same words twice.
+ *
+ * This is the "variant inside the shared primitive" answer to having two hosts:
+ * one Card, two skins, zero forked widgets.
+ */
+export type CardChrome = 'card' | 'bare'
+const CardChromeContext = createContext<CardChrome>('card')
+
+export function CardChromeProvider({
+  chrome,
+  children,
+}: {
+  chrome: CardChrome
+  children: ReactNode
+}) {
+  return <CardChromeContext.Provider value={chrome}>{children}</CardChromeContext.Provider>
+}
 
 /** Inline click-to-copy affordance: renders `children` as a button that copies
  *  `value` to the clipboard and briefly flashes a check. Stops propagation so it
@@ -48,6 +70,11 @@ export function Card({
   right?: ReactNode
   children: ReactNode
 }) {
+  // `right` is dropped too, not just the title: it is the same count the
+  // accordion header already renders. Nothing is left to draw but the body, so
+  // an empty widget collapses to one italic line with no residual box, border
+  // or margin — no phantom inset in an otherwise empty section.
+  if (useContext(CardChromeContext) === 'bare') return <>{children}</>
   return (
     <div className="mb-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-2 transition-colors hover:border-[var(--gt-border)]/80">
       <div className="mb-1.5 flex items-center gap-1.5">

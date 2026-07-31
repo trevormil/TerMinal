@@ -35,7 +35,17 @@ Each `SessionView` mounts:
 - a **TerminalPane** (xterm.js) — always mounted; its PTY runs `claude`.
 - a **cockpit** aside — the widget stack (rendered only when the session is
   active, so backgrounded sessions don't poll).
+- a **work column** aside on the opposite edge — a VS Code-style accordion of
+  Files / Tickets / PRs·MRs, with several sections open at once.
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
+
+The cockpit and the work column are **two hosts for one `Plugin` contract**.
+`plugins/registry.ts` partitions the auto-discovered registry between them via
+`lib/workColumn.ts` (`COLUMN_PLUGIN_IDS`), so every plugin belongs to exactly
+one host and can never mount — and therefore poll — twice. Tickets and PRs/MRs
+are column plugins; everything else is a cockpit widget. A host that draws its
+own title (the accordion does) renders the plugin under `CardChromeProvider
+chrome="bare"`, so `Card` drops its frame instead of repeating the heading.
 
 ## Remote sessions (TerMinal Remote for iOS)
 

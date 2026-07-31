@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { Plugin } from '../lib/types'
@@ -14,9 +14,17 @@ export function pluginPollSubscriptionKey(plugin: Plugin): string {
 export function PluginWidget({
   plugin,
   onHide,
+  chrome,
 }: {
   plugin: Plugin
   onHide?: (id: string) => void
+  /**
+   * Alternative wrapper around the rendered body, for hosts that draw their own
+   * frame — the work column's accordion passes its section here. It receives
+   * the latest poll result so the host can title/count from live data without
+   * lifting state (and without the plugin mounting twice to get it).
+   */
+  chrome?: (body: ReactNode, data: unknown) => ReactNode
 }) {
   const [data, setData] = useState<unknown>(null)
   const prevRef = useRef<unknown>(null)
@@ -65,6 +73,11 @@ export function PluginWidget({
     }
   }, [subscriptionKey])
 
+  const body = <ErrorBoundary label={plugin.title}>{plugin.render(data as never)}</ErrorBoundary>
+  // The boundary sits INSIDE the host chrome so a crashed plugin loses its body
+  // but keeps its accordion header — the section stays collapsible.
+  if (chrome) return <>{chrome(body, data)}</>
+
   return (
     <div className="group relative gt-pop-in">
       {onHide && (
@@ -76,7 +89,7 @@ export function PluginWidget({
           <X size={12} strokeWidth={2.5} />
         </button>
       )}
-      <ErrorBoundary label={plugin.title}>{plugin.render(data as never)}</ErrorBoundary>
+      {body}
     </div>
   )
 }

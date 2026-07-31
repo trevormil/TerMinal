@@ -1,6 +1,7 @@
 // Persisted collapse state for the session view's side panels (the cockpit and
-// the Files column). Two panels reading localStorage with their own inline
-// try/catch is exactly how the two drift apart, so both go through here.
+// the work column) and for the work column's individual accordion sections.
+// Panels reading localStorage with their own inline try/catch is exactly how
+// they drift apart, so they all go through here.
 
 type MiniStorage = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -31,6 +32,15 @@ export function readCollapsed(
     /* storage disabled */
   }
   return whenUnset
+}
+
+/**
+ * Storage key for one work-column accordion section. Sections are keyed by
+ * plugin id (or 'files'), so a section's state follows the plugin rather than
+ * its position in the column.
+ */
+export function sectionCollapseKey(sectionId: string): string {
+  return `gt.workColumn.${sectionId}.collapsed`
 }
 
 export function writeCollapsed(

@@ -23,13 +23,13 @@ import {
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
-import { FilesColumn } from './components/FilesColumn'
+import { WorkColumn } from './components/WorkColumn'
 import { useRepoTrustPrompt } from './components/RepoTrustReview'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
 import { useResizableWidth, ResizeHandle } from './components/ResizeHandle'
-import { ALL_PLUGINS } from './plugins/registry'
+import { COCKPIT_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
@@ -316,7 +316,10 @@ export function SessionView({
   const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
-    () => [...ALL_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
+    // COCKPIT_PLUGINS, not ALL_PLUGINS: Tickets and PRs/MRs are hosted by the
+    // work column's accordion now, and a plugin mounted in both hosts would
+    // poll twice.
+    () => [...COCKPIT_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
     [cmdPlugins],
   )
   const availablePlugins = useMemo(
@@ -1012,11 +1015,18 @@ export function SessionView({
               visibility: onTerminal ? undefined : 'hidden',
             }}
           >
-            {/* Files column. Unlike the cockpit it isn't gated on `active`: it
-                lists once on mount and never polls, so a backgrounded session
-                costs one IPC rather than a recurring tick. */}
+            {/* Work column (Files / Tickets / PRs·MRs accordion). The whole
+                column isn't gated on `active` — the Files section lists once on
+                mount and never polls, so a backgrounded session costs one IPC —
+                but the plugin sections are, inside the column. */}
             {filesVisible && ctx && (
-              <FilesColumn ctx={ctx} onCollapse={() => setFilesCollapsed(true)} />
+              <WorkColumn
+                ctx={ctx}
+                active={active}
+                known={known}
+                enabled={enabled}
+                onCollapse={() => setFilesCollapsed(true)}
+              />
             )}
             {filesVisible && (
               <ResizeHandle

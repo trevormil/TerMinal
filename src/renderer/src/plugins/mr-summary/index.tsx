@@ -111,12 +111,15 @@ const plugin: Plugin<MrListResult> = {
   title: 'PRs / MRs',
   icon: GitPullRequest,
   blurb: 'Open PRs/MRs with CI + review verdict per row; click for a light detail modal.',
-  // Second in the cockpit's default order — right after Tickets (-1), strictly
-  // below every built-in on main (session is 0). Saved user orders still win.
+  // Hosted by the work column's accordion, which orders its sections itself
+  // (COLUMN_PLUGIN_IDS) — right after Tickets, as it was in the cockpit.
   order: -0.5,
   intervalMs: 60_000,
   defaultEnabled: true,
   poll: (gt) => gt.listMrs(),
   render: (d) => <PrsWidget data={d} />,
+  // Open PRs/MRs. An errored poll counts nothing — the section header stays
+  // bare and the error shows once, in the body.
+  count: (d) => (d && !d.error ? prsView(d.mrs).open : null),
 }
 export default plugin
