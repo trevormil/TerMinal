@@ -24,7 +24,15 @@ console.log(JSON.stringify({
   claude: buildCmd('claude', '/wt', 'do it', 'opus'),
 }));`,
       ],
-      { cwd: process.cwd(), env: { ...process.env, HOME: home }, encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+        },
+        encoding: 'utf8',
+      },
     )
     if (r.status !== 0) throw new Error(r.stderr || r.stdout)
     return JSON.parse(r.stdout)

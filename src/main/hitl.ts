@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { writeJsonAtomic } from './atomic-write'
-import { join, dirname } from 'node:path'
+import { existsSync } from 'node:fs'
+import { readJsonState, updateJsonState } from './atomic-write'
+import { configPath } from './config-dir'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -21,7 +22,7 @@ import {
 // agent can't resolve itself). NOT per-repo backlog tickets, and NOT review
 // request-changes (those are iterative workflow, handled by the factory). Filing
 // one surfaces a `blocked` activity event → macOS + Telegram notification.
-const FILE = join(homedir(), '.config', 'TerMinal', 'hitl.json')
+export const hitlFile = (): string => configPath('hitl.json')
 
 export type HitlSource =
   | 'manual'
@@ -78,22 +79,23 @@ export type HitlItem = {
 }
 
 export function readHitl(): HitlItem[] {
-  if (!existsSync(FILE)) return []
-  try {
-    const a = JSON.parse(readFileSync(FILE, 'utf8'))
-    return Array.isArray(a) ? a : []
-  } catch {
-    return []
-  }
+  return readJsonState<HitlItem[]>(hitlFile(), () => [], { accept: Array.isArray }).value
 }
 
-function write(list: HitlItem[]): void {
-  try {
-    mkdirSync(dirname(FILE), { recursive: true })
-    writeJsonAtomic(FILE, list)
-  } catch {
-    /* best effort */
-  }
+/**
+ * Locked read-modify-write over the inbox.
+ *
+ * Three independent processes file into hitl.json (the app, terminal-cron,
+ * terminal-cli). A cron-filed blocker overlapping a resolve used to silently
+ * drop one of the two writes, so `mutate` re-reads inside the lock and every
+ * mutation below is expressed as a transform of the CURRENT list, never of a
+ * snapshot the caller read earlier. Returning undefined means "no change".
+ *
+ * Throws CorruptStateError if the file is unreadable — refusing to file is far
+ * better than replacing the whole inbox with one item.
+ */
+function mutate(fn: (list: HitlItem[]) => HitlItem[] | undefined): void {
+  updateJsonState<HitlItem[]>(hitlFile(), () => [], fn, { accept: Array.isArray })
 }
 
 export function openCount(): number {
@@ -117,17 +119,19 @@ export function isHitlRead(h: { readAt?: number; status?: string }): boolean {
  *  changed. */
 export function markHitlRead(ids: string[], read = true): number {
   const set = new Set(ids)
-  const list = readHitl()
   let changed = 0
-  const next = list.map((h) => {
-    if (!set.has(h.id)) return h
-    if (read ? isHitlRead(h) : !isHitlRead(h)) return h
-    changed++
-    return read
-      ? { ...h, readAt: Date.now() }
-      : { ...h, readAt: undefined, status: 'open' as const, resolvedAt: undefined }
+  mutate((list) => {
+    changed = 0
+    const next = list.map((h) => {
+      if (!set.has(h.id)) return h
+      if (read ? isHitlRead(h) : !isHitlRead(h)) return h
+      changed++
+      return read
+        ? { ...h, readAt: Date.now() }
+        : { ...h, readAt: undefined, status: 'open' as const, resolvedAt: undefined }
+    })
+    return changed ? next : undefined
   })
-  if (changed) write(next)
   return changed
 }
 
@@ -183,41 +187,13 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
   // Dedup window — if an open HITL with the same fingerprint already exists
   // (filed within the last hour), return that one instead of double-filing.
   // Avoids cron-retry storms that flood the inbox.
-  const existing = readHitl()
+  //
+  // Dedup detection AND the append happen inside one lock. Deciding "is this a
+  // duplicate?" from a read taken before the write is the same read/write gap
+  // that loses updates: two processes both see no duplicate and both file.
   const fp = hitlRecurrenceKey(input)
   const since = Date.now() - DEDUP_WINDOW_MS
-  const dupIndex = existing.findIndex(
-    (h) => h.status === 'open' && h.createdAt >= since && hitlRecurrenceKey(h) === fp,
-  )
-  if (dupIndex >= 0) {
-    // Bump the count instead of double-filing, but the recurrence is new
-    // information: the item goes back to unread and the notify decision runs
-    // the same severity-threshold gate a fresh filing would get.
-    const { item: dup, loud } = hitlRecurrenceBump(
-      existing[dupIndex],
-      readSettings().inbox.notifyThreshold,
-    )
-    existing[dupIndex] = dup
-    write(existing)
-    emitActivity(
-      {
-        kind: hitlActivityKind(input.source),
-        title: `${input.source === 'completion-hook' ? 'Done recur' : 'HITL recur'} · ${input.title}`,
-        detail: `duplicate filing collapsed (${dup.occurrenceCount} occurrences within 1h window)`,
-        repo: input.repo,
-        repoRoot: input.repoRoot,
-        hitlId: dup.id,
-        runId: input.runId,
-        runSource: input.runSource,
-        sessionId: input.sessionId,
-        suppressTelegram: true,
-      },
-      { notify: loud },
-    )
-    if (loud) alwaysPingTelegram(dup)
-    return dup
-  }
-  const item: HitlItem = {
+  const fresh: HitlItem = {
     ...input,
     id: randomUUID(),
     status: 'open',
@@ -225,7 +201,47 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     createdAt: Date.now(),
     occurrenceCount: 1,
   }
-  write([item, ...readHitl()])
+  // A holder object rather than two `let`s: TypeScript does not track
+  // assignments made inside the callback, so a plain `let` narrows to null.
+  const out: { dup: HitlItem | null; loud: boolean } = { dup: null, loud: false }
+  mutate((list) => {
+    const i = list.findIndex(
+      (h) => h.status === 'open' && h.createdAt >= since && hitlRecurrenceKey(h) === fp,
+    )
+    if (i < 0) return [fresh, ...list]
+    // Bump the count instead of double-filing, but the recurrence is new
+    // information: the item goes back to unread and the notify decision runs
+    // the same severity-threshold gate a fresh filing would get.
+    const bumped = hitlRecurrenceBump(list[i], readSettings().inbox.notifyThreshold)
+    out.dup = bumped.item
+    out.loud = bumped.loud
+    const next = [...list]
+    next[i] = bumped.item
+    return next
+  })
+
+  const duplicate = out.dup
+  if (duplicate) {
+    const loud = out.loud
+    emitActivity(
+      {
+        kind: hitlActivityKind(input.source),
+        title: `${input.source === 'completion-hook' ? 'Done recur' : 'HITL recur'} · ${input.title}`,
+        detail: `duplicate filing collapsed (${duplicate.occurrenceCount} occurrences within 1h window)`,
+        repo: input.repo,
+        repoRoot: input.repoRoot,
+        hitlId: duplicate.id,
+        runId: input.runId,
+        runSource: input.runSource,
+        sessionId: input.sessionId,
+        suppressTelegram: true,
+      },
+      { notify: loud },
+    )
+    if (loud) alwaysPingTelegram(duplicate)
+    return duplicate
+  }
+  const item = fresh
   // Severity + the configurable threshold are the alert gate. At or above the
   // threshold notifies (macOS/Telegram/phone); below it, the item just waits in
   // the inbox for your next sweep. Default threshold 'urgent' → only urgent pings.
@@ -280,11 +296,12 @@ export function resolveHitl(id: string, resolved = true): boolean {
 }
 
 export function removeHitl(id: string): boolean {
-  const before = readHitl()
-  const item = before.find((h) => h.id === id)
-  const after = before.filter((h) => h.id !== id)
-  write(after)
-  const removed = after.length !== before.length
+  let item: HitlItem | undefined
+  mutate((list) => {
+    item = list.find((h) => h.id === id)
+    return item ? list.filter((h) => h.id !== id) : undefined
+  })
+  const removed = !!item
   if (removed && item) {
     emitActivity(
       {

@@ -10,6 +10,8 @@ import {
 import { basename, extname, join, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { quarantineCorruptFile, readJsonState, writeJsonAtomic } from './atomic-write'
+import { configPath } from './config-dir'
 import type { Engine } from './agents'
 import type { AgentModelPolicy, AgentQuality } from './agents'
 import {
@@ -20,7 +22,7 @@ import {
   writeFile as writeScopedFile,
 } from './files'
 
-export const PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
+export const persistentAgentsRoot = (): string => configPath('persistent-agents')
 
 export type PersistentAgent = {
   id: string
@@ -101,11 +103,11 @@ const slugify = (s: string) =>
     .slice(0, 48)
 
 function ensureRoot() {
-  mkdirSync(PERSISTENT_AGENTS_ROOT, { recursive: true })
+  mkdirSync(persistentAgentsRoot(), { recursive: true })
 }
 
 function agentDir(id: string) {
-  return join(PERSISTENT_AGENTS_ROOT, id)
+  return join(persistentAgentsRoot(), id)
 }
 
 function safe(root: string, rel: string): string | null {
@@ -171,6 +173,13 @@ function defaultJournal(title: string): string {
 `
 }
 
+/** True when agent.json exists but cannot be parsed — distinct from "no such agent". */
+function metaCorrupt(id: string): boolean {
+  return readJsonState<unknown>(join(agentDir(id), 'agent.json'), () => null, {
+    accept: (v) => !!v && typeof v === 'object' && !Array.isArray(v),
+  }).corrupt
+}
+
 function readMeta(id: string): PersistentAgent | null {
   const dir = agentDir(id)
   try {
@@ -212,15 +221,15 @@ function readMeta(id: string): PersistentAgent | null {
 
 function writeMeta(agent: PersistentAgent) {
   const { dir: _dir, files: _files, ...json } = agent as PersistentAgent & { files?: unknown }
-  writeFileSync(join(agent.dir, 'agent.json'), JSON.stringify(json, null, 2) + '\n')
+  writeJsonAtomic(join(agent.dir, 'agent.json'), json)
 }
 
 export function listPersistentAgents(): PersistentAgent[] {
   ensureRoot()
-  return readdirSync(PERSISTENT_AGENTS_ROOT)
+  return readdirSync(persistentAgentsRoot())
     .filter((f) => {
       try {
-        return statSync(join(PERSISTENT_AGENTS_ROOT, f)).isDirectory()
+        return statSync(join(persistentAgentsRoot(), f)).isDirectory()
       } catch {
         return false
       }
@@ -253,6 +262,13 @@ export function savePersistentAgent(
     const now = Date.now()
     const dir = agentDir(id)
     mkdirSync(dir, { recursive: true })
+    // A torn agent.json makes readMeta return null, and saving on top of that
+    // would quietly reset the agent's engine, model, tags and createdAt to
+    // defaults. Move the bad file aside and refuse instead.
+    if (metaCorrupt(id)) {
+      const moved = quarantineCorruptFile(join(dir, 'agent.json'))
+      return { error: `agent.json for ${id} is unreadable; moved aside to ${moved}` }
+    }
     const existing = readMeta(id)
     const agent: PersistentAgent = {
       id,
@@ -392,10 +408,10 @@ export function persistentAgentDesignerPrompt(
 ${t}
 
 Persistent agents are global, directory-backed, and memory-aware. They are stored under:
-${PERSISTENT_AGENTS_ROOT}
+${persistentAgentsRoot()}
 
 Create exactly one new directory:
-${PERSISTENT_AGENTS_ROOT}/<kebab-case-id>/
+${persistentAgentsRoot()}/<kebab-case-id>/
 
 Required files:
 - agent.json

@@ -35,7 +35,13 @@ function writeTicketsConfig(repo: string, config: unknown) {
 function runCli(args: string[], home: string, repo: string) {
   return spawnSync('bun', [CLI, ...args], {
     cwd: process.cwd(),
-    env: { ...process.env, HOME: home, TERMINAL_REPO: repo, TERMINAL_AGENT_ID: 'test-agent' },
+    env: {
+      ...process.env,
+      HOME: home,
+      TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+      TERMINAL_REPO: repo,
+      TERMINAL_AGENT_ID: 'test-agent',
+    },
     encoding: 'utf8' as const,
   })
 }

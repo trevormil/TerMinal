@@ -49,7 +49,7 @@ function callTools(home: string, calls: { name: string; arguments: Record<string
   ]
   const result = spawnSync('bun', [SERVER], {
     cwd: process.cwd(),
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal') },
     input: lines.join('\n') + '\n',
     encoding: 'utf8' as const,
   })

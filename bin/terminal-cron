@@ -35,7 +35,11 @@ import {
   mkdirSync,
   appendFileSync,
   openSync,
+  closeSync,
+  renameSync,
+  unlinkSync,
   readdirSync,
+  statSync,
 } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
@@ -52,6 +56,126 @@ const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
 const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+
+// --- crash-safe shared-state writes (ticket 0068) ----------------------------
+//
+// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
+// rather than imported because host-provision.ts copies this file to remote
+// hosts on its own and docker/build-agent-image.sh bakes it into an image with
+// no sibling modules — keep the two in sync.
+//
+// Why it matters here: this process and the desktop app both read-modify-write
+// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
+// read before the user disabled a schedule writes `enabled: true` back and the
+// job keeps firing.
+function writeJsonAtomicShared(file, value) {
+  mkdirSync(dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
+    renameSync(tmp, file)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {}
+    throw e
+  }
+}
+function sleepSyncShared(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+function readLockShared(lockPath) {
+  try {
+    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
+    return typeof p?.token === 'string' ? p : null
+  } catch {
+    return null
+  }
+}
+function pidAliveShared(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e?.code === 'EPERM'
+  }
+}
+/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
+ *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
+function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
+  const lockPath = `${file}.lock`
+  const token = randomUUID()
+  mkdirSync(dirname(file), { recursive: true })
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let took = false
+    try {
+      const fd = openSync(lockPath, 'wx')
+      try {
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
+      } finally {
+        closeSync(fd)
+      }
+      sleepSyncShared(2)
+      took = readLockShared(lockPath)?.token === token
+    } catch {}
+    if (took) break
+    const held = readLockShared(lockPath)
+    if (
+      held === null ||
+      !pidAliveShared(held.pid) ||
+      Date.now() - held.at > staleMs ||
+      Date.now() > deadline
+    ) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+      continue
+    }
+    sleepSyncShared(10)
+  }
+  try {
+    return fn()
+  } finally {
+    if (readLockShared(lockPath)?.token === token) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+    }
+  }
+}
+/** Locked read-modify-write of a JSON list. `update` receives the value as it is
+ *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
+ *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
+ *  back is how a torn file silently deletes every entry. Returns true if written. */
+function updateJsonListShared(file, update) {
+  return withFileLockShared(file, () => {
+    let raw = null
+    try {
+      raw = readFileSync(file, 'utf8')
+    } catch {}
+    let cur = []
+    if (raw !== null && raw.trim() !== '') {
+      let parsed
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = undefined
+      }
+      if (!Array.isArray(parsed)) {
+        const dest = `${file}.corrupt-${Date.now()}`
+        renameSync(file, dest)
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
+      }
+      cur = parsed
+    }
+    const next = update(cur)
+    if (next === undefined) return false
+    writeJsonAtomicShared(file, next)
+    return true
+  })
+}
 
 // Resolve usable Telegram creds: the app seals its token in settings.json via
 // Electron safeStorage, which this launchd-spawned Bun process can't decrypt —
@@ -185,7 +309,7 @@ function writeAIRun(opts) {
       durationMs: opts.endedAt - opts.startedAt,
       exitCode: opts.exitCode,
     }
-    writeFileSync(join(AI_RUNS_DIR, `${rec.id}.json`), JSON.stringify(rec, null, 2))
+    writeJsonAtomicShared(join(AI_RUNS_DIR, `${rec.id}.json`), rec)
   } catch (e) {
     log(`ai-run write failed: ${e}`)
   }
@@ -305,17 +429,25 @@ function readSchedules() {
 }
 function writeSchedules(list) {
   try {
-    writeFileSync(SCHED_FILE, JSON.stringify(list, null, 2))
+    updateJsonListShared(SCHED_FILE, () => list)
   } catch (e) {
     log(`failed writing schedules: ${e}`)
   }
 }
+// Field-level patch under the lock. Writing back a list read before the patch
+// is what resurrected `enabled: true` on a schedule the user had just disabled.
 function stamp(id, patch) {
-  const list = readSchedules()
-  const i = list.findIndex((s) => s.id === id)
-  if (i < 0) return
-  list[i] = { ...list[i], ...patch }
-  writeSchedules(list)
+  try {
+    updateJsonListShared(SCHED_FILE, (list) => {
+      const i = list.findIndex((s) => s.id === id)
+      if (i < 0) return undefined
+      const next = [...list]
+      next[i] = { ...next[i], ...patch }
+      return next
+    })
+  } catch (e) {
+    log(`failed stamping schedule ${id}: ${e}`)
+  }
 }
 function activity(ev) {
   try {
@@ -351,12 +483,7 @@ function fileHitl(item) {
     ...item,
   }
   try {
-    let list = []
-    try {
-      const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
-      if (Array.isArray(a)) list = a
-    } catch {}
-    writeFileSync(HITL_FILE, JSON.stringify([rec, ...list], null, 2))
+    updateJsonListShared(HITL_FILE, (list) => [rec, ...list])
   } catch (e) {
     log(`hitl write failed: ${e}`)
   }
@@ -459,8 +586,11 @@ function readDisabled() {
 }
 function writeDisabled(set) {
   try {
-    mkdirSync(dirname(DISABLED_FILE), { recursive: true })
-    writeFileSync(DISABLED_FILE, JSON.stringify({ scheduleIds: [...set] }, null, 2))
+    // Not a JSON list, so the shared list helper doesn't apply — but this is
+    // still the kill switch, and a torn write here silently re-enables agents.
+    withFileLockShared(DISABLED_FILE, () =>
+      writeJsonAtomicShared(DISABLED_FILE, { scheduleIds: [...set] }),
+    )
   } catch (e) {
     log(`failed writing disabled: ${e}`)
   }
@@ -588,7 +718,7 @@ function sweepStaleRuns() {
         endedAt: Date.now(),
         error: reason,
       }
-      writeFileSync(path, JSON.stringify(finalized, null, 2))
+      writeJsonAtomicShared(path, finalized)
       if (rec.scheduleId) stamp(rec.scheduleId, { lastStatus: 'failed' })
       const ageMin = Math.round(ageMs / 60_000)
       const detectionPhrase = reapForLiveness
@@ -870,26 +1000,19 @@ async function runSchedule(id) {
   const logFile = join(RUNS_DIR, `${runId}.log`)
   const recFile = join(RUNS_DIR, `${runId}.json`)
   const writeRec = (extra) =>
-    writeFileSync(
-      recFile,
-      JSON.stringify(
-        {
-          id: runId,
-          scheduleId: id,
-          agentId: sched.agentId,
-          agentTitle: sched.agentTitle,
-          engine: sched.engine,
-          repoRoot: repo,
-          repoLabel: sched.repoLabel,
-          worktree,
-          branch,
-          startedAt: ts,
-          ...extra,
-        },
-        null,
-        2,
-      ),
-    )
+    writeJsonAtomicShared(recFile, {
+      id: runId,
+      scheduleId: id,
+      agentId: sched.agentId,
+      agentTitle: sched.agentTitle,
+      engine: sched.engine,
+      repoRoot: repo,
+      repoLabel: sched.repoLabel,
+      worktree,
+      branch,
+      startedAt: ts,
+      ...extra,
+    })
 
   log(`run ${runId}: schedule ${id} (${sched.agentTitle}) in ${repo}`)
   writeRec({ status: 'running' })
@@ -1222,7 +1345,119 @@ async function runWatchdog() {
   } catch (e) {
     log(`review-patterns piggyback failed: ${e}`)
   }
+  // Piggyback: once a day, the mechanical half of retention (ticket 0073).
+  try {
+    await maybeRunRetention()
+  } catch (e) {
+    log(`retention piggyback failed: ${e}`)
+  }
   return 0
+}
+
+
+// ---- durable retention (ticket 0073) ---------------------------------------
+//
+// The desktop app has a "reclaim disk" button, but a button is not a policy —
+// ~/.config/TerMinal reached 6.6 GB after an earlier one-time cleanup pass.
+// The watchdog already runs on a launchd cadence, so it carries the recurring
+// half: the cheap, mechanical reclaims that are safe without any app state.
+// The size/age worktree budgets stay in the app's sweep (src/main/
+// run-retention.ts), which can see running runs and dirty worktrees.
+
+const RETENTION_MARKER = join(CFG, 'retention.last.json')
+const MONITOR_LOG = join(CFG, 'monitor.log')
+const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
+const LOG_MAX_BYTES = 2 * 1024 * 1024
+const LEFTOVER_MIN_AGE_MS = 60 * 60 * 1000
+const QUARANTINE_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000
+const HITL_ARCHIVE_AFTER_MS = 60 * 24 * 60 * 60 * 1000
+
+// Cap an append-only log, keeping the TAIL (the end you actually debug with).
+// One `.1` generation only — an unbounded chain is the same leak, renamed.
+function rotateLog(file, maxBytes) {
+  let raw
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return 0
+  }
+  const bytes = Buffer.byteLength(raw)
+  if (bytes <= maxBytes) return 0
+  let tail = raw.slice(-maxBytes)
+  const nl = tail.indexOf('\n')
+  if (nl >= 0 && nl < tail.length - 1) tail = tail.slice(nl + 1)
+  writeFileSync(`${file}.1`, raw)
+  writeFileSync(file, tail)
+  return bytes - Buffer.byteLength(tail)
+}
+
+// A fresh .tmp/.lock may belong to a live writer, and a recent .corrupt-* is the
+// ONLY surviving copy of whatever was quarantined — hence the two age gates.
+function sweepLeftovers() {
+  let freed = 0
+  const now = Date.now()
+  for (const name of readdirSync(CFG)) {
+    const isQuarantine = /\.corrupt-\d+$/.test(name)
+    const isTemp = /\.tmp$/.test(name) || /\.lock$/.test(name) || /\.bak\.\d+$/.test(name)
+    if (!isQuarantine && !isTemp) continue
+    const path = join(CFG, name)
+    try {
+      const st = statSync(path)
+      if (!st.isFile()) continue
+      if (now - st.mtimeMs < (isQuarantine ? QUARANTINE_MIN_AGE_MS : LEFTOVER_MIN_AGE_MS)) continue
+      unlinkSync(path)
+      freed += st.size
+    } catch {}
+  }
+  return freed
+}
+
+// hitl.json is read and rewritten whole on every filing, so it has to stay
+// small. Only READ items past the window move out; an OPEN item is somebody's
+// outstanding blocker and is never archived, however old.
+function archiveHitl() {
+  const now = Date.now()
+  const cutoff = now - HITL_ARCHIVE_AFTER_MS
+  let archived = 0
+  try {
+    updateJsonListShared(HITL_FILE, (list) => {
+      const settled = (h) =>
+        (!!h.readAt || h.status === 'resolved') &&
+        (h.resolvedAt ?? h.readAt ?? h.createdAt ?? now) < cutoff
+      const stale = list.filter(settled)
+      if (!stale.length) return undefined
+      const dest = join(CFG, 'hitl-archive', `hitl-${new Date(now).toISOString().slice(0, 10)}.json`)
+      let existing = []
+      try {
+        const prev = JSON.parse(readFileSync(dest, 'utf8'))
+        if (Array.isArray(prev)) existing = prev
+      } catch {}
+      writeJsonAtomicShared(dest, [...existing, ...stale])
+      archived = stale.length
+      return list.filter((h) => !settled(h))
+    })
+  } catch (e) {
+    log(`retention: hitl archive failed: ${e}`)
+  }
+  return archived
+}
+
+async function maybeRunRetention(force = false) {
+  if (!force) {
+    try {
+      const m = JSON.parse(readFileSync(RETENTION_MARKER, 'utf8'))
+      if (m.lastRunAt && Date.now() - m.lastRunAt < RETENTION_INTERVAL_MS) return null
+    } catch {}
+  }
+  const logs = rotateLog(MONITOR_LOG, LOG_MAX_BYTES) + rotateLog(CRON_LOG, LOG_MAX_BYTES)
+  const leftovers = sweepLeftovers()
+  const archived = archiveHitl()
+  const summary = { lastRunAt: Date.now(), logBytes: logs, leftoverBytes: leftovers, archived }
+  try {
+    writeJsonAtomicShared(RETENTION_MARKER, summary)
+  } catch {}
+  log(`retention: logs=${logs}B leftovers=${leftovers}B hitl-archived=${archived}`)
+  return summary
 }
 
 // ---- review findings patterns ----------------------------------------------
@@ -1360,9 +1595,15 @@ if (action === 'run' && arg) {
   runWatchdog().then((c) => process.exit(c))
 } else if (action === 'review-patterns') {
   maybeRunReviewPatterns(arg === '--force').then(() => process.exit(0))
+} else if (action === 'retention') {
+  maybeRunRetention(true).then((r) => {
+    console.log(JSON.stringify(r))
+    process.exit(0)
+  })
 } else {
   console.error('usage: terminal-cron run <scheduleId>')
   console.error('       terminal-cron watchdog')
   console.error('       terminal-cron review-patterns [--force]')
+  console.error('       terminal-cron retention')
   process.exit(2)
 }
