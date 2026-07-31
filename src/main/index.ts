@@ -92,6 +92,7 @@ import {
   type ObservabilityIndexQueryId,
   type ObservabilityQueryFilter,
 } from './observability-index'
+import { registerInboxIpc } from './ipc/inbox'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import {
   emitActivity,
@@ -3674,6 +3675,9 @@ ipcMain.handle('observability:filter-options', () =>
   curRemote() ? { repos: [], engines: [], models: [] } : observabilityFilterOptions(),
 )
 
+// Inbox snooze + alert delivery log. Same reason: the renderer already invokes
+// these channels, so leaving them unregistered is an unhandled-invoke rejection.
+registerInboxIpc()
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {
