@@ -22,6 +22,7 @@ import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
 import { linkTicketPr, updateTicket } from './backlog'
+import { blockEffect } from './effect-guard'
 import { emitActivity } from './events'
 // Static, not lazy `require` — see the note in telegram.ts. Under the ESM
 // bundle the old `require('./budgets')` threw and was swallowed by its own
@@ -429,6 +430,7 @@ function extractDone(log: string): string | undefined {
 
 // Send a one-off Telegram message via the existing settings/auth boundary.
 function telegramPing(text: string): void {
+  if (blockEffect('notify', 'bg-task-telegram')) return
   try {
     const t = readSettings().telegram
     if (!t?.botToken || !t?.chatId) return

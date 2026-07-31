@@ -12,8 +12,9 @@ import {
   watch,
 } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { configPath } from './config-dir'
+import { blockEffect } from './effect-guard'
 import { readSettings } from './settings'
 import { anyChannelWants, categoryFor } from '../shared/notifications'
 import { openHitlCount, pushConfigured, sendPush } from './bridge/push'
@@ -30,7 +31,10 @@ import {
 // Activity feed + system notifications. Events are stored GLOBALLY (one log
 // across every repo/session) but each is tagged with repo + session, so the
 // Activity tab can show the global firehose or filter to one repo/session.
-const LOG = join(homedir(), '.config', 'TerMinal', 'activity.jsonl')
+/** The feed's on-disk log. Resolved lazily through the config-dir seam so a
+ *  test (or a second profile) can point it somewhere throwaway — a module-level
+ *  const baked the developer's real feed in before any test line ran. */
+export const activityLogFile = (): string => configPath('activity.jsonl')
 const MAX_KEEP = 2000 // cap the on-disk log
 
 // Canonical activity kinds — workflow checkpoints emitted by the app AND by the
@@ -94,6 +98,7 @@ export function onActivity(fn: (ev: ActivityEvent) => void) {
 // The outbound alert channels (notify-channels.ts): Telegram, desktop, webhook.
 // Each gates itself on Settings; dispatchAlert isolates per-channel failures.
 function showDesktopNotification(title: string, body: string): void {
+  if (blockEffect('notify', 'desktop')) return
   if (!Notification.isSupported()) return
   try {
     new Notification({ title, body }).show()
@@ -123,6 +128,8 @@ function fireNotification(ev: ActivityEvent): void {
 
 /** Settings "Test" button for the desktop channel. */
 export function testDesktopAlert(): { ok: boolean; error?: string } {
+  if (blockEffect('notify', 'desktop-test'))
+    return { ok: false, error: 'Notifications are blocked while running under test.' }
   if (!Notification.isSupported())
     return { ok: false, error: 'Desktop notifications are not supported on this system.' }
   try {
@@ -165,9 +172,14 @@ export function emitActivity(
 ): ActivityEvent {
   const inferredKind = maybeInferKind(e.kind, e.title)
   const ev: ActivityEvent = { ...e, kind: inferredKind, id: randomUUID(), ts: Date.now() }
+  // An append here is not a private write: the running app tails this log and
+  // mirrors what lands in it to desktop, Telegram and the phone. So under test
+  // the event is built and returned (callers use its id) but never emitted.
+  if (blockEffect('activity', ev.kind)) return ev
+  const log = activityLogFile()
   try {
-    mkdirSync(dirname(LOG), { recursive: true })
-    appendFileSync(LOG, JSON.stringify(ev) + '\n')
+    mkdirSync(dirname(log), { recursive: true })
+    appendFileSync(log, JSON.stringify(ev) + '\n')
   } catch {
     /* best effort */
   }
@@ -188,16 +200,17 @@ let tailing = false
 export function startActivityTail() {
   if (tailing) return
   tailing = true
+  const log = activityLogFile()
   try {
-    tailSize = existsSync(LOG) ? statSync(LOG).size : 0
+    tailSize = existsSync(log) ? statSync(log).size : 0
   } catch {
     tailSize = 0
   }
   try {
-    mkdirSync(dirname(LOG), { recursive: true })
+    mkdirSync(dirname(log), { recursive: true })
     // watch the dir (the file may be created/rotated) and drain on changes
-    watch(dirname(LOG), (_evt, fn) => {
-      if (!fn || fn === basename(LOG)) drainTail()
+    watch(dirname(log), (_evt, fn) => {
+      if (!fn || fn === basename(log)) drainTail()
     })
   } catch {
     /* watch unavailable — feed still loads via activity:list */
@@ -205,9 +218,10 @@ export function startActivityTail() {
 }
 
 function drainTail() {
+  const log = activityLogFile()
   let size = 0
   try {
-    size = statSync(LOG).size
+    size = statSync(log).size
   } catch {
     return
   }
@@ -215,7 +229,7 @@ function drainTail() {
   if (size <= tailSize) return
   const len = size - tailSize
   try {
-    const fd = openSync(LOG, 'r')
+    const fd = openSync(log, 'r')
     const buf = Buffer.alloc(len)
     readSync(fd, buf, 0, len, tailSize)
     closeSync(fd)
@@ -244,13 +258,14 @@ function drainTail() {
 
 /** Newest-first, capped. */
 export function readActivity(limit = 500): ActivityEvent[] {
-  if (!existsSync(LOG)) return []
+  const log = activityLogFile()
+  if (!existsSync(log)) return []
   try {
-    const lines = readFileSync(LOG, 'utf8').split('\n').filter(Boolean)
+    const lines = readFileSync(log, 'utf8').split('\n').filter(Boolean)
     // opportunistically compact a runaway log
     if (lines.length > MAX_KEEP) {
       try {
-        writeFileSync(LOG, lines.slice(-MAX_KEEP).join('\n') + '\n')
+        writeFileSync(log, lines.slice(-MAX_KEEP).join('\n') + '\n')
       } catch {
         /* ignore */
       }
@@ -272,8 +287,9 @@ export function readActivity(limit = 500): ActivityEvent[] {
 }
 
 export function clearActivity() {
+  const log = activityLogFile()
   try {
-    if (existsSync(LOG)) writeFileSync(LOG, '')
+    if (existsSync(log)) writeFileSync(log, '')
   } catch {
     /* ignore */
   }

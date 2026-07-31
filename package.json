@@ -24,6 +24,7 @@
     "release": "bin/release",
     "cut-release": "bun bin/cut-release",
     "test": "bun test",
+    "test:effects": "bun scripts/effect-canary.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
