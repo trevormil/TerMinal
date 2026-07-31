@@ -2,6 +2,7 @@ import { readActivity, type ActivityKind } from './events'
 import { listRuns } from './agents'
 import { readCronRuns } from './cron-runs'
 import { openCount as hitlOpenCount } from './hitl'
+import { listDisabledDetail, type DisabledEntry } from './agents-disabled'
 import { cycleAndFunnel, type CycleStats, type Funnel } from './cycle'
 
 export type { CycleStats, Funnel } from './cycle'
@@ -40,6 +41,10 @@ export type FactoryHealth = {
   agents: RunStats
   cron: RunStats & { recentFailures: number }
   hitlOpen: number
+  /** Kill-switched schedules — a dark agent is otherwise invisible in the
+   *  roster, so it gets counted at the top level with its reason. */
+  disabled: DisabledEntry[]
+  disabledCount: number
   cycle: CycleStats
   funnel: Funnel
   recentFailures: { title: string; ts: number; repo: string; kind: string }[]
@@ -139,6 +144,7 @@ export function factoryHealth(now = Date.now()): FactoryHealth {
     .slice(0, 8)
 
   const { cycle, funnel } = cycleAndFunnel(events, now)
+  const disabled = listDisabledDetail()
 
   return {
     generatedAt: now,
@@ -147,6 +153,8 @@ export function factoryHealth(now = Date.now()): FactoryHealth {
     agents: runStats(agentRuns),
     cron: { ...runStats(cronRuns), recentFailures: recentCronFailures },
     hitlOpen: hitlOpenCount(),
+    disabled,
+    disabledCount: disabled.length,
     cycle,
     funnel,
     recentFailures,

@@ -203,6 +203,9 @@ export type BridgeRun = {
   source: string
   /** Remote host the run came from; absent for local. */
   hostId?: string
+  /** Best-effort two-line "what actually got done". Absent when the run was
+   *  never summarized — the phone renders the row without it. */
+  summary?: string
 }
 export type BridgeSchedule = {
   id: string

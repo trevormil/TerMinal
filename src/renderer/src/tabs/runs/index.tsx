@@ -558,48 +558,57 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <button
                     key={r.id}
                     onClick={() => setSel(r.id)}
-                    className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                    className={`block w-full border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
                       selectedHere ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                     }`}
                   >
-                    <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                    <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
-                    {r.hostId && (
+                    <span className="flex w-full items-center gap-2">
+                      <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                      <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
+                      {r.hostId && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
+                          title={`Remote host: ${r.hostLabel || r.hostId}`}
+                        >
+                          <Server size={8} strokeWidth={2} />
+                          {r.hostLabel || r.hostId}
+                        </span>
+                      )}
+                      {r.force && <ForceChip />}
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
+                        {r.agentTitle}
+                      </span>
+                      <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">
+                        {r.repoLabel}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
+                        <EngineLogo engine={r.engine} size={10} />
+                        {engineLabel(r.engine)}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">
+                        {dur}
+                      </span>
                       <span
-                        className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
-                        title={`Remote host: ${r.hostLabel || r.hostId}`}
+                        className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
+                        title={
+                          r.costUsd != null
+                            ? 'Cost reported by or-agent (OpenRouter)'
+                            : 'Cost from the AI fleet ledger (joined by runId)'
+                        }
                       >
-                        <Server size={8} strokeWidth={2} />
-                        {r.hostLabel || r.hostId}
+                        {fmtUsd(r.costUsd ?? costByRunId.get(r.id) ?? 0)}
+                      </span>
+                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                        {fmtWhen(r.startedAt)}
+                      </span>
+                    </span>
+                    {/* What actually got done. Best-effort — absent whenever the
+                        summarizer was skipped or unavailable. */}
+                    {r.summary && (
+                      <span className="mt-0.5 block truncate pl-1 text-[11px] leading-snug text-zinc-500">
+                        {r.summary}
                       </span>
                     )}
-                    {r.force && <ForceChip />}
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
-                      {r.agentTitle}
-                    </span>
-                    <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">
-                      {r.repoLabel}
-                    </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
-                      <EngineLogo engine={r.engine} size={10} />
-                      {engineLabel(r.engine)}
-                    </span>
-                    <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">
-                      {dur}
-                    </span>
-                    <span
-                      className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
-                      title={
-                        r.costUsd != null
-                          ? 'Cost reported by or-agent (OpenRouter)'
-                          : 'Cost from the AI fleet ledger (joined by runId)'
-                      }
-                    >
-                      {fmtUsd(r.costUsd ?? costByRunId.get(r.id) ?? 0)}
-                    </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
-                      {fmtWhen(r.startedAt)}
-                    </span>
                   </button>
                 )
               })
@@ -791,6 +800,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <X size={11} strokeWidth={2} />
                 </button>
               </header>
+              {selectedRun.summary && (
+                <div className="shrink-0 border-b border-[var(--gt-border)]/60 px-5 py-2 text-[11.5px] leading-snug text-zinc-400">
+                  <span className="mr-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                    Outcome
+                  </span>
+                  {selectedRun.summary}
+                </div>
+              )}
               {selectedRun.error && (
                 <div className="shrink-0 border-b border-[var(--gt-border)]/60 bg-[var(--gt-red)]/10 px-5 py-2 text-[11.5px] text-[var(--gt-red)]">
                   {selectedRun.error}

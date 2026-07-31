@@ -584,13 +584,30 @@ function readDisabled() {
     return new Set()
   }
 }
-function writeDisabled(set) {
+// Side-car reasons map (see src/main/agents-disabled.ts). Preserved verbatim on
+// write so a UI-recorded reason survives a runner-side toggle.
+function readDisabledReasons() {
+  try {
+    const a = JSON.parse(readFileSync(DISABLED_FILE, 'utf8'))
+    return !Array.isArray(a) && a?.reasons && typeof a.reasons === 'object' ? a.reasons : {}
+  } catch {
+    return {}
+  }
+}
+// `overrides` is a DELTA (id -> {reason, at}), never a full snapshot: the
+// authoritative reasons map is re-read inside the lock, because a snapshot
+// taken before we acquired it can already be stale.
+function writeDisabled(set, overrides = {}) {
   try {
     // Not a JSON list, so the shared list helper doesn't apply — but this is
     // still the kill switch, and a torn write here silently re-enables agents.
-    withFileLockShared(DISABLED_FILE, () =>
-      writeJsonAtomicShared(DISABLED_FILE, { scheduleIds: [...set] }),
-    )
+    withFileLockShared(DISABLED_FILE, () => {
+      const reasons = { ...readDisabledReasons(), ...overrides }
+      const ids = [...set]
+      const kept = {}
+      for (const id of ids) if (reasons[id]) kept[id] = reasons[id]
+      writeJsonAtomicShared(DISABLED_FILE, { scheduleIds: ids, reasons: kept })
+    })
   } catch (e) {
     log(`failed writing disabled: ${e}`)
   }
@@ -639,7 +656,12 @@ function maybeCircuitBreak(scheduleId, sched) {
   const set = readDisabled()
   if (set.has(scheduleId)) return false // already disabled
   set.add(scheduleId)
-  writeDisabled(set)
+  writeDisabled(set, {
+    [scheduleId]: {
+      reason: `auto-disabled after ${CIRCUIT_BREAK_AFTER} consecutive failures`,
+      at: Date.now(),
+    },
+  })
   fileHitl({
     title: `Circuit broken · ${sched.agentTitle}`,
     action: `auto-disabled after ${CIRCUIT_BREAK_AFTER} consecutive failures — re-enable from the Schedules tab when fixed`,
