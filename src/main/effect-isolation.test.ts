@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -45,16 +45,34 @@ afterEach(() => {
   else process.env.TERMINAL_CONFIG_DIR = prevConfigDir
 })
 
-/** Every notification gate wide open, so only the effect guard can stop it. */
+/**
+ * Every notification gate wide open, so only the effect guard can stop it.
+ *
+ * Written straight to settings.json rather than through patchSettings: the
+ * bot token is a SECRET_PATH, and where OS encryption is unavailable (CI, a
+ * headless run) patchSettings drops it instead of writing cleartext. Arming
+ * that way left the suite with no credentials — and a "no outbound POST"
+ * assertion that would have passed with the guard deleted. Verified against
+ * the pre-fix tree: with these creds on disk, one fileHitl POSTs twice (the
+ * webhook, then api.telegram.org).
+ */
 async function armEverything(): Promise<void> {
-  const { patchSettings, resetSettingsCache } = await import('./settings')
+  writeFileSync(
+    join(dir, 'settings.json'),
+    JSON.stringify({
+      telegram: { notify: true, control: false, botToken: '123:REAL-LOOKING', chatId: '4242' },
+      alerts: {
+        desktop: { enabled: true },
+        webhook: { enabled: true, url: 'https://x.test/hook' },
+      },
+      inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'low' },
+    }),
+  )
+  const { readSettings, resetSettingsCache } = await import('./settings')
   resetSettingsCache()
-  patchSettings({
-    telegram: { notify: true, control: false, botToken: '123:REAL-LOOKING', chatId: '4242' },
-    alerts: { desktop: { enabled: true }, webhook: { enabled: true, url: 'https://x.test/hook' } },
-    inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'low' },
-  })
-  resetSettingsCache()
+  // Fail loudly if the arming ever stops arming — an unarmed gate makes every
+  // assertion below vacuous.
+  expect(readSettings().telegram.botToken).toBe('123:REAL-LOOKING')
 }
 
 describe('the activity feed is never the real one under test', () => {
