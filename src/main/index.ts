@@ -85,10 +85,12 @@ import {
   readObservabilityTranscriptWindow,
 } from './data'
 import {
+  observabilityFilterOptions,
   observabilityIndexStatus,
   queryObservabilityIndex,
   rebuildObservabilityIndex,
   type ObservabilityIndexQueryId,
+  type ObservabilityQueryFilter,
 } from './observability-index'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import {
@@ -3657,14 +3659,19 @@ ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
       }
     : rebuildObservabilityIndex(limit),
 )
-ipcMain.handle('observability:index-query', (_e, query: ObservabilityIndexQueryId, arg?: string) =>
-  curRemote()
-    ? {
-        ...queryObservabilityIndex(query, arg),
-        rows: [],
-        error: 'Remote observability indexing is not wired yet.',
-      }
-    : queryObservabilityIndex(query, arg),
+ipcMain.handle(
+  'observability:index-query',
+  (_e, query: ObservabilityIndexQueryId, arg?: string, filter?: ObservabilityQueryFilter) =>
+    curRemote()
+      ? {
+          ...queryObservabilityIndex(query, arg, filter),
+          rows: [],
+          error: 'Remote observability indexing is not wired yet.',
+        }
+      : queryObservabilityIndex(query, arg, filter),
+)
+ipcMain.handle('observability:filter-options', () =>
+  curRemote() ? { repos: [], engines: [], models: [] } : observabilityFilterOptions(),
 )
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()

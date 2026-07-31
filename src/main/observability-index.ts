@@ -51,6 +51,22 @@ export type ObservabilityIndexQueryId =
   | 'session_events'
   | 'audit'
 
+/**
+ * Shared scope narrowing for the canned queries. Before this, every question was
+ * "all history" or "one session"; these are the four axes the toolbar exposes.
+ * Applied against the `sessions` row a result joins to — so a repo/model/engine
+ * filter means "sessions matching this", and since/until bound `sessions.mtime`.
+ */
+export type ObservabilityQueryFilter = {
+  /** Inclusive lower bound, ms epoch. */
+  since?: number
+  /** Inclusive upper bound, ms epoch. */
+  until?: number
+  repo?: string
+  engine?: string
+  model?: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -223,6 +239,13 @@ const QUERY_META: Record<
     description: 'Deterministic recommendations from indexed sessions, turns, and tool calls.',
     columns: ['severity', 'scope', 'title', 'metric', 'recommendation'],
   },
+}
+
+/** Queries that ignore the toolbar filter (no `sessions` row to narrow against). */
+const UNFILTERABLE = new Set<ObservabilityIndexQueryId>(['session_events', 'audit'])
+
+export function queryAcceptsFilter(query: ObservabilityIndexQueryId): boolean {
+  return !UNFILTERABLE.has(query)
 }
 
 function ensureDir(path: string): void {
@@ -762,9 +785,173 @@ function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''")
 }
 
+/**
+ * SQL predicates for the toolbar filter, against the `sessions` table (aliased
+ * because some queries join it). Pure and exported so the clause is testable
+ * without a database — the filter is the one piece of these queries that is
+ * assembled rather than written out, so it is where a bug would hide.
+ */
+export function sessionFilterPredicates(
+  filter: ObservabilityQueryFilter | undefined,
+  alias = 'sessions',
+): string[] {
+  if (!filter) return []
+  const out: string[] = []
+  if (typeof filter.since === 'number' && Number.isFinite(filter.since))
+    out.push(`${alias}.mtime >= ${filter.since}`)
+  if (typeof filter.until === 'number' && Number.isFinite(filter.until))
+    out.push(`${alias}.mtime <= ${filter.until}`)
+  if (filter.repo) out.push(`${alias}.repo = '${escapeSqlLiteral(filter.repo)}'`)
+  if (filter.engine) out.push(`${alias}.engine = '${escapeSqlLiteral(filter.engine)}'`)
+  if (filter.model) out.push(`${alias}.model = '${escapeSqlLiteral(filter.model)}'`)
+  return out
+}
+
+/** Join fixed predicates and filter predicates into one WHERE clause (or ''). */
+export function whereClause(base: string[], filterPreds: string[]): string {
+  const all = [...base, ...filterPreds]
+  return all.length ? `WHERE ${all.join(' AND ')}` : ''
+}
+
+/** Distinct repo / engine / model values, for populating the filter dropdowns. */
+export function observabilityFilterOptions(): {
+  repos: string[]
+  engines: string[]
+  models: string[]
+} {
+  const empty = { repos: [], engines: [], models: [] }
+  if (!sqliteAvailable() || !indexBuilt()) return empty
+  try {
+    const pick = (col: string): string[] =>
+      queryJson<{ v: string }>(
+        `SELECT DISTINCT ${col} AS v FROM sessions WHERE ${col} <> '' ORDER BY v`,
+      ).map((r) => String(r.v))
+    return { repos: pick('repo'), engines: pick('engine'), models: pick('model') }
+  } catch {
+    return empty
+  }
+}
+
+function sqlFor(
+  query: ObservabilityIndexQueryId,
+  arg: string | undefined,
+  preds: string[],
+): string | null {
+  switch (query) {
+    case 'sessions_by_tokens':
+      return `
+        SELECT session_id, engine, repo, model, total_tokens, input_tokens, output_tokens, ROUND(cost_usd, 4) AS cost_usd, tool_total
+        FROM sessions ${whereClause([], preds)} ORDER BY total_tokens DESC LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'low_yield_sessions':
+      return `
+        SELECT session_id, repo, model, input_tokens, output_tokens,
+          ROUND(CAST(output_tokens AS REAL) / NULLIF(input_tokens, 0), 4) AS output_per_input,
+          ROUND(cost_usd, 4) AS cost_usd
+        FROM sessions
+        ${whereClause(['sessions.input_tokens > 0'], preds)}
+        ORDER BY output_per_input ASC, input_tokens DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'tool_calls':
+      return `
+        SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, sessions.model, tool_calls.turn_id, tool_calls.line,
+          tool_calls.tool_name, tool_calls.skill_name, tool_calls.status,
+          COALESCE(turns.input_tokens, 0) AS turn_input_tokens,
+          COALESCE(turns.output_tokens, 0) AS turn_output_tokens,
+          COALESCE(turns.total_tokens, 0) AS turn_total_tokens,
+          tool_calls.input_bytes,
+          tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
+          tool_calls.command_preview
+        FROM tool_calls
+        JOIN sessions USING (session_id)
+        LEFT JOIN turns ON turns.session_id = tool_calls.session_id AND turns.turn_id = tool_calls.turn_id
+        ${whereClause([], preds)}
+        ORDER BY turn_total_tokens DESC, tool_calls.input_bytes + tool_calls.output_bytes DESC, tool_calls.output_bytes DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'tool_payloads':
+      return `
+        SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.status,
+          tool_calls.input_bytes, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
+          tool_calls.truncated, tool_calls.input_json, tool_calls.output_json
+        FROM tool_calls
+        JOIN sessions USING (session_id)
+        ${whereClause([], preds)}
+        ORDER BY tool_calls.input_bytes + tool_calls.output_bytes DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'tool_errors':
+      return `
+        SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.turn_id,
+          tool_calls.line, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
+          tool_calls.command_text, tool_calls.error_text
+        FROM tool_calls
+        JOIN sessions USING (session_id)
+        ${whereClause(["tool_calls.status = 'error'"], preds)}
+        ORDER BY tool_calls.completed_at DESC, tool_calls.started_at DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'tool_call_bloat':
+      // Joins sessions purely so the toolbar filter has something to bite on;
+      // session_id is a foreign key, so the join never changes the row set.
+      return `
+        SELECT tool_name, COUNT(*) AS calls, SUM(output_bytes) AS total_output_bytes,
+          ROUND(AVG(output_bytes), 1) AS avg_output_bytes, MAX(output_bytes) AS max_output_bytes,
+          SUM(CASE WHEN tool_calls.status = 'open' THEN 1 ELSE 0 END) AS open_calls,
+          SUM(CASE WHEN tool_calls.status = 'error' THEN 1 ELSE 0 END) AS error_calls
+        FROM tool_calls
+        JOIN sessions USING (session_id)
+        ${whereClause([], preds)}
+        GROUP BY tool_name
+        ORDER BY total_output_bytes DESC, calls DESC
+      `
+    case 'turn_hotspots':
+      return `
+        SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls
+        FROM turns JOIN sessions USING (session_id)
+        ${whereClause([], preds)}
+        ORDER BY turns.total_tokens DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'costliest_turns':
+      return `
+        SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, ROUND(turns.cost_usd, 4) AS cost_usd,
+          turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls, ROUND(turns.duration_ms, 0) AS duration_ms
+        FROM turns JOIN sessions USING (session_id)
+        ${whereClause([], preds)}
+        ORDER BY turns.cost_usd DESC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    case 'model_rollup':
+      return `
+        SELECT model, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
+          SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd
+        FROM sessions ${whereClause([], preds)} GROUP BY model ORDER BY total_tokens DESC
+      `
+    case 'repo_rollup':
+      return `
+        SELECT repo, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
+          SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd, SUM(tool_total) AS tool_calls
+        FROM sessions ${whereClause([], preds)} GROUP BY repo ORDER BY total_tokens DESC
+      `
+    case 'session_events':
+      return `
+        SELECT seq, line, kind, severity, turn_id, tool_name, role, bytes, SUBSTR(text, 1, 12000) AS text
+        FROM events
+        WHERE session_id = '${escapeSqlLiteral(arg || '')}'
+        ORDER BY seq ASC
+        LIMIT ${ROW_QUERY_CAP}
+      `
+    default:
+      return null
+  }
+}
+
 export function queryObservabilityIndex(
   query: ObservabilityIndexQueryId,
   arg?: string,
+  filter?: ObservabilityQueryFilter,
 ): ObservabilityIndexQueryResult {
   const meta = QUERY_META[query]
   if (!sqliteAvailable())
@@ -796,107 +983,9 @@ export function queryObservabilityIndex(
     }
   }
   try {
-    const rows =
-      query === 'audit'
-        ? auditRows()
-        : query === 'sessions_by_tokens'
-          ? queryJson(`
-          SELECT session_id, engine, repo, model, total_tokens, input_tokens, output_tokens, ROUND(cost_usd, 4) AS cost_usd, tool_total
-          FROM sessions ORDER BY total_tokens DESC LIMIT ${ROW_QUERY_CAP}
-        `)
-          : query === 'low_yield_sessions'
-            ? queryJson(`
-          SELECT session_id, repo, model, input_tokens, output_tokens,
-            ROUND(CAST(output_tokens AS REAL) / NULLIF(input_tokens, 0), 4) AS output_per_input,
-            ROUND(cost_usd, 4) AS cost_usd
-          FROM sessions
-          WHERE input_tokens > 0
-          ORDER BY output_per_input ASC, input_tokens DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-            : query === 'tool_calls'
-              ? queryJson(`
-          SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, sessions.model, tool_calls.turn_id, tool_calls.line,
-            tool_calls.tool_name, tool_calls.skill_name, tool_calls.status,
-            COALESCE(turns.input_tokens, 0) AS turn_input_tokens,
-            COALESCE(turns.output_tokens, 0) AS turn_output_tokens,
-            COALESCE(turns.total_tokens, 0) AS turn_total_tokens,
-            tool_calls.input_bytes,
-            tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
-            tool_calls.command_preview
-          FROM tool_calls
-          JOIN sessions USING (session_id)
-          LEFT JOIN turns ON turns.session_id = tool_calls.session_id AND turns.turn_id = tool_calls.turn_id
-          ORDER BY turn_total_tokens DESC, tool_calls.input_bytes + tool_calls.output_bytes DESC, tool_calls.output_bytes DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-              : query === 'tool_payloads'
-                ? queryJson(`
-          SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.status,
-            tool_calls.input_bytes, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
-            tool_calls.truncated, tool_calls.input_json, tool_calls.output_json
-          FROM tool_calls
-          JOIN sessions USING (session_id)
-          ORDER BY tool_calls.input_bytes + tool_calls.output_bytes DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-                : query === 'tool_errors'
-                  ? queryJson(`
-          SELECT tool_calls.session_id, tool_calls.call_id, sessions.repo, tool_calls.tool_name, tool_calls.turn_id,
-            tool_calls.line, tool_calls.output_bytes, ROUND(tool_calls.duration_ms, 1) AS duration_ms,
-            tool_calls.command_text, tool_calls.error_text
-          FROM tool_calls
-          JOIN sessions USING (session_id)
-          WHERE tool_calls.status = 'error'
-          ORDER BY tool_calls.completed_at DESC, tool_calls.started_at DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-                  : query === 'tool_call_bloat'
-                    ? queryJson(`
-          SELECT tool_name, COUNT(*) AS calls, SUM(output_bytes) AS total_output_bytes,
-            ROUND(AVG(output_bytes), 1) AS avg_output_bytes, MAX(output_bytes) AS max_output_bytes,
-            SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_calls,
-            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_calls
-          FROM tool_calls
-          GROUP BY tool_name
-          ORDER BY total_output_bytes DESC, calls DESC
-        `)
-                    : query === 'turn_hotspots'
-                      ? queryJson(`
-          SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls
-          FROM turns JOIN sessions USING (session_id)
-          ORDER BY turns.total_tokens DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-                      : query === 'costliest_turns'
-                        ? queryJson(`
-          SELECT turns.session_id, turns.turn_id, sessions.repo, sessions.model, ROUND(turns.cost_usd, 4) AS cost_usd,
-            turns.total_tokens, turns.input_tokens, turns.output_tokens, turns.tool_calls, ROUND(turns.duration_ms, 0) AS duration_ms
-          FROM turns JOIN sessions USING (session_id)
-          ORDER BY turns.cost_usd DESC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-                        : query === 'model_rollup'
-                          ? queryJson(`
-          SELECT model, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
-            SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd
-          FROM sessions GROUP BY model ORDER BY total_tokens DESC
-        `)
-                          : query === 'repo_rollup'
-                            ? queryJson(`
-          SELECT repo, COUNT(*) AS sessions, SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
-            SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 4) AS cost_usd, SUM(tool_total) AS tool_calls
-          FROM sessions GROUP BY repo ORDER BY total_tokens DESC
-        `)
-                            : query === 'session_events'
-                              ? queryJson(`
-          SELECT seq, line, kind, severity, turn_id, tool_name, role, bytes, SUBSTR(text, 1, 12000) AS text
-          FROM events
-          WHERE session_id = '${escapeSqlLiteral(arg || '')}'
-          ORDER BY seq ASC
-          LIMIT ${ROW_QUERY_CAP}
-        `)
-                              : []
+    const preds = queryAcceptsFilter(query) ? sessionFilterPredicates(filter) : []
+    const sql = sqlFor(query, arg, preds)
+    const rows = query === 'audit' ? auditRows() : sql ? queryJson(sql) : []
     return { query, ...meta, rows, indexedAt: indexedAt(), dbPath: DB_PATH }
   } catch (e) {
     return {

@@ -251,6 +251,15 @@ export type ObservabilityIndexQueryId =
   | 'session_events'
   | 'audit'
 
+/** Mirror of ObservabilityQueryFilter in src/main/observability-index.ts. */
+export type ObservabilityQueryFilter = {
+  since?: number
+  until?: number
+  repo?: string
+  engine?: string
+  model?: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -2129,7 +2138,9 @@ export type GtApi = {
     indexQuery: (
       query: ObservabilityIndexQueryId,
       arg?: string,
+      filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
+    filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>

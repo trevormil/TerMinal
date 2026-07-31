@@ -471,8 +471,9 @@ const gt = {
     models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
-    indexQuery: (query: string, arg?: string) =>
-      ipcRenderer.invoke('observability:index-query', query, arg),
+    indexQuery: (query: string, arg?: string, filter?: unknown) =>
+      ipcRenderer.invoke('observability:index-query', query, arg, filter),
+    filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),

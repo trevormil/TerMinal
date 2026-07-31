@@ -33,6 +33,7 @@ import type {
   ObservabilityIndexQueryId,
   ObservabilityIndexQueryResult,
   ObservabilityIndexStatus,
+  ObservabilityQueryFilter,
   ObservabilitySnapshot,
   ObservabilityTimelineEvent,
   ObservabilityTokenSnapshot,
@@ -1302,6 +1303,107 @@ function QueryRail({
   )
 }
 
+// Every canned query used to be "all history" or "one session". The scope bar
+// is the shared narrowing — it re-runs the active query with a since/until,
+// repo, engine, and model clause applied against the sessions row.
+const DAY_MS = 86_400_000
+
+const RANGE_PRESETS: { label: string; days: number | null }[] = [
+  { label: 'All', days: null },
+  { label: '24h', days: 1 },
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+]
+
+function shortRepo(path: string): string {
+  return path.split('/').filter(Boolean).pop() || path
+}
+
+function ScopeBar({
+  filter,
+  options,
+  disabled,
+  onChange,
+}: {
+  filter: ObservabilityQueryFilter
+  options: { repos: string[]; engines: string[]; models: string[] }
+  disabled: boolean
+  onChange: (next: ObservabilityQueryFilter) => void
+}) {
+  const activeDays = RANGE_PRESETS.find(
+    (p) =>
+      p.days !== null &&
+      filter.since &&
+      Math.abs(Date.now() - p.days * DAY_MS - filter.since) < DAY_MS / 2,
+  )
+  const select = (
+    key: 'repo' | 'engine' | 'model',
+    label: string,
+    values: string[],
+    display: (v: string) => string = (v) => v,
+  ) => (
+    <select
+      key={key}
+      value={filter[key] || ''}
+      disabled={disabled || values.length === 0}
+      onChange={(e) => onChange({ ...filter, [key]: e.target.value || undefined })}
+      className={`h-6 rounded-md border bg-black/25 px-1.5 text-[10.5px] font-semibold outline-none disabled:opacity-40 ${
+        filter[key]
+          ? 'border-[var(--gt-accent)]/60 text-zinc-100'
+          : 'border-[var(--gt-border)] text-zinc-500'
+      }`}
+    >
+      <option value="">{label}</option>
+      {values.map((v) => (
+        <option key={v} value={v}>
+          {display(v)}
+        </option>
+      ))}
+    </select>
+  )
+  const dirty = Object.values(filter).some((v) => v !== undefined && v !== '')
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-3">
+      <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-700">Scope</span>
+      <div className="flex items-center gap-0.5 rounded-md border border-[var(--gt-border)] bg-black/25 p-0.5">
+        {RANGE_PRESETS.map(({ label, days }) => {
+          const on = days === null ? !filter.since : activeDays?.days === days
+          return (
+            <button
+              key={label}
+              disabled={disabled}
+              onClick={() =>
+                onChange({
+                  ...filter,
+                  since: days === null ? undefined : Date.now() - days * DAY_MS,
+                  until: undefined,
+                })
+              }
+              className={`h-5 rounded px-1.5 text-[10.5px] font-semibold disabled:opacity-40 ${
+                on ? 'bg-[var(--gt-accent)]/25 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      {select('repo', 'Any repo', options.repos, shortRepo)}
+      {select('engine', 'Any engine', options.engines)}
+      {select('model', 'Any model', options.models)}
+      {dirty && (
+        <button
+          disabled={disabled}
+          onClick={() => onChange({})}
+          className="h-6 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] font-semibold text-zinc-500 hover:text-zinc-200 disabled:opacity-40"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
 function ResultGrid({
   query,
   busy,
@@ -2066,6 +2168,12 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
   const [indexStatus, setIndexStatus] = useState<ObservabilityIndexStatus | null>(null)
   const [indexQuery, setIndexQuery] = useState<ObservabilityIndexQueryResult | null>(null)
   const [indexBusy, setIndexBusy] = useState(false)
+  const [scope, setScope] = useState<ObservabilityQueryFilter>({})
+  const [scopeOptions, setScopeOptions] = useState<{
+    repos: string[]
+    engines: string[]
+    models: string[]
+  }>({ repos: [], engines: [], models: [] })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -2094,18 +2202,31 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
     const status = await window.gt.observability.indexStatus()
     setIndexStatus(status)
     if (status.exists) {
-      const query = await window.gt.observability.indexQuery(reloadableQuery())
+      const query = await window.gt.observability.indexQuery(reloadableQuery(), undefined, scope)
       setIndexQuery(query)
     }
   }
 
-  const runIndexQuery = async (query: ObservabilityIndexQueryId) => {
+  const runIndexQuery = async (query: ObservabilityIndexQueryId, filter = scope) => {
     setIndexBusy(true)
     try {
-      setIndexQuery(await window.gt.observability.indexQuery(query))
+      setIndexQuery(await window.gt.observability.indexQuery(query, undefined, filter))
+    } catch (e) {
+      // Without this the rejection was unhandled: the spinner flashed and the
+      // grid silently kept the previous query's rows, which reads as "this
+      // question has no results" rather than "the query failed".
+      setErr((e as Error).message || 'Query failed.')
     } finally {
       setIndexBusy(false)
     }
+  }
+
+  // Re-run the active query under the new scope. session_events is
+  // session-scoped and takes no filter, so leave it alone.
+  const applyScope = (next: ObservabilityQueryFilter) => {
+    setScope(next)
+    const active = indexQuery?.query
+    if (active && active !== 'session_events') runIndexQuery(active, next)
   }
 
   const rebuildIndex = async () => {
@@ -2114,7 +2235,8 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
     try {
       const status = await window.gt.observability.rebuildIndex(100000)
       setIndexStatus(status)
-      setIndexQuery(await window.gt.observability.indexQuery(reloadableQuery()))
+      setScopeOptions(await window.gt.observability.filterOptions())
+      setIndexQuery(await window.gt.observability.indexQuery(reloadableQuery(), undefined, scope))
     } catch (e) {
       setErr((e as Error).message || 'Could not rebuild observability index.')
     } finally {
@@ -2184,6 +2306,10 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
   useEffect(() => {
     load()
     loadIndexStatus().catch(() => {})
+    window.gt.observability
+      .filterOptions()
+      .then(setScopeOptions)
+      .catch(() => {})
   }, [ctx.sessionId])
 
   useEffect(() => {
@@ -2326,6 +2452,12 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
             selection={selection}
             focusedCallId={focusedCallId}
             mode={mode}
+          />
+          <ScopeBar
+            filter={scope}
+            options={scopeOptions}
+            disabled={indexBusy}
+            onChange={applyScope}
           />
           <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(460px,1fr)_minmax(430px,0.82fr)] overflow-hidden">
             <QueryRail
