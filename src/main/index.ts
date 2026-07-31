@@ -93,6 +93,7 @@ import {
   type ObservabilityQueryFilter,
 } from './observability-index'
 import { registerInboxIpc } from './ipc/inbox'
+import { registerStacksIpc } from './ipc/stacks'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import {
   emitActivity,
@@ -3678,6 +3679,9 @@ ipcMain.handle('observability:filter-options', () =>
 // Inbox snooze + alert delivery log. Same reason: the renderer already invokes
 // these channels, so leaving them unregistered is an unhandled-invoke rejection.
 registerInboxIpc()
+// GitHub native stacked PRs. Reads only; degrades to no stacks everywhere the
+// preview has not rolled out.
+registerStacksIpc()
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {

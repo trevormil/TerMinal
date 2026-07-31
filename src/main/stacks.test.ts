@@ -152,19 +152,21 @@ describe('stackFor / isPartialStack', () => {
 
 describe('merge call shape', () => {
   test('merging a stack uses the stack command, never per-PR merges', () => {
-    const args = stackMergeArgs(42)
-    expect(args).toEqual(['stack', 'merge', '42'])
-    // The failure this guards against: a loop of `gh pr merge`, which has
-    // different semantics and cannot cascade the stack.
-    expect(args).not.toContain('pr')
+    // `toEqual` above already pins the argv exactly; asserting `not.toContain`
+    // on the same literal would be a tautology. The meaningful guard is that
+    // the SHELL CALL is one cascading command, covered by the next test.
+    expect(stackMergeArgs(42)).toEqual(['stack', 'merge', '42'])
   })
 
   test('mergeStack shells exactly one stack merge, not one call per layer', async () => {
     const calls = fakeRunner()
     const r = await mergeStack('/repo', 42)
     expect(r.ok).toBe(true)
+    // The real guard: ONE cascading command. A loop of `gh pr merge` would
+    // show up here as N calls with a `pr` subcommand.
     expect(calls).toHaveLength(1)
     expect(calls[0]).toEqual({ cli: 'gh', args: ['stack', 'merge', '42'], cwd: '/repo' })
+    expect(calls.some((c) => c.args[0] === 'pr')).toBe(false)
   })
 
   test('a merge failure surfaces the first stderr line, never throws', async () => {
@@ -234,5 +236,76 @@ describe('parsePullsForStacks / fetchStacks', () => {
     const calls = fakeRunner({ stdout: '[]' })
     await fetchStacks('/repo', 'o/r')
     expect(calls[0].args[1]).toContain('state=open')
+  })
+})
+
+describe('the real GitHub payload (verified against a live stack)', () => {
+  // Captured from `gh api repos/.../pulls?state=open` on 2026-07-31 against a
+  // real two-layer native stack on this repo (PRs 224/225, stack id 88056).
+  // Pinned verbatim because everything here was written against preview docs;
+  // this is the one test that proves the docs matched reality.
+  //
+  // Two details only real data shows:
+  //  - `base` is the STACK's base, identical on every layer, not the per-PR
+  //    base. Layer 2 reports `main`, not layer 1's branch.
+  //  - `stack.number` (226) is neither layer's PR number. Nothing may key off
+  //    it as if it were.
+  const REAL = JSON.stringify([
+    {
+      number: 225,
+      stack: {
+        id: 88056,
+        number: 226,
+        base: { ref: 'main', sha: 'aa7d852574a884059e08f8e08e67658421c6d9c2' },
+        size: 2,
+        position: 2,
+      },
+    },
+    {
+      number: 224,
+      stack: {
+        id: 88056,
+        number: 226,
+        base: { ref: 'main', sha: 'aa7d852574a884059e08f8e08e67658421c6d9c2' },
+        size: 2,
+        position: 1,
+      },
+    },
+    // An open PR from the same query that is NOT in a stack — the normal case.
+    { number: 221 },
+  ])
+
+  test('resolves to one complete stack, ordered bottom-to-top', () => {
+    const stacks = groupStacks(parsePullsForStacks(REAL))
+    expect(stacks).toEqual([
+      {
+        id: 88056,
+        size: 2,
+        baseRef: 'main',
+        layers: [
+          { iid: 224, position: 1 },
+          { iid: 225, position: 2 },
+        ],
+      },
+    ])
+    expect(isPartialStack(stacks[0])).toBe(false)
+  })
+
+  test('the API order (top layer first) does not decide the layer order', () => {
+    // GitHub returned 225 before 224. Rendering in arrival order would draw the
+    // stack upside down and cascade-merge the wrong set.
+    const layers = groupStacks(parsePullsForStacks(REAL))[0].layers
+    expect(layers.map((l) => l.iid)).toEqual([224, 225])
+  })
+
+  test('an unstacked PR in the same response stays unstacked', () => {
+    const stacks = groupStacks(parsePullsForStacks(REAL))
+    expect(stackFor(stacks, 221)).toBeNull()
+    expect(stackFor(stacks, 224)?.id).toBe(88056)
+  })
+
+  test("stack.number is not a layer's PR number and must not be treated as one", () => {
+    const stacks = groupStacks(parsePullsForStacks(REAL))
+    expect(stacks[0].layers.map((l) => l.iid)).not.toContain(226)
   })
 })
