@@ -20,8 +20,8 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { langs } from '@uiw/codemirror-extensions-langs'
 import { langKeyFor } from '../../../../shared/languages'
+import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
 import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
 import { MergeDiffView } from '../../components/MergeDiffView'
@@ -65,12 +65,7 @@ import type { Tab, TabContext, FileEntry, SearchHit, FilesSearchOptions } from '
 // Makefile, and is unit-tested against the real langs export so a mapped key
 // can never silently resolve to "no highlighting".
 function langFor(path: string): Extension[] {
-  const key = langKeyFor(path) as keyof typeof langs | ''
-  try {
-    return key && langs[key] ? [langs[key]()] : []
-  } catch {
-    return []
-  }
+  return langExtensionFor(langKeyFor(path))
 }
 const base = (p: string) => p.split('/').pop() || p
 const parentOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
@@ -391,6 +386,9 @@ type OpenFile = { path: string; content: string; dirty: boolean; err?: string; s
 type Prompt = { kind: 'new-file' | 'new-folder' | 'rename'; parent?: string; target?: string }
 
 function FilesTab({ ctx }: { ctx: TabContext }) {
+  // Pulls the (code-split) CodeMirror grammars in on first mount of a tab
+  // that can host an editor, and re-renders once they land. See lazyLang.ts.
+  useLangsReady()
   const [roots, setRoots] = useState<FileEntry[] | null>(null)
   const [version, setVersion] = useState(0)
   const [open, setOpen] = useState<OpenFile[]>([])

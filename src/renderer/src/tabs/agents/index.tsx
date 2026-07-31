@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import {
   Bot,
@@ -57,6 +56,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
+import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { engineLabel } from '../../lib/engines'
 import {
   engineInstanceLabel,
@@ -193,12 +193,7 @@ const AGENT_FILE_EXT: Record<string, string> = {
   txt: '',
 }
 function langForAgentFile(path: string): Extension[] {
-  const key = AGENT_FILE_EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | ''
-  try {
-    return key && langs[key] ? [langs[key]()] : []
-  } catch {
-    return []
-  }
+  return langExtensionFor(AGENT_FILE_EXT[path.split('.').pop()?.toLowerCase() || ''] || '')
 }
 
 function modelPolicyRows(
@@ -1732,6 +1727,9 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
 }
 
 function AgentsTab({ ctx }: { ctx: TabContext }) {
+  // Pulls the (code-split) CodeMirror grammars in on first mount of a tab
+  // that can host an editor, and re-renders once they land. See lazyLang.ts.
+  useLangsReady()
   const railW = useResizableWidth('gt.agentsRailWidth', 320, { min: 240, max: 560, edge: 'right' })
   const [agentMode, setAgentMode] = useState<'all' | 'classic' | 'persistent'>(() => {
     const saved = localStorage.getItem('gt.agents.mode')
