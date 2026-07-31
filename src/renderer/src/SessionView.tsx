@@ -6,6 +6,8 @@ import {
   Grid2x2,
   LayoutGrid,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   PanelTop,
@@ -21,6 +23,7 @@ import {
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
+import { FilesColumn } from './components/FilesColumn'
 import { useRepoTrustPrompt } from './components/RepoTrustReview'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
@@ -35,6 +38,7 @@ import { createTickCoalescer } from './lib/tickCoalescer'
 import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
+import { readCollapsed, writeCollapsed } from './lib/panelCollapse'
 import { pluginVisibleForEngine, reconcileFreshPlugins } from './lib/pluginVisibility'
 import { RepoOrientation } from './components/RepoOrientation'
 import {
@@ -289,13 +293,16 @@ export function SessionView({
   // reading the literal commands. There is no approve-from-the-badge. Polled,
   // because nothing pushes when the active session's cwd changes.
   const trustPrompt = useRepoTrustPrompt(5000)
-  const [cockpitCollapsed, setCockpitCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('gt.cockpitCollapsed') === '1'
-    } catch {
-      return false
-    }
-  })
+  const [cockpitCollapsed, setCockpitCollapsed] = useState(() =>
+    readCollapsed('gt.cockpitCollapsed', false),
+  )
+  // The Files column mirrors the cockpit's mechanics on the opposite edge, but
+  // defaults CLOSED: it is new chrome, and shipping it open would reflow every
+  // existing session's terminal on upgrade. One click opens it, and the state
+  // persists from then on.
+  const [filesCollapsed, setFilesCollapsed] = useState(() =>
+    readCollapsed('gt.filesCollapsed', true),
+  )
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
   const sessionRailW = useResizableWidth('gt.sessionRailWidth', 160, {
     min: 120,
@@ -303,6 +310,9 @@ export function SessionView({
     edge: 'right',
   })
   const cockpitW = useResizableWidth('gt.cockpitWidth', 320, { min: 240, max: 640, edge: 'left' })
+  // edge: 'right' — the panel sits on the LEFT of the terminal, so dragging
+  // right grows it (the cockpit's 'left' is the mirror of this, not a default).
+  const filesW = useResizableWidth('gt.filesWidth', 260, { min: 200, max: 520, edge: 'right' })
   const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
@@ -362,13 +372,8 @@ export function SessionView({
     () => localStorage.setItem('gt.widgetOrder', JSON.stringify(widgetOrder)),
     [widgetOrder],
   )
-  useEffect(() => {
-    try {
-      localStorage.setItem('gt.cockpitCollapsed', cockpitCollapsed ? '1' : '0')
-    } catch {
-      /* ignore */
-    }
-  }, [cockpitCollapsed])
+  useEffect(() => writeCollapsed('gt.cockpitCollapsed', cockpitCollapsed), [cockpitCollapsed])
+  useEffect(() => writeCollapsed('gt.filesCollapsed', filesCollapsed), [filesCollapsed])
 
   // Cross-tab navigation: any tab can call navigateTo(tabId, payload) to
   // jump the session view to a different tab. Receiving tabs read the payload
@@ -590,6 +595,10 @@ export function SessionView({
   const ActiveTab = tabs.find((t) => t.id === activeTab)
   const showCockpit = !terminalTile && !isRemote
   const cockpitVisible = showCockpit && !cockpitCollapsed
+  // Same constraints as the cockpit — a split/grid tile has no room for it, and
+  // a remote session's files aren't on this machine — plus a workspace to list.
+  const showFiles = showCockpit && !!ctx && !!(ctx.repoRoot || ctx.cwd)
+  const filesVisible = showFiles && !filesCollapsed
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -921,6 +930,19 @@ export function SessionView({
         })()}
         {onTerminal && showCockpit && (
           <div className="flex items-center gap-1" style={noDrag}>
+            {showFiles && (
+              <button
+                onClick={() => setFilesCollapsed((v) => !v)}
+                title={filesCollapsed ? 'Show files' : 'Hide files'}
+                className="inline-flex h-6 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-400 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+              >
+                {filesCollapsed ? (
+                  <PanelLeftOpen size={13} strokeWidth={2} />
+                ) : (
+                  <PanelLeftClose size={13} strokeWidth={2} />
+                )}
+              </button>
+            )}
             <button
               onClick={() => setCockpitCollapsed((v) => !v)}
               title={cockpitCollapsed ? 'Show cockpit' : 'Hide cockpit'}
@@ -975,9 +997,13 @@ export function SessionView({
           <div
             className="absolute inset-0 grid"
             style={{
-              gridTemplateColumns: cockpitVisible
-                ? `minmax(0,1fr) ${cockpitW.width}px`
-                : 'minmax(0,1fr)',
+              gridTemplateColumns: [
+                filesVisible ? `${filesW.width}px` : null,
+                'minmax(0,1fr)',
+                cockpitVisible ? `${cockpitW.width}px` : null,
+              ]
+                .filter(Boolean)
+                .join(' '),
               // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
               // that would override the App-level wrapper's `visibility: hidden`
               // for inactive sessions, leaking the inactive session's terminal
@@ -986,6 +1012,19 @@ export function SessionView({
               visibility: onTerminal ? undefined : 'hidden',
             }}
           >
+            {/* Files column. Unlike the cockpit it isn't gated on `active`: it
+                lists once on mount and never polls, so a backgrounded session
+                costs one IPC rather than a recurring tick. */}
+            {filesVisible && ctx && (
+              <FilesColumn ctx={ctx} onCollapse={() => setFilesCollapsed(true)} />
+            )}
+            {filesVisible && (
+              <ResizeHandle
+                onMouseDown={filesW.onResizeStart}
+                style={{ left: filesW.width }}
+                className="absolute inset-y-0 -translate-x-1/2"
+              />
+            )}
             <main className="flex min-w-0 flex-col overflow-hidden bg-[var(--gt-bg)]">
               {/* Session sub-bar — peer terminal instances inside this workspace.
                 Top-level bar shows projects; this shows pty instances, either as

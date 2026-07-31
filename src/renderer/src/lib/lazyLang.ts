@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Extension } from '@codemirror/state'
+import { langKeyFor } from '../../../shared/languages'
 
 // Lazy CodeMirror grammars (ticket #0072).
 //
@@ -65,6 +66,19 @@ export function langExtensionFor(key: string): Extension[] {
   } catch {
     return []
   }
+}
+
+/**
+ * Grammar extensions for a file path. The key resolver (src/shared/languages.ts)
+ * covers ~100 extensions plus extensionless files like Dockerfile and Makefile,
+ * and is unit-tested against the real langs export so a mapped key can never
+ * silently resolve to "no highlighting".
+ *
+ * Every editing surface goes through here rather than importing the CodeMirror
+ * language barrel, which is what keeps the barrel out of the entry chunk.
+ */
+export function langForPath(path: string): Extension[] {
+  return langExtensionFor(langKeyFor(path))
 }
 
 /**

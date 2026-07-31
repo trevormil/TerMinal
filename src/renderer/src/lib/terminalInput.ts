@@ -27,3 +27,50 @@ export function formatDroppedPaths(paths: string[]): string {
     .map(shellEscapePath)
   return escaped.length ? `${escaped.join(' ')} ` : ''
 }
+
+const clean = (xs?: string[]) => (xs ?? []).map((x) => x.trim()).filter(Boolean)
+
+/** A web link is not a path — escaping would mangle its query string. */
+function isWebUrl(s: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) && !/^file:\/\//i.test(s)
+}
+
+/** `file:///Users/me/a%20b.txt` → `/Users/me/a b.txt`. */
+function fileUriToPath(s: string): string {
+  if (!/^file:\/\//i.test(s)) return s
+  try {
+    return decodeURIComponent(s.replace(/^file:\/\/[^/]*/i, ''))
+  } catch {
+    return s
+  }
+}
+
+export type DroppedPaths = {
+  /** Repo-relative paths from an in-app drag (the Files tree/column). */
+  rel?: string[]
+  /** Absolute OS paths resolved from a Finder drop's File objects. */
+  abs?: string[]
+  /** Raw `text/uri-list` or `text/plain` payload, when neither of the above. */
+  text?: string
+}
+
+/**
+ * The text a terminal drop should insert — a path, never file contents, and
+ * never submitted (the caller writes it as if typed; the human hits enter).
+ *
+ * Source precedence encodes the relative-vs-absolute rule: an in-app drag knows
+ * the workspace, so its repo-relative path wins — shorter, and what an agent
+ * prompt actually wants. A Finder drop has no workspace context, so it stays
+ * absolute. Multiple paths join space-separated, each shell-escaped.
+ */
+export function droppedPathText(src: DroppedPaths): string {
+  const rel = clean(src.rel)
+  if (rel.length) return formatDroppedPaths(rel)
+  const abs = clean(src.abs)
+  if (abs.length) return formatDroppedPaths(abs)
+  // text/uri-list is newline-delimited and allows '#' comment lines.
+  const lines = clean(src.text?.split(/\r?\n/)).filter((l) => !l.startsWith('#'))
+  if (!lines.length) return ''
+  if (lines.every(isWebUrl)) return `${lines.join(' ')} `
+  return formatDroppedPaths(lines.map(fileUriToPath))
+}
