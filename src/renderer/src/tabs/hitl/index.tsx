@@ -15,6 +15,7 @@ import {
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
+import { RepoTrustReview, useRepoTrustPrompt } from '../../components/RepoTrustReview'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
@@ -144,6 +145,9 @@ export function InboxDrawer({
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
+  // Repo-widget trust approvals surface here too — same cadence as the list, so
+  // switching sessions updates the card without reopening the drawer.
+  const trustPrompt = useRepoTrustPrompt(15_000)
 
   // Merge local HITL with open items fanned out from every host (#14), so a run
   // that failed on a host and filed a block there shows here with a host badge.
@@ -518,13 +522,23 @@ export function InboxDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Not a HITL item on disk — a live decision about the active repo. It
+            sits above the list because it is the one thing here that is
+            actively blocking a feature the user can see is missing. */}
+        {trustPrompt.pending && (
+          <div className="px-4 pt-4">
+            <RepoTrustReview prompt={trustPrompt} hideWhenSettled />
+          </div>
+        )}
         {items === null ? (
           <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (
-          <div className="p-4 text-[12px] text-zinc-600">
-            Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from
-            any repo.
-          </div>
+          !trustPrompt.pending && (
+            <div className="p-4 text-[12px] text-zinc-600">
+              Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from
+              any repo.
+            </div>
+          )
         ) : (
           // Flat mail-style rows: hairline dividers, hover highlight, click to
           // open the message full-pane.
