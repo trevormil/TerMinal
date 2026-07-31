@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,6 +13,10 @@ function tempRoot(): string {
   roots.push(root)
   process.env.TERMINAL_SCHEDULES_FILE = join(root, 'schedules.json')
   process.env.TERMINAL_PRESETS_FILE = join(root, 'presets.json')
+  // Global packs install their scripts/persistent-agent seeds into the config
+  // dir. Redirect that too, or enabling one in a test would write into the
+  // user's real ~/.config/TerMinal/scripts.
+  process.env.TERMINAL_CONFIG_DIR = join(root, 'config')
   return root
 }
 
@@ -20,6 +24,8 @@ afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true })
   delete process.env.TERMINAL_SCHEDULES_FILE
   delete process.env.TERMINAL_PRESETS_FILE
+  delete process.env.TERMINAL_CONFIG_DIR
+  delete process.env.TERMINAL_TEMPLATES_DIR
 })
 
 const REPO = '/Users/x/code/TerMinal'
@@ -318,5 +324,88 @@ describe('global packs are deduped across repos', () => {
     // The dedupe must NOT leak into repo packs: coverage genuinely needs to run
     // once per repo.
     expect(schedules(root).filter((s) => s.agentId === 'coverage')).toHaveLength(2)
+  })
+})
+
+// C3: two of the four packs point at agents that live in ~/.config/TerMinal,
+// not in the repo. Nothing used to install them, so enabling "Morning briefing"
+// out of the box seeded a schedule whose agentId resolved to no script at all —
+// the runner fell back to the inline prompt snapshot, which tells the engine to
+// "read briefing.md" (not on disk), so there was no date gate, no deterministic
+// gather, no failure HITL, and an output the parser reads as zero items.
+describe('global packs install their assets', () => {
+  const repoTemplates = join(import.meta.dir, '..', '..', 'templates')
+
+  test('enabling a global script pack installs the script, sidecar and contract', async () => {
+    const root = tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = repoTemplates
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-inst1`)
+
+    expect(enablePack(REPO, 'TerMinal', 'daily-briefing').ok).toBe(true)
+
+    const scripts = join(root, 'config', 'scripts')
+    // The runner looks for exactly <agentId>.sh here.
+    expect(readFileSync(join(scripts, 'briefing.sh'), 'utf8')).toContain('#!/usr/bin/env bash')
+    expect(readFileSync(join(scripts, 'briefing.json'), 'utf8')).toContain('"id": "briefing"')
+    // The contract the prompt tells the engine to read must land too.
+    expect(readFileSync(join(scripts, 'briefing.md'), 'utf8')).toContain('Morning briefing')
+  })
+
+  test('the installed script is executable', async () => {
+    const root = tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = repoTemplates
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-inst2`)
+    enablePack(REPO, 'TerMinal', 'daily-briefing')
+    // TerMinal checks existence only and then execs the path directly, so a
+    // non-executable script fails at run time with "permission denied".
+    const mode = statSync(join(root, 'config', 'scripts', 'briefing.sh')).mode
+    expect(mode & 0o111).toBeGreaterThan(0)
+  })
+
+  test('enabling a persistent-agent pack seeds its full directory', async () => {
+    const root = tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = repoTemplates
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-inst3`)
+    enablePack(REPO, 'TerMinal', 'daily-learning')
+
+    const dir = join(root, 'config', 'persistent-agents', 'research-teacher')
+    for (const f of ['agent.json', 'INSTRUCTIONS.md', 'MEMORY.md', 'STATE.md', 'JOURNAL.md']) {
+      expect(readFileSync(join(dir, f), 'utf8').length).toBeGreaterThan(0)
+    }
+  })
+
+  test('install NEVER overwrites existing content', async () => {
+    const root = tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = repoTemplates
+    const mod = await import(`./packs.ts?t=${Date.now()}-inst4`)
+    mod.enablePack(REPO, 'TerMinal', 'daily-learning')
+
+    // Simulate a month of accumulated memory, then re-enable.
+    const memory = join(root, 'config', 'persistent-agents', 'research-teacher', 'MEMORY.md')
+    writeFileSync(memory, '# MEMORY\n\nreal history the agent learned\n')
+    mod.disablePack(REPO, 'daily-learning')
+    mod.enablePack(REPO, 'TerMinal', 'daily-learning')
+
+    // Clobbering this would silently reset everything the agent has learned,
+    // and it would start re-teaching topics it already covered.
+    expect(readFileSync(memory, 'utf8')).toContain('real history the agent learned')
+  })
+
+  test('repo-scoped packs install nothing globally', async () => {
+    const root = tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = repoTemplates
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-inst5`)
+    enablePack(REPO, 'TerMinal', 'daily-quality')
+    // coverage/deps-quality live in the repo's own .agents/, not in config.
+    expect(existsSync(join(root, 'config', 'scripts'))).toBe(false)
+  })
+
+  test('a missing templates dir degrades to a clear error, not a throw', async () => {
+    tempRoot()
+    process.env.TERMINAL_TEMPLATES_DIR = join(tmpdir(), 'tm-does-not-exist-xyz')
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-inst6`)
+    const r = enablePack(REPO, 'TerMinal', 'daily-briefing')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/asset|install|template/i)
   })
 })

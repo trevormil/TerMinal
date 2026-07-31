@@ -1077,6 +1077,7 @@ export type PackStatus = {
   agents: { agentId: string; title: string; engine: Engine; model?: string; spec: ScheduleSpec }[]
   state: PackState
   enabledCount: number
+  assetsInstalled: boolean
 }
 export type HitlSource =
   | 'manual'

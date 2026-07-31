@@ -141,6 +141,14 @@ export function DailyPacks({
                       partial
                     </span>
                   )}
+                  {pack.state !== 'off' && !pack.assetsInstalled && (
+                    <span
+                      title="Enabled, but this pack's agent files are missing from ~/.config/TerMinal — the schedule would fall back to a prompt with no contract on disk. Re-enable to reinstall."
+                      className="rounded border border-[var(--gt-red)]/50 px-1 text-[9px] text-[var(--gt-red)]"
+                    >
+                      files missing
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-500">
                   {pack.description}

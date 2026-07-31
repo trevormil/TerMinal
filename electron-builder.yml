@@ -32,6 +32,15 @@ extraResources:
   # without cloning (resolution: src/main/template.ts candidates).
   - from: templates/project-template
     to: templates/project-template
+  # Global agent scripts + persistent-agent seeds for the Daily packs panel.
+  # Copied into ~/.config/TerMinal/{scripts,persistent-agents} the first time a
+  # global pack is enabled (src/main/packs.ts → installGlobalPackAssets).
+  # Each entry is explicit: extraResources has no glob over sibling dirs, so a
+  # new templates/<x> is NOT picked up automatically.
+  - from: templates/global-scripts
+    to: templates/global-scripts
+  - from: templates/persistent-agents
+    to: templates/persistent-agents
 # node-pty and better-sqlite3 ship native .node binaries that can't live inside
 # the asar archive — unpack them so they load at runtime.
 asarUnpack:

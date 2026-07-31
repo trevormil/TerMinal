@@ -1,3 +1,7 @@
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Engine } from './agents'
 import type { ScheduleSpec } from './cron'
 import { hiddenPresetIds } from './presets'
@@ -16,6 +20,13 @@ import { readSchedules, seedSchedule, toggleSchedule } from './schedules'
 
 export type PackScope = 'repo' | 'global'
 
+/** How a global pack's agent is delivered to `~/.config/TerMinal`. */
+export type PackAsset =
+  /** `<id>.sh` + `<id>.json` + `<id>.md` into `scripts/`. */
+  | { kind: 'global-script'; id: string }
+  /** A whole seeded directory into `persistent-agents/<id>/`. */
+  | { kind: 'persistent-agent'; id: string }
+
 export type PackAgent = {
   /** Matches `.agents/<id>.sh` (repo packs) or a global script id. */
   agentId: string
@@ -25,6 +36,12 @@ export type PackAgent = {
   model?: string
   /** Snapshot the runner uses when no `.agents/<id>.sh` exists. */
   prompt: string
+  /**
+   * For global agents: what must exist on disk before the schedule can do
+   * anything. A repo pack has no asset — its script is committed in the repo's
+   * own `.agents/`.
+   */
+  asset?: PackAsset
 }
 
 export type Pack = {
@@ -41,6 +58,10 @@ export type PackStatus = Pack & {
   state: PackState
   /** How many of the pack's agents currently have an enabled schedule. */
   enabledCount: number
+  /** Whether this pack's global assets are already on disk. Enabling installs
+   *  them, so this is informational — it exists so an enabled pack whose files
+   *  were later deleted reads as broken instead of looking fine. */
+  assetsInstalled: boolean
 }
 
 const contract = (kind: string, extra = '') =>
@@ -112,6 +133,7 @@ export const PACKS: Pack[] = [
       {
         agentId: 'briefing',
         title: 'Morning briefing',
+        asset: { kind: 'global-script', id: 'briefing' },
         // Last, so it can see the night's output. Everything above finishes by ~5.
         spec: { kind: 'calendar', hour: 7, minute: 0 },
         engine: 'claude',
@@ -131,6 +153,7 @@ export const PACKS: Pack[] = [
       {
         agentId: 'research-teacher',
         title: 'Research & teacher',
+        asset: { kind: 'persistent-agent', id: 'research-teacher' },
         spec: { kind: 'calendar', hour: 6, minute: 30 },
         // MUST be claude. Runs default to `codex exec`, which has no web
         // search, and a research agent without web search silently produces a
@@ -146,6 +169,95 @@ export const PACKS: Pack[] = [
 
 function packById(id: string): Pack | undefined {
   return PACKS.find((p) => p.id === id)
+}
+
+// ---------------------------------------------------------------------------
+// Asset installation
+//
+// A repo pack's script is committed in the repo's own `.agents/`, so enabling
+// it needs nothing. A GLOBAL pack's agent lives in ~/.config/TerMinal, which
+// ships nothing by default — so without this step, enabling "Morning briefing"
+// produced a schedule whose agentId resolved to no script at all. The runner
+// then fell back to the schedule's inline prompt snapshot, which tells the
+// engine to read a contract file that isn't on disk: no date gate, no
+// deterministic gather, no failure HITL, and output the parser reads as zero
+// items. Same for research-teacher, whose whole point is a MEMORY.md that
+// would never have existed.
+// ---------------------------------------------------------------------------
+
+const moduleDir = dirname(fileURLToPath(import.meta.url))
+
+function configDir(): string {
+  return process.env.TERMINAL_CONFIG_DIR || join(homedir(), '.config', 'TerMinal')
+}
+
+/**
+ * Where the bundled templates live. Packaged, electron-builder copies them to
+ * `Contents/Resources/templates` via explicit `extraResources` entries; in dev
+ * they sit two levels up from `out/main`. `process.resourcesPath` is undefined
+ * outside Electron, which is also what makes this testable.
+ */
+function templatesDir(): string {
+  if (process.env.TERMINAL_TEMPLATES_DIR) return process.env.TERMINAL_TEMPLATES_DIR
+  const packaged = process.resourcesPath ? join(process.resourcesPath, 'templates') : ''
+  if (packaged && existsSync(packaged)) return packaged
+  return join(moduleDir, '..', '..', 'templates')
+}
+
+/**
+ * Install one agent's assets, CREATE-IF-ABSENT.
+ *
+ * Never overwriting is the important half. `MEMORY.md` and `JOURNAL.md`
+ * accumulate real history within days, and a global script may have been
+ * hand-edited — silently resetting either on a re-enable would destroy work for
+ * what looks like an idempotent toggle. Same instinct as `seedSchedule`.
+ */
+function installAsset(asset: PackAsset): { ok: true } | { ok: false; error: string } {
+  const templates = templatesDir()
+
+  if (asset.kind === 'global-script') {
+    const from = join(templates, 'global-scripts')
+    if (!existsSync(from)) return { ok: false, error: `pack assets not found at ${from}` }
+    const to = join(configDir(), 'scripts')
+    mkdirSync(to, { recursive: true })
+    // The .md is the contract the prompt tells the engine to read, so it is
+    // not optional dressing — ship it alongside the script and its sidecar.
+    for (const ext of ['sh', 'json', 'md']) {
+      const src = join(from, `${asset.id}.${ext}`)
+      const dest = join(to, `${asset.id}.${ext}`)
+      if (!existsSync(src) || existsSync(dest)) continue
+      copyFileSync(src, dest)
+      // TerMinal checks existence only and then execs the path directly, so a
+      // non-executable script fails at run time with "permission denied".
+      if (ext === 'sh') chmodSync(dest, 0o755)
+    }
+    if (!existsSync(join(to, `${asset.id}.sh`)))
+      return { ok: false, error: `could not install ${asset.id}.sh` }
+    return { ok: true }
+  }
+
+  const from = join(templates, 'persistent-agents', asset.id)
+  if (!existsSync(from)) return { ok: false, error: `pack assets not found at ${from}` }
+  const to = join(configDir(), 'persistent-agents', asset.id)
+  if (existsSync(to)) return { ok: true } // never clobber accumulated memory
+  mkdirSync(dirname(to), { recursive: true })
+  cpSync(from, to, { recursive: true })
+  return { ok: true }
+}
+
+/** True when every asset this pack needs is already on disk. */
+export function packAssetsInstalled(pack: Pack): boolean {
+  return pack.agents.every((a) => {
+    if (!a.asset) return true
+    if (a.asset.kind === 'global-script')
+      return existsSync(join(configDir(), 'scripts', `${a.asset.id}.sh`))
+    const dir = join(configDir(), 'persistent-agents', a.asset.id)
+    try {
+      return existsSync(dir) && readdirSync(dir).length > 0
+    } catch {
+      return false
+    }
+  })
 }
 
 /**
@@ -185,6 +297,15 @@ export function enablePack(
 ): { ok: true; enabled: number } | { ok: false; error: string } {
   const pack = packById(packId)
   if (!pack) return { ok: false, error: `unknown pack: ${packId}` }
+
+  // Install assets BEFORE seeding any schedule. A schedule pointing at a script
+  // that isn't there is worse than no schedule: it fires nightly and silently
+  // does the wrong thing via the prompt fallback.
+  for (const agent of pack.agents) {
+    if (!agent.asset) continue
+    const r = installAsset(agent.asset)
+    if (!r.ok) return r
+  }
 
   let enabled = 0
   for (const agent of pack.agents) {
@@ -254,6 +375,6 @@ export function packStatus(repoRoot: string): PackStatus[] {
     ).length
     const state: PackState =
       enabledCount === 0 ? 'off' : enabledCount === pack.agents.length ? 'on' : 'partial'
-    return { ...pack, state, enabledCount }
+    return { ...pack, state, enabledCount, assetsInstalled: packAssetsInstalled(pack) }
   })
 }
