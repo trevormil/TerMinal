@@ -9,12 +9,14 @@ import {
   Trash2,
   Server,
   FileText,
+  ArrowUpRight,
 } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
+import { fmtUsd } from '../../lib/format'
 import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -178,13 +180,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       clearInterval(tc)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fmtUsd = (n: number) => {
-    if (n >= 10) return `$${n.toFixed(2)}`
-    if (n >= 0.01) return `$${n.toFixed(3).replace(/0$/, '')}`
-    if (n > 0) return `$${n.toFixed(4)}`
-    return '—'
-  }
 
   // Cross-tab nav: when another tab calls navigateTo('runs', { runId }) we
   // pre-select that run + scroll the list to it.
@@ -819,13 +814,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                       Trace
                     </span>
-                    {selectedRun.trace.ticketRef && (
-                      <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
-                    )}
-                    {selectedRun.trace.ticketSlug && (
-                      <span className="font-mono text-[10.5px] text-zinc-500">
-                        {selectedRun.trace.ticketSlug}
-                      </span>
+                    {/* The run -> ticket direction of the lineage link. The slug
+                        was already displayed here but was inert, so the loop
+                        only ever closed one way. */}
+                    {selectedRun.trace.ticketSlug ? (
+                      <button
+                        onClick={() =>
+                          navigateTo('tickets', { slug: selectedRun.trace?.ticketSlug })
+                        }
+                        title="Open this run's ticket"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-0.5 hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+                      >
+                        {selectedRun.trace.ticketRef && (
+                          <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                        )}
+                        <span className="font-mono text-[10.5px] text-zinc-400">
+                          {selectedRun.trace.ticketSlug}
+                        </span>
+                        <ArrowUpRight size={11} strokeWidth={2} className="text-zinc-600" />
+                      </button>
+                    ) : (
+                      selectedRun.trace.ticketRef && (
+                        <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                      )
                     )}
                     {selectedRun.trace.prIid !== undefined && (
                       <Badge tone="accent">

@@ -51,11 +51,12 @@ import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { EngineLogo } from '../../components/EngineLogo'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
 import { CodeEditor } from '../../components/CodeEditor'
+import { DetailTabs } from '../../components/DetailTabs'
 import { Markdown } from '../../components/Markdown'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import { navigateTo } from '../../lib/nav'
+import { navigateTo, onNavigate } from '../../lib/nav'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { engineLabel } from '../../lib/engines'
 import {
@@ -2118,6 +2119,25 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
     }
   }, [agentMode, selectedDefinition, selAgentId])
 
+  // Cross-tab nav: navigateTo('agents', { definitionId, agentId, kind }) opens
+  // straight to that agent — e.g. "View in Agents tab" on a ticket's Owner tab.
+  // Selection is by definition id (`${kind}:${scope}:${id}`), so a repo-local
+  // and a global agent sharing an id never resolve to each other.
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'agents') return
+        const definitionId = ev.payload?.definitionId as string | undefined
+        const agentId = ev.payload?.agentId as string | undefined
+        if (!definitionId || !agentId) return
+        setAgentMode('all')
+        setSelDefinitionId(definitionId)
+        if (ev.payload?.kind === 'classic') setSelAgentId(agentId)
+        else localStorage.setItem('gt.persistentAgents.sel', agentId)
+      }),
+    [],
+  )
+
   const run = async (
     id: string,
     engine: Engine,
@@ -2629,31 +2649,16 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
 
                 {/* Detail tabs — contract first (the substance), then config,
                     execution source, and run history. */}
-                <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/20 px-4 py-1.5">
-                  {(
-                    [
-                      ['overview', 'Overview'],
-                      ['profile', 'Profile'],
-                      ['source', 'Source'],
-                      ['runs', 'Runs'],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      onClick={() => setDetailTab(id)}
-                      className={`inline-flex items-center rounded-md px-3 py-1 text-[12px] font-medium ${
-                        detailTab === id
-                          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-200'
-                      }`}
-                    >
-                      {label}
-                      {id === 'runs' && agentRuns.length > 0 && (
-                        <span className="ml-1 text-zinc-600">· {agentRuns.length}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <DetailTabs
+                  tabs={[
+                    { id: 'overview', label: 'Overview' },
+                    { id: 'profile', label: 'Profile' },
+                    { id: 'source', label: 'Source' },
+                    { id: 'runs', label: 'Runs', count: agentRuns.length },
+                  ]}
+                  active={detailTab}
+                  onSelect={setDetailTab}
+                />
 
                 {/* Scrollable body — one tab's sections at a time */}
                 <div className="min-h-0 flex-1 overflow-y-auto">

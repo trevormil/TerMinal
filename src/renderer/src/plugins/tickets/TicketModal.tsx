@@ -97,7 +97,9 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* TicketDetail owns its own scrolling (pinned header + tab strip), so
+            this only bounds the height. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {ticket === undefined ? (
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : ticket === null ? (
@@ -110,6 +112,7 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
               mrByIid={mrByIid}
               forgeLabel={tabCtx?.forgeLabel || 'PR'}
               forgeSym={tabCtx?.forgeSym || '#'}
+              repoRoot={tabCtx?.repoRoot || ''}
               onChanged={load}
               onSelectTicket={setCurSlug}
             />
