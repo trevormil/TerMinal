@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
+import { TicketLineageCard } from './TicketLineageCard'
 import { groupLogEntries } from '../lib/ticketLog'
 import { logTimestamp, fullTimestamp } from '../lib/time'
 import {
@@ -382,6 +383,7 @@ export function TicketDetail({
   mrByIid,
   forgeLabel,
   forgeSym,
+  repoRoot,
   onChanged,
   onSelectTicket,
   onViewMr,
@@ -393,6 +395,8 @@ export function TicketDetail({
   mrByIid: Map<number, Mr>
   forgeLabel: string
   forgeSym: string
+  /** Active repo — scopes the run-history card, whose run source is global. */
+  repoRoot: string
   onChanged: () => void
   onSelectTicket?: (slug: string) => void
   onViewMr?: (iid: number) => void
@@ -647,10 +651,12 @@ export function TicketDetail({
           )}
         </div>
       )}
+      {/* Run *detail* still lives in the Runs tab; this is only the index of
+          which runs this ticket produced and what they cost, which closes the
+          reverse direction of the ticket -> run link. */}
+      <TicketLineageCard ticket={selected} repoRoot={repoRoot} />
       <AcceptanceSection criteria={selected.acceptance} slug={selected.slug} onSaved={onChanged} />
       {children}
-      {/* Run detail lives in the Runs view (via "View run" above) — the
-          ticket view stays purely ticket content. */}
       <Markdown>{selected.body}</Markdown>
       <LogSection comments={selected.comments || []} slug={selected.slug} onSaved={onChanged} />
     </div>

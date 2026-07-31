@@ -110,6 +110,7 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
               mrByIid={mrByIid}
               forgeLabel={tabCtx?.forgeLabel || 'PR'}
               forgeSym={tabCtx?.forgeSym || '#'}
+              repoRoot={tabCtx?.repoRoot || ''}
               onChanged={load}
               onSelectTicket={setCurSlug}
             />

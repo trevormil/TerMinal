@@ -789,6 +789,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               mrByIid={mrByIid}
               forgeLabel={ctx.forgeLabel}
               forgeSym={ctx.forgeSym}
+              repoRoot={ctx.repoRoot}
               onChanged={loadTickets}
               onSelectTicket={setSel}
               onViewMr={setViewMrIid}
