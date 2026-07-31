@@ -29,24 +29,35 @@ const ALIASES: Record<string, Severity> = {
   note: 'info',
 }
 
-/** Unknown/absent severity degrades to `info`. Erring toward "noise" is safe;
- *  erring toward "critical" would put junk in front of the merge decision. */
+/** An ABSENT severity is `info` — the artifact said nothing, so neither do we.
+ *  An UNRECOGNIZED one (`warning`, `P1`, `error`) is `medium`, NOT `info`:
+ *  degrading a vocabulary we simply don't know about down to the "safe to skip"
+ *  tier is backwards for a gate — it would render grey and get scrolled past.
+ *  Callers keep the raw string (see `NormalizedFinding.rawSeverity`) so the UI
+ *  can say "unrecognized" instead of silently asserting a tier. */
 export function normalizeSeverity(raw?: string | null): Severity {
-  return ALIASES[(raw || '').trim().toLowerCase()] ?? 'info'
+  const key = (raw || '').trim().toLowerCase()
+  if (!key) return 'info'
+  return ALIASES[key] ?? 'medium'
+}
+
+/** Did the artifact use a vocabulary we actually recognize? */
+export function isKnownSeverity(raw?: string | null): boolean {
+  const key = (raw || '').trim().toLowerCase()
+  return !key || key in ALIASES
 }
 
 export function severityRank(s: Severity): number {
   return SEVERITIES.indexOf(s)
 }
 
-/** Is `s` at least as severe as `floor`? The merge bar is `>= medium`. */
-export function atOrAbove(s: Severity, floor: Severity): boolean {
-  return severityRank(s) <= severityRank(floor)
-}
-
 export type NormalizedFinding = {
   id: string
   severity: Severity
+  /** The artifact's own severity string, kept verbatim. Present only when it
+   *  wasn't a vocabulary we recognize, so the UI can flag it as unrecognized
+   *  rather than pretending the mapped tier was authoritative. */
+  rawSeverity?: string
   title: string
   body: string
   file?: string
@@ -57,12 +68,13 @@ export type NormalizedFinding = {
 
 /** Strip the `a/` `b/` prefixes a unified diff carries and any leading `./`, so
  *  a finding's path matches the path the diff viewer knows a file by. */
-export function normalizePath(p?: string): string | undefined {
+function normalizePath(p?: string): string | undefined {
   if (!p) return undefined
   return p.replace(/^\.\//, '').replace(/^[ab]\//, '') || undefined
 }
 
 export function normalizeFinding(raw: Finding): NormalizedFinding {
+  const rawSeverity = typeof raw.severity === 'string' ? raw.severity : undefined
   const body = String(raw.body ?? raw.text ?? '').trim()
   const title = String(raw.title ?? '').trim() || body.split('\n')[0] || 'Finding'
   const file = normalizePath(typeof raw.file === 'string' ? raw.file : undefined)
@@ -77,7 +89,8 @@ export function normalizeFinding(raw: Finding): NormalizedFinding {
         .update(`${title}\0${file || ''}\0${line || ''}`)
         .digest('hex')
         .slice(0, 8)}`,
-    severity: normalizeSeverity(typeof raw.severity === 'string' ? raw.severity : undefined),
+    severity: normalizeSeverity(rawSeverity),
+    rawSeverity: isKnownSeverity(rawSeverity) ? undefined : rawSeverity,
     title,
     body,
     file,
@@ -108,8 +121,9 @@ export function formatFindingComment(
   opts: { inline?: boolean } = {},
 ): string {
   const where = !opts.inline && f.file ? ` · \`${f.file}${f.line ? `:${f.line}` : ''}\`` : ''
+  const sev = f.rawSeverity ? `${f.severity} (reported as "${f.rawSeverity}")` : f.severity
   return [
-    `**${f.severity}** — ${f.title}${where}`,
+    `**${sev}** — ${f.title}${where}`,
     ``,
     f.body,
     ``,

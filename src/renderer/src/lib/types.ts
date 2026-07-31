@@ -1347,6 +1347,10 @@ export type Review = {
   /** Cross-PR triage: high/medium/low (or unscored if absent). Derived from
    *  riskScore when present, else the legacy risk_tier frontmatter field. */
   riskTier: 'high' | 'medium' | 'low' | 'unscored'
+  /** `auto` = TerMinal's pre-review triage fired this with no human in the
+   *  loop. The verdict is real, so any surface treating it as a merge signal
+   *  must show that it was machine-triggered. */
+  trigger: 'manual' | 'auto'
 }
 
 export type Finding = {
@@ -2322,6 +2326,9 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 export type NormalizedFinding = {
   id: string
   severity: Severity
+  /** Set only when the artifact used a severity vocabulary we don't recognize
+   *  (mapped to `medium`); the UI flags it rather than asserting the tier. */
+  rawSeverity?: string
   title: string
   body: string
   file?: string

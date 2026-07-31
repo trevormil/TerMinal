@@ -12,6 +12,7 @@ const review = (over: Partial<Review> = {}): Review => ({
   commitsBehind: 0,
   riskScore: 1,
   riskTier: 'low',
+  trigger: 'manual',
   ...over,
 })
 const mr = (over: Partial<Mr> = {}): Mr => ({

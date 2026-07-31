@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  atOrAbove,
   findingsByLocation,
   formatFindingComment,
+  isKnownSeverity,
   normalizeFinding,
   normalizeSeverity,
   severityRank,
@@ -20,10 +20,27 @@ describe('normalizeSeverity', () => {
     expect(normalizeSeverity('suggestion')).toBe('info')
   })
 
-  test('an unknown or missing severity is "info", never silently "critical"', () => {
-    expect(normalizeSeverity('spicy')).toBe('info')
+  test('an ABSENT severity is "info" — the artifact asserted nothing', () => {
     expect(normalizeSeverity(undefined)).toBe('info')
     expect(normalizeSeverity('')).toBe('info')
+  })
+
+  // Silently demoting a vocabulary we don't know to "info" is backwards for a
+  // gate: `warning` / `P1` / `error` would render grey and get scrolled past.
+  test('an UNRECOGNIZED severity lands at "medium", not "info"', () => {
+    expect(normalizeSeverity('warning')).toBe('medium')
+    expect(normalizeSeverity('P1')).toBe('medium')
+    expect(normalizeSeverity('error')).toBe('medium')
+  })
+
+  test('never silently escalates an unknown to critical either', () => {
+    expect(normalizeSeverity('spicy')).not.toBe('critical')
+  })
+
+  test('isKnownSeverity distinguishes a mapped vocabulary from a guess', () => {
+    expect(isKnownSeverity('blocker')).toBe(true)
+    expect(isKnownSeverity('')).toBe(true)
+    expect(isKnownSeverity('P1')).toBe(false)
   })
 
   test('rank orders worst-first', () => {
@@ -34,13 +51,20 @@ describe('normalizeSeverity', () => {
   })
 })
 
-describe('atOrAbove', () => {
-  test('the merge bar is severity >= medium — that set is exactly what it selects', () => {
-    const f = (severity: string) => normalizeFinding({ severity, title: severity })
-    const kept = [f('critical'), f('high'), f('medium'), f('low'), f('info')].filter((x) =>
-      atOrAbove(x.severity, 'medium'),
-    )
-    expect(kept.map((x) => x.severity)).toEqual(['critical', 'high', 'medium'])
+describe('rawSeverity', () => {
+  test('an unrecognized severity is preserved verbatim for the UI to flag', () => {
+    const f = normalizeFinding({ severity: 'P1', title: 'x' })
+    expect(f.severity).toBe('medium')
+    expect(f.rawSeverity).toBe('P1')
+  })
+
+  test('a recognized severity carries no rawSeverity noise', () => {
+    expect(normalizeFinding({ severity: 'blocker', title: 'x' }).rawSeverity).toBeUndefined()
+  })
+
+  test('the posted comment admits when it mapped an unrecognized severity', () => {
+    const md = formatFindingComment(normalizeFinding({ severity: 'P1', title: 'x', body: 'y' }))
+    expect(md).toContain('reported as "P1"')
   })
 })
 

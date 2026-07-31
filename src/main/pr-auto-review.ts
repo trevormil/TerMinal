@@ -12,6 +12,29 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Mr } from './mrs'
+import { AUTO_REVIEW_MARKER, readJsonSafe } from './review'
+
+/** A PR with no resolvable head sha still deserves exactly ONE auto-review, not
+ *  a fresh paid run every sweep. Storing `''` and then guarding on
+ *  `if (m.headShort && ...)` was falsy forever — this key is never empty. */
+export function seenKeyFor(m: Pick<Mr, 'headShort'>): string {
+  return m.headShort || 'no-head'
+}
+
+/** Record, next to the review artifacts, that THIS head was reviewed by the
+ *  automatic sweep. `review.ts` reads it back so the MRs surface can show that
+ *  the verdict came from machine triage, not from a human review pass. */
+export function stampAutoReviewArtifact(reviewDir: string, headShort: string): void {
+  try {
+    if (!existsSync(reviewDir)) mkdirSync(reviewDir, { recursive: true })
+    const f = join(reviewDir, AUTO_REVIEW_MARKER)
+    const prev = readJsonSafe<{ heads?: string[] }>(f, {})
+    const heads = new Set([...(prev.heads ?? []), headShort].filter(Boolean))
+    writeFileSync(f, JSON.stringify({ heads: [...heads] }, null, 2))
+  } catch {
+    /* provenance is best-effort; never block the sweep on it */
+  }
+}
 
 export type AutoReviewConfig = {
   enabled: boolean
@@ -58,7 +81,7 @@ export function writeAutoReviewConfig(c: AutoReviewConfig): AutoReviewConfig {
 
 export function markReviewed(iid: number, headShort: string): AutoReviewConfig {
   const c = readAutoReviewConfig()
-  c.seen[String(iid)] = headShort
+  c.seen[String(iid)] = seenKeyFor({ headShort })
   return writeAutoReviewConfig(c)
 }
 
@@ -78,7 +101,7 @@ export function selectAutoReviewTargets(
     // A fresh review artifact already exists — don't pay for a second one. A
     // STALE one means commits landed since, so it's fair game again.
     if (m.review && !m.review.stale) continue
-    if (m.headShort && seen[String(m.iid)] === m.headShort) continue
+    if (seen[String(m.iid)] === seenKeyFor(m)) continue
     out.push(m)
   }
   return out
@@ -93,6 +116,9 @@ export type AutoReviewDeps = {
     title?: string
     webUrl?: string
   }) => { id: string } | { error: string }
+  /** Records that this head was auto-reviewed, so the resulting verdict can be
+   *  rendered as machine-triggered. Optional so pure tests need not supply it. */
+  stamp?: (iid: number, headShort: string) => void
 }
 
 export type AutoReviewSweep = {
@@ -134,7 +160,8 @@ export async function runAutoReviewSweep(
       continue
     }
     started.push({ iid: m.iid, runId: r.id })
-    markReviewed(m.iid, m.headShort || '')
+    deps.stamp?.(m.iid, m.headShort)
+    markReviewed(m.iid, m.headShort)
   }
   return { started, errors }
 }

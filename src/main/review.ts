@@ -25,6 +25,22 @@ export type Review = {
    *  otherwise falls back to the legacy frontmatter `risk_tier:` field that
    *  bin/compute-verdict writes deterministically post-codex. */
   riskTier: 'high' | 'medium' | 'low' | 'unscored'
+  /** How this review was fired. `auto` means TerMinal's pre-review triage
+   *  started it with no human in the loop — the artifact still carries a real
+   *  verdict, so anything that treats a verdict as a merge signal MUST show
+   *  that it was machine-triggered rather than a human's review pass. */
+  trigger: 'manual' | 'auto'
+}
+
+/** Written by the auto-review sweep next to the artifacts, recording which head
+ *  SHAs it fired on. The reviewing agent writes the .md itself and can't be
+ *  trusted to stamp its own provenance, so we record it out-of-band at spawn. */
+export const AUTO_REVIEW_MARKER = 'auto-review.json'
+
+export function readAutoReviewedHeads(dir: string): Set<string> {
+  const raw = readJsonSafe<{ heads?: unknown }>(join(dir, AUTO_REVIEW_MARKER), {})
+  const heads = Array.isArray(raw?.heads) ? raw.heads : []
+  return new Set(heads.filter((h): h is string => typeof h === 'string').map((h) => h.slice(0, 7)))
 }
 
 /** Derive the categorical tier from the canonical 0-5 risk score. */
@@ -264,6 +280,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
         commitsBehind: 0,
         riskScore: null,
         riskTier: 'unscored',
+        trigger: 'manual',
       }
     }
     return null
@@ -281,6 +298,12 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
       : rt === 'high' || rt === 'medium' || rt === 'low'
         ? rt
         : 'unscored'
+  // Provenance: the frontmatter wins when the agent wrote one, else the
+  // out-of-band marker the auto-sweep left for this artifact's head sha.
+  const fmTrigger = (fmField(md, 'trigger') || '').toLowerCase()
+  const sha = a.file.match(/\/([0-9a-f]{7,40})\.md$/)?.[1].slice(0, 7) || ''
+  const trigger: Review['trigger'] =
+    fmTrigger === 'auto' || (sha && readAutoReviewedHeads(dir).has(sha)) ? 'auto' : 'manual'
   return {
     number: a.number,
     overall: ov ? Number(ov) : null,
@@ -290,6 +313,7 @@ export function reviewForPrDir(dir: string, headShort?: string): Review | null {
     commitsBehind: a.commitsBehind,
     riskScore: rs,
     riskTier,
+    trigger,
   }
 }
 

@@ -14,10 +14,24 @@ import { getMr, listMrs } from '../mrs'
 import {
   readAutoReviewConfig,
   runAutoReviewSweep,
+  stampAutoReviewArtifact,
   writeAutoReviewConfig,
   type AutoReviewConfig,
 } from '../pr-auto-review'
+import { projectAreaPathForWrite } from '../project-layout'
 import { readSettings } from '../settings'
+import { join } from 'node:path'
+
+/** How often we look for PRs that appeared since the last check. There is no
+ *  forge webhook here, so "on PR-open" is a poll — deliberately slow, since a
+ *  pre-review is worth starting within minutes, not seconds. */
+const SWEEP_INTERVAL_MS = 3 * 60 * 1000
+let sweepTimer: ReturnType<typeof setInterval> | null = null
+
+export function stopPrReviewWatcher(): void {
+  if (sweepTimer) clearInterval(sweepTimer)
+  sweepTimer = null
+}
 
 export function registerPrReviewIpc(deps: { repoRoot: () => string }): void {
   ipcMain.handle('pr-review:config', () => readAutoReviewConfig())
@@ -26,7 +40,7 @@ export function registerPrReviewIpc(deps: { repoRoot: () => string }): void {
     writeAutoReviewConfig({ ...readAutoReviewConfig(), ...patch }),
   )
 
-  ipcMain.handle('pr-review:sweep', async () => {
+  const sweep = async () => {
     const root = deps.repoRoot()
     if (!root) return { started: [], errors: ['not a git repo'] }
     const engine = readSettings().defaultEngine || 'codex'
@@ -36,6 +50,13 @@ export function registerPrReviewIpc(deps: { repoRoot: () => string }): void {
       // The SAME review agent a human fires by hand — same contract, same
       // artifacts. Auto-review only changes WHEN it runs.
       spawn: (pr) => runPrAgent(root, pr, 'review', engine),
+      // ...and stamps the provenance, so the verdict this produces is
+      // identifiable as machine-triggered rather than a human's review pass.
+      stamp: (iid, headShort) =>
+        stampAutoReviewArtifact(
+          join(projectAreaPathForWrite(root, 'reviews'), String(iid)),
+          headShort,
+        ),
     })
     for (const s of res.started) {
       emitActivity({
@@ -49,7 +70,19 @@ export function registerPrReviewIpc(deps: { repoRoot: () => string }): void {
       })
     }
     return res
-  })
+  }
+
+  ipcMain.handle('pr-review:sweep', sweep)
+
+  // The ticket's headline criterion is "a review pass triggered on PR-open".
+  // No forge webhook exists locally, so this is a slow poll that notices new
+  // heads. It is a no-op while `enabled` is false (the default), and every
+  // sweep still passes through the budget gate and the per-sweep cap.
+  stopPrReviewWatcher()
+  sweepTimer = setInterval(() => {
+    if (!readAutoReviewConfig().enabled) return
+    sweep().catch(() => undefined)
+  }, SWEEP_INTERVAL_MS)
 
   /** Normalized, severity-tagged findings for a PR, plus the file:line index the
    *  diff viewer uses to place them inline. */

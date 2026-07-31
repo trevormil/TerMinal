@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Bot, Check, MessageSquarePlus, Loader2 } from 'lucide-react'
+import { capabilityMissing, probeCapability } from '../lib/capability'
 import type { NormalizedFinding, Severity } from '../lib/types'
+
+const CAP = 'prReview'
 
 // Renders automatic pre-review findings INLINE in a diff, anchored to file:line,
 // with a per-finding "post to the PR thread" action.
@@ -50,11 +53,13 @@ export function useInlineFindings(iid: number) {
 
   useEffect(() => {
     let live = true
-    if (!iid) return
-    window.gt.prReview
-      .findings(iid)
+    if (!iid || capabilityMissing(CAP)) return
+    probeCapability(CAP, () => window.gt.prReview.findings(iid))
+      .then((ok) => (ok ? window.gt.prReview.findings(iid) : null))
       .then((r) => {
-        if (!live) return
+        // A missing handler must leave the diff exactly as it was, not throw
+        // an unhandled rejection on every PR you open.
+        if (!live || !r) return
         setByLocation(r.byLocation || {})
         setStale(!!r.stale)
       })
@@ -84,11 +89,16 @@ function FindingCard({ f, iid }: { f: NormalizedFinding; iid: number }) {
   const post = async () => {
     setState('posting')
     setErr('')
-    const r = await window.gt.prReview.postFinding(iid, f.id)
-    if (r.ok) setState('posted')
-    else {
+    try {
+      const r = await window.gt.prReview.postFinding(iid, f.id)
+      if (r.ok) setState('posted')
+      else {
+        setState('idle')
+        setErr(r.error || 'post failed')
+      }
+    } catch (e) {
       setState('idle')
-      setErr(r.error || 'post failed')
+      setErr((e as Error)?.message || 'pre-review IPC is unavailable')
     }
   }
 
@@ -101,6 +111,14 @@ function FindingCard({ f, iid }: { f: NormalizedFinding; iid: number }) {
             <span className={`text-[10.5px] font-semibold uppercase tracking-wide ${t.text}`}>
               {t.label}
             </span>
+            {f.rawSeverity && (
+              <span
+                className="rounded border border-[var(--gt-border)] px-1 text-[10px] text-zinc-500"
+                title={`The artifact said "${f.rawSeverity}", which isn't a severity we map. Shown as medium so it isn't skipped.`}
+              >
+                unrecognized: {f.rawSeverity}
+              </span>
+            )}
             {f.category && <span className="text-[10.5px] text-zinc-500">{f.category}</span>}
             <span className="text-[12px] font-medium text-zinc-100">{f.title}</span>
           </div>

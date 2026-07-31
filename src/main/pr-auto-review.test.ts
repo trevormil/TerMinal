@@ -168,6 +168,45 @@ describe('runAutoReviewSweep', () => {
     expect(r.skipped).toMatch(/disabled/i)
   })
 
+  // Storing '' and then guarding on `if (m.headShort && ...)` was falsy
+  // forever: every sweep launched a fresh PAID review agent on the same PR.
+  test('a PR with no resolvable head sha is auto-reviewed exactly ONCE', async () => {
+    const noHead = () => ({ mrs: [mr({ headShort: '' })] })
+    let spawned = 0
+    const d = deps({
+      listMrs: async () => noHead(),
+      spawn: () => {
+        spawned++
+        return { id: 'run-1' }
+      },
+    })
+    await runAutoReviewSweep('/repo', d as never)
+    await runAutoReviewSweep('/repo', d as never)
+    await runAutoReviewSweep('/repo', d as never)
+    expect(spawned).toBe(1)
+  })
+
+  test('stamps the auto-review provenance for each PR it fires on', async () => {
+    const stamped: [number, string][] = []
+    await runAutoReviewSweep(
+      '/repo',
+      deps({ stamp: (iid: number, head: string) => stamped.push([iid, head]) }) as never,
+    )
+    expect(stamped).toEqual([[1, 'abc1234']])
+  })
+
+  test('does not stamp provenance for a PR whose spawn failed', async () => {
+    const stamped: unknown[] = []
+    await runAutoReviewSweep(
+      '/repo',
+      deps({
+        spawn: () => ({ error: 'engine missing' }),
+        stamp: (...a: unknown[]) => stamped.push(a),
+      }) as never,
+    )
+    expect(stamped).toHaveLength(0)
+  })
+
   test('a failed spawn is reported and does not mark the PR as reviewed', async () => {
     const r = await runAutoReviewSweep(
       '/repo',
