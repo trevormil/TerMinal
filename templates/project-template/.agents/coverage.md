@@ -51,6 +51,12 @@ If `HEAD == lastScannedSha` AND no new CI runs since `lastRunAt` → exit 0.
 7. **Write artifact** to `.TerMinal/reports/coverage/<short_sha>.md`.
 8. **Update state** — `lastScannedSha`, `lastCoveragePct`, `flakeCount`.
 9. **Activity** — `.claude/bin/activity check "Coverage · <pct>% (Δ <delta>) · <N> flakes" "@ <short_sha>"`.
+10. **Run outcome** — tail-call
+    `terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=<...>` with
+    one of the four allowed values (`pr-opened` | `ticket-filed` | `merged` |
+    `none`). This is how the morning briefing classifies the run without
+    re-deriving it, so it is not optional. Nuance beyond those four (blocked vs
+    clean) lives in this artifact's `status:` frontmatter.
 
 ## Output artifact
 

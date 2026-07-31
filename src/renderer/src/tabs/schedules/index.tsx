@@ -38,6 +38,7 @@ import type {
   Engine,
 } from '../../lib/types'
 import { EngineModelPicker } from '../../components/EngineModelPicker'
+import { DailyPacks } from './DailyPacks'
 import { relativeTime } from '../../lib/time'
 
 const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -803,6 +804,16 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msg && <div className="px-1 text-[11px] text-[var(--gt-green)]">{msg}</div>}
+        {/* Above the list, and unaffected by the repo filter / loading state:
+            an enabled pack becomes ordinary schedules in the list below. */}
+        <DailyPacks
+          repoRoot={ctx.repoRoot || ''}
+          repoLabel={activeRepoLabel}
+          onChanged={(m) => {
+            flash(m)
+            void reload()
+          }}
+        />
         {schedules === null ? (
           <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
         ) : schedules.length === 0 ? (

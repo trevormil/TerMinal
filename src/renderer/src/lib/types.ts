@@ -1066,6 +1066,18 @@ export type Briefing = {
   summary: string
   items: BriefingItem[]
 }
+/** Mirrors src/main/packs.ts. */
+export type PackScope = 'repo' | 'global'
+export type PackState = 'off' | 'partial' | 'on'
+export type PackStatus = {
+  id: string
+  title: string
+  description: string
+  scope: PackScope
+  agents: { agentId: string; title: string; engine: Engine; model?: string; spec: ScheduleSpec }[]
+  state: PackState
+  enabledCount: number
+}
 export type HitlSource =
   | 'manual'
   | 'cron-fail'
@@ -1989,6 +2001,20 @@ export type GtApi = {
       itemId: string,
       verdict: BriefingVerdict,
     ) => Promise<{ ok: true } | { ok: false; error: string }>
+  }
+  packs: {
+    status: (repoRoot: string) => Promise<PackStatus[]>
+    enable: (
+      repoRoot: string,
+      repoLabel: string,
+      packId: string,
+    ) => Promise<{ ok: true; enabled: number } | { ok: false; error: string }>
+    disable: (
+      repoRoot: string,
+      packId: string,
+    ) => Promise<{ ok: true; disabled: number } | { ok: false; error: string }>
+    hide: (packId: string) => Promise<boolean>
+    restore: (packId?: string) => Promise<boolean>
   }
   activity: {
     list: () => Promise<ActivityEvent[]>

@@ -56,6 +56,12 @@ If `HEAD == lastScannedSha` AND last advisory feed update was before
 8. **Write artifact** to `.TerMinal/reports/deps-quality/<short_sha>.md`.
 9. **Update state** — `lastScannedSha`, `lastAuditAt`, `lastDeps`.
 10. **Activity** — `.claude/bin/activity check "Deps+quality · <N> bumps · <C> CVEs · <J> bot PRs closed" "@ <short_sha>"`.
+11. **Run outcome** — tail-call
+    `terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=<...>` with
+    one of the four allowed values (`pr-opened` | `ticket-filed` | `merged` |
+    `none`). This is how the morning briefing classifies the run without
+    re-deriving it, so it is not optional. Nuance beyond those four lives in
+    this artifact's `status:` frontmatter.
 
 ## Bot-PR janitor (dependabot / renovate)
 

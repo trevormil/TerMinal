@@ -301,6 +301,15 @@ const gt = {
     act: (date: string, itemId: string, verdict: string) =>
       ipcRenderer.invoke('briefings:act', date, itemId, verdict),
   },
+  packs: {
+    status: (repoRoot: string) => ipcRenderer.invoke('packs:status', repoRoot),
+    enable: (repoRoot: string, repoLabel: string, packId: string) =>
+      ipcRenderer.invoke('packs:enable', repoRoot, repoLabel, packId),
+    disable: (repoRoot: string, packId: string) =>
+      ipcRenderer.invoke('packs:disable', repoRoot, packId),
+    hide: (packId: string) => ipcRenderer.invoke('packs:hide', packId),
+    restore: (packId?: string) => ipcRenderer.invoke('packs:restore', packId),
+  },
 
   // activity feed + notifications
   activity: {
