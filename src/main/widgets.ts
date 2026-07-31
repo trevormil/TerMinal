@@ -12,9 +12,14 @@ import { homedir } from 'node:os'
 //   • per-repo: <repo-root>/.TerMinal/widgets.json   (loaded when the
 //              attached session's cwd is inside that repo)
 //
-// Security: these run arbitrary shell in the session cwd. Per-repo widgets come
-// from the repo you attach to — only attach to repos you trust (same trust model
-// as running their npm scripts).
+// Security: these run arbitrary shell in the session cwd.
+//   • GLOBAL widgets are your own file and run freely.
+//   • PER-REPO widgets come from whatever repo you attach to, so they are INERT
+//     until you approve that repo for that exact command set — see
+//     src/main/repo-trust.ts. Main refuses to run an unapproved repo command;
+//     the approval surface (which shows the literal commands) is the Plugins
+//     drawer. Editing the file re-prompts, because the approval is keyed on a
+//     hash of the command set.
 // ---------------------------------------------------------------------------
 
 export type CommandWidget = {

@@ -41,9 +41,13 @@ export function commandWidgetToPlugin(w: CommandWidget): Plugin {
     blurb: `$ ${w.command}`,
     order: 50,
     intervalMs: w.intervalMs,
-    defaultEnabled: true,
+    // A repo-defined widget stays OFF until its repo is approved, so cloning a
+    // hostile repo and opening a session in it doesn't start a poll loop. Global
+    // widgets (your own ~/.config/TerMinal/widgets.json) are unchanged.
+    defaultEnabled: w.trusted,
     poll: async (gt) => {
-      const r = await gt.runCommand(w.command)
+      // Pass the id, not the command: main owns the lookup (src/main/index.ts).
+      const r = await gt.runCommand(w.id)
       return r.stdout || (r.ok ? '' : `exit ${r.code}`)
     },
     render: (out) => (
@@ -59,7 +63,16 @@ export function commandWidgetToPlugin(w: CommandWidget): Plugin {
 }
 
 function commandWidgetSignature(w: CommandWidget): string {
-  return JSON.stringify([w.id, w.title, w.command, w.intervalMs, w.mode, w.source, w.icon ?? ''])
+  return JSON.stringify([
+    w.id,
+    w.title,
+    w.command,
+    w.intervalMs,
+    w.mode,
+    w.source,
+    w.icon ?? '',
+    w.trusted,
+  ])
 }
 
 export function commandWidgetsToPlugins(

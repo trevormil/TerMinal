@@ -336,11 +336,22 @@ const gt = {
 
   // command widgets (declarative / per-repo)
   listCommandWidgets: () => ipcRenderer.invoke('widgets:list'),
-  runCommand: (command: string) => ipcRenderer.invoke('widgets:run', command),
+  // An opaque widget id, never a command string — main resolves it against the
+  // session's own widget set (see repo-trust.ts / widgets:run).
+  runCommand: (id: string) => ipcRenderer.invoke('widgets:run', id),
 
   // custom tabs (declarative full-screen views / per-repo)
   listCustomTabs: (cwd?: string) => ipcRenderer.invoke('tabs:list', cwd),
-  runTabView: (command: string, cwd?: string) => ipcRenderer.invoke('tabs:run', command, cwd),
+  runTabView: (id: string, cwd?: string) => ipcRenderer.invoke('tabs:run', id, cwd),
+
+  // per-repo trust for repo-sourced widgets/tabs
+  // No cwd argument by design — main always resolves the ACTIVE session's cwd,
+  // so the renderer cannot approve a directory of its choosing.
+  repoTrust: {
+    status: () => ipcRenderer.invoke('repoTrust:status'),
+    approve: () => ipcRenderer.invoke('repoTrust:approve'),
+    revoke: () => ipcRenderer.invoke('repoTrust:revoke'),
+  },
 
   // scratch workspace dir (throwaway, repo-less sessions)
   scratchDir: () => ipcRenderer.invoke('scratch:dir'),

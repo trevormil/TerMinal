@@ -17,8 +17,11 @@ import { isHttpUrl } from './url-safety'
 //              session's cwd)
 //
 // Security: command tabs run arbitrary shell in the session cwd; url tabs load
-// arbitrary pages. Per-repo tabs come from the repo you attach to — same trust
-// model as its npm scripts / widgets. Only attach to repos you trust.
+// a page in the app window. Per-repo tabs come from whatever repo you attach
+// to, so they are INERT until you approve that repo for that exact command set
+// (src/main/repo-trust.ts) — main refuses to run an unapproved repo command and
+// the tab renders an explanatory placeholder instead. Global tabs are your own
+// file and are unaffected. url values are validated to http(s) below.
 // ---------------------------------------------------------------------------
 
 export type CustomTab = {
