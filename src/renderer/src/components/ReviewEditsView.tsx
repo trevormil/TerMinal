@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, MessageSquarePlus, Undo2, X } from 'lucide-react'
 import { EditorView } from '@codemirror/view'
-import { EditorState, Prec, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { unifiedMergeView } from '@codemirror/merge'
 
@@ -59,6 +59,13 @@ export function ReviewEditsView({
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
 
+  // Language grammars arrive asynchronously (they are code-split — see
+  // lazyLang.ts), so they cannot be baked into the initial EditorState: the
+  // view is deliberately NOT rebuilt when `extensions` changes, which left the
+  // buffer permanently unhighlighted. A Compartment lets us swap them in later
+  // without tearing down the view and losing the user's merge decisions.
+  const langCompartment = useRef(new Compartment())
+
   // The view is created once per (path, original): content changes flow OUT of
   // it, so rebuilding on every keystroke would fight the user.
   useEffect(() => {
@@ -72,7 +79,7 @@ export function ReviewEditsView({
         extensions: [
           chrome,
           oneDark,
-          ...extensions,
+          langCompartment.current.of(extensions),
           unifiedMergeView({
             original,
             highlightChanges: true,
@@ -90,6 +97,14 @@ export function ReviewEditsView({
     return () => view.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, original])
+
+  // Swap the grammar in when it lands, leaving the document and every pending
+  // merge decision untouched.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({ effects: langCompartment.current.reconfigure(extensions) })
+  }, [extensions])
 
   const addComment = () => {
     const view = viewRef.current
