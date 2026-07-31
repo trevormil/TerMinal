@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { blockEffect } from './effect-guard'
 import { emitActivity } from './events'
 import { readSettings } from './settings'
 import { sendUrl } from './telegram-api'
@@ -151,6 +152,10 @@ export function markAllHitlRead(): number {
 // no-op: Inbox filing must never be blocked by notification setup.
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 function alwaysPingTelegram(item: HitlItem): void {
+  // This deliberately ignores the `telegram.notify` toggle, so a config-level
+  // opt-out cannot silence it — right for a real blocker, wrong for a test. The
+  // effect guard is what makes it unreachable from one.
+  if (blockEffect('notify', 'hitl-telegram')) return
   try {
     const { telegram } = readSettings()
     const msg = hitlTelegramText(item)

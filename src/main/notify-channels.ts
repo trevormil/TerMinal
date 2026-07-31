@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings } from './settings'
 import { categoryFor, channelWants, type NotifyMatrix } from '../shared/notifications'
+import { guardedFetch, guardedSpawn } from './effect-guard'
 import { sendUrl } from './telegram-api'
 
 // The channel-agnostic event kinds — same vocabulary as the notify skill.
@@ -206,7 +207,14 @@ export function createTelegramChannel(
   getSettings: () => Settings,
   deps: { fetchFn?: typeof fetch; spawnFn?: typeof spawn; scriptPath?: string } = {},
 ): NotifyChannel {
-  const { fetchFn = fetch, spawnFn = spawn, scriptPath = TG_SCRIPT } = deps
+  // The DEFAULT transports are guarded: a channel built without injected deps
+  // (as events.ts builds them) cannot reach the network from a test. Injected
+  // fakes are untouched — a unit test of the send logic still sees its own stub.
+  const {
+    fetchFn = guardedFetch('telegram'),
+    spawnFn = guardedSpawn('telegram'),
+    scriptPath = TG_SCRIPT,
+  } = deps
   return {
     id: 'telegram',
     enabled: () => getSettings().telegram.notify, // opt-in, off by default
@@ -325,7 +333,7 @@ export function webhookPayload(
 
 export function createWebhookChannel(
   getSettings: () => Settings,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = guardedFetch('webhook'),
 ): NotifyChannel {
   return {
     id: 'webhook',
@@ -347,7 +355,7 @@ export function createWebhookChannel(
 /** Settings "Test" button for the webhook channel: one POST, errors surfaced. */
 export async function testWebhook(
   url: string,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = guardedFetch('webhook-test'),
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isWebhookUrl(url)) return { ok: false, error: 'Set a valid http(s) webhook URL first.' }
   try {

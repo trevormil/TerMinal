@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { connect, constants, type ClientHttp2Session } from 'node:http2'
 import { join } from 'node:path'
 import { BRIDGE_DIR } from './identity'
+import { blockEffect } from '../effect-guard'
 
 // Push notifications, sent straight from this Mac to Apple.
 //
@@ -238,6 +239,8 @@ export async function sendPush(
   payload: PushPayload,
   dir: string = BRIDGE_DIR,
 ): Promise<PushResult> {
+  // A registered phone is a real phone. Never from a test.
+  if (blockEffect('notify', 'push')) return { sent: 0, failed: 0, errors: [] }
   const config = readApnsConfig(dir)
   const key = readApnsKey(dir)
   const devices = readDevices(dir)

@@ -15,3 +15,14 @@ import { join } from 'node:path'
 if (!process.env.TERMINAL_CONFIG_DIR) {
   process.env.TERMINAL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'terminal-test-config-'))
 }
+
+// The same lesson one layer out: sandboxing STATE did not sandbox EFFECTS. A
+// test that filed a HITL still appended to the real activity feed (which the
+// running app tails and mirrors to the phone) and still POSTed the Telegram Bot
+// API — the suite pinged the operator's phone twice per run. src/main/
+// effect-guard.ts refuses both under test.
+//
+// `bun test` already sets NODE_ENV=test, which the guard keys off. This is the
+// second, independent signal, so a test that clobbers NODE_ENV (or a helper
+// spawned with a scrubbed env) still runs with effects blocked.
+process.env.TERMINAL_BLOCK_EFFECTS = '1'
