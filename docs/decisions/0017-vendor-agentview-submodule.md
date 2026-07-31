@@ -47,8 +47,14 @@ Record it for what it is and constrain it accordingly.
   rule as CLAUDE.md §10, obtained for free. It is *not* kept current: bumping it
   is a deliberate act with a reason in the commit message, not maintenance.
 - **Not initialized by default.** `git clone` without `--recurse-submodules`
-  leaves it empty and everything works; contributors never need it. Only
-  `release.yml` uses `submodules: true`, and only for the template's sha.
+  leaves it empty and everything works; contributors never need it, and no CI
+  job needs it either. `release.yml` does still pass `submodules: true` under a
+  comment claiming it is there for the template's sha — that comment is stale:
+  ADR-0005 embedded the template as tracked files, and `__TEMPLATE_SHA__` is
+  computed by `git log` over `templates/project-template`
+  (`electron.vite.config.ts`). That flag therefore fetches this submodule and
+  nothing else, for nothing. Removing it is tracked separately; CI's packaging
+  job deliberately does not carry it.
 - **If it goes away, so do we.** Because nothing depends on it, an abandoned,
   deleted, or compromised upstream costs a `git rm` — no fork, no vendoring. That
   is the whole abandonment plan, and it is why keeping the dependency at zero is
@@ -56,9 +62,12 @@ Record it for what it is and constrain it accordingly.
 
 ## Consequences
 
-- The supply-chain surface is a directory that is never fetched, never built and
-  never shipped. An upstream compromise cannot reach a user's machine through
-  TerMinal.
+- The supply-chain surface is a directory that is never built and never shipped.
+  An upstream compromise cannot reach a user's machine through TerMinal. It is
+  still *fetched* on the release runner until `release.yml`'s stale
+  `submodules: true` goes — a checkout is not execution, so this is untidy
+  rather than dangerous, but it is the reason that flag should be removed
+  instead of left as decoration.
 - The `agentview:*` IPC channel names now have a written explanation, so nobody
   concludes the submodule is load-bearing and "fixes" the build to include it.
 - `bunfig.toml`'s `root = "src"` is a permanent consequence of keeping a foreign
