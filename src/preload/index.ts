@@ -560,6 +560,15 @@ const gt = {
     del: (id: string) => ipcRenderer.invoke('bakeoff:delete', id),
     pendingCount: () => ipcRenderer.invoke('bakeoff:pending-count'),
   },
+  prReview: {
+    config: () => ipcRenderer.invoke('pr-review:config'),
+    setConfig: (patch: Record<string, unknown>) =>
+      ipcRenderer.invoke('pr-review:set-config', patch),
+    sweep: () => ipcRenderer.invoke('pr-review:sweep'),
+    findings: (iid: number) => ipcRenderer.invoke('pr-review:findings', iid),
+    postFinding: (iid: number, findingId: string) =>
+      ipcRenderer.invoke('pr-review:post-finding', iid, findingId),
+  },
 
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {

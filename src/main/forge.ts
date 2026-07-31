@@ -472,3 +472,76 @@ export async function diff(repoRoot: string, iid: number): Promise<string> {
   const r = await run(f.cli, args, repoRoot, { timeout: 20_000, maxBuffer: 16 * 1024 * 1024 })
   return r.err ? '' : r.stdout
 }
+
+// --- posting back to a review thread -----------------------------------------
+
+export type ThreadLocation = { path: string; line: number; commitSha: string }
+export type PostResult = { ok: boolean; inline: boolean; error?: string }
+
+/** Post a comment to a PR/MR. With a `loc` on GitHub this becomes a real inline
+ *  review comment anchored to the diff; anywhere else (and whenever the anchored
+ *  post is rejected — a stale line, a file outside the diff) it degrades to a
+ *  plain thread comment rather than silently dropping the finding. GitLab's
+ *  position API needs base/start SHAs we don't carry here, so it always takes
+ *  the note path. */
+export async function postThreadComment(
+  repoRoot: string,
+  iid: number,
+  body: string,
+  f: ForgeMeta = forgeFor(repoRoot),
+  loc?: ThreadLocation,
+): Promise<PostResult> {
+  const plain = async (): Promise<PostResult> => {
+    const args =
+      f.kind === 'github'
+        ? ['pr', 'comment', String(iid), '--body', body]
+        : ['mr', 'note', String(iid), '--message', body]
+    const r = await run(f.cli, args, repoRoot, { timeout: 20_000 })
+    return { ok: !r.err, inline: false, error: forgeErrorReason(f.cli, r.err, r.stderr) }
+  }
+
+  if (!loc || f.kind !== 'github') return plain()
+
+  const r = await run(
+    'gh',
+    [
+      'api',
+      '--method',
+      'POST',
+      `repos/{owner}/{repo}/pulls/${iid}/comments`,
+      '-f',
+      `body=${body}`,
+      '-f',
+      `commit_id=${loc.commitSha}`,
+      '-f',
+      `path=${loc.path}`,
+      '-F',
+      `line=${loc.line}`,
+      '-f',
+      'side=RIGHT',
+    ],
+    repoRoot,
+    { timeout: 20_000 },
+  )
+  if (!r.err) return { ok: true, inline: true }
+  return plain()
+}
+
+/** Full head SHA for a PR/MR — the GitHub review-comment API wants the whole
+ *  40 chars, while RawMr only carries the 7-char form used for staleness. */
+export async function headSha(repoRoot: string, iid: number): Promise<string> {
+  const f = forgeFor(repoRoot)
+  const args =
+    f.kind === 'github'
+      ? ['pr', 'view', String(iid), '--json', 'headRefOid', '-q', '.headRefOid']
+      : ['mr', 'view', String(iid), '-F', 'json']
+  const r = await run(f.cli, args, repoRoot)
+  if (r.err) return ''
+  if (f.kind === 'github') return r.stdout.trim()
+  try {
+    const j = JSON.parse(r.stdout)
+    return String(j.sha || j.diff_refs?.head_sha || '')
+  } catch {
+    return ''
+  }
+}

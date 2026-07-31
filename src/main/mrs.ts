@@ -71,6 +71,9 @@ export type Mr = {
   labels: string[]
   /** Model(s) that wrote this MR, cross-referenced from the linked ticket's worked_by. */
   workedBy: string[]
+  /** Head commit short-sha — what auto-review keys "have we already reviewed
+   *  THIS head?" on. */
+  headShort: string
 }
 
 // `error` distinguishes a genuinely-empty list from a CLI failure, so the UI
@@ -109,6 +112,7 @@ export async function listMrs(repoRoot: string): Promise<MrListResult> {
       review: dir ? reviewForPrDir(dir, m.headShort) : null,
       labels: m.labels,
       workedBy: workedByByIid.get(m.iid) ?? [],
+      headShort: m.headShort,
     }
   })
   return { mrs }

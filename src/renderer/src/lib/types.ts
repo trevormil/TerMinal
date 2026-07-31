@@ -1478,6 +1478,8 @@ export type Mr = {
   labels: string[]
   /** Model(s) that wrote this MR, cross-referenced from the linked ticket's worked_by. */
   workedBy: string[]
+  /** Head commit short-sha — what auto-review keys "already reviewed?" on. */
+  headShort: string
 }
 
 export type SkillScope = 'project' | 'personal' | 'plugin'
@@ -2293,6 +2295,46 @@ export type GtApi = {
     del: (id: string) => Promise<boolean>
     pendingCount: () => Promise<number>
   }
+  prReview: {
+    config: () => Promise<AutoReviewConfig>
+    setConfig: (patch: Partial<AutoReviewConfig>) => Promise<AutoReviewConfig>
+    sweep: () => Promise<{
+      started: { iid: number; runId: string }[]
+      errors: string[]
+      skipped?: string
+    }>
+    findings: (iid: number) => Promise<{
+      findings: NormalizedFinding[]
+      byLocation: Record<string, NormalizedFinding[]>
+      stale: boolean
+    }>
+    postFinding: (
+      iid: number,
+      findingId: string,
+    ) => Promise<{ ok: boolean; inline: boolean; error?: string }>
+  }
+}
+
+// ---- agentic pre-review (src/main/findings.ts, src/main/pr-auto-review.ts) ---
+
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
+
+export type NormalizedFinding = {
+  id: string
+  severity: Severity
+  title: string
+  body: string
+  file?: string
+  line?: number
+  category?: string
+  status?: string
+}
+
+export type AutoReviewConfig = {
+  enabled: boolean
+  maxPerSweep: number
+  authors: string[]
+  seen: Record<string, string>
 }
 
 // ---- cross-engine bake-off (src/main/bakeoff.ts) ----------------------------

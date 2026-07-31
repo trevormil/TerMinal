@@ -25,6 +25,7 @@ const mr = (over: Partial<Mr> = {}): Mr => ({
   review: null,
   labels: [],
   workedBy: [],
+  headShort: 'abc1234',
   ...over,
 })
 
