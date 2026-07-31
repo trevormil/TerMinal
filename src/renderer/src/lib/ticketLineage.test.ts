@@ -27,10 +27,10 @@ const build = (input: Omit<LineageInputs, 'repoRoot'> & { repoRoot?: string }) =
   buildTicketLineage({ repoRoot: '/r', ...input })
 
 describe('buildTicketLineage', () => {
-  test('does not attribute another repo’s identically-slugged runs or their cost', () => {
+  test('does not attribute another repo’s identically-slugged runs', () => {
     // runs:all is global across every managed repo and ticket numbering is
     // per-repo, so '0012-thing' can exist in two repos at once. Without a
-    // repoRoot filter the other repo's runs — and dollars — land on this card.
+    // repoRoot filter the other repo's runs land on this ticket.
     const l = build({
       ticket: ticket(),
       repoRoot: '/repo-a',
@@ -38,14 +38,9 @@ describe('buildTicketLineage', () => {
         run({ id: 'a1', repoRoot: '/repo-a', trace: { ticketSlug: '0012-thing' } }),
         run({ id: 'b1', repoRoot: '/repo-b', trace: { ticketSlug: '0012-thing' } }),
       ],
-      aiRuns: [
-        { runId: 'a1', costUsd: 1 },
-        { runId: 'b1', costUsd: 40 },
-      ],
     })
     expect(l.runs.map((r) => r.id)).toEqual(['a1'])
     expect(l.runCount).toBe(1)
-    expect(l.totalCostUsd).toBe(1)
   })
 
   test('does not adopt a frontmatter-linked run that ran in another repo', () => {
@@ -53,7 +48,19 @@ describe('buildTicketLineage', () => {
       ticket: ticket({ run: { id: 'sess1', source: 'session' } }),
       repoRoot: '/repo-a',
       runs: [run({ id: 'sess1', source: 'session', repoRoot: '/repo-b' })],
-      aiRuns: [],
+    })
+    expect(l.runs).toEqual([])
+    expect(l.runCount).toBe(0)
+  })
+
+  test('an unknown repo root claims nothing rather than everything', () => {
+    // The detail pane can render before tab context resolves. An empty repoRoot
+    // must match no runs at all — the UI says "no repo context" instead of
+    // silently showing another repo's history.
+    const l = build({
+      ticket: ticket(),
+      repoRoot: '',
+      runs: [run({ id: 'a1', trace: { ticketSlug: '0012-thing' } })],
     })
     expect(l.runs).toEqual([])
     expect(l.runCount).toBe(0)
@@ -66,7 +73,6 @@ describe('buildTicketLineage', () => {
         run({ id: 'a1', trace: { ticketSlug: '0012-thing' } }),
         run({ id: 'a2', trace: { ticketSlug: '0012-thing' } }),
       ],
-      aiRuns: [],
     })
     expect(l.runs.map((r) => r.id).sort()).toEqual(['a1', 'a2'])
     expect(l.runCount).toBe(2)
@@ -80,7 +86,6 @@ describe('buildTicketLineage', () => {
         run({ id: 'theirs', trace: { ticketSlug: '0099-other' } }),
         run({ id: 'untagged' }),
       ],
-      aiRuns: [],
     })
     expect(l.runs.map((r) => r.id)).toEqual(['mine'])
   })
@@ -90,7 +95,6 @@ describe('buildTicketLineage', () => {
     const l = build({
       ticket: ticket({ run: { id: 'sess1', source: 'session' } }),
       runs: [run({ id: 'sess1', source: 'session' })],
-      aiRuns: [],
     })
     expect(l.runs.map((r) => r.id)).toEqual(['sess1'])
     expect(l.linkedRunId).toBe('sess1')
@@ -100,7 +104,6 @@ describe('buildTicketLineage', () => {
     const l = build({
       ticket: ticket({ run: { id: 'a1', source: 'agent' } }),
       runs: [run({ id: 'a1', trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [],
     })
     expect(l.runs).toHaveLength(1)
     expect(l.runCount).toBe(1)
@@ -114,85 +117,25 @@ describe('buildTicketLineage', () => {
         run({ id: 'new', startedAt: 900, trace: { ticketSlug: '0012-thing' } }),
         run({ id: 'mid', startedAt: 500, trace: { ticketSlug: '0012-thing' } }),
       ],
-      aiRuns: [],
     })
     expect(l.runs.map((r) => r.id)).toEqual(['new', 'mid', 'old'])
   })
 
-  test("prefers a run's own reported cost over the ledger", () => {
-    // or-agent/OpenRouter runs self-report costUsd; that beats the AIRun ledger,
-    // matching how the Runs tab resolves the same conflict.
-    const l = build({
-      ticket: ticket(),
-      runs: [run({ id: 'a1', costUsd: 0.5, trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [{ runId: 'a1', costUsd: 999 }],
-    })
-    expect(l.runs[0].costUsd).toBe(0.5)
-    expect(l.totalCostUsd).toBe(0.5)
-  })
-
-  test('falls back to the ledger, summing every AIRun for one run id', () => {
-    const l = build({
-      ticket: ticket(),
-      runs: [run({ id: 'a1', trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [
-        { runId: 'a1', costUsd: 0.25 },
-        { runId: 'a1', costUsd: 0.75 },
-        { runId: 'other', costUsd: 100 },
-      ],
-    })
-    expect(l.runs[0].costUsd).toBe(1)
-    expect(l.totalCostUsd).toBe(1)
-  })
-
-  test('totals cost across every run in the lineage', () => {
-    const l = build({
-      ticket: ticket(),
-      runs: [
-        run({ id: 'a1', costUsd: 1.5, trace: { ticketSlug: '0012-thing' } }),
-        run({ id: 'a2', trace: { ticketSlug: '0012-thing' } }),
-      ],
-      aiRuns: [{ runId: 'a2', costUsd: 2 }],
-    })
-    expect(l.totalCostUsd).toBe(3.5)
-  })
-
-  test('reports zero cost rather than NaN when nothing is known', () => {
-    const l = build({
-      ticket: ticket(),
-      runs: [run({ id: 'a1', trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [],
-    })
-    expect(l.runs[0].costUsd).toBe(0)
-    expect(l.totalCostUsd).toBe(0)
-    expect(l.hasCost).toBe(false)
-  })
-
-  test('flags that cost is known once any run has a price', () => {
-    const l = build({
-      ticket: ticket(),
-      runs: [run({ id: 'a1', trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [{ runId: 'a1', costUsd: 0.01 }],
-    })
-    expect(l.hasCost).toBe(true)
-  })
-
   test('empty inputs produce an empty lineage, not a crash', () => {
-    const l = build({ ticket: ticket(), runs: [], aiRuns: [] })
+    const l = build({ ticket: ticket(), runs: [] })
     expect(l.runs).toEqual([])
     expect(l.runCount).toBe(0)
-    expect(l.totalCostUsd).toBe(0)
+    expect(l.running).toBe(false)
     expect(l.linkedRunId).toBeUndefined()
   })
 
-  test('surfaces a running run so the card can show live work', () => {
+  test('surfaces a running run so the tab can show live work', () => {
     const l = build({
       ticket: ticket(),
       runs: [
         run({ id: 'a1', status: 'done', startedAt: 100, trace: { ticketSlug: '0012-thing' } }),
         run({ id: 'a2', status: 'running', startedAt: 200, trace: { ticketSlug: '0012-thing' } }),
       ],
-      aiRuns: [],
     })
     expect(l.running).toBe(true)
   })
@@ -201,7 +144,6 @@ describe('buildTicketLineage', () => {
     const l = build({
       ticket: ticket(),
       runs: [run({ id: 'a1', status: 'failed', trace: { ticketSlug: '0012-thing' } })],
-      aiRuns: [],
     })
     expect(l.running).toBe(false)
   })

@@ -18,7 +18,8 @@ import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
-import { TicketDetail, prIidFromUrl, ticketAgentContextId } from './TicketDetail'
+import { TicketDetail, ticketAgentContextId } from './TicketDetail'
+import { prIidFromUrl } from './TicketLineagePanel'
 import {
   statusTone,
   priorityTone,
@@ -780,7 +781,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           )}
         </div>
         <ResizeHandle onMouseDown={listW.onResizeStart} />
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        {/* TicketDetail scrolls internally below its pinned header + tabs. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {selected ? (
             <TicketDetail
               ticket={selected}
