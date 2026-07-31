@@ -1,6 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { configPath } from './config-dir'
+import { readFileTail } from './fs-tail'
 
 // Failed-run output summarizer. When a bg-task or cron run fails, the raw log
 // can be 50k lines. Use the configured lightweight local engine for a short
@@ -93,21 +102,30 @@ export async function summarizeFailedRun(opts: {
 // run, and a failure to summarize simply means no summary. The failure-summary
 // path above is untouched.
 
-const DEFAULT_SUMMARIES_DIR = join(homedir(), '.config', 'TerMinal', 'run-summaries')
-
-/** Resolved per call so tests can point at a temp dir. */
-export const outcomeSummariesDir = (): string =>
-  process.env.TERMINAL_RUN_SUMMARIES_DIR || DEFAULT_SUMMARIES_DIR
+/** Resolved per call through the one config-dir seam. Callers that queue work
+ *  asynchronously must capture this ONCE at queue time and thread it through —
+ *  an env read at write time races the fire-and-forget completion. */
+export const outcomeSummariesDir = (): string => configPath('run-summaries')
 
 /** Runs shorter than this have nothing worth spending a model call on. */
 export const OUTCOME_MIN_LOG_CHARS = 400
 /** Hard ceiling on summaries per rolling hour — the cost cap. */
 export const OUTCOME_HOURLY_CAP = 30
+/** Bytes of log tail handed to the model. The prompt only keeps 120 lines. */
+export const OUTCOME_LOG_TAIL_BYTES = 64_000
+/** Summaries older than this are pruned by the periodic sweep. */
+const OUTCOME_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 /** Max stored summary length. Two lines in a list row, not a report. */
 const OUTCOME_MAX_CHARS = 240
 const HOUR_MS = 3_600_000
+/** How long the cap counter may reuse its last directory scan. */
+const CAP_CACHE_TTL_MS = 5_000
 
-const SETTLED = new Set(['done', 'failed', 'canceled', 'interrupted'])
+// Only successful runs. A failed run already gets summarizeFailedRun() above
+// for its HITL entry, and ticket 81 required that path be unchanged — gating
+// failures in here too would silently pay for a SECOND model call on the same
+// log for every failure.
+const SETTLED = new Set(['done'])
 
 /** Run ids come from run records; never let one address a path outside the store. */
 const safeRunId = (id: string): string | null =>
@@ -131,25 +149,32 @@ export function shouldSummarizeRun(input: {
   return { ok: true }
 }
 
-export function writeOutcomeSummary(runId: string, text: string): boolean {
+const summaryPath = (dir: string, safe: string): string => join(dir, `${safe}.txt`)
+
+export function writeOutcomeSummary(
+  runId: string,
+  text: string,
+  dir = outcomeSummariesDir(),
+): boolean {
   const safe = safeRunId(runId)
   const body = text.trim().slice(0, OUTCOME_MAX_CHARS)
   if (!safe || !body) return false
   try {
-    const dir = outcomeSummariesDir()
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, `${safe}.txt`), body)
+    writeFileSync(summaryPath(dir, safe), body)
     return true
   } catch {
     return false
   }
 }
 
-export function readOutcomeSummary(runId: string): string | undefined {
+export function readOutcomeSummary(runId: string, dir = outcomeSummariesDir()): string | undefined {
   const safe = safeRunId(runId)
   if (!safe) return undefined
   try {
-    const body = readFileSync(join(outcomeSummariesDir(), `${safe}.txt`), 'utf8').trim()
+    // Empty file = a reservation placeholder for an in-flight summary, which is
+    // deliberately invisible to readers until it is filled.
+    const body = readFileSync(summaryPath(dir, safe), 'utf8').trim()
     return body || undefined
   } catch {
     return undefined
@@ -157,9 +182,8 @@ export function readOutcomeSummary(runId: string): string | undefined {
 }
 
 /** All stored summaries, keyed by run id — one sweep for a whole Runs list. */
-export function readOutcomeSummaries(): Map<string, string> {
+export function readOutcomeSummaries(dir = outcomeSummariesDir()): Map<string, string> {
   const out = new Map<string, string>()
-  const dir = outcomeSummariesDir()
   if (!existsSync(dir)) return out
   try {
     for (const f of readdirSync(dir)) {
@@ -177,29 +201,101 @@ export function readOutcomeSummaries(): Map<string, string> {
   return out
 }
 
-/** Summaries written within the last hour — the cost-cap counter. */
-function summariesInLastHour(now = Date.now()): number {
-  const dir = outcomeSummariesDir()
-  if (!existsSync(dir)) return 0
+/** Delete summaries older than OUTCOME_MAX_AGE_MS. Without this the store grows
+ *  forever and the cap counter ends up stat-ing thousands of files. */
+export function pruneOutcomeSummaries(
+  dir = outcomeSummariesDir(),
+  now = Date.now(),
+): { pruned: number } {
+  if (!existsSync(dir)) return { pruned: 0 }
+  let pruned = 0
   try {
-    let n = 0
     for (const f of readdirSync(dir)) {
       if (!f.endsWith('.txt')) continue
+      const p = join(dir, f)
       try {
-        if (now - statSync(join(dir, f)).mtimeMs < HOUR_MS) n++
+        if (now - statSync(p).mtimeMs > OUTCOME_MAX_AGE_MS) {
+          rmSync(p, { force: true })
+          pruned++
+        }
       } catch {
         /* skip */
       }
     }
-    return n
   } catch {
-    return 0
+    /* unreadable store */
+  }
+  if (pruned) capCache = null
+  return { pruned }
+}
+
+// The cap counter scans the store directory, which runs on the main thread from
+// every run completion. A short TTL bounds that to one scan per interval;
+// reservations bump the cached count directly so a burst inside one tick is
+// still counted (see reserveOutcomeSlot).
+let capCache: { dir: string; at: number; count: number } | null = null
+
+function summariesInLastHour(dir: string, now = Date.now()): number {
+  if (capCache && capCache.dir === dir && now - capCache.at < CAP_CACHE_TTL_MS)
+    return capCache.count
+  let n = 0
+  if (existsSync(dir)) {
+    try {
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith('.txt')) continue
+        try {
+          if (now - statSync(join(dir, f)).mtimeMs < HOUR_MS) n++
+        } catch {
+          /* skip */
+        }
+      }
+    } catch {
+      n = 0
+    }
+  }
+  capCache = { dir, at: now, count: n }
+  return n
+}
+
+/** Claim a slot BEFORE the async work starts, by writing an empty placeholder.
+ *
+ *  Checking the cap and then firing async left it unenforced under burst: a
+ *  factory pass settling 80 tasks in one tick had all 80 read the same count,
+ *  all 80 pass, and all 80 fire. Reserving synchronously makes the Nth caller
+ *  in the same tick see N-1 already taken. */
+function reserveOutcomeSlot(dir: string, safe: string, now = Date.now()): boolean {
+  try {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(summaryPath(dir, safe), '')
+    if (capCache && capCache.dir === dir) capCache.count++
+    else capCache = { dir, at: now, count: summariesInLastHour(dir, now) + 1 }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function releaseOutcomeSlot(dir: string, safe: string): void {
+  try {
+    // Only drop a placeholder we never filled — never a real summary.
+    if (readFileSync(summaryPath(dir, safe), 'utf8').trim()) return
+    rmSync(summaryPath(dir, safe), { force: true })
+    if (capCache && capCache.dir === dir && capCache.count > 0) capCache.count--
+  } catch {
+    /* nothing to release */
   }
 }
 
 type OutcomeCall = (prompt: string) => Promise<string>
 
 async function defaultOutcomeCall(prompt: string): Promise<string> {
+  // Belt and braces. This path is reached fire-and-forget from run-completion
+  // hooks, so ANY test that finalizes a run — including tests written later, in
+  // other files, by people who have never read this one — would otherwise shell
+  // out to the operator's real `claude` CLI (billed to their subscription) long
+  // after the test returned. Tests that genuinely want this must pass `call`.
+  if (process.env.NODE_ENV === 'test')
+    throw new Error('outcome summarizer: refusing to call a model under the test runner')
   const { cheapCall } = await import('./cheap-llm')
   const res = await cheapCall({
     messages: [
@@ -225,7 +321,12 @@ export async function summarizeRunOutcome(opts: {
   rawLog: string
   context?: string
   call?: OutcomeCall
+  /** Captured at queue time — see outcomeSummariesDir(). */
+  dir?: string
 }): Promise<string | null> {
+  const dir = opts.dir ?? outcomeSummariesDir()
+  const safe = safeRunId(opts.runId)
+  if (!safe) return null
   try {
     const prompt =
       (opts.context ? `Context: ${opts.context}\n\n` : '') +
@@ -233,9 +334,15 @@ export async function summarizeRunOutcome(opts: {
     const text = (await (opts.call || defaultOutcomeCall)(prompt))
       .trim()
       .slice(0, OUTCOME_MAX_CHARS)
-    if (!text) return null
-    return writeOutcomeSummary(opts.runId, text) ? text : null
+    if (!text) {
+      releaseOutcomeSlot(dir, safe)
+      return null
+    }
+    if (writeOutcomeSummary(opts.runId, text, dir)) return text
+    releaseOutcomeSlot(dir, safe)
+    return null
   } catch {
+    releaseOutcomeSlot(dir, safe)
     return null
   }
 }
@@ -245,19 +352,29 @@ export async function summarizeRunOutcome(opts: {
 export function queueRunOutcomeSummary(opts: {
   runId: string
   status: string
-  /** Deferred so a gated-out run never pays to read a 50MB log. */
+  /** Deferred so a gated-out run never pays to read a log, and expected to
+   *  return a TAIL — see readRunLogTail. */
   readLog: () => string
   context?: string
   call?: OutcomeCall
 }): void {
   try {
+    const safe = safeRunId(opts.runId)
+    if (!safe) return
+    // Captured ONCE, here: everything below may complete after the caller (and,
+    // in tests, an afterEach) has moved on, so the destination must not be
+    // re-derived from the environment later.
+    const dir = outcomeSummariesDir()
+
     const pre = shouldSummarizeRun({
       status: opts.status,
-      // logChars is checked again below; this first pass only rules out the
-      // cheap non-log reasons before touching the disk.
+      // logChars is checked again below; this pass rules out the cheap
+      // non-log reasons before touching the disk.
       logChars: OUTCOME_MIN_LOG_CHARS,
-      alreadySummarized: readOutcomeSummary(opts.runId) !== undefined,
-      summariesInWindow: summariesInLastHour(),
+      // existsSync, not readOutcomeSummary: an in-flight reservation is an
+      // empty file, and it must still count as "taken".
+      alreadySummarized: existsSync(summaryPath(dir, safe)),
+      summariesInWindow: summariesInLastHour(dir),
     })
     if (!pre.ok) return
 
@@ -277,13 +394,27 @@ export function queueRunOutcomeSummary(opts: {
     )
       return
 
+    if (!reserveOutcomeSlot(dir, safe)) return
+
     void summarizeRunOutcome({
       runId: opts.runId,
       rawLog: log,
       context: opts.context,
       call: opts.call,
+      dir,
     }).catch(() => null)
   } catch {
     /* a summary is never worth disturbing a completed run */
+  }
+}
+
+/** Bounded log read for queueRunOutcomeSummary. Run logs reach tens of MB and
+ *  this runs on the main thread at every run completion; the prompt only uses
+ *  the last 120 lines, so never read more than the tail. */
+export function readRunLogTail(path: string, maxBytes = OUTCOME_LOG_TAIL_BYTES): string {
+  try {
+    return readFileTail(path, maxBytes).text
+  } catch {
+    return ''
   }
 }

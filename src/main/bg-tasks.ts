@@ -37,7 +37,7 @@ import {
   type EngineId,
 } from './settings'
 import { sendUrl } from './telegram-api'
-import { queueRunOutcomeSummary } from './run-summarizer'
+import { queueRunOutcomeSummary, readRunLogTail } from './run-summarizer'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
@@ -578,13 +578,7 @@ async function sweepInner(): Promise<void> {
     queueRunOutcomeSummary({
       runId: t.id,
       status: t.status,
-      readLog: () => {
-        try {
-          return readFileSync(t.logFile, 'utf8')
-        } catch {
-          return ''
-        }
-      },
+      readLog: () => readRunLogTail(t.logFile),
       context: `Background task: ${t.label} in ${t.repo}`,
     })
     finals.set(t.id, { status: t.status, endedAt: t.endedAt, mrUrl: t.mrUrl })

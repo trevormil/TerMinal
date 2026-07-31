@@ -13,7 +13,12 @@ import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
 import { listBgTasks, type BgTask } from './bg-tasks'
-import { queueRunOutcomeSummary, readOutcomeSummaries } from './run-summarizer'
+import {
+  pruneOutcomeSummaries,
+  queueRunOutcomeSummary,
+  readOutcomeSummaries,
+  readRunLogTail,
+} from './run-summarizer'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const DEFAULT_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
@@ -163,6 +168,7 @@ export function sweepStaleCronRuns(): { swept: number } {
     }
   }
   sweepCronRunSummaries()
+  pruneOutcomeSummaries()
   return { swept }
 }
 
@@ -186,7 +192,7 @@ export function sweepCronRunSummaries(
     queueRunOutcomeSummary({
       runId: r.id,
       status: r.status,
-      readLog: () => readCronRunLog(r.id),
+      readLog: () => readRunLogTail(cronRunLogPath(r.id)),
       context: `Scheduled run: ${r.agentTitle} in ${r.repoLabel}`,
       call: opts.call,
     })
@@ -304,7 +310,7 @@ export function finalizeSessionRun(
   queueRunOutcomeSummary({
     runId: safe,
     status: patch.status,
-    readLog: () => readSessionRunLog(safe),
+    readLog: () => readRunLogTail(sessionRunLogPath(safe)),
     context: `Session run: ${patch.agentTitle || ''}`.trim(),
   })
 }

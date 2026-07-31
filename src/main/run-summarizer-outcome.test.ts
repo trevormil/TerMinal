@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   OUTCOME_HOURLY_CAP,
   OUTCOME_MIN_LOG_CHARS,
   outcomeSummariesDir,
+  pruneOutcomeSummaries,
   queueRunOutcomeSummary,
   readOutcomeSummaries,
   readOutcomeSummary,
@@ -14,20 +15,23 @@ import {
   writeOutcomeSummary,
 } from './run-summarizer'
 
-// TERMINAL_RUN_SUMMARIES_DIR is resolved per call — nothing here can reach the
-// operator's real ~/.config/TerMinal.
+// Resolved per call through configPath(); src/test-preload.ts also points the
+// whole suite at a throwaway config dir, so nothing here can reach the
+// operator's real ~/.config/TerMinal even if this block were forgotten.
+let cfg = ''
 let dir = ''
-const realDir = process.env.TERMINAL_RUN_SUMMARIES_DIR
+const realCfg = process.env.TERMINAL_CONFIG_DIR
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'tm-run-summaries-'))
-  process.env.TERMINAL_RUN_SUMMARIES_DIR = dir
+  cfg = mkdtempSync(join(tmpdir(), 'tm-run-summaries-'))
+  process.env.TERMINAL_CONFIG_DIR = cfg
+  dir = join(cfg, 'run-summaries')
 })
 
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true })
-  if (realDir === undefined) delete process.env.TERMINAL_RUN_SUMMARIES_DIR
-  else process.env.TERMINAL_RUN_SUMMARIES_DIR = realDir
+  rmSync(cfg, { recursive: true, force: true })
+  if (realCfg === undefined) delete process.env.TERMINAL_CONFIG_DIR
+  else process.env.TERMINAL_CONFIG_DIR = realCfg
 })
 
 const gate = (over: Record<string, unknown> = {}) =>
@@ -54,10 +58,13 @@ describe('shouldSummarizeRun', () => {
     expect(gate({ status: 'running' })).toMatchObject({ ok: false })
   })
 
-  test('summarizes failed/canceled runs too — the Runs row wants an outcome either way', () => {
-    expect(gate({ status: 'failed' }).ok).toBe(true)
-    expect(gate({ status: 'canceled' }).ok).toBe(true)
-    expect(gate({ status: 'interrupted' }).ok).toBe(true)
+  // Failed runs already get summarizeFailedRun() for their HITL entry. Ticket 81
+  // required that path stay unchanged, so gating failures in here as well would
+  // silently pay for a SECOND model call on the same log for every failure.
+  test('does NOT summarize failed/canceled/interrupted runs — they would double-bill', () => {
+    expect(gate({ status: 'failed' })).toMatchObject({ ok: false })
+    expect(gate({ status: 'canceled' })).toMatchObject({ ok: false })
+    expect(gate({ status: 'interrupted' })).toMatchObject({ ok: false })
   })
 
   test('skips a log too short to be worth a model call', () => {
@@ -78,6 +85,7 @@ describe('shouldSummarizeRun', () => {
   test('every rejection explains itself', () => {
     for (const r of [
       gate({ status: 'running' }),
+      gate({ status: 'failed' }),
       gate({ logChars: 1 }),
       gate({ alreadySummarized: true }),
       gate({ summariesInWindow: OUTCOME_HOURLY_CAP }),
@@ -163,8 +171,37 @@ describe('queueRunOutcomeSummary', () => {
         readLog: () => {
           throw new Error('log gone')
         },
+        call: async () => 'never reached',
       }),
     ).not.toThrow()
+  })
+
+  // "Fire-and-forget" is the whole safety property: a run completion must not
+  // WAIT on a model call. not.toThrow() alone would still pass if the call were
+  // awaited, so assert that queue() returns while the model is still in flight
+  // and that it did not block for the model's duration.
+  test('returns while the model call is still in flight, not merely without throwing', async () => {
+    let resolved = false
+    const t0 = Date.now()
+    queueRunOutcomeSummary({
+      runId: 'r1',
+      status: 'done',
+      readLog: () => longLog,
+      call: async () => {
+        await Bun.sleep(120)
+        resolved = true
+        return 'done later'
+      },
+    })
+    const elapsed = Date.now() - t0
+    // Returned promptly, with the model still running and nothing written yet.
+    expect(elapsed).toBeLessThan(50)
+    expect(resolved).toBe(false)
+    expect(readOutcomeSummary('r1')).toBeUndefined()
+
+    await Bun.sleep(200)
+    expect(resolved).toBe(true)
+    expect(readOutcomeSummary('r1')).toBe('done later')
   })
 
   test('writes a summary for a gated-in run', async () => {
@@ -209,5 +246,137 @@ describe('queueRunOutcomeSummary', () => {
     await Bun.sleep(10)
     expect(called).toBe(0)
     expect(readOutcomeSummary('r1')).toBe('already here')
+  })
+})
+
+// The cap is the cost control. Testing shouldSummarizeRun() alone proves the
+// predicate, not the enforcement: the queue path used to check the on-disk count
+// and then fire async, so a burst settling in one tick had every caller read the
+// same count and every caller pass.
+describe('the hourly cap under burst', () => {
+  const longLog = 'step\n'.repeat(400)
+
+  test('a single-tick burst of 80 runs never exceeds the cap', async () => {
+    let called = 0
+    for (let i = 0; i < 80; i++) {
+      queueRunOutcomeSummary({
+        runId: `burst-${i}`,
+        status: 'done',
+        readLog: () => longLog,
+        call: async () => {
+          called++
+          return `summary ${i}`
+        },
+      })
+    }
+    await Bun.sleep(30)
+    expect(called).toBe(OUTCOME_HOURLY_CAP)
+    expect(readOutcomeSummaries().size).toBe(OUTCOME_HOURLY_CAP)
+  })
+
+  test('a run whose summary fails releases its slot for someone else', async () => {
+    // Burn the whole cap on failing calls...
+    for (let i = 0; i < OUTCOME_HOURLY_CAP; i++) {
+      queueRunOutcomeSummary({
+        runId: `fail-${i}`,
+        status: 'done',
+        readLog: () => longLog,
+        call: async () => {
+          throw new Error('model down')
+        },
+      })
+    }
+    await Bun.sleep(30)
+    expect(readOutcomeSummaries().size).toBe(0)
+
+    // ...and a later run can still be summarized, because the failures gave
+    // their reservations back instead of holding the cap hostage for an hour.
+    let called = false
+    queueRunOutcomeSummary({
+      runId: 'later',
+      status: 'done',
+      readLog: () => longLog,
+      call: async () => {
+        called = true
+        return 'made it'
+      },
+    })
+    await Bun.sleep(20)
+    expect(called).toBe(true)
+    expect(readOutcomeSummary('later')).toBe('made it')
+  })
+
+  test('an in-flight reservation blocks a duplicate queue for the same run', async () => {
+    let called = 0
+    const slow = async () => {
+      called++
+      await Bun.sleep(25)
+      return 'first wins'
+    }
+    queueRunOutcomeSummary({ runId: 'dup', status: 'done', readLog: () => longLog, call: slow })
+    queueRunOutcomeSummary({ runId: 'dup', status: 'done', readLog: () => longLog, call: slow })
+    await Bun.sleep(60)
+    expect(called).toBe(1)
+    expect(readOutcomeSummary('dup')).toBe('first wins')
+  })
+
+  test('an in-flight reservation is invisible to readers until it is filled', async () => {
+    queueRunOutcomeSummary({
+      runId: 'pending',
+      status: 'done',
+      readLog: () => longLog,
+      call: async () => {
+        await Bun.sleep(25)
+        return 'eventually'
+      },
+    })
+    // Reserved on disk, but not yet a summary — the Runs row must not show a blank.
+    expect(readOutcomeSummary('pending')).toBeUndefined()
+    expect(readOutcomeSummaries().has('pending')).toBe(false)
+    await Bun.sleep(50)
+    expect(readOutcomeSummary('pending')).toBe('eventually')
+  })
+})
+
+describe('pruneOutcomeSummaries', () => {
+  test('drops summaries past the retention window and keeps recent ones', () => {
+    writeOutcomeSummary('old', 'ancient')
+    writeOutcomeSummary('new', 'fresh')
+    const old = join(dir, 'old.txt')
+    const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    utimesSync(old, past, past)
+
+    const res = pruneOutcomeSummaries()
+    expect(res.pruned).toBe(1)
+    expect(readOutcomeSummary('old')).toBeUndefined()
+    expect(readOutcomeSummary('new')).toBe('fresh')
+  })
+
+  test('a missing store is a no-op', () => {
+    rmSync(dir, { recursive: true, force: true })
+    expect(pruneOutcomeSummaries().pruned).toBe(0)
+  })
+})
+
+// Regression guard for the defect this whole store was rewritten around: a test
+// that finalizes a run without injecting `call` reached the real cheapCall and
+// shelled out to the operator's `claude` CLI after the test had returned.
+describe('the default model route under the test runner', () => {
+  test('refuses to shell out when no call is injected', async () => {
+    const longLog = 'step\n'.repeat(400)
+    // No `call` — exactly the shape that caused the incident.
+    const text = await summarizeRunOutcome({ runId: 'unguarded', rawLog: longLog })
+    expect(text).toBeNull()
+    expect(readOutcomeSummary('unguarded')).toBeUndefined()
+  })
+
+  test('queueing without a call writes nothing and leaves no reservation behind', async () => {
+    const longLog = 'step\n'.repeat(400)
+    queueRunOutcomeSummary({ runId: 'unguarded2', status: 'done', readLog: () => longLog })
+    await Bun.sleep(20)
+    expect(readOutcomeSummary('unguarded2')).toBeUndefined()
+    expect(readOutcomeSummaries().has('unguarded2')).toBe(false)
+    // The slot was released, so a genuine summary can still be taken later.
+    expect(existsSync(join(dir, 'unguarded2.txt'))).toBe(false)
   })
 })

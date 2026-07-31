@@ -26,30 +26,35 @@ let loadN = 0
 
 // Both stores are redirected to temp dirs — nothing here reads or writes the
 // operator's real ~/.config/TerMinal.
+//
+// EVERY test below injects `call`. The sweep queues fire-and-forget work, so a
+// test that omits it would reach the real cheapCall -> execFile('claude') long
+// after the test returned: N real CLI invocations against the operator's
+// subscription, landing wherever the config dir resolved by then.
 let runsDir = ''
-let summariesDir = ''
+let cfg = ''
 const realRuns = process.env.TERMINAL_CRON_RUNS_DIR
-const realSummaries = process.env.TERMINAL_RUN_SUMMARIES_DIR
+const realCfg = process.env.TERMINAL_CONFIG_DIR
+const noopCall = async () => 'test summary'
 
 beforeEach(async () => {
   runsDir = mkdtempSync(join(tmpdir(), 'tm-cron-runs-'))
-  summariesDir = mkdtempSync(join(tmpdir(), 'tm-cron-summaries-'))
+  cfg = mkdtempSync(join(tmpdir(), 'tm-cron-cfg-'))
   process.env.TERMINAL_CRON_RUNS_DIR = runsDir
-  process.env.TERMINAL_RUN_SUMMARIES_DIR = summariesDir
+  process.env.TERMINAL_CONFIG_DIR = cfg
   const mod = (await import(`./cron-runs.ts?t=${loadN++}`)) as CronRunsModule
   sweepCronRunSummaries = mod.sweepCronRunSummaries
 })
 
-afterEach(() => {
+afterEach(async () => {
+  // Let any queued work settle against THIS test's dirs before tearing them down.
+  await Bun.sleep(5)
   rmSync(runsDir, { recursive: true, force: true })
-  rmSync(summariesDir, { recursive: true, force: true })
-  for (const [k, v] of [
-    ['TERMINAL_CRON_RUNS_DIR', realRuns],
-    ['TERMINAL_RUN_SUMMARIES_DIR', realSummaries],
-  ] as const) {
-    if (v === undefined) delete process.env[k]
-    else process.env[k] = v
-  }
+  rmSync(cfg, { recursive: true, force: true })
+  if (realRuns === undefined) delete process.env.TERMINAL_CRON_RUNS_DIR
+  else process.env.TERMINAL_CRON_RUNS_DIR = realRuns
+  if (realCfg === undefined) delete process.env.TERMINAL_CONFIG_DIR
+  else process.env.TERMINAL_CONFIG_DIR = realCfg
 })
 
 const NOW = 1_800_000_000_000
@@ -90,26 +95,26 @@ describe('sweepCronRunSummaries', () => {
 
   test('skips a run that is still running', () => {
     seedRun('run-a', { status: 'running', endedAt: undefined })
-    expect(sweepCronRunSummaries({ now: NOW }).queued).toBe(0)
+    expect(sweepCronRunSummaries({ now: NOW, call: noopCall }).queued).toBe(0)
   })
 
   test('skips a run that already has a summary', () => {
     seedRun('run-a')
     writeOutcomeSummary('run-a', 'already summarized')
-    expect(sweepCronRunSummaries({ now: NOW }).queued).toBe(0)
+    expect(sweepCronRunSummaries({ now: NOW, call: noopCall }).queued).toBe(0)
   })
 
   test('skips runs older than the 24h window', () => {
     seedRun('run-old', { endedAt: NOW - 25 * 60 * 60 * 1000, startedAt: NOW - 26 * 60 * 60 * 1000 })
-    expect(sweepCronRunSummaries({ now: NOW }).queued).toBe(0)
+    expect(sweepCronRunSummaries({ now: NOW, call: noopCall }).queued).toBe(0)
   })
 
   test('caps how many runs one sweep queues', () => {
     for (let i = 0; i < 40; i++) seedRun(`run-${i}`)
-    expect(sweepCronRunSummaries({ now: NOW }).queued).toBe(20)
+    expect(sweepCronRunSummaries({ now: NOW, call: noopCall }).queued).toBe(20)
   })
 
   test('an empty runs dir is a no-op, not a throw', () => {
-    expect(sweepCronRunSummaries({ now: NOW }).queued).toBe(0)
+    expect(sweepCronRunSummaries({ now: NOW, call: noopCall }).queued).toBe(0)
   })
 })
