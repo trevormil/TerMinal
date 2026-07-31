@@ -11,7 +11,14 @@ import type { ScheduleSpec } from './cron'
 // per-schedule LaunchAgents and the headless runner (bin/terminal-cron) executes
 // them. Each schedule snapshots everything the runner needs so it stays
 // self-contained (no app import at run time).
-const FILE = join(homedir(), '.config', 'TerMinal', 'schedules.json')
+const DEFAULT_FILE = join(homedir(), '.config', 'TerMinal', 'schedules.json')
+
+// Lazy, so a test can point this at a temp dir without the module having to be
+// re-imported. Mirrors cron-runs.ts and checkpoints.ts. Writing the real
+// schedules.json from a test would corrupt the user's actual launchd jobs.
+function file(): string {
+  return process.env.TERMINAL_SCHEDULES_FILE || DEFAULT_FILE
+}
 
 export type ScheduleStatus = 'never' | 'running' | 'done' | 'failed'
 export type Schedule = {
@@ -107,9 +114,9 @@ function migrate(s: Record<string, unknown>, now: number): Schedule {
 }
 
 export function readSchedules(now = Date.now()): Schedule[] {
-  if (!existsSync(FILE)) return []
+  if (!existsSync(file())) return []
   try {
-    const a = JSON.parse(readFileSync(FILE, 'utf8'))
+    const a = JSON.parse(readFileSync(file(), 'utf8'))
     if (!Array.isArray(a)) return []
     return a.map((s) => migrate(s, now))
   } catch {
@@ -119,8 +126,8 @@ export function readSchedules(now = Date.now()): Schedule[] {
 
 function write(list: Schedule[]): boolean {
   try {
-    mkdirSync(dirname(FILE), { recursive: true })
-    writeJsonAtomic(FILE, list)
+    mkdirSync(dirname(file()), { recursive: true })
+    writeJsonAtomic(file(), list)
     return true
   } catch {
     return false
@@ -142,10 +149,11 @@ export function addSchedule(s: NewSchedule, now = Date.now()): Schedule {
   return sched
 }
 
-// Seed a capability-module schedule INERT. Idempotent on (repoRoot, agentId) so
-// re-seeding a module/profile never duplicates entries in the global store. Forces
-// enabled:false — launchd.syncSchedule skips registration, so no plist is written
-// until the user toggles it on from the Admin tab.
+// Seed a schedule INERT. Idempotent on (repoRoot, agentId) so re-seeding never
+// duplicates entries in the global store. Forces enabled:false —
+// launchd.syncSchedule skips registration, so no plist is written until the
+// user toggles it on. Built for the since-removed capability modules; now the
+// seeding primitive behind the Daily packs panel (packs.ts).
 export function seedSchedule(s: NewSchedule, now = Date.now()): Schedule {
   const existing = readSchedules().find((x) => x.repoRoot === s.repoRoot && x.agentId === s.agentId)
   if (existing) return existing
