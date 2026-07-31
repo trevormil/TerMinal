@@ -66,6 +66,16 @@ function BakeOffTab({ ctx }: { ctx: TabContext }) {
       .catch(() => setSel(null))
   }, [selId])
 
+  const onChanged = useCallback((b: BakeOff) => {
+    setSel(b)
+    setList((prev) => (prev || []).map((x) => (x.id === b.id ? b : x)))
+  }, [])
+
+  // EVERY hook must be above this line, called unconditionally. An early return
+  // placed above a hook changes the hook call order between renders, which
+  // silently corrupts React's internal hook state. The unavailable-state guard
+  // added for the capability probe originally sat above this useCallback and
+  // did exactly that — conditional logic goes here, never the hooks.
   if (fatal)
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 bg-[var(--gt-bg)] p-8 text-center">
@@ -79,11 +89,6 @@ function BakeOffTab({ ctx }: { ctx: TabContext }) {
         <p className="font-mono text-[10.5px] text-zinc-700">{fatal}</p>
       </div>
     )
-
-  const onChanged = useCallback((b: BakeOff) => {
-    setSel(b)
-    setList((prev) => (prev || []).map((x) => (x.id === b.id ? b : x)))
-  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
