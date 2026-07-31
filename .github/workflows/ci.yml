@@ -32,8 +32,11 @@ jobs:
         run: bun run format:check
 
       # Pre-existing violations are baselined in eslint-suppressions.json, so
-      # this fails only on NEW ones. Regenerate with `bun run lint:baseline`
-      # after a deliberate cleanup — never to silence a fresh violation.
+      # this fails only on NEW ones. If it fails with "suppressions left that do
+      # not occur anymore" you FIXED a baselined violation — run
+      # `bun run lint:prune`, which drops only the now-stale entries.
+      # Do NOT reach for `lint:baseline`: it regenerates from scratch and would
+      # re-suppress any genuinely new violation on your own branch.
       - name: Lint
         run: bun run lint
 
@@ -69,10 +72,16 @@ jobs:
   # release. See scripts/ci/smoke-packaged-app.sh.
   package-smoke:
     runs-on: macos-15
+    # macOS minutes bill at 10x, and `bun run dist` pulls Electron + dmgbuild
+    # over the network — a network hang would otherwise run to GitHub's 360m
+    # default. The job takes ~6m; 25 is generous headroom, not a target.
+    timeout-minutes: 25
     steps:
+      # No `submodules: true`: the only submodule is the third-party
+      # vendor/agentview (ADR-0017), which nothing in the build touches. The
+      # template ships as ordinary tracked files under templates/ (ADR-0005),
+      # and __TEMPLATE_SHA__ comes from `git log` over those files.
       - uses: actions/checkout@v4
-        with:
-          submodules: true # project-template sha is baked into the build stamp
 
       - uses: oven-sh/setup-bun@v2
         with:

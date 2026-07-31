@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:baseline": "eslint . --suppress-all",
+    "lint:prune": "eslint . --prune-suppressions",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "rebuild": "electron-rebuild -f -o node-pty,better-sqlite3",

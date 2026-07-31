@@ -24,11 +24,25 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
+    # A hung xcodebuild would otherwise bill to GitHub's 360m default at the
+    # macOS 10x rate. The job itself takes a few minutes.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned + checksum-verified rather than `brew install xcodegen`, which
+      # floats to whatever the runner's formula happens to be (CLAUDE.md §10).
+      # 2.46.0 was published 2026-07-16.
       - name: Install xcodegen
-        run: brew install xcodegen
+        env:
+          XCODEGEN_VERSION: 2.46.0
+          XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+        run: |
+          curl -fsSL -o xcodegen.zip \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  xcodegen.zip" | shasum -a 256 -c -
+          unzip -q xcodegen.zip
+          echo "$PWD/xcodegen/bin" >> "$GITHUB_PATH"
 
       # No ios/.xcodegen.env in CI (it is gitignored and carries the Apple team
       # id), so generate.sh falls back to placeholder identifiers — enough to
@@ -37,8 +51,14 @@ jobs:
         run: ios/scripts/generate.sh
 
       # Simulator + CODE_SIGNING_ALLOWED=NO keeps this signing-credential-free.
-      # Build only: the unit tests need a booted simulator, which is a slower and
-      # flakier surface — add them deliberately, not by default.
+      #
+      # `build-for-testing`, not `build`: plain `build` compiles only the app
+      # target, so a Swift break in TerMinalRemoteTests would land green.
+      # Verified locally — build-for-testing emits TerMinalRemoteTests.swiftmodule,
+      # plain build does not. It stops short of *running* them, which needs a
+      # booted simulator (slower, flakier — add deliberately, not by default).
+      # TerMinalRemoteUITests lives in the TerMinalRemoteLive scheme and is still
+      # uncovered; it needs the e2e bridge running, so it cannot run here.
       - name: Build for the Simulator
         run: |
           xcodebuild \
@@ -47,4 +67,4 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build-for-testing
