@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { navigateTo } from '../../lib/nav'
+import { resolveBriefingTarget } from './briefingLink'
 import type { Briefing, BriefingItem, BriefingItemKind, BriefingVerdict } from '../../lib/types'
 
 // The "Today" section of the Inbox drawer — the morning briefing's review
@@ -48,30 +49,12 @@ const KIND_TONE: Record<BriefingItemKind, string> = {
   note: 'text-zinc-500',
 }
 
-/** Deep-link an item to the tab that owns it. Falls back to the item's own
- *  `nav` hint, then to a sensible per-kind default. */
+/** Deep-link an item to the tab that owns it. Resolution logic (and its tests)
+ *  live in briefingLink.ts. */
 function openItem(item: BriefingItem): void {
-  if (item.link && /^https?:\/\//.test(item.link)) {
-    window.open(item.link, '_blank', 'noopener')
-    return
-  }
-  const ticket = item.link?.startsWith('ticket:') ? item.link.slice('ticket:'.length) : undefined
-  const run = item.link?.startsWith('run:') ? item.link.slice('run:'.length) : undefined
-  const fallback: Record<BriefingItemKind, string> = {
-    pr: 'mrs',
-    ticket: 'tickets',
-    idea: 'tickets',
-    hitl: 'hitl',
-    run: 'runs',
-    report: 'reports',
-    lesson: 'docs',
-    note: 'activity',
-  }
-  navigateTo(item.nav || fallback[item.kind], {
-    repo: item.repo,
-    ...(ticket ? { ticket } : {}),
-    ...(run ? { runId: run } : {}),
-  })
+  const target = resolveBriefingTarget(item)
+  if (target.kind === 'url') window.open(target.url, '_blank', 'noopener')
+  else navigateTo(target.tabId, target.payload)
 }
 
 function ActionButton({
