@@ -1281,6 +1281,9 @@ export type UnifiedRun = {
   /** Remote host this run came from. Undefined = local machine. */
   hostId?: string
   hostLabel?: string
+  /** Best-effort two-line "what actually got done", written after the run
+   *  settled. Absent when summarization was skipped or failed. */
+  summary?: string
 }
 
 export type CronRun = {
