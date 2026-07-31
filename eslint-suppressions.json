@@ -1,9 +1,4 @@
 {
-  "src/main/agents-disabled.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "src/main/ai-collectors.ts": {
     "@typescript-eslint/no-unused-vars": {
       "count": 1
@@ -24,14 +19,9 @@
       "count": 1
     }
   },
-  "src/main/hitl.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "src/main/index.ts": {
     "@typescript-eslint/no-floating-promises": {
-      "count": 6
+      "count": 3
     },
     "@typescript-eslint/no-unused-vars": {
       "count": 8
@@ -58,11 +48,6 @@
     }
   },
   "src/main/review.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/main/schedules.ts": {
     "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
