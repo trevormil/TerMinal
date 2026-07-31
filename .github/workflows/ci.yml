@@ -40,6 +40,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: No leaked machine paths
+        run: scripts/ci/no-machine-paths.sh
+
       - name: Typecheck
         run: bun run typecheck
 

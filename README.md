@@ -141,7 +141,23 @@ use them.
 > schedules (use remote hosts). Rationale and a port checklist:
 > [ADR-0003](docs/decisions/0003-macos-primary-platform.md).
 
-### Install it as a real app
+### Download the app
+
+**[Download the latest `.dmg` →](https://github.com/trevormil/TerMinal/releases/latest)**
+(Apple Silicon). Every release ships the DMG plus a `SHA256SUMS.txt`.
+
+The build is **unsigned and un-notarized**, so verify it and then let Gatekeeper
+through by hand — right-click → **Open** the first time, not a double-click:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt   # expect: TerMinal-<ver>-arm64.dmg: OK
+```
+
+If the checksum does not match, do not open it. (Signing + notarization is a
+tracked follow-up; until then the checksum is the integrity signal — see
+[`docs/setup.md`](docs/setup.md#verifying-a-download).)
+
+### Or build and install it yourself
 
 ```bash
 bun run dist        # → dist/TerMinal-<ver>-arm64.dmg + dist/mac-arm64/TerMinal.app
