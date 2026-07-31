@@ -545,6 +545,20 @@ const gt = {
     read: (rel: string) => ipcRenderer.invoke('workflow:read', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('workflow:write', rel, content),
   },
+  bakeoff: {
+    list: (repoRoot?: string) => ipcRenderer.invoke('bakeoff:list', repoRoot),
+    get: (id: string) => ipcRenderer.invoke('bakeoff:get', id),
+    start: (
+      ticketSlug: string,
+      entrants: { engine: string; model?: string; personaId?: string }[],
+    ) => ipcRenderer.invoke('bakeoff:start', ticketSlug, entrants),
+    judge: (id: string, opts?: { engine?: string; model?: string }) =>
+      ipcRenderer.invoke('bakeoff:judge', id, opts),
+    pick: (id: string, entrantId: string, note?: string) =>
+      ipcRenderer.invoke('bakeoff:pick', id, entrantId, note),
+    del: (id: string) => ipcRenderer.invoke('bakeoff:delete', id),
+    pendingCount: () => ipcRenderer.invoke('bakeoff:pending-count'),
+  },
 
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {

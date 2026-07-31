@@ -2276,6 +2276,73 @@ export type GtApi = {
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     write: (rel: string, content: string) => Promise<boolean>
   }
+  bakeoff: {
+    list: (repoRoot?: string) => Promise<BakeOff[]>
+    get: (id: string) => Promise<BakeOff | null>
+    start: (
+      ticketSlug: string,
+      entrants: BakeOffEntrantSpec[],
+    ) => Promise<BakeOff | { error: string }>
+    judge: (
+      id: string,
+      opts?: { engine?: Engine; model?: string },
+    ) => Promise<BakeOff | { error: string }>
+    pick: (id: string, entrantId: string, note?: string) => Promise<BakeOff | { error: string }>
+    del: (id: string) => Promise<boolean>
+    pendingCount: () => Promise<number>
+  }
+}
+
+// ---- cross-engine bake-off (src/main/bakeoff.ts) ----------------------------
+
+export type BakeOffEntrantSpec = { engine: Engine; model?: string; personaId?: string }
+
+export type BakeOffDiffFile = {
+  path: string
+  insertions: number
+  deletions: number
+  binary?: boolean
+}
+
+export type BakeOffDiff = {
+  files: number
+  insertions: number
+  deletions: number
+  perFile: BakeOffDiffFile[]
+}
+
+export type BakeOffEntrant = {
+  id: string
+  engine: Engine
+  model?: string
+  personaId?: string
+  status: 'pending' | 'running' | 'done' | 'failed' | 'canceled'
+  runId?: string
+  branch?: string
+  worktree?: string
+  error?: string
+  diff?: BakeOffDiff
+  patch?: string
+  prUrl?: string
+}
+
+export type BakeOff = {
+  id: string
+  repoRoot: string
+  ticket: { id: number; slug?: string; title: string; ref: string }
+  group: string
+  createdAt: number
+  status: 'running' | 'ready' | 'decided' | 'failed'
+  entrants: BakeOffEntrant[]
+  judge?: {
+    at: number
+    summary: string
+    recommended?: string
+    scores: Record<string, { score: number; rationale?: string }>
+    model?: string
+    error?: string
+  }
+  winner?: { entrantId: string; at: number; note?: string; agreedWithJudge?: boolean }
 }
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
