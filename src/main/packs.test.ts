@@ -209,7 +209,7 @@ describe('packStatus', () => {
     )
   })
 
-  test('status is per-repo — enabling in one repo leaves the other off', async () => {
+  test('status is per-repo for REPO-scoped packs — enabling in one leaves the other off', async () => {
     tempRoot()
     const { packStatus, enablePack } = await import(`./packs.ts?t=${Date.now()}-j`)
     enablePack(REPO, 'TerMinal', 'daily-quality')
@@ -237,5 +237,86 @@ describe('packStatus', () => {
     const { packStatus } = await import(`./packs.ts?t=${Date.now()}-l`)
     const global = packStatus(REPO).filter((p: { scope: string }) => p.scope === 'global')
     expect(global.length).toBeGreaterThan(0)
+  })
+})
+
+// A global pack is cross-repo BY DEFINITION — the briefing summarizes every
+// repo, and the teacher isn't about a repo at all. But the schedule store is
+// keyed by repoRoot, so a naive seed would create one schedule per repo the
+// user happened to be focused on when they clicked Enable. Two briefing
+// schedules means two briefings, two HITLs, and a duplicated morning.
+describe('global packs are deduped across repos', () => {
+  const OTHER = '/Users/x/code/beacon'
+
+  test('enabling the same global pack from two repos yields ONE schedule', async () => {
+    const root = tempRoot()
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-m`)
+    enablePack(REPO, 'TerMinal', 'daily-briefing')
+    enablePack(OTHER, 'beacon', 'daily-briefing')
+
+    const briefings = schedules(root).filter((s) => s.agentId === 'briefing')
+    expect(briefings).toHaveLength(1)
+  })
+
+  test('the second enable adopts the first schedule rather than making a new id', async () => {
+    const root = tempRoot()
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-n`)
+    enablePack(REPO, 'TerMinal', 'daily-briefing')
+    const first = schedules(root).find((s) => s.agentId === 'briefing')!
+
+    enablePack(OTHER, 'beacon', 'daily-briefing')
+    const after = schedules(root).filter((s) => s.agentId === 'briefing')
+    expect(after).toHaveLength(1)
+    expect(after[0].id).toBe(first.id)
+    // The home repo stays where it was first enabled — re-homing a running
+    // schedule under a different repo would silently move where it executes.
+    expect(after[0].repoRoot).toBe(REPO)
+    expect(after[0].enabled).toBe(true)
+  })
+
+  test('a global pack enabled from one repo reads "on" from every repo', async () => {
+    tempRoot()
+    const { enablePack, packStatus } = await import(`./packs.ts?t=${Date.now()}-o`)
+    enablePack(REPO, 'TerMinal', 'daily-briefing')
+    // It is genuinely running, so reporting "off" here would invite the user to
+    // click Enable again — the very thing that used to duplicate it.
+    expect(packStatus(OTHER).find((p: { id: string }) => p.id === 'daily-briefing')!.state).toBe(
+      'on',
+    )
+  })
+
+  test('disabling a global pack from a different repo turns off the real schedule', async () => {
+    const root = tempRoot()
+    const { enablePack, disablePack, packStatus } = await import(`./packs.ts?t=${Date.now()}-p`)
+    enablePack(REPO, 'TerMinal', 'daily-briefing')
+
+    expect(disablePack(OTHER, 'daily-briefing').ok).toBe(true)
+    expect(schedules(root).filter((s) => s.agentId === 'briefing')[0].enabled).toBe(false)
+    expect(packStatus(REPO).find((p: { id: string }) => p.id === 'daily-briefing')!.state).toBe(
+      'off',
+    )
+  })
+
+  test('re-enabling a global pack preserves a hand-tuned cadence', async () => {
+    const root = tempRoot()
+    const mod = await import(`./packs.ts?t=${Date.now()}-q`)
+    const { updateSchedule } = await import(`./schedules.ts?t=${Date.now()}-q`)
+    mod.enablePack(REPO, 'TerMinal', 'daily-briefing')
+    const first = schedules(root).find((s) => s.agentId === 'briefing')!
+    updateSchedule(first.id as string, { spec: { kind: 'calendar', hour: 9, minute: 45 } })
+
+    mod.enablePack(OTHER, 'beacon', 'daily-briefing')
+    const after = schedules(root).find((s) => s.agentId === 'briefing')!
+    expect(after.spec).toEqual({ kind: 'calendar', hour: 9, minute: 45 })
+  })
+
+  test('REPO-scoped packs still get one schedule PER repo', async () => {
+    const root = tempRoot()
+    const { enablePack } = await import(`./packs.ts?t=${Date.now()}-r`)
+    enablePack(REPO, 'TerMinal', 'daily-quality')
+    enablePack(OTHER, 'beacon', 'daily-quality')
+    // The dedupe must NOT leak into repo packs: coverage genuinely needs to run
+    // once per repo.
+    expect(schedules(root).filter((s) => s.agentId === 'coverage')).toHaveLength(2)
   })
 })

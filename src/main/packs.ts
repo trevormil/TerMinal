@@ -149,15 +149,34 @@ function packById(id: string): Pack | undefined {
 }
 
 /**
- * Enable every agent in a pack for this repo. `seedSchedule` is idempotent on
- * (repoRoot, agentId), so re-enabling adopts the existing schedule — preserving
- * its id, run history, and any cadence the user retimed by hand — and only
- * flips `enabled`. That is why enable is seed-then-toggle rather than
- * remove-then-add.
+ * Which existing schedule (if any) already represents this pack agent.
  *
- * Global packs seed against the passed repo as their designated home: the
- * schedule store is keyed by repoRoot, and a global agent still needs somewhere
- * to run from.
+ * The pack's scope decides the key, and that is the whole reason this helper
+ * exists rather than leaning on `seedSchedule`'s own (repoRoot, agentId) check:
+ *
+ * - **`repo` packs key on (repoRoot, agentId).** Coverage genuinely needs to
+ *   run once per repo, so two repos means two schedules.
+ * - **`global` packs key on agentId ALONE.** The briefing summarizes every repo
+ *   and the teacher isn't about a repo at all, so exactly one must ever exist.
+ *   Keying them by repo meant enabling from a second repo silently produced a
+ *   second schedule — two briefings, two HITLs, a duplicated morning.
+ *
+ * The store is keyed by repoRoot either way, so a global schedule still records
+ * the repo it was first enabled from as its home. That home is deliberately NOT
+ * re-pointed by a later enable: the schedule is already running from somewhere,
+ * and quietly moving where it executes is a worse surprise than a stale label.
+ */
+function existingScheduleFor(pack: Pack, repoRoot: string, agentId: string) {
+  return readSchedules().find(
+    (s) => s.agentId === agentId && (pack.scope === 'global' || s.repoRoot === repoRoot),
+  )
+}
+
+/**
+ * Enable every agent in a pack. Adopting an existing schedule (rather than
+ * adding one) preserves its id, run history, and any cadence the user retimed
+ * by hand — only `enabled` flips. That is why enable is find-or-seed then
+ * toggle, never remove-then-add.
  */
 export function enablePack(
   repoRoot: string,
@@ -169,17 +188,20 @@ export function enablePack(
 
   let enabled = 0
   for (const agent of pack.agents) {
-    const sched = seedSchedule({
-      repoRoot,
-      repoLabel,
-      agentId: agent.agentId,
-      agentTitle: agent.title,
-      engine: agent.engine,
-      model: agent.model,
-      prompt: agent.prompt,
-      spec: agent.spec,
-      enabled: false,
-    })
+    const existing = existingScheduleFor(pack, repoRoot, agent.agentId)
+    const sched =
+      existing ??
+      seedSchedule({
+        repoRoot,
+        repoLabel,
+        agentId: agent.agentId,
+        agentTitle: agent.title,
+        engine: agent.engine,
+        model: agent.model,
+        prompt: agent.prompt,
+        spec: agent.spec,
+        enabled: false,
+      })
     if (toggleSchedule(sched.id, true)) enabled++
   }
   return { ok: true, enabled }
@@ -189,6 +211,10 @@ export function enablePack(
  * Turn a pack off WITHOUT deleting its schedules. Deleting would throw away run
  * history and any cadence the user tuned, and re-enabling would silently reset
  * them — an expensive surprise for a toggle that looks reversible.
+ *
+ * Global packs are matched repo-agnostically, so disabling the briefing works
+ * from whichever repo you happen to be focused on — not only the one you first
+ * enabled it from.
  */
 export function disablePack(
   repoRoot: string,
@@ -200,20 +226,31 @@ export function disablePack(
   const ids = new Set(pack.agents.map((a) => a.agentId))
   let disabled = 0
   for (const s of readSchedules()) {
-    if (s.repoRoot !== repoRoot || !ids.has(s.agentId)) continue
+    if (!ids.has(s.agentId)) continue
+    if (pack.scope !== 'global' && s.repoRoot !== repoRoot) continue
     if (toggleSchedule(s.id, false)) disabled++
   }
   return { ok: true, disabled }
 }
 
-/** Every pack not dismissed by the user, with its state in this repo. */
+/**
+ * Every pack not dismissed by the user, with its state in this repo. A global
+ * pack reports its true cross-repo state from ANY repo: claiming "off" for a
+ * briefing that is genuinely running would invite the user to click Enable
+ * again, which is exactly what used to duplicate it.
+ */
 export function packStatus(repoRoot: string): PackStatus[] {
   const hidden = hiddenPresetIds('packs')
-  const mine = readSchedules().filter((s) => s.repoRoot === repoRoot)
+  const all = readSchedules()
 
   return PACKS.filter((p) => !hidden.has(p.id)).map((pack) => {
     const enabledCount = pack.agents.filter((a) =>
-      mine.some((s) => s.agentId === a.agentId && s.enabled),
+      all.some(
+        (s) =>
+          s.agentId === a.agentId &&
+          s.enabled &&
+          (pack.scope === 'global' || s.repoRoot === repoRoot),
+      ),
     ).length
     const state: PackState =
       enabledCount === 0 ? 'off' : enabledCount === pack.agents.length ? 'on' : 'partial'

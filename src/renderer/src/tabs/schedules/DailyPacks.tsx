@@ -127,7 +127,7 @@ export function DailyPacks({
                   <span className="text-[12px] text-zinc-200">{pack.title}</span>
                   {pack.scope === 'global' && (
                     <span
-                      title="Cross-repo — seeded against this repo as its home"
+                      title="Cross-repo — exactly one of these exists, however many repos you enable it from. Its home repo is wherever it was first enabled."
                       className="inline-flex items-center gap-0.5 rounded border border-[var(--gt-border)] px-1 text-[9px] text-zinc-500"
                     >
                       <Globe size={8} /> global
