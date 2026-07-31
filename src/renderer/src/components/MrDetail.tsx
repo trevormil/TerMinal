@@ -23,6 +23,7 @@ import { Badge, CopyButton } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
+import { evaluateMergeGate } from '../lib/mergeGate'
 import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
@@ -894,6 +895,7 @@ function Screenshots({ items }: { items: Screenshot[] }) {
 export function MrDetailView({
   iid,
   repoLabel,
+  repoRoot = '',
   label = 'MR',
   sym = '!',
   onBack,
@@ -901,6 +903,8 @@ export function MrDetailView({
 }: {
   iid: number
   repoLabel: string
+  /** Attributes a merge-bar override — PR iids are only unique per repo. */
+  repoRoot?: string
   label?: string
   sym?: string
   onBack: () => void
@@ -976,7 +980,13 @@ export function MrDetailView({
         <div className="flex items-center gap-1.5">
           <PrAgentActions pr={mr} sym={sym} />
           {mr.state === 'opened' && (
-            <MrMergeButton iid={mr.iid} sym={sym} onMerged={onMerged ?? onBack} />
+            <MrMergeButton
+              iid={mr.iid}
+              sym={sym}
+              repoRoot={repoRoot}
+              gate={evaluateMergeGate({ review: mr.reviewMeta, findings: mr.findings })}
+              onMerged={onMerged ?? onBack}
+            />
           )}
           <button
             onClick={() => window.gt.openExternal(mr.webUrl)}

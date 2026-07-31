@@ -20,6 +20,16 @@ import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
 import { stateTone } from '../../lib/badges'
+import {
+  applyRiskFilters,
+  countByTier,
+  isListMergeReady,
+  listMergeGate,
+  RISK_TIERS,
+  sortMrs,
+  type MrSort,
+  type RiskTier,
+} from '../../lib/mrRisk'
 import type { Tab, Mr, TabContext } from '../../lib/types'
 
 // Three buckets, Tickets-style. Default-collapsed groups match the "closed +
@@ -72,11 +82,13 @@ function Stat({ value, label, color }: { value: string; label: string; color: st
 function MrRow({
   m,
   sym,
+  repoRoot,
   onOpen,
   onMerged,
 }: {
   m: Mr
   sym: string
+  repoRoot: string
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
@@ -164,7 +176,15 @@ function MrRow({
         )}
         <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <PrAgentActions pr={m} sym={sym} />
-          {m.state === 'opened' && <MrMergeButton iid={m.iid} sym={sym} onMerged={onMerged} />}
+          {m.state === 'opened' && (
+            <MrMergeButton
+              iid={m.iid}
+              sym={sym}
+              repoRoot={repoRoot}
+              gate={listMergeGate(m)}
+              onMerged={onMerged}
+            />
+          )}
           <button
             onClick={() => window.gt.openExternal(m.webUrl)}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
@@ -184,6 +204,10 @@ function GroupedMrList({
   label,
   sym,
   cli,
+  repoRoot,
+  sort,
+  tiers,
+  readyOnly,
   collapsed,
   onToggle,
   onOpen,
@@ -194,6 +218,10 @@ function GroupedMrList({
   label: string
   sym: string
   cli: string
+  repoRoot: string
+  sort: MrSort
+  tiers: Set<RiskTier>
+  readyOnly: boolean
   collapsed: Set<GroupId>
   onToggle: (id: GroupId) => void
   onOpen: (iid: number) => void
@@ -218,15 +246,19 @@ function GroupedMrList({
   if (mrs.length === 0)
     return <div className="p-6 text-[12px] text-zinc-600">No {label}s for this repo.</div>
 
-  // Sort opened MRs by risk first so high-risk reviews surface up top.
-  // Other groups (closed/merged) keep their original order.
-  const riskWeight = (r?: string) => (r === 'high' ? 0 : r === 'medium' ? 1 : r === 'low' ? 2 : 3)
+  // The open group is the review queue: it obeys the chips and the sort control
+  // (risk-first by default). Merged/closed keep their original order — triage
+  // filters make no sense once the decision has been made.
   const groups = GROUPS.map((g) => ({
     ...g,
     items:
       g.id === 'open'
-        ? [...mrs.filter((m) => g.match(m.state))].sort(
-            (a, b) => riskWeight(a.review?.riskTier) - riskWeight(b.review?.riskTier),
+        ? sortMrs(
+            applyRiskFilters(
+              mrs.filter((m) => g.match(m.state)),
+              { tiers, readyOnly },
+            ),
+            sort,
           )
         : mrs.filter((m) => g.match(m.state)),
   })).filter((g) => g.items.length > 0)
@@ -252,7 +284,14 @@ function GroupedMrList({
             {isOpen && (
               <div className="space-y-2 p-4">
                 {g.items.map((m) => (
-                  <MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />
+                  <MrRow
+                    key={m.iid}
+                    m={m}
+                    sym={sym}
+                    repoRoot={repoRoot}
+                    onOpen={onOpen}
+                    onMerged={onMerged}
+                  />
                 ))}
               </div>
             )}
@@ -268,13 +307,25 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
   const [error, setError] = useState<string | undefined>(undefined)
   const [selectedMrIid, setSelectedMrIid] = useState<number | null>(null)
   const [collapsed, setCollapsed] = useState<Set<GroupId>>(() => new Set(DEFAULT_COLLAPSED))
+  const [tiers, setTiers] = useState<Set<RiskTier>>(() => new Set())
+  const [readyOnly, setReadyOnly] = useState(false)
+  const [sort, setSort] = useState<MrSort>('risk')
 
   const hasRemote = !!ctx.repoPath
   const label = ctx.forgeLabel
   const sym = ctx.forgeSym
   const cli = ctx.forgeKind === 'github' ? 'gh' : 'glab'
   const fullName = label === 'PR' ? 'Pull Requests' : 'Merge Requests'
-  const openCount = mrs ? mrs.filter((m) => m.state === 'opened').length : 0
+  const openMrs = mrs ? mrs.filter((m) => m.state === 'opened') : []
+  const openCount = openMrs.length
+  const tierCounts = countByTier(openMrs)
+  const readyCount = openMrs.filter(isListMergeReady).length
+  const toggleTier = (t: RiskTier) =>
+    setTiers((cur) => {
+      const next = new Set(cur)
+      next.has(t) ? next.delete(t) : next.add(t)
+      return next
+    })
   const toggleGroup = (id: GroupId) =>
     setCollapsed((c) => {
       const n = new Set(c)
@@ -314,6 +365,7 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
       <MrDetailView
         iid={selectedMrIid}
         repoLabel={ctx.repoPath || 'repo'}
+        repoRoot={ctx.repoRoot}
         label={label}
         sym={sym}
         onBack={() => setSelectedMrIid(null)}
@@ -339,6 +391,64 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
           </span>
         )}
       </div>
+      {hasRemote && openCount > 0 && (
+        <div className="flex h-9 shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--gt-border)] bg-[var(--gt-panel)]/40 px-4">
+          <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-700">
+            Risk
+          </span>
+          {RISK_TIERS.map((t) => {
+            const on = tiers.has(t)
+            const n = tierCounts[t]
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTier(t)}
+                disabled={n === 0 && !on}
+                className={`h-6 rounded-md border px-1.5 text-[10.5px] font-semibold capitalize disabled:opacity-30 ${
+                  on
+                    ? 'border-transparent text-zinc-950'
+                    : 'border-[var(--gt-border)] bg-black/25 text-zinc-400 hover:text-zinc-200'
+                }`}
+                style={on ? { background: riskColor(t) } : undefined}
+              >
+                {t}
+                <span className={on ? 'ml-1 opacity-70' : 'ml-1 text-zinc-600'}>{n}</span>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setReadyOnly((v) => !v)}
+            title="Only PRs that clear the verdict and test axes of the merge bar. Findings are checked in the detail view."
+            className={`h-6 rounded-md border px-1.5 text-[10.5px] font-semibold ${
+              readyOnly
+                ? 'border-[var(--gt-green)]/60 bg-[var(--gt-green)]/20 text-[var(--gt-green)]'
+                : 'border-[var(--gt-border)] bg-black/25 text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Merge-ready
+            <span className="ml-1 text-zinc-600">{readyCount}</span>
+          </button>
+          {(tiers.size > 0 || readyOnly) && (
+            <button
+              onClick={() => {
+                setTiers(new Set())
+                setReadyOnly(false)
+              }}
+              className="h-6 rounded-md border border-[var(--gt-border)] px-1.5 text-[10.5px] font-semibold text-zinc-500 hover:text-zinc-200"
+            >
+              Clear
+            </button>
+          )}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as MrSort)}
+            className="ml-auto h-6 rounded-md border border-[var(--gt-border)] bg-black/25 px-1.5 text-[10.5px] font-semibold text-zinc-400 outline-none"
+          >
+            <option value="risk">Sort: risk first</option>
+            <option value="number">Sort: newest</option>
+          </select>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!hasRemote ? (
           <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
@@ -352,6 +462,10 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             label={label}
             sym={sym}
             cli={cli}
+            repoRoot={ctx.repoRoot}
+            sort={sort}
+            tiers={tiers}
+            readyOnly={readyOnly}
             collapsed={collapsed}
             onToggle={toggleGroup}
             onOpen={setSelectedMrIid}

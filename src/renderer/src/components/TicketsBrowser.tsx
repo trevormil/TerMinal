@@ -415,6 +415,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
       <MrDetailView
         iid={viewMrIid}
         repoLabel={ctx.repoPath || 'repo'}
+        repoRoot={ctx.repoRoot}
         label={ctx.forgeLabel}
         sym={ctx.forgeSym}
         onBack={() => setViewMrIid(null)}
