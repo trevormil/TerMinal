@@ -1,0 +1,50 @@
+name: iOS
+
+# Own workflow rather than a job in ci.yml because `paths:` filters are
+# per-workflow: the companion app should not spend macOS minutes on desktop-only
+# changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # No ios/.xcodegen.env in CI (it is gitignored and carries the Apple team
+      # id), so generate.sh falls back to placeholder identifiers — enough to
+      # compile for the Simulator, not to sign for a device.
+      - name: Generate the Xcode project
+        run: ios/scripts/generate.sh
+
+      # Simulator + CODE_SIGNING_ALLOWED=NO keeps this signing-credential-free.
+      # Build only: the unit tests need a booted simulator, which is a slower and
+      # flakier surface — add them deliberately, not by default.
+      - name: Build for the Simulator
+        run: |
+          xcodebuild \
+            -project ios/TerMinalRemote.xcodeproj \
+            -scheme TerMinalRemote \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build

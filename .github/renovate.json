@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Renovate, not Dependabot: Dependabot cannot update bun.lock, so it would raise PRs whose lockfile no longer matches package.json and CI's --frozen-lockfile would reject every one of them.",
+    "Requires the Renovate GitHub App to be installed on the repo — this file alone does nothing.",
+    "rangeStrategy 'pin' preserves CLAUDE.md §10's exact-version pinning; minimumReleaseAge encodes the 72-hour rule."
+  ],
+  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)"],
+  "rangeStrategy": "pin",
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": { "enabled": true },
+  "prConcurrentLimit": 3,
+  "packageRules": [
+    {
+      "description": "Majors need a human to look at them first.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Toolchain churn is noisy and low-risk — batch it.",
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "dev dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "description": "CVE fixes override the 72-hour age rule (CLAUDE.md §10).",
+    "minimumReleaseAge": "0 days"
+  }
+}
