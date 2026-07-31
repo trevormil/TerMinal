@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process'
 
 // hitl.ts reaches the activity feed, which reaches Electron's Notification.
 // Outside the app that module has no such export, so importing it explodes.
-mock.module('electron', () => ({
+void mock.module('electron', () => ({
   Notification: class {
     show(): void {}
     static isSupported(): boolean {

@@ -589,7 +589,7 @@ function DeliveryLog() {
     }
   }
   useEffect(() => {
-    load()
+    void load()
   }, [])
 
   return (
@@ -686,7 +686,7 @@ function TabsVisibilityPanel() {
   // a circular import (tabs/registry → tabs/* → components/SettingsPanel).
   const [allTabs, setAllTabs] = useState<{ id: string; title: string; order: number }[]>([])
   useEffect(() => {
-    import('../tabs/registry').then((m) => {
+    void import('../tabs/registry').then((m) => {
       setAllTabs(
         [...m.ALL_TABS]
           .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
@@ -736,7 +736,7 @@ function HarnessStatusPanel() {
   const [s, setS] = useState<Awaited<ReturnType<typeof window.gt.harnessStatus>> | null>(null)
   useEffect(() => {
     const load = () => window.gt.harnessStatus().then(setS)
-    load()
+    void load()
     const id = setInterval(load, 5000)
     return () => clearInterval(id)
   }, [])
@@ -829,7 +829,7 @@ function RebuildPanel() {
       setLog(text)
       if (!st.running) setRunning(false)
     }
-    tick()
+    void tick()
     const id = setInterval(tick, 1000)
     return () => {
       alive = false
@@ -902,7 +902,7 @@ function UpdatesPanel() {
     }
   }
   useEffect(() => {
-    check()
+    void check()
   }, [])
 
   const startUpdate = async () => {
@@ -1033,7 +1033,7 @@ function PresetVisibilityPanel() {
   } | null>(null)
   const load = () => window.gt.presets.get().then(setData)
   useEffect(() => {
-    load()
+    void load()
   }, [])
   if (!data) return <div className="text-[11px] text-zinc-600">Loading presets...</div>
   const block = (kind: PresetKind, title: string) => {
@@ -1164,7 +1164,7 @@ function TicketProviderPanel() {
   }
 
   useEffect(() => {
-    load()
+    void load()
   }, [])
 
   const provider = draft.provider || 'local'
@@ -1813,8 +1813,8 @@ export function SettingsPanel({
     }
   }
   useEffect(() => {
-    window.gt.settings.get().then(setS)
-    window.gt.detectEnv().then(setEnv)
+    void window.gt.settings.get().then(setS)
+    void window.gt.detectEnv().then(setEnv)
   }, [])
   // The storage estimate walks all of ~/.config/TerMinal (can be many GB /
   // hundreds of thousands of files) — scan only when the section showing it
@@ -1838,7 +1838,7 @@ export function SettingsPanel({
     const host = s.remoteHosts.find((h) => h.id === profile)
     if (!host || remoteProbe[host.id]) return
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings
+    void window.gt.settings
       .remoteProbe(host.id)
       .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }, [s, profile, remoteProbe])
@@ -1852,7 +1852,7 @@ export function SettingsPanel({
   const selectedIsRemote = !!selectedHost
   useEffect(() => {
     let alive = true
-    window.gt.settings
+    void window.gt.settings
       .validateProjectsDir({ dir: selectedDaemon.projectsDir, hostId: selectedHost?.id })
       .then((v) => {
         if (alive) setProjectsDirValidation(v)
@@ -1889,7 +1889,7 @@ export function SettingsPanel({
   }
   const refreshRemoteProbe = (host: RemoteHost) => {
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings
+    void window.gt.settings
       .remoteProbe(host.id)
       .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }
@@ -1914,12 +1914,12 @@ export function SettingsPanel({
         daemon: existing?.daemon || emptyDaemon(),
       },
     ]
-    save({ remoteHosts: next })
+    void save({ remoteHosts: next })
     setRemoteDraft({ label: '', sshTarget: '', defaultCwd: '', platform: 'linux' })
   }
   const removeRemoteHost = (id: string) => {
     if (!s) return
-    save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
+    void save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
   }
   const appOptions = (detected: string[] | undefined, fallback: string[], current: string) => {
     const list = [
@@ -1934,7 +1934,7 @@ export function SettingsPanel({
   const browseDaemon = async (key: 'projectsDir' | 'worktreesDir' | 'harnessDir') => {
     if (selectedIsRemote) return
     const d = await window.gt.pickDir()
-    if (d) saveDaemon({ [key]: d })
+    if (d) void saveDaemon({ [key]: d })
   }
   const testTelegram = async () => {
     setTg({ busy: true })
@@ -3436,7 +3436,7 @@ export function SettingsPanel({
                         ...s.notifications.matrix,
                         [ch]: { ...(s.notifications.matrix[ch] || {}), [cat]: nextVal },
                       }
-                      save({ notifications: { matrix: next } })
+                      void save({ notifications: { matrix: next } })
                     }}
                     onReset={() => save({ notifications: { matrix: {} } })}
                   />

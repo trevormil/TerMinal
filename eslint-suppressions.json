@@ -22,9 +22,6 @@
   "src/main/index.ts": {
     "@typescript-eslint/no-floating-promises": {
       "count": 3
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 8
     }
   },
   "src/main/listeners.ts": {
@@ -118,11 +115,6 @@
       "count": 2
     }
   },
-  "src/renderer/src/components/SettingsPanel.tsx": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 15
-    }
-  },
   "src/renderer/src/components/Terminal.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 9
@@ -194,11 +186,6 @@
       "count": 1
     }
   },
-  "src/renderer/src/tabs/hitl/index.tsx": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 2
-    }
-  },
   "src/renderer/src/tabs/mrs/index.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 2
@@ -207,11 +194,6 @@
   "src/renderer/src/tabs/notes/index.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 9
-    }
-  },
-  "src/renderer/src/tabs/observability/index.tsx": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 6
     }
   },
   "src/renderer/src/tabs/reports/index.tsx": {
@@ -237,11 +219,6 @@
       "count": 15
     },
     "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/renderer/src/tabs/sessions/index.tsx": {
-    "@typescript-eslint/no-floating-promises": {
       "count": 1
     }
   },

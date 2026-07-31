@@ -32,7 +32,6 @@ import {
   type MrSort,
   type RiskTier,
 } from '../../lib/mrRisk'
-import { StackMap } from '../../components/StackMap'
 import type { Tab, Mr, TabContext, PrStack } from '../../lib/types'
 
 // Three buckets, Tickets-style. Default-collapsed groups match the "closed +
@@ -330,7 +329,6 @@ function GroupedMrList({
   // layers outside the current filter). The open-queue grouping uses a map of
   // the filtered open items instead — see renderOpenItems — so a merged PR can
   // never surface in the Open group with a live merge button.
-  const mrByIid = new Map(mrs.map((m) => [m.iid, m]))
   // The open group is the review queue: it obeys the chips and the sort control
   // (risk-first by default). Merged/closed keep their original order — triage
   // filters make no sense once the decision has been made.

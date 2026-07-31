@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
+import { readFileSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } from './atomic-write'

@@ -5,9 +5,7 @@ import {
   ipcMain,
   dialog,
   clipboard,
-  Tray,
   Menu,
-  nativeImage,
   safeStorage,
   session,
 } from 'electron'
@@ -25,7 +23,7 @@ import {
   openSync,
   mkdirSync,
 } from 'node:fs'
-import { spawn as cpSpawn, execFile, execFileSync } from 'node:child_process'
+import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -74,7 +72,6 @@ import {
   readTranscriptStats,
   readHarnessTdd,
   listSessions,
-  type SessionMeta,
   findSessionFile,
   readSessionTasks,
   lastAssistantTurn,
@@ -225,7 +222,6 @@ import {
   saveAgent,
   resetAgent,
   runAgent,
-  runTicketAgent,
   runTicketLanes,
   runTicketSpawn,
   runFactorySpawn,
@@ -312,7 +308,6 @@ import {
   readSessionRunLog,
   sessionRunLogPath,
   readSessionRunLogTail,
-  readSessionRuns,
   listAllRuns,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
@@ -378,7 +373,6 @@ import {
   readBgTaskLog,
   bgTaskLogPath,
   startBgWatcher,
-  type BgTask,
 } from './bg-tasks'
 import {
   listLoops,
@@ -417,7 +411,6 @@ import {
   remoteCommandForEngine,
   isSafeSshTarget,
   remoteDirs,
-  remoteMrs,
   remoteProbe,
   remoteProject,
   remoteRuns,
@@ -1383,7 +1376,6 @@ ipcMain.handle('fleet:list', () => fleetSnapshot())
 // A second transport over the SAME live ptys the desktop drives — never a
 // parallel session store. Terminals only: a phone attached to a live agent can
 // ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
-const MAX_REPLAY_BYTES = 256 * 1024
 /**
  * The first thing a phone-started session is told. It has to do three jobs:
  * adopt the thread that is already waiting for it, learn the reporting

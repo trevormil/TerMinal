@@ -20,7 +20,6 @@ import {
 } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readFileTail } from './fs-tail'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import { emitActivity } from './events'

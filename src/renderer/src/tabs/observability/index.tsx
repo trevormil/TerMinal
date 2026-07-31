@@ -619,7 +619,7 @@ function ToolsView({
         if (!canceled) setPayloadBusy(false)
       }
     }
-    loadPayload()
+    void loadPayload()
     return () => {
       canceled = true
     }
@@ -2226,7 +2226,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
   const applyScope = (next: ObservabilityQueryFilter) => {
     setScope(next)
     const active = indexQuery?.query
-    if (active && active !== 'session_events') runIndexQuery(active, next)
+    if (active && active !== 'session_events') void runIndexQuery(active, next)
   }
 
   const rebuildIndex = async () => {
@@ -2304,7 +2304,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
   }
 
   useEffect(() => {
-    load()
+    void load()
     loadIndexStatus().catch(() => {})
     window.gt.observability
       .filterOptions()
@@ -2332,7 +2332,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
         if (!canceled) setDetailBusy(false)
       }
     }
-    loadDetail()
+    void loadDetail()
     return () => {
       canceled = true
     }
@@ -2364,7 +2364,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
         if (!canceled) setPayloadBusy(false)
       }
     }
-    loadPayload()
+    void loadPayload()
     return () => {
       canceled = true
     }
@@ -2394,7 +2394,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
         if (!canceled) setTranscriptBusy(false)
       }
     }
-    loadTranscript()
+    void loadTranscript()
     return () => {
       canceled = true
     }
@@ -2468,7 +2468,7 @@ function ObservabilityTab({ ctx }: { ctx: TabContext }) {
               onRebuild={rebuildIndex}
               onQuery={(query) => {
                 setGridFilter('')
-                runIndexQuery(query)
+                void runIndexQuery(query)
               }}
             />
             <ResultGrid

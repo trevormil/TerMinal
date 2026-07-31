@@ -166,17 +166,17 @@ export function InboxDrawer({
       .then(setSnoozes)
       .catch(() => {})
   useEffect(() => {
-    reload()
-    reloadSnoozes()
+    void reload()
+    void reloadSnoozes()
     // pick up newly auto-filed items (e.g. a failed cron) live
     const off = window.gt.activity.onEvent((ev) => {
-      if (ev.kind === 'blocked' || ev.kind === 'task-complete') reload()
+      if (ev.kind === 'blocked' || ev.kind === 'task-complete') void reload()
     })
     const t = setInterval(() => {
-      reload()
+      void reload()
       // Also re-reads snoozes, so an item that comes due reappears in the main
       // list within one poll rather than waiting for a manual refresh.
-      reloadSnoozes()
+      void reloadSnoozes()
     }, 15_000)
     return () => {
       off()
