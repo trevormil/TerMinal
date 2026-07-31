@@ -820,6 +820,13 @@ function classifyCommand(kind, args) {
   process.exit(2)
 }
 
+// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
+// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
+// src/main/local-day.ts: the app and this script write the same ticket
+// `updated:` field, and a mismatch made them disagree by a day every evening.
+const localDay = (at = new Date()) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+
 // Mirrors ModelTier in src/main/resolve-model.ts. An unroutable tier resolves
 // through the default (expensive) policy slot, so normalise rather than trust.
 const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
@@ -865,7 +872,7 @@ function fileTicket(title, body, modelTier) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 50) || 'untitled'
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDay()
   const assignedAgent = agentId || 'factory'
   const fm = `---
 id: ${id}
@@ -941,7 +948,7 @@ function commentOnTicket(slug, body) {
   const next = hasLog
     ? `${m[1]}\n${prose}\n\n${header}\n${text}\n`
     : `${m[1]}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${text}\n`
-  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${new Date().toISOString().slice(0, 10)}`))
+  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${localDay()}`))
   console.log(path)
 }
 
@@ -1252,7 +1259,7 @@ function loopCommand(sub, rest) {
     const line = rest.slice(1).join(' ')
     if (!line) usage()
     mkdirSync(dir, { recursive: true })
-    appendFileSync(join(dir, 'log.md'), `## [${new Date().toISOString().slice(0, 10)}] ${line}\n`)
+    appendFileSync(join(dir, 'log.md'), `## [${localDay()}] ${line}\n`)
     return
   }
   if (sub === 'state') {

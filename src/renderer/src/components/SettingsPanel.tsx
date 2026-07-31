@@ -90,6 +90,56 @@ import {
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
+
+// Write-only input for a credential. `settings:get` returns masks, not values
+// (src/main/settings-mask.ts), so binding one to `defaultValue` would put
+// '••••••••' in the box as EDITABLE text: click in, type, and you save
+// '••••••••ghi' — which isn't the mask, so nothing strips it and the real
+// credential is overwritten with garbage. The field therefore always starts
+// EMPTY and only ever writes what you actually type.
+//
+// `set` comes from settings.secretsSet; blur with an empty box is a no-op (so
+// tabbing through can't wipe a stored secret), and Clear is the explicit way to
+// remove one.
+function SecretInput({
+  set,
+  onSave,
+  placeholder,
+  mono = true,
+}: {
+  set: boolean
+  onSave: (value: string) => void
+  placeholder: string
+  mono?: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      <input
+        type="password"
+        defaultValue=""
+        onBlur={(e) => {
+          const value = e.target.value.trim()
+          if (!value) return
+          onSave(value)
+          e.target.value = '' // never leave a credential sitting in the DOM
+        }}
+        placeholder={set ? '•••••••• (set — type to replace)' : placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        className={`${inp} ${mono ? 'font-mono' : ''}`}
+      />
+      {set && (
+        <button
+          onClick={() => onSave('')}
+          className="text-[10.5px] text-zinc-600 underline-offset-2 hover:text-amber-400 hover:underline"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const formatBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -2716,19 +2766,13 @@ export function SettingsPanel({
                         Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty
                         → falls back to the shell&apos;s OPENROUTER_API_KEY.
                       </div>
-                      <input
-                        key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
-                        type="password"
-                        defaultValue={s?.openrouterApiKey || ''}
-                        onBlur={(ev) =>
-                          ev.target.value !== (s?.openrouterApiKey || '') &&
-                          save({ openrouterApiKey: ev.target.value.trim() })
-                        }
-                        placeholder="sk-or-v1-…"
-                        spellCheck={false}
-                        autoComplete="off"
-                        className={`${inp} mt-1.5 font-mono`}
-                      />
+                      <div className="mt-1.5">
+                        <SecretInput
+                          set={!!s?.secretsSet?.openrouterApiKey}
+                          onSave={(v) => save({ openrouterApiKey: v })}
+                          placeholder="sk-or-v1-…"
+                        />
+                      </div>
                     </div>
                   )}
                   {!selectedIsRemote && (
@@ -2741,19 +2785,13 @@ export function SettingsPanel({
                         endpoint. Empty → falls back to the shell&apos;s OPENAI_API_KEY; keyless
                         local servers need no real value.
                       </div>
-                      <input
-                        key={`oc-key-${s?.openaiCompatApiKey ? 'set' : 'unset'}`}
-                        type="password"
-                        defaultValue={s?.openaiCompatApiKey || ''}
-                        onBlur={(ev) =>
-                          ev.target.value !== (s?.openaiCompatApiKey || '') &&
-                          save({ openaiCompatApiKey: ev.target.value.trim() })
-                        }
-                        placeholder="sk-… (or any placeholder for keyless servers)"
-                        spellCheck={false}
-                        autoComplete="off"
-                        className={`${inp} mt-1.5 font-mono`}
-                      />
+                      <div className="mt-1.5">
+                        <SecretInput
+                          set={!!s?.secretsSet?.openaiCompatApiKey}
+                          onSave={(v) => save({ openaiCompatApiKey: v })}
+                          placeholder="sk-… (or any placeholder for keyless servers)"
+                        />
+                      </div>
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-2">
@@ -3243,15 +3281,10 @@ export function SettingsPanel({
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                             Webhook URL
                           </span>
-                          <input
-                            defaultValue={s.alerts.webhook.url}
-                            onBlur={(e) =>
-                              e.target.value !== s.alerts.webhook.url &&
-                              save({ alerts: { webhook: { url: e.target.value.trim() } } })
-                            }
+                          <SecretInput
+                            set={!!s.secretsSet?.['alerts.webhook.url']}
+                            onSave={(v) => save({ alerts: { webhook: { url: v } } })}
                             placeholder="https://hooks.slack.com/services/…"
-                            spellCheck={false}
-                            className={`${inp} font-mono`}
                           />
                         </label>
                         <button
@@ -3360,15 +3393,10 @@ export function SettingsPanel({
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                         Bot token
                       </span>
-                      <input
-                        defaultValue={s.telegram.botToken}
-                        onBlur={(e) =>
-                          e.target.value !== s.telegram.botToken &&
-                          save({ telegram: { botToken: e.target.value.trim() } })
-                        }
+                      <SecretInput
+                        set={!!s.secretsSet?.['telegram.botToken']}
+                        onSave={(v) => save({ telegram: { botToken: v } })}
                         placeholder="123456:ABC-DEF..."
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
                       />
                     </label>
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -3376,15 +3404,10 @@ export function SettingsPanel({
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                           Chat id
                         </span>
-                        <input
-                          defaultValue={s.telegram.chatId}
-                          onBlur={(e) =>
-                            e.target.value !== s.telegram.chatId &&
-                            save({ telegram: { chatId: e.target.value.trim() } })
-                          }
+                        <SecretInput
+                          set={!!s.secretsSet?.['telegram.chatId']}
+                          onSave={(v) => save({ telegram: { chatId: v } })}
                           placeholder="Your numeric chat id"
-                          spellCheck={false}
-                          className={`${inp} font-mono`}
                         />
                       </label>
                       <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
@@ -3403,13 +3426,15 @@ export function SettingsPanel({
                         {tg.ok ? '✓ Sent — check your chat.' : tg.error}
                       </div>
                     )}
-                    {!!s.telegram.chatId &&
-                      s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
-                        <div className="text-[11px] text-amber-400">
-                          ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message
-                          @userinfobot to get it.
-                        </div>
-                      )}
+                    {/*
+                      The old inline "that's the bot's own id" warning compared
+                      two values that `settings:get` now masks — and
+                      '••••••••'.split(':')[0] === '••••••••', so it was
+                      PERMANENTLY true: a false alarm for every configured user.
+                      The check lives in main instead, where it can see the real
+                      values: telegramChatIdError() runs on the Test button and
+                      maps Telegram's 403 to the same guidance.
+                    */}
                     {s.telegram.control && (
                       <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
                         <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">

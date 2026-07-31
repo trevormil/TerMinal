@@ -249,9 +249,13 @@ per repo; an optional `badge(gt)` paints a live count.
 ]
 ```
 
-> **Trust:** command widgets run shell commands, and per-repo widgets come from
-> the repo you attach to — only attach to repos you trust (same model as
-> running their npm scripts).
+> **Trust:** command widgets run shell commands. Global ones
+> (`~/.config/TerMinal/`) are your own files and run freely. **Per-repo ones
+> (`<repo>/.TerMinal/widgets.json`, `tabs.json`) are inert until you approve
+> them.** The first time you open a session in a repo that defines any, the
+> Plugins drawer shows the literal commands and asks you to approve that repo.
+> The approval is keyed on the exact command set, so editing the file — or a
+> `git pull` that changes it — asks again.
 
 Agents integrate from the outside too: an **MCP server** (installable from
 Settings or onboarding) gives any Claude Code/Codex session cross-session views

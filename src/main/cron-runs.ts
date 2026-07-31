@@ -94,6 +94,22 @@ function bustRunsListCache(): void {
   sessionRunsCache = null
 }
 
+/**
+ * One cron run by id. Records live at cron-runs/<id>.json, so this is a single
+ * file read — `runs:cancel-cron` used to call `readCronRuns(undefined, 20000)`
+ * and scan the result, which read+parsed EVERY run record on the main thread on
+ * each cancel click (and then repopulated the shared cache at limit 20000,
+ * making the next ordinary listing pay for it too).
+ */
+export function getCronRun(id: string): CronRun | null {
+  if (!id || id.includes('/') || id.includes('..')) return null
+  try {
+    return JSON.parse(readFileSync(join(cronRunsDir(), `${id}.json`), 'utf8')) as CronRun
+  } catch {
+    return null
+  }
+}
+
 export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
   const dir = cronRunsDir()
   if (!existsSync(dir)) return []

@@ -12,7 +12,7 @@ import {
   session,
 } from 'electron'
 import { join, basename, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
@@ -25,7 +25,7 @@ import {
   openSync,
   mkdirSync,
 } from 'node:fs'
-import { spawn as cpSpawn, execFileSync } from 'node:child_process'
+import { spawn as cpSpawn, execFile, execFileSync } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -102,8 +102,16 @@ import {
 import { testWebhook } from './notify-channels'
 import { readUsage } from './usage'
 import { installStatuslineShim, statuslineSettingsArg } from './statusline'
-import { listCommandWidgets, runCommand } from './widgets'
+import { listCommandWidgets, runCommand, repoRoot as widgetRepoRoot } from './widgets'
 import { listCustomTabs, runTabCommand } from './tabs'
+import {
+  approveRepo,
+  commandSetHash,
+  isRepoTrusted,
+  readTrustStore,
+  revokeRepo,
+  writeTrustStore,
+} from './repo-trust'
 import { repoRootOf, repoForCwd } from './repo'
 import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
@@ -162,6 +170,7 @@ import {
   syncTelegramSidecar,
   telegramControlEnabled,
   resolvedProjectsDir,
+  resolvedWorktreesDir,
   resolvedEditorApp,
   resolvedBrowserApp,
   resolvedTemplateRepo,
@@ -179,7 +188,12 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
-import { listMonitorsWithStatus, writeMonitors } from './monitors'
+import {
+  listMonitorsWithStatus,
+  writeMonitors,
+  validateMonitors,
+  runMonitorProbe,
+} from './monitors'
 import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
@@ -227,6 +241,7 @@ import {
   type Agent,
   type Engine,
   type PrAgentKind,
+  killAllAgentRuns,
 } from './agents'
 import {
   getPersistentAgent,
@@ -283,6 +298,7 @@ import {
   finalizeSessionRun,
   flushAllSessionRunLogs,
   readCronRuns,
+  getCronRun,
   readCronRunLog,
   cronRunLogPath,
   readSessionRunLog,
@@ -319,7 +335,8 @@ import {
 } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
-import { isExternallyOpenableUrl } from './url-safety'
+import { isExternallyOpenableUrl, isObsidianDeepLink } from './url-safety'
+import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
 // protocols) reaching shell.openExternal from rendered content is a known
@@ -416,7 +433,9 @@ import {
   reviewBaseFor,
 } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
-import { resolveWithin } from './path-guard'
+import { resolveWithin, resolveWithinAny } from './path-guard'
+import { createEpochRegistry } from './session-epoch'
+import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { modelArgs, resumeArgs } from '../shared/engines'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -604,8 +623,22 @@ function pretrustClaudeProject(dir: string): void {
   }
 }
 
+// Restart-under-the-same-key generation counter. `startSession` on a live key
+// kills the old pty, but node-pty still delivers that pty's `onExit` — and the
+// old closure captures `key`, so it fired `pty:exit` against the BRAND NEW
+// session, marking a fresh terminal as exited and un-pairing it from its loop.
+// Each start takes an epoch; a stale closure sees its epoch superseded and does
+// nothing.
+const sessionEpochs = createEpochRegistry()
+
 function startSession(key: string, opts: StartOpts) {
-  sessions.get(key)?.pty.kill()
+  try {
+    sessions.get(key)?.pty.kill()
+  } catch {
+    /* already dead — the restart must still proceed */
+  }
+  const epoch = sessionEpochs.next(key)
+  const isCurrentEpoch = () => sessionEpochs.isCurrent(key, epoch)
 
   const remote = opts.remote?.sshTarget ? opts.remote : undefined
   const cwd = remote ? remote.cwd || opts.cwd || '' : processSpawnCwd(opts.cwd || homedir())
@@ -859,6 +892,8 @@ function startSession(key: string, opts: StartOpts) {
     appendSessionRunLog(sessionId, d)
   })
   proc.onExit(({ exitCode }) => {
+    // A superseded session's exit must not touch the live one that replaced it.
+    if (!isCurrentEpoch()) return
     send('pty:exit', key, exitCode)
     unregisterLoopSession(key)
     const status = exitCode === 0 ? 'done' : 'failed'
@@ -913,6 +948,21 @@ function startSession(key: string, opts: StartOpts) {
   return { sessionId, cwd: displayCwd, remote, seeded }
 }
 
+/** Kill every session pty. Guarded PER SESSION: the identical call in
+ *  `stopSession` was already wrapped, but this loop wasn't — so one dead pty
+ *  threw and every session after it was never killed. */
+function killAllSessionPtys(): void {
+  for (const s of sessions.values()) {
+    try {
+      s.pty.kill()
+    } catch {
+      /* already gone — keep going */
+    }
+  }
+  sessions.clear()
+  sessionEpochs.clear()
+}
+
 function setActiveSession(key: string) {
   if (sessions.has(key)) {
     activeKey = key
@@ -929,6 +979,9 @@ function stopSession(key: string) {
       /* already gone */
     }
     sessions.delete(key)
+    // Retire the epoch too, so this pty's late onExit can't fire against a
+    // session started under the same key a moment later.
+    sessionEpochs.forget(key)
   }
   if (activeKey === key) {
     activeKey = sessions.keys().next().value ?? ''
@@ -1042,77 +1095,19 @@ function pollActivity() {
   for (const k of turnWatch.keys()) if (!sessions.has(k)) turnWatch.delete(k)
 }
 
-function createWindow() {
-  win = new BrowserWindow({
-    width: 1320,
-    height: 820,
-    backgroundColor: '#0a0a0f',
-    titleBarStyle: 'hidden',
-    // explicit position so the ●●● controls sit visible + vertically centered in
-    // the 36px (h-9) tab bar, instead of being clipped/mis-aligned by the default
-    trafficLightPosition: { x: 14, y: 11 },
-    title: 'TerMinal',
-    icon: join(moduleDir, '../../build/icon.png'),
-    webPreferences: {
-      preload: join(moduleDir, '../preload/index.mjs'),
-      sandbox: false,
-      webviewTag: true,
-    },
-  })
+// One-shot latch for installBinariesAndReconcile.
+let bootstrapped = false
 
-  // Deny web permission requests by default (camera, mic, geolocation, MIDI,
-  // notifications, …). TerMinal's own renderer needs none of them; the only
-  // exception is `fullscreen`, so the Browser-tab <webview> can full-screen
-  // video. Defense-in-depth: even if untrusted content (agent output, PR bodies)
-  // ever reached a sink, it still couldn't reach into these device APIs.
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
-    cb(permission === 'fullscreen')
-  })
-
-  // The macOS traffic lights are hidden in fullscreen, so the renderer should
-  // drop its left reserve for them. Broadcast the fullscreen state.
-  const sendFullscreen = () => send('window:fullscreen', win?.isFullScreen() ?? false)
-  win.on('enter-full-screen', sendFullscreen)
-  win.on('leave-full-screen', sendFullscreen)
-  win.on('ready-to-show', () => {
-    win?.show()
-    sendFullscreen()
-  })
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    openExternalSafe(url)
-    return { action: 'deny' }
-  })
-  // Contain popups from the <webview> browser tab: deny a new OS window and
-  // load the target in-frame instead (only for web URLs). The renderer's
-  // 'new-window' listener never fired — that event doesn't exist on Electron's
-  // <webview> — so without this, popups escaped uncontained.
-  win.webContents.on('did-attach-webview', (_e, guest) => {
-    guest.setWindowOpenHandler(({ url }) => {
-      if (isExternallyOpenableUrl(url)) void guest.loadURL(url).catch(() => {})
-      return { action: 'deny' }
-    })
-  })
-  win.webContents.on('render-process-gone', (_e, d) =>
-    console.error('[gt] renderer gone:', d.reason),
-  )
-  // Installed-build update check — async, delayed past first paint, and silent
-  // unless the installed app is confirmed behind origin/main (never blocks
-  // startup; offline/API failures resolve to status 'unknown' and stay quiet).
-  win.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
-      void runUpdateCheck().then((r) => {
-        if (r.status === 'behind') send('update:status', r)
-      })
-    }, 2500)
-  })
-
-  // push activity events to the renderer; poll all sessions for turn completion
-  onActivity((ev) => send('activity:event', ev))
-  startActivityTail() // surface externally-appended events (skills) live
-  onAgentEvent((channel, payload) => send(channel, payload))
-  onDigestEvent((channel, payload) => send(channel, payload))
-  loadPersistedRuns() // restore past agent runs
-  if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
+// Once-per-launch: install the headless runner / CLI / MCP server / monitor
+// daemon at their stable paths, register MCP with Claude Code + Codex, and
+// reconcile launchd against schedules.json.
+//
+// `createWindow` is also called from the macOS `activate` handler (dock click
+// with no window open), and all of this used to re-run on every re-activate:
+// four binaries rewritten to disk, MCP re-registered in ~/.claude.json and
+// ~/.codex/config.toml, plus a full SYNCHRONOUS launchd reconcile — a
+// multi-second freeze on a gesture that should just show a window.
+function installBinariesAndReconcile() {
   // Real cron: install the headless runner at its stable path, then reconcile
   // launchd ↔ schedules.json (loads enabled jobs, removes any orphans). Jobs
   // fire via launchd even when the app is closed — no in-app ticker.
@@ -1175,6 +1170,130 @@ function createWindow() {
   } catch {
     /* launchd unavailable — schedules still listable */
   }
+}
+
+/** The one document the app window is ever allowed to be: dev server or the
+ *  packaged renderer bundle. Everything else is remote content. */
+function appDocumentUrl(): string {
+  return (
+    process.env.ELECTRON_RENDERER_URL ||
+    pathToFileURL(join(moduleDir, '../renderer/index.html')).href
+  )
+}
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1320,
+    height: 820,
+    backgroundColor: '#0a0a0f',
+    titleBarStyle: 'hidden',
+    // explicit position so the ●●● controls sit visible + vertically centered in
+    // the 36px (h-9) tab bar, instead of being clipped/mis-aligned by the default
+    trafficLightPosition: { x: 14, y: 11 },
+    title: 'TerMinal',
+    icon: join(moduleDir, '../../build/icon.png'),
+    webPreferences: {
+      preload: join(moduleDir, '../preload/index.mjs'),
+      sandbox: false,
+      webviewTag: true,
+    },
+  })
+
+  // Deny web permission requests by default (camera, mic, geolocation, MIDI,
+  // notifications, …). TerMinal's own renderer needs none of them; the only
+  // exception is `fullscreen`, so the Browser-tab <webview> can full-screen
+  // video. Defense-in-depth: even if untrusted content (agent output, PR bodies)
+  // ever reached a sink, it still couldn't reach into these device APIs.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
+    cb(permission === 'fullscreen')
+  })
+
+  // ---- window hardening (see window-guard.ts for the decisions) ------------
+  const appUrl = appDocumentUrl()
+  // Nothing may navigate the app's own window away from the app document: a
+  // top-level navigation (or a dropped .html file) would put attacker-authored
+  // content in the origin that holds `window.gt` — including runCommand.
+  // <webview> browsing is a separate WebContents and is NOT affected by these.
+  const guardNavigation = (
+    e: { preventDefault: () => void },
+    url: string,
+    isMainFrame: boolean,
+  ) => {
+    if (navigationDecision(url, appUrl, isMainFrame) === 'allow') return
+    e.preventDefault()
+    console.error('[gt] blocked in-app navigation to:', String(url).slice(0, 120))
+  }
+  win.webContents.on('will-navigate', (e, url) => guardNavigation(e, url, true))
+  win.webContents.on('will-frame-navigate', (e) => guardNavigation(e, e.url, e.isMainFrame))
+  // Stamp a CSP on the app document itself. `script-src 'self'` is the point:
+  // no remotely-hosted script can be pulled into the privileged origin. The
+  // Browser/CI/Tickets <webview>s run in the `persist:browser` partition, a
+  // different session, so ordinary browsing is untouched.
+  const csp = appCsp(!!process.env.ELECTRON_RENDERER_URL)
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+    if (!isAppUrl(details.url, appUrl)) return cb({})
+    cb({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    })
+  })
+
+  // The macOS traffic lights are hidden in fullscreen, so the renderer should
+  // drop its left reserve for them. Broadcast the fullscreen state.
+  const sendFullscreen = () => send('window:fullscreen', win?.isFullScreen() ?? false)
+  win.on('enter-full-screen', sendFullscreen)
+  win.on('leave-full-screen', sendFullscreen)
+  win.on('ready-to-show', () => {
+    win?.show()
+    sendFullscreen()
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalSafe(url)
+    return { action: 'deny' }
+  })
+  // Contain popups from the <webview> browser tab: deny a new OS window and
+  // load the target in-frame instead (only for web URLs). The renderer's
+  // 'new-window' listener never fired — that event doesn't exist on Electron's
+  // <webview> — so without this, popups escaped uncontained.
+  win.webContents.on('did-attach-webview', (_e, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isExternallyOpenableUrl(url)) void guest.loadURL(url).catch(() => {})
+      return { action: 'deny' }
+    })
+  })
+  win.webContents.on('render-process-gone', (_e, d) =>
+    console.error('[gt] renderer gone:', d.reason),
+  )
+  // Installed-build update check — async, delayed past first paint, and silent
+  // unless the installed app is confirmed behind origin/main (never blocks
+  // startup; offline/API failures resolve to status 'unknown' and stay quiet).
+  win.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      void runUpdateCheck().then((r) => {
+        if (r.status === 'behind') send('update:status', r)
+      })
+    }, 2500)
+  })
+
+  // push activity events to the renderer; poll all sessions for turn completion
+  onActivity((ev) => send('activity:event', ev))
+  // `window-all-closed` clears watchTimer along with the others, but unlike
+  // activityTimer/telegramTimer nothing below re-arms it — so after a dock
+  // re-activate the transcript-tick fast path stayed dead until the user
+  // happened to switch sessions. watchSession() is idempotent (it clears any
+  // existing interval first).
+  watchSession()
+  startActivityTail() // surface externally-appended events (skills) live
+  onAgentEvent((channel, payload) => send(channel, payload))
+  onDigestEvent((channel, payload) => send(channel, payload))
+  loadPersistedRuns() // restore past agent runs
+  if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
+  if (!bootstrapped) {
+    bootstrapped = true
+    installBinariesAndReconcile()
+  }
 
   // Telegram AFK control: enumerate run targets from open sessions, prime the
   // cursor if control was left on, and poll for inbound commands.
@@ -1200,11 +1319,9 @@ function createWindow() {
   if (telegramControlEnabled()) markTelegramControlEnabled(true, false) // restore cursor quietly
   if (!telegramTimer) telegramTimer = setInterval(pollTelegramOnce, 5000)
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    win.loadFile(join(moduleDir, '../renderer/index.html'))
-  }
+  // Deliberately the same value the navigation guard allowlists — loading via
+  // a second, independently-derived path is how those two silently drift apart.
+  void win.loadURL(appUrl)
 }
 
 // ---- session IPC ----
@@ -1969,7 +2086,10 @@ ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') 
   if (channel === 'webhook') return testWebhook(readSettings().alerts.webhook.url)
   return { ok: false, error: `unknown alert channel: ${channel}` }
 })
-ipcMain.handle('settings:get', () => readSettings())
+// Secrets are sealed on disk; handing the renderer the decrypted values on
+// every read undoes that. It gets masks plus a `secretsSet` map instead — see
+// settings-mask.ts. Writes still work: only an actual edit is saved.
+ipcMain.handle('settings:get', () => maskSettingsSecrets(readSettings()))
 ipcMain.handle('settings:storage-report', () => sweepTerminalState(undefined, { dryRun: true }))
 ipcMain.handle('settings:storage-reclaim', async () => {
   const report = await sweepTerminalState(undefined, { dryRun: false })
@@ -1986,7 +2106,10 @@ ipcMain.handle('settings:storage-reclaim', async () => {
 ipcMain.handle('settings:scratch-clear', () => clearTerminalScratch())
 ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   const before = readSettings()
-  const next = patchSettings(patch)
+  // The renderer now holds masks where secrets used to be. If one is echoed back
+  // (a form that re-submits every field, say), persisting it would overwrite a
+  // real credential with '••••••••'. Strip those before patching.
+  const next = patchSettings(stripMaskedSecrets(patch))
   // react when the AFK-control toggle actually flips
   if (next.telegram.control !== before.telegram.control) {
     markTelegramControlEnabled(next.telegram.control)
@@ -2497,12 +2620,30 @@ ipcMain.handle('schedules:list', () => {
   const now = Date.now()
   const remote = curRemote()
   if (remote) {
-    return remoteSchedules
-      .list(remote)
-      .then((rows) =>
-        rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) })),
-      )
-      .catch(() => [])
+    return (
+      remoteSchedules
+        .list(remote)
+        .then((rows) =>
+          rows.map((s) => ({
+            ...s,
+            describe: describeSpec(s.spec),
+            nextRun: nextRun(s.spec, now),
+          })),
+        )
+        // NOT `.catch(() => [])`: an unreachable host read as "no schedules",
+        // making a network blip indistinguishable from every cron job on that
+        // host having been deleted. Surface the failure instead.
+        .catch((e) => {
+          const message = String((e as Error)?.message || e)
+          console.error(`[gt] schedules:list remote failed: ${message}`)
+          emitActivity({
+            kind: 'error',
+            title: `Could not reach ${remote.label || remote.sshTarget}`,
+            detail: `Schedule list unavailable — ${message}`,
+          })
+          return []
+        })
+    )
   }
   return readSchedules(now).map((s) => ({
     ...s,
@@ -2835,7 +2976,7 @@ ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
       .then((ok) => (ok ? { ok: true } : { ok: false, error: 'host could not cancel the run' }))
       .catch((e) => ({ ok: false, error: String((e as Error).message || e) }))
   }
-  const rec = readCronRuns(undefined, 20000).find((r) => r.id === id)
+  const rec = getCronRun(id)
   if (!rec) return { ok: false, error: 'run not found' }
   if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
   if (!rec.runnerPid)
@@ -2941,9 +3082,20 @@ ipcMain.handle('hitl:list', () => readHitl())
 // tab edits it directly via these handlers), and a check triggers the daemon.
 ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
 ipcMain.handle('monitors:save', (_e, list: unknown) => {
-  if (Array.isArray(list)) writeMonitors(list as never)
-  syncMonitorDaemon()
-  return true
+  // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
+  // the write path validates rather than trusting the renderer's JSON.
+  if (!Array.isArray(list)) return { ok: false, saved: 0, rejected: 0, error: 'expected an array' }
+  const { monitors, rejected } = validateMonitors(list)
+  if (rejected) console.error(`[gt] monitors:save dropped ${rejected} invalid monitor(s)`)
+  try {
+    writeMonitors(monitors)
+    syncMonitorDaemon()
+  } catch (e) {
+    // Was `return true` unconditionally — a failed write reported success and
+    // the user's edit silently vanished on the next read.
+    return { ok: false, saved: 0, rejected, error: (e as Error).message }
+  }
+  return { ok: true, saved: monitors.length, rejected }
 })
 // Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
 // repoRoot comes from the tab's context. The webview view is the default; this
@@ -2953,15 +3105,12 @@ ipcMain.handle('ci:list', (_e, repoRoot: string, limit?: number) =>
 )
 ipcMain.handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
 ipcMain.handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
-ipcMain.handle('monitors:run', (_e, id: string) => {
-  try {
-    execFileSync(join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-monitor'), ['run', id], {
-      stdio: 'ignore',
-      timeout: 40000,
-    })
-  } catch {
-    /* surfaced via the state file */
-  }
+// Async execFile, NOT execFileSync: this ran a 40-second-timeout probe inside an
+// IPC handler, so one "Run check" click on a hung endpoint froze the entire main
+// process — every window, every session, every timer — for up to 40s. The worst
+// remaining blocker in the app.
+ipcMain.handle('monitors:run', async (_e, id: string) => {
+  await runMonitorProbe(id) // never rejects; failures surface via the state file
   return listMonitorsWithStatus()
 })
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with
@@ -3054,15 +3203,108 @@ ipcMain.handle('data:git-status', () => {
 ipcMain.handle('data:session-tasks', () => readSessionTasks(cur().sessionId))
 ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 
-// ---- command widgets (declarative, per-repo extensible) ----
-ipcMain.handle('widgets:list', () => listCommandWidgets(cur().cwd))
-ipcMain.handle('widgets:run', (_e, command: string) => runCommand(command, cur().cwd))
+// ---- command widgets + custom tabs (declarative, per-repo extensible) ------
+//
+// Two trust rules live here, both of which used to be enforced only by renderer
+// convention:
+//
+//  1. The renderer never supplies a COMMAND, only an opaque widget/tab id. Main
+//     resolves it against the widget set for the session's own cwd, so the
+//     "run an arbitrary shell string" sink no longer exists on the IPC surface.
+//  2. REPO-sourced entries (.TerMinal/widgets.json, .TerMinal/tabs.json) are
+//     inert until the user approves that repo for that exact command set — see
+//     repo-trust.ts. GLOBAL entries (~/.config/TerMinal) are the user's own
+//     files and behave exactly as before.
+function repoTrustContext(cwd: string) {
+  const widgets = listCommandWidgets(cwd)
+  const tabs = listCustomTabs(cwd)
+  const root = cwd ? widgetRepoRoot(cwd) : ''
+  const commands = [
+    ...widgets.filter((w) => w.source === 'repo').map((w) => `widget: ${w.command}`),
+    ...tabs
+      .filter((t) => t.source === 'repo')
+      .map((t) => (t.command ? `tab: ${t.command}` : `tab url: ${t.url}`)),
+  ]
+  const hash = commandSetHash(commands)
+  return {
+    repoRoot: root,
+    hash,
+    commands,
+    widgets,
+    tabs,
+    trusted: isRepoTrusted(readTrustStore(), root, hash),
+  }
+}
+/** Global entries are always live; repo entries only once the repo is approved. */
+const entryTrusted = (source: 'global' | 'repo', repoTrusted: boolean) =>
+  source === 'global' || repoTrusted
 
-// ---- custom tabs (declarative full-screen views, per-repo extensible) ----
-ipcMain.handle('tabs:list', (_e, cwd?: string) => listCustomTabs(cwd || cur().cwd))
-ipcMain.handle('tabs:run', (_e, command: string, cwd?: string) =>
-  runTabCommand(command, cwd || cur().cwd),
-)
+ipcMain.handle('widgets:list', () => {
+  const ctx = repoTrustContext(cur().cwd)
+  return ctx.widgets.map((w) => ({ ...w, trusted: entryTrusted(w.source, ctx.trusted) }))
+})
+ipcMain.handle('widgets:run', (_e, id: string) => {
+  const cwd = cur().cwd
+  const ctx = repoTrustContext(cwd)
+  const w = ctx.widgets.find((x) => x.id === id)
+  if (!w) return { ok: false, stdout: 'unknown widget', code: 127 }
+  if (!entryTrusted(w.source, ctx.trusted))
+    return { ok: false, stdout: 'repo not trusted — approve it in the Plugins drawer', code: 126 }
+  return runCommand(w.command, cwd)
+})
+
+// A renderer-supplied cwd is a REQUEST, never an authority: it is only honoured
+// when it belongs to a session the user actually has open. Otherwise a
+// compromised renderer could name any directory on disk — approve it, then run
+// its widgets — which would defeat the trust gate entirely.
+const openSessionCwd = (cwd?: string): string => {
+  if (!cwd) return cur().cwd
+  for (const s of sessions.values()) if (s.pinned.cwd === cwd) return cwd
+  console.error('[gt] refused a cwd that is not an open session:', String(cwd).slice(0, 120))
+  return cur().cwd
+}
+
+ipcMain.handle('tabs:list', (_e, cwd?: string) => {
+  const ctx = repoTrustContext(openSessionCwd(cwd))
+  return ctx.tabs.map((t) => ({ ...t, trusted: entryTrusted(t.source, ctx.trusted) }))
+})
+ipcMain.handle('tabs:run', (_e, id: string, cwd?: string) => {
+  const dir = openSessionCwd(cwd)
+  const ctx = repoTrustContext(dir)
+  const t = ctx.tabs.find((x) => x.id === id)
+  if (!t?.command) return { ok: false, html: 'unknown tab', code: 127 }
+  if (!entryTrusted(t.source, ctx.trusted))
+    return { ok: false, html: 'repo not trusted — approve it in the Plugins drawer', code: 126 }
+  return runTabCommand(t.command, dir)
+})
+
+// The approval surface: the literal commands the repo wants to run, so the user
+// approves what they can actually read.
+ipcMain.handle('repoTrust:status', () => {
+  const ctx = repoTrustContext(cur().cwd)
+  return { repoRoot: ctx.repoRoot, hash: ctx.hash, trusted: ctx.trusted, commands: ctx.commands }
+})
+// Deliberately takes NO cwd. Granting trust is the one operation the renderer
+// must not be able to point anywhere: `approve('/attacker/repo')` followed by
+// `tabs:run(id, '/attacker/repo')` would walk straight around the gate. The
+// approval always applies to the session the user is actually looking at.
+ipcMain.handle('repoTrust:approve', () => {
+  const ctx = repoTrustContext(cur().cwd)
+  if (!ctx.repoRoot || !ctx.commands.length) return false
+  writeTrustStore(approveRepo(readTrustStore(), ctx.repoRoot, ctx.hash))
+  emitActivity({
+    kind: 'check',
+    title: `Trusted repo widgets · ${basename(ctx.repoRoot)}`,
+    detail: `${ctx.commands.length} repo-defined command${ctx.commands.length > 1 ? 's' : ''} approved`,
+  })
+  return true
+})
+ipcMain.handle('repoTrust:revoke', () => {
+  const ctx = repoTrustContext(cur().cwd)
+  if (!ctx.repoRoot) return false
+  writeTrustStore(revokeRepo(readTrustStore(), ctx.repoRoot))
+  return true
+})
 
 // ---- scratch workspace (throwaway, repo-less sessions) ----
 // One app-owned dir under the existing TerMinal config root — persistent
@@ -3138,7 +3380,14 @@ ipcMain.handle('tickets:open-in-obsidian', (_e, slug: string) => {
   if (daemon.kind !== 'local') return false
   const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
   if (!link) return false
-  shell.openExternal(link)
+  // Deep links are minted from repo-controlled config (vault name + subdir), so
+  // validate the result is still an obsidian://open link before handing it to
+  // the OS — a custom-scheme sink is the whole reason url-safety.ts exists.
+  if (!isObsidianDeepLink(link)) {
+    console.error('[gt] refused non-obsidian deep link:', String(link).slice(0, 80))
+    return false
+  }
+  void shell.openExternal(link)
   return true
 })
 ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
@@ -3335,8 +3584,20 @@ ipcMain.handle('mcp:install', () => {
     if (existsSync(claudeMcp)) {
       try {
         cfg = JSON.parse(readFileSync(claudeMcp, 'utf8'))
-      } catch {
-        cfg = {}
+      } catch (e) {
+        // Was `cfg = {}`, which then overwrote the file — DESTROYING every other
+        // tool's MCP registration — and still reported {ok: true}. A registry we
+        // cannot parse is a registry we must not rewrite.
+        return {
+          error:
+            `${claudeMcp} is not valid JSON (${(e as Error).message}). ` +
+            `Refusing to overwrite it — fix or move the file, then install again.`,
+        }
+      }
+      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
+        return {
+          error: `${claudeMcp} is not a JSON object. Refusing to overwrite it.`,
+        }
       }
     }
     cfg.mcpServers ??= {}
@@ -3757,13 +4018,36 @@ function openInApp(appName: string, target: string, fallback: () => void) {
   }
 }
 // "Open in browser" — the configured browser (default Brave) with its extensions/wallet.
-ipcMain.handle('open:in-browser', (_e, url: string) =>
-  openInApp(resolvedBrowserApp(), url, () => shell.openExternal(url)),
-)
+// `open -a <App> <target>` hands the OS an arbitrary string, so this sink needs
+// the same scheme gate as shell.openExternal (url-safety.ts) — otherwise it is
+// simply a second, unguarded way to reach an OS protocol handler.
+ipcMain.handle('open:in-browser', (_e, url: string) => {
+  if (!isExternallyOpenableUrl(url)) return openExternalSafe(url)
+  openInApp(resolvedBrowserApp(), url, () => openExternalSafe(url))
+})
 // "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
-// to the active session's repo root.
+// to the active session's repo root. Renderer-supplied paths are constrained to
+// the roots the UI legitimately surfaces (workspace, worktrees, the active repo,
+// TerMinal's config dir, configured note folders) so this can't be turned into
+// an arbitrary "open any file on disk in an app" primitive.
+function editorOpenRoots(): (string | undefined)[] {
+  const s = readSettings()
+  return [
+    resolvedProjectsDir(),
+    resolvedWorktreesDir(),
+    repoRootOf(cur().cwd) || cur().cwd,
+    activeDaemon().filesRoot(),
+    join(homedir(), '.config', 'TerMinal'),
+    ...s.noteFolders.map((f) => f.path),
+  ]
+}
 ipcMain.handle('open:in-editor', (_e, path?: string) => {
-  const target = path || repoRootOf(cur().cwd) || cur().cwd || homedir()
+  const fallbackTarget = repoRootOf(cur().cwd) || cur().cwd || homedir()
+  const target = path ? resolveWithinAny(editorOpenRoots(), path) : fallbackTarget
+  if (!target) {
+    console.error('[gt] refused open:in-editor outside allowed roots:', String(path).slice(0, 120))
+    return
+  }
   openInApp(resolvedEditorApp(), target, () => shell.openPath(target))
 })
 ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
@@ -3974,16 +4258,30 @@ app.whenReady().then(() => {
   })
 })
 
+// QUIT kills everything. This is the only handler Electron guarantees on
+// `app.quit()` — `window-all-closed` does NOT fire for it, so before this the
+// engines simply outlived the app: shells, `claude`/`codex` children and
+// detached `codex exec` runs kept going, burning tokens invisibly and still
+// committing and pushing.
 app.on('will-quit', () => {
   flushAllSessionRunLogs()
+  const killed = killAllAgentRuns()
+  if (killed) console.error(`[gt] quit: killed ${killed} in-flight agent run(s)`)
+  killAllSessionPtys()
   void stopBridge() // never leave the port bound after the app goes away
 })
 
+// CLOSE (macOS red button) does NOT kill sessions. The app stays resident and
+// re-activating from the dock brings the window back, so tearing down live
+// agent terminals here was destroying work on a window-management gesture. The
+// polling timers do stop — nothing is watching. On non-macOS, closing the last
+// window IS quitting, so app.quit() runs will-quit and the sessions die there.
 app.on('window-all-closed', () => {
   if (watchTimer) clearInterval(watchTimer)
   if (activityTimer) clearInterval(activityTimer)
   if (telegramTimer) clearInterval(telegramTimer)
-  for (const s of sessions.values()) s.pty.kill()
-  sessions.clear()
+  watchTimer = null
+  activityTimer = null
+  telegramTimer = null
   if (process.platform !== 'darwin') app.quit()
 })

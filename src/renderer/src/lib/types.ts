@@ -321,6 +321,9 @@ export type CommandWidget = {
   intervalMs: number
   mode: 'text' | 'big' | 'kv'
   source: 'global' | 'repo'
+  /** Global entries are always live; repo entries only once the repo's command
+   *  set has been approved (see src/main/repo-trust.ts). */
+  trusted: boolean
 }
 
 export type CommandResult = { ok: boolean; stdout: string; code: number }
@@ -335,9 +338,20 @@ export type CustomTab = {
   url?: string
   command?: string
   intervalMs?: number
+  /** See CommandWidget.trusted. */
+  trusted: boolean
 }
 
 export type TabRunResult = { ok: boolean; html: string; code: number }
+
+// The approval prompt's payload: the literal commands a repo wants to run, so
+// the user approves something they can actually read.
+export type RepoTrustStatus = {
+  repoRoot: string
+  hash: string
+  trusted: boolean
+  commands: string[]
+}
 
 export type Ticket = {
   slug: string
@@ -644,6 +658,14 @@ export type Settings = {
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
   openaiCompatApiKey: string
+  /**
+   * Which sealed secrets are set. `settings:get` masks the VALUES (see
+   * src/main/settings-mask.ts), so this is the only way the UI can tell
+   * "configured" from "not configured". Keyed by the dotted path
+   * (`telegram.botToken`, `alerts.webhook.url`, `openrouterApiKey`, …).
+   * Absent on any Settings object that didn't come from `settings:get`.
+   */
+  secretsSet?: Record<string, boolean>
 }
 export type SettingsPatch = Partial<
   Omit<
@@ -1092,6 +1114,13 @@ export type CiTabJob = {
 export type CiListResult = { runs: CiRun[]; error?: string }
 export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
 export type CiLogResult = { log: string; truncated?: boolean; error?: string }
+
+export type MonitorSaveResult = {
+  ok: boolean
+  saved: number
+  rejected: number
+  error?: string
+}
 
 /** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
  *  observability, no inference. */
@@ -1930,7 +1959,10 @@ export type GtApi = {
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
-    save: (list: Monitor[]) => Promise<boolean>
+    /** Reports what was actually written — it used to return `true` even when
+     *  nothing was saved. Callers may ignore it; a UI that surfaces failures
+     *  should not. */
+    save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
   }
   ci: {
@@ -1975,9 +2007,16 @@ export type GtApi = {
   sessionTasks: () => Promise<TaskItem[]>
   meta: () => Promise<SessionInfo>
   listCommandWidgets: () => Promise<CommandWidget[]>
-  runCommand: (command: string) => Promise<CommandResult>
+  runCommand: (id: string) => Promise<CommandResult>
   listCustomTabs: (cwd?: string) => Promise<CustomTab[]>
-  runTabView: (command: string, cwd?: string) => Promise<TabRunResult>
+  runTabView: (id: string, cwd?: string) => Promise<TabRunResult>
+  /** Always scoped to the ACTIVE session's cwd in main — no cwd argument, so a
+   *  compromised renderer cannot approve a repo of its choosing. */
+  repoTrust: {
+    status: () => Promise<RepoTrustStatus>
+    approve: () => Promise<boolean>
+    revoke: () => Promise<boolean>
+  }
   scratchDir: () => Promise<string>
   onTick: (cb: () => void) => () => void
   tabContext: () => Promise<TabContext>

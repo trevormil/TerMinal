@@ -183,3 +183,47 @@ describe('run record readers', () => {
     expect(record.status).toBe('done')
   })
 })
+
+// `runs:cancel-cron` used to call readCronRuns(undefined, 20000) and scan the
+// result — read+parsing EVERY run record on the main thread per cancel click,
+// and then repopulating the shared cache at limit 20000 so the next ordinary
+// listing paid for it too. Records live at cron-runs/<id>.json; one read is enough.
+describe('getCronRun', () => {
+  const write = (dir: string, id: string, extra: Record<string, unknown> = {}) =>
+    writeFileSync(join(dir, `${id}.json`), JSON.stringify({ id, status: 'running', ...extra }))
+
+  test('reads a single record by id without scanning the directory', async () => {
+    const home = tempHome()
+    const dir = join(home, '.config', 'TerMinal', 'cron-runs')
+    mkdirSync(dir, { recursive: true })
+    write(dir, 'wanted', { runnerPid: 4242 })
+    for (let i = 0; i < 50; i++) write(dir, `noise-${i}`)
+
+    const { getCronRun } = await loadCronRuns(home)
+    expect(getCronRun('wanted')).toMatchObject({ id: 'wanted', runnerPid: 4242 })
+  })
+
+  test('returns null for an unknown id or a corrupt record', async () => {
+    const home = tempHome()
+    const dir = join(home, '.config', 'TerMinal', 'cron-runs')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'broken.json'), '{ not json')
+
+    const { getCronRun } = await loadCronRuns(home)
+    expect(getCronRun('missing')).toBeNull()
+    expect(getCronRun('broken')).toBeNull()
+    expect(getCronRun('')).toBeNull()
+  })
+
+  // The id reaches this from the renderer, and it is interpolated into a path.
+  test('refuses an id that would escape the runs directory', async () => {
+    const home = tempHome()
+    const dir = join(home, '.config', 'TerMinal', 'cron-runs')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(home, 'secret.json'), JSON.stringify({ id: 'secret' }))
+
+    const { getCronRun } = await loadCronRuns(home)
+    expect(getCronRun('../../secret')).toBeNull()
+    expect(getCronRun('../secret')).toBeNull()
+  })
+})

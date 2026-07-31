@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { writeJsonAtomic } from './atomic-write'
 import { join } from 'node:path'
@@ -112,6 +113,137 @@ export function shouldNotify(
   return now - lastAt >= renotifyAfterSec * 1000
 }
 
+export const DEFAULT_NOTIFY: MonitorNotify = {
+  onFailure: 'urgent',
+  onRecovery: true,
+  renotifyAfterSec: 3600,
+  dailyDigest: false,
+  digestHour: 9,
+}
+
+// ---- probing (the daemon, not this process) --------------------------------
+
+/** Where installMonitorDaemon puts the runner. */
+export const MONITOR_BIN = join(CFG, 'bin', 'terminal-monitor')
+
+export type ProbeResult = { ok: boolean; error?: string }
+
+/**
+ * Ask the DAEMON to run one check, out of process and off the event loop.
+ *
+ * This was `execFileSync(..., { timeout: 40000 })` inline in the `monitors:run`
+ * IPC handler, so a single "Run check" click on a hung endpoint froze the whole
+ * main process — every window, session and timer — for up to 40 seconds. It
+ * lives here, with injectable bin/timeout, so the non-blocking property is
+ * actually testable instead of being asserted about `node:child_process` in the
+ * abstract.
+ *
+ * Never rejects: a failing probe is reported through the monitor's state file,
+ * exactly as before.
+ */
+export function runMonitorProbe(
+  id: string,
+  opts: { bin?: string; timeoutMs?: number } = {},
+): Promise<ProbeResult> {
+  return new Promise((resolve) => {
+    execFile(
+      opts.bin ?? MONITOR_BIN,
+      ['run', id],
+      {
+        timeout: opts.timeoutMs ?? 40_000,
+        // The old call used stdio:'ignore'; execFile buffers instead, and the
+        // 1 MB default would SIGTERM a chatty command monitor with ENOBUFS.
+        maxBuffer: 8 * 1024 * 1024,
+      },
+      (err) => resolve(err ? { ok: false, error: err.message } : { ok: true }),
+    )
+  })
+}
+
+// ---- validation ------------------------------------------------------------
+//
+// monitors.json is written straight from the renderer and later executed by
+// bin/terminal-monitor on a launchd timer — a `command` monitor's target runs
+// via /bin/bash -lc, on a schedule that survives quitting the app. So the write
+// path validates the SHAPE here rather than trusting whatever JSON arrives:
+// an unknown `type` is rejected outright (it would otherwise persist and be
+// re-interpreted by a future daemon version), and the numeric knobs are clamped
+// so a bad value can't turn into a 1ms poll loop.
+
+export const MONITOR_TYPES: MonitorType[] = ['http', 'tls-cert', 'tcp', 'dns', 'command']
+const SEVERITIES: (Severity | 'off')[] = ['urgent', 'normal', 'low', 'off']
+
+/** Min 10s: anything faster is a runaway, not a monitor. Max 24h. */
+export const MIN_INTERVAL_SEC = 10
+export const MAX_INTERVAL_SEC = 86_400
+
+const clamp = (n: unknown, lo: number, hi: number, fallback: number): number => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return fallback
+  return Math.min(hi, Math.max(lo, Math.round(v)))
+}
+
+function validateNotify(raw: unknown): MonitorNotify {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const onFailure = SEVERITIES.includes(r.onFailure as Severity | 'off')
+    ? (r.onFailure as Severity | 'off')
+    : DEFAULT_NOTIFY.onFailure
+  return {
+    onFailure,
+    onRecovery: typeof r.onRecovery === 'boolean' ? r.onRecovery : DEFAULT_NOTIFY.onRecovery,
+    renotifyAfterSec: clamp(
+      r.renotifyAfterSec,
+      0,
+      MAX_INTERVAL_SEC,
+      DEFAULT_NOTIFY.renotifyAfterSec,
+    ),
+    dailyDigest: r.dailyDigest === true,
+    digestHour: clamp(r.digestHour, 0, 23, DEFAULT_NOTIFY.digestHour),
+  }
+}
+
+/** A single monitor, or null if it can't be made safe (unknown kind, no id/target). */
+export function validateMonitor(raw: unknown): Monitor | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  if (typeof r.id !== 'string' || !r.id.trim()) return null
+  if (!MONITOR_TYPES.includes(r.type as MonitorType)) return null
+  if (typeof r.target !== 'string' || !r.target.trim()) return null
+  return {
+    id: r.id,
+    name: typeof r.name === 'string' && r.name.trim() ? r.name : r.id,
+    type: r.type as MonitorType,
+    target: r.target,
+    intervalSec: clamp(r.intervalSec, MIN_INTERVAL_SEC, MAX_INTERVAL_SEC, 300),
+    enabled: r.enabled !== false,
+    ...(typeof r.group === 'string' ? { group: r.group } : {}),
+    notify: validateNotify(r.notify),
+    config:
+      r.config && typeof r.config === 'object' && !Array.isArray(r.config)
+        ? (r.config as Record<string, unknown>)
+        : {},
+  }
+}
+
+/** Validate a whole monitors.json payload, reporting what was dropped. */
+export function validateMonitors(raw: unknown): { monitors: Monitor[]; rejected: number } {
+  if (!Array.isArray(raw)) return { monitors: [], rejected: 0 }
+  const monitors: Monitor[] = []
+  let rejected = 0
+  const seen = new Set<string>()
+  for (const entry of raw) {
+    const m = validateMonitor(entry)
+    // A duplicate id would make the state file (keyed on id) ambiguous.
+    if (!m || seen.has(m.id)) {
+      rejected++
+      continue
+    }
+    seen.add(m.id)
+    monitors.push(m)
+  }
+  return { monitors, rejected }
+}
+
 // ---- config + state IO -----------------------------------------------------
 
 export function readMonitors(file = MONITORS_FILE): Monitor[] {
@@ -161,12 +293,4 @@ export function orphanStateIds(dir = MONITOR_STATE_DIR): string[] {
   }
   const known = new Set(readMonitors().map((m) => m.id))
   return files.map((f) => f.slice(0, -5)).filter((id) => !known.has(id))
-}
-
-export const DEFAULT_NOTIFY: MonitorNotify = {
-  onFailure: 'urgent',
-  onRecovery: true,
-  renotifyAfterSec: 3600,
-  dailyDigest: false,
-  digestHour: 9,
 }

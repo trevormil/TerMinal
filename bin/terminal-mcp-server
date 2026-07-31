@@ -525,7 +525,13 @@ function aiSpendToday(args) {
 // WRITE TOOLS — deterministic data filing. Agents skip reading SKILL.md.
 // ===========================================================================
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
+// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
+// src/main/local-day.ts: the app and this script write the same ticket
+// `updated:` field, and a mismatch made them disagree by a day every evening.
+const localDay = (at = new Date()) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+const todayStr = () => localDay()
 const slugify = (s) =>
   s
     .toLowerCase()

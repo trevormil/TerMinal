@@ -9,6 +9,9 @@ import {
   listMonitorsWithStatus,
   readMonitors,
   shouldNotify,
+  validateMonitors,
+  MIN_INTERVAL_SEC,
+  MAX_INTERVAL_SEC,
   type MonitorStatus,
 } from './monitors'
 
@@ -120,5 +123,93 @@ describe('config + status join', () => {
     )
     expect(listMonitorsWithStatus(cfg, state).map((m) => m.id)).toEqual(['b', 'a'])
     expect(readMonitors(cfg)).toHaveLength(2)
+  })
+})
+
+// monitors.json is executed by bin/terminal-monitor via /bin/bash -lc on a
+// launchd timer that survives quitting the app, so the write path must not
+// persist whatever JSON the renderer sends.
+describe('validateMonitors', () => {
+  const ok = {
+    id: 'api',
+    name: 'API',
+    type: 'http',
+    target: 'https://api.example/health',
+    intervalSec: 60,
+    enabled: true,
+    notify: {
+      onFailure: 'urgent',
+      onRecovery: true,
+      renotifyAfterSec: 600,
+      dailyDigest: false,
+      digestHour: 9,
+    },
+    config: { warnLatencyMs: 500 },
+  }
+
+  test('keeps a well-formed monitor intact', () => {
+    const { monitors, rejected } = validateMonitors([ok])
+    expect(rejected).toBe(0)
+    expect(monitors[0]).toMatchObject({
+      id: 'api',
+      type: 'http',
+      target: 'https://api.example/health',
+      intervalSec: 60,
+    })
+    expect(monitors[0].config).toEqual({ warnLatencyMs: 500 })
+  })
+
+  test('rejects an unknown kind rather than persisting it', () => {
+    const { monitors, rejected } = validateMonitors([{ ...ok, type: 'exec-anything' }])
+    expect(monitors).toEqual([])
+    expect(rejected).toBe(1)
+  })
+
+  test('rejects entries with no id or no target', () => {
+    expect(validateMonitors([{ ...ok, id: '' }]).rejected).toBe(1)
+    expect(validateMonitors([{ ...ok, target: '' }]).rejected).toBe(1)
+    expect(validateMonitors([{ ...ok, target: 42 }]).rejected).toBe(1)
+    expect(validateMonitors([null, 'x', []]).rejected).toBe(3)
+  })
+
+  test('clamps the interval so a bad value cannot become a runaway poll loop', () => {
+    expect(validateMonitors([{ ...ok, intervalSec: 0 }]).monitors[0].intervalSec).toBe(
+      MIN_INTERVAL_SEC,
+    )
+    expect(validateMonitors([{ ...ok, intervalSec: -5 }]).monitors[0].intervalSec).toBe(
+      MIN_INTERVAL_SEC,
+    )
+    expect(validateMonitors([{ ...ok, intervalSec: 1e12 }]).monitors[0].intervalSec).toBe(
+      MAX_INTERVAL_SEC,
+    )
+    expect(validateMonitors([{ ...ok, intervalSec: 'soon' }]).monitors[0].intervalSec).toBe(300)
+  })
+
+  test('normalises the notify block instead of trusting it', () => {
+    const [m] = validateMonitors([
+      { ...ok, notify: { onFailure: 'catastrophic', digestHour: 99, renotifyAfterSec: -1 } },
+    ]).monitors
+    expect(m.notify.onFailure).toBe('urgent') // falls back to the default
+    expect(m.notify.digestHour).toBe(23)
+    expect(m.notify.renotifyAfterSec).toBe(0)
+    expect(m.notify.dailyDigest).toBe(false)
+  })
+
+  test('a non-object config cannot smuggle a value through', () => {
+    expect(validateMonitors([{ ...ok, config: 'rm -rf /' }]).monitors[0].config).toEqual({})
+    expect(validateMonitors([{ ...ok, config: ['a'] }]).monitors[0].config).toEqual({})
+  })
+
+  // The state file is keyed on id, so two entries sharing one would make the
+  // daemon's writes ambiguous.
+  test('drops duplicate ids', () => {
+    const { monitors, rejected } = validateMonitors([ok, { ...ok, target: 'https://other' }])
+    expect(monitors.length).toBe(1)
+    expect(rejected).toBe(1)
+  })
+
+  test('a non-array payload yields nothing', () => {
+    expect(validateMonitors(null)).toEqual({ monitors: [], rejected: 0 })
+    expect(validateMonitors({ id: 'x' })).toEqual({ monitors: [], rejected: 0 })
   })
 })

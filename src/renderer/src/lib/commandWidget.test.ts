@@ -9,6 +9,7 @@ const widget = (overrides: Partial<CommandWidget> = {}): CommandWidget => ({
   intervalMs: 10_000,
   mode: 'text',
   source: 'repo',
+  trusted: true,
   ...overrides,
 })
 

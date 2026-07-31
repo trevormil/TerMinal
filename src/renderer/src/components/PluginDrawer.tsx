@@ -1,7 +1,69 @@
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ChevronUp, GripVertical, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { dropIndex, reorderOnDrop } from '../lib/dragReorder'
-import type { Plugin } from '../lib/types'
+import type { Plugin, RepoTrustStatus } from '../lib/types'
+
+// The per-repo trust gate for repo-defined widgets/tabs (src/main/repo-trust.ts).
+// This is the ONLY approval surface, so it deliberately shows the literal
+// commands: approving a hash you can't read is not consent. Re-prompts whenever
+// the repo's command set changes (edit, `git pull`), because the approval is
+// keyed on its hash.
+function RepoTrustPanel() {
+  const [status, setStatus] = useState<RepoTrustStatus | null>(null)
+  const refresh = useCallback(() => {
+    window.gt.repoTrust
+      .status()
+      .then(setStatus)
+      .catch(() => setStatus(null))
+  }, [])
+  useEffect(refresh, [refresh])
+
+  if (!status || status.commands.length === 0) return null
+  const { trusted, commands } = status
+  return (
+    <div
+      className={`mb-4 rounded-xl border p-3 ${
+        trusted
+          ? 'border-[var(--gt-border)] bg-black/20'
+          : 'border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10'
+      }`}
+    >
+      <div className="mb-1.5 flex items-center gap-2 text-[12px] font-semibold text-zinc-100">
+        {trusted ? (
+          <ShieldCheck size={14} strokeWidth={2} className="text-[var(--gt-green)]" />
+        ) : (
+          <ShieldAlert size={14} strokeWidth={2} className="text-[var(--gt-red)]" />
+        )}
+        {trusted ? 'Repo widgets trusted' : 'This repo wants to run commands'}
+      </div>
+      <p className="mb-2 text-[11px] leading-relaxed text-zinc-400">
+        {trusted
+          ? 'These repo-defined commands run on their poll interval. Revoke to turn them back off.'
+          : 'Defined in this repo’s .TerMinal/widgets.json / tabs.json. They stay off until you approve them — review each one first.'}
+      </p>
+      <ul className="mb-2.5 space-y-1">
+        {commands.map((c) => (
+          <li
+            key={c}
+            className="overflow-x-auto whitespace-pre rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-zinc-300"
+          >
+            {c}
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={() =>
+          (trusted ? window.gt.repoTrust.revoke() : window.gt.repoTrust.approve()).then(refresh)
+        }
+        className="h-7 rounded-md border border-[var(--gt-border)] bg-black/30 px-3 text-[11.5px] text-zinc-200 hover:border-[var(--gt-accent)]/60"
+      >
+        {trusted
+          ? 'Revoke trust'
+          : `Approve ${commands.length} command${commands.length > 1 ? 's' : ''}`}
+      </button>
+    </div>
+  )
+}
 
 // The "plugins" panel. No remote registry — entries are code
 // folders in the repo plus command widgets (global / per-repo). Toggling just
@@ -53,6 +115,8 @@ export function PluginDrawer({
           command widget in{' '}
           <code className="rounded bg-black/40 px-1 text-zinc-400">.TerMinal/widgets.json</code>.
         </p>
+
+        <RepoTrustPanel />
 
         <div className="space-y-2">
           {plugins.map((p, i) => {

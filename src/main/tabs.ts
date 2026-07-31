@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { repoRoot } from './widgets'
+import { isHttpUrl } from './url-safety'
 
 // ---------------------------------------------------------------------------
 // Custom tabs — full-screen repo-specific views, the tab analogue of
@@ -16,8 +17,11 @@ import { repoRoot } from './widgets'
 //              session's cwd)
 //
 // Security: command tabs run arbitrary shell in the session cwd; url tabs load
-// arbitrary pages. Per-repo tabs come from the repo you attach to — same trust
-// model as its npm scripts / widgets. Only attach to repos you trust.
+// a page in the app window. Per-repo tabs come from whatever repo you attach
+// to, so they are INERT until you approve that repo for that exact command set
+// (src/main/repo-trust.ts) — main refuses to run an unapproved repo command and
+// the tab renders an explanatory placeholder instead. Global tabs are your own
+// file and are unaffected. url values are validated to http(s) below.
 // ---------------------------------------------------------------------------
 
 export type CustomTab = {
@@ -38,28 +42,37 @@ function stableKey(value: string): string {
   return (hash >>> 0).toString(36)
 }
 
+/** Parse + validate a tabs.json payload. Exported so the validation rules are
+ *  testable without touching the real config on disk. */
+export function parseTabs(raw: unknown, source: 'global' | 'repo', scope = ''): CustomTab[] {
+  if (!Array.isArray(raw)) return []
+  const prefix = source === 'repo' && scope ? `${source}:${stableKey(scope)}` : source
+  return raw
+    .filter(
+      (t) =>
+        t &&
+        typeof t.title === 'string' &&
+        // A url tab's value becomes an iframe src in the app window, so it is
+        // validated here in main rather than trusted from the config file:
+        // `javascript:`/`data:`/`file:` there would be running in (or reading
+        // from) the origin that owns `window.gt`. Command tabs are unaffected.
+        (isHttpUrl(t.url) || typeof t.command === 'string'),
+    )
+    .map((t, i) => ({
+      id: `custom:${prefix}:${t.id || t.title.toLowerCase().replace(/\s+/g, '-')}-${i}`,
+      title: String(t.title),
+      icon: typeof t.icon === 'string' ? t.icon : undefined,
+      source,
+      url: isHttpUrl(t.url) ? String(t.url) : undefined,
+      command: typeof t.command === 'string' ? String(t.command) : undefined,
+      intervalMs: Number(t.intervalMs) > 0 ? Number(t.intervalMs) : undefined,
+    }))
+}
+
 function loadFile(path: string, source: 'global' | 'repo', scope = ''): CustomTab[] {
   if (!existsSync(path)) return []
   try {
-    const arr = JSON.parse(readFileSync(path, 'utf8'))
-    if (!Array.isArray(arr)) return []
-    const prefix = source === 'repo' && scope ? `${source}:${stableKey(scope)}` : source
-    return arr
-      .filter(
-        (t) =>
-          t &&
-          typeof t.title === 'string' &&
-          (typeof t.url === 'string' || typeof t.command === 'string'),
-      )
-      .map((t, i) => ({
-        id: `custom:${prefix}:${t.id || t.title.toLowerCase().replace(/\s+/g, '-')}-${i}`,
-        title: String(t.title),
-        icon: typeof t.icon === 'string' ? t.icon : undefined,
-        source,
-        url: typeof t.url === 'string' ? String(t.url) : undefined,
-        command: typeof t.command === 'string' ? String(t.command) : undefined,
-        intervalMs: Number(t.intervalMs) > 0 ? Number(t.intervalMs) : undefined,
-      }))
+    return parseTabs(JSON.parse(readFileSync(path, 'utf8')), source, scope)
   } catch {
     return []
   }

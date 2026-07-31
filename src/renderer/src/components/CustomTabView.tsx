@@ -29,23 +29,30 @@ const iconFor = (name?: string): LucideIcon =>
 
 const IFRAME = 'h-full w-full border-0 bg-white'
 
+// `allow-scripts` + `allow-same-origin` together is the documented sandbox
+// escape: the framed page can reach its own <iframe> element and drop the
+// sandbox attribute, inside the window that owns `window.gt`. The sibling
+// CommandTab already omits it. The URL is validated to http(s) in
+// src/main/tabs.ts, so the frame is always a real remote origin.
 function UrlTab({ url }: { url: string }) {
   return (
     <iframe
       src={url}
       title={url}
       className={IFRAME}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      sandbox="allow-scripts allow-forms allow-popups"
     />
   )
 }
 
 function CommandTab({
-  command,
+  id,
+  title,
   cwd,
   intervalMs,
 }: {
-  command: string
+  id: string
+  title: string
   cwd: string
   intervalMs?: number
 }) {
@@ -54,7 +61,8 @@ function CommandTab({
   useEffect(() => {
     let alive = true
     const run = async () => {
-      const res = await window.gt.runTabView(command, cwd)
+      // The id, not the command — main resolves it against this cwd's tab set.
+      const res = await window.gt.runTabView(id, cwd)
       if (!alive) return
       if (res.ok) {
         setHtml(res.html)
@@ -74,7 +82,7 @@ function CommandTab({
     return () => {
       alive = false
     }
-  }, [command, cwd, intervalMs])
+  }, [id, cwd, intervalMs])
 
   if (error) {
     return (
@@ -95,17 +103,35 @@ function CommandTab({
   return (
     <iframe
       srcDoc={html}
-      title={command}
+      title={title}
       className={IFRAME}
       sandbox="allow-scripts allow-popups allow-forms"
     />
   )
 }
 
+// A repo-defined tab whose repo hasn't been approved renders nothing — no
+// iframe, no command. See src/main/repo-trust.ts; main refuses the run too.
+function UntrustedTab({ tab }: { tab: CustomTab }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 bg-[var(--gt-bg)] p-6 text-center">
+      <div className="text-sm text-zinc-300">“{tab.title}” is defined by this repo</div>
+      <p className="max-w-md text-[11.5px] leading-relaxed text-zinc-500">
+        Repo-defined tabs stay off until you review what they run. Open the Plugins drawer to see
+        the literal commands and approve this repo.
+      </p>
+      <code className="max-w-full overflow-x-auto rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-zinc-400">
+        {tab.command || tab.url}
+      </code>
+    </div>
+  )
+}
+
 export function CustomTabView({ tab, ctx }: { tab: CustomTab; ctx: TabContext }) {
+  if (!tab.trusted) return <UntrustedTab tab={tab} />
   if (tab.url) return <UrlTab url={tab.url} />
   if (tab.command)
-    return <CommandTab command={tab.command} cwd={ctx.cwd} intervalMs={tab.intervalMs} />
+    return <CommandTab id={tab.id} title={tab.title} cwd={ctx.cwd} intervalMs={tab.intervalMs} />
   return (
     <div className="flex h-full items-center justify-center text-xs text-zinc-500">
       Empty custom tab (no url or command)

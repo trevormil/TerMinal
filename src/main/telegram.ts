@@ -1,5 +1,12 @@
 import { execFile } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+} from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -41,6 +48,8 @@ import { readSchedules } from './schedules'
 import { listDisabled, setDisabled, setAllDisabled } from './agents-disabled'
 import { listMrs, getMr } from './mrs'
 import { readCronRuns } from './cron-runs'
+import { runUpdateBatch } from './telegram-batch'
+import { readFileTail } from './fs-tail'
 import { readActivity } from './events'
 // Static, not lazy `require`: main bundles to ESM, where the createRequire shim
 // resolves relative to the emitted bundle and `require('./bg-tasks')` throws
@@ -95,17 +104,39 @@ const nativeConfigured = () => {
   const t = readSettings().telegram
   return !!(t.botToken && t.chatId)
 }
-const readOffset = (): number => {
+/** The ack cursor, or null when there is none/it is unreadable — see below.
+ *  Callers must decide what "no cursor" means rather than defaulting to 0. */
+const readOffset = (): number | null => {
   try {
-    return Number(readFileSync(OFFSET_FILE, 'utf8')) || 0
+    // Offset 0 means "give me everything Telegram still has queued", so a
+    // corrupt file must NOT silently become 0 — that would replay the backlog
+    // as live commands. `Number('')` is 0, and `Number('abc')` is NaN which the
+    // old `|| 0` also turned into 0, so both cases hit that path. Returning 0
+    // here is still the only thing we can do (there is no cursor to resume
+    // from), but the caller is told, and primes a fresh cursor instead.
+    const raw = readFileSync(OFFSET_FILE, 'utf8').trim()
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
   } catch {
-    return 0
+    return null
   }
 }
+/**
+ * The cursor to send to getUpdates. A missing/corrupt cursor resolves to 0
+ * ("everything queued") ONLY because Telegram offers nothing better — so the
+ * poll cycle immediately commits the new cursor per item, and
+ * `markTelegramControlEnabled` drains the backlog before any of it is executed.
+ */
+const readOffsetOrPrime = (): number => readOffset() ?? 0
 const writeOffset = (n: number) => {
   try {
     mkdirSync(dirname(OFFSET_FILE), { recursive: true })
-    writeFileSync(OFFSET_FILE, String(n))
+    // Atomic: a torn write here is what produces the truncated file above, and
+    // a rename is atomic on the same filesystem.
+    const tmp = `${OFFSET_FILE}.${process.pid}.tmp`
+    writeFileSync(tmp, String(n))
+    renameSync(tmp, OFFSET_FILE)
   } catch {
     /* best effort */
   }
@@ -201,7 +232,7 @@ export async function markTelegramControlEnabled(on: boolean, announce = true) {
     // sent while control was off are not executed on enable.
     const t = readSettings().telegram
     try {
-      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), {
+      const res = await fetch(getUpdatesUrl(t.botToken, readOffsetOrPrime()), {
         signal: AbortSignal.timeout(15000),
       })
       if (res.ok) {
@@ -807,6 +838,9 @@ function cmdResetState(args: string[]) {
 
 let lastRunIdsTail: string[] = [] // numeric-index → runId for /tail <n>
 
+/** Enough to always contain the 30 lines /tail shows, without reading the log. */
+const TAIL_BYTES = 64 * 1024
+
 function tailRun(runIdOrToken: string) {
   // Accept full id, an "n" from the last /runs/listing, or a prefix.
   let runId = runIdOrToken
@@ -819,7 +853,11 @@ function tailRun(runIdOrToken: string) {
   let text = ''
   if (existsSync(cronLog)) {
     try {
-      text = readFileSync(cronLog, 'utf8')
+      // Only the last 30 lines are ever shown, but run logs reach hundreds of
+      // MB — reading the whole file to slice its tail blocked the main process
+      // for the size of the log. 64 KB comfortably covers 30 lines of any
+      // realistic output.
+      text = readFileTail(cronLog, TAIL_BYTES).text
     } catch {
       /* fall through to in-process */
     }
@@ -1429,17 +1467,43 @@ export async function pollTelegramOnce() {
     polling = true
     const t = readSettings().telegram
     try {
-      const res = await fetch(getUpdatesUrl(t.botToken, readOffset()), {
+      const res = await fetch(getUpdatesUrl(t.botToken, readOffsetOrPrime()), {
         signal: AbortSignal.timeout(15000),
       })
       if (res.ok) {
         const { messages, callbacks, nextOffset } = parseUpdates(await res.json(), t.chatId)
-        if (nextOffset) writeOffset(nextOffset)
-        for (const m of messages) await handle(m.text)
-        for (const c of callbacks) await dispatchCallback(c.data, c.queryId)
+        // The cursor moves per item inside runUpdateBatch (see the comment
+        // there): committing it up front dropped the rest of a batch on a throw,
+        // committing it only at the end replayed the batch on a crash or quit —
+        // and a replayed Telegram command launches a duplicate agent run.
+        let committed = 0
+        try {
+          await runUpdateBatch(
+            { messages, callbacks },
+            {
+              handleMessage: (text) => handle(text),
+              handleCallback: (data, queryId) => dispatchCallback(data, queryId),
+              onError: (item, err) => {
+                console.error(`[gt] telegram command failed: ${item}: ${err.message}`)
+                reply(`⛔ ${item.slice(0, 60)} failed: ${err.message}`)
+              },
+              commitOffset: (offset) => {
+                if (offset <= committed) return
+                committed = offset
+                writeOffset(offset)
+              },
+            },
+          )
+        } finally {
+          // Updates from OTHER chats carry no message/callback we act on, so
+          // nothing commits their ids. Advance past them here or we re-fetch
+          // them forever.
+          if (nextOffset > committed) writeOffset(nextOffset)
+        }
       }
-    } catch {
-      /* network — retry next tick */
+    } catch (e) {
+      // Was a bare `catch {}` — a network blip and a real bug looked identical.
+      console.error(`[gt] telegram poll failed: ${(e as Error).message}`)
     } finally {
       polling = false
     }
@@ -1448,14 +1512,25 @@ export async function pollTelegramOnce() {
   // legacy script fallback
   if (!existsSync(POLL)) return
   polling = true
-  execFile(POLL, { timeout: 15_000, encoding: 'utf8' }, (err, stdout) => {
+  try {
+    execFile(POLL, { timeout: 15_000, encoding: 'utf8' }, (err, stdout) => {
+      polling = false
+      if (err || !stdout) return
+      for (const line of stdout.split('\n')) {
+        const cmd = parsePollLine(line, enabledAt)
+        // Per-line, so one bad line doesn't drop the rest of the batch.
+        if (cmd)
+          handle(cmd).catch((e) =>
+            console.error(`[gt] telegram command failed: ${cmd}: ${(e as Error).message}`),
+          )
+      }
+    })
+  } catch (e) {
+    // execFile throws SYNCHRONOUSLY on a bad argument/path. Without this the
+    // `polling` latch stayed true forever and the bot went dark until restart.
     polling = false
-    if (err || !stdout) return
-    for (const line of stdout.split('\n')) {
-      const cmd = parsePollLine(line, enabledAt)
-      if (cmd) handle(cmd).catch(() => {})
-    }
-  })
+    console.error(`[gt] telegram legacy poll failed to spawn: ${(e as Error).message}`)
+  }
 }
 
 /** Settings "Test" button: send a one-off confirmation, surfacing API errors. */
