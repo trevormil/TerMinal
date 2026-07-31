@@ -188,8 +188,10 @@ export async function stackExtensionInstalled(repoRoot: string): Promise<boolean
 /**
  * Merge a stack up to and including `iid`.
  *
- * Never called by an agent — this is behind the app's human merge gate and
- * ticket #0079's severity gate, same as the single-PR merge button.
+ * Never called by an agent — this is behind the app's human merge gate, same as
+ * the single-PR merge button. The CLAUDE.md §8 bar applies to every layer this
+ * cascades through and is applied by the human, who reads each layer's
+ * readiness badge in the stack map before confirming.
  */
 export async function mergeStack(
   repoRoot: string,

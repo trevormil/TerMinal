@@ -253,3 +253,28 @@ describe('mergeReadyChip', () => {
     ])
   })
 })
+
+describe('stack cascade readiness (ticket #0095 × #0079)', () => {
+  // "Merge stack" cascades through every layer at or below the requested one,
+  // so the human confirming it has to be able to read the whole cascade. The
+  // stack map shows each layer's badge from LIST data, which is exactly why a
+  // lower layer can never be shown as merge-ready: its findings are not loaded.
+  test('a lower layer is never shown as ready, however clean its review looks', () => {
+    const chip = mergeReadyChip(
+      evaluateMergeGate({ review: review(), findings: FINDINGS_UNVERIFIED }),
+    )
+    expect(chip.state).not.toBe('ready')
+    expect(chip.label).toMatch(/not loaded/i)
+  })
+
+  test('a lower layer with a bad verdict says so, rather than hiding behind the unloaded findings', () => {
+    const chip = mergeReadyChip(
+      evaluateMergeGate({
+        review: review({ verdict: 'request-changes' }),
+        findings: FINDINGS_UNVERIFIED,
+      }),
+    )
+    expect(chip.state).toBe('not-ready')
+    expect(chip.label).toBe('Not ready · unapproved')
+  })
+})
