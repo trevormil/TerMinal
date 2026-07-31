@@ -22,7 +22,7 @@ import { join, basename } from 'node:path'
 import { readFileTail } from './fs-tail'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { spawn as cpSpawn, execSync } from 'node:child_process'
+import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 import { gateSpawn } from './budgets'
@@ -207,6 +207,14 @@ export type CreateLoopInput = {
   maxIterations?: number
 }
 
+// argv array, no shell. The previous version built a shell string and quoted the
+// branch and worktree path with JSON.stringify — which is JSON escaping, NOT
+// shell escaping: JSON double quotes leave `$VAR`, backticks and `$(...)`  live,
+// so a repo or goal producing such a path got it EXPANDED by the shell.
+// agents.ts already does this correctly with argv arrays; match it.
+const git = (repoRoot: string, args: string[]) =>
+  execFileSync('git', ['-C', repoRoot, ...args], { stdio: 'pipe' })
+
 function makeWorktree(repoRoot: string, id: string): { worktree: string; branch: string } {
   const repo = basename(repoRoot)
   const branch = `loop/${id}`
@@ -215,16 +223,12 @@ function makeWorktree(repoRoot: string, id: string): { worktree: string; branch:
   mkdirSync(wtParent, { recursive: true })
   let base = 'HEAD'
   try {
-    execSync('git rev-parse --verify --quiet main', { cwd: repoRoot, stdio: 'pipe' })
+    git(repoRoot, ['rev-parse', '--verify', '--quiet', 'main'])
     base = 'main'
   } catch {
     /* use HEAD */
   }
-  if (!existsSync(worktree))
-    execSync(`git worktree add -B ${JSON.stringify(branch)} ${JSON.stringify(worktree)} ${base}`, {
-      cwd: repoRoot,
-      stdio: 'pipe',
-    })
+  if (!existsSync(worktree)) git(repoRoot, ['worktree', 'add', '-B', branch, worktree, base])
   return { worktree, branch }
 }
 
@@ -281,10 +285,7 @@ export function restartLoop(id: string): LoopRecord | { error: string } {
   if (!rec) return { error: 'unknown loop' }
   // rule V: nuke the worktree, keep the contract.
   try {
-    execSync(`git worktree remove --force ${JSON.stringify(rec.worktree)}`, {
-      cwd: rec.repoRoot,
-      stdio: 'pipe',
-    })
+    git(rec.repoRoot, ['worktree', 'remove', '--force', rec.worktree])
   } catch {
     /* may already be gone */
   }

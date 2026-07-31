@@ -917,7 +917,23 @@ export function loadPersistedRuns() {
   }
 }
 
+// `defaultBase` costs up to three git invocations, and runSpec called it TWICE
+// per run (header line + the worktree add) with no memoisation — driven
+// sequentially up to 100x by runTicketLanes, that is up to 600 synchronous git
+// processes on the main thread for a single fan-out. The default branch of a
+// repo does not change during a fan-out, so cache it briefly.
+const DEFAULT_BASE_TTL_MS = 60_000
+const defaultBaseCache = new Map<string, { base: string; at: number }>()
+
 function defaultBase(repoRoot: string): string {
+  const hit = defaultBaseCache.get(repoRoot)
+  if (hit && Date.now() - hit.at < DEFAULT_BASE_TTL_MS) return hit.base
+  const base = computeDefaultBase(repoRoot)
+  defaultBaseCache.set(repoRoot, { base, at: Date.now() })
+  return base
+}
+
+function computeDefaultBase(repoRoot: string): string {
   const git = (args: string[]) =>
     execFileSync('git', ['-C', repoRoot, ...args], {
       encoding: 'utf8',

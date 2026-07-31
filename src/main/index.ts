@@ -25,7 +25,7 @@ import {
   openSync,
   mkdirSync,
 } from 'node:fs'
-import { spawn as cpSpawn, execFileSync } from 'node:child_process'
+import { spawn as cpSpawn, execFile, execFileSync } from 'node:child_process'
 import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
@@ -188,7 +188,12 @@ import {
   type RemotePlatform,
   type DaemonCfg,
 } from './settings'
-import { listMonitorsWithStatus, writeMonitors, validateMonitors } from './monitors'
+import {
+  listMonitorsWithStatus,
+  writeMonitors,
+  validateMonitors,
+  runMonitorProbe,
+} from './monitors'
 import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
@@ -293,6 +298,7 @@ import {
   finalizeSessionRun,
   flushAllSessionRunLogs,
   readCronRuns,
+  getCronRun,
   readCronRunLog,
   cronRunLogPath,
   readSessionRunLog,
@@ -1089,6 +1095,83 @@ function pollActivity() {
   for (const k of turnWatch.keys()) if (!sessions.has(k)) turnWatch.delete(k)
 }
 
+// One-shot latch for installBinariesAndReconcile.
+let bootstrapped = false
+
+// Once-per-launch: install the headless runner / CLI / MCP server / monitor
+// daemon at their stable paths, register MCP with Claude Code + Codex, and
+// reconcile launchd against schedules.json.
+//
+// `createWindow` is also called from the macOS `activate` handler (dock click
+// with no window open), and all of this used to re-run on every re-activate:
+// four binaries rewritten to disk, MCP re-registered in ~/.claude.json and
+// ~/.codex/config.toml, plus a full SYNCHRONOUS launchd reconcile — a
+// multi-second freeze on a gesture that should just show a window.
+function installBinariesAndReconcile() {
+  // Real cron: install the headless runner at its stable path, then reconcile
+  // launchd ↔ schedules.json (loads enabled jobs, removes any orphans). Jobs
+  // fire via launchd even when the app is closed — no in-app ticker.
+  const runnerSrc = runnerSrcPath()
+  installRunner(runnerSrc)
+  const cliSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-cli')
+    : join(moduleDir, '../../bin/terminal-cli')
+  installCli(cliSrc)
+  const mcpSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-mcp-server')
+    : join(moduleDir, '../../bin/terminal-mcp-server')
+  installMcpServer(mcpSrc)
+  // The Monitoring daemon: refresh the runner + load its single launchd job so
+  // checks run on their own process even when the app is closed.
+  const monitorSrc = app.isPackaged
+    ? join(process.resourcesPath, 'terminal-monitor')
+    : join(moduleDir, '../../bin/terminal-monitor')
+  installMonitorDaemon(monitorSrc)
+  syncMonitorDaemon()
+  // Bundle the OpenRouter (or-agent) tier so a fresh install runs OpenRouter
+  // agents without any global ~/.claude dotfiles.
+  const orBinDir = app.isPackaged ? process.resourcesPath : join(moduleDir, '../../bin')
+  const orMrDir = app.isPackaged
+    ? join(process.resourcesPath, 'model-routing')
+    : join(moduleDir, '../../bin/model-routing')
+  installOrTier(orBinDir, orMrDir)
+  // Status-line shim: lets the Plan Usage + Context widgets read rate_limits /
+  // context_window_size from a per-session cache instead of the throttled API.
+  installStatuslineShim()
+  // Once the MCP binary is on disk, register it with Claude Code (~/.claude.json)
+  // and Codex CLI (~/.codex/config.toml) so every spawned agent — TerMinal's own
+  // or ad-hoc — discovers the harness tools natively without per-repo config.
+  // Idempotent: stale registrations are updated to the current bun path; no-op
+  // when already correct.
+  try {
+    const r = registerMcpEverywhere()
+    if (!r.claude.ok)
+      console.warn(`mcp register claude: ${r.claude.action} (${r.claude.error || ''})`)
+    if (!r.codex.ok) console.warn(`mcp register codex: ${r.codex.action} (${r.codex.error || ''})`)
+  } catch (e) {
+    console.warn(`mcp register failed: ${(e as Error).message}`)
+  }
+  try {
+    const rec = reconcileSchedules()
+    // Host (systemd) schedules reconcile over SSH — fire-and-forget so an
+    // unreachable host never delays startup (ADR-0002). Local launchd above is sync.
+    void reconcileHosts(readSchedules()).catch(() => {})
+    if (rec.failed.length) {
+      // A schedule that didn't load into launchd never fires. Don't swallow it:
+      // log every failure and surface one Activity event so it's visible.
+      for (const f of rec.failed)
+        console.warn(`schedule ${f.id} failed to load into launchd: ${f.error}`)
+      emitActivity({
+        kind: 'check',
+        title: `${rec.failed.length} schedule${rec.failed.length > 1 ? 's' : ''} failed to load into launchd`,
+        detail: `Won't fire until reconciled · ${rec.failed.map((f) => f.id).join(', ')}`,
+      })
+    }
+  } catch {
+    /* launchd unavailable — schedules still listable */
+  }
+}
+
 /** The one document the app window is ever allowed to be: dev server or the
  *  packaged renderer bundle. Everything else is remote content. */
 function appDocumentUrl(): string {
@@ -1196,72 +1279,20 @@ function createWindow() {
 
   // push activity events to the renderer; poll all sessions for turn completion
   onActivity((ev) => send('activity:event', ev))
+  // `window-all-closed` clears watchTimer along with the others, but unlike
+  // activityTimer/telegramTimer nothing below re-arms it — so after a dock
+  // re-activate the transcript-tick fast path stayed dead until the user
+  // happened to switch sessions. watchSession() is idempotent (it clears any
+  // existing interval first).
+  watchSession()
   startActivityTail() // surface externally-appended events (skills) live
   onAgentEvent((channel, payload) => send(channel, payload))
   onDigestEvent((channel, payload) => send(channel, payload))
   loadPersistedRuns() // restore past agent runs
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
-  // Real cron: install the headless runner at its stable path, then reconcile
-  // launchd ↔ schedules.json (loads enabled jobs, removes any orphans). Jobs
-  // fire via launchd even when the app is closed — no in-app ticker.
-  const runnerSrc = runnerSrcPath()
-  installRunner(runnerSrc)
-  const cliSrc = app.isPackaged
-    ? join(process.resourcesPath, 'terminal-cli')
-    : join(moduleDir, '../../bin/terminal-cli')
-  installCli(cliSrc)
-  const mcpSrc = app.isPackaged
-    ? join(process.resourcesPath, 'terminal-mcp-server')
-    : join(moduleDir, '../../bin/terminal-mcp-server')
-  installMcpServer(mcpSrc)
-  // The Monitoring daemon: refresh the runner + load its single launchd job so
-  // checks run on their own process even when the app is closed.
-  const monitorSrc = app.isPackaged
-    ? join(process.resourcesPath, 'terminal-monitor')
-    : join(moduleDir, '../../bin/terminal-monitor')
-  installMonitorDaemon(monitorSrc)
-  syncMonitorDaemon()
-  // Bundle the OpenRouter (or-agent) tier so a fresh install runs OpenRouter
-  // agents without any global ~/.claude dotfiles.
-  const orBinDir = app.isPackaged ? process.resourcesPath : join(moduleDir, '../../bin')
-  const orMrDir = app.isPackaged
-    ? join(process.resourcesPath, 'model-routing')
-    : join(moduleDir, '../../bin/model-routing')
-  installOrTier(orBinDir, orMrDir)
-  // Status-line shim: lets the Plan Usage + Context widgets read rate_limits /
-  // context_window_size from a per-session cache instead of the throttled API.
-  installStatuslineShim()
-  // Once the MCP binary is on disk, register it with Claude Code (~/.claude.json)
-  // and Codex CLI (~/.codex/config.toml) so every spawned agent — TerMinal's own
-  // or ad-hoc — discovers the harness tools natively without per-repo config.
-  // Idempotent: stale registrations are updated to the current bun path; no-op
-  // when already correct.
-  try {
-    const r = registerMcpEverywhere()
-    if (!r.claude.ok)
-      console.warn(`mcp register claude: ${r.claude.action} (${r.claude.error || ''})`)
-    if (!r.codex.ok) console.warn(`mcp register codex: ${r.codex.action} (${r.codex.error || ''})`)
-  } catch (e) {
-    console.warn(`mcp register failed: ${(e as Error).message}`)
-  }
-  try {
-    const rec = reconcileSchedules()
-    // Host (systemd) schedules reconcile over SSH — fire-and-forget so an
-    // unreachable host never delays startup (ADR-0002). Local launchd above is sync.
-    void reconcileHosts(readSchedules()).catch(() => {})
-    if (rec.failed.length) {
-      // A schedule that didn't load into launchd never fires. Don't swallow it:
-      // log every failure and surface one Activity event so it's visible.
-      for (const f of rec.failed)
-        console.warn(`schedule ${f.id} failed to load into launchd: ${f.error}`)
-      emitActivity({
-        kind: 'check',
-        title: `${rec.failed.length} schedule${rec.failed.length > 1 ? 's' : ''} failed to load into launchd`,
-        detail: `Won't fire until reconciled · ${rec.failed.map((f) => f.id).join(', ')}`,
-      })
-    }
-  } catch {
-    /* launchd unavailable — schedules still listable */
+  if (!bootstrapped) {
+    bootstrapped = true
+    installBinariesAndReconcile()
   }
 
   // Telegram AFK control: enumerate run targets from open sessions, prime the
@@ -2927,7 +2958,7 @@ ipcMain.handle('runs:cancel-cron', async (_e, id: string, hostId?: string) => {
       .then((ok) => (ok ? { ok: true } : { ok: false, error: 'host could not cancel the run' }))
       .catch((e) => ({ ok: false, error: String((e as Error).message || e) }))
   }
-  const rec = readCronRuns(undefined, 20000).find((r) => r.id === id)
+  const rec = getCronRun(id)
   if (!rec) return { ok: false, error: 'run not found' }
   if (rec.status !== 'running') return { ok: false, error: 'run is not running' }
   if (!rec.runnerPid)
@@ -3050,15 +3081,12 @@ ipcMain.handle('ci:list', (_e, repoRoot: string, limit?: number) =>
 )
 ipcMain.handle('ci:jobs', (_e, repoRoot: string, runId: string) => listCiJobs(repoRoot, runId))
 ipcMain.handle('ci:log', (_e, repoRoot: string, jobId: string) => fetchCiLog(repoRoot, jobId))
-ipcMain.handle('monitors:run', (_e, id: string) => {
-  try {
-    execFileSync(join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-monitor'), ['run', id], {
-      stdio: 'ignore',
-      timeout: 40000,
-    })
-  } catch {
-    /* surfaced via the state file */
-  }
+// Async execFile, NOT execFileSync: this ran a 40-second-timeout probe inside an
+// IPC handler, so one "Run check" click on a hung endpoint froze the entire main
+// process — every window, every session, every timer — for up to 40s. The worst
+// remaining blocker in the app.
+ipcMain.handle('monitors:run', async (_e, id: string) => {
+  await runMonitorProbe(id) // never rejects; failures surface via the state file
   return listMonitorsWithStatus()
 })
 // Fan out open HITL items from every configured host (ADR-0002 #14), stamped with

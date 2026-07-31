@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { writeJsonAtomic } from './atomic-write'
 import { join } from 'node:path'
@@ -118,6 +119,45 @@ export const DEFAULT_NOTIFY: MonitorNotify = {
   renotifyAfterSec: 3600,
   dailyDigest: false,
   digestHour: 9,
+}
+
+// ---- probing (the daemon, not this process) --------------------------------
+
+/** Where installMonitorDaemon puts the runner. */
+export const MONITOR_BIN = join(CFG, 'bin', 'terminal-monitor')
+
+export type ProbeResult = { ok: boolean; error?: string }
+
+/**
+ * Ask the DAEMON to run one check, out of process and off the event loop.
+ *
+ * This was `execFileSync(..., { timeout: 40000 })` inline in the `monitors:run`
+ * IPC handler, so a single "Run check" click on a hung endpoint froze the whole
+ * main process — every window, session and timer — for up to 40 seconds. It
+ * lives here, with injectable bin/timeout, so the non-blocking property is
+ * actually testable instead of being asserted about `node:child_process` in the
+ * abstract.
+ *
+ * Never rejects: a failing probe is reported through the monitor's state file,
+ * exactly as before.
+ */
+export function runMonitorProbe(
+  id: string,
+  opts: { bin?: string; timeoutMs?: number } = {},
+): Promise<ProbeResult> {
+  return new Promise((resolve) => {
+    execFile(
+      opts.bin ?? MONITOR_BIN,
+      ['run', id],
+      {
+        timeout: opts.timeoutMs ?? 40_000,
+        // The old call used stdio:'ignore'; execFile buffers instead, and the
+        // 1 MB default would SIGTERM a chatty command monitor with ENOBUFS.
+        maxBuffer: 8 * 1024 * 1024,
+      },
+      (err) => resolve(err ? { ok: false, error: err.message } : { ok: true }),
+    )
+  })
 }
 
 // ---- validation ------------------------------------------------------------

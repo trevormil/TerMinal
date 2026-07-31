@@ -41,6 +41,7 @@ import { readSchedules } from './schedules'
 import { listDisabled, setDisabled, setAllDisabled } from './agents-disabled'
 import { listMrs, getMr } from './mrs'
 import { readCronRuns } from './cron-runs'
+import { readFileTail } from './fs-tail'
 import { readActivity } from './events'
 // Static, not lazy `require`: main bundles to ESM, where the createRequire shim
 // resolves relative to the emitted bundle and `require('./bg-tasks')` throws
@@ -807,6 +808,9 @@ function cmdResetState(args: string[]) {
 
 let lastRunIdsTail: string[] = [] // numeric-index → runId for /tail <n>
 
+/** Enough to always contain the 30 lines /tail shows, without reading the log. */
+const TAIL_BYTES = 64 * 1024
+
 function tailRun(runIdOrToken: string) {
   // Accept full id, an "n" from the last /runs/listing, or a prefix.
   let runId = runIdOrToken
@@ -819,7 +823,11 @@ function tailRun(runIdOrToken: string) {
   let text = ''
   if (existsSync(cronLog)) {
     try {
-      text = readFileSync(cronLog, 'utf8')
+      // Only the last 30 lines are ever shown, but run logs reach hundreds of
+      // MB — reading the whole file to slice its tail blocked the main process
+      // for the size of the log. 64 KB comfortably covers 30 lines of any
+      // realistic output.
+      text = readFileTail(cronLog, TAIL_BYTES).text
     } catch {
       /* fall through to in-process */
     }
