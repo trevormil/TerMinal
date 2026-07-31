@@ -68,7 +68,7 @@ describe('consecutiveFailures', () => {
     expect(consecutiveFailures(log, 'webhook')).toBe(2)
   })
 
-  test('another channel\'s traffic does not reset the streak', () => {
+  test("another channel's traffic does not reset the streak", () => {
     const log = [
       rec({ channel: 'telegram', ok: false }),
       rec({ channel: 'webhook', ok: true }),

@@ -129,3 +129,48 @@ describe('delivery recorder', () => {
     expect(out).toEqual([])
   })
 })
+
+describe('HTTP-level delivery failures', () => {
+  const httpChannel = (id: NotifyChannel['id'], status: number): NotifyChannel => ({
+    id,
+    enabled: () => true,
+    // Mirrors the real channels: fetch resolves, assertDelivered decides.
+    send: async () => {
+      const res = new Response(status === 200 ? 'ok' : 'Unauthorized', { status })
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+    },
+  })
+
+  test('a revoked token (401) is recorded as a FAILURE, not a success', async () => {
+    // The exact failure the delivery log was built to catch. `fetch` only
+    // rejects on transport errors, so without an explicit res.ok check a 401
+    // resolved and logged ok:true.
+    const out: DeliveryOutcome[] = []
+    setDeliveryRecorder((o) => out.push(o))
+    dispatchAlert([httpChannel('telegram', 401)], blockedEv())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(out).toHaveLength(1)
+    expect(out[0].ok).toBe(false)
+    expect(out[0].error).toContain('401')
+  })
+
+  test('a dead webhook (404) is recorded as a failure with its status', async () => {
+    const out: DeliveryOutcome[] = []
+    setDeliveryRecorder((o) => out.push(o))
+    dispatchAlert([httpChannel('webhook', 404)], blockedEv())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(out[0].ok).toBe(false)
+    expect(out[0].error).toContain('404')
+  })
+
+  test('a 200 still records a success', async () => {
+    const out: DeliveryOutcome[] = []
+    setDeliveryRecorder((o) => out.push(o))
+    dispatchAlert([httpChannel('webhook', 200)], blockedEv())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(out[0].ok).toBe(true)
+  })
+})

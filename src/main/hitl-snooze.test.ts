@@ -104,3 +104,15 @@ describe('snoozePresets', () => {
     for (const p of snoozePresets(NOW)) expect(p.until).toBeGreaterThan(NOW)
   })
 })
+
+describe('preset freshness', () => {
+  test('presets are relative to the instant they are computed', () => {
+    // The bug this guards: fetched once at mount, "1 hour" is an absolute
+    // instant that drifts into the past on a long-running window, and
+    // setSnooze treats a past instant as un-snooze — a silent no-op.
+    const early = snoozePresets(NOW).find((p) => p.id === '1h')!
+    const later = snoozePresets(NOW + 5 * 3_600_000).find((p) => p.id === '1h')!
+    expect(later.until).toBeGreaterThan(early.until)
+    expect(early.until).toBeLessThan(NOW + 5 * 3_600_000)
+  })
+})
