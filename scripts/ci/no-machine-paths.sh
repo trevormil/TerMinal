@@ -11,7 +11,12 @@ set -uo pipefail
 
 PATTERN='g[a]untlet|/Users/[t]revormiller'
 
-if git grep -nIE "$PATTERN" -- . ':!vendor'; then
+# -i matters more than it looks: the Capitalized org name is the spelling that
+# appears in prose (READMEs, ADR context, comments), which is exactly where the
+# no-branding rule bites, and CamelCase spellings of a username are a real path
+# form. Nothing above may spell either out — with -i the bracket no longer
+# protects this file from itself.
+if git grep -nIiE "$PATTERN" -- . ':!vendor'; then
   echo "::error::tracked files must not reference a personal machine path or internal program name"
   exit 1
 fi
