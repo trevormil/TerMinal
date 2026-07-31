@@ -260,6 +260,18 @@ export type ObservabilityQueryFilter = {
   model?: string
 }
 
+/** Mirror of MergeOverride in src/main/merge-overrides.ts. */
+export type MergeOverride = {
+  ts: number
+  prIid: number
+  repoRoot: string
+  /** Which legs of the merge-ready bar were unmet, as machine-readable kinds. */
+  legs: ('verdict' | 'tests' | 'findings')[]
+  /** The same legs as shown to the human at the time, for the activity feed. */
+  blockers: string
+  who: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -2141,6 +2153,15 @@ export type GtApi = {
       filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  mergeGate: {
+    override: (input: {
+      prIid: number
+      repoRoot: string
+      legs: MergeOverride['legs']
+      blockers: string
+    }) => Promise<{ ok: boolean; error?: string }>
+    overrides: () => Promise<MergeOverride[]>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
