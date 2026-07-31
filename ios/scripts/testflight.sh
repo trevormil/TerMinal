@@ -20,15 +20,15 @@ for arg in "$@"; do
   esac
 done
 
-[ -f .testflight.env ] || { echo "missing ios/.testflight.env — copy .testflight.env.example and fill it in" >&2; exit 1; }
-set -a; . ./.testflight.env; set +a
+. scripts/env.sh
+gt_load_env .testflight.env || { gt_env_missing .testflight.env; exit 1; }
 : "${ASC_KEY_ID:?set in .testflight.env}"
 : "${ASC_ISSUER_ID:?set in .testflight.env}"
 
 # Apple identifiers come from .xcodegen.env (gitignored) so nothing is baked
 # into the committed project. Same source generate.sh uses.
-[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
-[ -n "${DEVELOPMENT_TEAM:-}" ] || { echo "set DEVELOPMENT_TEAM in ios/.xcodegen.env (see .xcodegen.env.example)" >&2; exit 1; }
+gt_load_env .xcodegen.env || true
+[ -n "${DEVELOPMENT_TEAM:-}" ] || { echo "DEVELOPMENT_TEAM is unset — a TestFlight upload cannot be signed without it." >&2; gt_env_missing .xcodegen.env; exit 1; }
 
 KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8}"
 [ -f "$KEY_PATH" ] || { echo "missing App Store Connect API key at $KEY_PATH" >&2; exit 1; }
@@ -51,8 +51,8 @@ echo "==> generating project"
 "$(dirname "$0")/generate.sh"
 
 echo "==> tests"
-xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemote \
-  -destination 'platform=iOS Simulator,name=iPhone 17' test | tail -5
+gt_logged tests xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemote \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test
 
 rm -rf build
 echo "==> archiving"
