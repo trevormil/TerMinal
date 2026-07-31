@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
+import { configPath } from './config-dir'
 
 // Kill-switch / circuit-breaker registry. A scheduleId in this list is
 // skipped by bin/terminal-cron at run time. Headless runner writes here when
@@ -12,14 +12,9 @@ import { homedir } from 'node:os'
 // JSON reader in bin/terminal-cron keeps working; reasons is a side-car so a
 // dark agent can explain ITSELF in the UI instead of just vanishing.
 
-const DEFAULT_FILE = join(homedir(), '.config', 'TerMinal', 'agents', 'disabled.json')
-
-// Resolved per call (not at module load) so tests can point at a temp dir
-// instead of the operator's real ~/.config/TerMinal.
-export const disabledFile = (): string => {
-  const dir = process.env.TERMINAL_AGENTS_DIR
-  return dir ? join(dir, 'disabled.json') : DEFAULT_FILE
-}
+// Resolved per call (not at module load) through the one config-dir seam, so a
+// test can point this at a temp dir. See src/main/config-dir.ts.
+export const disabledFile = (): string => configPath('agents', 'disabled.json')
 
 export type DisabledEntry = {
   id: string

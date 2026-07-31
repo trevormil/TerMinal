@@ -355,25 +355,35 @@ function ScorecardPanel({ agentId }: { agentId: string }) {
   const [dark, setDark] = useState<DarkSchedule[]>([])
   const [loaded, setLoaded] = useState(false)
 
+  // A missing IPC handler must DEGRADE, not throw: an unregistered channel
+  // rejects, and without this the panel would raise an unhandled rejection on
+  // every render and stay blank forever because setLoaded never ran.
   const load = useMemo(
     () => async () => {
-      const [c, disabled, schedules] = await Promise.all([
-        window.gt.agentInsights.scorecard(agentId),
-        window.gt.agentInsights.disabledDetail(),
-        window.gt.schedules.list(),
-      ])
-      setCard(c)
-      const byId = new Map(disabled.map((d) => [d.id, d]))
-      setDark(
-        schedules
-          .filter((s) => s.agentId === agentId && byId.has(s.id))
-          .map((s) => ({
-            id: s.id,
-            label: `${s.agentTitle} · ${s.repoLabel}`,
-            reason: byId.get(s.id)?.reason,
-          })),
-      )
-      setLoaded(true)
+      try {
+        const [c, disabled, schedules] = await Promise.all([
+          window.gt.agentInsights.scorecard(agentId),
+          window.gt.agentInsights.disabledDetail(),
+          window.gt.schedules.list(),
+        ])
+        setCard(c)
+        const byId = new Map(disabled.map((d) => [d.id, d]))
+        setDark(
+          schedules
+            .filter((s) => s.agentId === agentId && byId.has(s.id))
+            .map((s) => ({
+              id: s.id,
+              label: `${s.agentTitle} · ${s.repoLabel}`,
+              reason: byId.get(s.id)?.reason,
+            })),
+        )
+      } catch {
+        // No insights available — render nothing rather than break the tab.
+        setCard(null)
+        setDark([])
+      } finally {
+        setLoaded(true)
+      }
     },
     [agentId],
   )
@@ -384,7 +394,11 @@ function ScorecardPanel({ agentId }: { agentId: string }) {
   }, [load])
 
   const reEnable = async (id: string) => {
-    await window.gt.agentInsights.setDisabled(id, false)
+    try {
+      await window.gt.agentInsights.setDisabled(id, false)
+    } catch {
+      /* leave the chip in place — the schedule is still disabled */
+    }
     await load()
   }
 

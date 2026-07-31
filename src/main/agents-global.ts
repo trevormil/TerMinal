@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
+import { configPath } from './config-dir'
 import type { Agent } from './agents'
 
 // Global agent registry — agents available across every repo. Lives at
@@ -8,16 +8,9 @@ import type { Agent } from './agents'
 // the per-repo .agents/agents.json. Per-repo wins by id at merge time so
 // individual repos can still override a global agent.
 
-const DEFAULT_FILE = join(homedir(), '.config', 'TerMinal', 'agents', 'global.json')
-
-// Resolved per call (not at module load) so tests can point the registry at a
-// temp dir instead of the operator's real ~/.config/TerMinal.
-export const globalAgentsFile = (): string => {
-  const explicit = process.env.TERMINAL_GLOBAL_AGENTS_FILE
-  if (explicit) return explicit
-  const dir = process.env.TERMINAL_AGENTS_DIR
-  return dir ? join(dir, 'global.json') : DEFAULT_FILE
-}
+// Resolved per call (not at module load) through the one config-dir seam, so a
+// test can point the whole registry at a temp dir. See src/main/config-dir.ts.
+export const globalAgentsFile = (): string => configPath('agents', 'global.json')
 
 export function readGlobalAgents(): Agent[] {
   try {

@@ -11,20 +11,22 @@ import {
 } from './persistent-agents'
 import type { ActivityEvent } from './events'
 
-// TERMINAL_PERSISTENT_AGENTS_ROOT is resolved per call, so nothing here can
-// reach the operator's real ~/.config/TerMinal/persistent-agents.
+// persistentAgentsRoot() resolves per call through configPath(), so nothing here
+// can reach the operator's real ~/.config/TerMinal/persistent-agents.
+let cfg = ''
 let root = ''
-const realRoot = process.env.TERMINAL_PERSISTENT_AGENTS_ROOT
+const realCfg = process.env.TERMINAL_CONFIG_DIR
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'tm-persistent-'))
-  process.env.TERMINAL_PERSISTENT_AGENTS_ROOT = root
+  cfg = mkdtempSync(join(tmpdir(), 'tm-persistent-'))
+  process.env.TERMINAL_CONFIG_DIR = cfg
+  root = join(cfg, 'persistent-agents')
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
-  if (realRoot === undefined) delete process.env.TERMINAL_PERSISTENT_AGENTS_ROOT
-  else process.env.TERMINAL_PERSISTENT_AGENTS_ROOT = realRoot
+  rmSync(cfg, { recursive: true, force: true })
+  if (realCfg === undefined) delete process.env.TERMINAL_CONFIG_DIR
+  else process.env.TERMINAL_CONFIG_DIR = realCfg
 })
 
 /** An agent whose journal is `entries` entries long. */
@@ -126,7 +128,10 @@ describe('compactPersistentAgentMemory', () => {
     expect(emits[0].detail).toContain('archive/')
   })
 
-  test('a failing summarizer aborts the compaction rather than truncating history', async () => {
+  const archives = (dir: string) =>
+    existsSync(join(dir, 'archive')) ? readdirSync(join(dir, 'archive')) : []
+
+  test('a failing summarizer aborts and leaves NO orphan archive behind', async () => {
     const dir = seed('big', 200)
     const original = readFileSync(join(dir, 'JOURNAL.md'), 'utf8')
 
@@ -141,10 +146,22 @@ describe('compactPersistentAgentMemory', () => {
 
     expect(res.compacted).toBe(false)
     expect(res.reason).toContain('summar')
-    // Journal untouched; the archive taken beforehand is harmless but the
-    // live journal must still hold everything.
     expect(readFileSync(join(dir, 'JOURNAL.md'), 'utf8')).toBe(original)
     expect(emits).toEqual([])
+    // The archive taken before the summarizer must be cleaned up — otherwise a
+    // rate-limited summarizer piles up a full journal copy on every launch.
+    expect(archives(dir)).toEqual([])
+  })
+
+  test('repeated summarizer failures never accumulate archives', async () => {
+    const dir = seed('big', 200)
+    const boom = opts({
+      summarize: async () => {
+        throw new Error('rate limited')
+      },
+    })
+    for (let i = 0; i < 5; i++) await compactPersistentAgentMemory('big', boom)
+    expect(archives(dir)).toEqual([])
   })
 
   test('an empty summary is treated as a failure, not as a valid compaction', async () => {
@@ -153,6 +170,76 @@ describe('compactPersistentAgentMemory', () => {
     const res = await compactPersistentAgentMemory('big', opts({ summarize: async () => '   ' }))
     expect(res.compacted).toBe(false)
     expect(readFileSync(join(dir, 'JOURNAL.md'), 'utf8')).toBe(original)
+    expect(archives(dir)).toEqual([])
+  })
+
+  // The highest-risk path here: compaction is kicked off by a launch, and the
+  // agent that launch spawned appends to JOURNAL.md from a SEPARATE OS process
+  // while the summarizer call is still in flight.
+  test('preserves entries appended by the running agent DURING summarization', async () => {
+    const dir = seed('big', 200)
+    const journalPath = join(dir, 'JOURNAL.md')
+    const original = readFileSync(journalPath, 'utf8')
+    const liveEntry = '\n## Run 200\n- work done while the summarizer was running\n'
+
+    const res = await compactPersistentAgentMemory(
+      'big',
+      opts({
+        summarize: async () => {
+          writeFileSync(journalPath, readFileSync(journalPath, 'utf8') + liveEntry)
+          return 'compacted summary'
+        },
+      }),
+    )
+
+    expect(res.compacted).toBe(true)
+    const next = readFileSync(journalPath, 'utf8')
+    // This entry is in neither the archive (taken before) nor the pre-await
+    // snapshot, so losing it would be permanent.
+    expect(next).toContain('work done while the summarizer was running')
+    expect(next).toContain('## Run 200')
+    // Still a real compaction, not a no-op.
+    expect(next.length).toBeLessThan(original.length)
+  })
+
+  test('aborts without truncating if the journal is rewritten during summarization', async () => {
+    const dir = seed('big', 200)
+    const journalPath = join(dir, 'JOURNAL.md')
+    const replacement = '# Journal\n\n## Run X\n- someone rewrote this by hand\n'
+
+    const res = await compactPersistentAgentMemory(
+      'big',
+      opts({
+        summarize: async () => {
+          writeFileSync(journalPath, replacement)
+          return 'summary'
+        },
+      }),
+    )
+
+    expect(res.compacted).toBe(false)
+    expect(res.reason).toContain('changed during summarization')
+    expect(readFileSync(journalPath, 'utf8')).toBe(replacement)
+    expect(archives(dir)).toEqual([])
+  })
+
+  test('a second concurrent compaction is refused rather than doubling the work', async () => {
+    const dir = seed('big', 200)
+    let calls = 0
+    const slow = opts({
+      summarize: async () => {
+        calls++
+        await Bun.sleep(20)
+        return 'summary'
+      },
+    })
+    const [a, b] = await Promise.all([
+      compactPersistentAgentMemory('big', slow),
+      compactPersistentAgentMemory('big', slow),
+    ])
+    expect(calls).toBe(1)
+    expect([a.compacted, b.compacted].filter(Boolean)).toHaveLength(1)
+    expect(archives(dir)).toHaveLength(1)
   })
 
   test('an unknown agent is a no-op', async () => {

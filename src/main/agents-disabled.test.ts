@@ -1,36 +1,39 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   disabledFile,
+  isDisabled,
   listDisabled,
   listDisabledDetail,
   setAllDisabled,
   setDisabled,
 } from './agents-disabled'
 
-// Path resolves per call from TERMINAL_AGENTS_DIR — the real
+// Path resolves per call through configPath() — the real
 // ~/.config/TerMinal/agents/disabled.json is never read or written here.
 let dir = ''
-const realDir = process.env.TERMINAL_AGENTS_DIR
+const realDir = process.env.TERMINAL_CONFIG_DIR
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tm-disabled-'))
-  process.env.TERMINAL_AGENTS_DIR = dir
+  process.env.TERMINAL_CONFIG_DIR = dir
+  mkdirSync(join(dir, 'agents'), { recursive: true })
 })
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
-  if (realDir === undefined) delete process.env.TERMINAL_AGENTS_DIR
-  else process.env.TERMINAL_AGENTS_DIR = realDir
+  if (realDir === undefined) delete process.env.TERMINAL_CONFIG_DIR
+  else process.env.TERMINAL_CONFIG_DIR = realDir
 })
 
-const raw = () => JSON.parse(readFileSync(join(dir, 'disabled.json'), 'utf8'))
+const file = () => join(dir, 'agents', 'disabled.json')
+const raw = () => JSON.parse(readFileSync(file(), 'utf8'))
 
 describe('disabledFile', () => {
   test('resolves under the injected dir, not the real config dir', () => {
-    expect(disabledFile()).toBe(join(dir, 'disabled.json'))
+    expect(disabledFile()).toBe(join(dir, 'agents', 'disabled.json'))
   })
 })
 
@@ -72,10 +75,34 @@ describe('setDisabled', () => {
 
 describe('legacy on-disk shapes', () => {
   test('reads a bare array of ids with no reasons', () => {
-    writeFileSync(join(dir, 'disabled.json'), JSON.stringify(['a', 'b']))
+    writeFileSync(file(), JSON.stringify(['a', 'b']))
     expect(listDisabled()).toEqual(['a', 'b'])
     expect(listDisabledDetail().map((e) => e.id)).toEqual(['a', 'b'])
     expect(listDisabledDetail()[0].reason).toBeUndefined()
+  })
+
+  // This is what is actually on disk today — the shape bin/terminal-cron and
+  // every pre-existing install writes. The back-compat guarantee this PR rests
+  // on is exactly that this keeps reading, in both directions.
+  test('reads the { scheduleIds } object shape that has no reasons key at all', () => {
+    writeFileSync(file(), JSON.stringify({ scheduleIds: ['a', 'b'] }, null, 2))
+    expect(listDisabled()).toEqual(['a', 'b'])
+    expect(listDisabledDetail()).toEqual([
+      { id: 'a', reason: undefined, disabledAt: 0 },
+      { id: 'b', reason: undefined, disabledAt: 0 },
+    ])
+    expect(isDisabled('a')).toBe(true)
+  })
+
+  test('a reasonless legacy record survives a toggle round-trip', () => {
+    writeFileSync(file(), JSON.stringify({ scheduleIds: ['a', 'b'] }))
+    setDisabled('c', true, 'newly broken')
+    // Pre-existing ids keep their disabled state; only the new one gains a reason.
+    expect(listDisabled().sort()).toEqual(['a', 'b', 'c'])
+    expect([...raw().scheduleIds].sort()).toEqual(['a', 'b', 'c'])
+    const byId = new Map(listDisabledDetail().map((e) => [e.id, e]))
+    expect(byId.get('a')?.reason).toBeUndefined()
+    expect(byId.get('c')?.reason).toBe('newly broken')
   })
 
   test('a missing file is empty, not a throw', () => {

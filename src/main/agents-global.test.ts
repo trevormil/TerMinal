@@ -10,27 +10,28 @@ import {
 } from './agents-global'
 
 // Every test in this file writes ONLY to a fresh mkdtemp dir. The registry
-// resolves its path per call from TERMINAL_AGENTS_DIR, so the real
-// ~/.config/TerMinal/agents/global.json is never touched.
+// resolves its path per call through configPath(), so the real
+// ~/.config/TerMinal/agents/global.json is never touched. src/test-preload.ts
+// already redirects the whole suite; this narrows it further per-file.
 let dir = ''
-const realDir = process.env.TERMINAL_AGENTS_DIR
+const realDir = process.env.TERMINAL_CONFIG_DIR
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tm-global-agents-'))
-  process.env.TERMINAL_AGENTS_DIR = dir
+  process.env.TERMINAL_CONFIG_DIR = dir
 })
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
-  if (realDir === undefined) delete process.env.TERMINAL_AGENTS_DIR
-  else process.env.TERMINAL_AGENTS_DIR = realDir
+  if (realDir === undefined) delete process.env.TERMINAL_CONFIG_DIR
+  else process.env.TERMINAL_CONFIG_DIR = realDir
 })
 
-const saved = () => JSON.parse(readFileSync(join(dir, 'global.json'), 'utf8'))
+const saved = () => JSON.parse(readFileSync(join(dir, 'agents', 'global.json'), 'utf8'))
 
 describe('globalAgentsFile', () => {
   test('resolves under the injected dir, never the real config dir', () => {
-    expect(globalAgentsFile()).toBe(join(dir, 'global.json'))
+    expect(globalAgentsFile()).toBe(join(dir, 'agents', 'global.json'))
     expect(globalAgentsFile()).not.toContain('/.config/TerMinal/')
   })
 })
