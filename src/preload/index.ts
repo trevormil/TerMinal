@@ -475,6 +475,12 @@ const gt = {
       ipcRenderer.invoke('observability:index-query', query, arg, filter),
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
+  stacks: {
+    list: (repoRoot: string, repoPath: string) =>
+      ipcRenderer.invoke('stacks:list', repoRoot, repoPath),
+    extension: (repoRoot: string) => ipcRenderer.invoke('stacks:extension', repoRoot),
+    merge: (repoRoot: string, iid: number) => ipcRenderer.invoke('stacks:merge', repoRoot, iid),
+  },
   inbox: {
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
     snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),

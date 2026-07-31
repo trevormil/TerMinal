@@ -260,6 +260,15 @@ export type ObservabilityQueryFilter = {
   model?: string
 }
 
+/** Mirror of Stack in src/main/stacks.ts — one GitHub native PR stack, layers
+ *  ordered bottom-to-top. Named PrStack here to avoid colliding with the DOM. */
+export type PrStack = {
+  id: number
+  size: number
+  baseRef: string
+  layers: { iid: number; position: number }[]
+}
+
 /** Mirror of DeliveryRecord in src/main/notify-log.ts. */
 export type DeliveryRecord = {
   ts: number
@@ -2150,6 +2159,11 @@ export type GtApi = {
       filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
     filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  stacks: {
+    list: (repoRoot: string, repoPath: string) => Promise<{ stacks: PrStack[]; error?: string }>
+    extension: (repoRoot: string) => Promise<boolean>
+    merge: (repoRoot: string, iid: number) => Promise<{ ok: boolean; error?: string }>
   }
   inbox: {
     snoozes: () => Promise<Record<string, number>>
