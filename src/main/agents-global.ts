@@ -1,6 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { configPath } from './config-dir'
+import { CorruptStateError, readJsonState, updateJsonState } from './atomic-write'
 import type { Agent } from './agents'
 
 // Global agent registry — agents available across every repo. Lives at
@@ -8,26 +7,15 @@ import type { Agent } from './agents'
 // the per-repo .agents/agents.json. Per-repo wins by id at merge time so
 // individual repos can still override a global agent.
 
-const FILE = join(homedir(), '.config', 'TerMinal', 'agents', 'global.json')
+const file = () => configPath('agents', 'global.json')
+const isAgentList = (v: unknown): boolean => Array.isArray(v)
 
+/**
+ * Read the registry. An unparseable file yields `[]` so the UI can still render,
+ * but callers must NOT write that back — saveGlobalAgent refuses instead.
+ */
 export function readGlobalAgents(): Agent[] {
-  try {
-    if (!existsSync(FILE)) return []
-    const a = JSON.parse(readFileSync(FILE, 'utf8'))
-    return Array.isArray(a) ? (a as Agent[]) : []
-  } catch {
-    return []
-  }
-}
-
-function writeGlobalAgents(list: Agent[]): boolean {
-  try {
-    mkdirSync(dirname(FILE), { recursive: true })
-    writeFileSync(FILE, JSON.stringify(list, null, 2))
-    return true
-  } catch {
-    return false
-  }
+  return readJsonState<Agent[]>(file(), () => [], { accept: isAgentList }).value
 }
 
 /** Upsert an agent into the global registry. Validates the same shape as
@@ -49,18 +37,43 @@ export function saveGlobalAgent(
     engine: agent.engine,
     inPlace: agent.inPlace,
   }
-  const list = readGlobalAgents()
-  const i = list.findIndex((a) => a.id === id)
-  if (i >= 0) list[i] = entry
-  else list.push(entry)
-  if (!writeGlobalAgents(list))
-    return { error: 'failed to write ~/.config/TerMinal/agents/global.json' }
-  return { ok: true }
+  try {
+    updateJsonState<Agent[]>(
+      file(),
+      () => [],
+      (list) => {
+        const next = [...list]
+        const i = next.findIndex((a) => a.id === id)
+        if (i >= 0) next[i] = entry
+        else next.push(entry)
+        return next
+      },
+      { accept: isAgentList },
+    )
+    return { ok: true }
+  } catch (e) {
+    // A corrupt registry is the one case where "just write it anyway" is
+    // catastrophic: it replaces every other global agent with this one entry.
+    if (e instanceof CorruptStateError) return { error: e.message }
+    return { error: `failed to write ${file()}` }
+  }
 }
 
 export function removeGlobalAgent(id: string): boolean {
-  const list = readGlobalAgents()
-  const next = list.filter((a) => a.id !== id)
-  if (next.length === list.length) return false
-  return writeGlobalAgents(next)
+  try {
+    let removed = false
+    updateJsonState<Agent[]>(
+      file(),
+      () => [],
+      (list) => {
+        const next = list.filter((a) => a.id !== id)
+        removed = next.length !== list.length
+        return removed ? next : undefined
+      },
+      { accept: isAgentList },
+    )
+    return removed
+  } catch {
+    return false
+  }
 }

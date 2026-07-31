@@ -153,7 +153,10 @@ export function withFileLock<T>(file: string, fn: () => T, opts?: LockOptions): 
 
     const held = readLock(lockPath)
     const abandoned =
-      held === null || !pidAlive(held.pid) || Date.now() - held.at > staleMs || Date.now() > deadline
+      held === null ||
+      !pidAlive(held.pid) ||
+      Date.now() - held.at > staleMs ||
+      Date.now() > deadline
     if (abandoned) {
       // Break it. Unlinking rather than overwriting keeps the next tryAcquire
       // the single point where ownership is decided.
