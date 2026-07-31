@@ -163,16 +163,29 @@ async function safeChildren(dir: string): Promise<string[]> {
 // Scoped per sweep, never module-global: a stale size would misreport a budget.
 type SizeCache = Map<string, number>
 
+// Walking a directory's children one `await` at a time serialises the whole
+// tree behind single-file latency — the dominant cost on a config dir with
+// hundreds of thousands of files. Children go out in bounded batches instead:
+// enough concurrency to keep the syscall queue busy, capped so a deep tree
+// can't open an unbounded number of handles.
+const WALK_CONCURRENCY = 32
+
 async function sizeOfPath(path: string, cache?: SizeCache): Promise<number> {
   const hit = cache?.get(path)
   if (hit !== undefined) return hit
   let total = 0
   try {
     const st = await lstat(path)
-    if (!st.isDirectory() || st.isSymbolicLink()) total = st.size
-    else
-      for (const child of await safeChildren(path))
-        total += await sizeOfPath(join(path, child), cache)
+    if (!st.isDirectory() || st.isSymbolicLink()) {
+      total = st.size
+    } else {
+      const children = await safeChildren(path)
+      for (let i = 0; i < children.length; i += WALK_CONCURRENCY) {
+        const batch = children.slice(i, i + WALK_CONCURRENCY)
+        const sizes = await Promise.all(batch.map((c) => sizeOfPath(join(path, c), cache)))
+        for (const n of sizes) total += n
+      }
+    }
   } catch {
     total = 0
   }
