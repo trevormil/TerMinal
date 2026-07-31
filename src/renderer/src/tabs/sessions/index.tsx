@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Layers, Ticket, GitPullRequest, ArrowUpRight, GitBranch } from 'lucide-react'
+import { TranscriptSearch } from './TranscriptSearch'
+import { capabilityMissing, probeCapability } from '../../lib/capability'
+
+const SEARCH_CAP = 'sessionSearch'
+// An empty query short-circuits in the handler, so this probes registration
+// without scanning anything. The tab folder auto-registers via import.meta.glob
+// but registerSessionSearchIpc is wired by hand in index.ts — until it is,
+// every invoke rejects, so don't offer the sub-tab at all.
+probeCapability(SEARCH_CAP, () => window.gt.searchSessions(''))
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
@@ -43,10 +52,17 @@ function Chip({
   )
 }
 
+// Two halves of "sessions": the /session-start DOCS (the working notebook) and
+// the raw engine TRANSCRIPTS. The tab only ever showed the first; searching the
+// second is the thing you actually reach for when you remember doing something
+// but not where.
+type Mode = 'docs' | 'transcripts'
+
 function SessionsTab({ ctx }: { ctx: TabContext }) {
   const [list, setList] = useState<ProjectSession[] | null>(null)
   const [sel, setSel] = useState<ProjectSession | null>(null)
   const [fStatus, setFStatus] = useState('all')
+  const [mode, setMode] = useState<Mode>('docs')
 
   const load = () => window.gt.projectSessions().then(setList)
   useEffect(() => {
@@ -61,125 +77,141 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--gt-border)] px-4 py-2">
         <span className="mr-1 text-[12px] font-semibold text-zinc-200">
-          Sessions {list ? `(${list.length})` : ''}
+          Sessions {mode === 'docs' && list ? `(${list.length})` : ''}
         </span>
-        {activeCount > 0 && <Badge tone="green">{activeCount} active</Badge>}
-        <span className="mx-1 text-zinc-700">·</span>
-        <Chip active={fStatus === 'all'} onClick={() => setFStatus('all')}>
-          All
+        <Chip active={mode === 'docs'} onClick={() => setMode('docs')}>
+          Docs
         </Chip>
-        {STATUSES.map((s) => (
-          <Chip key={s} active={fStatus === s} onClick={() => setFStatus(s)}>
-            {s}
+        {!capabilityMissing(SEARCH_CAP) && (
+          <Chip active={mode === 'transcripts'} onClick={() => setMode('transcripts')}>
+            Transcripts
           </Chip>
-        ))}
+        )}
+        {mode === 'docs' && (
+          <>
+            {activeCount > 0 && <Badge tone="green">{activeCount} active</Badge>}
+            <span className="mx-1 text-zinc-700">·</span>
+            <Chip active={fStatus === 'all'} onClick={() => setFStatus('all')}>
+              All
+            </Chip>
+            {STATUSES.map((s) => (
+              <Chip key={s} active={fStatus === s} onClick={() => setFStatus(s)}>
+                {s}
+              </Chip>
+            ))}
+          </>
+        )}
         <span className="truncate text-[11px] text-zinc-600">{ctx.repoPath}</span>
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
-          <div className="border-b border-[var(--gt-border)] p-2">
-            <SkillHint>
-              Working notebook for one goal: context, checklist, tickets, branches, PRs, decisions,
-              and follow-ups. Use{' '}
-              <code className="font-mono text-zinc-300">/session-start "goal"</code> and{' '}
-              <code className="font-mono text-zinc-300">/session-end</code>.
-            </SkillHint>
-          </div>
-          {list === null ? (
-            <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
-          ) : shown.length === 0 ? (
-            <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
-              No session docs in <span className="font-mono">.TerMinal/sessions/</span> yet. Start
-              one with <span className="font-mono text-zinc-400">/session-start</span> in the
-              terminal.
-            </div>
-          ) : (
-            shown.map((s) => (
-              <button
-                key={s.slug}
-                onClick={() => open(s.slug)}
-                className={`block w-full border-b border-[var(--gt-border)]/60 px-4 py-2.5 text-left hover:bg-white/5 ${
-                  sel?.slug === s.slug ? 'bg-white/5' : ''
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-zinc-600">
-                    {s.anchor || `#${s.id}`}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">
-                    {s.title}
-                  </span>
-                  <Badge tone={sessionStatusTone(s.status)}>{s.status}</Badge>
-                </div>
-                <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-600">
-                  {s.tickets.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5">
-                      <Ticket size={11} strokeWidth={2} />
-                      {s.tickets.length}
-                    </span>
-                  )}
-                  {s.prs.length > 0 && (
-                    <span className="inline-flex items-center gap-0.5">
-                      <GitPullRequest size={11} strokeWidth={2} />
-                      {s.prs.length}
-                    </span>
-                  )}
-                  <span>{reldate(s.ended || s.started)}</span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
+      {mode === 'transcripts' && !capabilityMissing(SEARCH_CAP) && <TranscriptSearch />}
 
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          {!sel ? (
-            <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
-              Select a session.
+      {mode === 'docs' && (
+        <div className="flex min-h-0 flex-1">
+          <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
+            <div className="border-b border-[var(--gt-border)] p-2">
+              <SkillHint>
+                Working notebook for one goal: context, checklist, tickets, branches, PRs,
+                decisions, and follow-ups. Use{' '}
+                <code className="font-mono text-zinc-300">/session-start "goal"</code> and{' '}
+                <code className="font-mono text-zinc-300">/session-end</code>.
+              </SkillHint>
             </div>
-          ) : (
-            <div className="p-5">
-              <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
-                <span className="font-mono">{sel.anchor || `#${sel.id}`}</span>
-                <Badge tone={sessionStatusTone(sel.status)}>{sel.status}</Badge>
-                {sel.started && <span>started {reldate(sel.started)}</span>}
-                {sel.ended && <span>ended {reldate(sel.ended)}</span>}
+            {list === null ? (
+              <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
+            ) : shown.length === 0 ? (
+              <div className="p-6 text-[12px] leading-relaxed text-zinc-600">
+                No session docs in <span className="font-mono">.TerMinal/sessions/</span> yet. Start
+                one with <span className="font-mono text-zinc-400">/session-start</span> in the
+                terminal.
               </div>
-              <h1 className="mb-2 text-lg font-bold text-zinc-100">{sel.title}</h1>
-              {sel.goal && (
-                <div className="mb-3 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 text-[12px] text-zinc-300">
-                  <span className="text-zinc-500">Goal: </span>
-                  {sel.goal}
+            ) : (
+              shown.map((s) => (
+                <button
+                  key={s.slug}
+                  onClick={() => open(s.slug)}
+                  className={`block w-full border-b border-[var(--gt-border)]/60 px-4 py-2.5 text-left hover:bg-white/5 ${
+                    sel?.slug === s.slug ? 'bg-white/5' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-zinc-600">
+                      {s.anchor || `#${s.id}`}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-200">
+                      {s.title}
+                    </span>
+                    <Badge tone={sessionStatusTone(s.status)}>{s.status}</Badge>
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-zinc-600">
+                    {s.tickets.length > 0 && (
+                      <span className="inline-flex items-center gap-0.5">
+                        <Ticket size={11} strokeWidth={2} />
+                        {s.tickets.length}
+                      </span>
+                    )}
+                    {s.prs.length > 0 && (
+                      <span className="inline-flex items-center gap-0.5">
+                        <GitPullRequest size={11} strokeWidth={2} />
+                        {s.prs.length}
+                      </span>
+                    )}
+                    <span>{reldate(s.ended || s.started)}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1 overflow-y-auto">
+            {!sel ? (
+              <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
+                Select a session.
+              </div>
+            ) : (
+              <div className="p-5">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
+                  <span className="font-mono">{sel.anchor || `#${sel.id}`}</span>
+                  <Badge tone={sessionStatusTone(sel.status)}>{sel.status}</Badge>
+                  {sel.started && <span>started {reldate(sel.started)}</span>}
+                  {sel.ended && <span>ended {reldate(sel.ended)}</span>}
                 </div>
-              )}
-              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-                {sel.tickets.length > 0 && <span>tickets {sel.tickets.join(', ')}</span>}
-                {sel.branches.length > 0 && (
-                  <span className="inline-flex items-center gap-0.5">
-                    <GitBranch size={11} strokeWidth={2} />
-                    {sel.branches.join(', ')}
-                  </span>
+                <h1 className="mb-2 text-lg font-bold text-zinc-100">{sel.title}</h1>
+                {sel.goal && (
+                  <div className="mb-3 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2.5 text-[12px] text-zinc-300">
+                    <span className="text-zinc-500">Goal: </span>
+                    {sel.goal}
+                  </div>
                 )}
-                {sel.prs.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => window.gt.openExternal(p)}
-                    className="inline-flex items-center gap-0.5 text-[var(--gt-accent-2)] hover:underline"
-                  >
-                    {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')}
-                    <ArrowUpRight size={11} strokeWidth={2} />
-                  </button>
-                ))}
+                <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                  {sel.tickets.length > 0 && <span>tickets {sel.tickets.join(', ')}</span>}
+                  {sel.branches.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5">
+                      <GitBranch size={11} strokeWidth={2} />
+                      {sel.branches.join(', ')}
+                    </span>
+                  )}
+                  {sel.prs.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => window.gt.openExternal(p)}
+                      className="inline-flex items-center gap-0.5 text-[var(--gt-accent-2)] hover:underline"
+                    >
+                      {p.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\//, ' !')}
+                      <ArrowUpRight size={11} strokeWidth={2} />
+                    </button>
+                  ))}
+                </div>
+                {sel.body ? (
+                  <Markdown>{sel.body}</Markdown>
+                ) : (
+                  <div className="text-[12px] italic text-zinc-600">No body.</div>
+                )}
               </div>
-              {sel.body ? (
-                <Markdown>{sel.body}</Markdown>
-              ) : (
-                <div className="text-[12px] italic text-zinc-600">No body.</div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

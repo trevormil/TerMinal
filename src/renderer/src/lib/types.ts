@@ -2276,6 +2276,35 @@ export type GtApi = {
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     write: (rel: string, content: string) => Promise<boolean>
   }
+  searchSessions: (
+    query: string,
+    opts?: { thisRepoOnly?: boolean; engine?: Engine; maxSessions?: number; maxHits?: number },
+  ) => Promise<TranscriptSearchResponse>
+}
+
+// ---- transcript search (src/main/session-search.ts) -------------------------
+
+export type TranscriptHit = {
+  line: number
+  role: 'user' | 'assistant' | 'tool' | 'other'
+  timestamp?: number
+  preview: string
+}
+
+export type SessionSearchResult = {
+  sessionId: string
+  engine: string
+  cwd: string
+  mtime: number
+  firstUserText?: string
+  hits: TranscriptHit[]
+}
+
+export type TranscriptSearchResponse = {
+  results: SessionSearchResult[]
+  totalHits: number
+  scanned: number
+  truncated: boolean
 }
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
