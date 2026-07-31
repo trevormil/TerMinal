@@ -8,7 +8,7 @@ import {
   tierOf,
   type RiskTier,
 } from './mrRisk'
-import { evaluateMergeGate } from './mergeGate'
+import { evaluateMergeGate, mergeReadyChip } from './mergeGate'
 import type { Mr, Review } from './types'
 
 const review = (over: Partial<Review> = {}): Review => ({
@@ -128,43 +128,57 @@ describe('applyRiskFilters', () => {
 })
 
 describe('listMergeGate', () => {
-  test('a list row can NEVER merge — findings are unverified there', () => {
-    // Regression for C2: the list button used `findings: []`, which claims
-    // "no findings" and enabled a green Merge on a PR with unresolved
-    // criticals. The list must fail closed and send you to the detail view.
+  test('a list row can never read as fully merge-ready — findings are unverified there', () => {
+    // Regression for C2: the list evaluated `findings: []`, which claims "no
+    // findings", and a PR with unresolved criticals rendered as green.
     const gate = listMergeGate(mr({ iid: 1, review: review() }))
-    expect(gate.allowed).toBe(false)
-    expect(gate.blockers.some((b) => b.kind === 'findings')).toBe(true)
+    expect(gate.blockers.some((b) => b.kind === 'findings' && b.unverified)).toBe(true)
+    expect(mergeReadyChip(gate).state).toBe('unverified')
   })
 
-  test('it still reports the other axes so the tooltip stays useful', () => {
+  test('it still reports the other axes so the badge can name them', () => {
     const gate = listMergeGate(mr({ iid: 1, review: review({ testStatus: 'fail' }) }))
     expect(gate.blockers.map((b) => b.kind).sort()).toEqual(['findings', 'tests'])
+    expect(mergeReadyChip(gate).label).toBe('Not ready · tests failing')
   })
 
   test('the list and the detail view must never disagree in the unsafe direction', () => {
     // The original bug in one assertion: the SAME PR, with two unresolved
-    // criticals, was blocked by the detail view (which loads findings) and
-    // green in the list (which does not). The list may be stricter than the
-    // detail view; it may never be looser. A lighter confirm dialog does not
-    // change that — the gate is what fails closed, not the wording.
+    // criticals, read as not-ready in the detail view (which loads findings)
+    // and green in the list (which does not). The list may be more cautious
+    // than the detail view; it may never be more confident. Turning the gate
+    // into a badge does not change that — an over-confident badge is now the
+    // MORE dangerous failure, because it is what the human acts on.
     const criticals = [{ severity: 'critical' }, { severity: 'critical' }]
     const row = mr({ iid: 1, review: review() })
 
-    const detail = evaluateMergeGate({ review: row.review ?? null, findings: criticals })
-    const list = listMergeGate(row)
+    const detail = mergeReadyChip(evaluateMergeGate({ review: row.review, findings: criticals }))
+    const list = mergeReadyChip(listMergeGate(row))
 
-    expect(detail.allowed).toBe(false)
-    expect(list.allowed).toBe(false)
+    expect(detail.state).toBe('not-ready')
+    expect(list.state).not.toBe('ready')
     // Restated as the invariant, so a future relaxation of either side fails.
-    expect(list.allowed && !detail.allowed).toBe(false)
+    expect(list.state === 'ready' && detail.state !== 'ready').toBe(false)
   })
 
-  test('triage readiness stays separate from merge authorisation', () => {
-    // isListMergeReady drives the "Merge-ready" chip (which PRs are worth
-    // opening); it must NOT be read as permission to merge.
+  test('the filter keeps exactly the rows whose badge is not red', () => {
+    // The filter is defined in terms of the badge, so they cannot drift apart.
+    const rows = [
+      mr({ iid: 1, review: review() }),
+      mr({ iid: 2, review: review({ verdict: 'comment' }) }),
+      mr({ iid: 3, review: review({ testStatus: 'fail' }) }),
+      mr({ iid: 4 }),
+    ]
+    for (const row of rows) {
+      expect(isListMergeReady(row)).toBe(mergeReadyChip(listMergeGate(row)).state !== 'not-ready')
+    }
+  })
+
+  test('passing the filter is not a claim that the bar is met', () => {
+    // isListMergeReady drives the "Merge-ready" filter (which PRs are worth
+    // opening); the row it keeps still shows an amber, un-green badge.
     const ready = mr({ iid: 1, review: review() })
     expect(isListMergeReady(ready)).toBe(true)
-    expect(listMergeGate(ready).allowed).toBe(false)
+    expect(mergeReadyChip(listMergeGate(ready)).state).toBe('unverified')
   })
 })

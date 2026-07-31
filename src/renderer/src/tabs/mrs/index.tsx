@@ -19,6 +19,7 @@ import { Badge } from '../../components/ui'
 import { MrDetailView } from '../../components/MrDetail'
 import { PrAgentActions } from '../../components/PrAgentActions'
 import { MrMergeButton } from '../../components/MrMergeButton'
+import { MergeReadyBadge } from '../../components/MergeReadyBadge'
 import { stateTone } from '../../lib/badges'
 import {
   applyRiskFilters,
@@ -82,13 +83,11 @@ function Stat({ value, label, color }: { value: string; label: string; color: st
 function MrRow({
   m,
   sym,
-  repoRoot,
   onOpen,
   onMerged,
 }: {
   m: Mr
   sym: string
-  repoRoot: string
   onOpen: (iid: number) => void
   onMerged: () => void
 }) {
@@ -119,6 +118,7 @@ function MrRow({
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-zinc-600">
+            {m.state === 'opened' && !m.draft && <MergeReadyBadge gate={listMergeGate(m)} />}
             {r ? (
               <span className="font-medium" style={{ color: verdictColor(r.verdict) }}>
                 {r.verdict}
@@ -176,15 +176,7 @@ function MrRow({
         )}
         <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <PrAgentActions pr={m} sym={sym} />
-          {m.state === 'opened' && (
-            <MrMergeButton
-              iid={m.iid}
-              sym={sym}
-              repoRoot={repoRoot}
-              gate={listMergeGate(m)}
-              onMerged={onMerged}
-            />
-          )}
+          {m.state === 'opened' && <MrMergeButton iid={m.iid} sym={sym} onMerged={onMerged} />}
           <button
             onClick={() => window.gt.openExternal(m.webUrl)}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-300 hover:border-[var(--gt-accent)]/60"
@@ -204,7 +196,6 @@ function GroupedMrList({
   label,
   sym,
   cli,
-  repoRoot,
   sort,
   tiers,
   readyOnly,
@@ -218,7 +209,6 @@ function GroupedMrList({
   label: string
   sym: string
   cli: string
-  repoRoot: string
   sort: MrSort
   tiers: Set<RiskTier>
   readyOnly: boolean
@@ -284,14 +274,7 @@ function GroupedMrList({
             {isOpen && (
               <div className="space-y-2 p-4">
                 {g.items.map((m) => (
-                  <MrRow
-                    key={m.iid}
-                    m={m}
-                    sym={sym}
-                    repoRoot={repoRoot}
-                    onOpen={onOpen}
-                    onMerged={onMerged}
-                  />
+                  <MrRow key={m.iid} m={m} sym={sym} onOpen={onOpen} onMerged={onMerged} />
                 ))}
               </div>
             )}
@@ -365,7 +348,6 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
       <MrDetailView
         iid={selectedMrIid}
         repoLabel={ctx.repoPath || 'repo'}
-        repoRoot={ctx.repoRoot}
         label={label}
         sym={sym}
         onBack={() => setSelectedMrIid(null)}
@@ -418,7 +400,7 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
           })}
           <button
             onClick={() => setReadyOnly((v) => !v)}
-            title="Only PRs that clear the verdict and test axes of the merge bar. Findings are checked in the detail view."
+            title="Only PRs that clear the verdict and test axes of the merge bar. Findings are only loaded in the detail view — each row's badge says whether they were checked."
             className={`h-6 rounded-md border px-1.5 text-[10.5px] font-semibold ${
               readyOnly
                 ? 'border-[var(--gt-green)]/60 bg-[var(--gt-green)]/20 text-[var(--gt-green)]'
@@ -462,7 +444,6 @@ function MrsTab({ ctx }: { ctx: TabContext }) {
             label={label}
             sym={sym}
             cli={cli}
-            repoRoot={ctx.repoRoot}
             sort={sort}
             tiers={tiers}
             readyOnly={readyOnly}

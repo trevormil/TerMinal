@@ -24,6 +24,7 @@ import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
 import { evaluateMergeGate } from '../lib/mergeGate'
+import { MergeReadyBadge } from './MergeReadyBadge'
 import { DigestView } from './DigestView'
 import { xtermThemeFromCss } from './Terminal'
 import { groupJobsByStage } from '../lib/ci'
@@ -895,7 +896,6 @@ function Screenshots({ items }: { items: Screenshot[] }) {
 export function MrDetailView({
   iid,
   repoLabel,
-  repoRoot = '',
   label = 'MR',
   sym = '!',
   onBack,
@@ -903,8 +903,6 @@ export function MrDetailView({
 }: {
   iid: number
   repoLabel: string
-  /** Attributes a merge-bar override — PR iids are only unique per repo. */
-  repoRoot?: string
   label?: string
   sym?: string
   onBack: () => void
@@ -977,16 +975,18 @@ export function MrDetailView({
         <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{mr.title}</span>
         <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>
         {mr.draft && <Badge tone="warn">Draft</Badge>}
+        {mr.state === 'opened' && (
+          // The detail view HAS loaded findings, so this is the only place the
+          // full three-axis bar can be evaluated — and the only place the badge
+          // can legitimately read "Merge-ready".
+          <MergeReadyBadge
+            gate={evaluateMergeGate({ review: mr.reviewMeta, findings: mr.findings })}
+          />
+        )}
         <div className="flex items-center gap-1.5">
           <PrAgentActions pr={mr} sym={sym} />
           {mr.state === 'opened' && (
-            <MrMergeButton
-              iid={mr.iid}
-              sym={sym}
-              repoRoot={repoRoot}
-              gate={evaluateMergeGate({ review: mr.reviewMeta, findings: mr.findings })}
-              onMerged={onMerged ?? onBack}
-            />
+            <MrMergeButton iid={mr.iid} sym={sym} onMerged={onMerged ?? onBack} />
           )}
           <button
             onClick={() => window.gt.openExternal(mr.webUrl)}

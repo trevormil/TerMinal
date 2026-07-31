@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  blockedLegs,
   evaluateMergeGate,
   FINDINGS_UNVERIFIED,
   isBlockingFinding,
+  mergeReadyChip,
   severityRank,
 } from './mergeGate'
 import type { Finding, Review } from './types'
@@ -176,23 +176,80 @@ describe('evaluateMergeGate', () => {
   })
 })
 
-describe('blockedLegs', () => {
-  test('reports the unmet legs in bar order, as kinds rather than copy', () => {
-    // The override record is keyed on these, so rewording a label (which has
-    // already happened once) must never change what the audit trail says.
-    const gate = evaluateMergeGate({
+describe('mergeReadyChip', () => {
+  const chipFor = (args: Parameters<typeof evaluateMergeGate>[0]) =>
+    mergeReadyChip(evaluateMergeGate(args))
+
+  test('a fully checked, fully met bar is the only thing that reads ready', () => {
+    const chip = chipFor({ review: review(), findings: [] })
+    expect(chip.state).toBe('ready')
+    expect(chip.label).toBe('Merge-ready')
+  })
+
+  test('unloaded findings read as unverified, NEVER as ready', () => {
+    // The whole reason the badge is trustworthy. Everything else about this PR
+    // is green; the findings simply never loaded. Rounding that up to
+    // "Merge-ready" would tell the human the §8 bar is met when nobody checked
+    // its third axis.
+    const chip = chipFor({ review: review(), findings: FINDINGS_UNVERIFIED })
+    expect(chip.state).not.toBe('ready')
+    expect(chip.state).toBe('unverified')
+    expect(chip.label).not.toMatch(/merge-ready/i)
+  })
+
+  test('the unverified label says the app could not check, not that the PR failed', () => {
+    const chip = chipFor({ review: review(), findings: FINDINGS_UNVERIFIED })
+    expect(chip.label).toMatch(/not loaded/i)
+    expect(chip.title).toMatch(/open the PR/i)
+  })
+
+  test('a known-failing axis reads not-ready and names the reason', () => {
+    expect(chipFor({ review: review({ verdict: 'comment' }), findings: [] }).label).toBe(
+      'Not ready · unapproved',
+    )
+    expect(chipFor({ review: review({ testStatus: 'fail' }), findings: [] }).label).toBe(
+      'Not ready · tests failing',
+    )
+    expect(chipFor({ review: review(), findings: [{ severity: 'high' }] }).label).toBe(
+      'Not ready · 1 finding ≥ medium',
+    )
+  })
+
+  test('every failing reason is named, in bar order', () => {
+    const chip = chipFor({
       review: review({ verdict: 'comment', testStatus: 'fail' }),
-      findings: [{ severity: 'critical' }],
+      findings: [{ severity: 'high' }, { severity: 'critical' }],
     })
-    expect(blockedLegs(gate)).toEqual(['verdict', 'tests', 'findings'])
+    expect(chip.label).toBe('Not ready · unapproved · tests failing · 2 findings ≥ medium')
   })
 
-  test('an unverified findings list is recorded as the findings leg', () => {
-    const gate = evaluateMergeGate({ review: review(), findings: FINDINGS_UNVERIFIED })
-    expect(blockedLegs(gate)).toEqual(['findings'])
+  test('a known failure outranks an unverifiable axis rather than hiding behind it', () => {
+    // Both axes are unmet, but only one is a fact. The badge has to lead with
+    // the fact — "Findings not loaded" would read as the milder problem.
+    const chip = chipFor({
+      review: review({ testStatus: 'fail' }),
+      findings: FINDINGS_UNVERIFIED,
+    })
+    expect(chip.state).toBe('not-ready')
+    expect(chip.label).toBe('Not ready · tests failing')
+    // ...but the unverified axis is still in the tooltip, not dropped.
+    expect(chip.title).toMatch(/not loaded/i)
   })
 
-  test('a clean gate has no legs to record', () => {
-    expect(blockedLegs(evaluateMergeGate({ review: review(), findings: [] }))).toEqual([])
+  test('a stale review is carried into the tooltip even when the badge is green', () => {
+    const chip = chipFor({ review: review({ stale: true, commitsBehind: 3 }), findings: [] })
+    expect(chip.state).toBe('ready')
+    expect(chip.title).toMatch(/3 commit/)
+  })
+
+  test('the badge is informational only — it exposes no action', () => {
+    // Guards the decision this PR records: readiness is surfaced, not enforced.
+    // If a future change re-adds an `allowed`/`onOverride` shape to the chip,
+    // this fails and forces the conversation again.
+    expect(Object.keys(chipFor({ review: review(), findings: [] })).sort()).toEqual([
+      'label',
+      'state',
+      'title',
+    ])
   })
 })

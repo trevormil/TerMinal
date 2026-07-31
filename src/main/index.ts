@@ -92,7 +92,6 @@ import {
   type ObservabilityIndexQueryId,
   type ObservabilityQueryFilter,
 } from './observability-index'
-import { registerMergeGateIpc } from './ipc/merge-gate'
 import { fixPath, detectEnv, installGtNotify } from './env'
 import {
   emitActivity,
@@ -3675,9 +3674,6 @@ ipcMain.handle('observability:filter-options', () =>
   curRemote() ? { repos: [], engines: [], models: [] } : observabilityFilterOptions(),
 )
 
-// The merge-bar override audit log. Registered here because an unregistered
-// registrar means no record is ever written — the whole point of the module.
-registerMergeGateIpc()
 ipcMain.handle('agentview:snapshot', (_e, limit: number = 120) =>
   curRemote()
     ? {

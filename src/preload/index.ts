@@ -475,11 +475,6 @@ const gt = {
       ipcRenderer.invoke('observability:index-query', query, arg, filter),
     filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
   },
-  mergeGate: {
-    override: (input: { prIid: number; repoRoot: string; legs: string[]; blockers: string }) =>
-      ipcRenderer.invoke('merge-gate:override', input),
-    overrides: () => ipcRenderer.invoke('merge-gate:overrides'),
-  },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),
     session: (sessionId: string) => ipcRenderer.invoke('agentview:session', sessionId),

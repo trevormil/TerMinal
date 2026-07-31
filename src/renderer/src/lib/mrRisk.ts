@@ -1,5 +1,5 @@
 import type { Mr } from './types'
-import { evaluateMergeGate, FINDINGS_UNVERIFIED } from './mergeGate'
+import { evaluateMergeGate, mergeReadyChip, FINDINGS_UNVERIFIED } from './mergeGate'
 
 // `review.ts` computes riskScore/riskTier per PR and `pr-risk-classifier.ts`
 // backfills the ambiguous middle, but the list could not act on it. These are
@@ -25,27 +25,29 @@ export function countByTier(mrs: Mr[]): Record<RiskTier, number> {
 }
 
 /**
- * Merge-readiness as far as the *list* can tell: the verdict and test axes.
- *
- * The list's `Mr` carries a review but NOT its findings, so this is a triage
- * filter ("which PRs are worth opening"), never a merge authorisation. The
- * merge button uses `listMergeGate` below, which fails closed on the findings
- * axis, so a PR can look ready here and still be blocked on open.
- */
-export function isListMergeReady(mr: Mr): boolean {
-  if (mr.state !== 'opened' || mr.draft) return false
-  return evaluateMergeGate({ review: mr.review, findings: FINDINGS_UNVERIFIED }).blockers.every(
-    (b) => b.kind === 'findings',
-  )
-}
-
-/**
- * The gate a list row's merge button must use. Always blocked on the findings
- * axis, because the list has not loaded findings and cannot prove their
- * absence — merging from here would bypass the severity gate entirely.
+ * The gate behind a list row's merge-ready badge. The findings axis is always
+ * unmet here, because the list has not loaded findings and cannot prove their
+ * absence — so a row can never claim the full §8 bar, only "nothing known to be
+ * wrong". The detail view, which does load findings, is the only place the
+ * badge can go green.
  */
 export function listMergeGate(mr: Mr) {
   return evaluateMergeGate({ review: mr.review, findings: FINDINGS_UNVERIFIED })
+}
+
+/**
+ * The "Merge-ready" filter: hide the PRs the list can already tell are not
+ * ready, and keep the ones with nothing known against them.
+ *
+ * Defined as the badge's own state so the filter and the badge can never
+ * disagree — a row the filter keeps is exactly a row whose badge is not red.
+ * It is a triage filter ("which PRs are worth opening"), never a statement that
+ * the bar is met: everything it keeps still shows an amber badge until someone
+ * opens the PR and the findings actually load.
+ */
+export function isListMergeReady(mr: Mr): boolean {
+  if (mr.state !== 'opened' || mr.draft) return false
+  return mergeReadyChip(listMergeGate(mr)).state !== 'not-ready'
 }
 
 export type MrSort = 'risk' | 'number'
