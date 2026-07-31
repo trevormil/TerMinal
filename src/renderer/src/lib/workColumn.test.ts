@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  COLUMN_PLUGIN_IDS,
+  SECTION_PLUGIN_IDS,
   initialSectionCollapsed,
-  isColumnPlugin,
+  isSectionPlugin,
   partitionPluginHosts,
 } from './workColumn'
 import { readCollapsed, sectionCollapseKey, writeCollapsed } from './panelCollapse'
@@ -10,50 +10,58 @@ import { readCollapsed, sectionCollapseKey, writeCollapsed } from './panelCollap
 const p = (id: string) => ({ id })
 
 describe('partitionPluginHosts', () => {
-  test('sends the column plugins to the column and everything else to the cockpit', () => {
-    const { cockpit, column } = partitionPluginHosts([
+  test('promoted plugins get their own section; everything else falls to Vitals', () => {
+    const { vitals, sections } = partitionPluginHosts([
       p('session'),
       p('tickets'),
       p('usage'),
       p('mr-summary'),
     ])
 
-    expect(cockpit.map((x) => x.id)).toEqual(['session', 'usage'])
-    expect(column.map((x) => x.id)).toEqual(['tickets', 'mr-summary'])
+    expect(vitals.map((x) => x.id)).toEqual(['session', 'usage'])
+    expect(sections.map((x) => x.id)).toEqual(['tickets', 'mr-summary'])
   })
 
-  test('the two hosts never share a plugin — no plugin can poll twice', () => {
+  test('the two section kinds never share a plugin — no plugin can poll twice', () => {
     const all = [p('session'), p('tickets'), p('usage'), p('mr-summary'), p('todos')]
-    const { cockpit, column } = partitionPluginHosts(all)
+    const { vitals, sections } = partitionPluginHosts(all)
 
-    const ids = [...cockpit, ...column].map((x) => x.id)
+    const ids = [...vitals, ...sections].map((x) => x.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids.sort()).toEqual(all.map((x) => x.id).sort())
   })
 
-  test('column order follows COLUMN_PLUGIN_IDS, not registry order', () => {
-    const { column } = partitionPluginHosts([p('mr-summary'), p('tickets')])
-    expect(column.map((x) => x.id)).toEqual(['tickets', 'mr-summary'])
+  test('every promoted id is absent from Vitals, whatever order it arrives in', () => {
+    // The double-mount guard is one-directional in practice: Vitals renders
+    // whatever it is handed, so a promoted plugin leaking into `vitals` is the
+    // failure that would poll twice.
+    const { vitals } = partitionPluginHosts([p('mr-summary'), p('tickets'), p('git')])
+    for (const id of SECTION_PLUGIN_IDS) expect(vitals.map((x) => x.id)).not.toContain(id)
   })
 
-  test('a column id with no matching plugin is dropped, not rendered as a hole', () => {
-    const { column } = partitionPluginHosts([p('tickets')])
-    expect(column.map((x) => x.id)).toEqual(['tickets'])
+  test('section order follows SECTION_PLUGIN_IDS, not registry order', () => {
+    const { sections } = partitionPluginHosts([p('mr-summary'), p('tickets')])
+    expect(sections.map((x) => x.id)).toEqual(['tickets', 'mr-summary'])
+  })
+
+  test('a promoted id with no matching plugin is dropped, not rendered as a hole', () => {
+    const { sections } = partitionPluginHosts([p('tickets')])
+    expect(sections.map((x) => x.id)).toEqual(['tickets'])
   })
 })
 
-describe('initialSectionCollapsed — cockpit → accordion migration', () => {
+describe('initialSectionCollapsed — widget → section migration', () => {
   // The migration is read-only: it never rewrites gt.enabled/gt.known/
   // gt.widgetOrder, it only reads them to decide the FIRST render.
-  test('a widget the user had hidden in the cockpit starts collapsed', () => {
+  test('a widget the user had hidden starts collapsed as a section', () => {
     expect(initialSectionCollapsed('tickets', true, ['tickets', 'usage'], ['usage'])).toBe(true)
   })
 
-  test('a widget the user had visible in the cockpit starts expanded', () => {
+  test('a widget the user had visible starts expanded', () => {
     expect(initialSectionCollapsed('tickets', true, ['tickets'], ['tickets'])).toBe(false)
   })
 
-  test('a widget hidden in the cockpit is not forced open by defaultEnabled', () => {
+  test('a hidden widget is not forced open by defaultEnabled', () => {
     // The whole trap: `defaultEnabled: true` must not override an explicit hide.
     expect(initialSectionCollapsed('mr-summary', true, ['mr-summary'], [])).toBe(true)
   })
@@ -88,26 +96,24 @@ describe('section collapse persistence', () => {
   test('an explicit toggle wins over the migrated default forever after', () => {
     const s = fake()
     const key = sectionCollapseKey('tickets')
-    // Migration said "collapsed" (cockpit had it hidden); user expands it.
+    // Migration said "collapsed" (the widget was hidden); user expands it.
     writeCollapsed(key, false, s)
     expect(readCollapsed(key, /* migrated */ true, s)).toBe(false)
   })
 
   test('several sections stay open at once — collapse is not mutually exclusive', () => {
     const s = fake()
-    for (const id of ['files', ...COLUMN_PLUGIN_IDS])
-      writeCollapsed(sectionCollapseKey(id), false, s)
-    const open = ['files', ...COLUMN_PLUGIN_IDS].filter(
-      (id) => !readCollapsed(sectionCollapseKey(id), true, s),
-    )
-    expect(open).toEqual(['files', 'tickets', 'mr-summary'])
+    const all = ['files', ...SECTION_PLUGIN_IDS, 'vitals']
+    for (const id of all) writeCollapsed(sectionCollapseKey(id), false, s)
+    const open = all.filter((id) => !readCollapsed(sectionCollapseKey(id), true, s))
+    expect(open).toEqual(['files', 'tickets', 'mr-summary', 'vitals'])
   })
 })
 
-describe('isColumnPlugin', () => {
-  test('only the migrated widgets belong to the column', () => {
-    expect(isColumnPlugin('tickets')).toBe(true)
-    expect(isColumnPlugin('mr-summary')).toBe(true)
-    expect(isColumnPlugin('session')).toBe(false)
+describe('isSectionPlugin', () => {
+  test('only the promoted widgets get their own section', () => {
+    expect(isSectionPlugin('tickets')).toBe(true)
+    expect(isSectionPlugin('mr-summary')).toBe(true)
+    expect(isSectionPlugin('session')).toBe(false)
   })
 })

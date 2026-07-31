@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import tickets from './tickets/index'
 import mrSummary from './mr-summary/index'
-import { COLUMN_PLUGIN_IDS } from '../lib/workColumn'
+import { SECTION_PLUGIN_IDS } from '../lib/workColumn'
 import type { Mr, Ticket } from '../lib/types'
 
-// The accordion picks its sections out of the registry BY ID. A typo (or a
-// renamed plugin) would silently leave the section missing from the column and
-// the widget still in the cockpit, so pin the two together.
+// The accordion picks its top-level sections out of the registry BY ID. A typo
+// (or a renamed plugin) would silently leave the section missing and the widget
+// still in the Vitals stack, so pin the two together.
 describe('the work column hosts the real plugin specs', () => {
-  test('COLUMN_PLUGIN_IDS matches the plugins it names', () => {
-    expect([tickets.id, mrSummary.id]).toEqual([...COLUMN_PLUGIN_IDS])
+  test('SECTION_PLUGIN_IDS matches the plugins it names', () => {
+    expect([tickets.id, mrSummary.id]).toEqual([...SECTION_PLUGIN_IDS])
   })
 
   test('both expose a count for the section header', () => {

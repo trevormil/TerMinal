@@ -12,22 +12,25 @@ function fakeStorage(seed: Record<string, string> = {}) {
 
 describe('readCollapsed', () => {
   test("'1' is collapsed and '0' is expanded, whatever the default is", () => {
-    const s = fakeStorage({ 'gt.filesCollapsed': '1', 'gt.cockpitCollapsed': '0' })
-    expect(readCollapsed('gt.filesCollapsed', false, s)).toBe(true)
+    const s = fakeStorage({
+      'gt.workColumn.files.collapsed': '1',
+      'gt.cockpitCollapsed': '0',
+    })
+    expect(readCollapsed('gt.workColumn.files.collapsed', false, s)).toBe(true)
     expect(readCollapsed('gt.cockpitCollapsed', true, s)).toBe(false)
   })
 
-  test('an unset key falls back to the panel default — closed for Files…', () => {
-    expect(readCollapsed('gt.filesCollapsed', true, fakeStorage())).toBe(true)
+  test('an unset key falls back to the caller default — closed for a hidden section…', () => {
+    expect(readCollapsed('gt.workColumn.mr-summary.collapsed', true, fakeStorage())).toBe(true)
   })
 
-  test('…and open for the cockpit', () => {
+  test('…and open for the work column itself', () => {
     expect(readCollapsed('gt.cockpitCollapsed', false, fakeStorage())).toBe(false)
   })
 
   test('an explicit "expanded" survives a default of closed (the regression risk)', () => {
-    const s = fakeStorage({ 'gt.filesCollapsed': '0' })
-    expect(readCollapsed('gt.filesCollapsed', true, s)).toBe(false)
+    const s = fakeStorage({ 'gt.workColumn.mr-summary.collapsed': '0' })
+    expect(readCollapsed('gt.workColumn.mr-summary.collapsed', true, s)).toBe(false)
   })
 
   test('garbage values are treated as no opinion, not as collapsed', () => {
@@ -50,11 +53,11 @@ describe('readCollapsed', () => {
 describe('writeCollapsed', () => {
   test('round-trips through readCollapsed in both directions', () => {
     const s = fakeStorage()
-    writeCollapsed('gt.filesCollapsed', true, s)
-    expect(readCollapsed('gt.filesCollapsed', false, s)).toBe(true)
-    writeCollapsed('gt.filesCollapsed', false, s)
-    expect(readCollapsed('gt.filesCollapsed', true, s)).toBe(false)
-    expect(s.map.get('gt.filesCollapsed')).toBe('0')
+    writeCollapsed('gt.cockpitCollapsed', true, s)
+    expect(readCollapsed('gt.cockpitCollapsed', false, s)).toBe(true)
+    writeCollapsed('gt.cockpitCollapsed', false, s)
+    expect(readCollapsed('gt.cockpitCollapsed', true, s)).toBe(false)
+    expect(s.map.get('gt.cockpitCollapsed')).toBe('0')
   })
 
   test('never throws when storage is unavailable', () => {

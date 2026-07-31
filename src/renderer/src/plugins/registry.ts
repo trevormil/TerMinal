@@ -14,13 +14,14 @@ export const ALL_PLUGINS: Plugin[] = Object.values(modules)
   .filter((p): p is Plugin => !!p)
   .sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeCompare(b.title))
 
-// The two hosts, partitioned from the one registry so no plugin can appear in
-// both. The cockpit renders COCKPIT_PLUGINS; the work column's accordion
-// renders COLUMN_PLUGINS, in the order COLUMN_PLUGIN_IDS declares (the column
-// is a fixed three-section layout, not a reorderable widget stack).
+// The work column's two section kinds, partitioned from the one registry so no
+// plugin can appear in both. SECTION_PLUGINS each get a top-level accordion
+// section, in the order SECTION_PLUGIN_IDS declares (a fixed layout, not a
+// reorderable stack); VITALS_PLUGINS are the widget stack inside the Vitals
+// section, where the user's own order and enable/disable apply.
 const hosts = partitionPluginHosts(ALL_PLUGINS)
-export const COCKPIT_PLUGINS: Plugin[] = hosts.cockpit
-export const COLUMN_PLUGINS: Plugin[] = hosts.column
+export const VITALS_PLUGINS: Plugin[] = hosts.vitals
+export const SECTION_PLUGINS: Plugin[] = hosts.sections
 
 export function defaultEnabledIds(): string[] {
   return ALL_PLUGINS.filter((p) => p.defaultEnabled).map((p) => p.id)

@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
+  Activity,
   ChevronDown,
   ChevronRight,
   FolderTree,
-  PanelLeftClose,
+  PanelRightClose,
   RotateCw,
   type LucideIcon,
 } from 'lucide-react'
@@ -11,28 +12,32 @@ import { FileTree, type FileTreeActions } from './FileTree'
 import { FileModal } from './FileModal'
 import { PluginWidget } from './PluginWidget'
 import { CardChromeProvider } from './ui'
-import { COLUMN_PLUGINS } from '../plugins/registry'
+import { SECTION_PLUGINS } from '../plugins/registry'
 import { readCollapsed, sectionCollapseKey, writeCollapsed } from '../lib/panelCollapse'
 import { initialSectionCollapsed } from '../lib/workColumn'
 import type { FileEntry, Plugin, TabContext } from '../lib/types'
 
 /**
- * The Terminal tab's work column: a VS Code-style accordion of independently
- * collapsible sections — Files, Tickets, PRs / MRs — down the left edge, so you
- * can glance at the backlog without losing your place in the tree. Several
- * sections open at once is the entire point; this is deliberately not a tab
- * strip, which would force a choice between them.
+ * The Terminal tab's work column: ONE accordion down the right edge —
+ * Files · Tickets · PRs / MRs · Vitals — each section independently
+ * collapsible, several open at once. That last property is the whole point;
+ * this is deliberately not a tab strip, which would force a choice between
+ * them.
  *
- * Tickets and PRs/MRs are the EXISTING cockpit plugins, hosted here rather than
- * reimplemented: the accordion is a second host for the `Plugin` contract, and
- * `PluginWidget` supplies the poll loop either way. They are filtered out of the
- * cockpit's registry (`COCKPIT_PLUGINS`), so exactly one host mounts each —
- * tickets polls every 5s, and a double-mount would double that forever.
+ * Vitals is where the cockpit went. It is one section holding the entire
+ * widget stack, all visible at once when expanded — NOT a second, nested
+ * accordion. Widgets are still enabled/disabled/reordered in the Plugins
+ * drawer; this only renders what that drawer decided.
  *
- * Height model: SIZE-TO-CONTENT, not drag-to-resize. Plugin sections take the
- * height their content wants and shrink when the column runs short; Files
- * absorbs the remainder above a floor and scrolls internally. No per-section
- * drag handles and no persisted heights — one less thing to store and get wrong.
+ * Tickets and PRs/MRs are the same `Plugin` specs as any widget, promoted to
+ * their own sections by `partitionPluginHosts`. The partition is what keeps
+ * each plugin mounted exactly once — tickets polls every 5s, and a double
+ * mount would double that forever.
+ *
+ * Height model: SIZE-TO-CONTENT, not drag-to-resize. Tickets and PRs/MRs take
+ * the height their content wants; Files and Vitals split the remainder and
+ * scroll internally. No per-section drag handles and no persisted heights —
+ * one less thing to store and get wrong.
  */
 
 /** Persisted per-section collapse, keyed by section id (extends panelCollapse). */
@@ -50,7 +55,7 @@ function Section({
   collapsed,
   onToggle,
   actions,
-  /** This section absorbs the column's leftover height (Files does). */
+  /** This section splits the column's leftover height (Files and Vitals do). */
   grow,
   children,
 }: {
@@ -198,7 +203,7 @@ function PluginSection({
           collapsed={collapsed}
           onToggle={toggle}
         >
-          {/* The plugin renders a titled Card for the cockpit; in here the
+          {/* The plugin renders a titled Card in the Vitals stack; in here the
               section header IS that title, so Card drops its own frame.
               `empty:hidden` because a plugin that renders nothing (mr-summary
               before its first poll) would otherwise leave this div's insets
@@ -212,24 +217,87 @@ function PluginSection({
   )
 }
 
+/**
+ * The former cockpit, as one section: every enabled widget, boxed, stacked, all
+ * visible at once. Deliberately NOT nested accordions — being able to sweep the
+ * whole set of live session signals in one glance is the reason the cockpit was
+ * worth keeping.
+ */
+function VitalsSection({
+  widgets,
+  onHide,
+  onEnableDefaults,
+}: {
+  widgets: Plugin[]
+  onHide: (id: string) => void
+  onEnableDefaults: () => void
+}) {
+  const [collapsed, toggle] = useSectionCollapse('vitals', false)
+  return (
+    <Section
+      icon={Activity}
+      title="Vitals"
+      count={widgets.length || null}
+      collapsed={collapsed}
+      onToggle={toggle}
+      grow
+    >
+      {widgets.length === 0 ? (
+        <div className="m-2 rounded-xl border border-dashed border-[var(--gt-border)] p-3 text-center text-[11px] text-zinc-600">
+          No widgets enabled.
+          <button
+            onClick={onEnableDefaults}
+            className="mx-auto mt-2 block rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
+          >
+            Enable defaults
+          </button>
+        </div>
+      ) : (
+        // Vertical rhythm comes from each Card's own bottom margin, not from a
+        // gap here — a widget that renders nothing this poll then collapses to
+        // zero height (its PluginWidget wrapper has no insets of its own)
+        // rather than leaving a phantom band in the middle of the stack. The
+        // 6px of top padding is the only inset this div owns, and it has no
+        // border or background, so an all-quiet stack shows nothing at all.
+        <div className="px-2 pt-1.5">
+          {widgets.map((p) => (
+            <PluginWidget key={p.id} plugin={p} onHide={onHide} />
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 export function WorkColumn({
   ctx,
   onCollapse,
   active,
   known,
   enabled,
+  widgets,
+  onHideWidget,
+  onEnableDefaults,
 }: {
-  ctx: TabContext
+  /** Null until the session reports its workspace; only Files needs it. */
+  ctx: TabContext | null
   onCollapse: () => void
   /** Only the focused session hosts the polling sections. */
   active: boolean
-  /** Legacy cockpit prefs, read once to seed each migrated section's state. */
+  /** Widget prefs, read once to seed each promoted section's collapse state. */
   known: string[]
   enabled: string[]
+  /** Enabled widgets, in the user's order, for the Vitals section. */
+  widgets: Plugin[]
+  onHideWidget: (id: string) => void
+  onEnableDefaults: () => void
 }) {
   const [filesCollapsed, toggleFiles] = useSectionCollapse('files', false)
+  // A remote session, or one that hasn't resolved a workspace, has no tree to
+  // show — the other three sections still make sense, so the column stays.
+  const showFiles = !!ctx && !!(ctx.repoRoot || ctx.cwd)
   return (
-    <aside className="flex min-w-0 flex-col overflow-hidden border-r border-[var(--gt-border)] bg-[var(--gt-bg)]">
+    <aside className="flex min-w-0 flex-col overflow-hidden border-l border-[var(--gt-border)] bg-[var(--gt-bg)]">
       <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1.5">
         <span className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
           Work
@@ -239,17 +307,28 @@ export function WorkColumn({
           title="Hide work column"
           className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
         >
-          <PanelLeftClose size={12} strokeWidth={2} />
+          <PanelRightClose size={12} strokeWidth={2} />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        <FilesSection ctx={ctx} collapsed={filesCollapsed} onToggle={toggleFiles} />
-        {/* Plugin sections mount only for the focused session, mirroring the
-            cockpit — otherwise every backgrounded tab would keep polling. */}
-        {active &&
-          COLUMN_PLUGINS.map((p) => (
-            <PluginSection key={p.id} plugin={p} known={known} enabled={enabled} />
-          ))}
+        {showFiles && ctx && (
+          <FilesSection ctx={ctx} collapsed={filesCollapsed} onToggle={toggleFiles} />
+        )}
+        {/* Polling sections mount only for the focused session — otherwise every
+            backgrounded tab would keep polling. Files is exempt: it lists once
+            on mount and never polls, so a backgrounded session costs one IPC. */}
+        {active && (
+          <>
+            {SECTION_PLUGINS.map((p) => (
+              <PluginSection key={p.id} plugin={p} known={known} enabled={enabled} />
+            ))}
+            <VitalsSection
+              widgets={widgets}
+              onHide={onHideWidget}
+              onEnableDefaults={onEnableDefaults}
+            />
+          </>
+        )}
       </div>
     </aside>
   )

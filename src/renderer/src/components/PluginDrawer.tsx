@@ -4,11 +4,18 @@ import { dropIndex, reorderOnDrop } from '../lib/dragReorder'
 import type { Plugin } from '../lib/types'
 import { RepoTrustReview, type RepoTrustPrompt } from './RepoTrustReview'
 
-// The "plugins" panel. No remote registry — entries are code
-// folders in the repo plus command widgets (global / per-repo). Toggling just
-// mounts/unmounts. Rows are listed in cockpit order; drag a row (or use the
-// chevrons — the keyboard-accessible fallback) to rearrange, and the
-// arrangement persists.
+// The "plugins" panel — still the one place widgets are managed, even though
+// they now render inside the work column's Vitals section rather than a panel
+// of their own. No remote registry: entries are code folders in the repo plus
+// command widgets (global / per-repo). Toggling just mounts/unmounts. Rows are
+// listed in Vitals order; drag a row (or use the chevrons — the
+// keyboard-accessible fallback) to rearrange, and the arrangement persists.
+//
+// It lists only what Vitals hosts. Tickets and PRs/MRs are top-level accordion
+// sections now, so they are absent here by construction (`partitionPluginHosts`
+// keeps them out of the list this is handed) — collapsing a section is how you
+// hide those, and their collapse state is what carried over from their old
+// enable/disable toggle.
 export function PluginDrawer({
   plugins,
   enabled,

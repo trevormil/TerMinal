@@ -112,7 +112,7 @@ const plugin: Plugin<MrListResult> = {
   icon: GitPullRequest,
   blurb: 'Open PRs/MRs with CI + review verdict per row; click for a light detail modal.',
   // Hosted by the work column's accordion, which orders its sections itself
-  // (COLUMN_PLUGIN_IDS) — right after Tickets, as it was in the cockpit.
+  // (SECTION_PLUGIN_IDS) — right after Tickets, as it was in the widget stack.
   order: -0.5,
   intervalMs: 60_000,
   defaultEnabled: true,

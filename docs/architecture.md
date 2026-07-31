@@ -33,19 +33,26 @@ renderer calls `session:setActive(key)` whenever the active tab changes.
 Each `SessionView` mounts:
 
 - a **TerminalPane** (xterm.js) — always mounted; its PTY runs `claude`.
-- a **cockpit** aside — the widget stack (rendered only when the session is
-  active, so backgrounded sessions don't poll).
-- a **work column** aside on the opposite edge — a VS Code-style accordion of
-  Files / Tickets / PRs·MRs, with several sections open at once.
+- a **work column** aside on the right — one VS Code-style accordion of
+  Files / Tickets / PRs·MRs / **Vitals**, several sections open at once. Vitals
+  is the former cockpit: one section holding the whole widget stack, all of it
+  visible at once (not a nested accordion). Every polling section renders only
+  when the session is active, so backgrounded sessions don't poll.
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
 
-The cockpit and the work column are **two hosts for one `Plugin` contract**.
-`plugins/registry.ts` partitions the auto-discovered registry between them via
-`lib/workColumn.ts` (`COLUMN_PLUGIN_IDS`), so every plugin belongs to exactly
-one host and can never mount — and therefore poll — twice. Tickets and PRs/MRs
-are column plugins; everything else is a cockpit widget. A host that draws its
-own title (the accordion does) renders the plugin under `CardChromeProvider
-chrome="bare"`, so `Card` drops its frame instead of repeating the heading.
+A top-level section and a Vitals widget are **two renderings of one `Plugin`
+contract**. `plugins/registry.ts` partitions the auto-discovered registry via
+`lib/workColumn.ts` (`SECTION_PLUGIN_IDS`), so every plugin is either its own
+section or a Vitals widget — never both, so it can never mount, and therefore
+poll, twice. Promoting a widget to its own section is one line in that array. A
+section draws its own title, so it renders the plugin under
+`CardChromeProvider chrome="bare"` and `Card` drops its frame instead of
+repeating the heading. Files is deliberately NOT a plugin: it is stateful and
+interactive rather than poll→render, and it isn't something you disable.
+
+The column's width and collapse persist under the cockpit's old keys;
+`lib/columnLayout.ts` folds the retired Files-column keys into them on first
+launch, keeping the wider width and the more-visible collapse state.
 
 ## Remote sessions (TerMinal Remote for iOS)
 
