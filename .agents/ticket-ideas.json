@@ -1,0 +1,10 @@
+{
+  "id": "ticket-ideas",
+  "title": "Ticket ideas",
+  "description": "Proposes at most 3 horizon:future tickets per day, deduped against a permanent ledger of everything already proposed or dismissed.",
+  "icon": "Lightbulb",
+  "opensPr": false,
+  "engine": "claude",
+  "model": "haiku",
+  "inPlace": false
+}

@@ -171,6 +171,126 @@ prev_pct=$(terminal-cli state get lastCoveragePct)
 
 Values are JSON-decoded on read when possible, so booleans, numbers, and arrays round-trip correctly. Treat the state file as **best-effort cache, not source of truth** — if it's missing or stale, the agent should still produce a correct first-run answer (do the full scan, exit 0, mark-main).
 
+### Dedup ledger — for agents that *propose* rather than *detect*
+
+The SHA gate above solves one problem completely and a second one not at all.
+
+It prevents an agent from **re-running** over an unchanged tree. It does nothing
+to prevent an agent from **re-proposing** the same idea, because on any repo with
+daily commits the gate opens every day. A detector agent doesn't care: it
+re-derives its findings from the diff, and an unchanged file yields nothing. But
+a *proposer* — an idea agent, a research agent, a refactor-suggester — derives
+its output from the whole tree plus its own judgement, so it will cheerfully
+re-file "add integration tests for the auth flow" every morning until the backlog
+is unusable.
+
+The fix is a **ledger of what has already been proposed and what the human has
+already rejected**. It lives in **two files, one per writer**:
+
+```
+~/.config/TerMinal/agent-state/<repo>/<agent>.json             # agent-owned
+~/.config/TerMinal/agent-state/<repo>/<agent>.dismissed.json   # app-owned
+```
+
+```json
+// <agent>.json — written ONLY by the agent, via terminal-cli
+{
+  "lastScannedSha": "abc1234",
+  "proposedIdeas": [
+    { "key": "auth-flow-integration-tests", "ticket": "0091", "at": 1760000000000 }
+  ]
+}
+```
+
+```json
+// <agent>.dismissed.json — written ONLY by the review surface
+{
+  "dismissed": [
+    { "key": "rewrite-settings-in-solidjs", "at": 1760000000000, "reason": "not our direction" }
+  ]
+}
+```
+
+| File | Written by | Meaning |
+|---|---|---|
+| `<agent>.json` → `proposedIdeas[]` | the agent, on filing | Everything this agent has ever put in front of the human. |
+| `<agent>.dismissed.json` → `dismissed[]` | the **review surface**, on Dismiss | Everything the human said no to. Permanent. |
+
+**Two files, not two keys in one file — and this is load-bearing, not
+cosmetic.** Every writer here does a read-modify-write of the *whole* JSON
+document; there is no field-level update. So if both arrays shared a file, a
+04:00 agent run and a 04:00 Dismiss tap would each read the file, each modify
+their own array, and each write the whole thing back — and the later write would
+silently revert the earlier one. That loses either a just-filed idea or a
+just-recorded dismissal, and (worse) can revert `lastScannedSha`, causing a
+re-scan of an already-scanned range.
+
+Splitting by writer makes the two processes touch disjoint files, so the race
+cannot happen at all. Both writers should still write **atomically** (temp file
++ rename): a plain truncating write that is interrupted leaves an unparseable
+ledger, and an unparseable `proposedIdeas` means every previously-rejected idea
+comes back. `terminal-cli state set` does this for you.
+
+**The `key` is a slug of the idea's subject, not its phrasing** — otherwise
+rewording defeats the ledger. Normalize: lowercase, drop articles and filler
+verbs (`add`, `improve`, `refactor`, `consider`), keep the nouns, join with `-`,
+truncate to 60 chars. The key is a cheap **exact-match** guard; the agent is
+still responsible for a fuzzy near-duplicate check against the live backlog,
+since two different phrasings of the same idea can produce two different keys.
+
+Appending to `proposedIdeas` is a read-modify-write of the whole array:
+
+```bash
+current=$(terminal-cli state get proposedIdeas)
+[ -z "$current" ] && current='[]'
+next=$(echo "$current" | jq --arg k "$key" --arg t "$ticket" \
+  '. + [{key: $k, ticket: $t, at: (now * 1000 | floor)}]')
+terminal-cli state set proposedIdeas "$next"
+```
+
+Reading the dismissals means reading the sibling file directly — `terminal-cli
+state` only ever touches the agent's own file, which is exactly the point:
+
+```bash
+dismissed_file="$HOME/.config/TerMinal/agent-state/$(basename "$TERMINAL_REPO")/$TERMINAL_AGENT_ID.dismissed.json"
+dismissed_keys=$(jq -r '(.dismissed // [])[].key' "$dismissed_file" 2>/dev/null)
+```
+
+The ledger also gives you a **deterministic daily budget gate** that costs zero
+tokens — count entries newer than 24h and exit before ever invoking the engine:
+
+```bash
+cutoff=$(( $(date +%s) * 1000 - 86400000 ))
+recent=$(terminal-cli state get proposedIdeas | jq --argjson c "$cutoff" \
+  '[.[] | select((.at // 0) >= $c)] | length')
+[ "$recent" -ge 3 ] && { echo "daily cap reached"; exit 0; }
+```
+
+**Fail CLOSED on a corrupt ledger.** Distinguish *absent* (first run — proceed
+normally) from *present but unparseable* (something is wrong — file a HITL and
+exit 0). Treating a corrupt ledger as empty is the worst option available: it
+silently re-proposes every idea the human has ever rejected, which is precisely
+the failure the ledger exists to prevent.
+
+**Don't trust the model to write the ledger.** If the append is a step in the
+prompt, then an engine that files three tickets and then crashes, or simply
+skips the step, leaves the cap permanently disengaged. The *script* should
+observe what actually happened — diff the backlog directory before and after the
+engine call — and write the ledger itself. Prompt-side appends are a convenience,
+never the enforcement.
+
+**When trimming the ledger for prompt size, sort by `at` descending, never
+alphabetically.** An alphabetical `sort -u | head -200` silently keeps an
+arbitrary slice once the ledger outgrows the cap, so old rejected ideas start
+reappearing with no signal.
+
+Unlike the rest of agent-state, **the ledger is closer to source of truth than
+to cache.** Losing it doesn't break correctness, but it does mean the human gets
+re-asked about things they already rejected — which is the specific failure this
+convention exists to prevent. Don't clear it as part of routine maintenance.
+
+Reference implementation: `.agents/ticket-ideas.sh` + `.agents/ticket-ideas.md`.
+
 ## Schedule integration
 
 A schedule entry references a `scriptId` (per-repo or global). The existing

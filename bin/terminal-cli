@@ -35,6 +35,8 @@ import {
   mkdirSync,
   appendFileSync,
   readdirSync,
+  renameSync,
+  unlinkSync,
 } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
@@ -505,7 +507,22 @@ function readState() {
 function writeState(obj) {
   const f = stateFile()
   mkdirSync(dirname(f), { recursive: true })
-  writeFileSync(f, JSON.stringify(obj, null, 2) + '\n')
+  // Atomic: write a sibling temp then rename. A plain writeFileSync truncates
+  // first, so a crash (or a `kill` from the runner's timeout) mid-write leaves
+  // a truncated, unparseable ledger — and an unparseable proposedIdeas array
+  // means every previously-rejected idea gets re-proposed.
+  const tmp = `${f}.${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n')
+    renameSync(tmp, f)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      /* nothing to clean up */
+    }
+    throw e
+  }
 }
 function coerce(v) {
   if (v === undefined) return undefined

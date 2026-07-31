@@ -73,38 +73,73 @@ backlog. It runs in the same pass.
 ```bash
 # GitHub
 gh pr list --state open --json number,title,author,headRefName,createdAt \
-  --jq '[.[] | select(.author.login | test("dependabot|renovate"))]'
+  --jq '[.[] | select((.author.login // "") as $l
+        | (["dependabot","dependabot[bot]","app/dependabot",
+            "renovate","renovate[bot]","app/renovate"] | index($l) != null)
+          or ((.author.is_bot // false) == true))]'
 # GitLab
 glab mr list --author=dependabot --json
 ```
 
-### Decide, per bot PR
+Note the **exact-login** comparison. An unanchored `test("dependabot|renovate")`
+is a substring match and will happily select a human.
+
+### This half is implemented in the script, NOT delegated to the engine
+
+**Closing a PR is the only irreversible write this factory makes to the forge.**
+Everything else is proposal-shaped and gated by a human merge. Dependabot reads
+a human-closed PR as *"never offer this version again"*, so a wrong close
+silently removes a bump — possibly a security bump — from the queue forever.
+
+So the janitor lives in `.agents/deps-quality.sh` and runs **deterministically,
+before and independently of the engine.** The engine is explicitly told not to
+touch pull requests. Every rule below is a filter in that pipeline, not an
+instruction an LLM with a `gh` token is trusted to follow.
+
+### Preconditions — evaluated first, and absolute
+
+1. **Exact bot login, or a verified bot account.** Matched against an explicit
+   allowlist (`dependabot`, `dependabot[bot]`, `app/dependabot`, `renovate`, …)
+   or `author.is_bot == true`. **Never a substring match**: `test("renovate")`
+   also matches a human named `renovate-fan` or an org member `acme-renovate`,
+   and closing a person's PR on a substring collision is unacceptable.
+2. **Security PRs are removed from the candidate set entirely**, by label or by
+   title. This is a *precondition*, not a lower row in a precedence table —
+   precisely so a major-version bump that is *also* a CVE fix can never reach a
+   close rule. (A top-down table gets this wrong the first time the two
+   coincide, which is exactly when it matters most.)
+
+### The only close rule
 
 | Situation | Action |
 |---|---|
-| The dep is at or above this version on `main` already | **Close** — "already on `<version>` as of `<sha>`." |
-| The bump is included in this run's sweep PR | **Close** — comment linking the sweep PR. |
-| Patch/minor, ≥3 days old, not otherwise handled | **Leave open.** It is a legitimate candidate; the human decides. |
-| Major version bump | **Close + file a ticket.** Majors need a migration plan, not a merge button. The ticket carries the changelog/breaking-changes link. |
-| Fails CI, open >14 days | **Close** — "stale + red; reopen from a fresh sweep if still wanted." |
-| Any Critical CVE fix | **Never close.** Escalate to HITL. |
+| The dep is already at or past this version on the default branch | **Close**, after commenting why. The bump has genuinely landed. |
+| Everything else | **Leave open.** |
 
-Always leave a one-line comment saying *why* before closing. A silently closed
-bot PR is indistinguishable from a bug, and the human will have to re-derive the
-reasoning.
+That is deliberately the whole list. Three rules were considered and rejected:
+
+- **"Superseded by this run's sweep PR" → close.** Rejected: the sweep PR is
+  unmerged *by design* (global §8 human gate). If the human then rejects the
+  sweep, the bump would already have been destroyed. **Never close against an
+  unmerged PR.**
+- **"Major version bump" → close + ticket.** File the ticket, but leave the PR
+  open. A major is exactly the case where the human most wants the diff still
+  reachable.
+- **"Fails CI, open >14 days" → close.** Rejected: CI is red for unrelated infra
+  reasons all the time, and that is not the bump's fault.
 
 ### Hard rules for the janitor
 
-1. **Never merge a bot PR.** Global §8 — the human gate applies to bot PRs
-   exactly as it applies to agent PRs. This agent closes and tickets; it does
-   not merge.
-2. **Never close a security PR.** Critical/High CVE fixes escalate to HITL even
-   when they look superseded — the sweep may have missed a transitive path.
-3. **Cap at 20 closes per run.** A first run against a year of accumulated bot
-   PRs should not produce 200 notifications. Close the 20 oldest that qualify;
-   the next run gets the rest.
-4. **Record what was closed** in the artifact's `bot_prs` block, with the reason
-   per PR. This is the audit trail for a destructive-ish action.
+1. **Dry-run by default.** `DEPS_JANITOR_APPLY=1` is required to actually close.
+   A first run against a year of accumulated bot PRs produces a reviewable list
+   plus one HITL, not 20 immediate closes.
+2. **The close list is written to the artifact BEFORE anything executes**, so
+   the audit trail survives a run that dies mid-close.
+3. **Comment before closing, always.** A silently closed bot PR is
+   indistinguishable from a bug.
+4. **Never merge a bot PR.** Global §8 applies to bot PRs exactly as to agent PRs.
+5. **Hard cap** (`DEPS_JANITOR_CAP`, default 20) enforced by a counter in the
+   loop, not by asking nicely.
 
 ## Output artifact
 
