@@ -6,6 +6,11 @@ Date: 2026-07-18
 
 Accepted
 
+Amended in part by [ADR-0016](0016-one-click-rebuild-not-an-autoupdater.md): the
+manual local `bun run release` described below is now also driven from inside the
+app. Everything else here — semver from conventional commits, the human-only cut,
+CI publishing on tag, the curated changelog — stands unchanged.
+
 ## Context
 
 TerMinal shipped continuously from `main`: `bun run release` rebuilt whatever
