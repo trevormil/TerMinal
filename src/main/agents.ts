@@ -13,6 +13,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
+import { AGENT_TIMEOUT_EXIT, killProcessGroup, resolveRunTimeoutMs } from './process-group'
 import { scriptWrapperArgs } from './script-wrapper'
 import { inMemoryWorkingSet } from './run-retention'
 import { readFileTail } from './fs-tail'
@@ -815,6 +816,24 @@ export function hasAgents(repoRoot: string): boolean {
 
 const runs = new Map<string, AgentRun>()
 const procs = new Map<string, ChildProcess>()
+
+/**
+ * Kill every in-process agent run. Called from `will-quit`: without it, quitting
+ * TerMinal with agent sessions running left `claude`/`codex` children alive —
+ * invisible, billable, and still pushing commits.
+ *
+ * SIGKILL, not SIGTERM: `will-quit` gives us no time to wait for a graceful
+ * shutdown, and a half-exited engine is worse than a killed one.
+ */
+export function killAllAgentRuns(): number {
+  let killed = 0
+  for (const [, p] of procs) {
+    killProcessGroup(p, 'SIGKILL')
+    killed++
+  }
+  procs.clear()
+  return killed
+}
 let emit: (channel: string, payload: unknown) => void = () => {}
 export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
   emit = fn
@@ -1422,6 +1441,8 @@ type RunSpec = {
   quality?: AgentQuality
   trace?: AgentRunTrace
   rerun?: RerunSpec
+  /** Hard cap per run, mirroring terminal-cron's. 0/undefined → AGENT_RUN_TIMEOUT_MS. */
+  timeoutSec?: number
 }
 
 function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } {
@@ -1485,6 +1506,12 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     branch = '(working tree)'
   } else {
     worktree = join(resolvedWorktreesDir(), basename(repoRoot) || 'repo', `${spec.id}-${tag}`)
+    // Only true once we have actually asked git to create the worktree — the
+    // rollback below must not run a repo-wide `worktree prune` for a failure
+    // that happened BEFORE that (a failed fetch, say), because prune would then
+    // deregister other worktrees whose directories are merely transiently
+    // absent (an unmounted volume, a dir being moved).
+    let addAttempted = false
     try {
       if (spec.prRef) {
         // Fetch the MR head and check it out detached; the agent pushes back to
@@ -1497,13 +1524,36 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
         } catch {
           ref = 'FETCH_HEAD' // remote-tracking ref not configured — best effort
         }
+        addAttempted = true
         git(['worktree', 'add', '--detach', worktree, ref])
         branch = spec.prRef.sourceBranch
       } else {
         branch = `agent/${spec.id}-${tag}`
+        addAttempted = true
         git(['worktree', 'add', worktree, '-b', branch, defaultBase(repoRoot)])
       }
     } catch (e) {
+      // `git worktree add` can fail AFTER registering the worktree (a checkout
+      // conflict, a branch that already exists), leaving an administrative entry
+      // in .git/worktrees and possibly a directory on disk. Left behind, the
+      // path is then permanently unusable and the storage sweep never sees it.
+      // Roll back before reporting the failure — but only if we got as far as
+      // asking git to add it. `worktree prune` is REPO-WIDE, so running it for
+      // an earlier failure could deregister unrelated worktrees.
+      if (addAttempted) {
+        try {
+          execFileSync('git', ['-C', repoRoot, 'worktree', 'remove', '--force', worktree], {
+            stdio: 'ignore',
+          })
+        } catch {
+          /* nothing registered — prune the stale admin entry for THIS path only */
+          try {
+            execFileSync('git', ['-C', repoRoot, 'worktree', 'prune'], { stdio: 'ignore' })
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
       return { error: `worktree: ${(e as Error).message}` }
     }
   }
@@ -1722,18 +1772,33 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       cwd: worktree,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Own process group, so cancel/timeout/quit reach the ENGINE and not just
+      // the `script` wrapper. See killProcessGroup.
+      detached: true,
     })
     procs.set(run.id, p)
+    // Hard cap per step, mirroring terminal-cron (SIGKILL + exit 124). Without
+    // it a hung engine leaves the run 'running' forever — and the duplicate-run
+    // guard then blocks that agent permanently until the app restarts.
+    const timeoutMs = resolveRunTimeoutMs(spec.timeoutSec)
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      append(`\n[timeout] no completion after ${Math.round(timeoutMs / 1000)}s — killing run\n`)
+      killProcessGroup(p, 'SIGKILL')
+    }, timeoutMs)
     const streamDecoder = createAgentStreamDecoder(spec.engine, !scriptPath)
     const stdoutDecoder = new StringDecoder('utf8')
     const stderrDecoder = new StringDecoder('utf8')
     p.stdout?.on('data', (d: Buffer) => append(streamDecoder.write(stdoutDecoder.write(d))))
     p.stderr?.on('data', (d: Buffer) => append(stderrDecoder.write(d)))
     p.on('error', (err) => {
+      clearTimeout(timer)
       append(`\n[spawn error] ${err.message}\n`)
       finalize('failed')
     })
     p.on('exit', (code) => {
+      clearTimeout(timer)
       const stdoutTail = stdoutDecoder.end()
       const stderrTail = stderrDecoder.end()
       if (stdoutTail) append(streamDecoder.write(stdoutTail))
@@ -1745,6 +1810,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       if (spec.steps.length > 1)
         append(`\n━━ step ${stepIdx + 1}/${spec.steps.length} end (exit ${code ?? 1}) ━━\n`)
       if (run.status === 'canceled') return finalize('canceled', code ?? undefined)
+      // The timeout SIGKILLs the group, so the reported code is a signal death —
+      // report the conventional 124 instead, matching terminal-cron.
+      if (timedOut) return finalize('failed', AGENT_TIMEOUT_EXIT)
       if (code !== 0) return finalize('failed', code ?? undefined)
       stepIdx++
       if (stepIdx < spec.steps.length) runStep()
@@ -2408,7 +2476,7 @@ export function cancelRun(runId: string): boolean {
     run.status = 'canceled'
     persistMeta(run)
   }
-  p?.kill('SIGTERM')
+  if (p) killProcessGroup(p, 'SIGTERM')
   return !!p
 }
 

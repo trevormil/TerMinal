@@ -737,8 +737,26 @@ async function callMcpTool(
   })
   let nextId = 1
   const pending = new Map<number, (msg: any) => void>()
+  const rejectors = new Map<number, (err: Error) => void>()
   const stderr: Buffer[] = []
   let stdoutBuffer = ''
+  // A misconfigured MCP command (a path that doesn't exist) emits 'error', not
+  // 'exit'. An unhandled 'error' on a ChildProcess is thrown, and in the main
+  // process that means the whole app dies — a typo in .TerMinal/tickets.json
+  // could crash TerMinal. Handle it and fail the pending calls instead.
+  let spawnError: Error | null = null
+  const failAll = (err: Error) => {
+    spawnError = err
+    for (const [id, reject] of [...rejectors]) {
+      pending.delete(id)
+      rejectors.delete(id)
+      reject(err)
+    }
+  }
+  child.on('error', (err) => failAll(err as Error))
+  // stdin dies with the child, so a write after that point raises EPIPE on a
+  // stream with no error handler — same crash, different socket.
+  child.stdin.on('error', (err) => failAll(err as Error))
   child.stderr.on('data', (d) => stderr.push(Buffer.from(d)))
   child.stdout.on('data', (chunk) => {
     stdoutBuffer += String(chunk)
@@ -755,15 +773,29 @@ async function callMcpTool(
   })
   const send = (method: string, params?: unknown) =>
     new Promise<any>((resolve, reject) => {
+      if (spawnError) return reject(spawnError)
       const id = nextId++
+      // Cleared on settle, so a resolved call doesn't hold a 15s timer open and
+      // keep the event loop (and this child) alive after the work is done.
+      const timer = setTimeout(() => {
+        if (pending.delete(id)) {
+          rejectors.delete(id)
+          reject(new Error(`MCP timeout calling ${method}`))
+        }
+      }, 15_000)
+      rejectors.set(id, (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
       pending.set(id, (msg) => {
+        clearTimeout(timer)
         pending.delete(id)
+        rejectors.delete(id)
         msg.error ? reject(new Error(msg.error.message || 'MCP error')) : resolve(msg.result)
       })
-      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
-      setTimeout(() => {
-        if (pending.delete(id)) reject(new Error(`MCP timeout calling ${method}`))
-      }, 15_000)
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n', (err) => {
+        if (err) failAll(err)
+      })
     })
   try {
     await send('initialize', {
@@ -773,6 +805,9 @@ async function callMcpTool(
     })
     child.stdin.write(
       JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n',
+      () => {
+        /* notification — a write failure surfaces on the next request */
+      },
     )
     const result = await send('tools/call', { name: tool, arguments: args })
     const content = Array.isArray(result?.content) ? result.content : []

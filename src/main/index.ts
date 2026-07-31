@@ -236,6 +236,7 @@ import {
   type Agent,
   type Engine,
   type PrAgentKind,
+  killAllAgentRuns,
 } from './agents'
 import {
   getPersistentAgent,
@@ -427,6 +428,7 @@ import {
 } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 import { resolveWithin, resolveWithinAny } from './path-guard'
+import { createEpochRegistry } from './session-epoch'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { modelArgs, resumeArgs } from '../shared/engines'
 
@@ -615,8 +617,22 @@ function pretrustClaudeProject(dir: string): void {
   }
 }
 
+// Restart-under-the-same-key generation counter. `startSession` on a live key
+// kills the old pty, but node-pty still delivers that pty's `onExit` — and the
+// old closure captures `key`, so it fired `pty:exit` against the BRAND NEW
+// session, marking a fresh terminal as exited and un-pairing it from its loop.
+// Each start takes an epoch; a stale closure sees its epoch superseded and does
+// nothing.
+const sessionEpochs = createEpochRegistry()
+
 function startSession(key: string, opts: StartOpts) {
-  sessions.get(key)?.pty.kill()
+  try {
+    sessions.get(key)?.pty.kill()
+  } catch {
+    /* already dead — the restart must still proceed */
+  }
+  const epoch = sessionEpochs.next(key)
+  const isCurrentEpoch = () => sessionEpochs.isCurrent(key, epoch)
 
   const remote = opts.remote?.sshTarget ? opts.remote : undefined
   const cwd = remote ? remote.cwd || opts.cwd || '' : processSpawnCwd(opts.cwd || homedir())
@@ -870,6 +886,8 @@ function startSession(key: string, opts: StartOpts) {
     appendSessionRunLog(sessionId, d)
   })
   proc.onExit(({ exitCode }) => {
+    // A superseded session's exit must not touch the live one that replaced it.
+    if (!isCurrentEpoch()) return
     send('pty:exit', key, exitCode)
     unregisterLoopSession(key)
     const status = exitCode === 0 ? 'done' : 'failed'
@@ -924,6 +942,21 @@ function startSession(key: string, opts: StartOpts) {
   return { sessionId, cwd: displayCwd, remote, seeded }
 }
 
+/** Kill every session pty. Guarded PER SESSION: the identical call in
+ *  `stopSession` was already wrapped, but this loop wasn't — so one dead pty
+ *  threw and every session after it was never killed. */
+function killAllSessionPtys(): void {
+  for (const s of sessions.values()) {
+    try {
+      s.pty.kill()
+    } catch {
+      /* already gone — keep going */
+    }
+  }
+  sessions.clear()
+  sessionEpochs.clear()
+}
+
 function setActiveSession(key: string) {
   if (sessions.has(key)) {
     activeKey = key
@@ -940,6 +973,9 @@ function stopSession(key: string) {
       /* already gone */
     }
     sessions.delete(key)
+    // Retire the epoch too, so this pty's late onExit can't fire against a
+    // session started under the same key a moment later.
+    sessionEpochs.forget(key)
   }
   if (activeKey === key) {
     activeKey = sessions.keys().next().value ?? ''
@@ -4158,16 +4194,30 @@ app.whenReady().then(() => {
   })
 })
 
+// QUIT kills everything. This is the only handler Electron guarantees on
+// `app.quit()` — `window-all-closed` does NOT fire for it, so before this the
+// engines simply outlived the app: shells, `claude`/`codex` children and
+// detached `codex exec` runs kept going, burning tokens invisibly and still
+// committing and pushing.
 app.on('will-quit', () => {
   flushAllSessionRunLogs()
+  const killed = killAllAgentRuns()
+  if (killed) console.error(`[gt] quit: killed ${killed} in-flight agent run(s)`)
+  killAllSessionPtys()
   void stopBridge() // never leave the port bound after the app goes away
 })
 
+// CLOSE (macOS red button) does NOT kill sessions. The app stays resident and
+// re-activating from the dock brings the window back, so tearing down live
+// agent terminals here was destroying work on a window-management gesture. The
+// polling timers do stop — nothing is watching. On non-macOS, closing the last
+// window IS quitting, so app.quit() runs will-quit and the sessions die there.
 app.on('window-all-closed', () => {
   if (watchTimer) clearInterval(watchTimer)
   if (activityTimer) clearInterval(activityTimer)
   if (telegramTimer) clearInterval(telegramTimer)
-  for (const s of sessions.values()) s.pty.kill()
-  sessions.clear()
+  watchTimer = null
+  activityTimer = null
+  telegramTimer = null
   if (process.platform !== 'darwin') app.quit()
 })
