@@ -2620,12 +2620,30 @@ ipcMain.handle('schedules:list', () => {
   const now = Date.now()
   const remote = curRemote()
   if (remote) {
-    return remoteSchedules
-      .list(remote)
-      .then((rows) =>
-        rows.map((s) => ({ ...s, describe: describeSpec(s.spec), nextRun: nextRun(s.spec, now) })),
-      )
-      .catch(() => [])
+    return (
+      remoteSchedules
+        .list(remote)
+        .then((rows) =>
+          rows.map((s) => ({
+            ...s,
+            describe: describeSpec(s.spec),
+            nextRun: nextRun(s.spec, now),
+          })),
+        )
+        // NOT `.catch(() => [])`: an unreachable host read as "no schedules",
+        // making a network blip indistinguishable from every cron job on that
+        // host having been deleted. Surface the failure instead.
+        .catch((e) => {
+          const message = String((e as Error)?.message || e)
+          console.error(`[gt] schedules:list remote failed: ${message}`)
+          emitActivity({
+            kind: 'error',
+            title: `Could not reach ${remote.label || remote.sshTarget}`,
+            detail: `Schedule list unavailable — ${message}`,
+          })
+          return []
+        })
+    )
   }
   return readSchedules(now).map((s) => ({
     ...s,
@@ -3066,12 +3084,18 @@ ipcMain.handle('monitors:list', () => listMonitorsWithStatus())
 ipcMain.handle('monitors:save', (_e, list: unknown) => {
   // monitors.json is executed by bin/terminal-monitor on a launchd timer, so
   // the write path validates rather than trusting the renderer's JSON.
+  if (!Array.isArray(list)) return { ok: false, saved: 0, rejected: 0, error: 'expected an array' }
   const { monitors, rejected } = validateMonitors(list)
   if (rejected) console.error(`[gt] monitors:save dropped ${rejected} invalid monitor(s)`)
-  if (!Array.isArray(list)) return false
-  writeMonitors(monitors)
-  syncMonitorDaemon()
-  return true
+  try {
+    writeMonitors(monitors)
+    syncMonitorDaemon()
+  } catch (e) {
+    // Was `return true` unconditionally — a failed write reported success and
+    // the user's edit silently vanished on the next read.
+    return { ok: false, saved: 0, rejected, error: (e as Error).message }
+  }
+  return { ok: true, saved: monitors.length, rejected }
 })
 // Native CI: forge-agnostic run/job/log views for the repo (gh run / glab api).
 // repoRoot comes from the tab's context. The webview view is the default; this
@@ -3560,8 +3584,20 @@ ipcMain.handle('mcp:install', () => {
     if (existsSync(claudeMcp)) {
       try {
         cfg = JSON.parse(readFileSync(claudeMcp, 'utf8'))
-      } catch {
-        cfg = {}
+      } catch (e) {
+        // Was `cfg = {}`, which then overwrote the file — DESTROYING every other
+        // tool's MCP registration — and still reported {ok: true}. A registry we
+        // cannot parse is a registry we must not rewrite.
+        return {
+          error:
+            `${claudeMcp} is not valid JSON (${(e as Error).message}). ` +
+            `Refusing to overwrite it — fix or move the file, then install again.`,
+        }
+      }
+      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
+        return {
+          error: `${claudeMcp} is not a JSON object. Refusing to overwrite it.`,
+        }
       }
     }
     cfg.mcpServers ??= {}

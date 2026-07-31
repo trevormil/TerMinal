@@ -1115,6 +1115,13 @@ export type CiListResult = { runs: CiRun[]; error?: string }
 export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
 export type CiLogResult = { log: string; truncated?: boolean; error?: string }
 
+export type MonitorSaveResult = {
+  ok: boolean
+  saved: number
+  rejected: number
+  error?: string
+}
+
 /** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
  *  observability, no inference. */
 export type MonitorType = 'http' | 'tls-cert' | 'tcp' | 'dns' | 'command'
@@ -1952,7 +1959,10 @@ export type GtApi = {
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
-    save: (list: Monitor[]) => Promise<boolean>
+    /** Reports what was actually written — it used to return `true` even when
+     *  nothing was saved. Callers may ignore it; a UI that surfaces failures
+     *  should not. */
+    save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
   }
   ci: {

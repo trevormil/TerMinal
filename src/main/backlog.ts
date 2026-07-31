@@ -10,6 +10,7 @@ import {
   projectAreaPathForWrite,
   projectAreaRelForPath,
 } from './project-layout'
+import { localDay } from './local-day'
 
 // Per-repo backlog. v2 repos store tickets in .TerMinal/backlog; v1 repos
 // store them in backlog/. Reads check both layouts so old repos keep working.
@@ -377,7 +378,7 @@ function slugify(title: string): string {
   )
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localDay()
 
 // In-place edit of a ticket's frontmatter fields (status/priority), preserving
 // everything else. Scoped to the frontmatter block so body text can't match.

@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { summaryFor } from './ai-runs'
 import { fileHitl } from './hitl'
+import { localDay } from './local-day'
 
 const FILE = join(homedir(), '.config', 'TerMinal', 'budgets.json')
 
@@ -172,7 +173,7 @@ function writePinged(p: Record<string, number>): void {
   }
 }
 
-const dayKey = (): string => new Date().toISOString().slice(0, 10)
+const dayKey = (): string => localDay()
 
 /** Side-effect: if we just crossed a warnAt threshold today that hasn't been
  *  pinged yet, file a HITL + return the threshold we crossed. Called by the

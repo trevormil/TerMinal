@@ -399,6 +399,13 @@ function fileHitl(item) {
   } catch {}
 }
 
+// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
+// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
+// src/main/local-day.ts: the app and this script write the same ticket
+// `updated:` field, and a mismatch made them disagree by a day every evening.
+const localDay = (at = new Date()) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+
 // Best-effort: file a backlog ticket on the affected repo so the factory can
 // pick the failure up as work. Allocates NNNN by scanning the existing backlog
 // folder's filenames; doesn't depend on the project-template's bin/next-ticket-id.
@@ -417,7 +424,7 @@ function fileTicket(repoRoot, { title, body, type = 'bug', priority = 'high' }) 
         .replace(/^-|-$/g, '')
         .slice(0, 50) || 'cron-fail'
     const path = join(backlogDir, `${id}-${slug}.md`)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localDay()
     const fm = `---
 id: ${id}
 title: ${JSON.stringify(title)}
