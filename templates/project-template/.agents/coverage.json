@@ -1,0 +1,10 @@
+{
+  "id": "coverage",
+  "title": "Coverage backfill",
+  "description": "SHA-gated, suite-green-gated coverage gap finder. Opens tests-only PRs for clear gaps, tickets the rest.",
+  "icon": "TestTube",
+  "opensPr": true,
+  "engine": "claude",
+  "model": "haiku",
+  "inPlace": false
+}

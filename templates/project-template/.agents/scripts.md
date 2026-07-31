@@ -190,6 +190,80 @@ prev_pct=$(terminal-cli state get lastCoveragePct)
 
 Values are JSON-decoded on read when possible, so booleans, numbers, and arrays round-trip correctly. Treat the state file as **best-effort cache, not source of truth** — if it's missing or stale, the agent should still produce a correct first-run answer (do the full scan, exit 0, mark-main).
 
+### Dedup ledger — for agents that *propose* rather than *detect*
+
+The SHA gate above solves one problem completely and a second one not at all.
+
+It prevents an agent from **re-running** over an unchanged tree. It does nothing
+to prevent an agent from **re-proposing** the same idea, because on any repo with
+daily commits the gate opens every day. A detector agent doesn't care: it
+re-derives its findings from the diff, and an unchanged file yields nothing. But
+a *proposer* — an idea agent, a research agent, a refactor-suggester — derives
+its output from the whole tree plus its own judgement, so it will cheerfully
+re-file "add integration tests for the auth flow" every morning until the backlog
+is unusable.
+
+The fix is a **ledger of what has already been proposed and what the human has
+already rejected**, stored under two conventional keys in the same agent-state
+file:
+
+```json
+{
+  "lastScannedSha": "abc1234",
+  "proposedIdeas": [
+    { "key": "auth-flow-integration-tests", "ticket": "0091", "at": 1760000000000 }
+  ],
+  "dismissed": [
+    { "key": "rewrite-settings-in-solidjs", "at": 1760000000000, "reason": "not our direction" }
+  ]
+}
+```
+
+| Key | Written by | Meaning |
+|---|---|---|
+| `proposedIdeas[]` | the agent, on filing | Everything this agent has ever put in front of the human. |
+| `dismissed[]`     | the **review surface**, on Dismiss | Everything the human said no to. Permanent. |
+
+Two separate arrays rather than one with a status field, because the writers are
+different processes: the agent only ever appends to `proposedIdeas`, and the
+review surface only ever appends to `dismissed`. Neither needs to read-modify-
+write the other's array, so a concurrent run and a concurrent Dismiss click
+cannot clobber each other.
+
+**The `key` is a slug of the idea's subject, not its phrasing** — otherwise
+rewording defeats the ledger. Normalize: lowercase, drop articles and filler
+verbs (`add`, `improve`, `refactor`, `consider`), keep the nouns, join with `-`,
+truncate to 60 chars. The key is a cheap **exact-match** guard; the agent is
+still responsible for a fuzzy near-duplicate check against the live backlog,
+since two different phrasings of the same idea can produce two different keys.
+
+Append is a read-modify-write of the whole array:
+
+```bash
+current=$(terminal-cli state get proposedIdeas)
+[ -z "$current" ] && current='[]'
+next=$(echo "$current" | jq --arg k "$key" --arg t "$ticket" \
+  '. + [{key: $k, ticket: $t, at: (now * 1000 | floor)}]')
+terminal-cli state set proposedIdeas "$next"
+```
+
+The ledger also gives you a **deterministic daily budget gate** that costs zero
+tokens — count entries newer than 24h and exit before ever invoking the engine:
+
+```bash
+cutoff=$(( $(date +%s) * 1000 - 86400000 ))
+recent=$(terminal-cli state get proposedIdeas | jq --argjson c "$cutoff" \
+  '[.[] | select((.at // 0) >= $c)] | length')
+[ "$recent" -ge 3 ] && { echo "daily cap reached"; exit 0; }
+```
+
+Unlike the rest of agent-state, **the ledger is closer to source of truth than
+to cache.** Losing it doesn't break correctness, but it does mean the human gets
+re-asked about things they already rejected — which is the specific failure this
+convention exists to prevent. Don't clear it as part of routine maintenance.
+
+Reference implementation: `.agents/ticket-ideas.sh` + `.agents/ticket-ideas.md`.
+
 ## Schedule integration
 
 A schedule entry references a `scriptId` (per-repo or global). The existing

@@ -1,0 +1,32 @@
+{
+  "id": "research-teacher",
+  "title": "Research & teacher",
+  "description": "Each day researches one thing worth knowing and teaches it, remembering everything it has already taught.",
+  "engine": "claude",
+  "model": "",
+  "modelPolicy": {
+    "default": "sonnet",
+    "cheap": "haiku",
+    "deep": "sonnet",
+    "judge": "",
+    "allowOverride": false
+  },
+  "quality": {
+    "acceptanceCriteria": [
+      "Read MEMORY.md before choosing a topic, and never teach a topic already listed there.",
+      "Every non-obvious claim carries a source URL that was actually fetched this run.",
+      "Append the taught topic to MEMORY.md and the run to JOURNAL.md before ending.",
+      "Write the lesson to artifacts/<date>/report.md."
+    ],
+    "requiredArtifacts": ["MEMORY.md", "JOURNAL.md"],
+    "deterministicChecks": [],
+    "judge": {
+      "enabled": false,
+      "mode": "deterministic",
+      "rubric": []
+    }
+  },
+  "tags": ["daily", "research", "learning"],
+  "createdAt": 0,
+  "updatedAt": 0
+}
