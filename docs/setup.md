@@ -41,6 +41,15 @@ If the check fails, do **not** open the app — re-download from the official
 source. (Code-signing + notarization with an Apple Developer ID is tracked as a
 follow-up; until then, checksums are the integrity signal.)
 
+## Keeping the app current
+
+The installed app is a snapshot, so it can lag `main`. **Settings** shows the
+build stamp (commit sha + build time) top-right, and when the app detects it is
+behind, **Settings → Updates → Update now** does the whole pull → rebuild →
+reinstall → relaunch with no terminal. That path rebuilds from a local source
+checkout, so it only applies if you have one — otherwise grab the next release.
+See [ADR-0016](decisions/0016-one-click-rebuild-not-an-autoupdater.md).
+
 ## 1. Engines (required: one of)
 
 Agents and sessions run through an engine CLI:
@@ -135,6 +144,38 @@ gt-notify task-complete "Build passed" --detail "all green" --repo owner/proj
 Install it from **Settings → Setup & integrations → Install gt-notify** (writes
 to `~/.local/bin`), or run `bin/gt-notify` from this repo directly. Skills, CI
 steps, and git hooks can call it to push events into the cockpit.
+
+## 6. Tickets (optional — pick where a repo's backlog lives)
+
+Each repo picks its own ticket provider in **Settings → Tickets**. Nothing here
+is required: the default is a local backlog in the repo, which needs no account
+and no network.
+
+| Provider | Where tickets live | Notes |
+|---|---|---|
+| `local` (default) | `.TerMinal/backlog/*.md` in the repo | full read/write, works offline |
+| `github` | GitHub Issues | needs `gh` (see §2); labels map to status/priority/type |
+| `linear` | Linear, via its MCP | needs the Linear MCP configured |
+| `obsidian` | a per-repo Obsidian vault | markdown tickets in a `tickets/` subfolder |
+| `webview` | entirely in some other board's web UI | read-only embed; the app writes nothing |
+
+Pick `webview` when a repo's tickets live somewhere TerMinal shouldn't touch — a
+team board that doesn't follow the ticket schema. It embeds the board as the
+Tickets tab and **refuses** ticket writes rather than silently filing them into a
+local backlog nobody reads
+([ADR-0015](decisions/0015-webview-ticket-provider.md)). If you want that board
+*alongside* a working local backlog instead, add it under `views[]` and leave the
+provider alone.
+
+## Getting around
+
+No setup needed for either of these, but they are the two things people miss:
+
+- **`⌘/` opens the keyboard-shortcuts overlay** — the fastest way to learn the
+  tab switches and session bindings.
+- **The Runs tab is the single history of every agent run**, scheduled (launchd,
+  via `bin/terminal-cron`) and in-app alike, so you don't have to guess which
+  surface a run came from.
 
 ## Where settings live
 

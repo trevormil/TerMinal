@@ -1,4 +1,4 @@
-# 9. One session, two surfaces: desktop ⇄ remote handoff is forgiving
+# 13. One session, two surfaces: desktop ⇄ remote handoff is forgiving
 
 Date: 2026-07-22
 
@@ -8,6 +8,13 @@ Accepted
 
 Builds on [ADR-0008](0008-remote-sessions-register-themselves.md) (a session
 opts in via `/remote-terminal`).
+
+Renumbered 9 → 13 on 2026-07-31: this file and
+[ADR-0009](0009-cursor-live-model-catalog.md) both claimed 9 (added the same day
+by two branches that never saw each other). The decision itself is unchanged —
+only the number. Nothing linked to it as "ADR-0009" at the time of the fix, so
+no inbound reference broke; a citation of "ADR-0009" written before 2026-07-31
+may mean this one.
 
 ## Context
 

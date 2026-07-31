@@ -1,0 +1,70 @@
+name: iOS
+
+# Own workflow rather than a job in ci.yml because `paths:` filters are
+# per-workflow: the companion app should not spend macOS minutes on desktop-only
+# changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    # A hung xcodebuild would otherwise bill to GitHub's 360m default at the
+    # macOS 10x rate. The job itself takes a few minutes.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned + checksum-verified rather than `brew install xcodegen`, which
+      # floats to whatever the runner's formula happens to be (CLAUDE.md §10).
+      # 2.46.0 was published 2026-07-16.
+      - name: Install xcodegen
+        env:
+          XCODEGEN_VERSION: 2.46.0
+          XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+        run: |
+          curl -fsSL -o xcodegen.zip \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  xcodegen.zip" | shasum -a 256 -c -
+          unzip -q xcodegen.zip
+          echo "$PWD/xcodegen/bin" >> "$GITHUB_PATH"
+
+      # No ios/.xcodegen.env in CI (it is gitignored and carries the Apple team
+      # id), so generate.sh falls back to placeholder identifiers — enough to
+      # compile for the Simulator, not to sign for a device.
+      - name: Generate the Xcode project
+        run: ios/scripts/generate.sh
+
+      # Simulator + CODE_SIGNING_ALLOWED=NO keeps this signing-credential-free.
+      #
+      # `build-for-testing`, not `build`: plain `build` compiles only the app
+      # target, so a Swift break in TerMinalRemoteTests would land green.
+      # Verified locally — build-for-testing emits TerMinalRemoteTests.swiftmodule,
+      # plain build does not. It stops short of *running* them, which needs a
+      # booted simulator (slower, flakier — add deliberately, not by default).
+      # TerMinalRemoteUITests lives in the TerMinalRemoteLive scheme and is still
+      # uncovered; it needs the e2e bridge running, so it cannot run here.
+      - name: Build for the Simulator
+        run: |
+          xcodebuild \
+            -project ios/TerMinalRemote.xcodeproj \
+            -scheme TerMinalRemote \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing
