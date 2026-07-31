@@ -1,4 +1,4 @@
-# 13. The morning briefing is an agent, and the app only records verdicts
+# 19. The morning briefing is an agent, and the app only records verdicts
 
 Date: 2026-07-31
 Status: accepted
