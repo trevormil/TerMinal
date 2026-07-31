@@ -6,6 +6,7 @@ import { Markdown } from '../../components/Markdown'
 import { navigateTo } from '../../lib/nav'
 import type { Tab, TabContext, HitlItem } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
+import { TodaySection } from './TodaySection'
 
 // Alert loudness, shown as a tag. Mirrors src/main/hitl-severity.ts; legacy
 // 'push' reads as urgent.
@@ -367,6 +368,9 @@ export function InboxDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Morning briefing. Renders nothing until a briefing exists, so the
+            drawer is unchanged for anyone not running the daily automations. */}
+        <TodaySection />
         {items === null ? (
           <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
         ) : shown.length === 0 ? (

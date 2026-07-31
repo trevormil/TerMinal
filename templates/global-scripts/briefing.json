@@ -1,0 +1,10 @@
+{
+  "id": "briefing",
+  "title": "Morning briefing",
+  "description": "Rolls up the last 24h across every repo into one reviewable file, then files a single low-severity HITL so it lands silently in the Inbox.",
+  "icon": "Sunrise",
+  "opensPr": false,
+  "engine": "claude",
+  "model": "sonnet",
+  "inPlace": true
+}

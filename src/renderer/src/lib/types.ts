@@ -1041,6 +1041,31 @@ export type FactoryHealth = {
   daily: { day: string; count: number }[]
   byRepo: { repo: string; events: number }[]
 }
+/** Mirrors src/main/briefings.ts. Renderer types are duplicated rather than
+ *  imported across the process boundary, per the existing convention here. */
+export type BriefingItemKind =
+  'pr' | 'ticket' | 'idea' | 'hitl' | 'run' | 'report' | 'lesson' | 'note'
+export type BriefingVerdict = 'promoted' | 'dismissed'
+export type BriefingItem = {
+  id: string
+  kind: BriefingItemKind
+  title: string
+  detail?: string
+  repo?: string
+  agent?: string
+  ledgerKey?: string
+  link?: string
+  nav?: string
+  verdict?: BriefingVerdict
+}
+export type Briefing = {
+  date: string
+  path: string
+  generated?: string
+  status: string
+  summary: string
+  items: BriefingItem[]
+}
 export type HitlSource =
   | 'manual'
   | 'cron-fail'
@@ -1953,6 +1978,17 @@ export type GtApi = {
   factory: {
     health: () => Promise<FactoryHealth>
     start: (engine: Engine) => Promise<AgentRun | { error: string }>
+  }
+  briefings: {
+    /** Newest briefing by DATE, or null when none has been generated yet. */
+    latest: () => Promise<Briefing | null>
+    get: (date: string) => Promise<Briefing | null>
+    dates: (limit?: number) => Promise<string[]>
+    act: (
+      date: string,
+      itemId: string,
+      verdict: BriefingVerdict,
+    ) => Promise<{ ok: true } | { ok: false; error: string }>
   }
   activity: {
     list: () => Promise<ActivityEvent[]>

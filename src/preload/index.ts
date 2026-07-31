@@ -294,6 +294,13 @@ const gt = {
     health: () => ipcRenderer.invoke('factory:health'),
     start: (engine: string) => ipcRenderer.invoke('factory:start', engine),
   },
+  briefings: {
+    latest: () => ipcRenderer.invoke('briefings:latest'),
+    get: (date: string) => ipcRenderer.invoke('briefings:get', date),
+    dates: (limit?: number) => ipcRenderer.invoke('briefings:dates', limit),
+    act: (date: string, itemId: string, verdict: string) =>
+      ipcRenderer.invoke('briefings:act', date, itemId, verdict),
+  },
 
   // activity feed + notifications
   activity: {

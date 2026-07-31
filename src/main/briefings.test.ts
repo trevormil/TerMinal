@@ -163,7 +163,9 @@ describe('actOnBriefingItem', () => {
     writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
     const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-d`)
 
-    const idea = latestBriefing()!.items.find((i) => i.kind === 'idea')!
+    const idea = latestBriefing()!.items.find(
+      (i: { kind: string; id: string }) => i.kind === 'idea',
+    )!
     const r = actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
     expect(r.ok).toBe(true)
 
@@ -191,7 +193,9 @@ describe('actOnBriefingItem', () => {
       }),
     )
     const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-e`)
-    const idea = latestBriefing()!.items.find((i) => i.kind === 'idea')!
+    const idea = latestBriefing()!.items.find(
+      (i: { kind: string; id: string }) => i.kind === 'idea',
+    )!
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
 
     const ledger = JSON.parse(
@@ -209,7 +213,9 @@ describe('actOnBriefingItem', () => {
     const { briefings, agentState } = tempRoot()
     writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
     const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-f`)
-    const idea = latestBriefing()!.items.find((i) => i.kind === 'idea')!
+    const idea = latestBriefing()!.items.find(
+      (i: { kind: string; id: string }) => i.kind === 'idea',
+    )!
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
     actOnBriefingItem('2026-07-31', idea.id, 'dismissed')
     const ledger = JSON.parse(
@@ -222,7 +228,7 @@ describe('actOnBriefingItem', () => {
     const { briefings, agentState } = tempRoot()
     writeFileSync(join(briefings, '2026-07-31.md'), SAMPLE)
     const { latestBriefing, actOnBriefingItem } = await import(`./briefings.ts?t=${Date.now()}-g`)
-    const run = latestBriefing()!.items.find((i) => i.kind === 'run')!
+    const run = latestBriefing()!.items.find((i: { kind: string; id: string }) => i.kind === 'run')!
     expect(actOnBriefingItem('2026-07-31', run.id, 'dismissed').ok).toBe(true)
     // deps-quality has no ledgerKey on this item, so no ledger file is created.
     expect(() => readFileSync(join(agentState, 'beacon', 'deps-quality.json'), 'utf8')).toThrow()
