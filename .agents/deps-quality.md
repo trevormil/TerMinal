@@ -51,99 +51,13 @@ If `HEAD == lastScannedSha` AND last advisory feed update was before
    - Safe bumps + auto-fix changes → single PR `chore: deps + lint sweep`.
    - Critical CVE that can't be auto-fixed → HITL via `.claude/bin/hitl`.
    - Aging TODO/FIXME (>90d) → ticket per cluster.
-7. **Run the bot-PR janitor** (see below) — must happen *after* the sweep PR is
-   opened, because "superseded by the sweep" is the main reason to close one.
-8. **Write artifact** to `.TerMinal/reports/deps-quality/<short_sha>.md`.
-9. **Update state** — `lastScannedSha`, `lastAuditAt`, `lastDeps`.
-10. **Activity** — `.claude/bin/activity check "Deps+quality · <N> bumps · <C> CVEs · <J> bot PRs closed" "@ <short_sha>"`.
-
-## Bot-PR janitor (dependabot / renovate)
-
-Dependabot and Renovate open one PR per dependency and never clean up after
-themselves. Left alone for a month the PR list is 40 bot PRs deep and the human
-stops looking at it — which is worse than having no bot at all, because the real
-PRs are now buried too.
-
-This agent already computes the authoritative answer to "which of these bumps
-are safe" in steps 3-4. The janitor is just spending that answer on the bot's
-backlog. It runs in the same pass.
-
-### List
-
-```bash
-# GitHub
-gh pr list --state open --json number,title,author,headRefName,createdAt \
-  --jq '[.[] | select((.author.login // "") as $l
-        | (["dependabot","dependabot[bot]","app/dependabot",
-            "renovate","renovate[bot]","app/renovate"] | index($l) != null)
-          or ((.author.is_bot // false) == true))]'
-# GitLab
-glab mr list --author=dependabot --json
-```
-
-Note the **exact-login** comparison. An unanchored `test("dependabot|renovate")`
-is a substring match and will happily select a human.
-
-### This half is implemented in the script, NOT delegated to the engine
-
-**Closing a PR is the only irreversible write this factory makes to the forge.**
-Everything else is proposal-shaped and gated by a human merge. Dependabot reads
-a human-closed PR as *"never offer this version again"*, so a wrong close
-silently removes a bump — possibly a security bump — from the queue forever.
-
-So the janitor lives in `.agents/deps-quality.sh` and runs **deterministically,
-before and independently of the engine.** The engine is explicitly told not to
-touch pull requests. Every rule below is a filter in that pipeline, not an
-instruction an LLM with a `gh` token is trusted to follow.
-
-### Preconditions — evaluated first, and absolute
-
-1. **Exact bot login, or a verified bot account.** Matched against an explicit
-   allowlist (`dependabot`, `dependabot[bot]`, `app/dependabot`, `renovate`, …)
-   or `author.is_bot == true`. **Never a substring match**: `test("renovate")`
-   also matches a human named `renovate-fan` or an org member `acme-renovate`,
-   and closing a person's PR on a substring collision is unacceptable.
-2. **Security PRs are removed from the candidate set entirely**, by label or by
-   title. This is a *precondition*, not a lower row in a precedence table —
-   precisely so a major-version bump that is *also* a CVE fix can never reach a
-   close rule. (A top-down table gets this wrong the first time the two
-   coincide, which is exactly when it matters most.)
-
-### The only close rule
-
-| Situation | Action |
-|---|---|
-| The dep is already at or past this version on the default branch | **Close**, after commenting why. The bump has genuinely landed. |
-| Everything else | **Leave open.** |
-
-That is deliberately the whole list. Three rules were considered and rejected:
-
-- **"Superseded by this run's sweep PR" → close.** Rejected: the sweep PR is
-  unmerged *by design* (global §8 human gate). If the human then rejects the
-  sweep, the bump would already have been destroyed. **Never close against an
-  unmerged PR.**
-- **"Major version bump" → close + ticket.** File the ticket, but leave the PR
-  open. A major is exactly the case where the human most wants the diff still
-  reachable.
-- **"Fails CI, open >14 days" → close.** Rejected: CI is red for unrelated infra
-  reasons all the time, and that is not the bump's fault.
-
-### Hard rules for the janitor
-
-1. **Dry-run by default.** `DEPS_JANITOR_APPLY=1` is required to actually close.
-   A first run against a year of accumulated bot PRs produces a reviewable list
-   plus one HITL, not 20 immediate closes.
-2. **The close list is written to the artifact BEFORE anything executes**, so
-   the audit trail survives a run that dies mid-close.
-3. **Comment before closing, always.** A silently closed bot PR is
-   indistinguishable from a bug.
-4. **Never merge a bot PR.** Global §8 applies to bot PRs exactly as to agent PRs.
-5. **Hard cap** (`DEPS_JANITOR_CAP`, default 20) enforced by a counter in the
-   loop, not by asking nicely.
+7. **Write artifact** to `reports/deps-quality/<short_sha>.md`.
+8. **Update state** — `lastScannedSha`, `lastAuditAt`, `lastDeps`.
+9. **Activity** — `.claude/bin/activity check "Deps+quality · <N> bumps · <C> CVEs" "@ <short_sha>"`.
 
 ## Output artifact
 
-`.TerMinal/reports/deps-quality/<short_sha>.md`:
+`reports/deps-quality/<short_sha>.md`:
 
 ```yaml
 ---
@@ -159,20 +73,12 @@ quality:
   lint_fixes: 12
   format_fixes: 8
   aging_todos: 5
-bot_prs:
-  open_before: 14
-  closed_superseded: 6
-  closed_major_ticketed: 2
-  left_open: 6
 pr_opened: https://github.com/owner/repo/pull/N
 hitl_items: []
-tickets_filed: [.TerMinal/backlog/0126-todo-cleanup.md]
+tickets_filed: [backlog/0126-todo-cleanup.md]
 status: ok
 ---
 ```
-
-Each closed bot PR is listed in the body with its number, the dep, and the
-one-line reason it was closed.
 
 ## Hard rules
 
@@ -182,4 +88,3 @@ one-line reason it was closed.
 4. **Ticket + MR workflow** — every PR through human merge.
 5. **Worktree isolation**.
 6. **Idempotent.**
-7. **Never merge anything** — including bot PRs (global §8).
