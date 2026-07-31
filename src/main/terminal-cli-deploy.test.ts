@@ -42,7 +42,7 @@ describe('terminal-cli deploy', () => {
     mkdirSync(join(home, '.config', 'TerMinal'), { recursive: true })
     const result = spawnSync('bun', ['bin/terminal-cli', 'deploy'], {
       cwd: process.cwd(),
-      env: { ...process.env, HOME: home },
+      env: { ...process.env, HOME: home, TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal') },
       encoding: 'utf8',
     })
 

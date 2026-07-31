@@ -42,7 +42,7 @@ describe('automation-inbox repoRoot allowlist (security)', () => {
 const run = (home: string, code: string): Record<string, unknown> => {
   const result = spawnSync(process.execPath, ['--eval', code], {
     cwd: process.cwd(),
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal') },
     encoding: 'utf8',
   })
   if (result.status !== 0) throw new Error(result.stderr || result.stdout)

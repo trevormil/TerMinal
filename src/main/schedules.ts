@@ -157,6 +157,14 @@ export function seedSchedule(s: NewSchedule, now = Date.now()): Schedule {
   return addSchedule({ ...s, enabled: false }, now)
 }
 
+/**
+ * Apply a FIELD-LEVEL patch to one schedule under the lock.
+ *
+ * Everything that changes a schedule goes through here, including the cron
+ * runner stamping lastRun/lastStatus/lastRunId. Writing back a whole list read
+ * minutes earlier is what resurrected `enabled: true` on a schedule the user had
+ * just disabled (R1) — patching the freshly-read record makes that impossible.
+ */
 export function updateSchedule(id: string, patch: Partial<Schedule>): Schedule | null {
   let updated: Schedule | null = null
   mutate((list) => {
@@ -168,21 +176,6 @@ export function updateSchedule(id: string, patch: Partial<Schedule>): Schedule |
     return next
   })
   return updated
-}
-
-/**
- * Stamp a run outcome onto a schedule WITHOUT touching any other field.
- *
- * The cron runner's only job here is to record `lastRun`/`lastStatus`/
- * `lastRunId`. Writing back a whole snapshot it read minutes earlier is what
- * resurrected disabled schedules (R1), so the stamp is a field-level patch
- * applied to the freshly-read record under the lock.
- */
-export function stampScheduleRun(
-  id: string,
-  stamp: Pick<Schedule, 'lastRun' | 'lastStatus' | 'lastRunId'>,
-): Schedule | null {
-  return updateSchedule(id, stamp)
 }
 
 export function removeSchedule(id: string): boolean {

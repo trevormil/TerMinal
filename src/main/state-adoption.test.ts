@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 // hitl.ts reaches the activity feed, which reaches Electron's Notification.
 // Outside the app that module has no such export, so importing it explodes.
@@ -98,7 +99,7 @@ describe('global agent registry (R4 — the bug that really bit)', () => {
 
 describe('schedules (R1 — a disabled schedule that keeps firing)', () => {
   test('toggling off is not clobbered by a concurrent lastRun stamp', async () => {
-    const { addSchedule, stampScheduleRun, toggleSchedule, readSchedules } =
+    const { addSchedule, updateSchedule, toggleSchedule, readSchedules } =
       await import('./schedules')
     const s = addSchedule({
       repoRoot: '/r',
@@ -113,7 +114,7 @@ describe('schedules (R1 — a disabled schedule that keeps firing)', () => {
     // The cron runner reads the list, then stamps. The user disables in the gap.
     // A snapshot-based writer writes back `enabled: true` and the job lives on.
     toggleSchedule(s.id, false)
-    stampScheduleRun(s.id, { lastRun: 123, lastStatus: 'done' })
+    updateSchedule(s.id, { lastRun: 123, lastStatus: 'done' })
 
     const after = readSchedules().find((x) => x.id === s.id)
     expect(after?.enabled).toBe(false)
@@ -191,4 +192,55 @@ describe('settings (R5 — defaults written over a real config)', () => {
     // No temp or lock residue from the atomic path.
     expect(readdirSync(dir).filter((n) => n.endsWith('.tmp') || n.endsWith('.lock'))).toEqual([])
   })
+})
+
+describe('persistent agents (R4 — a save that resets the agent to defaults)', () => {
+  test('a torn agent.json is quarantined instead of silently reset', async () => {
+    const { savePersistentAgent } = await import('./persistent-agents')
+    const created = savePersistentAgent({ id: 'memo', title: 'Memo', engine: 'codex', tags: ['x'] })
+    expect('error' in created).toBe(false)
+
+    const meta = join(dir, 'persistent-agents', 'memo', 'agent.json')
+    writeFileSync(meta, '{"engine":"codex","tags":["x"],"createdA')
+    const res = savePersistentAgent({ id: 'memo', title: 'Memo' })
+    expect('error' in res).toBe(true)
+    // Without the guard this save would have written engine:'claude', tags:[]
+    // and a brand-new createdAt over the user's agent.
+    const q = readdirSync(join(dir, 'persistent-agents', 'memo')).filter((n) =>
+      n.includes('.corrupt-'),
+    )
+    expect(q.length).toBe(1)
+    expect(readFileSync(join(dir, 'persistent-agents', 'memo', q[0]), 'utf8')).toContain('codex')
+  })
+
+  test('an absent agent.json is a new agent, not corruption', async () => {
+    const { savePersistentAgent, getPersistentAgent } = await import('./persistent-agents')
+    expect('error' in savePersistentAgent({ id: 'fresh', title: 'Fresh' })).toBe(false)
+    expect(getPersistentAgent('fresh')?.title).toBe('Fresh')
+  })
+})
+
+describe('loops.json', () => {
+  test('a corrupt loops.json is quarantined rather than replaced by one record', async () => {
+    const { createLoop } = await import('./loops')
+    // createLoop cuts a real git worktree, so it needs a real repo.
+    const repo = mkdtempSync(join(tmpdir(), 'tm-loop-repo-'))
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', repo, ...args], { stdio: 'ignore' })
+    git('init', '-q', '-b', 'main')
+    git('config', 'user.email', 't@example.com')
+    git('config', 'user.name', 'T')
+    writeFileSync(join(repo, 'README.md'), '# x\n')
+    git('add', '-A')
+    git('commit', '-qm', 'init')
+
+    write('loops.json', '[{"id":"old-loop","goal":"keep me"},{"id"')
+    expect(() => createLoop({ repoRoot: repo, goal: 'g', engine: 'codex' })).toThrow()
+
+    const q = corruptSiblings('loops.json')
+    expect(q.length).toBe(1)
+    // The pre-existing loop survives under the quarantine name instead of being
+    // replaced by the single record we were trying to save.
+    expect(readFileSync(join(dir, q[0]), 'utf8')).toContain('keep me')
+  }, 20_000)
 })
