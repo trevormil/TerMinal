@@ -294,6 +294,16 @@ const gt = {
     health: () => ipcRenderer.invoke('factory:health'),
     start: (engine: string) => ipcRenderer.invoke('factory:start', engine),
   },
+  // Agent reliability: scorecards computed from the existing run stores, the
+  // disabled roster with its reasons, and persistent-agent memory compaction.
+  agentInsights: {
+    scorecard: (agentId: string) => ipcRenderer.invoke('agents:scorecard', agentId),
+    scorecards: () => ipcRenderer.invoke('agents:scorecards'),
+    disabledDetail: () => ipcRenderer.invoke('agents:disabled-detail'),
+    setDisabled: (id: string, disabled: boolean, reason?: string) =>
+      ipcRenderer.invoke('agents:set-disabled', id, disabled, reason),
+    compactMemory: (id: string) => ipcRenderer.invoke('persistent-agents:compact', id),
+  },
 
   // activity feed + notifications
   activity: {

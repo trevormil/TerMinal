@@ -38,7 +38,8 @@ function readStored(): Stored {
     const rawIds = Array.isArray(a) ? a : Array.isArray(a?.scheduleIds) ? a.scheduleIds : []
     const ids = rawIds.filter((x: unknown): x is string => typeof x === 'string')
     const reasons: Stored['reasons'] = {}
-    const rawReasons = !Array.isArray(a) && a?.reasons && typeof a.reasons === 'object' ? a.reasons : {}
+    const rawReasons =
+      !Array.isArray(a) && a?.reasons && typeof a.reasons === 'object' ? a.reasons : {}
     for (const id of ids) {
       const r = (rawReasons as Record<string, unknown>)[id]
       if (r && typeof r === 'object') {

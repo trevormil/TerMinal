@@ -73,6 +73,7 @@ import type {
   AgentModelPolicy,
   AgentQuality,
   AgentRun,
+  AgentScorecard,
   Engine,
   FileEntry,
   PersistentAgent,
@@ -325,6 +326,142 @@ function QualityPanel({ quality }: { quality: AgentQuality }) {
           )}
         </div>
       </div>
+    </section>
+  )
+}
+
+// Reliability rollup for one agent, computed in main from the run stores that
+// already exist. Also surfaces any kill-switched schedule of this agent with
+// the reason it went dark plus a one-click re-enable — a disabled agent is
+// otherwise silently absent from the roster.
+type DarkSchedule = { id: string; label: string; reason?: string }
+
+function fmtUsd(n?: number): string {
+  if (n === undefined) return '—'
+  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-md border border-[var(--gt-border)]/60 px-2 py-1.5">
+      <div className="text-[9.5px] font-bold uppercase tracking-wider text-zinc-600">{label}</div>
+      <div className={`font-mono text-[12.5px] ${tone || 'text-zinc-300'}`}>{value}</div>
+    </div>
+  )
+}
+
+function ScorecardPanel({ agentId }: { agentId: string }) {
+  const [card, setCard] = useState<AgentScorecard | null>(null)
+  const [dark, setDark] = useState<DarkSchedule[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  const load = useMemo(
+    () => async () => {
+      const [c, disabled, schedules] = await Promise.all([
+        window.gt.agentInsights.scorecard(agentId),
+        window.gt.agentInsights.disabledDetail(),
+        window.gt.schedules.list(),
+      ])
+      setCard(c)
+      const byId = new Map(disabled.map((d) => [d.id, d]))
+      setDark(
+        schedules
+          .filter((s) => s.agentId === agentId && byId.has(s.id))
+          .map((s) => ({
+            id: s.id,
+            label: `${s.agentTitle} · ${s.repoLabel}`,
+            reason: byId.get(s.id)?.reason,
+          })),
+      )
+      setLoaded(true)
+    },
+    [agentId],
+  )
+
+  useEffect(() => {
+    setLoaded(false)
+    void load()
+  }, [load])
+
+  const reEnable = async (id: string) => {
+    await window.gt.agentInsights.setDisabled(id, false)
+    await load()
+  }
+
+  if (!loaded) return null
+  if (!card && !dark.length) return null
+
+  const rate = card?.successRate
+  const rateTone =
+    rate === null || rate === undefined
+      ? 'text-zinc-500'
+      : rate >= 80
+        ? 'text-emerald-400'
+        : rate >= 50
+          ? 'text-amber-400'
+          : 'text-rose-400'
+
+  return (
+    <section className="border-b border-[var(--gt-border)]/60 p-4">
+      <SectionKicker icon={Gauge} title="Reliability" />
+      {dark.map((d) => (
+        <div
+          key={d.id}
+          className="mb-2 flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2"
+        >
+          <AlertOctagon size={13} strokeWidth={2.5} className="shrink-0 text-rose-400" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[11.5px] font-semibold text-rose-200">Disabled · {d.label}</div>
+            <div className="truncate text-[11px] text-rose-300/70">
+              {d.reason || 'no reason recorded'}
+            </div>
+          </div>
+          <button
+            className="shrink-0 rounded border border-rose-400/50 px-2 py-1 text-[10.5px] font-semibold text-rose-200 hover:bg-rose-500/20"
+            onClick={() => void reEnable(d.id)}
+          >
+            Re-enable
+          </button>
+        </div>
+      ))}
+      {card && (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            <Stat
+              label="Success"
+              value={rate === null || rate === undefined ? 'n/a' : `${rate}%`}
+              tone={rateTone}
+            />
+            <Stat label="Runs" value={String(card.total)} />
+            <Stat label="Failed" value={String(card.failed)} />
+            <Stat label="Avg cost" value={fmtUsd(card.avgCostUsd)} />
+            <Stat
+              label="Avg time"
+              value={card.avgDurationMs === undefined ? '—' : fmtDuration(card.avgDurationMs)}
+            />
+            <Stat
+              label="Eval"
+              value={card.evaluated ? `${card.evalPass}/${card.evaluated} pass` : '—'}
+            />
+          </div>
+          {card.failingChecks.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                Failing checks
+              </span>
+              {card.failingChecks.map((c) => (
+                <Badge key={c.id} tone="bad">
+                  {c.title} ×{c.count}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 text-[10.5px] text-zinc-600">
+            Last {card.total} run{card.total === 1 ? '' : 's'}
+            {card.lastRunAt ? ` · latest ${fmtRelative(card.lastRunAt)} (${card.lastStatus})` : ''}
+          </div>
+        </>
+      )}
     </section>
   )
 }
@@ -2292,6 +2429,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                   )}
                   <div className="min-h-0 flex-1 overflow-y-auto">
                     <DefinitionSummary definition={selectedDefinition} />
+                    <ScorecardPanel agentId={selectedDefinition.id} />
                     <section className="border-b border-[var(--gt-border)]/60 p-4">
                       <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                         <Brain
@@ -2517,7 +2655,10 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                     ))}
                   {detailTab === 'profile' &&
                     (activeDefinition ? (
-                      <DefinitionSummary definition={activeDefinition} />
+                      <>
+                        <DefinitionSummary definition={activeDefinition} />
+                        <ScorecardPanel agentId={activeDefinition.id} />
+                      </>
                     ) : (
                       <div className="p-6 text-[12px] text-zinc-600">
                         No structured profile for this agent.

@@ -1028,6 +1028,42 @@ export type CycleStats = {
   openToMergeHours: number | null
 }
 export type Funnel = { filed: number; opened: number; merged: number }
+/** A kill-switched schedule, with why + when it went dark. */
+export type DisabledEntry = {
+  id: string
+  reason?: string
+  /** epoch ms; 0 for legacy records written before reasons existed. */
+  disabledAt: number
+}
+/** Per-agent reliability rollup over the last N runs. Computed from the run
+ *  stores already on disk — no new collection. */
+export type AgentScorecard = {
+  agentId: string
+  agentTitle: string
+  total: number
+  done: number
+  failed: number
+  running: number
+  /** null when nothing has settled — unknown, not 0% reliable. */
+  successRate: number | null
+  avgCostUsd?: number
+  totalCostUsd?: number
+  avgDurationMs?: number
+  evaluated: number
+  evalPass: number
+  evalFail: number
+  evalIncomplete: number
+  failingChecks: { id: string; title: string; count: number }[]
+  lastRunAt?: number
+  lastStatus?: string
+}
+export type CompactionResult = {
+  compacted: boolean
+  reason?: string
+  archivePath?: string
+  bytesBefore?: number
+  bytesAfter?: number
+}
 export type FactoryHealth = {
   generatedAt: number
   window24h: WindowStats
@@ -1035,6 +1071,8 @@ export type FactoryHealth = {
   agents: RunStats
   cron: RunStats & { recentFailures: number }
   hitlOpen: number
+  disabled: DisabledEntry[]
+  disabledCount: number
   cycle: CycleStats
   funnel: Funnel
   recentFailures: { title: string; ts: number; repo: string; kind: string }[]
@@ -1953,6 +1991,13 @@ export type GtApi = {
   factory: {
     health: () => Promise<FactoryHealth>
     start: (engine: Engine) => Promise<AgentRun | { error: string }>
+  }
+  agentInsights: {
+    scorecard: (agentId: string) => Promise<AgentScorecard | null>
+    scorecards: () => Promise<AgentScorecard[]>
+    disabledDetail: () => Promise<DisabledEntry[]>
+    setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
+    compactMemory: (id: string) => Promise<CompactionResult>
   }
   activity: {
     list: () => Promise<ActivityEvent[]>

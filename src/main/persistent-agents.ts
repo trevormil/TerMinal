@@ -20,7 +20,12 @@ import {
   writeFile as writeScopedFile,
 } from './files'
 
-export const PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
+const DEFAULT_PERSISTENT_AGENTS_ROOT = join(homedir(), '.config', 'TerMinal', 'persistent-agents')
+
+/** Resolved per call (not at module load) so tests can point at a temp dir
+ *  instead of the operator's real ~/.config/TerMinal. */
+export const persistentAgentsRoot = (): string =>
+  process.env.TERMINAL_PERSISTENT_AGENTS_ROOT || DEFAULT_PERSISTENT_AGENTS_ROOT
 
 export type PersistentAgent = {
   id: string
@@ -101,11 +106,11 @@ const slugify = (s: string) =>
     .slice(0, 48)
 
 function ensureRoot() {
-  mkdirSync(PERSISTENT_AGENTS_ROOT, { recursive: true })
+  mkdirSync(persistentAgentsRoot(), { recursive: true })
 }
 
 function agentDir(id: string) {
-  return join(PERSISTENT_AGENTS_ROOT, id)
+  return join(persistentAgentsRoot(), id)
 }
 
 function safe(root: string, rel: string): string | null {
@@ -217,10 +222,10 @@ function writeMeta(agent: PersistentAgent) {
 
 export function listPersistentAgents(): PersistentAgent[] {
   ensureRoot()
-  return readdirSync(PERSISTENT_AGENTS_ROOT)
+  return readdirSync(persistentAgentsRoot())
     .filter((f) => {
       try {
-        return statSync(join(PERSISTENT_AGENTS_ROOT, f)).isDirectory()
+        return statSync(join(persistentAgentsRoot(), f)).isDirectory()
       } catch {
         return false
       }
@@ -320,6 +325,159 @@ export function updatePersistentAgentFile(
   return getPersistentAgent(agent.id)!
 }
 
+// ---- memory compaction ----------------------------------------------------
+//
+// Nothing else bounds MEMORY.md / JOURNAL.md growth, so a long-lived persistent
+// agent eventually blows its own context on every run. Past a size threshold we
+// summarize the journal into MEMORY.md and shrink JOURNAL.md to its newest
+// entries — but ONLY after the original has been copied verbatim into
+// archive/. History is never deleted, only moved; if any step fails the live
+// journal is left exactly as it was. Mirrors the retention discipline in
+// run-retention.ts.
+
+/** Journal size (bytes) at which the next compaction pass runs. */
+export const JOURNAL_COMPACT_THRESHOLD_BYTES = 48_000
+
+/** How many trailing bytes of the journal stay live after compaction. */
+const JOURNAL_KEEP_BYTES = 8_000
+
+export function shouldCompactJournal(
+  bytes: number,
+  threshold = JOURNAL_COMPACT_THRESHOLD_BYTES,
+): boolean {
+  return bytes >= threshold && bytes > 0
+}
+
+export type CompactionResult = {
+  compacted: boolean
+  reason?: string
+  archivePath?: string
+  bytesBefore?: number
+  bytesAfter?: number
+}
+
+export type CompactionOptions = {
+  threshold?: number
+  /** Injectable so tests never shell out. Defaults to the cheap-llm path. */
+  summarize?: (journal: string, agentTitle: string) => Promise<string>
+  /** Injectable so tests don't need electron. Defaults to emitActivity. */
+  emit?: (e: { kind: 'info'; title: string; detail?: string }) => void
+}
+
+async function defaultSummarize(journal: string, agentTitle: string): Promise<string> {
+  const { cheapCall } = await import('./cheap-llm')
+  const res = await cheapCall({
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You compact an AI agent run journal into durable memory. Output 5-12 terse markdown bullets covering recurring decisions, stable facts, preferences, and lessons that should change future runs. Drop one-off run chatter. No preamble.',
+      },
+      { role: 'user', content: `Agent: ${agentTitle}\n\nJournal:\n${journal.slice(-60_000)}` },
+    ],
+    model: 'haiku',
+    maxTokens: 700,
+    temperature: 0.1,
+    timeoutMs: 60_000,
+  })
+  if (!res.ok || !res.text?.trim()) throw new Error(res.error || 'empty summary')
+  return res.text.trim()
+}
+
+async function defaultEmit(e: { kind: 'info'; title: string; detail?: string }): Promise<void> {
+  try {
+    const { emitActivity } = await import('./events')
+    emitActivity(e)
+  } catch {
+    /* best effort — compaction already succeeded on disk */
+  }
+}
+
+/** Summarize an oversized journal into MEMORY.md, archiving the original first.
+ *  Never throws; a failure leaves every file untouched. */
+export async function compactPersistentAgentMemory(
+  id: string,
+  opts: CompactionOptions = {},
+): Promise<CompactionResult> {
+  let agent: PersistentAgent | null = null
+  try {
+    agent = readMeta(safeId(id))
+  } catch {
+    agent = null
+  }
+  if (!agent) return { compacted: false, reason: 'agent not found' }
+
+  const journalPath = join(agent.dir, 'JOURNAL.md')
+  const journal = readText(journalPath)
+  const bytesBefore = Buffer.byteLength(journal)
+  if (!shouldCompactJournal(bytesBefore, opts.threshold))
+    return { compacted: false, reason: 'journal under threshold', bytesBefore }
+
+  // 1. Archive the ORIGINAL first. If this fails, compaction does not happen.
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  let archiveRel = join('archive', `JOURNAL-${stamp}.md`)
+  try {
+    mkdirSync(join(agent.dir, 'archive'), { recursive: true })
+    // Never overwrite an existing archive — two compactions can land in the
+    // same millisecond, and an archive is the only copy of that history.
+    for (let n = 1; existsSync(join(agent.dir, archiveRel)); n++)
+      archiveRel = join('archive', `JOURNAL-${stamp}-${n}.md`)
+  } catch {
+    /* handled by the write below */
+  }
+  const archiveAbs = join(agent.dir, archiveRel)
+  try {
+    writeFileSync(archiveAbs, journal)
+    if (readText(archiveAbs) !== journal) throw new Error('archive verification failed')
+  } catch (e) {
+    return { compacted: false, reason: `archive failed: ${(e as Error).message}`, bytesBefore }
+  }
+
+  // 2. Summarize. A failed or empty summary aborts — better an oversized
+  //    journal than a truncated one with nothing recorded in its place.
+  let summary = ''
+  try {
+    summary = (await (opts.summarize || defaultSummarize)(journal, agent.title)).trim()
+  } catch (e) {
+    return { compacted: false, reason: `summarize failed: ${(e as Error).message}`, bytesBefore }
+  }
+  if (!summary) return { compacted: false, reason: 'summarize returned nothing', bytesBefore }
+
+  // 3. Fold into MEMORY.md (append — durable memory is never rewritten).
+  try {
+    const memoryPath = join(agent.dir, 'MEMORY.md')
+    const memory = readText(memoryPath, defaultMemory()).replace(/\s*$/, '')
+    writeFileSync(
+      memoryPath,
+      `${memory}\n\n## Compacted ${stamp}\n_Source journal archived at ${archiveRel}_\n\n${summary}\n`,
+    )
+
+    // 4. Shrink the journal to its newest entries + a pointer to the archive.
+    const kept = journal.slice(-JOURNAL_KEEP_BYTES)
+    // Start at an entry boundary so the live journal never opens mid-entry.
+    const cut = kept.indexOf('\n## ')
+    const tail = cut >= 0 ? kept.slice(cut + 1) : kept
+    const next = `# Journal\n\n_Entries before ${stamp} were summarized into MEMORY.md and archived verbatim at ${archiveRel}._\n\n${tail}`
+    writeFileSync(journalPath, next)
+
+    agent.updatedAt = Date.now()
+    writeMeta(agent)
+
+    const detail = `journal ${Math.round(bytesBefore / 1024)}KB → ${Math.round(Buffer.byteLength(next) / 1024)}KB · archived at ${archiveRel}`
+    const emit = opts.emit || defaultEmit
+    emit({ kind: 'info', title: `Memory compacted · ${agent.title}`, detail })
+
+    return {
+      compacted: true,
+      archivePath: archiveRel,
+      bytesBefore,
+      bytesAfter: Buffer.byteLength(next),
+    }
+  } catch (e) {
+    return { compacted: false, reason: `compaction failed: ${(e as Error).message}`, bytesBefore }
+  }
+}
+
 export type PersistentAgentLaunchOptions = {
   repoRoot?: string
   engine?: Engine
@@ -338,6 +496,10 @@ export function persistentAgentLaunchPrompt(
   detail.lastRunAt = now
   detail.updatedAt = now
   writeMeta(detail)
+  // Best-effort, fire-and-forget: an oversized journal is compacted on the next
+  // launch rather than blocking this one. compactPersistentAgentMemory never
+  // throws and no-ops below the threshold.
+  void compactPersistentAgentMemory(id).catch(() => {})
   const taskText =
     task.trim() || 'Review your current STATE.md and continue the most important open thread.'
   const repoLine = opts.repoRoot
@@ -392,10 +554,10 @@ export function persistentAgentDesignerPrompt(
 ${t}
 
 Persistent agents are global, directory-backed, and memory-aware. They are stored under:
-${PERSISTENT_AGENTS_ROOT}
+${persistentAgentsRoot()}
 
 Create exactly one new directory:
-${PERSISTENT_AGENTS_ROOT}/<kebab-case-id>/
+${persistentAgentsRoot()}/<kebab-case-id>/
 
 Required files:
 - agent.json
