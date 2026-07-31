@@ -4,6 +4,7 @@ import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
 import { DetailTabs } from './DetailTabs'
 import { TicketLineagePanel, useTicketLineage, lineageTabCount } from './TicketLineagePanel'
+import { TicketOwnerPanel } from './TicketOwnerPanel'
 import { groupLogEntries } from '../lib/ticketLog'
 import { logTimestamp, fullTimestamp } from '../lib/time'
 import {
@@ -13,27 +14,10 @@ import {
 } from '../lib/detailTabs'
 import { statusTone, priorityTone, typeTone, horizonTone } from '../lib/badges'
 import type { BadgeTone } from './ui'
-import type {
-  Ticket,
-  TicketAgent,
-  TicketAgentRecommendation,
-  TicketComment,
-  Mr,
-  Persona,
-} from '../lib/types'
+import type { Ticket, TicketAgentRecommendation, TicketComment, Mr, Persona } from '../lib/types'
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
-
-export function ticketAgentContextId(agent?: TicketAgent): string {
-  if (!agent?.id) return ''
-  return agent.kind === 'persistent' ? `persistent:${agent.id}` : `agent:${agent.id}`
-}
-
-function contextToTicketAgent(context: Persona | undefined): TicketAgent | null {
-  if (!context?.agentId || !context.agentScope || !context.agentKind) return null
-  return { id: context.agentId, scope: context.agentScope, kind: context.agentKind }
-}
 
 function FieldSelect({
   value,
@@ -451,28 +435,6 @@ export function TicketDetail({
               Obsidian
             </button>
           )}
-          <select
-            value={ticketAgentContextId(selected.agent)}
-            onChange={async (e) => {
-              const context = agentContexts.find((a) => a.id === e.target.value)
-              const agent = contextToTicketAgent(context)
-              if (!agent) return
-              await window.gt.tickets.update(selected.slug, { agent })
-              onChanged()
-            }}
-            className="cursor-pointer rounded-md border border-[var(--gt-border)] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-            title="Assigned agent for this ticket"
-          >
-            {agentContexts.map((a) => (
-              <option
-                key={a.id}
-                value={a.id}
-                className="bg-[var(--gt-panel)] normal-case text-zinc-200"
-              >
-                {a.title}
-              </option>
-            ))}
-          </select>
           {selected.hitl && (
             <Badge tone="red">
               <Hand size={10} strokeWidth={2.25} />
@@ -502,41 +464,6 @@ export function TicketDetail({
             </button>
           )}
         </div>
-        {/* Only surface the recommendation when it DIFFERS from the current
-          owner — recommending the owner you already have is pure noise.
-          When it differs, keep it to one quiet, borderless line; the
-          rationale + signals live in the hover title. */}
-        {agentRecommendation &&
-          (selected.agent.id !== agentRecommendation.agent.id ||
-            selected.agent.scope !== agentRecommendation.agent.scope ||
-            selected.agent.kind !== agentRecommendation.agent.kind) && (
-            <div
-              className="mb-3 mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500"
-              title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')]
-                .filter(Boolean)
-                .join(' · ')}
-            >
-              <span className="text-zinc-600">Suggested owner:</span>
-              <Badge tone="accent">
-                {agentContexts.find(
-                  (a) =>
-                    a.agentId === agentRecommendation.agent.id &&
-                    a.agentKind === agentRecommendation.agent.kind,
-                )?.title || agentRecommendation.agent.id}
-              </Badge>
-              <button
-                onClick={async () => {
-                  await window.gt.tickets.update(selected.slug, {
-                    agent: agentRecommendation.agent,
-                  })
-                  onChanged()
-                }}
-                className="text-[10.5px] font-semibold text-[var(--gt-accent-light)] hover:underline"
-              >
-                Apply
-              </button>
-            </div>
-          )}
         <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
           {selected.created && <span>created {selected.created}</span>}
@@ -615,6 +542,15 @@ export function TicketDetail({
             {children}
             <Markdown>{selected.body}</Markdown>
           </div>
+        )}
+
+        {tab === 'owner' && (
+          <TicketOwnerPanel
+            ticket={selected}
+            agentContexts={agentContexts}
+            recommendation={agentRecommendation}
+            onChanged={onChanged}
+          />
         )}
 
         {tab === 'lineage' && (

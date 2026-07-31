@@ -18,8 +18,9 @@ import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
-import { TicketDetail, ticketAgentContextId } from './TicketDetail'
+import { TicketDetail } from './TicketDetail'
 import { prIidFromUrl } from './TicketLineagePanel'
+import { ticketAgentContextId } from '../lib/ticketOwner'
 import {
   statusTone,
   priorityTone,

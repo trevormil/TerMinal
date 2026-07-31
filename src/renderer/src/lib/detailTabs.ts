@@ -11,7 +11,7 @@ export function detailTabCountSuffix(count?: number): string | null {
   return typeof count === 'number' && count > 0 ? `· ${count}` : null
 }
 
-export type TicketDetailTabId = 'ticket' | 'lineage' | 'log'
+export type TicketDetailTabId = 'ticket' | 'owner' | 'lineage' | 'log'
 
 /** A tab choice is only valid for the ticket it was made on. */
 export type TicketDetailSelection = { slug: string; tab: TicketDetailTabId }
@@ -33,8 +33,10 @@ export function activeTicketDetailTab(
 export type TicketDetailTab = { id: TicketDetailTabId; label: string; count?: number }
 
 /**
- * The three tabs, in reading order. Counts are what you can see without
- * switching: how much lineage exists, how long the log is.
+ * The four tabs, in reading order: what the ticket says, who owns it, what has
+ * happened to it, what was said about it. Counts are what you can see without
+ * switching: how much lineage exists, how long the log is. Owner carries none —
+ * ownership is singular, and a "· 1" on every ticket forever is noise.
  */
 export function ticketDetailTabs({
   lineageCount,
@@ -45,6 +47,7 @@ export function ticketDetailTabs({
 }): readonly TicketDetailTab[] {
   return [
     { id: 'ticket', label: 'Ticket' },
+    { id: 'owner', label: 'Owner' },
     { id: 'lineage', label: 'Lineage', count: lineageCount },
     { id: 'log', label: 'Log', count: logCount },
   ]

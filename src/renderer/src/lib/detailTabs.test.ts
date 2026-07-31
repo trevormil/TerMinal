@@ -12,9 +12,17 @@ describe('activeTicketDetailTab', () => {
   })
 
   test('every tab is reachable', () => {
-    for (const tab of ['ticket', 'lineage', 'log'] as const) {
+    for (const tab of ['ticket', 'owner', 'lineage', 'log'] as const) {
       expect(activeTicketDetailTab({ slug: '0012-thing', tab }, '0012-thing')).toBe(tab)
     }
+  })
+
+  test('a ticket left on Owner does not drag Owner onto the next ticket', () => {
+    // Owner is the tab you are most likely to leave open — you came to
+    // reassign. The reset rule has to cover it too, or the next ticket you
+    // click opens on somebody else's picker instead of on what it says.
+    const selection = { slug: '0012-thing', tab: 'owner' as const }
+    expect(activeTicketDetailTab(selection, '0013-other')).toBe('ticket')
   })
 
   test('selecting a different ticket resets to its content', () => {
@@ -59,9 +67,9 @@ describe('detailTabCountSuffix', () => {
 })
 
 describe('ticketDetailTabs', () => {
-  test('ticket content leads and carries no count', () => {
+  test('ticket content leads, then who owns it, then what happened to it', () => {
     const tabs = ticketDetailTabs({ lineageCount: 2, logCount: 5 })
-    expect(tabs.map((t) => t.id)).toEqual(['ticket', 'lineage', 'log'])
+    expect(tabs.map((t) => t.id)).toEqual(['ticket', 'owner', 'lineage', 'log'])
     expect(tabs[0].count).toBeUndefined()
   })
 
@@ -71,11 +79,26 @@ describe('ticketDetailTabs', () => {
     expect(tabs.find((t) => t.id === 'log')?.count).toBe(5)
   })
 
-  test('a brand-new ticket still shows all three tabs, silently', () => {
+  test('owner never carries a count, however busy the ticket is', () => {
+    // A ticket has exactly one owner, so the only count it could ever show is
+    // "· 1" — a constant on every tab of every ticket, which is noise.
+    const busy = ticketDetailTabs({ lineageCount: 9, logCount: 40 })
+    expect(busy.find((t) => t.id === 'owner')?.count).toBeUndefined()
+    expect(detailTabCountSuffix(busy.find((t) => t.id === 'owner')?.count)).toBeNull()
+  })
+
+  test('a brand-new ticket still shows all four tabs, silently', () => {
     // No runs, no PRs, no comments: the tabs are present and suffix-free — an
     // empty ticket must never render an error or a count of zero.
     const tabs = ticketDetailTabs({ lineageCount: 0, logCount: 0 })
-    expect(tabs).toHaveLength(3)
-    expect(tabs.map((t) => detailTabCountSuffix(t.count))).toEqual([null, null, null])
+    expect(tabs).toHaveLength(4)
+    expect(tabs.map((t) => detailTabCountSuffix(t.count))).toEqual([null, null, null, null])
+  })
+
+  test('every tab is labelled and every id is distinct', () => {
+    // The strip is keyed by id; a duplicate would silently drop a tab.
+    const tabs = ticketDetailTabs({ lineageCount: 1, logCount: 1 })
+    expect(new Set(tabs.map((t) => t.id)).size).toBe(tabs.length)
+    expect(tabs.map((t) => t.label)).toEqual(['Ticket', 'Owner', 'Lineage', 'Log'])
   })
 })

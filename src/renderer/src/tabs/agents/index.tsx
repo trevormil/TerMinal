@@ -57,7 +57,7 @@ import { Markdown } from '../../components/Markdown'
 import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
-import { navigateTo } from '../../lib/nav'
+import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
 import {
   engineInstanceLabel,
@@ -1969,6 +1969,25 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
       setSelAgentId(selectedDefinition.ref.id)
     }
   }, [agentMode, selectedDefinition, selAgentId])
+
+  // Cross-tab nav: navigateTo('agents', { definitionId, agentId, kind }) opens
+  // straight to that agent — e.g. "View in Agents tab" on a ticket's Owner tab.
+  // Selection is by definition id (`${kind}:${scope}:${id}`), so a repo-local
+  // and a global agent sharing an id never resolve to each other.
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'agents') return
+        const definitionId = ev.payload?.definitionId as string | undefined
+        const agentId = ev.payload?.agentId as string | undefined
+        if (!definitionId || !agentId) return
+        setAgentMode('all')
+        setSelDefinitionId(definitionId)
+        if (ev.payload?.kind === 'classic') setSelAgentId(agentId)
+        else localStorage.setItem('gt.persistentAgents.sel', agentId)
+      }),
+    [],
+  )
 
   const run = async (
     id: string,
