@@ -21,6 +21,7 @@ import {
 import { TerminalPane } from './components/Terminal'
 import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
+import { useRepoTrustPrompt } from './components/RepoTrustReview'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
@@ -282,6 +283,12 @@ export function SessionView({
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
   const [widgetOrder, setWidgetOrder] = useState<string[]>(() => load('gt.widgetOrder', []))
   const [drawer, setDrawer] = useState(false)
+  // A repo whose widgets are waiting on approval is surfaced on the Plugins
+  // chip — widgets are managed in that drawer, so the indicator sits where the
+  // fix is. Indicator only: approving still means opening the drawer and
+  // reading the literal commands. There is no approve-from-the-badge. Polled,
+  // because nothing pushes when the active session's cwd changes.
+  const trustPrompt = useRepoTrustPrompt(5000)
   const [cockpitCollapsed, setCockpitCollapsed] = useState(() => {
     try {
       return localStorage.getItem('gt.cockpitCollapsed') === '1'
@@ -927,10 +934,27 @@ export function SessionView({
             </button>
             <button
               onClick={() => setDrawer(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+              title={
+                trustPrompt.pending
+                  ? 'This repo’s widgets need your approval before they can run — open Plugins to read them'
+                  : 'Plugins'
+              }
+              className={`relative inline-flex items-center gap-1.5 rounded-md border bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white ${
+                trustPrompt.pending
+                  ? 'border-[var(--gt-red)]/60 text-zinc-200'
+                  : 'border-[var(--gt-border)] text-zinc-300'
+              }`}
             >
               <LayoutGrid size={12} strokeWidth={2} />
               Plugins · {activeWidgets.length}
+              {/* Deliberately a dot, not a number: "needs attention", not a
+                  second count competing with the plugin count beside it. */}
+              {trustPrompt.pending && (
+                <span
+                  aria-label="Repo widgets need approval"
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[var(--gt-panel)] bg-[var(--gt-red)]"
+                />
+              )}
             </button>
           </div>
         )}
@@ -1095,6 +1119,7 @@ export function SessionView({
               onMove={moveWidget}
               onReorder={reorderWidgets}
               onClose={() => setDrawer(false)}
+              trustPrompt={trustPrompt}
             />
           )}
         </div>

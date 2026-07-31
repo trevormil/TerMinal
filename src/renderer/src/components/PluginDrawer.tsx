@@ -2,7 +2,7 @@ import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
 import { useState } from 'react'
 import { dropIndex, reorderOnDrop } from '../lib/dragReorder'
 import type { Plugin } from '../lib/types'
-import { RepoTrustReview, useRepoTrustPrompt } from './RepoTrustReview'
+import { RepoTrustReview, type RepoTrustPrompt } from './RepoTrustReview'
 
 // The "plugins" panel. No remote registry — entries are code
 // folders in the repo plus command widgets (global / per-repo). Toggling just
@@ -16,6 +16,7 @@ export function PluginDrawer({
   onMove,
   onReorder,
   onClose,
+  trustPrompt,
 }: {
   plugins: Plugin[]
   enabled: string[]
@@ -23,12 +24,11 @@ export function PluginDrawer({
   onMove: (id: string, dir: -1 | 1) => void
   onReorder: (ids: string[]) => void
   onClose: () => void
+  /** Shared with the Plugins chip's badge, so approving here clears it at once. */
+  trustPrompt: RepoTrustPrompt
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropAt, setDropAt] = useState<number | null>(null)
-  // Shown in full here (including the settled states) — this is where you come
-  // looking. The Inbox shows the same card only while a decision is pending.
-  const trustPrompt = useRepoTrustPrompt()
   const endDrag = () => {
     setDragId(null)
     setDropAt(null)
