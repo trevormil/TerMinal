@@ -351,6 +351,13 @@ const gt = {
     status: () => ipcRenderer.invoke('repoTrust:status'),
     approve: () => ipcRenderer.invoke('repoTrust:approve'),
     revoke: () => ipcRenderer.invoke('repoTrust:revoke'),
+    // Refusal (src/main/ipc/repo-trust-denials.ts). These DO take a repo root,
+    // unlike approve: denying only ever withholds capability, so a renderer
+    // naming the wrong repo silences a prompt — it cannot grant execution.
+    denied: (repoRoot: string, hash: string) =>
+      ipcRenderer.invoke('repoTrust:denied', repoRoot, hash),
+    deny: (repoRoot: string, hash: string) => ipcRenderer.invoke('repoTrust:deny', repoRoot, hash),
+    undeny: (repoRoot: string) => ipcRenderer.invoke('repoTrust:undeny', repoRoot),
   },
 
   // scratch workspace dir (throwaway, repo-less sessions)

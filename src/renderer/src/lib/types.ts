@@ -2006,6 +2006,13 @@ export type GtApi = {
     status: () => Promise<RepoTrustStatus>
     approve: () => Promise<boolean>
     revoke: () => Promise<boolean>
+    /** Persisted refusal, so a repo the user said no to stops re-prompting.
+     *  Keyed on the command set, like approval — a repo that rewrites its
+     *  commands is a new decision and asks again. Takes a repo root because
+     *  denying only ever withholds capability; approve deliberately does not. */
+    denied: (repoRoot: string, hash: string) => Promise<boolean>
+    deny: (repoRoot: string, hash: string) => Promise<boolean>
+    undeny: (repoRoot: string) => Promise<boolean>
   }
   scratchDir: () => Promise<string>
   onTick: (cb: () => void) => () => void

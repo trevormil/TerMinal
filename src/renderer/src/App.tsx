@@ -27,6 +27,7 @@ import { firstRunPhase } from './lib/orientation'
 import { SessionView, type Info } from './SessionView'
 import logo from './assets/logo.png'
 import { InboxDrawer } from './tabs/hitl'
+import { useRepoTrustPrompt } from './components/RepoTrustReview'
 import { ActivityTab } from './tabs/activity'
 import { WorkspaceSearchPanel } from './tabs/search'
 import { CommandPalette } from './components/CommandPalette'
@@ -241,6 +242,11 @@ export default function App() {
   const [fleet, setFleet] = useState(false)
   const [inbox, setInbox] = useState(false)
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
+  // A repo whose widgets are waiting on approval is a human-needed item, so it
+  // counts toward the Inbox badge rather than growing a second bell beside it.
+  // Polled: nothing pushes when the active session's cwd changes.
+  const trustPrompt = useRepoTrustPrompt(5000)
+  const inboxBadgeCount = inboxUnreadCount + (trustPrompt.pending ? 1 : 0)
   const [activityOpen, setActivityOpen] = useState(false)
   const [activityUnread, setActivityUnread] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -1554,7 +1560,11 @@ export default function App() {
               setAttentionOpen(false)
               setActivityOpen(false)
             }}
-            title="Inbox — unresolved human-needed items"
+            title={
+              trustPrompt.pending
+                ? 'Inbox — this repo’s widgets need your approval before they can run'
+                : 'Inbox — unresolved human-needed items'
+            }
             className={`ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
               inbox
                 ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
@@ -1563,9 +1573,9 @@ export default function App() {
           >
             <Mail size={13} strokeWidth={2} />
             Inbox
-            {inboxUnreadCount > 0 && (
+            {inboxBadgeCount > 0 && (
               <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
-                {inboxUnreadCount}
+                {inboxBadgeCount}
               </span>
             )}
           </button>
