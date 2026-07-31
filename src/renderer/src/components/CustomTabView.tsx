@@ -29,13 +29,18 @@ const iconFor = (name?: string): LucideIcon =>
 
 const IFRAME = 'h-full w-full border-0 bg-white'
 
+// `allow-scripts` + `allow-same-origin` together is the documented sandbox
+// escape: the framed page can reach its own <iframe> element and drop the
+// sandbox attribute, inside the window that owns `window.gt`. The sibling
+// CommandTab already omits it. The URL is validated to http(s) in
+// src/main/tabs.ts, so the frame is always a real remote origin.
 function UrlTab({ url }: { url: string }) {
   return (
     <iframe
       src={url}
       title={url}
       className={IFRAME}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      sandbox="allow-scripts allow-forms allow-popups"
     />
   )
 }

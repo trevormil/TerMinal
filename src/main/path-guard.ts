@@ -27,3 +27,29 @@ export function resolveWithin(root: string, rel: string): string | null {
   if (abs !== base && !abs.startsWith(base + sep)) return null
   return abs
 }
+
+/**
+ * The ABSOLUTE-path counterpart of `resolveWithin`, for sinks whose renderer
+ * callers legitimately hand out absolute paths (`open:in-editor` is handed an
+ * agent script path, a note file, a RAG root — all absolute, from several
+ * different roots). Returns the normalised path if it sits inside ANY of
+ * `roots`, else null.
+ *
+ * Same boundary rule as `resolveWithin` (`root + sep`, root itself allowed) —
+ * a string `startsWith` would let `/Users/me/Projects-private` pass for root
+ * `/Users/me/Projects`. Empty/falsy roots are ignored rather than treated as
+ * `/`, so a caller with no active workspace can't accidentally allow everything.
+ */
+export function resolveWithinAny(
+  roots: (string | undefined | null)[],
+  target: string,
+): string | null {
+  if (typeof target !== 'string' || !isAbsolute(target)) return null
+  const abs = resolve(target)
+  for (const root of roots) {
+    if (!root || typeof root !== 'string') continue
+    const base = resolve(root)
+    if (abs === base || abs.startsWith(base + sep)) return abs
+  }
+  return null
+}

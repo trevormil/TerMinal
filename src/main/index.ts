@@ -12,7 +12,7 @@ import {
   session,
 } from 'electron'
 import { join, basename, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
@@ -162,6 +162,7 @@ import {
   syncTelegramSidecar,
   telegramControlEnabled,
   resolvedProjectsDir,
+  resolvedWorktreesDir,
   resolvedEditorApp,
   resolvedBrowserApp,
   resolvedTemplateRepo,
@@ -319,7 +320,8 @@ import {
 } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
-import { isExternallyOpenableUrl } from './url-safety'
+import { isExternallyOpenableUrl, isObsidianDeepLink } from './url-safety'
+import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
 // protocols) reaching shell.openExternal from rendered content is a known
@@ -416,7 +418,7 @@ import {
   reviewBaseFor,
 } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
-import { resolveWithin } from './path-guard'
+import { resolveWithin, resolveWithinAny } from './path-guard'
 import { modelArgs, resumeArgs } from '../shared/engines'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -1042,6 +1044,15 @@ function pollActivity() {
   for (const k of turnWatch.keys()) if (!sessions.has(k)) turnWatch.delete(k)
 }
 
+/** The one document the app window is ever allowed to be: dev server or the
+ *  packaged renderer bundle. Everything else is remote content. */
+function appDocumentUrl(): string {
+  return (
+    process.env.ELECTRON_RENDERER_URL ||
+    pathToFileURL(join(moduleDir, '../renderer/index.html')).href
+  )
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1320,
@@ -1067,6 +1078,38 @@ function createWindow() {
   // ever reached a sink, it still couldn't reach into these device APIs.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
     cb(permission === 'fullscreen')
+  })
+
+  // ---- window hardening (see window-guard.ts for the decisions) ------------
+  const appUrl = appDocumentUrl()
+  // Nothing may navigate the app's own window away from the app document: a
+  // top-level navigation (or a dropped .html file) would put attacker-authored
+  // content in the origin that holds `window.gt` — including runCommand.
+  // <webview> browsing is a separate WebContents and is NOT affected by these.
+  const guardNavigation = (
+    e: { preventDefault: () => void },
+    url: string,
+    isMainFrame: boolean,
+  ) => {
+    if (navigationDecision(url, appUrl, isMainFrame) === 'allow') return
+    e.preventDefault()
+    console.error('[gt] blocked in-app navigation to:', String(url).slice(0, 120))
+  }
+  win.webContents.on('will-navigate', (e, url) => guardNavigation(e, url, true))
+  win.webContents.on('will-frame-navigate', (e) => guardNavigation(e, e.url, e.isMainFrame))
+  // Stamp a CSP on the app document itself. `script-src 'self'` is the point:
+  // no remotely-hosted script can be pulled into the privileged origin. The
+  // Browser/CI/Tickets <webview>s run in the `persist:browser` partition, a
+  // different session, so ordinary browsing is untouched.
+  const csp = appCsp(!!process.env.ELECTRON_RENDERER_URL)
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+    if (!isAppUrl(details.url, appUrl)) return cb({})
+    cb({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    })
   })
 
   // The macOS traffic lights are hidden in fullscreen, so the renderer should
@@ -1200,11 +1243,9 @@ function createWindow() {
   if (telegramControlEnabled()) markTelegramControlEnabled(true, false) // restore cursor quietly
   if (!telegramTimer) telegramTimer = setInterval(pollTelegramOnce, 5000)
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    win.loadFile(join(moduleDir, '../renderer/index.html'))
-  }
+  // Deliberately the same value the navigation guard allowlists — loading via
+  // a second, independently-derived path is how those two silently drift apart.
+  void win.loadURL(appUrl)
 }
 
 // ---- session IPC ----
@@ -3138,7 +3179,14 @@ ipcMain.handle('tickets:open-in-obsidian', (_e, slug: string) => {
   if (daemon.kind !== 'local') return false
   const link = obsidianRepoDeepLink(daemon.repoRoot(), slug)
   if (!link) return false
-  shell.openExternal(link)
+  // Deep links are minted from repo-controlled config (vault name + subdir), so
+  // validate the result is still an obsidian://open link before handing it to
+  // the OS — a custom-scheme sink is the whole reason url-safety.ts exists.
+  if (!isObsidianDeepLink(link)) {
+    console.error('[gt] refused non-obsidian deep link:', String(link).slice(0, 80))
+    return false
+  }
+  void shell.openExternal(link)
   return true
 })
 ipcMain.handle('tickets:create', async (_e, input: NewTicket) => {
@@ -3757,13 +3805,36 @@ function openInApp(appName: string, target: string, fallback: () => void) {
   }
 }
 // "Open in browser" — the configured browser (default Brave) with its extensions/wallet.
-ipcMain.handle('open:in-browser', (_e, url: string) =>
-  openInApp(resolvedBrowserApp(), url, () => shell.openExternal(url)),
-)
+// `open -a <App> <target>` hands the OS an arbitrary string, so this sink needs
+// the same scheme gate as shell.openExternal (url-safety.ts) — otherwise it is
+// simply a second, unguarded way to reach an OS protocol handler.
+ipcMain.handle('open:in-browser', (_e, url: string) => {
+  if (!isExternallyOpenableUrl(url)) return openExternalSafe(url)
+  openInApp(resolvedBrowserApp(), url, () => openExternalSafe(url))
+})
 // "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
-// to the active session's repo root.
+// to the active session's repo root. Renderer-supplied paths are constrained to
+// the roots the UI legitimately surfaces (workspace, worktrees, the active repo,
+// TerMinal's config dir, configured note folders) so this can't be turned into
+// an arbitrary "open any file on disk in an app" primitive.
+function editorOpenRoots(): (string | undefined)[] {
+  const s = readSettings()
+  return [
+    resolvedProjectsDir(),
+    resolvedWorktreesDir(),
+    repoRootOf(cur().cwd) || cur().cwd,
+    activeDaemon().filesRoot(),
+    join(homedir(), '.config', 'TerMinal'),
+    ...s.noteFolders.map((f) => f.path),
+  ]
+}
 ipcMain.handle('open:in-editor', (_e, path?: string) => {
-  const target = path || repoRootOf(cur().cwd) || cur().cwd || homedir()
+  const fallbackTarget = repoRootOf(cur().cwd) || cur().cwd || homedir()
+  const target = path ? resolveWithinAny(editorOpenRoots(), path) : fallbackTarget
+  if (!target) {
+    console.error('[gt] refused open:in-editor outside allowed roots:', String(path).slice(0, 120))
+    return
+  }
   openInApp(resolvedEditorApp(), target, () => shell.openPath(target))
 })
 ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
