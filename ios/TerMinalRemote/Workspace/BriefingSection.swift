@@ -61,48 +61,55 @@ struct BriefingSection: View {
     @State private var collapsed = false
 
     var body: some View {
-        // Render nothing at all until a briefing exists: someone not running
-        // the daily automations should see the Inbox exactly as before.
-        if let briefing = model.briefing {
-            GTPanel {
-                VStack(alignment: .leading, spacing: 8) {
-                    header(briefing)
-                    if !collapsed {
-                        if let summary = briefing.summary, !summary.isEmpty {
-                            Text(summary)
+        // The poll is attached to the Group, NOT to the populated branch. A
+        // `.task` on the `if let` branch only starts once that branch exists,
+        // and a `.task` on the empty branch is one-shot — so before the first
+        // briefing landed, the section would have appeared only when something
+        // else caused the Inbox to rebuild. Hoisting it makes the polling
+        // identical in both states.
+        Group {
+            // Render nothing at all until a briefing exists: someone not running
+            // the daily automations should see the Inbox exactly as before.
+            if let briefing = model.briefing {
+                GTPanel {
+                    VStack(alignment: .leading, spacing: 8) {
+                        header(briefing)
+                        if !collapsed {
+                            if let summary = briefing.summary, !summary.isEmpty {
+                                Text(summary)
+                                    .font(GT.sans(12))
+                                    .foregroundStyle(GT.textSoft)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let error = model.error {
+                                Text(error).font(GT.sans(11)).foregroundStyle(GT.yellow)
+                            }
+                            if model.items.isEmpty {
+                                Text(
+                                    "The agents ran and produced nothing worth your attention. That is a good morning."
+                                )
                                 .font(GT.sans(12))
-                                .foregroundStyle(GT.textSoft)
+                                .foregroundStyle(GT.textMuted)
                                 .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let error = model.error {
-                            Text(error).font(GT.sans(11)).foregroundStyle(GT.yellow)
-                        }
-                        if model.items.isEmpty {
-                            Text(
-                                "The agents ran and produced nothing worth your attention. That is a good morning."
-                            )
-                            .font(GT.sans(12))
-                            .foregroundStyle(GT.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            ForEach(model.items) { item in
-                                BriefingRow(item: item, model: model)
+                            } else {
+                                ForEach(model.items) { item in
+                                    BriefingRow(item: item, model: model)
+                                }
                             }
                         }
                     }
                 }
+            } else {
+                Color.clear.frame(height: 0)
             }
-            .task {
-                while !Task.isCancelled {
-                    await model.refresh()
-                    // The briefing is written once a day, so a slow poll is
-                    // plenty — no need for the feed's tighter cadence.
-                    try? await Task.sleep(for: .seconds(120))
-                }
+        }
+        .task {
+            while !Task.isCancelled {
+                await model.refresh()
+                // The briefing is written once a day, so a slow poll is
+                // plenty — no need for the feed's tighter cadence.
+                try? await Task.sleep(for: .seconds(120))
             }
-        } else {
-            // Still fetch, so the section appears the moment one lands.
-            Color.clear.frame(height: 0).task { await model.refresh() }
         }
     }
 
