@@ -670,22 +670,42 @@ export type StorageEntry = {
   bytes: number
 }
 
+export type WorktreeStoreReport = {
+  bytes: number
+  thresholdBytes: number
+  planned: StorageEntry[]
+  deleted: StorageEntry[]
+  protectedRunning: StorageEntry[]
+  protectedDirty: StorageEntry[]
+}
+
 export type TerminalStateSweepReport = {
   root: string
   dryRun: boolean
   totalBytes: number
   reclaimableBytes: number
   reclaimedBytes: number
-  worktrees: {
+  worktrees: WorktreeStoreReport
+  agentWorktrees: WorktreeStoreReport & { dir: string }
+  leftovers: {
     bytes: number
-    thresholdBytes: number
     planned: StorageEntry[]
     deleted: StorageEntry[]
-    protectedRunning: StorageEntry[]
+  }
+  logs: {
+    bytes: number
+    maxBytes: number
+    planned: StorageEntry[]
+    rotated: StorageEntry[]
   }
   checkpoints: {
     bytes: number
     thresholdBytes: number
+    stores: {
+      maxAgeMs: number
+      planned: StorageEntry[]
+      deleted: StorageEntry[]
+    }
     gc: {
       planned: StorageEntry[]
       completed: (StorageEntry & { error?: string })[]

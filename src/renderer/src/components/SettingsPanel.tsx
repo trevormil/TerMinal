@@ -2510,9 +2510,12 @@ export function SettingsPanel({
                           </div>
                           {storage && (
                             <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">
-                              Worktrees {formatBytes(storage.worktrees.bytes)} · checkpoints{' '}
+                              Cron worktrees {formatBytes(storage.worktrees.bytes)} · agent
+                              worktrees {formatBytes(storage.agentWorktrees.bytes)} · checkpoints{' '}
                               {formatBytes(storage.checkpoints.bytes)} · scratch{' '}
-                              {formatBytes(storage.scratch.bytes)}
+                              {formatBytes(storage.scratch.bytes)} · logs{' '}
+                              {formatBytes(storage.logs.bytes)} · leftovers{' '}
+                              {formatBytes(storage.leftovers.bytes)}
                             </div>
                           )}
                         </div>
@@ -2534,7 +2537,7 @@ export function SettingsPanel({
                             storageBusy !== null || !storage || storage.reclaimableBytes === 0
                           }
                           className={buttonSoft}
-                          title="Deletes only eligible finished cron worktrees and checkpoint tmp_obj_* files, then runs git gc on large checkpoint stores. Running worktrees are protected."
+                          title="Deletes worktrees past the size or 30-day age budget, checkpoint stores untouched for 90 days, stale temp/lock/quarantine files; rotates oversized logs; then runs git gc on large checkpoint stores. Running worktrees and worktrees with uncommitted changes are never touched."
                         >
                           {storageBusy === 'reclaim' ? (
                             <Loader2 size={12} className="animate-spin" />
