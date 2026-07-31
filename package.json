@@ -24,6 +24,9 @@
     "release": "bin/release",
     "cut-release": "bun bin/cut-release",
     "test": "bun test",
+    "test:ux": "playwright test",
+    "test:ux:headed": "HEADED=1 playwright test",
+    "ux:taste": "bun scripts/ux-taste.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:baseline": "eslint . --suppress-all",
@@ -58,6 +61,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "4.2.0",
+    "@playwright/test": "1.62.0",
     "@tailwindcss/vite": "4.3.2",
     "@types/better-sqlite3": "7.6.13",
     "@types/bun": "1.3.14",

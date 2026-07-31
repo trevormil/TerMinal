@@ -104,6 +104,33 @@ jobs:
       - name: Launch the packaged app
         run: scripts/ci/smoke-packaged-app.sh
 
+      # Tier 1 of the UX suite (docs/ux-testing.md). It rides in THIS job on
+      # purpose: macOS minutes bill at 10x, and `bun run dist` has already paid
+      # for the checkout, the full install with the native rebuild, and the
+      # `out/` bundle the suite launches. A second macOS job would double that
+      # cost to re-derive the same artifacts.
+      #
+      # NOT blocking yet — deliberately, and with an end date. Every assertion
+      # in it is deterministic and it has been green locally, but it has never
+      # run on a hosted runner, and a blocking gate that turns out to be flaky
+      # on a 10x-billed runner is a tax on every future PR (and gets disabled
+      # within a week, at which point it is worse than nothing). Flip
+      # `continue-on-error` to false once it has ~a week of clean runs on main
+      # — tracked by the follow-up ticket referenced in docs/ux-testing.md.
+      # The step still runs on every PR and its failures are visible in the log.
+      - name: UX suite (tier 1)
+        continue-on-error: true
+        run: bun run test:ux
+
+      - name: Upload UX suite artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-suite-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # Flags vulnerable or newly-risky dependencies introduced by a PR's diff.
   dependency-review:
     if: github.event_name == 'pull_request'

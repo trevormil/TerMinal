@@ -15,3 +15,7 @@ sessions/.next-id.lock
 # CodeGraph local index — per-repo, user-managed; never committed (keeps builds
 # from stamping -dirty). Indexing is the operator's decision (see CLAUDE.md).
 .codegraph/
+
+# Playwright (tier 1 UX suite) run output — traces, screenshots, the canary stamp.
+/test-results/
+/playwright-report/
