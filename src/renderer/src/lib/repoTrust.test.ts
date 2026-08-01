@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { commandsCollapsible, trustPanelState } from './repoTrust'
+import { commandsCollapsible, trustDotVisible, trustPanelState } from './repoTrust'
 import { commandSetHash } from '../../../main/repo-trust'
 import type { RepoTrustStatus } from './types'
 
@@ -38,6 +38,45 @@ describe('commandsCollapsible', () => {
 
   test('a pending repo can never be collapsed — reading before approving is the gate', () => {
     expect(commandsCollapsible(trustPanelState(status(), false))).toBe(false)
+  })
+})
+
+describe('trustDotVisible', () => {
+  const chrome = {
+    pending: true,
+    showColumn: true,
+    onTerminal: true,
+    columnCollapsed: false,
+  }
+
+  test('a pending repo dots the header in a normal terminal session', () => {
+    expect(trustDotVisible(chrome)).toBe(true)
+  })
+
+  test('COLLAPSING THE WORK COLUMN DOES NOT HIDE IT — the whole reason it left the drawer button', () => {
+    // The regression this guards: gating on `columnVisible` (open) instead of
+    // `showColumn` (exists) would make a one-click collapse silently mute an
+    // unapproved-widgets prompt.
+    expect(trustDotVisible({ ...chrome, columnCollapsed: true })).toBe(true)
+  })
+
+  test('nothing pending, no dot', () => {
+    expect(trustDotVisible({ ...chrome, pending: false })).toBe(false)
+    expect(trustDotVisible({ ...chrome, pending: false, columnCollapsed: true })).toBe(false)
+  })
+
+  test('a session with no work column has no toggle to dot — the Inbox carries it there', () => {
+    expect(trustDotVisible({ ...chrome, showColumn: false })).toBe(false)
+    expect(trustDotVisible({ ...chrome, onTerminal: false })).toBe(false)
+  })
+
+  test('the dot follows the live prompt state, not a snapshot', () => {
+    // Approving in the drawer flips `pending` on the shared RepoTrustPrompt, so
+    // the dot clears without any separate bookkeeping.
+    const pendingNow = trustPanelState(status(), false) === 'pending'
+    const approved = trustPanelState(status({ trusted: true }), false) === 'pending'
+    expect(trustDotVisible({ ...chrome, pending: pendingNow })).toBe(true)
+    expect(trustDotVisible({ ...chrome, pending: approved })).toBe(false)
   })
 })
 
