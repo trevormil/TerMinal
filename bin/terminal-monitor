@@ -73,6 +73,15 @@ function writeState(id, state) {
 }
 
 // ---- classifiers (mirror src/main/monitors.ts) -----------------------------
+// Chain validity folded into expiry health. `warn`, not `fail`: an untrusted
+// chain is often deliberate (internal CA, staging box), and a monitor that hard
+// -fails on it gets muted — after which it detects nothing. A bad chain is
+// simply never allowed to read as `ok`. Canonical impl + tests:
+// src/main/monitors.ts:classifyCertTrust — keep in sync.
+function classifyCertTrust(expiryState, authorized) {
+  if (authorized) return expiryState
+  return expiryState === 'ok' ? 'warn' : expiryState
+}
 function classifyHttp(status, latencyMs, warnLatencyMs) {
   if (status === null || status >= 500) return 'fail'
   if (status >= 400) return 'warn'
@@ -122,15 +131,31 @@ function probeTls(m) {
       { host, port, servername: host, rejectUnauthorized: false, timeout: 10000 },
       () => {
         const cert = socket.getPeerCertificate()
+        // rejectUnauthorized stays false ON PURPOSE — you want to be told a cert
+        // expires in 3 days even when the chain is already broken, and a
+        // rejected handshake reports nothing at all. But the trust result was
+        // then THROWN AWAY, so a self-signed / wrong-hostname / untrusted-issuer
+        // cert rendered as a plain green "88d until expiry" (ticket 67 F-15).
+        const authorized = socket.authorized === true
+        const authError = socket.authorizationError ? String(socket.authorizationError) : ''
         socket.end()
         if (!cert || !cert.valid_to)
           return resolve({ status: 'fail', summary: 'no certificate' })
         const days = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86400000)
-        const state = classifyCert(days, Number(m.config?.warnDays) || 15, Number(m.config?.critDays) || 5)
+        const expiry = classifyCert(days, Number(m.config?.warnDays) || 15, Number(m.config?.critDays) || 5)
+        const state = classifyCertTrust(expiry, authorized)
+        const issuer = cert.issuer?.O || 'issuer ?'
         resolve({
           status: state,
-          summary: `${days}d until expiry · ${cert.issuer?.O || 'issuer ?'}`,
-          metrics: { daysRemaining: days, notAfter: cert.valid_to },
+          summary: authorized
+            ? `${days}d until expiry · ${issuer}`
+            : `${days}d until expiry · ${issuer} · UNTRUSTED CHAIN (${authError || 'not authorized'})`,
+          metrics: {
+            daysRemaining: days,
+            notAfter: cert.valid_to,
+            authorized,
+            authorizationError: authError,
+          },
         })
       },
     )

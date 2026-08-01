@@ -29,7 +29,6 @@ import { readPersonas } from './personas'
 import {
   parseCommand,
   classifyRunArgs,
-  parsePollLine,
   parseFeatureDraft,
   splitRepoToken,
   type FeatureDraft,
@@ -63,7 +62,6 @@ import { summaryFor } from './ai-runs'
 // launch/cancel/inspect agent runs. The single authorized chat_id is the auth
 // boundary — the bot acts on no one else. Native Bot API when a token+chat are
 // configured; otherwise the legacy project-template scripts are used.
-const POLL = join(homedir(), '.claude', 'bin', 'telegram-poll.sh') // legacy fallback
 const NOTIFY = join(homedir(), '.claude', 'bin', 'telegram-notify.sh') // legacy fallback
 const OFFSET_FILE = join(homedir(), '.config', 'TerMinal', 'telegram-offset')
 const STATUS_EMOJI: Record<string, string> = {
@@ -222,7 +220,6 @@ function ack(queryId: string, text?: string) {
   }).catch(() => {})
 }
 
-let enabledAt = 0 // legacy-script path: ignore lines older than enable time
 /** Called when the control toggle flips (and at startup if already on). Drains
  *  the backlog so we don't replay pre-enable messages, and acks when asked. */
 export async function markTelegramControlEnabled(on: boolean, announce = true) {
@@ -248,10 +245,7 @@ export async function markTelegramControlEnabled(on: boolean, announce = true) {
     if (announce) reply('🤖 Remote control on. Send /help.')
     return
   }
-  // legacy script fallback
-  enabledAt = Date.now()
-  if (existsSync(POLL)) execFile(POLL, () => announce && reply('🤖 Remote control on. Send /help.'))
-  else if (announce) reply('Remote control on, but no Telegram bot is configured.')
+  if (announce) reply('Remote control on, but no Telegram bot is configured.')
 }
 
 let lastRunIds: string[] = [] // for /cancel <n> indexed off the last /runs
@@ -680,13 +674,10 @@ function cmdSchedules() {
   )
 }
 
-let lastScheduleIds: string[] = []
-
 function scheduleIdFromToken(tok: string): string | null {
   // Accept either the full schedule id, an "n" index from the last /schedules,
   // or a partial-id prefix.
   const all = readSchedules(Date.now())
-  lastScheduleIds = all.map((s) => s.id)
   const n = parseInt(tok, 10)
   if (n && all[n - 1]) return all[n - 1].id
   const exact = all.find((s) => s.id === tok)
@@ -1512,28 +1503,14 @@ export async function pollTelegramOnce() {
     }
     return
   }
-  // legacy script fallback
-  if (!existsSync(POLL)) return
-  polling = true
-  try {
-    execFile(POLL, { timeout: 15_000, encoding: 'utf8' }, (err, stdout) => {
-      polling = false
-      if (err || !stdout) return
-      for (const line of stdout.split('\n')) {
-        const cmd = parsePollLine(line, enabledAt)
-        // Per-line, so one bad line doesn't drop the rest of the batch.
-        if (cmd)
-          handle(cmd).catch((e) =>
-            console.error(`[gt] telegram command failed: ${cmd}: ${(e as Error).message}`),
-          )
-      }
-    })
-  } catch (e) {
-    // execFile throws SYNCHRONOUSLY on a bad argument/path. Without this the
-    // `polling` latch stayed true forever and the bot went dark until restart.
-    polling = false
-    console.error(`[gt] telegram legacy poll failed to spawn: ${(e as Error).message}`)
-  }
+  // No legacy fallback (ticket 67, F-12). The native Bot API above is the only
+  // path. This used to exec ~/.claude/bin/telegram-poll.sh when it existed —
+  // a script OUTSIDE this repo, outside its review, and outside its update
+  // story, whose stdout was parsed straight into `handle()`, i.e. into remote
+  // control of this machine. That bridge was torn down on 2026-07-28 precisely
+  // because it hung every turn end (curl against getUpdates with no --max-time),
+  // so the file it reached for is one a user is likely to have left behind
+  // rather than one they still intend to run.
 }
 
 /** Settings "Test" button: send a one-off confirmation, surfacing API errors. */

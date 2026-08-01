@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isHttpUrl } from '../../../../shared/url-safety'
 import { LayoutGrid, RefreshCw, ExternalLink } from 'lucide-react'
 import type { Tab, TabContext, PinnedPanel } from '../../lib/types'
 
@@ -80,13 +81,38 @@ function PanelsTab({ ctx: _ctx }: { ctx: TabContext }) {
           <ExternalLink size={12} />
         </button>
       </div>
-      <iframe
-        key={`${active}:${nonce}`}
-        src={cur.url}
-        title={cur.label || 'panel'}
-        className="min-h-0 w-full flex-1 border-0"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-      />
+      {isHttpUrl(cur.url) ? (
+        <iframe
+          key={`${active}:${nonce}`}
+          src={cur.url}
+          title={cur.label || 'panel'}
+          className="min-h-0 w-full flex-1 border-0"
+          // NO `allow-same-origin` alongside `allow-scripts`. That pair is the
+          // documented sandbox escape: together they let the framed document
+          // reach its own DOM and simply REMOVE the sandbox attribute from
+          // itself. PR #197 stripped it from UrlTab/CommandTab; this file was
+          // owned by a concurrent chain that day and was missed (ticket 102).
+          //
+          // "The user typed the URL themselves" is not a trust argument once an
+          // agent can write settings — and agents write settings here.
+          sandbox="allow-scripts allow-forms allow-popups"
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+          <div className="max-w-md text-center text-[12px] leading-relaxed text-zinc-500">
+            <span className="text-zinc-300">This panel’s URL is not http(s).</span>
+            <div className="mt-1.5 break-all font-mono text-[11px] text-zinc-600">
+              {String(cur.url)}
+            </div>
+            <div className="mt-2">
+              A frame source is only ever loaded over http or https — anything else (
+              <span className="font-mono">file:</span>, <span className="font-mono">data:</span>, an
+              OS-registered scheme) would hand the panel powers a web page should not have. Edit the
+              panel in Settings.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
+import { isHttpUrl } from '../shared/url-safety'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } from './atomic-write'
@@ -382,11 +383,16 @@ export function migrate(raw: unknown): Settings {
   for (const k of ['projectsDir', 'worktreesDir', 'harnessDir', 'templateRepo'] as const) {
     if (typeof r[k] === 'string') s[k] = r[k]
   }
+  // A panel URL becomes an iframe `src`, so it is validated on the WRITE path as
+  // well as at render (ticket 102). Rejecting only at render would let a
+  // non-http value persist in settings and re-present itself to every future
+  // reader — including one that forgets to check. Agents write settings here,
+  // so "the user typed it" is not a trust argument.
   if (Array.isArray(r.pinnedPanels)) {
     s.pinnedPanels = r.pinnedPanels
-      .filter((p: unknown): p is PinnedPanel => !!p && typeof (p as PinnedPanel).url === 'string')
+      .filter((p: unknown): p is PinnedPanel => !!p && isHttpUrl((p as PinnedPanel).url))
       .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
-  } else if (typeof r.fleetAdminUrl === 'string' && r.fleetAdminUrl.trim()) {
+  } else if (typeof r.fleetAdminUrl === 'string' && isHttpUrl(r.fleetAdminUrl.trim())) {
     s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
