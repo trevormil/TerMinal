@@ -11,7 +11,7 @@ import {
   closeSync,
   watch,
 } from 'node:fs'
-import { join, dirname, basename } from 'node:path'
+import { dirname, basename } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { configPath } from './config-dir'
 import { blockEffect } from './effect-guard'

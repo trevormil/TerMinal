@@ -32,3 +32,31 @@ export function trustPanelState(status: RepoTrustStatus | null, denied: boolean)
 export function commandsCollapsible(state: TrustPanelState): boolean {
   return state === 'trusted'
 }
+
+/**
+ * Should the session header show the pending-approval dot?
+ *
+ * The dot rides the work-column TOGGLE in the session header — persistent
+ * chrome — and not the Cockpit section's Plugins action, precisely so that no
+ * collapse can bury an outstanding approval. `columnCollapsed` is a parameter
+ * and is deliberately ignored: gating on `showColumn` (does this session have a
+ * column at all) rather than on `columnVisible` (is it currently open) is the
+ * whole invariant, and the reason this is a function rather than an inline
+ * `&&`. Collapsing the Cockpit section cannot reach it either — that state
+ * lives inside WorkColumn, below the header entirely.
+ *
+ * A session with no work column at all (remote, split tile) has no header
+ * toggle to hang it on; the Inbox tab's RepoTrustReview is the surface there,
+ * as it was before this dot existed.
+ */
+export function trustDotVisible(o: {
+  pending: boolean
+  /** This session has a work column (not remote, not a split tile). */
+  showColumn: boolean
+  /** The terminal pane is the visible tab, so the header toggle is rendered. */
+  onTerminal: boolean
+  /** Accepted and ignored — a collapsed column must not hide the dot. */
+  columnCollapsed: boolean
+}): boolean {
+  return o.pending && o.showColumn && o.onTerminal
+}
