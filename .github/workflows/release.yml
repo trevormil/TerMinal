@@ -21,7 +21,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # tags + history for the notes fallback
-          submodules: true # project-template sha is baked into the build stamp
+          # NO submodules. The comment that used to sit here claimed the
+          # project-template sha needed them; that was false (ticket 103).
+          # ADR-0005 embedded the template as ordinary tracked files and dropped
+          # the submodule, and `.gitmodules` now has exactly one entry — the
+          # third-party vendor/agentview, which is never imported, built or
+          # packaged (ADR-0017). __TEMPLATE_SHA__ comes from
+          # `git log -1 -- templates/project-template`, which reads tracked
+          # files. Verified: that command returns the same sha in a checkout
+          # where the submodule is uninitialised.
+          #
+          # So the flag fetched nothing the release build used, and only pulled
+          # an untrusted third-party checkout onto the release runner.
 
       - uses: oven-sh/setup-bun@v2
         with:

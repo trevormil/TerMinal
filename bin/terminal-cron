@@ -472,13 +472,12 @@ function readSchedules() {
     return []
   }
 }
-function writeSchedules(list) {
-  try {
-    updateJsonListShared(SCHED_FILE, () => list)
-  } catch (e) {
-    log(`failed writing schedules: ${e}`)
-  }
-}
+// `writeSchedules` used to live here: a whole-list overwrite, dead since the
+// field-level patch below replaced it. Removed rather than baselined — a
+// last-write-wins helper sitting unused next to a read-modify-write one is a
+// trap for the next caller, who would reinstate exactly the lost-update bug
+// the patch function exists to prevent. Found by ticket 101 pointing eslint at
+// bin/ for the first time.
 // Field-level patch under the lock. Writing back a list read before the patch
 // is what resurrected `enabled: true` on a schedule the user had just disabled.
 function stamp(id, patch) {
@@ -1655,18 +1654,39 @@ function openReviewPatternHitlKeys() {
 
 // ---- entrypoint ------------------------------------------------------------
 
+// Every dispatch below was an unhandled rejection waiting to happen: a `.then`
+// with no `.catch` means a throw skips `process.exit` entirely, and launchd
+// records whatever the runtime decides — frequently exit 0. A failed scheduled
+// run then looks exactly like a successful one, which is the silent-failure
+// mode this runner exists to avoid (tickets 100/101). Route it: log, and exit
+// non-zero so the run record and the daemon agree that it failed.
+function die(what) {
+  return (e) => {
+    console.error(`terminal-cron: ${what} failed: ${(e && e.stack) || e}`)
+    process.exit(1)
+  }
+}
+
 const [, , action, arg] = process.argv
 if (action === 'run' && arg) {
-  runSchedule(arg).then((c) => process.exit(c))
+  runSchedule(arg)
+    .then((c) => process.exit(c))
+    .catch(die(`run ${arg}`))
 } else if (action === 'watchdog') {
-  runWatchdog().then((c) => process.exit(c))
+  runWatchdog()
+    .then((c) => process.exit(c))
+    .catch(die('watchdog'))
 } else if (action === 'review-patterns') {
-  maybeRunReviewPatterns(arg === '--force').then(() => process.exit(0))
+  maybeRunReviewPatterns(arg === '--force')
+    .then(() => process.exit(0))
+    .catch(die('review-patterns'))
 } else if (action === 'retention') {
-  maybeRunRetention(true).then((r) => {
-    console.log(JSON.stringify(r))
-    process.exit(0)
-  })
+  maybeRunRetention(true)
+    .then((r) => {
+      console.log(JSON.stringify(r))
+      process.exit(0)
+    })
+    .catch(die('retention'))
 } else {
   console.error('usage: terminal-cron run <scheduleId>')
   console.error('       terminal-cron watchdog')

@@ -1331,7 +1331,14 @@ function createWindow() {
       return root ? { label: repoForCwd(cur().cwd)?.path || basename(root), repoRoot: root } : null
     },
   })
-  if (telegramControlEnabled()) markTelegramControlEnabled(true, false) // restore cursor quietly
+  // Rejection routed, not swallowed: this primes the Telegram getUpdates cursor,
+  // and a silent failure leaves AFK control looking enabled while it quietly
+  // receives nothing (ticket 100 — the point is a decision per promise, never a
+  // blanket `void`).
+  if (telegramControlEnabled())
+    markTelegramControlEnabled(true, false).catch((e: unknown) =>
+      console.error('[gt] telegram: restoring control cursor failed:', e),
+    ) // restore cursor quietly
   if (!telegramTimer) telegramTimer = setInterval(pollTelegramOnce, 5000)
 
   // Deliberately the same value the navigation guard allowlists — loading via
@@ -2146,7 +2153,9 @@ ipcMain.handle('settings:patch', (_e, patch: SettingsPatch) => {
   }
   // react when the AFK-control toggle actually flips
   if (next.telegram.control !== before.telegram.control) {
-    markTelegramControlEnabled(next.telegram.control)
+    markTelegramControlEnabled(next.telegram.control).catch((e: unknown) =>
+      console.error('[gt] telegram: applying control toggle failed:', e),
+    )
     emitActivity({
       kind: 'info',
       title: `Telegram control ${next.telegram.control ? 'enabled' : 'disabled'}`,
@@ -4285,38 +4294,46 @@ function installAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-app.whenReady().then(() => {
-  fixPath() // packaged app has a minimal PATH — recover brew CLIs (glab/gh/…)
-  installAppMenu()
-  createWindow()
-  // App-side watchdog. Catches phantom cron runs (schedule deleted before
-  // runner finalized, terminal closed mid-run, OOM) that the per-schedule
-  // sweep in bin/terminal-cron can't reach when no schedules are firing.
-  sweepStaleCronRuns()
-  setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
-  // In-process session runs die with the app — finalize any left at status:running
-  // by a prior crash/quit so the Runs tab's "running" count reflects reality.
-  sweepStaleSessionRuns()
-  // AI fleet observability — periodic transcript scans for cost/token rollups.
-  startAICollectionLoop()
-  // Background-task watcher (#0004) — reconciles bg-tasks.json state with
-  // actual PIDs, sweeps completed tasks, fires Telegram pings on MR ready.
-  startBgWatcher()
-  // Loop watcher — reconciles in-flight role turns and advances the phase.
-  startLoopWatcher()
-  // Paired-loop listener — always-on channel between a loop's two live sessions.
-  startLoopListener(loopListenerDeps)
-  // Budget watcher — fires HITL pings at warnAt thresholds.
-  startBudgetWatcher()
-  // Local automation listener inbox — processes JSON files dropped into
-  // ~/.config/TerMinal/automation-inbox/new while the app is running.
-  startListenerInboxWatcher()
-  // Mobile bridge — binds a port ONLY when the setting is on.
-  void applyBridgeSetting()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// A throw anywhere in startup used to become an unhandled rejection: the window
+// might exist, the menu might not, and nothing said so. Surfacing it is the
+// difference between a bug report and "it just didn't open".
+app
+  .whenReady()
+  .then(() => {
+    fixPath() // packaged app has a minimal PATH — recover brew CLIs (glab/gh/…)
+    installAppMenu()
+    createWindow()
+    // App-side watchdog. Catches phantom cron runs (schedule deleted before
+    // runner finalized, terminal closed mid-run, OOM) that the per-schedule
+    // sweep in bin/terminal-cron can't reach when no schedules are firing.
+    sweepStaleCronRuns()
+    setInterval(sweepStaleCronRuns, 30 * 60 * 1000)
+    // In-process session runs die with the app — finalize any left at status:running
+    // by a prior crash/quit so the Runs tab's "running" count reflects reality.
+    sweepStaleSessionRuns()
+    // AI fleet observability — periodic transcript scans for cost/token rollups.
+    startAICollectionLoop()
+    // Background-task watcher (#0004) — reconciles bg-tasks.json state with
+    // actual PIDs, sweeps completed tasks, fires Telegram pings on MR ready.
+    startBgWatcher()
+    // Loop watcher — reconciles in-flight role turns and advances the phase.
+    startLoopWatcher()
+    // Paired-loop listener — always-on channel between a loop's two live sessions.
+    startLoopListener(loopListenerDeps)
+    // Budget watcher — fires HITL pings at warnAt thresholds.
+    startBudgetWatcher()
+    // Local automation listener inbox — processes JSON files dropped into
+    // ~/.config/TerMinal/automation-inbox/new while the app is running.
+    startListenerInboxWatcher()
+    // Mobile bridge — binds a port ONLY when the setting is on.
+    void applyBridgeSetting()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+  .catch((e: unknown) => {
+    console.error('[gt] startup failed:', e)
+  })
 
 // QUIT kills everything. This is the only handler Electron guarantees on
 // `app.quit()` — `window-all-closed` does NOT fire for it, so before this the

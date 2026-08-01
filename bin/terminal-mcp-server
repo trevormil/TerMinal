@@ -20,7 +20,7 @@ import {
   renameSync,
   unlinkSync,
 } from 'node:fs'
-import { join, basename, dirname, sep } from 'node:path'
+import { join, basename, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
@@ -1760,7 +1760,7 @@ function searchDecisionsTool(args) {
         }
         const lower = raw.toLowerCase()
         if (!lower.includes(q)) continue
-        const { meta, body } = parseFrontmatter(raw)
+        const { meta } = parseFrontmatter(raw)
         // First matching line (with a few chars context) for the snippet
         const idx = lower.indexOf(q)
         const lineStart = lower.lastIndexOf('\n', idx) + 1
