@@ -92,6 +92,43 @@ echo "▸ building…"
 # Clear previous distributables first — stale DMGs from older versions (or an
 # older product name) would otherwise pollute SHA256SUMS.txt below.
 rm -f dist/*.dmg dist/*.blockmap dist/SHA256SUMS.txt
+# ---- provenance gate (ticket 93 / security finding F-14) --------------------
+#
+# TerMinal's "Update now" button runs THIS script against the local checkout.
+# Without a gate, anything that can write to the working tree — a compromised
+# dependency, a hostile agent run, a stray `git reset` — becomes the next build
+# the operator installs and trusts, now with a Developer ID signature on it.
+#
+# Signing makes this WORSE, not better: an ad-hoc build announced itself with a
+# Gatekeeper warning, and a signed one will not.
+#
+# The honest gate available here is REACHABILITY: refuse to produce a self-update
+# build from a commit that is not on origin's default branch. That stops a
+# local-only commit, a rewritten history, or an unpushed working tree from being
+# released. It does NOT prove authorship — the repo does not use signed tags, so
+# `git verify-tag` would pass vacuously and give false assurance. Upgrading to
+# real verification means turning on tag/commit signing first.
+#
+# Only enforced for self-update builds (TERMINAL_SELF_UPDATE=1, set by the app).
+# A human at a terminal building a feature branch is doing so deliberately.
+if [[ "${TERMINAL_SELF_UPDATE:-}" == "1" ]]; then
+  echo "▸ provenance: verifying this commit is published…"
+  git fetch --quiet --prune origin || true
+  head_sha="$(git rev-parse HEAD)"
+  default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main)"
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "release: refusing a self-update build from a DIRTY working tree." >&2
+    echo "         Uncommitted changes would be signed and installed as a release." >&2
+    exit 1
+  fi
+  if ! git merge-base --is-ancestor "$head_sha" "refs/remotes/origin/$default_branch" 2>/dev/null; then
+    echo "release: refusing a self-update build — HEAD ($(git rev-parse --short HEAD)) is not" >&2
+    echo "         reachable from origin/$default_branch. Push and merge it first." >&2
+    exit 1
+  fi
+  echo "  ✓ $(git rev-parse --short HEAD) is on origin/$default_branch"
+fi
+
 bun run dist
 
 # Emit SHA-256 checksums for the distributable(s) so a download can be verified
@@ -105,9 +142,72 @@ else
   echo "  no .dmg produced — skipping checksums"
 fi
 
-echo "▸ ad-hoc signing…"
-codesign --force --deep --sign - "$APP"
-codesign --verify --deep --strict "$APP"
+# ---- signing + notarization (ticket 93) -------------------------------------
+#
+# Two paths, chosen by whether a Developer ID identity is actually present —
+# NOT by a flag someone has to remember. A contributor without the cert still
+# gets a working local build; anyone with it gets the real thing.
+#
+# This matters more than "no Gatekeeper warning": since Electron 42, macOS only
+# delivers notifications for a SIGNED app, so an unsigned build silently loses
+# the desktop alert channel.
+DEV_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+  | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -n1)"
+
+if [[ -n "$DEV_ID" && "${TERMINAL_UNSIGNED:-}" != "1" ]]; then
+  echo "▸ signing as: $DEV_ID"
+  # --deep is DELIBERATELY absent. Apple deprecated it and it signs nested code
+  # with the OUTER bundle's entitlements, which silently strips the inherit
+  # entitlement from helpers and makes the app fail to launch under the hardened
+  # runtime. electron-builder already signed every nested binary correctly
+  # during `dist`; re-signing only the outer bundle preserves that.
+  codesign --force --options runtime --timestamp \
+    --entitlements build/entitlements.mac.plist \
+    --sign "$DEV_ID" "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+
+  echo "▸ notarizing (this takes a few minutes)…"
+  # Notarize the DMG: stapling it covers both the disk image and the app inside,
+  # so a downloader gets a ticket even with no network on first launch.
+  DMG="$(ls -t dist/*.dmg 2>/dev/null | head -n1 || true)"
+  if [[ -z "$DMG" ]]; then
+    echo "release: no .dmg to notarize" >&2
+    exit 1
+  fi
+  # Credentials: the App Store Connect API key (same one the iOS TestFlight
+  # flow uses). Read from ios/.testflight.env so there is ONE place to rotate
+  # them, and never printed.
+  if [[ -f ios/.testflight.env ]]; then
+    set -a; . ios/.testflight.env; set +a
+  fi
+  ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8}"
+  if [[ -z "${ASC_KEY_ID:-}" || -z "${ASC_ISSUER_ID:-}" || ! -f "$ASC_KEY_PATH" ]]; then
+    echo "release: signed the app but cannot notarize — missing App Store Connect key." >&2
+    echo "         Need ASC_KEY_ID + ASC_ISSUER_ID (ios/.testflight.env) and $ASC_KEY_PATH" >&2
+    exit 1
+  fi
+  xcrun notarytool submit "$DMG" \
+    --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+    --wait --timeout 30m
+  # Staple BOTH: the .app is what gets installed to /Applications, the .dmg is
+  # what gets published. Stapling only the dmg leaves the installed copy needing
+  # a network round-trip to Apple on first launch.
+  xcrun stapler staple "$APP"
+  xcrun stapler staple "$DMG"
+  # The real proof. `codesign --verify` passes on an un-notarized build too;
+  # only Gatekeeper assessment tells you a downloader will be let through.
+  spctl --assess --type execute --verbose=4 "$APP"
+  echo "▸ notarized + stapled ✓"
+else
+  if [[ "${TERMINAL_UNSIGNED:-}" == "1" ]]; then
+    echo "▸ ad-hoc signing (TERMINAL_UNSIGNED=1)…"
+  else
+    echo "▸ ad-hoc signing — no Developer ID identity in the keychain."
+    echo "  NOTE: macOS will NOT deliver notifications from this build (Electron 42+)."
+  fi
+  codesign --force --deep --sign - "$APP"
+  codesign --verify --deep --strict "$APP"
+fi
 
 echo "▸ installing → ${DEST}…"
 # Stage the new build alongside the old one FIRST, so the multi-second cp -R

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime entitlements (ticket 93). Notarization REQUIRES the hardened
+    runtime, and the hardened runtime breaks Electron unless these are granted —
+    so this file is not optional boilerplate, it is what makes a notarized
+    Electron app actually launch.
+
+    Every entry below is here because something in TerMinal stops working
+    without it. Nothing is granted "just in case": each one widens what a
+    compromised renderer could attempt, so the list stays as short as the app
+    allows.
+  -->
+
+  <!-- V8 compiles JavaScript to machine code at runtime. Without these two the
+       app dies on launch with a code-signing kill, not a graceful error. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- node-pty and better-sqlite3 load .node binaries out of app.asar.unpacked.
+       Library validation requires every loaded library to be signed by the same
+       team; these are signed as part of the bundle, but the runtime linker still
+       refuses them without this. Dropping it is what makes the terminal fail to
+       spawn on a signed build while working fine unsigned. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- TerMinal's whole purpose is spawning agent CLIs (claude, codex, pi, …) in
+       a login shell, and those inherit DYLD_* / PATH from the user's profile.
+       The hardened runtime scrubs those variables without this. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!-- The app runs arbitrary user-authorised commands (agent scripts, git, gh,
+       the monitor daemon). Those children are NOT signed by us and must not
+       inherit our restrictions. -->
+  <key>com.apple.security.cs.inherit</key>
+  <true/>
+
+  <!-- Sessions read and write the user's repos anywhere on disk, chosen through
+       a file picker. Without this the picker returns paths the app then cannot
+       open — the confusing failure where a repo "opens" but every file is
+       unreadable. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Outbound only: forge APIs (gh/glab), Telegram, APNs, the update check,
+       and every monitor probe. No listen entitlement — the mobile bridge binds
+       a local port, which does not require one. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>

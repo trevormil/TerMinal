@@ -3797,7 +3797,13 @@ ipcMain.handle('release:start', () => {
     cwd: repoRoot,
     detached: true,
     stdio: ['ignore', out, out],
-    env: process.env,
+    // TERMINAL_SELF_UPDATE arms bin/release's provenance gate (F-14). This is
+    // the ONE path where the operator clicks a button and trusts whatever comes
+    // out, so the build must come from a commit that is actually published —
+    // not from a dirty tree or a local-only commit that something else wrote.
+    // Signing raises the stakes rather than lowering them: an ad-hoc build
+    // announced itself with a Gatekeeper warning, a Developer ID build will not.
+    env: { ...process.env, TERMINAL_SELF_UPDATE: '1' },
   })
   child.unref()
   releasePid = child.pid || null

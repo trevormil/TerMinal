@@ -1,4 +1,5 @@
 import { Notification } from 'electron'
+import { appSignatureKind } from './code-signature'
 import {
   appendFileSync,
   readFileSync,
@@ -138,9 +139,9 @@ function fireNotification(ev: ActivityEvent): void {
  * tells the truth. Telegram, webhook and iOS push are unaffected.
  */
 const UNSIGNED_MACOS_NOTE =
-  'Sent — but this build is unsigned, and macOS only delivers notifications for signed apps ' +
-  '(Electron 42+). If nothing appeared, that is why; use Telegram or the iPhone bridge until ' +
-  'the app is signed and notarized.'
+  'Sent — but this build is not signed with a Developer ID, and macOS only delivers ' +
+  'notifications for signed apps (Electron 42+). If nothing appeared, that is why; use ' +
+  'Telegram or the iPhone bridge until the app is signed and notarized.'
 
 /** Settings "Test" button for the desktop channel. */
 export function testDesktopAlert(): { ok: boolean; error?: string; note?: string } {
@@ -150,7 +151,12 @@ export function testDesktopAlert(): { ok: boolean; error?: string; note?: string
     return { ok: false, error: 'Desktop notifications are not supported on this system.' }
   try {
     new Notification({ title: 'TerMinal test alert', body: 'Desktop channel is working.' }).show()
-    return process.platform === 'darwin' ? { ok: true, note: UNSIGNED_MACOS_NOTE } : { ok: true }
+    // MEASURED, not assumed. Showing this caveat unconditionally on macOS was
+    // the same lie in the other direction once the app got signed — the setting
+    // has to report what is actually true of the running build.
+    return process.platform === 'darwin' && appSignatureKind() === 'unsigned'
+      ? { ok: true, note: UNSIGNED_MACOS_NOTE }
+      : { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
