@@ -11,10 +11,10 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { writeJsonAtomic } from './atomic-write'
+import { configPath } from './config-dir'
 
 // Remote sessions — the phone's whole model.
 //
@@ -27,7 +27,7 @@ import { writeJsonAtomic } from './atomic-write'
 //   ~/.config/TerMinal/remote/<id>.json    metadata + delivery cursor
 //   ~/.config/TerMinal/remote/<id>.jsonl   append-only message log
 
-export const REMOTE_DIR = join(homedir(), '.config', 'TerMinal', 'remote')
+export const REMOTE_DIR = (): string => configPath('remote')
 
 export type RemoteStatus =
   /** Agent is working; nothing is expected from you. */
@@ -80,7 +80,7 @@ const logPath = (id: string, dir: string) => join(dir, `${id}.jsonl`)
 const filesDir = (id: string, dir: string) => join(dir, `${id}.files`)
 
 /** Absolute path of an image attached to a session. null if it escapes. */
-export function imagePath(id: string, name: string, dir: string = REMOTE_DIR): string | null {
+export function imagePath(id: string, name: string, dir: string = REMOTE_DIR()): string | null {
   // The charset allows dots, so ban the two names that traverse instead of name.
   if (!isValidRemoteId(id) || !/^[\w.-]{1,128}$/.test(name) || name === '.' || name === '..') {
     return null
@@ -97,7 +97,7 @@ function ensure(dir: string): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
 }
 
-export function readRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSession | null {
+export function readRemoteSession(id: string, dir: string = REMOTE_DIR()): RemoteSession | null {
   if (!isValidRemoteId(id)) return null
   try {
     return JSON.parse(readFileSync(metaPath(id, dir), 'utf8')) as RemoteSession
@@ -122,7 +122,7 @@ export function registerRemoteSession(
     agentSessionId?: string
     origin?: 'phone' | 'local'
   },
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): RemoteSession {
   const id = isValidRemoteId(input.id) ? input.id : randomUUID().slice(0, 8)
   const now = Date.now()
@@ -146,7 +146,7 @@ export function registerRemoteSession(
   return session
 }
 
-export function listRemoteSessions(dir: string = REMOTE_DIR): RemoteSession[] {
+export function listRemoteSessions(dir: string = REMOTE_DIR()): RemoteSession[] {
   if (!existsSync(dir)) return []
   const out: RemoteSession[] = []
   for (const file of readdirSync(dir)) {
@@ -173,7 +173,7 @@ export const __remoteLogStats = { linesParsed: 0 }
 export function readMessages(
   id: string,
   opts: { after?: number } = {},
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): RemoteMessage[] {
   if (!isValidRemoteId(id)) return []
   const path = logPath(id, dir)
@@ -217,7 +217,7 @@ export function readMessages(
   }
 }
 
-export function messageCount(id: string, dir: string = REMOTE_DIR): number {
+export function messageCount(id: string, dir: string = REMOTE_DIR()): number {
   return readMessages(id, {}, dir).length
 }
 
@@ -234,7 +234,7 @@ export function saveImage(
   id: string,
   data: Buffer,
   ext: string,
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): string | null {
   if (!isValidRemoteId(id) || !data.length) return null
   const safeExt = /^(png|jpg|jpeg|gif|webp|heic)$/i.test(ext) ? ext.toLowerCase() : 'png'
@@ -255,7 +255,7 @@ export function postMessage(
   from: RemoteMessage['from'],
   text: string,
   images: string[] = [],
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): RemoteSession | null {
   if (!isValidRemoteId(id)) return null
   if (!text.trim() && images.length === 0) return null
@@ -272,7 +272,7 @@ export function postMessage(
 export function askQuestion(
   id: string,
   question: string,
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): RemoteSession | null {
   if (!postMessage(id, 'agent', question, [], dir)) return null
   return touch(id, { status: 'awaiting', question }, dir)
@@ -285,7 +285,7 @@ export function askQuestion(
  * the agent next checks, rather than needing the agent to be blocked at the
  * moment you hit send.
  */
-export function takeReplies(id: string, dir: string = REMOTE_DIR): string[] {
+export function takeReplies(id: string, dir: string = REMOTE_DIR()): string[] {
   const session = readRemoteSession(id, dir)
   if (!session) return []
   const all = readMessages(id, {}, dir)
@@ -305,7 +305,7 @@ export function takeReplies(id: string, dir: string = REMOTE_DIR): string[] {
   })
 }
 
-export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSession | null {
+export function endRemoteSession(id: string, dir: string = REMOTE_DIR()): RemoteSession | null {
   return touch(id, { status: 'ended' }, dir)
 }
 
@@ -315,7 +315,7 @@ export function endRemoteSession(id: string, dir: string = REMOTE_DIR): RemoteSe
  * phone for good. Returns true if anything was removed. Id-validated so a call
  * can never reach outside the remote directory.
  */
-export function deleteRemoteSession(id: string, dir: string = REMOTE_DIR): boolean {
+export function deleteRemoteSession(id: string, dir: string = REMOTE_DIR()): boolean {
   if (!isValidRemoteId(id)) return false
   let removed = false
   logCursors.delete(logPath(id, dir))
@@ -341,13 +341,13 @@ export function deleteRemoteSession(id: string, dir: string = REMOTE_DIR): boole
 /** The session a specific host agent registered, by its own session id. */
 export function remoteSessionForAgent(
   agentSessionId: string,
-  dir: string = REMOTE_DIR,
+  dir: string = REMOTE_DIR(),
 ): RemoteSession | null {
   if (!agentSessionId) return null
   return listRemoteSessions(dir).find((s) => s.agentSessionId === agentSessionId) || null
 }
 
-export function currentRemoteSession(dir: string = REMOTE_DIR): RemoteSession | null {
+export function currentRemoteSession(dir: string = REMOTE_DIR()): RemoteSession | null {
   return listRemoteSessions(dir).filter((s) => s.status !== 'ended')[0] || null
 }
 

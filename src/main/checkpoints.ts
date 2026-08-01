@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { parseUnifiedRanges } from '../shared/diff-ranges'
+import { configPath } from './config-dir'
 
 // Per-turn workspace checkpoints — "one click rolls back to before the agent
 // did that", the thing that makes letting an agent run unattended feel safe.
@@ -17,12 +17,12 @@ import { parseUnifiedRanges } from '../shared/diff-ranges'
 
 export type Checkpoint = { sha: string; at: number; label: string }
 
-const DEFAULT_ROOT = join(homedir(), '.config', 'TerMinal', 'checkpoints')
+const DEFAULT_ROOT = (): string => configPath('checkpoints')
 const execFileAsync = promisify(execFile)
 const checkpointInFlight = new Set<string>()
 
 function checkpointRoot(): string {
-  return process.env.TERMINAL_CHECKPOINT_ROOT || DEFAULT_ROOT
+  return process.env.TERMINAL_CHECKPOINT_ROOT || DEFAULT_ROOT()
 }
 
 /** One shadow repo per workspace, keyed by a hash of its absolute path. */

@@ -1,8 +1,8 @@
 import { readFileSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
 import type { IpcMain } from 'electron'
 import { writeJsonAtomic } from '../atomic-write'
+import { configPath } from '.././config-dir'
 
 // ---------------------------------------------------------------------------
 // The "no, and stop asking" half of repo trust.
@@ -22,9 +22,9 @@ import { writeJsonAtomic } from '../atomic-write'
 export type DenialRecord = { hash: string; deniedAt: number }
 export type DenialStore = Record<string, DenialRecord>
 
-export const DENIAL_FILE = join(homedir(), '.config', 'TerMinal', 'repo-trust-denials.json')
+export const DENIAL_FILE = (): string => configPath('repo-trust-denials.json')
 
-export function readDenialStore(file: string = DENIAL_FILE): DenialStore {
+export function readDenialStore(file: string = DENIAL_FILE()): DenialStore {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -41,7 +41,7 @@ export function readDenialStore(file: string = DENIAL_FILE): DenialStore {
   }
 }
 
-export function writeDenialStore(store: DenialStore, file: string = DENIAL_FILE): void {
+export function writeDenialStore(store: DenialStore, file: string = DENIAL_FILE()): void {
   mkdirSync(dirname(file), { recursive: true })
   writeJsonAtomic(file, store)
 }
@@ -80,7 +80,7 @@ export function undenyRepo(store: DenialStore, repoRoot: string): DenialStore {
  * off — it cannot grant execution anywhere. Approval keeps its no-argument
  * form precisely because that direction does grant it.
  */
-export function registerRepoTrustDenialIpc(ipcMain: IpcMain, file: string = DENIAL_FILE): void {
+export function registerRepoTrustDenialIpc(ipcMain: IpcMain, file: string = DENIAL_FILE()): void {
   ipcMain.handle('repoTrust:denied', (_e, repoRoot: string, hash: string) =>
     isRepoDenied(readDenialStore(file), String(repoRoot || ''), String(hash || '')),
   )

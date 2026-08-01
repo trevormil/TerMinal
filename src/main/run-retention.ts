@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { lstat, readdir, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { readJsonState, updateJsonState, writeFileAtomic, writeJsonAtomic } from './atomic-write'
 import { resolvedWorktreesDir } from './settings'
 import { promisify } from 'node:util'
+import { terminalConfigDir } from './config-dir'
 
 // The sweep walks ~/.config/TerMinal, which can hold hundreds of thousands of
 // files (worktrees, checkpoint stores). Everything below is async fs on
@@ -130,7 +130,7 @@ const DEFAULT_WORKTREE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const DEFAULT_CHECKPOINT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 
 export function terminalConfigRoot(): string {
-  return join(homedir(), '.config', 'TerMinal')
+  return terminalConfigDir()
 }
 
 /**

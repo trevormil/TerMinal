@@ -11,14 +11,14 @@
 //
 // JSONL/JSON not SQLite — greppable, no migrations.
 
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { costOf, lookupPrice } from './ai-pricing'
+import { configPath } from './config-dir'
 
-const DIR = join(homedir(), '.config', 'TerMinal', 'ai-runs')
-const STATS_DIR = join(homedir(), '.config', 'TerMinal', 'ai-stats')
+const DIR = (): string => configPath('ai-runs')
+const STATS_DIR = (): string => configPath('ai-stats')
 
 export type AIRunSource = 'claude-code' | 'codex-cli' | 'claude-p' | 'codex-exec'
 
@@ -54,8 +54,8 @@ function ensureDir(d: string): void {
 
 /** Write/update an AIRun record. Idempotent on `id`. */
 export function writeAIRun(run: AIRun): void {
-  ensureDir(DIR)
-  const path = join(DIR, `${run.id}.json`)
+  ensureDir(DIR())
+  const path = join(DIR(), `${run.id}.json`)
   try {
     writeFileSync(path, JSON.stringify(run, null, 2))
   } catch {
@@ -84,17 +84,17 @@ export function recordAIRun(
 
 /** Read every AIRun on disk (capped). Newest first. */
 export function listAIRuns(limit = 500): AIRun[] {
-  if (!existsSync(DIR)) return []
+  if (!existsSync(DIR())) return []
   const out: AIRun[] = []
   let files: string[] = []
   try {
-    files = readdirSync(DIR).filter((f) => f.endsWith('.json'))
+    files = readdirSync(DIR()).filter((f) => f.endsWith('.json'))
   } catch {
     return []
   }
   for (const f of files) {
     try {
-      const r = JSON.parse(readFileSync(join(DIR, f), 'utf8')) as AIRun
+      const r = JSON.parse(readFileSync(join(DIR(), f), 'utf8')) as AIRun
       out.push(r)
     } catch {
       /* skip */

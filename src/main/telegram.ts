@@ -57,13 +57,14 @@ import { readActivity } from './events'
 import { spawnBgTask, listBgTasks, cancelBgTask } from './bg-tasks'
 import { readBudgets, setDailyCap, setAgentCap, setOverride } from './budgets'
 import { summaryFor } from './ai-runs'
+import { configPath, terminalConfigDir } from './config-dir'
 
 // Two-way AFK control over Telegram: the user texts the bot from their phone to
 // launch/cancel/inspect agent runs. The single authorized chat_id is the auth
 // boundary — the bot acts on no one else. Native Bot API when a token+chat are
 // configured; otherwise the legacy project-template scripts are used.
 const NOTIFY = join(homedir(), '.claude', 'bin', 'telegram-notify.sh') // legacy fallback
-const OFFSET_FILE = join(homedir(), '.config', 'TerMinal', 'telegram-offset')
+const OFFSET_FILE = (): string => configPath('telegram-offset')
 const STATUS_EMOJI: Record<string, string> = {
   running: '⏳',
   done: '✅',
@@ -113,7 +114,7 @@ const readOffset = (): number | null => {
     // old `|| 0` also turned into 0, so both cases hit that path. Returning 0
     // here is still the only thing we can do (there is no cursor to resume
     // from), but the caller is told, and primes a fresh cursor instead.
-    const raw = readFileSync(OFFSET_FILE, 'utf8').trim()
+    const raw = readFileSync(OFFSET_FILE(), 'utf8').trim()
     if (!raw) return null
     const n = Number(raw)
     return Number.isFinite(n) && n > 0 ? n : null
@@ -130,12 +131,12 @@ const readOffset = (): number | null => {
 const readOffsetOrPrime = (): number => readOffset() ?? 0
 const writeOffset = (n: number) => {
   try {
-    mkdirSync(dirname(OFFSET_FILE), { recursive: true })
+    mkdirSync(dirname(OFFSET_FILE()), { recursive: true })
     // Atomic: a torn write here is what produces the truncated file above, and
     // a rename is atomic on the same filesystem.
-    const tmp = `${OFFSET_FILE}.${process.pid}.tmp`
+    const tmp = `${OFFSET_FILE()}.${process.pid}.tmp`
     writeFileSync(tmp, String(n))
-    renameSync(tmp, OFFSET_FILE)
+    renameSync(tmp, OFFSET_FILE())
   } catch {
     /* best effort */
   }
@@ -843,7 +844,7 @@ function tailRun(runIdOrToken: string) {
   else if (n && lastRunIdsTail[n - 1]) runId = lastRunIdsTail[n - 1]
   // Try the cron-runs log file first (the canonical log for cron + the
   // path /tail can serve without holding state from in-process runs).
-  const cronLog = join(homedir(), '.config', 'TerMinal', 'cron-runs', `${runId}.log`)
+  const cronLog = configPath('cron-runs', `${runId}.log`)
   let text = ''
   if (existsSync(cronLog)) {
     try {
@@ -1141,7 +1142,7 @@ function cmdBgCancel(args: string[]) {
 // --- harness + activity ----------------------------------------------------
 
 function cmdHarness() {
-  const cfgDir = join(homedir(), '.config', 'TerMinal')
+  const cfgDir = terminalConfigDir()
   let cronRunFiles = 0
   const cronRunsDir = join(cfgDir, 'cron-runs')
   try {

@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import { costOf } from './ai-pricing'
 import {
@@ -9,8 +8,9 @@ import {
   readObservabilitySessionDetail,
   readObservabilitySnapshot,
 } from './data'
+import { configPath } from './config-dir'
 
-const DB_PATH = join(homedir(), '.config', 'TerMinal', 'observability.sqlite')
+const DB_PATH = (): string => configPath('observability.sqlite')
 
 // Row-level queries scan the entire indexed history; this caps how many of the
 // top-ranked rows we hand to the renderer so a huge result set can't blow up the
@@ -263,8 +263,8 @@ let dbError: string | null = null
 function getDb(): Database.Database | null {
   if (db) return db
   try {
-    ensureDir(DB_PATH)
-    const handle = new Database(DB_PATH)
+    ensureDir(DB_PATH())
+    const handle = new Database(DB_PATH())
     handle.pragma('journal_mode = WAL')
     db = handle
     dbError = null
@@ -420,8 +420,8 @@ export function rebuildObservabilityIndex(limit = 240): ObservabilityIndexBuildR
   if (!handle) {
     return {
       ok: false,
-      dbPath: DB_PATH,
-      exists: existsSync(DB_PATH),
+      dbPath: DB_PATH(),
+      exists: existsSync(DB_PATH()),
       sqliteAvailable: false,
       indexedAt: null,
       sessions: 0,
@@ -603,7 +603,7 @@ export function observabilityIndexStatus(): ObservabilityIndexStatus {
   if (!available || !exists) {
     return {
       ok: available,
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       exists,
       sqliteAvailable: available,
       indexedAt: null,
@@ -641,10 +641,10 @@ export function observabilityIndexStatus(): ObservabilityIndexStatus {
     }
     return {
       ok: true,
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       exists,
       sqliteAvailable: available,
-      indexedAt: meta[0]?.value ? Number(meta[0].value) : statSync(DB_PATH).mtimeMs,
+      indexedAt: meta[0]?.value ? Number(meta[0].value) : statSync(DB_PATH()).mtimeMs,
       sessions: Number(rows?.sessions || 0),
       turns: Number(rows?.turns || 0),
       toolCalls: Number(rows?.toolCalls || 0),
@@ -654,7 +654,7 @@ export function observabilityIndexStatus(): ObservabilityIndexStatus {
   } catch (e) {
     return {
       ok: false,
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       exists,
       sqliteAvailable: available,
       indexedAt: null,
@@ -960,7 +960,7 @@ export function queryObservabilityIndex(
       ...meta,
       rows: [],
       indexedAt: null,
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       error: dbError || 'better-sqlite3 is not available',
     }
   if (!indexBuilt())
@@ -969,7 +969,7 @@ export function queryObservabilityIndex(
       ...meta,
       rows: [],
       indexedAt: null,
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       error: 'Index has not been built yet.',
     }
   if (query === 'session_events' && !arg) {
@@ -978,7 +978,7 @@ export function queryObservabilityIndex(
       ...meta,
       rows: [],
       indexedAt: indexedAt(),
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       needsArg: 'session_id',
     }
   }
@@ -986,14 +986,14 @@ export function queryObservabilityIndex(
     const preds = queryAcceptsFilter(query) ? sessionFilterPredicates(filter) : []
     const sql = sqlFor(query, arg, preds)
     const rows = query === 'audit' ? auditRows() : sql ? queryJson(sql) : []
-    return { query, ...meta, rows, indexedAt: indexedAt(), dbPath: DB_PATH }
+    return { query, ...meta, rows, indexedAt: indexedAt(), dbPath: DB_PATH() }
   } catch (e) {
     return {
       query,
       ...meta,
       rows: [],
       indexedAt: indexedAt(),
-      dbPath: DB_PATH,
+      dbPath: DB_PATH(),
       error: (e as Error).message,
     }
   }

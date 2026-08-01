@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { configPath } from './config-dir'
 
 // Write via temp-file + rename. Both targets — ~/.claude.json (Claude Code's
 // live, auth-bearing state) and ~/.codex/config.toml (holds unrelated
@@ -53,7 +54,7 @@ function resolveBun(): string {
 }
 
 function mcpServerPath(): string {
-  return join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-mcp-server')
+  return configPath('bin', 'terminal-mcp-server')
 }
 
 // ---- Claude Code (~/.claude.json) -----------------------------------------

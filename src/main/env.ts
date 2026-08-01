@@ -127,6 +127,7 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { configPath } from './config-dir'
 
 const args = process.argv.slice(2)
 const pos = []
@@ -152,9 +153,9 @@ const ev = {
   ...(opt['repo-root'] ? { repoRoot: opt['repo-root'] } : {}),
   ...(opt.session ? { sessionId: opt.session } : {}),
 }
-const LOG = join(homedir(), '.config', 'TerMinal', 'activity.jsonl')
-mkdirSync(dirname(LOG), { recursive: true })
-appendFileSync(LOG, JSON.stringify(ev) + '\\n')
+const LOG = (): string => configPath('activity.jsonl')
+mkdirSync(dirname(LOG()), { recursive: true })
+appendFileSync(LOG(), JSON.stringify(ev) + '\\n')
 `
 
 /** Write the gt-notify hook to ~/.local/bin (on PATH for most shells). */

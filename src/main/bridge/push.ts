@@ -48,7 +48,7 @@ const configPath = (dir: string) => join(dir, 'apns.json')
 const keyPath = (dir: string) => join(dir, 'apns.p8')
 const devicesPath = (dir: string) => join(dir, 'devices.json')
 
-export function readApnsConfig(dir: string = BRIDGE_DIR): ApnsConfig | null {
+export function readApnsConfig(dir: string = BRIDGE_DIR()): ApnsConfig | null {
   try {
     const raw = JSON.parse(readFileSync(configPath(dir), 'utf8')) as Partial<ApnsConfig>
     if (!raw.keyId || !raw.teamId || !raw.bundleId) return null
@@ -58,7 +58,7 @@ export function readApnsConfig(dir: string = BRIDGE_DIR): ApnsConfig | null {
   }
 }
 
-export function readApnsKey(dir: string = BRIDGE_DIR): string | null {
+export function readApnsKey(dir: string = BRIDGE_DIR()): string | null {
   try {
     const pem = readFileSync(keyPath(dir), 'utf8')
     return pem.includes('PRIVATE KEY') ? pem : null
@@ -67,13 +67,13 @@ export function readApnsKey(dir: string = BRIDGE_DIR): string | null {
   }
 }
 
-export function pushConfigured(dir: string = BRIDGE_DIR): boolean {
+export function pushConfigured(dir: string = BRIDGE_DIR()): boolean {
   return !!readApnsConfig(dir) && !!readApnsKey(dir)
 }
 
 // ---- device registry -------------------------------------------------------
 
-export function readDevices(dir: string = BRIDGE_DIR): PushDevice[] {
+export function readDevices(dir: string = BRIDGE_DIR()): PushDevice[] {
   try {
     const raw = JSON.parse(readFileSync(devicesPath(dir), 'utf8')) as unknown
     return Array.isArray(raw) ? (raw as PushDevice[]).filter((d) => !!d?.token) : []
@@ -96,7 +96,7 @@ function writeDevices(devices: PushDevice[], dir: string): void {
 export function registerDevice(
   token: string,
   environment: PushDevice['environment'],
-  dir: string = BRIDGE_DIR,
+  dir: string = BRIDGE_DIR(),
 ): PushDevice[] {
   const clean = String(token || '')
     .trim()
@@ -108,7 +108,7 @@ export function registerDevice(
   return devices
 }
 
-export function forgetDevice(token: string, dir: string = BRIDGE_DIR): void {
+export function forgetDevice(token: string, dir: string = BRIDGE_DIR()): void {
   writeDevices(
     readDevices(dir).filter((d) => d.token !== token),
     dir,
@@ -237,7 +237,7 @@ export type PushResult = { sent: number; failed: number; errors: string[] }
  */
 export async function sendPush(
   payload: PushPayload,
-  dir: string = BRIDGE_DIR,
+  dir: string = BRIDGE_DIR(),
 ): Promise<PushResult> {
   // A registered phone is a real phone. Never from a test.
   if (blockEffect('notify', 'push')) return { sent: 0, failed: 0, errors: [] }
@@ -287,7 +287,7 @@ export async function sendPush(
  */
 export function openHitlCount(): number {
   try {
-    const raw = JSON.parse(readFileSync(join(BRIDGE_DIR, '..', 'hitl.json'), 'utf8')) as unknown
+    const raw = JSON.parse(readFileSync(join(BRIDGE_DIR(), '..', 'hitl.json'), 'utf8')) as unknown
     if (!Array.isArray(raw)) return 0
     // The app badge should nag about what you HAVEN'T SEEN, not everything open —
     // a read-but-unresolved item shouldn't keep the red dot burning.
@@ -299,15 +299,15 @@ export function openHitlCount(): number {
   }
 }
 
-export function pushStatus(dir: string = BRIDGE_DIR): PushStatus {
+export function pushStatus(dir: string = BRIDGE_DIR()): PushStatus {
   return { configured: pushConfigured(dir), devices: readDevices(dir).length }
 }
 
 /** Where a human drops the APNs key — surfaced in Settings so it's discoverable. */
-export function apnsPaths(dir: string = BRIDGE_DIR): { config: string; key: string } {
+export function apnsPaths(dir: string = BRIDGE_DIR()): { config: string; key: string } {
   return { config: configPath(dir), key: keyPath(dir) }
 }
 
-export function apnsConfigured(dir: string = BRIDGE_DIR): boolean {
+export function apnsConfigured(dir: string = BRIDGE_DIR()): boolean {
   return existsSync(configPath(dir)) && existsSync(keyPath(dir))
 }

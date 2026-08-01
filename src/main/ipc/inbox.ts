@@ -5,8 +5,6 @@
 // recorder (so a channel that keeps failing stops failing silently).
 
 import { ipcMain } from 'electron'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { emitActivity } from '../events'
 import { clearSnooze, isSnoozedAt, readSnoozes, setSnooze, snoozePresets } from '../hitl-snooze'
 import {
@@ -18,14 +16,15 @@ import {
   type DeliveryRecord,
 } from '../notify-log'
 import { setDeliveryRecorder, setSnoozeGate } from '../notify-channels'
+import { configPath } from '.././config-dir'
 
-const SNOOZE_FILE = join(homedir(), '.config', 'TerMinal', 'hitl-snooze.json')
-const DELIVERY_FILE = join(homedir(), '.config', 'TerMinal', 'notify-log.json')
+const SNOOZE_FILE = (): string => configPath('hitl-snooze.json')
+const DELIVERY_FILE = (): string => configPath('notify-log.json')
 
 // The gate runs on every alert dispatch, so re-reading the file each time would
 // be a syscall per alert per channel. Cached, invalidated on every write.
 let snoozeCache: Record<string, number> | null = null
-const snoozes = (): Record<string, number> => (snoozeCache ??= readSnoozes(SNOOZE_FILE))
+const snoozes = (): Record<string, number> => (snoozeCache ??= readSnoozes(SNOOZE_FILE()))
 
 let deliveryLog: DeliveryRecord[] | null = null
 
@@ -33,9 +32,9 @@ export function registerInboxIpc(): void {
   setSnoozeGate((hitlId) => isSnoozedAt(snoozes(), hitlId))
 
   setDeliveryRecorder(({ channel, ok, title, error }) => {
-    deliveryLog ??= readDeliveryLog(DELIVERY_FILE)
+    deliveryLog ??= readDeliveryLog(DELIVERY_FILE())
     deliveryLog = appendDeliveryRecord(deliveryLog, { ts: Date.now(), channel, ok, title, error })
-    writeDeliveryLog(DELIVERY_FILE, deliveryLog)
+    writeDeliveryLog(DELIVERY_FILE(), deliveryLog)
     // Exactly once per failure streak — see shouldEscalate.
     if (!ok && shouldEscalate(deliveryLog, channel))
       emitActivity({
@@ -48,16 +47,16 @@ export function registerInboxIpc(): void {
   ipcMain.handle('inbox:snoozes', () => snoozes())
   ipcMain.handle('inbox:snooze-presets', () => snoozePresets())
   ipcMain.handle('inbox:snooze', (_e, id: string, until: number) => {
-    snoozeCache = setSnooze(SNOOZE_FILE, id, until)
+    snoozeCache = setSnooze(SNOOZE_FILE(), id, until)
     return snoozeCache
   })
   ipcMain.handle('inbox:unsnooze', (_e, id: string) => {
-    snoozeCache = clearSnooze(SNOOZE_FILE, id)
+    snoozeCache = clearSnooze(SNOOZE_FILE(), id)
     return snoozeCache
   })
 
   ipcMain.handle('inbox:delivery-log', (_e, channel?: string, limit?: number) =>
-    recentDeliveries(deliveryLog ?? (deliveryLog = readDeliveryLog(DELIVERY_FILE)), {
+    recentDeliveries(deliveryLog ?? (deliveryLog = readDeliveryLog(DELIVERY_FILE())), {
       channel,
       limit,
     }),

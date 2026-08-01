@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { readFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { updateJsonState } from './atomic-write'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { terminalConfigDir } from './config-dir'
 
 // The Monitoring subsystem's app-side surface: config + latest state, read by
 // the Monitoring tab and the bridge. The DAEMON (bin/terminal-monitor) owns all
@@ -57,9 +57,9 @@ export type MonitorStatus = {
   history: { at: number; status: MonitorState }[]
 }
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-export const MONITORS_FILE = join(CFG, 'monitors.json')
-export const MONITOR_STATE_DIR = join(CFG, 'monitor-state')
+const CFG = (): string => terminalConfigDir()
+export const MONITORS_FILE = (): string => join(CFG(), 'monitors.json')
+export const MONITOR_STATE_DIR = (): string => join(CFG(), 'monitor-state')
 
 // ---- pure classifiers (the check logic — unit tested) ----------------------
 
@@ -144,7 +144,7 @@ export const DEFAULT_NOTIFY: MonitorNotify = {
 // ---- probing (the daemon, not this process) --------------------------------
 
 /** Where installMonitorDaemon puts the runner. */
-export const MONITOR_BIN = join(CFG, 'bin', 'terminal-monitor')
+export const MONITOR_BIN = (): string => join(CFG(), 'bin', 'terminal-monitor')
 
 export type ProbeResult = { ok: boolean; error?: string }
 
@@ -167,7 +167,7 @@ export function runMonitorProbe(
 ): Promise<ProbeResult> {
   return new Promise((resolve) => {
     execFile(
-      opts.bin ?? MONITOR_BIN,
+      opts.bin ?? MONITOR_BIN(),
       ['run', id],
       {
         timeout: opts.timeoutMs ?? 40_000,
@@ -266,7 +266,7 @@ export function validateMonitors(raw: unknown): { monitors: Monitor[]; rejected:
 
 // ---- config + state IO -----------------------------------------------------
 
-export function readMonitors(file = MONITORS_FILE): Monitor[] {
+export function readMonitors(file = MONITORS_FILE()): Monitor[] {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
     return Array.isArray(raw) ? raw.filter((m) => m && typeof m.id === 'string') : []
@@ -275,8 +275,8 @@ export function readMonitors(file = MONITORS_FILE): Monitor[] {
   }
 }
 
-export function writeMonitors(list: Monitor[], file = MONITORS_FILE): void {
-  mkdirSync(CFG, { recursive: true })
+export function writeMonitors(list: Monitor[], file = MONITORS_FILE()): void {
+  mkdirSync(CFG(), { recursive: true })
   // `bin/terminal-cli monitor add/rm/...` edits this same file from a separate
   // process and takes the advisory lock. Writing atomically but WITHOUT the lock
   // still loses the CLI's edit whenever the two overlap — atomicity stops a torn
@@ -289,7 +289,7 @@ export function writeMonitors(list: Monitor[], file = MONITORS_FILE): void {
   )
 }
 
-export function readMonitorStatus(id: string, dir = MONITOR_STATE_DIR): MonitorStatus | null {
+export function readMonitorStatus(id: string, dir = MONITOR_STATE_DIR()): MonitorStatus | null {
   try {
     return JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8'))
   } catch {
@@ -299,8 +299,8 @@ export function readMonitorStatus(id: string, dir = MONITOR_STATE_DIR): MonitorS
 
 /** Every monitor joined with its latest status, worst-first for the UI. */
 export function listMonitorsWithStatus(
-  file = MONITORS_FILE,
-  dir = MONITOR_STATE_DIR,
+  file = MONITORS_FILE(),
+  dir = MONITOR_STATE_DIR(),
 ): (Monitor & { state: MonitorStatus | null })[] {
   const rank: Record<MonitorState, number> = { fail: 0, warn: 1, ok: 2 }
   return readMonitors(file)
@@ -313,7 +313,7 @@ export function listMonitorsWithStatus(
 }
 
 /** Orphaned state files (monitor deleted) — for the daemon to prune. */
-export function orphanStateIds(dir = MONITOR_STATE_DIR): string[] {
+export function orphanStateIds(dir = MONITOR_STATE_DIR()): string[] {
   let files: string[] = []
   try {
     files = readdirSync(dir).filter((f) => f.endsWith('.json'))

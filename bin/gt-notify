@@ -45,6 +45,9 @@ const ev = {
   ...(opt['repo-root'] ? { repoRoot: opt['repo-root'] } : {}),
   ...(opt.session ? { sessionId: opt.session } : {}),
 }
-const LOG = join(homedir(), '.config', 'TerMinal', 'activity.jsonl')
+const LOG = join(
+  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal'),
+  'activity.jsonl',
+)
 mkdirSync(dirname(LOG), { recursive: true })
 appendFileSync(LOG, JSON.stringify(ev) + '\n')

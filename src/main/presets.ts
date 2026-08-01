@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
+import { configPath } from './config-dir'
 
 export type PresetKind = 'agents' | 'snippets'
 export type PresetPrefs = {
@@ -8,15 +8,15 @@ export type PresetPrefs = {
   hidden: Record<PresetKind, string[]>
 }
 
-const FILE = join(homedir(), '.config', 'TerMinal', 'presets.json')
+const FILE = (): string => configPath('presets.json')
 const VERSION = 1
 
 const empty = (): PresetPrefs => ({ version: VERSION, hidden: { agents: [], snippets: [] } })
 
 export function readPresetPrefs(): PresetPrefs {
   try {
-    if (!existsSync(FILE)) return empty()
-    const raw = JSON.parse(readFileSync(FILE, 'utf8')) as Partial<PresetPrefs>
+    if (!existsSync(FILE())) return empty()
+    const raw = JSON.parse(readFileSync(FILE(), 'utf8')) as Partial<PresetPrefs>
     return {
       version: VERSION,
       hidden: {
@@ -37,8 +37,8 @@ function writePresetPrefs(prefs: PresetPrefs): PresetPrefs {
       snippets: [...new Set(prefs.hidden.snippets)].sort(),
     },
   }
-  mkdirSync(dirname(FILE), { recursive: true })
-  writeFileSync(FILE, JSON.stringify(next, null, 2) + '\n')
+  mkdirSync(dirname(FILE()), { recursive: true })
+  writeFileSync(FILE(), JSON.stringify(next, null, 2) + '\n')
   return next
 }
 

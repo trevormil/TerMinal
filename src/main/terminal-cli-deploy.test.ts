@@ -16,6 +16,11 @@ describe('terminal-cli deploy', () => {
         env: {
           ...process.env,
           HOME: home,
+          // Explicit, because the parent's TERMINAL_CONFIG_DIR (set by the
+          // bunfig preload) is inherited by the child and now WINS over HOME —
+          // which is the point of the seam. Saying it here states the intent
+          // instead of relying on the script guessing from HOME (ticket 108).
+          TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
           TERMINAL_REPO: repo,
           TERMINAL_RUN_ID: 'run-1',
           TERMINAL_AGENT_ID: 'deploy-agent',

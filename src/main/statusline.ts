@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, chmodSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { terminalConfigDir } from './config-dir'
 
 // ---------------------------------------------------------------------------
 // Status-line shim — zero-API plan-usage + context source.
@@ -19,9 +19,9 @@ import { homedir } from 'node:os'
 // which file to write.
 // ---------------------------------------------------------------------------
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-const SHIM_PATH = join(CFG, 'bin', 'statusline-shim.sh')
-const CACHE_DIR = join(CFG, 'statusline')
+const CFG = (): string => terminalConfigDir()
+const SHIM_PATH = (): string => join(CFG(), 'bin', 'statusline-shim.sh')
+const CACHE_DIR = (): string => join(CFG(), 'statusline')
 
 const SHIM = `#!/bin/bash
 # Installed by TerMinal. Tees Claude Code's statusLine JSON to a per-session
@@ -45,9 +45,9 @@ fi
 /** Write the shim to the stable bin path. Idempotent; called on launch. */
 export function installStatuslineShim(): void {
   try {
-    mkdirSync(join(CFG, 'bin'), { recursive: true })
-    writeFileSync(SHIM_PATH, SHIM, { mode: 0o755 })
-    chmodSync(SHIM_PATH, 0o755)
+    mkdirSync(join(CFG(), 'bin'), { recursive: true })
+    writeFileSync(SHIM_PATH(), SHIM, { mode: 0o755 })
+    chmodSync(SHIM_PATH(), 0o755)
   } catch {
     /* best effort */
   }
@@ -56,7 +56,7 @@ export function installStatuslineShim(): void {
 /** The `--settings` JSON string that wires a Claude session to the shim. */
 export function statuslineSettingsArg(): string {
   return JSON.stringify({
-    statusLine: { type: 'command', command: SHIM_PATH, padding: 1 },
+    statusLine: { type: 'command', command: SHIM_PATH(), padding: 1 },
   })
 }
 
@@ -78,7 +78,7 @@ function win(w: any): { pct: number; resetsAt: number | null } | null {
 /** Read the cached statusLine JSON for a session, or null if absent/unreadable. */
 export function readStatusLine(sessionId: string): StatusLine | null {
   if (!sessionId) return null
-  const file = join(CACHE_DIR, `${sessionId}.json`)
+  const file = join(CACHE_DIR(), `${sessionId}.json`)
   try {
     const mtime = statSync(file).mtimeMs
     const j: any = JSON.parse(readFileSync(file, 'utf8'))

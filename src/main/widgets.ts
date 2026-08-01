@@ -2,6 +2,7 @@ import { exec } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
+import { configPath } from './config-dir'
 
 // ---------------------------------------------------------------------------
 // Command widgets — the extensibility standard.
@@ -32,7 +33,7 @@ export type CommandWidget = {
   source: 'global' | 'repo'
 }
 
-const GLOBAL_CFG = join(homedir(), '.config', 'TerMinal', 'widgets.json')
+const GLOBAL_CFG = (): string => configPath('widgets.json')
 
 function stableKey(value: string): string {
   let hash = 5381
@@ -73,7 +74,7 @@ export function repoRoot(cwd: string): string {
 }
 
 export function listCommandWidgets(cwd: string): CommandWidget[] {
-  const global = loadFile(GLOBAL_CFG, 'global')
+  const global = loadFile(GLOBAL_CFG(), 'global')
   const root = cwd ? repoRoot(cwd) : ''
   const repo = root ? loadFile(join(root, '.TerMinal', 'widgets.json'), 'repo', root) : []
   return [...global, ...repo]

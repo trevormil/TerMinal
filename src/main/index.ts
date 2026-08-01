@@ -439,6 +439,7 @@ import { resolveWithin, resolveWithinAny } from './path-guard'
 import { createEpochRegistry } from './session-epoch'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { modelArgs, resumeArgs } from '../shared/engines'
+import { configPath, terminalConfigDir } from './config-dir'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
@@ -1658,7 +1659,7 @@ const bridgeDeps: BridgeDeps = {
     }
     // The throwaway workspace always rides along, so a repo-less session is
     // one tap away exactly like the desktop's Scratch panel.
-    const scratch = join(homedir(), '.config', 'TerMinal', 'scratch')
+    const scratch = configPath('scratch')
     return [
       { name: 'Scratch', path: scratch, scratch: true, lastUsedAt: lastUsed.get(scratch) },
       ...repos,
@@ -1909,7 +1910,7 @@ const bridgeDeps: BridgeDeps = {
     if (!win) return { error: 'TerMinal is not running' }
     // The scratch workspace is app-owned and may not exist yet on a fresh
     // machine — create it on demand, exactly like the scratch:dir handler.
-    if (cwd === join(homedir(), '.config', 'TerMinal', 'scratch')) {
+    if (cwd === configPath('scratch')) {
       try {
         mkdirSync(cwd, { recursive: true })
       } catch {
@@ -3348,7 +3349,7 @@ ipcMain.handle('repoTrust:revoke', () => {
 // tabs/widgets stay off. All scratch sessions share it → one "scratch"
 // workspace grouping.
 ipcMain.handle('scratch:dir', () => {
-  const dir = join(homedir(), '.config', 'TerMinal', 'scratch')
+  const dir = configPath('scratch')
   try {
     mkdirSync(dir, { recursive: true })
   } catch {
@@ -3602,13 +3603,13 @@ ipcMain.handle('mrs:merge', (_e, iid: number) => {
 ipcMain.handle('open:external', (_e, url: string) => openExternalSafe(url))
 // Reveal ~/.config/TerMinal/ in Finder. Power-user QoL for editing
 // schedules.json, settings.json, or per-(repo, agent) state sidecars by hand.
-ipcMain.handle('open:config-dir', () => shell.openPath(join(homedir(), '.config', 'TerMinal')))
+ipcMain.handle('open:config-dir', () => shell.openPath(terminalConfigDir()))
 
 // Install the MCP server entry into ~/.claude/mcp.json (and ~/.codex's
 // equivalent if it exists). Read-only, stdio transport. Idempotent —
 // re-running just updates the binary path.
 ipcMain.handle('mcp:install', () => {
-  const binPath = join(homedir(), '.config', 'TerMinal', 'bin', 'terminal-mcp-server')
+  const binPath = configPath('bin', 'terminal-mcp-server')
   if (!existsSync(binPath)) {
     return { error: `terminal-mcp-server not installed at ${binPath}` }
   }
@@ -3749,7 +3750,7 @@ ipcMain.handle('update:check', () => runUpdateCheck())
 // build itself. Putting the child in its own group + ignoring stdio + unref()
 // makes it a true daemon — the harness exits cleanly and the script lands a
 // fresh app in /Applications a minute or so later.
-const RELEASE_LOG = join(homedir(), '.config', 'TerMinal', 'release.log')
+const RELEASE_LOG = (): string => configPath('release.log')
 let releasePid: number | null = null
 ipcMain.handle('release:start', () => {
   if (releasePid) {
@@ -3776,13 +3777,13 @@ ipcMain.handle('release:start', () => {
   // Truncate the log so each rebuild starts fresh.
   try {
     writeFileSync(
-      RELEASE_LOG,
+      RELEASE_LOG(),
       `▸ rebuild started ${new Date().toISOString()}\n▸ repo: ${repoRoot}\n`,
     )
   } catch {
     /* best-effort */
   }
-  const out = openSync(RELEASE_LOG, 'a')
+  const out = openSync(RELEASE_LOG(), 'a')
   const child = cpSpawn('bin/release', [], {
     cwd: repoRoot,
     detached: true,
@@ -3801,11 +3802,11 @@ ipcMain.handle('release:start', () => {
     },
     { notify: false },
   )
-  return { ok: true, pid: releasePid, log: RELEASE_LOG, repoRoot }
+  return { ok: true, pid: releasePid, log: RELEASE_LOG(), repoRoot }
 })
 ipcMain.handle('release:tail', () => {
   try {
-    return readFileSync(RELEASE_LOG, 'utf8')
+    return readFileSync(RELEASE_LOG(), 'utf8')
   } catch {
     return ''
   }
@@ -4018,7 +4019,7 @@ ipcMain.handle(
     curRemote() ? null : readObservabilityTranscriptWindow(sessionId, centerLine, radius),
 )
 ipcMain.handle('harness:status', () => {
-  const cfgDir = join(homedir(), '.config', 'TerMinal')
+  const cfgDir = terminalConfigDir()
   const cronRunsDir = join(cfgDir, 'cron-runs')
   let cronRunFiles = 0
   let cronWorktrees = 0
@@ -4096,7 +4097,7 @@ function editorOpenRoots(): (string | undefined)[] {
     resolvedWorktreesDir(),
     repoRootOf(cur().cwd) || cur().cwd,
     activeDaemon().filesRoot(),
-    join(homedir(), '.config', 'TerMinal'),
+    terminalConfigDir(),
     ...s.noteFolders.map((f) => f.path),
   ]
 }

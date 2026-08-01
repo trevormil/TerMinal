@@ -4,19 +4,10 @@
 // Storage: ~/.config/TerMinal/bg-tasks.json (single file, last 50 tasks)
 // Logs:    ~/.config/TerMinal/bg-tasks/<id>.log
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  appendFileSync,
-  openSync,
-  closeSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync } from 'node:fs'
 import { applySweepFinals } from './bg-sweep'
 import { join, basename } from 'node:path'
 import { readFileTail } from './fs-tail'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
@@ -39,10 +30,11 @@ import {
 } from './settings'
 import { sendUrl } from './telegram-api'
 import { queueRunOutcomeSummary, readRunLogTail } from './run-summarizer'
+import { terminalConfigDir } from './config-dir'
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-const TASKS_FILE = join(CFG, 'bg-tasks.json')
-const LOG_DIR = join(CFG, 'bg-tasks')
+const CFG = (): string => terminalConfigDir()
+const TASKS_FILE = (): string => join(CFG(), 'bg-tasks.json')
+const LOG_DIR = (): string => join(CFG(), 'bg-tasks')
 
 function displayArg(arg: string, prompt: string): string {
   if (arg === prompt) return '<prompt>'
@@ -81,15 +73,15 @@ export type BgTask = {
 }
 
 function ensure(): void {
-  if (!existsSync(CFG)) mkdirSync(CFG, { recursive: true })
-  if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true })
+  if (!existsSync(CFG())) mkdirSync(CFG(), { recursive: true })
+  if (!existsSync(LOG_DIR())) mkdirSync(LOG_DIR(), { recursive: true })
 }
 
 function readTasks(): BgTask[] {
   ensure()
-  if (!existsSync(TASKS_FILE)) return []
+  if (!existsSync(TASKS_FILE())) return []
   try {
-    const raw = JSON.parse(readFileSync(TASKS_FILE, 'utf8'))
+    const raw = JSON.parse(readFileSync(TASKS_FILE(), 'utf8'))
     return Array.isArray(raw) ? raw : []
   } catch {
     return []
@@ -100,7 +92,7 @@ function writeTasks(tasks: BgTask[]): void {
   ensure()
   // Cap at 100; newest first.
   const sorted = [...tasks].sort((a, b) => b.startedAt - a.startedAt).slice(0, 100)
-  writeFileSync(TASKS_FILE, JSON.stringify(sorted, null, 2))
+  writeFileSync(TASKS_FILE(), JSON.stringify(sorted, null, 2))
 }
 
 function labelFor(prompt: string): string {
@@ -118,11 +110,11 @@ export function getBgTask(id: string): BgTask | null {
 
 /** On-disk log path for the runs:log-tail IPC. */
 export function bgTaskLogPath(id: string): string {
-  return join(LOG_DIR, `${id}.log`)
+  return join(LOG_DIR(), `${id}.log`)
 }
 
 export function readBgTaskLog(id: string): string {
-  const f = join(LOG_DIR, `${id}.log`)
+  const f = join(LOG_DIR(), `${id}.log`)
   try {
     return existsSync(f) ? readFileSync(f, 'utf8') : ''
   } catch {
@@ -191,7 +183,7 @@ export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
     return { error: `worktree setup failed: ${(e as Error).message}` }
   }
 
-  const logFile = join(LOG_DIR, `${id}.log`)
+  const logFile = join(LOG_DIR(), `${id}.log`)
   // Compose the CLI command. Append a post-instruction so the agent emits a
   // recognizable "MR: <url>" line on success — the watcher greps for it.
   const enrichedPrompt =

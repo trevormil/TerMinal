@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
+import { configPath } from './config-dir'
 
 export type KnowledgeScope = 'repo' | 'global'
 export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
@@ -53,7 +53,7 @@ export type KnowledgeBase = {
   items: KnowledgeItem[]
 }
 
-const GLOBAL = join(homedir(), '.config', 'TerMinal', 'knowledge.json')
+const GLOBAL = (): string => configPath('knowledge.json')
 const repoKnowledgePath = (repoRoot: string) => join(repoRoot, '.TerMinal', 'knowledge.json')
 
 const now = () => Date.now()
@@ -80,7 +80,7 @@ const defaultBase = (): KnowledgeBase => ({
 })
 
 function pathFor(scope: KnowledgeScope, repoRoot: string): string {
-  return scope === 'global' ? GLOBAL : repoRoot ? repoKnowledgePath(repoRoot) : ''
+  return scope === 'global' ? GLOBAL() : repoRoot ? repoKnowledgePath(repoRoot) : ''
 }
 
 function uniqueId(base: string, seen: Set<string>): string {
