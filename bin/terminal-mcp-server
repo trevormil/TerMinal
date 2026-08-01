@@ -15,6 +15,10 @@ import {
   writeFileSync,
   mkdirSync,
   appendFileSync,
+  openSync,
+  closeSync,
+  renameSync,
+  unlinkSync,
 } from 'node:fs'
 import { join, basename, dirname, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -25,6 +29,127 @@ const CFG = join(homedir(), '.config', 'TerMinal')
 const SETTINGS_FILE = join(CFG, 'settings.json')
 const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
+
+// --- crash-safe shared-state writes (ticket 0068) ----------------------------
+//
+// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
+// rather than imported because host-provision.ts copies this file to remote
+// hosts on its own and docker/build-agent-image.sh bakes it into an image with
+// no sibling modules — keep the two in sync.
+//
+// Why it matters here: this process and the desktop app both read-modify-write
+// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
+// read before the user disabled a schedule writes `enabled: true` back and the
+// job keeps firing.
+function writeJsonAtomicShared(file, value) {
+  mkdirSync(dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
+    renameSync(tmp, file)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {}
+    throw e
+  }
+}
+function sleepSyncShared(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+function readLockShared(lockPath) {
+  try {
+    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
+    return typeof p?.token === 'string' ? p : null
+  } catch {
+    return null
+  }
+}
+function pidAliveShared(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e?.code === 'EPERM'
+  }
+}
+/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
+ *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
+function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
+  const lockPath = `${file}.lock`
+  const token = randomUUID()
+  mkdirSync(dirname(file), { recursive: true })
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let took = false
+    try {
+      const fd = openSync(lockPath, 'wx')
+      try {
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
+      } finally {
+        closeSync(fd)
+      }
+      sleepSyncShared(2)
+      took = readLockShared(lockPath)?.token === token
+    } catch {}
+    if (took) break
+    const held = readLockShared(lockPath)
+    if (
+      held === null ||
+      !pidAliveShared(held.pid) ||
+      Date.now() - held.at > staleMs ||
+      Date.now() > deadline
+    ) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+      continue
+    }
+    sleepSyncShared(10)
+  }
+  try {
+    return fn()
+  } finally {
+    if (readLockShared(lockPath)?.token === token) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+    }
+  }
+}
+/** Locked read-modify-write of a JSON list. `update` receives the value as it is
+ *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
+ *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
+ *  back is how a torn file silently deletes every entry. Returns true if written. */
+function updateJsonListShared(file, update) {
+  return withFileLockShared(file, () => {
+    let raw = null
+    try {
+      raw = readFileSync(file, 'utf8')
+    } catch {}
+    let cur = []
+    if (raw !== null && raw.trim() !== '') {
+      let parsed
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = undefined
+      }
+      if (!Array.isArray(parsed)) {
+        const dest = `${file}.corrupt-${Date.now()}`
+        renameSync(file, dest)
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
+      }
+      cur = parsed
+    }
+    const next = update(cur)
+    if (next === undefined) return false
+    writeJsonAtomicShared(file, next)
+    return true
+  })
+}
+
 
 // Resolve usable Telegram creds: the app seals its token in settings.json via
 // Electron safeStorage, which this plain Bun process can't decrypt — so the app
@@ -875,14 +1000,7 @@ function fileHitlTool(args) {
   if (!title) throw new Error('title is required')
   const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
   mkdirSync(cfg, { recursive: true })
-  const file = join(cfg, 'hitl.json')
-  let list = []
-  try {
-    if (existsSync(file)) {
-      const arr = JSON.parse(readFileSync(file, 'utf8'))
-      if (Array.isArray(arr)) list = arr
-    }
-  } catch {}
+  const hitlFile = join(cfg, 'hitl.json')
   const item = {
     id: randomUUID(),
     title,
@@ -901,7 +1019,10 @@ function fileHitlTool(args) {
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || undefined,
     terminalCwd: process.env.GT_TERMINAL_CWD || undefined,
   }
-  writeFileSync(file, JSON.stringify([item, ...list], null, 2))
+  // Locked read-modify-write: the app, cron and the CLI all mutate this file
+  // and take the same advisory lock. Writing through them is what manufactures
+  // the torn read that makes THEM quarantine the inbox and refuse (ticket 110).
+  updateJsonListShared(hitlFile, (cur) => [item, ...cur])
   emitActivityRaw({
     kind: 'blocked',
     title: `HITL · ${title}`,
@@ -922,31 +1043,34 @@ function fileHitlTool(args) {
 function resolveHitlTool(args) {
   const { id, resolved = true } = args
   if (!id) throw new Error('id is required')
-  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'hitl.json')
-  let list = []
-  try {
-    list = JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    return { ok: false }
-  }
-  const idx = list.findIndex((h) => h.id === id)
-  if (idx < 0) return { ok: false }
-  const wasOpen = list[idx].status === 'open'
-  list[idx] = {
-    ...list[idx],
-    status: resolved ? 'resolved' : 'open',
-    resolvedAt: resolved ? Date.now() : undefined,
-  }
-  writeFileSync(file, JSON.stringify(list, null, 2))
+  const hitlFile = join(process.env.HOME || '', '.config', 'TerMinal', 'hitl.json')
+  // The find and the write must happen under ONE lock, or the index found here
+  // can address a different item by the time we write it back.
+  let updated = null
+  let wasOpen = false
+  const wrote = updateJsonListShared(hitlFile, (cur) => {
+    const idx = cur.findIndex((h) => h.id === id)
+    if (idx < 0) return undefined
+    wasOpen = cur[idx].status === 'open'
+    updated = {
+      ...cur[idx],
+      status: resolved ? 'resolved' : 'open',
+      resolvedAt: resolved ? Date.now() : undefined,
+    }
+    const next = cur.slice()
+    next[idx] = updated
+    return next
+  })
+  if (!wrote || !updated) return { ok: false }
   if (resolved && wasOpen) {
     emitActivityRaw({
       kind: 'task-complete',
-      title: `Inbox resolved · ${list[idx].title || 'Untitled'}`,
-      detail: list[idx].action || list[idx].detail || '',
-      repo: list[idx].repo,
-      repoRoot: list[idx].repoRoot,
-      hitlId: list[idx].id,
-      runId: list[idx].runId,
+      title: `Inbox resolved · ${updated.title || 'Untitled'}`,
+      detail: updated.action || updated.detail || '',
+      repo: updated.repo,
+      repoRoot: updated.repoRoot,
+      hitlId: updated.id,
+      runId: updated.runId,
     })
   }
   return { ok: true }
