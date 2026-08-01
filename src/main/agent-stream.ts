@@ -49,6 +49,74 @@ function textFromEvent(obj: JsonRecord): string {
   return ''
 }
 
+// ---- pi (`--mode json`) ----------------------------------------------------
+//
+// Pi's JSONL is close enough to Claude's to be tempting and different enough to
+// be wrong: it emits message_start, message_update (deltas), message_end,
+// turn_end AND agent_end all carrying the SAME message object. Running it
+// through textFromEvent would print every assistant turn four times over.
+//
+// Shapes below are from `pi -p --mode json` output (0.83.0), not the docs — the
+// docs omit the usage/cost object entirely and never mention --session-id.
+//   {"type":"message_update","message":{…},"assistantMessageEvent":{"type":"text_delta","delta":"Hello"}}
+//   {"type":"tool_execution_start","toolCallId":"…","toolName":"bash","args":{…}}
+//   {"type":"message_end","message":{"role":"assistant","content":[…],
+//     "usage":{"totalTokens":N,"cost":{"total":N}},"errorMessage":"…"}}
+type PiState = { streamedThisMessage: boolean; costUsd: number; tokens: number }
+
+function piEventText(obj: JsonRecord, state: PiState): string {
+  const type = typeof obj.type === 'string' ? obj.type : ''
+
+  if (type === 'message_update') {
+    const ev = obj.assistantMessageEvent
+    if (isRecord(ev) && ev.type === 'text_delta') {
+      const delta = typeof ev.delta === 'string' ? ev.delta : ''
+      if (delta) state.streamedThisMessage = true
+      return delta
+    }
+    return ''
+  }
+
+  if (type === 'message_start') {
+    state.streamedThisMessage = false
+    return ''
+  }
+
+  if (type === 'tool_execution_start') {
+    const name = typeof obj.toolName === 'string' ? obj.toolName : 'tool'
+    return `\n[tool] ${name}\n`
+  }
+
+  if (type === 'message_end') {
+    const msg = isRecord(obj.message) ? obj.message : null
+    if (!msg || msg.role !== 'assistant') return ''
+    // Accumulate here rather than at agent_end: agent_end replays every message,
+    // so summing there would double-count anything already seen.
+    const usage = isRecord(msg.usage) ? msg.usage : null
+    if (usage) {
+      if (typeof usage.totalTokens === 'number') state.tokens += usage.totalTokens
+      const cost = isRecord(usage.cost) ? usage.cost : null
+      if (cost && typeof cost.total === 'number') state.costUsd += cost.total
+    }
+    const err = typeof msg.errorMessage === 'string' ? msg.errorMessage : ''
+    if (err) return `\n[error] ${err}\n`
+    // A provider that did not stream deltas (or a cached/instant reply) leaves
+    // the whole turn only on this event — without the fallback its text is lost.
+    if (state.streamedThisMessage) return '\n'
+    return textFromContent(msg.content)
+  }
+
+  if (type === 'agent_end') {
+    const cost = state.costUsd > 0 ? ` · $${state.costUsd.toFixed(4)}` : ''
+    const tokens = state.tokens > 0 ? ` · ${state.tokens} tok` : ''
+    return cost || tokens ? `\n[usage${cost}${tokens}]\n` : ''
+  }
+
+  // session / agent_start / turn_start / turn_end / compaction / retries carry
+  // no transcript text. Silence is correct; they are lifecycle, not content.
+  return ''
+}
+
 // codex exec (used directly by the codex engine and under the hood by or-agent
 // for OpenRouter) interleaves its human output with harness noise — hook status
 // lines, a deprecation notice, an MCP auth error, and the stdin prompt. Drop
@@ -61,7 +129,8 @@ const CODEX_NOISE = [
 ]
 
 export function createAgentStreamDecoder(engine: Engine, decodeJson: boolean): Decoder {
-  if (!decodeJson || (engine !== 'claude' && engine !== 'cursor')) {
+  const jsonEngines = ['claude', 'cursor', 'pi']
+  if (!decodeJson || !jsonEngines.includes(engine)) {
     // Raw engines (codex / openrouter): line-buffer only to strip known noise;
     // everything else passes through verbatim.
     let raw = ''
@@ -85,6 +154,9 @@ export function createAgentStreamDecoder(engine: Engine, decodeJson: boolean): D
   }
 
   let buffer = ''
+  const piState: PiState = { streamedThisMessage: false, costUsd: 0, tokens: 0 }
+  const decode = (obj: JsonRecord): string =>
+    engine === 'pi' ? piEventText(obj, piState) : textFromEvent(obj)
   return {
     write(chunk: string) {
       buffer += chunk
@@ -95,7 +167,7 @@ export function createAgentStreamDecoder(engine: Engine, decodeJson: boolean): D
         if (!line.trim()) continue
         try {
           const parsed = JSON.parse(line) as unknown
-          out += isRecord(parsed) ? textFromEvent(parsed) : ''
+          out += isRecord(parsed) ? decode(parsed) : ''
         } catch {
           out += `${line}\n`
         }
@@ -108,7 +180,7 @@ export function createAgentStreamDecoder(engine: Engine, decodeJson: boolean): D
       if (!tail.trim()) return ''
       try {
         const parsed = JSON.parse(tail) as unknown
-        return isRecord(parsed) ? textFromEvent(parsed) : ''
+        return isRecord(parsed) ? decode(parsed) : ''
       } catch {
         return tail
       }

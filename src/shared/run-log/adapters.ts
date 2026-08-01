@@ -227,6 +227,132 @@ export const claudeAdapter: RunLogAdapter = (lines) => {
   return entries
 }
 
+// ---- pi adapter (`pi --mode json` JSONL) -----------------------------------
+//
+// Shapes verified against real `pi -p --mode json` output (0.83.0), not the
+// docs — the docs never document the usage/cost object at all.
+//
+// The trap that makes this NOT the claude adapter: pi emits the same message
+// object on message_start, message_update, message_end, turn_end AND agent_end.
+// Reading text off each one renders every assistant turn five times. Only
+// message_end is authoritative for a completed message, so that is the only
+// event this reads prose from; the deltas exist for live streaming, not replay.
+export const piAdapter: RunLogAdapter = (lines) => {
+  const entries: RunLogEntry[] = []
+  const toolsById = new Map<string, ToolEntry>()
+  let costUsd = 0
+  let tokens = 0
+  let sawUsage = false
+  let buf: string[] = []
+  const flushProse = () => {
+    const body = trimBlankEdges(buf)
+    buf = []
+    if (body.length) pushAssistant(entries, body.join('\n'), '\n')
+  }
+
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t.startsWith('{')) {
+      const m = markerEntry(t)
+      if (m) {
+        flushProse()
+        entries.push(m)
+        continue
+      }
+      buf.push(line)
+      continue
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(t)
+    } catch {
+      // Truncated JSONL (a killed run cuts mid-line). Never drop it.
+      flushProse()
+      entries.push({ kind: 'text', text: line })
+      continue
+    }
+    if (!isRecord(parsed)) {
+      buf.push(line)
+      continue
+    }
+    flushProse()
+    const type = typeof parsed.type === 'string' ? parsed.type : ''
+
+    if (type === 'tool_execution_start') {
+      const id = typeof parsed.toolCallId === 'string' ? parsed.toolCallId : ''
+      const entry: ToolEntry = {
+        kind: 'tool',
+        name: typeof parsed.toolName === 'string' ? parsed.toolName : 'tool',
+        status: 'unknown',
+      }
+      if (parsed.args !== undefined) entry.input = JSON.stringify(parsed.args)
+      entries.push(entry)
+      if (id) toolsById.set(id, entry)
+      continue
+    }
+
+    if (type === 'tool_execution_end') {
+      const id = typeof parsed.toolCallId === 'string' ? parsed.toolCallId : ''
+      const entry = id ? toolsById.get(id) : undefined
+      if (entry) {
+        entry.status = parsed.isError === true ? 'error' : 'ok'
+        if (parsed.result !== undefined)
+          entry.output =
+            typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result)
+      }
+      continue
+    }
+
+    if (type === 'message_end') {
+      const msg = isRecord(parsed.message) ? parsed.message : null
+      if (!msg) continue
+      const usage = isRecord(msg.usage) ? msg.usage : null
+      if (usage) {
+        sawUsage = true
+        if (typeof usage.totalTokens === 'number') tokens += usage.totalTokens
+        const cost = isRecord(usage.cost) ? usage.cost : null
+        if (cost && typeof cost.total === 'number') costUsd += cost.total
+      }
+      const err = typeof msg.errorMessage === 'string' ? msg.errorMessage : ''
+      if (err) {
+        entries.push({ kind: 'error', text: err })
+        continue
+      }
+      const text = textFromPiContent(msg.content)
+      if (!text) continue
+      if (msg.role === 'user') entries.push({ kind: 'prompt', text })
+      else pushAssistant(entries, text, '\n')
+      continue
+    }
+    // session / agent_start / turn_start / message_start / message_update /
+    // turn_end / agent_end / compaction / retries: lifecycle, not transcript.
+  }
+  flushProse()
+
+  if (sawUsage && (costUsd > 0 || tokens > 0)) {
+    const parts = [costUsd > 0 ? `$${costUsd.toFixed(4)}` : '', tokens > 0 ? `${tokens} tok` : '']
+    entries.push({
+      kind: 'summary',
+      text: `[usage · ${parts.filter(Boolean).join(' · ')}]`,
+      costUsd: costUsd > 0 ? costUsd : undefined,
+      tokens: tokens > 0 ? tokens : undefined,
+    })
+  }
+  return entries
+}
+
+/** Pi content blocks: `[{type:'text',text}, …]`. */
+function textFromPiContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((item) =>
+      isRecord(item) && item.type === 'text' && typeof item.text === 'string' ? item.text : '',
+    )
+    .filter(Boolean)
+    .join('\n')
+}
+
 // ---- codex exec adapter (codex + openrouter via or-agent) -------------------
 
 // Section format (codex exec ≥0.13x, optionally `[timestamp] `-prefixed):
@@ -418,5 +544,6 @@ export function adapterFor(engine: string): RunLogAdapter {
   if (engine === 'claude' || engine === 'cursor') return claudeAdapter
   if (engine === 'codex' || engine === 'openrouter') return codexAdapter
   if (engine === 'hermes') return hermesAdapter
+  if (engine === 'pi') return piAdapter
   return genericAdapter
 }

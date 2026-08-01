@@ -30,6 +30,7 @@ export type ResumeStyle =
   | 'flag:--resume' // cursor, hermes, claude
   | 'sub:resume' // codex: `codex resume <id>`
   | 'flag:-s' // opencode: `-s <id>`
+  | 'flag:--session' // pi: `--session <path|id>` (bare --resume is an interactive picker)
   | 'none'
 
 export type EngineDescriptor = {
@@ -139,6 +140,39 @@ export const ENGINES = {
     seed: 'flag:--prompt',
     resume: 'flag:-s',
     baseArgs: [],
+    caps: { resumable: true, remote: true, orAgentHarness: false },
+  },
+  pi: {
+    id: 'pi',
+    label: 'Pi',
+    vendor: 'Pi · minimal terminal harness',
+    // `npm i -g @earendil-works/pi-coding-agent` or the pi.dev installer; both
+    // land it on PATH (homebrew's bin locally). The candidates cover an install
+    // that a GUI-launched Electron process's PATH would otherwise miss.
+    bin: {
+      name: 'pi',
+      envVar: 'GT_PI_BIN',
+      candidates: ['~/.local/bin/pi', '/opt/homebrew/bin/pi'],
+    },
+    // Pi takes `provider/id` patterns and ships a catalog it updates itself
+    // (`pi --list-models`), so pinning a list here would go stale by design.
+    // These are the anchors; anything else goes in the free-text field.
+    models: [
+      { id: 'anthropic/claude-opus-5', label: 'claude-opus-5' },
+      { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5' },
+      { id: 'anthropic/claude-haiku-4-5', label: 'claude-haiku-4-5' },
+    ],
+    allowsCustomModel: true,
+    modelFlag: '--model',
+    seed: 'positional',
+    // `-r/--resume` opens an interactive picker; `--session <path|id>` is the
+    // one that resumes a KNOWN id non-interactively. Verified against
+    // `pi --help` (0.83.0), not the docs, which omit --session-id entirely.
+    resume: 'flag:--session',
+    // Pi has no sandbox/approval flag to disable: read/write/edit/bash are on by
+    // default. `-a` trusts PROJECT-LOCAL extensions/skills/themes, which is what
+    // a repo-scoped agent session wants and is off by default.
+    baseArgs: ['-a'],
     caps: { resumable: true, remote: true, orAgentHarness: false },
   },
   hermes: {
@@ -266,6 +300,8 @@ export function resumeArgs(id: string, sessionId: string): string[] {
       return ['resume', sessionId]
     case 'flag:-s':
       return ['-s', sessionId]
+    case 'flag:--session':
+      return ['--session', sessionId]
     default:
       return []
   }

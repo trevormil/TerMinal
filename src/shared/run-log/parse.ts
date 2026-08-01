@@ -9,7 +9,7 @@ import type { ParsedRunLog, RunLogEntry, RunLogStepStatus } from './types'
 const STEP_START = /^━━ step (\d+)\/(\d+) · (.+) ━━$/
 const STEP_END = /^━━ step (\d+)\/(\d+) end \(exit (-?\d+)\) ━━$/
 
-const KNOWN_ENGINES = ['claude', 'codex', 'cursor', 'openrouter', 'hermes']
+const KNOWN_ENGINES = ['claude', 'codex', 'cursor', 'openrouter', 'hermes', 'pi']
 
 // Entry kinds that make a log worth showing structured; meta/banner/text alone
 // mean we learned nothing beyond the raw view.
@@ -30,6 +30,11 @@ function resolveEngine(hint: string | undefined, metaLines: string[], body: stri
   const tokens = (metaLines[0] || '').split(' · ').map((s) => s.trim())
   for (const t of tokens) if (KNOWN_ENGINES.includes(t)) return t
   if (/^(?:\[[^\]]*\]\s*)?OpenAI Codex v/m.test(body) || /^or-agent: /m.test(body)) return 'codex'
+  // Both pi and claude emit JSONL, so order matters: pi's opening
+  // `{"type":"session","version":N,…}` line is unique to it, and without this
+  // check every pi log would resolve to the claude adapter and render each
+  // assistant turn five times over.
+  if (/^\s*\{"type":"session","version":/m.test(body)) return 'pi'
   if (/^\s*\{"type":/m.test(body)) return 'claude'
   return hint || ''
 }

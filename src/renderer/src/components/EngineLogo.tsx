@@ -10,6 +10,7 @@ import claudeLogo from '../assets/claude.svg?inline'
 import cursorLogo from '../assets/cursor.png?inline'
 import hermesLogo from '../assets/hermes.svg?inline'
 import opencodeLogo from '../assets/opencode.svg?inline'
+import piLogo from '../assets/pi.svg?inline'
 import { engineLabel } from '../lib/engines'
 
 // OpenRouter/openai-compat ship no wordmark asset — lucide glyphs instead.
@@ -19,6 +20,9 @@ const LOGO: Record<Engine, string> = {
   cursor: cursorLogo,
   opencode: opencodeLogo,
   openrouter: '',
+  // Pi's mark is a solid white glyph, which reads correctly on this app's dark
+  // chrome; unlike the others it carries no brand hue to preserve.
+  pi: piLogo,
   hermes: hermesLogo,
   'openai-compat': '',
 }
