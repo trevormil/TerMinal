@@ -111,14 +111,17 @@ describe('containerExecStart (runtime: container)', () => {
     expect(cmd).toContain('--name terminal-cron-coverage')
     expect(cmd).toMatch(/terminal-agent:latest run coverage$/)
   })
+  // Mount specs are single-quoted since ticket 67 F-10: unquoted, a path with a
+  // space splits into extra docker arguments and mounts something nobody asked
+  // for. The paths themselves are unchanged.
   test('mounts cfg (records land on host) + repo at their real paths, HOME set', () => {
     expect(cmd).toContain('-e HOME=/home/u')
-    expect(cmd).toContain('-v /home/u/.config/TerMinal:/home/u/.config/TerMinal')
-    expect(cmd).toContain('-v /home/u/repos/app:/home/u/repos/app')
+    expect(cmd).toContain("-v '/home/u/.config/TerMinal:/home/u/.config/TerMinal'")
+    expect(cmd).toContain("-v '/home/u/repos/app:/home/u/repos/app'")
   })
   test('mounts credential dirs read-only', () => {
-    expect(cmd).toContain('-v /home/u/.claude:/home/u/.claude:ro')
-    expect(cmd).toContain('-v /home/u/.codex:/home/u/.codex:ro')
+    expect(cmd).toContain("-v '/home/u/.claude:/home/u/.claude:ro'")
+    expect(cmd).toContain("-v '/home/u/.codex:/home/u/.codex:ro'")
   })
   test('rejects an unsafe schedule id (never interpolate into the container name)', () => {
     expect(() => containerExecStart('a;rm -rf', opts)).toThrow()

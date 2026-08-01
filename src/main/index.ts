@@ -339,7 +339,7 @@ import {
 } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
-import { isExternallyOpenableUrl, isObsidianDeepLink } from './url-safety'
+import { isExternallyOpenableUrl, isObsidianDeepLink } from '../shared/url-safety'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom

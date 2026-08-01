@@ -65,12 +65,40 @@ export type ContainerRun = {
 // Build the `docker run` command that executes the runner in a container for a
 // schedule. Same-path bind mounts keep the runner's absolute paths valid; the id
 // is guarded so it can never break out of the --name/argv.
+// A systemd unit file is newline-delimited `Key=Value`, so EVERY value rendered
+// into one is an injection sink: one `\n` ends the current directive and starts
+// a new one — and `ExecStartPre=` is a directive that runs as the user, on a
+// timer, on a remote host. Descriptions and env come from schedule records,
+// which agents create, so this is a reachable path and not a theoretical one
+// (ticket 67, F-10).
+//
+// Refuse rather than strip: silently rewriting a value would hide the fact that
+// something tried, and a truncated description is not what the caller asked for.
+function assertNoNewline(value: string, what: string): string {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`unsafe ${what}: newline characters cannot appear in a systemd unit value`)
+  }
+  return value
+}
+
+/** Single-quote a path for a shell-parsed ExecStart argument. */
+function shq(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
 export function containerExecStart(id: string, c: ContainerRun): string {
   if (!isSafeUnitId(id)) throw new Error(`unsafe schedule id: ${id}`)
+  // Quoted, not just newline-checked: an unquoted `-v /home/u/My Repo:/home/u/My
+  // Repo` splits into three docker arguments and mounts something nobody asked
+  // for. Both defects are the same class — a value crossing a parser boundary.
+  const mount = (d: string, ro?: boolean): string => {
+    const p = assertNoNewline(d, 'container mount path')
+    return `-v ${shq(`${p}:${p}${ro ? ':ro' : ''}`)}`
+  }
   const mounts = [
-    `-v ${c.cfgDir}:${c.cfgDir}`,
-    `-v ${c.repoRoot}:${c.repoRoot}`,
-    ...(c.credDirs || []).map((d) => `-v ${d}:${d}:ro`),
+    mount(c.cfgDir),
+    mount(c.repoRoot),
+    ...(c.credDirs || []).map((d) => mount(d, true)),
   ]
   // systemd ExecStart needs an absolute executable and resolves it against the
   // MANAGER's PATH, not the unit's Environment=PATH — so a bare `docker` (snap
@@ -103,9 +131,18 @@ export function renderUnits(
   spec: ScheduleSpec,
   opts: RenderOpts,
 ): { service: string; timer: string } {
-  const desc = opts.description || `TerMinal scheduled agent ${id}`
+  const desc = assertNoNewline(
+    opts.description || `TerMinal scheduled agent ${id}`,
+    'schedule description',
+  )
   const envLines = Object.entries(opts.env || {})
-    .map(([k, v]) => `Environment=${k}=${v}`)
+    .map(
+      ([k, v]) =>
+        `Environment=${assertNoNewline(k, 'environment name')}=${assertNoNewline(
+          String(v),
+          `environment value for ${k}`,
+        )}`,
+    )
     .join('\n')
   // Type=oneshot: the runner does one bounded run then exits; the timer, not
   // systemd restart logic, controls cadence. runtime:container → the run executes

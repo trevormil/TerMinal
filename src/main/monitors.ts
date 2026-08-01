@@ -88,6 +88,26 @@ export function classifyCert(
   return 'ok'
 }
 
+/**
+ * Fold certificate CHAIN VALIDITY into the expiry-based health (ticket 67 F-15).
+ *
+ * The TLS probe connects with `rejectUnauthorized: false` on purpose — you want
+ * to be told a cert expires in 3 days even when the chain is already broken, and
+ * a rejected handshake would report nothing at all. But the old probe then threw
+ * the trust result away, so a self-signed cert, a wrong-hostname cert, or an
+ * untrusted issuer all rendered as a plain green "88d until expiry". The monitor
+ * was not merely silent about it; it actively asserted health.
+ *
+ * `warn`, not `fail`: an untrusted chain is often deliberate (an internal CA, a
+ * staging box), and a monitor that hard-fails on it gets muted — after which it
+ * detects nothing. Expiry still escalates to `fail` on its own schedule, and a
+ * genuinely-bad chain is never allowed to read as `ok`.
+ */
+export function classifyCertTrust(expiryState: MonitorState, authorized: boolean): MonitorState {
+  if (authorized) return expiryState
+  return expiryState === 'ok' ? 'warn' : expiryState
+}
+
 /** A command check maps exit code → health (0 ok, else fail), unless it printed
  *  a `{status}` JSON, which wins. */
 export function classifyCommand(exitCode: number, parsedStatus?: string): MonitorState {

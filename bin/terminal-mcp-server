@@ -1505,6 +1505,31 @@ function listAgentsTool(args) {
   return { repo: basename(root), agents: out.sort((a, b) => a.id.localeCompare(b.id)) }
 }
 
+// One inbox item per session the first time an agent delegates. Per-SESSION,
+// not per-call: a research agent legitimately delegates several times in a row,
+// and an item per call would be the re-nag failure that gets the inbox muted.
+// The marker is keyed by session id and lives beside the other run state.
+function noteFirstDelegation(title, repo, agentId) {
+  try {
+    const sessionId = process.env.GT_TERMINAL_SESSION_ID || ''
+    const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+    const dir = join(cfg, 'delegation-seen')
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const marker = join(dir, `${(sessionId || 'no-session').replace(/[^\w-]/g, '_')}.json`)
+    if (existsSync(marker)) return
+    writeFileSync(marker, JSON.stringify({ at: Date.now(), repo, agentId }), { mode: 0o600 })
+    emitActivityRaw({
+      kind: 'info',
+      title: `Agent delegated work · ${repo}`,
+      detail: `An agent spawned a delegated ${agentId} run ("${title}"). Further delegations this session are not announced.`,
+      repo,
+      suppressTelegram: true,
+    })
+  } catch {
+    // Visibility is not worth failing the delegation over.
+  }
+}
+
 // --- request_agent_artifact: delegate focused research/artifact work -------
 function requestAgentArtifactTool(args) {
   const root = args.repo ? findRepoRoot(args.repo) : process.env.TERMINAL_REPO || null
@@ -1547,6 +1572,12 @@ Rules:
 - If follow-up implementation is needed, recommend exactly which agent should own it.
 `
   writeFileSync(promptPath, fullPrompt)
+  // Delegation spawns a REAL `claude -p` — it costs money and runs unattended,
+  // triggered by an agent rather than by the operator. It stays allowed (gating
+  // it behind a flag TerMinal might not set would break it silently), but the
+  // first delegation of each session announces itself, so an agent cannot fan
+  // out sub-agents entirely invisibly (ticket 67, F-11).
+  noteFirstDelegation(title, basename(root), agent.id)
   const child = spawnSync(
     'claude',
     ['-p', fullPrompt, '--permission-mode', 'auto', ...(model ? ['--model', model] : [])],

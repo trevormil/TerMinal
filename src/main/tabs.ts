@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { repoRoot } from './widgets'
-import { isHttpUrl } from './url-safety'
+import { isHttpUrl } from '../shared/url-safety'
 
 // ---------------------------------------------------------------------------
 // Custom tabs — full-screen repo-specific views, the tab analogue of
