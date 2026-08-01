@@ -141,7 +141,23 @@ use them.
 > schedules (use remote hosts). Rationale and a port checklist:
 > [ADR-0003](docs/decisions/0003-macos-primary-platform.md).
 
-### Install it as a real app
+### Download the app
+
+**[Download the latest `.dmg` →](https://github.com/trevormil/TerMinal/releases/latest)**
+(Apple Silicon). Every release ships the DMG plus a `SHA256SUMS.txt`.
+
+The build is **unsigned and un-notarized**, so verify it and then let Gatekeeper
+through by hand — right-click → **Open** the first time, not a double-click:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt   # expect: TerMinal-<ver>-arm64.dmg: OK
+```
+
+If the checksum does not match, do not open it. (Signing + notarization is a
+tracked follow-up; until then the checksum is the integrity signal — see
+[`docs/setup.md`](docs/setup.md#verifying-a-download).)
+
+### Or build and install it yourself
 
 ```bash
 bun run dist        # → dist/TerMinal-<ver>-arm64.dmg + dist/mac-arm64/TerMinal.app
@@ -202,7 +218,10 @@ Panels) are one toggle away.
 Everything user-facing is a folder or a JSON file — no plugin API to learn
 beyond one object shape.
 
-**A cockpit widget** is a folder under `src/renderer/src/plugins/<id>/`:
+**A widget** is a folder under `src/renderer/src/plugins/<id>/`. It renders in
+the cockpit by default; the work column's accordion hosts the same spec for the
+few widgets listed in `COLUMN_PLUGIN_IDS` (Tickets, PRs/MRs), and each widget
+belongs to exactly one host:
 
 ```tsx
 import { Brain } from 'lucide-react'
@@ -249,9 +268,13 @@ per repo; an optional `badge(gt)` paints a live count.
 ]
 ```
 
-> **Trust:** command widgets run shell commands, and per-repo widgets come from
-> the repo you attach to — only attach to repos you trust (same model as
-> running their npm scripts).
+> **Trust:** command widgets run shell commands. Global ones
+> (`~/.config/TerMinal/`) are your own files and run freely. **Per-repo ones
+> (`<repo>/.TerMinal/widgets.json`, `tabs.json`) are inert until you approve
+> them.** The first time you open a session in a repo that defines any, the
+> Plugins drawer shows the literal commands and asks you to approve that repo.
+> The approval is keyed on the exact command set, so editing the file — or a
+> `git pull` that changes it — asks again.
 
 Agents integrate from the outside too: an **MCP server** (installable from
 Settings or onboarding) gives any Claude Code/Codex session cross-session views
@@ -305,8 +328,9 @@ src/main/            Electron main: PTY spawn, IPC, all fs/CLI readers
 src/preload/         the typed `gt` bridge (contextBridge)
 src/renderer/src/
   App.tsx            multi-session shell (workspace tab bar)
-  SessionView.tsx    one session: terminal + cockpit + tabs
-  plugins/<id>/      one folder = one cockpit widget (auto-discovered)
+  SessionView.tsx    one session: terminal + work column + cockpit + tabs
+  plugins/<id>/      one folder = one widget (auto-discovered; hosted by the
+                     cockpit, or by the work column's accordion)
   tabs/<id>/         one folder = one full-screen tab (auto-discovered)
 bin/                 headless runners: terminal-cron, terminal-cli, MCP server, or-agent tier
 templates/           project-template (embedded workflow scaffold)

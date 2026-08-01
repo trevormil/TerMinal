@@ -31,7 +31,14 @@ test('registerWithClaude preserves unrelated ~/.claude.json state and adds the s
         '-e',
         `import { registerWithClaude } from ${JSON.stringify(mod)}; console.log(JSON.stringify(registerWithClaude()))`,
       ],
-      { env: { ...process.env, HOME: home }, encoding: 'utf8' },
+      {
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+        },
+        encoding: 'utf8',
+      },
     )
     expect(JSON.parse(out.trim()).ok).toBe(true)
 

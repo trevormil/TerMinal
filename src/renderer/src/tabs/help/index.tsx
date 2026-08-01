@@ -150,7 +150,7 @@ function HelpTab(_props: { ctx: TabContext }) {
           </h1>
           <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
             TerMinal wraps the real <code className="font-mono text-zinc-300">claude</code> CLI with
-            a per-session cockpit. A repo scaffolded from{' '}
+            a per-session work column. A repo scaffolded from{' '}
             <span className="text-zinc-200">project-template</span> ships an agent-driven SDLC: you
             (or an agent) move work from idea → ticket → branch → PR → review, and{' '}
             <span className="font-semibold text-zinc-200">you</span> do the final merge. This is the
@@ -231,9 +231,8 @@ function HelpTab(_props: { ctx: TabContext }) {
             </SkillCard>
           </div>
           <p className="mt-2.5 text-[11px] text-zinc-600">
-            The <span className="text-zinc-400">Skills</span> cockpit widget lists every skill
-            available here — your project + personal skills first, installed-plugin skills on
-            expand.
+            The <span className="text-zinc-400">Skills</span> widget lists every skill available
+            here — your project + personal skills first, installed-plugin skills on expand.
           </p>
         </Section>
 
@@ -281,12 +280,11 @@ function HelpTab(_props: { ctx: TabContext }) {
               autonomous ticket→PR factory cycle.
             </p>
             <p>
-              <span className="font-semibold text-zinc-200">
-                Cockpit (right, the Plugins button):
-              </span>{' '}
-              live widgets — context window, usage + burn-rate, TDD status, git, todos, open-PR
-              summary, and Skills. Toggle any of them from the Plugins drawer; the × on a widget
-              hides it.
+              <span className="font-semibold text-zinc-200">Work column (right):</span> one
+              accordion — Files, Tickets, PRs / MRs, and Cockpit — each section collapsible on its
+              own, several open at once. Cockpit holds the live widgets (context window, usage +
+              burn-rate, TDD status, git, todos, Skills), all visible together. Toggle any of them
+              from the Plugins drawer; the × on a widget hides it.
             </p>
             <p>
               <span className="font-semibold text-zinc-200">Keyboard:</span>{' '}
@@ -300,7 +298,7 @@ function HelpTab(_props: { ctx: TabContext }) {
         <Section icon={Blocks} title="Make it yours">
           <p className="mb-3 text-[12px] leading-relaxed text-zinc-400">
             TerMinal is a flexible <span className="text-zinc-200">starting point</span>, not a
-            fixed app. The cockpit and tabs are{' '}
+            fixed app. Widgets and tabs are{' '}
             <span className="text-zinc-200">auto-discovered from folders</span> — drop one in and it
             shows up, no registry to edit. Most per-repo customization needs{' '}
             <span className="text-zinc-200">no code at all</span>, and you can just ask Claude
@@ -310,7 +308,7 @@ function HelpTab(_props: { ctx: TabContext }) {
             <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">
               <div className="flex items-center gap-1.5 text-[12px] font-semibold text-zinc-200">
                 <LayoutGrid size={13} strokeWidth={2} className="text-[var(--gt-accent-2)]" />
-                Cockpit plugins
+                Widget plugins
               </div>
               <p className="mt-1 text-[11.5px] leading-snug text-zinc-400">
                 Drop <code className="font-mono">plugins/&lt;id&gt;/index.tsx</code> exporting a
@@ -338,8 +336,8 @@ function HelpTab(_props: { ctx: TabContext }) {
               <p className="mt-1 text-[11.5px] leading-snug text-zinc-400">
                 Drop <code className="font-mono">.TerMinal/widgets.json</code> in any repo (or run{' '}
                 <code className="font-mono">/terminal-widget</code>). Each entry is a shell command
-                the cockpit polls and renders — surface repo counts, status, or metrics with zero
-                code.
+                the work column polls and renders — surface repo counts, status, or metrics with
+                zero code.
               </p>
             </div>
             <div className="rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-3">

@@ -55,7 +55,9 @@ bun install               # at repo root
 bun run dev               # dev server with HMR
 bun run dist              # build + package (electron-vite + electron-builder)
 bun run release           # FULL: pull latest → build → sign → reinstall /Applications/TerMinal.app → relaunch
-bun run test              # test suite
+bun run test              # unit test suite (bun test)
+bun run test:ux           # UX suite tier 1 — Playwright drives the real app (needs `bun run build`)
+bun run ux:taste          # UX suite tier 2 — AI taste pass, writes a Reports artifact (never a gate)
 bunx tsc --noEmit         # typecheck
 ```
 
@@ -118,3 +120,4 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 | Per-(repo, agent) state | `.agents/scripts.md` in `project-template` — the canonical convention doc |
 | A ticket's comment log | `src/main/ticket-comments.ts` (the only parser) + [ADR-0012](./docs/decisions/0012-ticket-log-in-markdown.md); every writer appends, never parses |
 | Run records | `src/main/cron-runs.ts` (cron) + `agents.ts` (in-process) — `UnifiedRun` type bridges both for the Runs tab |
+| Anything user-visible in the UI | [`docs/ux-testing.md`](./docs/ux-testing.md) — the two-tier UX suite. Tab pills carry `data-tab-id`/`aria-current` and the active pane carries `data-tab-pane`; keep them when restyling |

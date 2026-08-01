@@ -294,6 +294,16 @@ const gt = {
     health: () => ipcRenderer.invoke('factory:health'),
     start: (engine: string) => ipcRenderer.invoke('factory:start', engine),
   },
+  // Agent reliability: scorecards computed from the existing run stores, the
+  // disabled roster with its reasons, and persistent-agent memory compaction.
+  agentInsights: {
+    scorecard: (agentId: string) => ipcRenderer.invoke('agents:scorecard', agentId),
+    scorecards: () => ipcRenderer.invoke('agents:scorecards'),
+    disabledDetail: () => ipcRenderer.invoke('agents:disabled-detail'),
+    setDisabled: (id: string, disabled: boolean, reason?: string) =>
+      ipcRenderer.invoke('agents:set-disabled', id, disabled, reason),
+    compactMemory: (id: string) => ipcRenderer.invoke('persistent-agents:compact', id),
+  },
 
   // activity feed + notifications
   activity: {
@@ -336,11 +346,29 @@ const gt = {
 
   // command widgets (declarative / per-repo)
   listCommandWidgets: () => ipcRenderer.invoke('widgets:list'),
-  runCommand: (command: string) => ipcRenderer.invoke('widgets:run', command),
+  // An opaque widget id, never a command string — main resolves it against the
+  // session's own widget set (see repo-trust.ts / widgets:run).
+  runCommand: (id: string) => ipcRenderer.invoke('widgets:run', id),
 
   // custom tabs (declarative full-screen views / per-repo)
   listCustomTabs: (cwd?: string) => ipcRenderer.invoke('tabs:list', cwd),
-  runTabView: (command: string, cwd?: string) => ipcRenderer.invoke('tabs:run', command, cwd),
+  runTabView: (id: string, cwd?: string) => ipcRenderer.invoke('tabs:run', id, cwd),
+
+  // per-repo trust for repo-sourced widgets/tabs
+  // No cwd argument by design — main always resolves the ACTIVE session's cwd,
+  // so the renderer cannot approve a directory of its choosing.
+  repoTrust: {
+    status: () => ipcRenderer.invoke('repoTrust:status'),
+    approve: () => ipcRenderer.invoke('repoTrust:approve'),
+    revoke: () => ipcRenderer.invoke('repoTrust:revoke'),
+    // Refusal (src/main/ipc/repo-trust-denials.ts). These DO take a repo root,
+    // unlike approve: denying only ever withholds capability, so a renderer
+    // naming the wrong repo silences a prompt — it cannot grant execution.
+    denied: (repoRoot: string, hash: string) =>
+      ipcRenderer.invoke('repoTrust:denied', repoRoot, hash),
+    deny: (repoRoot: string, hash: string) => ipcRenderer.invoke('repoTrust:deny', repoRoot, hash),
+    undeny: (repoRoot: string) => ipcRenderer.invoke('repoTrust:undeny', repoRoot),
+  },
 
   // scratch workspace dir (throwaway, repo-less sessions)
   scratchDir: () => ipcRenderer.invoke('scratch:dir'),
@@ -471,8 +499,23 @@ const gt = {
     models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
-    indexQuery: (query: string, arg?: string) =>
-      ipcRenderer.invoke('observability:index-query', query, arg),
+    indexQuery: (query: string, arg?: string, filter?: unknown) =>
+      ipcRenderer.invoke('observability:index-query', query, arg, filter),
+    filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
+  },
+  stacks: {
+    list: (repoRoot: string, repoPath: string) =>
+      ipcRenderer.invoke('stacks:list', repoRoot, repoPath),
+    extension: (repoRoot: string) => ipcRenderer.invoke('stacks:extension', repoRoot),
+    merge: (repoRoot: string, iid: number) => ipcRenderer.invoke('stacks:merge', repoRoot, iid),
+  },
+  inbox: {
+    snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
+    snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),
+    snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
+    unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),
+    deliveryLog: (channel?: string, limit?: number) =>
+      ipcRenderer.invoke('inbox:delivery-log', channel, limit),
   },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),
@@ -545,6 +588,15 @@ const gt = {
     read: (rel: string) => ipcRenderer.invoke('workflow:read', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('workflow:write', rel, content),
   },
+  searchSessions: (
+    query: string,
+    opts?: {
+      thisRepoOnly?: boolean
+      engine?: string
+      maxSessions?: number
+      maxHits?: number
+    },
+  ) => ipcRenderer.invoke('sessions:search', query, opts),
 
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {

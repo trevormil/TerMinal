@@ -11,7 +11,16 @@
 // SELF-CONTAINED: no imports from the app bundle. The classifiers mirror
 // src/main/monitors.ts (keep in sync — they're tiny pure functions).
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  rmSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -46,9 +55,21 @@ function readState(id) {
     return null
   }
 }
+// Temp + rename: a plain write truncates first, so a kill mid-write leaves a
+// state file the daemon can no longer parse and the monitor silently resets.
 function writeState(id, state) {
   mkdirSync(STATE_DIR, { recursive: true })
-  writeFileSync(join(STATE_DIR, `${id}.json`), JSON.stringify(state, null, 2))
+  const file = join(STATE_DIR, `${id}.json`)
+  const tmp = `${file}.${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`)
+    renameSync(tmp, file)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {}
+    log(`state write failed for ${id}: ${e}`)
+  }
 }
 
 // ---- classifiers (mirror src/main/monitors.ts) -----------------------------

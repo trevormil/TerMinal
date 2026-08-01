@@ -4,6 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/icon.png" />
+    <!--
+      CSP fallback. The authoritative policy is stamped as a RESPONSE HEADER in
+      src/main/window-guard.ts (appCsp) via onHeadersReceived, but whether
+      Electron fires onHeadersReceived for a `file://` document load is version
+      and platform dependent — and the packaged build is exactly the case we
+      cannot verify from here. A meta CSP always applies for file:// and is
+      ADDITIVE with a header policy (the intersection is enforced), so this
+      guarantees the one directive that matters, `script-src 'self'`: no
+      remotely-hosted script can enter the origin that owns `window.gt`.
+
+      This tag is static, so it carries the DEV connect-src relaxation
+      (localhost + the Vite HMR socket) in every build — otherwise the
+      intersection with the header policy would break HMR. In a packaged build
+      the header policy, when it applies, narrows connect-src back to 'self';
+      when it does not, the residual looseness is "the renderer may talk to
+      localhost", which it already does for the local bridge.
+
+      Honest limitation: script-src keeps 'unsafe-inline' and 'unsafe-eval'
+      (bundler inline module preloads + dev HMR need them), so this does NOT
+      mitigate an INJECTED INLINE script — e.g. via rendered PR/ticket markdown.
+      It only stops remote script being fetched into the origin. Removing them
+      needs a nonce/hash pipeline and a packaged-build verification.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' http://localhost:* ws://localhost:*; frame-src 'self' http: https: data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
     <title>TerMinal</title>
   </head>
   <body>

@@ -12,5 +12,5 @@
     "types": ["node", "bun"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "electron.vite.config.ts"]
+  "include": ["src", "tests", "scripts", "electron.vite.config.ts", "playwright.config.ts"]
 }

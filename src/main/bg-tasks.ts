@@ -22,6 +22,7 @@ import { spawn as cpSpawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { fileHitl } from './hitl'
 import { linkTicketPr, updateTicket } from './backlog'
+import { blockEffect } from './effect-guard'
 import { emitActivity } from './events'
 // Static, not lazy `require` — see the note in telegram.ts. Under the ESM
 // bundle the old `require('./budgets')` threw and was swallowed by its own
@@ -37,6 +38,7 @@ import {
   type EngineId,
 } from './settings'
 import { sendUrl } from './telegram-api'
+import { queueRunOutcomeSummary, readRunLogTail } from './run-summarizer'
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const TASKS_FILE = join(CFG, 'bg-tasks.json')
@@ -429,6 +431,7 @@ function extractDone(log: string): string | undefined {
 
 // Send a one-off Telegram message via the existing settings/auth boundary.
 function telegramPing(text: string): void {
+  if (blockEffect('notify', 'bg-task-telegram')) return
   try {
     const t = readSettings().telegram
     if (!t?.botToken || !t?.chatId) return
@@ -570,6 +573,16 @@ async function sweepInner(): Promise<void> {
         /* backlog unreadable — HITL still records the failure */
       }
     }
+    // Best-effort outcome summary for the Runs row / iOS list. Fire-and-forget
+    // AFTER the task is finalized — it cannot block or fail this sweep, and a
+    // failure to summarize just means no summary. Failure HITL text above is
+    // a separate, unchanged path.
+    queueRunOutcomeSummary({
+      runId: t.id,
+      status: t.status,
+      readLog: () => readRunLogTail(t.logFile),
+      context: `Background task: ${t.label} in ${t.repo}`,
+    })
     finals.set(t.id, { status: t.status, endedAt: t.endedAt, mrUrl: t.mrUrl })
   }
   if (finals.size) {

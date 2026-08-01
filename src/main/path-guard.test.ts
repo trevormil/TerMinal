@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { resolveWithin } from './path-guard'
+import { resolveWithin, resolveWithinAny } from './path-guard'
 
 describe('resolveWithin', () => {
   test('accepts a file inside the root', () => {
@@ -41,5 +41,46 @@ describe('resolveWithin', () => {
     expect(resolveWithin('', 'a.ts')).toBeNull()
     expect(resolveWithin('/tmp/repo', null as unknown as string)).toBeNull()
     expect(resolveWithin(null as unknown as string, 'a.ts')).toBeNull()
+  })
+})
+
+describe('resolveWithinAny', () => {
+  const roots = ['/Users/me/Projects', '/Users/me/.config/TerMinal', '']
+
+  test('accepts an absolute path inside any listed root', () => {
+    expect(resolveWithinAny(roots, '/Users/me/Projects/app/src/x.ts')).toBe(
+      '/Users/me/Projects/app/src/x.ts',
+    )
+    expect(resolveWithinAny(roots, '/Users/me/.config/TerMinal/agents/a.sh')).toBe(
+      '/Users/me/.config/TerMinal/agents/a.sh',
+    )
+  })
+
+  test('accepts a root itself', () => {
+    expect(resolveWithinAny(roots, '/Users/me/Projects')).toBe('/Users/me/Projects')
+  })
+
+  test('rejects a path outside every root', () => {
+    expect(resolveWithinAny(roots, '/Users/me/.ssh/id_rsa')).toBeNull()
+    expect(resolveWithinAny(roots, '/etc/passwd')).toBeNull()
+  })
+
+  // Same string-prefix trap as resolveWithin, and the reason an empty root must
+  // not silently mean "/" — that would allow every path above.
+  test('rejects a sibling that merely shares a root prefix, and ignores empty roots', () => {
+    expect(resolveWithinAny(roots, '/Users/me/Projects-private/secrets.env')).toBeNull()
+    expect(resolveWithinAny(['', undefined, null], '/etc/passwd')).toBeNull()
+  })
+
+  test('normalises traversal before deciding', () => {
+    expect(resolveWithinAny(roots, '/Users/me/Projects/../.ssh/id_rsa')).toBeNull()
+    expect(resolveWithinAny(roots, '/Users/me/Projects/app/../app/x.ts')).toBe(
+      '/Users/me/Projects/app/x.ts',
+    )
+  })
+
+  test('refuses relative and non-string input', () => {
+    expect(resolveWithinAny(roots, 'app/src/x.ts')).toBeNull()
+    expect(resolveWithinAny(roots, null as unknown as string)).toBeNull()
   })
 })

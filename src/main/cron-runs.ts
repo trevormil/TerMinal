@@ -13,6 +13,12 @@ import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
 import { listBgTasks, type BgTask } from './bg-tasks'
+import {
+  pruneOutcomeSummaries,
+  queueRunOutcomeSummary,
+  readOutcomeSummaries,
+  readRunLogTail,
+} from './run-summarizer'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
 const DEFAULT_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
@@ -94,6 +100,22 @@ function bustRunsListCache(): void {
   sessionRunsCache = null
 }
 
+/**
+ * One cron run by id. Records live at cron-runs/<id>.json, so this is a single
+ * file read — `runs:cancel-cron` used to call `readCronRuns(undefined, 20000)`
+ * and scan the result, which read+parsed EVERY run record on the main thread on
+ * each cancel click (and then repopulated the shared cache at limit 20000,
+ * making the next ordinary listing pay for it too).
+ */
+export function getCronRun(id: string): CronRun | null {
+  if (!id || id.includes('/') || id.includes('..')) return null
+  try {
+    return JSON.parse(readFileSync(join(cronRunsDir(), `${id}.json`), 'utf8')) as CronRun
+  } catch {
+    return null
+  }
+}
+
 export function readCronRuns(scheduleId?: string, limit = 200): CronRun[] {
   const dir = cronRunsDir()
   if (!existsSync(dir)) return []
@@ -161,8 +183,42 @@ export function sweepStaleCronRuns(): { swept: number } {
       /* skip unreadable record */
     }
   }
+  sweepCronRunSummaries()
+  pruneOutcomeSummaries()
   return { swept }
 }
+
+/** Backfill outcome summaries for settled cron runs that don't have one.
+ *
+ *  bin/terminal-cron is deliberately self-contained (no app imports), so it
+ *  cannot queue its own summaries. This app-side sweep covers cron runs
+ *  instead, riding the existing 30-minute stale-run reconciliation. Bounded by
+ *  a recency window, a per-sweep limit, and the summarizer's own hourly cap. */
+export function sweepCronRunSummaries(
+  opts: { now?: number; call?: (prompt: string) => Promise<string> } = {},
+): { queued: number } {
+  const now = opts.now ?? Date.now()
+  const existing = readOutcomeSummaries()
+  let queued = 0
+  for (const r of readCronRuns(undefined, 200)) {
+    if (queued >= CRON_SUMMARY_SWEEP_LIMIT) break
+    if (r.status === 'running') continue
+    if (existing.has(r.id)) continue
+    if (now - (r.endedAt || r.startedAt || 0) > CRON_SUMMARY_MAX_AGE_MS) continue
+    queueRunOutcomeSummary({
+      runId: r.id,
+      status: r.status,
+      readLog: () => readRunLogTail(cronRunLogPath(r.id)),
+      context: `Scheduled run: ${r.agentTitle} in ${r.repoLabel}`,
+      call: opts.call,
+    })
+    queued++
+  }
+  return { queued }
+}
+
+const CRON_SUMMARY_SWEEP_LIMIT = 20
+const CRON_SUMMARY_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 /** On-disk log path for the runs:log-tail IPC. */
 export function cronRunLogPath(runId: string): string {
@@ -266,6 +322,13 @@ export function finalizeSessionRun(
   } catch {
     /* best-effort observability */
   }
+  // The run is already finalized on disk — this cannot affect it either way.
+  queueRunOutcomeSummary({
+    runId: safe,
+    status: patch.status,
+    readLog: () => readRunLogTail(sessionRunLogPath(safe)),
+    context: `Session run: ${patch.agentTitle || ''}`.trim(),
+  })
 }
 
 export function readSessionRuns(limit = 200): SessionRun[] {
@@ -404,6 +467,9 @@ export type UnifiedRun = {
   hostLabel?: string
   /** Cron runner's own pid — SIGTERM'd to cancel the run (#9). */
   runnerPid?: number
+  /** Best-effort two-line "what actually got done", written after the run
+   *  settled. Absent whenever summarization was skipped or failed. */
+  summary?: string
 }
 
 function agentRunToUnified(r: AgentRun): UnifiedRun {
@@ -491,7 +557,12 @@ export function listAllRuns(limit = 400): UnifiedRun[] {
   const agent = listAgentRuns().map(agentRunToUnified)
   const bg = listBgTasks().map(bgTaskToUnified)
   const sessions = readSessionRuns(limit).map(sessionRunToUnified)
-  return [...cron, ...agent, ...bg, ...sessions]
+  const runs = [...cron, ...agent, ...bg, ...sessions]
     .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
     .slice(0, limit)
+  // Join the outcome-summary side-car in one sweep. Absent summaries just leave
+  // the field undefined — no run record shape changed to carry this.
+  const summaries = readOutcomeSummaries()
+  if (summaries.size) for (const r of runs) r.summary = summaries.get(r.id)
+  return runs
 }

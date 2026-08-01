@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings } from './settings'
 import { categoryFor, channelWants, type NotifyMatrix } from '../shared/notifications'
+import { guardedFetch, guardedSpawn } from './effect-guard'
 import { sendUrl } from './telegram-api'
 
 // The channel-agnostic event kinds — same vocabulary as the notify skill.
@@ -75,6 +76,54 @@ export function notifyKindFor(ev: Pick<AlertSource, 'kind' | 'title'>): NotifyKi
 const message = (title: string, detail?: string) => (detail ? `${title} — ${detail}` : title)
 
 /**
+ * Turn a non-2xx HTTP response into a rejection.
+ *
+ * `fetch` only rejects on transport failure, so a revoked Telegram token (401)
+ * or a dead webhook (404) resolved normally and was recorded as a SUCCESSFUL
+ * delivery — the delivery log could not detect the exact failure it exists to
+ * catch. Rejecting routes it through the same path as any other channel error.
+ */
+async function assertDelivered(res: Response): Promise<undefined> {
+  if (res.ok) return undefined
+  const body = await res.text().catch(() => '')
+  throw new Error(`HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`)
+}
+
+// --- snooze gate + delivery recorder ----------------------------------------
+//
+// Both are settable hooks with inert defaults rather than direct imports: this
+// module is deliberately electron-free and side-effect-free so it stays unit-
+// testable, and events.ts already imports it (a reverse import would cycle).
+// `registerInboxIpc()` installs the real implementations at startup.
+
+let snoozeGate: (hitlId: string) => boolean = () => false
+
+/** Install the "is this inbox item snoozed" predicate. */
+export function setSnoozeGate(fn: (hitlId: string) => boolean): void {
+  snoozeGate = fn
+}
+
+export type DeliveryOutcome = {
+  channel: NotifyChannelId
+  ok: boolean
+  title: string
+  error?: string
+}
+
+let deliveryRecorder: (outcome: DeliveryOutcome) => void = () => {}
+
+/** Install the delivery-log sink. */
+export function setDeliveryRecorder(fn: (outcome: DeliveryOutcome) => void): void {
+  deliveryRecorder = fn
+}
+
+/** Exposed for tests — restores the inert defaults. */
+export function resetNotifyHooks(): void {
+  snoozeGate = () => false
+  deliveryRecorder = () => {}
+}
+
+/**
  * Fan one alert out to every enabled channel. Failure isolation is the
  * contract: enabled() probes and send() calls are individually guarded, sync
  * throws are caught, async rejections handled — a broken channel logs and the
@@ -87,6 +136,10 @@ export function dispatchAlert(
   matrix?: NotifyMatrix,
 ): void {
   const kind = notifyKindFor(ev)
+  // A snoozed inbox item is silent on every channel until it comes due. The
+  // gate lives here, at the single fan-out point, so no channel can route
+  // around it. Alerts with no hitlId are unaffected.
+  if (ev.hitlId && snoozeGate(ev.hitlId)) return
   const category = categoryFor(ev)
   const refs: NotifyRefs = {
     ticket: ev.ref?.ticket,
@@ -99,13 +152,19 @@ export function dispatchAlert(
     if (ch.id === 'telegram' && ev.suppressTelegram) continue
     // Per-channel routing: a channel only fires for categories it opted into.
     if (!channelWants(ch.id as NotifyChannelId, category, matrix)) continue
+    const failed = (e: unknown) => {
+      const error = (e as Error).message || String(e)
+      console.error(`[gt] alert channel ${ch.id} failed:`, error)
+      deliveryRecorder({ channel: ch.id, ok: false, title: ev.title, error })
+    }
     try {
       if (!ch.enabled()) continue
-      Promise.resolve(ch.send(kind, ev.title, ev.detail, refs)).catch((e) =>
-        console.error(`[gt] alert channel ${ch.id} failed:`, (e as Error).message),
+      Promise.resolve(ch.send(kind, ev.title, ev.detail, refs)).then(
+        () => deliveryRecorder({ channel: ch.id, ok: true, title: ev.title }),
+        failed,
       )
     } catch (e) {
-      console.error(`[gt] alert channel ${ch.id} failed:`, (e as Error).message)
+      failed(e)
     }
   }
 }
@@ -148,7 +207,14 @@ export function createTelegramChannel(
   getSettings: () => Settings,
   deps: { fetchFn?: typeof fetch; spawnFn?: typeof spawn; scriptPath?: string } = {},
 ): NotifyChannel {
-  const { fetchFn = fetch, spawnFn = spawn, scriptPath = TG_SCRIPT } = deps
+  // The DEFAULT transports are guarded: a channel built without injected deps
+  // (as events.ts builds them) cannot reach the network from a test. Injected
+  // fakes are untouched — a unit test of the send logic still sees its own stub.
+  const {
+    fetchFn = guardedFetch('telegram'),
+    spawnFn = guardedSpawn('telegram'),
+    scriptPath = TG_SCRIPT,
+  } = deps
   return {
     id: 'telegram',
     enabled: () => getSettings().telegram.notify, // opt-in, off by default
@@ -160,7 +226,7 @@ export function createTelegramChannel(
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(telegramSendBody(telegram.chatId, kind, title, detail, refs)),
           signal: AbortSignal.timeout(8000),
-        }).then(() => undefined)
+        }).then(assertDelivered)
       }
       if (!existsSync(scriptPath)) return // no native config + no script → skip silently
       spawnFn(scriptPath, [`--kind=${kind}`, message(title, detail)], { stdio: 'ignore' }).unref()
@@ -267,7 +333,7 @@ export function webhookPayload(
 
 export function createWebhookChannel(
   getSettings: () => Settings,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = guardedFetch('webhook'),
 ): NotifyChannel {
   return {
     id: 'webhook',
@@ -281,7 +347,7 @@ export function createWebhookChannel(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(webhookPayload(kind, title, detail, refs)),
         signal: AbortSignal.timeout(8000),
-      }).then(() => undefined)
+      }).then(assertDelivered)
     },
   }
 }
@@ -289,7 +355,7 @@ export function createWebhookChannel(
 /** Settings "Test" button for the webhook channel: one POST, errors surfaced. */
 export async function testWebhook(
   url: string,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = guardedFetch('webhook-test'),
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isWebhookUrl(url)) return { ok: false, error: 'Set a valid http(s) webhook URL first.' }
   try {

@@ -19,8 +19,8 @@ import {
   Upload,
   Video,
 } from 'lucide-react'
-import { langs } from '@uiw/codemirror-extensions-langs'
 import { CodeEditor } from '../../components/CodeEditor'
+import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { Markdown } from '../../components/Markdown'
 import type {
   KnowledgeBase,
@@ -135,6 +135,9 @@ function emptyItem(categoryId: string, kind: KnowledgeItemKind): KnowledgeItem {
 }
 
 function KnowledgeTab({ ctx }: { ctx: TabContext }) {
+  // Pulls the (code-split) CodeMirror grammars in on first mount of a tab
+  // that can host an editor, and re-renders once they land. See lazyLang.ts.
+  useLangsReady()
   const hasRepo = !!ctx.repoRoot
   const [scope, setScope] = useState<KnowledgeScope>('global')
   const [view, setView] = useState<ViewMode>('knowledge')
@@ -819,7 +822,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
             <CodeEditor
               value={item.content || ''}
               onChange={(value) => updateItem({ content: value })}
-              extensions={[langs.markdown()]}
+              extensions={langExtensionFor('markdown')}
               wrap
             />
           ) : previewMode === 'preview' ? (
@@ -830,7 +833,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                 <CodeEditor
                   value={item.content || ''}
                   onChange={(value) => updateItem({ content: value })}
-                  extensions={[langs.markdown()]}
+                  extensions={langExtensionFor('markdown')}
                   wrap
                 />
               </div>
@@ -848,7 +851,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
 
   const scratchBody =
     previewMode === 'edit' ? (
-      <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+      <CodeEditor
+        value={scratch}
+        onChange={saveScratch}
+        extensions={langExtensionFor('markdown')}
+        wrap
+      />
     ) : previewMode === 'preview' ? (
       <div className="h-full overflow-y-auto p-5">
         <Markdown>{scratch}</Markdown>
@@ -856,7 +864,12 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
     ) : (
       <div className="flex h-full min-h-0">
         <div className="min-h-0 w-1/2 border-r border-[var(--gt-border)]">
-          <CodeEditor value={scratch} onChange={saveScratch} extensions={[langs.markdown()]} wrap />
+          <CodeEditor
+            value={scratch}
+            onChange={saveScratch}
+            extensions={langExtensionFor('markdown')}
+            wrap
+          />
         </div>
         <div className="min-h-0 w-1/2 overflow-y-auto p-5">
           <Markdown>{scratch}</Markdown>

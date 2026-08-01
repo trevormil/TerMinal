@@ -18,7 +18,9 @@ import { EngineLogo } from './EngineLogo'
 import { EngineModelPicker } from './EngineModelPicker'
 import { MrDetailView } from './MrDetail'
 import { SkillHint } from './SkillHint'
-import { TicketDetail, prIidFromUrl, ticketAgentContextId } from './TicketDetail'
+import { TicketDetail } from './TicketDetail'
+import { prIidFromUrl } from './TicketLineagePanel'
+import { ticketAgentContextId } from '../lib/ticketOwner'
 import {
   statusTone,
   priorityTone,
@@ -206,7 +208,7 @@ function NewTicketModal({ ctx, onClose }: { ctx: TabContext; onClose: () => void
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
       <div
@@ -780,7 +782,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
           )}
         </div>
         <ResizeHandle onMouseDown={listW.onResizeStart} />
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        {/* TicketDetail scrolls internally below its pinned header + tabs. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {selected ? (
             <TicketDetail
               ticket={selected}
@@ -789,6 +792,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
               mrByIid={mrByIid}
               forgeLabel={ctx.forgeLabel}
               forgeSym={ctx.forgeSym}
+              repoRoot={ctx.repoRoot}
               onChanged={loadTickets}
               onSelectTicket={setSel}
               onViewMr={setViewMrIid}

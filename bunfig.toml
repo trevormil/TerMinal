@@ -5,3 +5,6 @@
 # unrelated failures as ours — so a contributor who follows CONTRIBUTING sees a
 # "broken" suite. CI escapes only because checkout doesn't fetch submodules.
 root = "src"
+# Point every test at a throwaway ~/.config/TerMinal so no test can write the
+# developer's real state. See src/test-preload.ts.
+preload = ["./src/test-preload.ts"]

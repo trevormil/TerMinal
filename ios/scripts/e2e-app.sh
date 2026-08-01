@@ -16,7 +16,8 @@ REPO_ROOT="$(cd .. && pwd)"
 
 # Apple identifiers come from ios/.xcodegen.env (gitignored), same as
 # generate.sh; without it, the fork-safe placeholder bundle id is used.
-[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
+. scripts/env.sh
+gt_load_env .xcodegen.env || true
 PRODUCT_BUNDLE_ID="${PRODUCT_BUNDLE_ID:-com.example.terminal}"
 
 cleanup() {
@@ -52,5 +53,5 @@ printf '%s' "$PAIRING" | xcrun simctl pbcopy "$SIM"
 
 echo "==> running the live pairing test"
 "$(dirname "$0")/generate.sh"
-xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemoteLive \
-  -destination "platform=iOS Simulator,name=$SIM" test 2>&1 | tail -30
+gt_logged live-test xcodebuild -project TerMinalRemote.xcodeproj -scheme TerMinalRemoteLive \
+  -destination "platform=iOS Simulator,name=$SIM" test

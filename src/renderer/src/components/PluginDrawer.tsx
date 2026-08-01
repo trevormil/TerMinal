@@ -2,12 +2,20 @@ import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
 import { useState } from 'react'
 import { dropIndex, reorderOnDrop } from '../lib/dragReorder'
 import type { Plugin } from '../lib/types'
+import { RepoTrustReview, type RepoTrustPrompt } from './RepoTrustReview'
 
-// The "plugins" panel. No remote registry — entries are code
-// folders in the repo plus command widgets (global / per-repo). Toggling just
-// mounts/unmounts. Rows are listed in cockpit order; drag a row (or use the
-// chevrons — the keyboard-accessible fallback) to rearrange, and the
-// arrangement persists.
+// The "plugins" panel — still the one place widgets are managed, even though
+// they now render inside the work column's Cockpit section rather than a panel
+// of their own. No remote registry: entries are code folders in the repo plus
+// command widgets (global / per-repo). Toggling just mounts/unmounts. Rows are
+// listed in Cockpit order; drag a row (or use the chevrons — the
+// keyboard-accessible fallback) to rearrange, and the arrangement persists.
+//
+// It lists only what Cockpit hosts. Tickets and PRs/MRs are top-level accordion
+// sections now, so they are absent here by construction (`partitionPluginHosts`
+// keeps them out of the list this is handed) — collapsing a section is how you
+// hide those, and their collapse state is what carried over from their old
+// enable/disable toggle.
 export function PluginDrawer({
   plugins,
   enabled,
@@ -15,6 +23,7 @@ export function PluginDrawer({
   onMove,
   onReorder,
   onClose,
+  trustPrompt,
 }: {
   plugins: Plugin[]
   enabled: string[]
@@ -22,6 +31,8 @@ export function PluginDrawer({
   onMove: (id: string, dir: -1 | 1) => void
   onReorder: (ids: string[]) => void
   onClose: () => void
+  /** Shared with the Plugins chip's badge, so approving here clears it at once. */
+  trustPrompt: RepoTrustPrompt
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropAt, setDropAt] = useState<number | null>(null)
@@ -30,7 +41,7 @@ export function PluginDrawer({
     setDropAt(null)
   }
   return (
-    <div className="absolute inset-0 z-20 flex justify-end bg-black/50" onClick={onClose}>
+    <div className="absolute inset-0 z-20 flex justify-end bg-black/70" onClick={onClose}>
       <div
         className="h-full w-[360px] gt-pop-in overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-panel)] p-4"
         onClick={(e) => e.stopPropagation()}
@@ -53,6 +64,8 @@ export function PluginDrawer({
           command widget in{' '}
           <code className="rounded bg-black/40 px-1 text-zinc-400">.TerMinal/widgets.json</code>.
         </p>
+
+        <RepoTrustReview prompt={trustPrompt} />
 
         <div className="space-y-2">
           {plugins.map((p, i) => {

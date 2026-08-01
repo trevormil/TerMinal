@@ -34,12 +34,136 @@ import {
   existsSync,
   mkdirSync,
   appendFileSync,
+  openSync,
+  closeSync,
+  renameSync,
+  unlinkSync,
   readdirSync,
 } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
 import { execSync, execFile, execFileSync, spawn } from 'node:child_process'
+
+// --- crash-safe shared-state writes (ticket 0068) ----------------------------
+//
+// Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
+// rather than imported because host-provision.ts copies this file to remote
+// hosts on its own and docker/build-agent-image.sh bakes it into an image with
+// no sibling modules — keep the two in sync.
+//
+// Why it matters here: this process and the desktop app both read-modify-write
+// schedules.json and hitl.json. Without a lock, stamping lastRun from a snapshot
+// read before the user disabled a schedule writes `enabled: true` back and the
+// job keeps firing.
+function writeJsonAtomicShared(file, value) {
+  mkdirSync(dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  try {
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
+    renameSync(tmp, file)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {}
+    throw e
+  }
+}
+function sleepSyncShared(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+function readLockShared(lockPath) {
+  try {
+    const p = JSON.parse(readFileSync(lockPath, 'utf8'))
+    return typeof p?.token === 'string' ? p : null
+  } catch {
+    return null
+  }
+}
+function pidAliveShared(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e?.code === 'EPERM'
+  }
+}
+/** Advisory cross-process lock. Crash-safe: a lock whose owner died, or that
+ *  outlives staleMs, is stolen; the acquire itself times out rather than wedge. */
+function withFileLockShared(file, fn, { timeoutMs = 5000, staleMs = 30000 } = {}) {
+  const lockPath = `${file}.lock`
+  const token = randomUUID()
+  mkdirSync(dirname(file), { recursive: true })
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let took = false
+    try {
+      const fd = openSync(lockPath, 'wx')
+      try {
+        writeFileSync(fd, JSON.stringify({ pid: process.pid, at: Date.now(), token }))
+      } finally {
+        closeSync(fd)
+      }
+      sleepSyncShared(2)
+      took = readLockShared(lockPath)?.token === token
+    } catch {}
+    if (took) break
+    const held = readLockShared(lockPath)
+    if (
+      held === null ||
+      !pidAliveShared(held.pid) ||
+      Date.now() - held.at > staleMs ||
+      Date.now() > deadline
+    ) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+      continue
+    }
+    sleepSyncShared(10)
+  }
+  try {
+    return fn()
+  } finally {
+    if (readLockShared(lockPath)?.token === token) {
+      try {
+        unlinkSync(lockPath)
+      } catch {}
+    }
+  }
+}
+/** Locked read-modify-write of a JSON list. `update` receives the value as it is
+ *  on disk AT LOCK TIME. A present-but-unparseable file is quarantined to
+ *  <name>.corrupt-<ts> and the write is REFUSED — returning [] and writing that
+ *  back is how a torn file silently deletes every entry. Returns true if written. */
+function updateJsonListShared(file, update) {
+  return withFileLockShared(file, () => {
+    let raw = null
+    try {
+      raw = readFileSync(file, 'utf8')
+    } catch {}
+    let cur = []
+    if (raw !== null && raw.trim() !== '') {
+      let parsed
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        parsed = undefined
+      }
+      if (!Array.isArray(parsed)) {
+        const dest = `${file}.corrupt-${Date.now()}`
+        renameSync(file, dest)
+        throw new Error(`corrupt state file ${file}; moved aside to ${dest}`)
+      }
+      cur = parsed
+    }
+    const next = update(cur)
+    if (next === undefined) return false
+    writeJsonAtomicShared(file, next)
+    return true
+  })
+}
 
 const CFG = join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
@@ -207,11 +331,6 @@ function emitDeploy(env, sha, detail) {
 const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
 
 function fileHitl(title, action, opts = {}) {
-  let list = []
-  try {
-    const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
-    if (Array.isArray(a)) list = a
-  } catch {}
   const severity = SEVERITY_RANK[opts.severity] ? opts.severity : undefined
   const item = {
     id: randomUUID(),
@@ -228,7 +347,7 @@ function fileHitl(title, action, opts = {}) {
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
     terminalCwd: process.env.GT_TERMINAL_CWD || repo,
   }
-  writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
+  updateJsonListShared(HITL_FILE, (cur) => [item, ...cur])
   emitActivity('blocked', `HITL · ${item.title}`, item.action, { suppressTelegram: true })
   // Without an explicit severity, HITL always pings Telegram (legacy policy).
   // With one, the ping honors the same inbox.notifyThreshold gate the desktop
@@ -261,7 +380,7 @@ function readMonitors() {
 }
 function writeMonitors(list) {
   mkdirSync(CFG, { recursive: true })
-  writeFileSync(MONITORS_FILE, JSON.stringify(list, null, 2))
+  updateJsonListShared(MONITORS_FILE, () => list)
 }
 
 function monitorCli(args) {
@@ -429,16 +548,6 @@ function completionHitl(engine) {
   })
   const id = `completion-${createHash('sha256').update(hashInput).digest('hex').slice(0, 16)}`
 
-  let list = []
-  try {
-    const a = JSON.parse(readFileSync(HITL_FILE, 'utf8'))
-    if (Array.isArray(a)) list = a
-  } catch {}
-  if (list.some((item) => item.id === id)) {
-    console.log(id)
-    return
-  }
-
   const item = {
     id,
     title: `${engine || 'Agent'} completion · ${project}`,
@@ -455,7 +564,16 @@ function completionHitl(engine) {
     ...(transcript ? { transcriptPath: transcript } : {}),
   }
   mkdirSync(CFG, { recursive: true })
-  writeFileSync(HITL_FILE, JSON.stringify([item, ...list], null, 2))
+  // The dedup check happens INSIDE the lock: this hook fires from every engine
+  // turn, so two overlapping invocations both reading "no such id" is exactly
+  // the race that files the same completion twice.
+  const filed = updateJsonListShared(HITL_FILE, (cur) =>
+    cur.some((h) => h.id === id) ? undefined : [item, ...cur],
+  )
+  if (!filed) {
+    console.log(id)
+    return
+  }
   emitActivity('blocked', `Inbox · ${item.title}`, item.action, { suppressTelegram: true })
   pingTelegram(
     `⛔ HITL · ${item.title}${item.action ? ` — ${item.action}` : ''}`,
@@ -505,7 +623,7 @@ function readState() {
 function writeState(obj) {
   const f = stateFile()
   mkdirSync(dirname(f), { recursive: true })
-  writeFileSync(f, JSON.stringify(obj, null, 2) + '\n')
+  withFileLockShared(f, () => writeJsonAtomicShared(f, obj))
 }
 function coerce(v) {
   if (v === undefined) return undefined
@@ -820,6 +938,13 @@ function classifyCommand(kind, args) {
   process.exit(2)
 }
 
+// The user's LOCAL calendar day, not UTC. `toISOString().slice(0,10)` is the UTC
+// date, so any evening edit west of UTC stamps TOMORROW. Must agree with
+// src/main/local-day.ts: the app and this script write the same ticket
+// `updated:` field, and a mismatch made them disagree by a day every evening.
+const localDay = (at = new Date()) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+
 // Mirrors ModelTier in src/main/resolve-model.ts. An unroutable tier resolves
 // through the default (expensive) policy slot, so normalise rather than trust.
 const MODEL_TIERS = ['auto', 'top', 'cheap-agentic', 'cheap-raw']
@@ -865,7 +990,7 @@ function fileTicket(title, body, modelTier) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .slice(0, 50) || 'untitled'
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDay()
   const assignedAgent = agentId || 'factory'
   const fm = `---
 id: ${id}
@@ -941,7 +1066,7 @@ function commentOnTicket(slug, body) {
   const next = hasLog
     ? `${m[1]}\n${prose}\n\n${header}\n${text}\n`
     : `${m[1]}\n${prose ? `${prose}\n\n` : ''}## Log\n\n${header}\n${text}\n`
-  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${new Date().toISOString().slice(0, 10)}`))
+  writeFileSync(path, next.replace(/^(updated:[ \t]*).*$/m, `$1${localDay()}`))
   console.log(path)
 }
 
@@ -1252,7 +1377,7 @@ function loopCommand(sub, rest) {
     const line = rest.slice(1).join(' ')
     if (!line) usage()
     mkdirSync(dir, { recursive: true })
-    appendFileSync(join(dir, 'log.md'), `## [${new Date().toISOString().slice(0, 10)}] ${line}\n`)
+    appendFileSync(join(dir, 'log.md'), `## [${localDay()}] ${line}\n`)
     return
   }
   if (sub === 'state') {
@@ -1279,7 +1404,7 @@ function recordSeededModules(repo, ids, profile) {
   j.modules = j.modules || {}
   for (const id of ids) j.modules[id] = { seeded: true, enabled: j.modules[id]?.enabled ?? false }
   mkdirSync(join(repo, '.TerMinal'), { recursive: true })
-  writeFileSync(p, JSON.stringify(j, null, 2) + '\n')
+  writeJsonAtomicShared(p, j)
 }
 function seedModuleCli(repo, id) {
   if (!repo || !id) {

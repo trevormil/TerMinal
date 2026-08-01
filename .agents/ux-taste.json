@@ -1,0 +1,9 @@
+{
+  "id": "ux-taste",
+  "title": "UX taste pass",
+  "description": "Screenshots the key surfaces and has a vision model judge them against the repo's own design language. Advisory only — writes a Reports artifact, never gates a merge.",
+  "icon": "Eye",
+  "opensPr": false,
+  "engine": "codex",
+  "inPlace": true
+}

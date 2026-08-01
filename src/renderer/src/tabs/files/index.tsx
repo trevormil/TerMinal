@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderTree,
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  Trash2,
   Search,
   FilePlus,
   FolderPlus,
@@ -12,7 +8,6 @@ import {
   GitCompare,
   ArrowLeft,
   ArrowRight,
-  Copy,
   MessageSquarePlus,
   Replace,
   Send,
@@ -20,8 +15,8 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { langs } from '@uiw/codemirror-extensions-langs'
-import { langKeyFor } from '../../../../shared/languages'
+import { langForPath, useLangsReady } from '../../lib/lazyLang'
+import { FileTree, type FileTreeActions } from '../../components/FileTree'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
 import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
 import { MergeDiffView } from '../../components/MergeDiffView'
@@ -60,214 +55,14 @@ import {
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import type { Tab, TabContext, FileEntry, SearchHit, FilesSearchOptions } from '../../lib/types'
 
-// Language grammars come from the shared resolver (src/shared/languages.ts),
-// which covers ~100 extensions plus extensionless files like Dockerfile and
-// Makefile, and is unit-tested against the real langs export so a mapped key
-// can never silently resolve to "no highlighting".
-function langFor(path: string): Extension[] {
-  const key = langKeyFor(path) as keyof typeof langs | ''
-  try {
-    return key && langs[key] ? [langs[key]()] : []
-  } catch {
-    return []
-  }
-}
 const base = (p: string) => p.split('/').pop() || p
 const parentOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
 
-type NodeActions = {
-  onOpen: (p: string) => void
-  onSelectDir: (p: string) => void
-  onRename: (p: string) => void
-  onDelete: (p: string) => void
-  /** Drop `from` into directory `toDir` ('' = root). */
-  onMove: (from: string, toDir: string) => void
-  /** Diff this file against the active open file. */
-  onCompare: (p: string) => void
-  /** Absolute path for a repo-relative one — what a terminal drop pastes. */
-  absFor: (p: string) => string
-}
-
-/** The drag payload key for tree-internal moves. */
-const DND_REL = 'application/x-terminal-rel'
 const FILES_GIT_STATUS_POLL_MS = 5_000
 const FILES_CHECKPOINT_POLL_MS = 5_000
 
 function filesTabPollsActive(): boolean {
   return document.visibilityState === 'visible' && document.hasFocus()
-}
-
-function TreeNode({
-  entry,
-  depth,
-  active,
-  selectedDir,
-  version,
-  statuses,
-  act,
-}: {
-  entry: FileEntry
-  depth: number
-  active: string | null
-  selectedDir: string
-  version: number
-  statuses: StatusMap
-  act: NodeActions
-}) {
-  const [open, setOpen] = useState(false)
-  const [children, setChildren] = useState<FileEntry[] | null>(null)
-  const [dropHover, setDropHover] = useState(false)
-  // refetch children when the tree version bumps (after a create/rename/delete)
-  useEffect(() => {
-    if (open) window.gt.files.list(entry.path).then(setChildren)
-  }, [version]) // eslint-disable-line react-hooks/exhaustive-deps
-  const click = async () => {
-    if (!entry.dir) return act.onOpen(entry.path)
-    act.onSelectDir(entry.path)
-    if (!open && children === null) setChildren(await window.gt.files.list(entry.path))
-    setOpen((o) => !o)
-  }
-  const sel = entry.dir ? selectedDir === entry.path : active === entry.path
-  const { Icon, cls } = fileIcon(entry.name, entry.dir, open)
-  return (
-    <>
-      <div
-        onClick={click}
-        style={{ paddingLeft: depth * 12 + 8 }}
-        title={entry.ignored ? `${entry.name} · git-ignored` : entry.name}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.setData(DND_REL, entry.path)
-          // text/plain carries the absolute path, so dropping on a terminal
-          // pastes something an agent can actually use (the Orca steal).
-          e.dataTransfer.setData('text/plain', act.absFor(entry.path))
-          e.dataTransfer.effectAllowed = 'copyMove'
-        }}
-        onDragOver={
-          entry.dir
-            ? (e) => {
-                if (!e.dataTransfer.types.includes(DND_REL)) return
-                e.preventDefault()
-                e.stopPropagation()
-                e.dataTransfer.dropEffect = 'move'
-                setDropHover(true)
-              }
-            : undefined
-        }
-        onDragLeave={entry.dir ? () => setDropHover(false) : undefined}
-        onDrop={
-          entry.dir
-            ? (e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setDropHover(false)
-                const from = e.dataTransfer.getData(DND_REL)
-                if (from) act.onMove(from, entry.path)
-              }
-            : undefined
-        }
-        className={`group flex cursor-pointer items-center gap-1 py-[3px] pr-1.5 text-[12px] hover:bg-white/5 ${
-          sel ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
-        } ${entry.ignored ? 'opacity-45' : ''} ${
-          dropHover
-            ? 'bg-[var(--gt-accent)]/20 outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/50'
-            : ''
-        }`}
-      >
-        <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
-          {entry.dir ? (
-            open ? (
-              <ChevronDown size={12} strokeWidth={2} />
-            ) : (
-              <ChevronRight size={12} strokeWidth={2} />
-            )
-          ) : null}
-        </span>
-        <Icon size={14} strokeWidth={2} className={`shrink-0 ${cls}`} />
-        <span
-          className={`min-w-0 flex-1 truncate ${statuses[entry.path] ? statusColor(statuses[entry.path]) : ''}`}
-        >
-          {entry.name}
-        </span>
-        {statuses[entry.path] && (
-          <span
-            title={statuses[entry.path]}
-            className={`shrink-0 font-mono text-[10px] font-bold ${statusColor(statuses[entry.path])}`}
-          >
-            {statusBadge(statuses[entry.path])}
-          </span>
-        )}
-        <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-          {!entry.dir && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                act.onCompare(entry.path)
-              }}
-              title="Compare with active file"
-              className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-            >
-              <GitCompare size={11} strokeWidth={2} />
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              navigator.clipboard.writeText(entry.path)
-            }}
-            title="Copy relative path"
-            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-          >
-            <Copy size={11} strokeWidth={2} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              window.gt.files.reveal(entry.path)
-            }}
-            title="Reveal in Finder"
-            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-          >
-            <ExternalLink size={11} strokeWidth={2} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              act.onRename(entry.path)
-            }}
-            title="Rename"
-            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-          >
-            <Pencil size={11} strokeWidth={2} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              act.onDelete(entry.path)
-            }}
-            title="Delete"
-            className="flex items-center rounded p-1 text-zinc-500 hover:bg-white/10 hover:text-[var(--gt-red)]"
-          >
-            <Trash2 size={11} strokeWidth={2} />
-          </button>
-        </span>
-      </div>
-      {entry.dir &&
-        open &&
-        children?.map((c) => (
-          <TreeNode
-            key={c.path}
-            entry={c}
-            depth={depth + 1}
-            active={active}
-            selectedDir={selectedDir}
-            version={version}
-            statuses={statuses}
-            act={act}
-          />
-        ))}
-    </>
-  )
 }
 
 /**
@@ -334,7 +129,7 @@ function PerFileDiff({ path, working }: { path: string; working?: string }) {
   }
   if (head === null || work === null)
     return <div className="p-6 text-[12px] text-zinc-600">Loading diff…</div>
-  return <MergeDiffView original={head} modified={work} extensions={langFor(path)} />
+  return <MergeDiffView original={head} modified={work} extensions={langForPath(path)} />
 }
 
 /** Two arbitrary files diffed against each other (tree "compare with"). */
@@ -380,7 +175,7 @@ function CompareView({ a, b, onClose }: { a: string; b: string; onClose: () => v
         ) : ca === null || cb === null ? (
           <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
         ) : (
-          <MergeDiffView original={ca} modified={cb} extensions={langFor(b)} />
+          <MergeDiffView original={ca} modified={cb} extensions={langForPath(b)} />
         )}
       </div>
     </div>
@@ -391,6 +186,9 @@ type OpenFile = { path: string; content: string; dirty: boolean; err?: string; s
 type Prompt = { kind: 'new-file' | 'new-folder' | 'rename'; parent?: string; target?: string }
 
 function FilesTab({ ctx }: { ctx: TabContext }) {
+  // Pulls the (code-split) CodeMirror grammars in on first mount of a tab
+  // that can host an editor, and re-renders once they land. See lazyLang.ts.
+  useLangsReady()
   const [roots, setRoots] = useState<FileEntry[] | null>(null)
   const [version, setVersion] = useState(0)
   const [open, setOpen] = useState<OpenFile[]>([])
@@ -891,7 +689,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
     }
   }
 
-  const nodeActs: NodeActions = {
+  const nodeActs: FileTreeActions = {
     onOpen: (p) => openFile(p),
     onSelectDir: setSelectedDir,
     onRename: (p) => startPrompt({ kind: 'rename', target: p }),
@@ -1092,7 +890,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
               content={activeFile.content}
               original={review.original}
               baseLabel={review.label}
-              extensions={langFor(activeFile.path)}
+              extensions={langForPath(activeFile.path)}
               onContentChange={(v) => {
                 patch(activeFile.path, { content: v, dirty: true })
                 scheduleSave(activeFile.path, v)
@@ -1145,7 +943,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                     patch(activeFile.path, { content: v, dirty: true })
                     scheduleSave(activeFile.path, v)
                   }}
-                  extensions={[...langFor(activeFile.path), ...attrExt]}
+                  extensions={[...langForPath(activeFile.path), ...attrExt]}
                   scrollToLine={activeFile.scrollLine}
                   onView={(v) => (views.current[activeFile.path] = v)}
                 />
@@ -1318,37 +1116,14 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </div>
               )}
 
-              <div
-                className="min-h-0 flex-1 overflow-y-auto py-1"
-                key={version}
-                onDragOver={(e) => {
-                  // Falling through a folder row lands the drop at the root.
-                  if (!e.dataTransfer.types.includes(DND_REL)) return
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                }}
-                onDrop={(e) => {
-                  const from = e.dataTransfer.getData(DND_REL)
-                  if (from) movePath(from, '')
-                }}
-              >
-                {roots === null ? (
-                  <div className="p-3 text-[12px] text-zinc-600">Loading…</div>
-                ) : (
-                  roots.map((e) => (
-                    <TreeNode
-                      key={e.path}
-                      entry={e}
-                      depth={0}
-                      active={activePath}
-                      selectedDir={selectedDir}
-                      version={version}
-                      statuses={statuses}
-                      act={nodeActs}
-                    />
-                  ))
-                )}
-              </div>
+              <FileTree
+                roots={roots}
+                active={activePath}
+                selectedDir={selectedDir}
+                version={version}
+                statuses={statuses}
+                act={nodeActs}
+              />
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">

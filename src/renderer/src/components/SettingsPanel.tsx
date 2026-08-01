@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
+  DeliveryRecord,
   Settings,
   SettingsPatch,
   DaemonCfg,
@@ -90,6 +91,56 @@ import {
 
 const inp =
   'w-full rounded-md border border-[var(--gt-border)] bg-black/35 px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none transition-colors placeholder:text-zinc-700 focus:border-[var(--gt-accent)]/60 focus:bg-black/45'
+
+// Write-only input for a credential. `settings:get` returns masks, not values
+// (src/main/settings-mask.ts), so binding one to `defaultValue` would put
+// '••••••••' in the box as EDITABLE text: click in, type, and you save
+// '••••••••ghi' — which isn't the mask, so nothing strips it and the real
+// credential is overwritten with garbage. The field therefore always starts
+// EMPTY and only ever writes what you actually type.
+//
+// `set` comes from settings.secretsSet; blur with an empty box is a no-op (so
+// tabbing through can't wipe a stored secret), and Clear is the explicit way to
+// remove one.
+function SecretInput({
+  set,
+  onSave,
+  placeholder,
+  mono = true,
+}: {
+  set: boolean
+  onSave: (value: string) => void
+  placeholder: string
+  mono?: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      <input
+        type="password"
+        defaultValue=""
+        onBlur={(e) => {
+          const value = e.target.value.trim()
+          if (!value) return
+          onSave(value)
+          e.target.value = '' // never leave a credential sitting in the DOM
+        }}
+        placeholder={set ? '•••••••• (set — type to replace)' : placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        className={`${inp} ${mono ? 'font-mono' : ''}`}
+      />
+      {set && (
+        <button
+          onClick={() => onSave('')}
+          className="text-[10.5px] text-zinc-600 underline-offset-2 hover:text-amber-400 hover:underline"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, '~')
 const formatBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -521,6 +572,73 @@ function PanelsSection({
   )
 }
 
+// Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
+// failures so one dead webhook can't block the others — which also meant a
+// revoked token failed silently forever. This is where that becomes visible.
+function DeliveryLog() {
+  const [log, setLog] = useState<DeliveryRecord[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    setBusy(true)
+    try {
+      setLog(await window.gt.inbox.deliveryLog(undefined, 20))
+    } catch {
+      setLog([])
+    } finally {
+      setBusy(false)
+    }
+  }
+  useEffect(() => {
+    void load()
+  }, [])
+
+  return (
+    <div className="mt-4 border-t border-[var(--gt-border)] pt-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+          Recent deliveries
+        </span>
+        <button
+          onClick={load}
+          disabled={busy}
+          className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200 disabled:opacity-40"
+        >
+          Refresh
+        </button>
+        <span className="text-[10.5px] text-zinc-600">
+          Three consecutive failures on a channel file an Activity event.
+        </span>
+      </div>
+      {log === null ? (
+        <div className="text-[11px] text-zinc-600">Loading…</div>
+      ) : log.length === 0 ? (
+        <div className="text-[11px] text-zinc-600">
+          No alerts dispatched yet — nothing to report.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {log.map((r, i) => (
+            <div key={i} className="flex items-baseline gap-2 text-[11px]">
+              <span className="w-16 shrink-0 tabular-nums text-zinc-600">
+                {new Date(r.ts).toLocaleTimeString()}
+              </span>
+              <span className="w-16 shrink-0 font-mono text-zinc-400">{r.channel}</span>
+              <span
+                className={`w-4 shrink-0 ${r.ok ? 'text-[var(--gt-green)]' : 'text-[var(--gt-red)]'}`}
+              >
+                {r.ok ? '✓' : '✗'}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-zinc-500" title={r.error || r.title}>
+                {r.error ? <span className="text-amber-400">{r.error}</span> : r.title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'daemon', title: 'Daemon', icon: Server },
   { id: 'paths', title: 'Paths', icon: FolderTree },
@@ -568,7 +686,7 @@ function TabsVisibilityPanel() {
   // a circular import (tabs/registry → tabs/* → components/SettingsPanel).
   const [allTabs, setAllTabs] = useState<{ id: string; title: string; order: number }[]>([])
   useEffect(() => {
-    import('../tabs/registry').then((m) => {
+    void import('../tabs/registry').then((m) => {
       setAllTabs(
         [...m.ALL_TABS]
           .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
@@ -618,7 +736,7 @@ function HarnessStatusPanel() {
   const [s, setS] = useState<Awaited<ReturnType<typeof window.gt.harnessStatus>> | null>(null)
   useEffect(() => {
     const load = () => window.gt.harnessStatus().then(setS)
-    load()
+    void load()
     const id = setInterval(load, 5000)
     return () => clearInterval(id)
   }, [])
@@ -711,7 +829,7 @@ function RebuildPanel() {
       setLog(text)
       if (!st.running) setRunning(false)
     }
-    tick()
+    void tick()
     const id = setInterval(tick, 1000)
     return () => {
       alive = false
@@ -784,7 +902,7 @@ function UpdatesPanel() {
     }
   }
   useEffect(() => {
-    check()
+    void check()
   }, [])
 
   const startUpdate = async () => {
@@ -915,7 +1033,7 @@ function PresetVisibilityPanel() {
   } | null>(null)
   const load = () => window.gt.presets.get().then(setData)
   useEffect(() => {
-    load()
+    void load()
   }, [])
   if (!data) return <div className="text-[11px] text-zinc-600">Loading presets...</div>
   const block = (kind: PresetKind, title: string) => {
@@ -1046,7 +1164,7 @@ function TicketProviderPanel() {
   }
 
   useEffect(() => {
-    load()
+    void load()
   }, [])
 
   const provider = draft.provider || 'local'
@@ -1695,8 +1813,8 @@ export function SettingsPanel({
     }
   }
   useEffect(() => {
-    window.gt.settings.get().then(setS)
-    window.gt.detectEnv().then(setEnv)
+    void window.gt.settings.get().then(setS)
+    void window.gt.detectEnv().then(setEnv)
   }, [])
   // The storage estimate walks all of ~/.config/TerMinal (can be many GB /
   // hundreds of thousands of files) — scan only when the section showing it
@@ -1720,7 +1838,7 @@ export function SettingsPanel({
     const host = s.remoteHosts.find((h) => h.id === profile)
     if (!host || remoteProbe[host.id]) return
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings
+    void window.gt.settings
       .remoteProbe(host.id)
       .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }, [s, profile, remoteProbe])
@@ -1734,7 +1852,7 @@ export function SettingsPanel({
   const selectedIsRemote = !!selectedHost
   useEffect(() => {
     let alive = true
-    window.gt.settings
+    void window.gt.settings
       .validateProjectsDir({ dir: selectedDaemon.projectsDir, hostId: selectedHost?.id })
       .then((v) => {
         if (alive) setProjectsDirValidation(v)
@@ -1771,7 +1889,7 @@ export function SettingsPanel({
   }
   const refreshRemoteProbe = (host: RemoteHost) => {
     setRemoteProbe((cur) => ({ ...cur, [host.id]: { loading: true } }))
-    window.gt.settings
+    void window.gt.settings
       .remoteProbe(host.id)
       .then((probe) => setRemoteProbe((cur) => ({ ...cur, [host.id]: probe })))
   }
@@ -1796,12 +1914,12 @@ export function SettingsPanel({
         daemon: existing?.daemon || emptyDaemon(),
       },
     ]
-    save({ remoteHosts: next })
+    void save({ remoteHosts: next })
     setRemoteDraft({ label: '', sshTarget: '', defaultCwd: '', platform: 'linux' })
   }
   const removeRemoteHost = (id: string) => {
     if (!s) return
-    save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
+    void save({ remoteHosts: s.remoteHosts.filter((h) => h.id !== id) })
   }
   const appOptions = (detected: string[] | undefined, fallback: string[], current: string) => {
     const list = [
@@ -1816,7 +1934,7 @@ export function SettingsPanel({
   const browseDaemon = async (key: 'projectsDir' | 'worktreesDir' | 'harnessDir') => {
     if (selectedIsRemote) return
     const d = await window.gt.pickDir()
-    if (d) saveDaemon({ [key]: d })
+    if (d) void saveDaemon({ [key]: d })
   }
   const testTelegram = async () => {
     setTg({ busy: true })
@@ -1865,7 +1983,7 @@ export function SettingsPanel({
 
   if (!s)
     return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
         <Loader2 className="animate-spin text-zinc-500" />
       </div>
     )
@@ -2510,9 +2628,12 @@ export function SettingsPanel({
                           </div>
                           {storage && (
                             <div className="mt-0.5 text-[10.5px] leading-snug text-zinc-600">
-                              Worktrees {formatBytes(storage.worktrees.bytes)} · checkpoints{' '}
+                              Cron worktrees {formatBytes(storage.worktrees.bytes)} · agent
+                              worktrees {formatBytes(storage.agentWorktrees.bytes)} · checkpoints{' '}
                               {formatBytes(storage.checkpoints.bytes)} · scratch{' '}
-                              {formatBytes(storage.scratch.bytes)}
+                              {formatBytes(storage.scratch.bytes)} · logs{' '}
+                              {formatBytes(storage.logs.bytes)} · leftovers{' '}
+                              {formatBytes(storage.leftovers.bytes)}
                             </div>
                           )}
                         </div>
@@ -2534,7 +2655,7 @@ export function SettingsPanel({
                             storageBusy !== null || !storage || storage.reclaimableBytes === 0
                           }
                           className={buttonSoft}
-                          title="Deletes only eligible finished cron worktrees and checkpoint tmp_obj_* files, then runs git gc on large checkpoint stores. Running worktrees are protected."
+                          title="Deletes worktrees past the size or 30-day age budget, checkpoint stores untouched for 90 days, stale temp/lock/quarantine files; rotates oversized logs; then runs git gc on large checkpoint stores. Running worktrees and worktrees with uncommitted changes are never touched."
                         >
                           {storageBusy === 'reclaim' ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -2716,19 +2837,13 @@ export function SettingsPanel({
                         Stored in your OS keychain. Used only for OpenRouter (or-agent) runs. Empty
                         → falls back to the shell&apos;s OPENROUTER_API_KEY.
                       </div>
-                      <input
-                        key={`or-key-${s?.openrouterApiKey ? 'set' : 'unset'}`}
-                        type="password"
-                        defaultValue={s?.openrouterApiKey || ''}
-                        onBlur={(ev) =>
-                          ev.target.value !== (s?.openrouterApiKey || '') &&
-                          save({ openrouterApiKey: ev.target.value.trim() })
-                        }
-                        placeholder="sk-or-v1-…"
-                        spellCheck={false}
-                        autoComplete="off"
-                        className={`${inp} mt-1.5 font-mono`}
-                      />
+                      <div className="mt-1.5">
+                        <SecretInput
+                          set={!!s?.secretsSet?.openrouterApiKey}
+                          onSave={(v) => save({ openrouterApiKey: v })}
+                          placeholder="sk-or-v1-…"
+                        />
+                      </div>
                     </div>
                   )}
                   {!selectedIsRemote && (
@@ -2741,19 +2856,13 @@ export function SettingsPanel({
                         endpoint. Empty → falls back to the shell&apos;s OPENAI_API_KEY; keyless
                         local servers need no real value.
                       </div>
-                      <input
-                        key={`oc-key-${s?.openaiCompatApiKey ? 'set' : 'unset'}`}
-                        type="password"
-                        defaultValue={s?.openaiCompatApiKey || ''}
-                        onBlur={(ev) =>
-                          ev.target.value !== (s?.openaiCompatApiKey || '') &&
-                          save({ openaiCompatApiKey: ev.target.value.trim() })
-                        }
-                        placeholder="sk-… (or any placeholder for keyless servers)"
-                        spellCheck={false}
-                        autoComplete="off"
-                        className={`${inp} mt-1.5 font-mono`}
-                      />
+                      <div className="mt-1.5">
+                        <SecretInput
+                          set={!!s?.secretsSet?.openaiCompatApiKey}
+                          onSave={(v) => save({ openaiCompatApiKey: v })}
+                          placeholder="sk-… (or any placeholder for keyless servers)"
+                        />
+                      </div>
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-2">
@@ -3243,15 +3352,10 @@ export function SettingsPanel({
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                             Webhook URL
                           </span>
-                          <input
-                            defaultValue={s.alerts.webhook.url}
-                            onBlur={(e) =>
-                              e.target.value !== s.alerts.webhook.url &&
-                              save({ alerts: { webhook: { url: e.target.value.trim() } } })
-                            }
+                          <SecretInput
+                            set={!!s.secretsSet?.['alerts.webhook.url']}
+                            onSave={(v) => save({ alerts: { webhook: { url: v } } })}
                             placeholder="https://hooks.slack.com/services/…"
-                            spellCheck={false}
-                            className={`${inp} font-mono`}
                           />
                         </label>
                         <button
@@ -3313,6 +3417,7 @@ export function SettingsPanel({
                         </div>
                       )}
                     </div>
+                    <DeliveryLog />
                   </div>
                 </Section>
 
@@ -3331,7 +3436,7 @@ export function SettingsPanel({
                         ...s.notifications.matrix,
                         [ch]: { ...(s.notifications.matrix[ch] || {}), [cat]: nextVal },
                       }
-                      save({ notifications: { matrix: next } })
+                      void save({ notifications: { matrix: next } })
                     }}
                     onReset={() => save({ notifications: { matrix: {} } })}
                   />
@@ -3360,15 +3465,10 @@ export function SettingsPanel({
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                         Bot token
                       </span>
-                      <input
-                        defaultValue={s.telegram.botToken}
-                        onBlur={(e) =>
-                          e.target.value !== s.telegram.botToken &&
-                          save({ telegram: { botToken: e.target.value.trim() } })
-                        }
+                      <SecretInput
+                        set={!!s.secretsSet?.['telegram.botToken']}
+                        onSave={(v) => save({ telegram: { botToken: v } })}
                         placeholder="123456:ABC-DEF..."
-                        spellCheck={false}
-                        className={`${inp} font-mono`}
                       />
                     </label>
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -3376,15 +3476,10 @@ export function SettingsPanel({
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
                           Chat id
                         </span>
-                        <input
-                          defaultValue={s.telegram.chatId}
-                          onBlur={(e) =>
-                            e.target.value !== s.telegram.chatId &&
-                            save({ telegram: { chatId: e.target.value.trim() } })
-                          }
+                        <SecretInput
+                          set={!!s.secretsSet?.['telegram.chatId']}
+                          onSave={(v) => save({ telegram: { chatId: v } })}
                           placeholder="Your numeric chat id"
-                          spellCheck={false}
-                          className={`${inp} font-mono`}
                         />
                       </label>
                       <button onClick={testTelegram} disabled={tg?.busy} className={actionButton}>
@@ -3403,13 +3498,15 @@ export function SettingsPanel({
                         {tg.ok ? '✓ Sent — check your chat.' : tg.error}
                       </div>
                     )}
-                    {!!s.telegram.chatId &&
-                      s.telegram.chatId === s.telegram.botToken.split(':')[0] && (
-                        <div className="text-[11px] text-amber-400">
-                          ⚠ That Chat id is the bot's own id. Use <em>your</em> chat id — message
-                          @userinfobot to get it.
-                        </div>
-                      )}
+                    {/*
+                      The old inline "that's the bot's own id" warning compared
+                      two values that `settings:get` now masks — and
+                      '••••••••'.split(':')[0] === '••••••••', so it was
+                      PERMANENTLY true: a false alarm for every configured user.
+                      The check lives in main instead, where it can see the real
+                      values: telegramChatIdError() runs on the Test button and
+                      maps Telegram's 403 to the same guidance.
+                    */}
                     {s.telegram.control && (
                       <details className="mt-1 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5">
                         <summary className="cursor-pointer text-[11px] text-zinc-400 hover:text-zinc-200">

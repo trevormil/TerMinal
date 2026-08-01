@@ -184,7 +184,7 @@ export function EnginePicker({
 
   return (
     <div
-      className="absolute inset-0 z-30 flex items-center justify-center bg-black/50"
+      className="absolute inset-0 z-30 flex items-center justify-center bg-black/70"
       onClick={onClose}
     >
       <div

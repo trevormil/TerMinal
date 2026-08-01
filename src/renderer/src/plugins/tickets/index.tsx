@@ -91,12 +91,15 @@ const plugin: Plugin<Ticket[]> = {
   title: 'Tickets',
   icon: TicketIcon,
   blurb: 'The repo ticket backlog — in-progress first, closed collapsed to a count.',
-  // First in the cockpit's default order — strictly below every other built-in
-  // (session is 0, command widgets default to 50). Saved user orders still win.
+  // Hosted by the work column's accordion, which orders its sections itself
+  // (COLUMN_PLUGIN_IDS). `order` is kept so the spec stays a complete Plugin
+  // and the widget still sorts sanely if it ever moves back to the cockpit.
   order: -1,
   intervalMs: 5000,
   defaultEnabled: true,
   poll: (gt) => gt.tickets.list(),
   render: (d) => <TicketsWidget data={d} />,
+  // Active tickets — the denominator of the card's "N/M active".
+  count: (d) => (d ? ticketsView(d).total : null),
 }
 export default plugin

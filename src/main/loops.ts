@@ -20,16 +20,17 @@ import {
 } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readFileTail } from './fs-tail'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
-import { spawn as cpSpawn, execSync } from 'node:child_process'
+import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
 import { gateSpawn } from './budgets'
 import { decideOutcome } from './loop-decide'
+import { localDay } from './local-day'
+import { readJsonState, updateJsonState } from './atomic-write'
+import { configPath, terminalConfigDir } from './config-dir'
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-const LOOPS_FILE = join(CFG, 'loops.json')
+const LOOPS_FILE = (): string => configPath('loops.json')
 
 export type LoopEngine = 'claude' | 'codex' | 'cursor' | 'hermes'
 export type LoopRole = 'planner' | 'generator' | 'evaluator'
@@ -70,23 +71,12 @@ export type LoopRecord = {
 }
 
 function ensure(): void {
-  if (!existsSync(CFG)) mkdirSync(CFG, { recursive: true })
+  if (!existsSync(terminalConfigDir())) mkdirSync(terminalConfigDir(), { recursive: true })
 }
 
 function readLoops(): LoopRecord[] {
   ensure()
-  if (!existsSync(LOOPS_FILE)) return []
-  try {
-    const a = JSON.parse(readFileSync(LOOPS_FILE, 'utf8'))
-    return Array.isArray(a) ? (a as LoopRecord[]) : []
-  } catch {
-    return []
-  }
-}
-
-function writeLoops(list: LoopRecord[]): void {
-  ensure()
-  writeFileSync(LOOPS_FILE, JSON.stringify(list.slice(0, 100), null, 2))
+  return readJsonState<LoopRecord[]>(LOOPS_FILE(), () => [], { accept: Array.isArray }).value
 }
 
 export function listLoops(): LoopRecord[] {
@@ -97,10 +87,23 @@ export function getLoop(id: string): LoopRecord | undefined {
   return readLoops().find((l) => l.id === id)
 }
 
+/**
+ * Upsert one loop record under the lock.
+ *
+ * Re-reading inside the lock matters because loops save on every phase
+ * transition and several can be in flight at once: filtering a snapshot read
+ * earlier would drop whatever another loop saved in the gap. A corrupt
+ * loops.json throws rather than being replaced by this single record.
+ */
 function saveLoop(rec: LoopRecord): void {
-  const list = readLoops().filter((l) => l.id !== rec.id)
   rec.updatedAt = Date.now()
-  writeLoops([rec, ...list])
+  ensure()
+  updateJsonState<LoopRecord[]>(
+    LOOPS_FILE(),
+    () => [],
+    (list) => [rec, ...list.filter((l) => l.id !== rec.id)].slice(0, 100),
+    { accept: Array.isArray },
+  )
 }
 
 function loopDir(rec: LoopRecord): string {
@@ -123,7 +126,7 @@ function initState(rec: LoopRecord): void {
   const d = loopDir(rec)
   mkdirSync(join(d, 'scores'), { recursive: true })
   mkdirSync(join(d, 'turns'), { recursive: true })
-  const date = new Date().toISOString().slice(0, 10)
+  const date = localDay()
   if (!existsSync(join(d, 'contract.md')))
     writeFileSync(
       join(d, 'contract.md'),
@@ -145,7 +148,7 @@ function initState(rec: LoopRecord): void {
 }
 
 function logLine(rec: LoopRecord, line: string): void {
-  const date = new Date().toISOString().slice(0, 10)
+  const date = localDay()
   appendFileSync(join(loopDir(rec), 'log.md'), `## [${date}] ${line}\n`)
 }
 
@@ -207,6 +210,14 @@ export type CreateLoopInput = {
   maxIterations?: number
 }
 
+// argv array, no shell. The previous version built a shell string and quoted the
+// branch and worktree path with JSON.stringify — which is JSON escaping, NOT
+// shell escaping: JSON double quotes leave `$VAR`, backticks and `$(...)`  live,
+// so a repo or goal producing such a path got it EXPANDED by the shell.
+// agents.ts already does this correctly with argv arrays; match it.
+const git = (repoRoot: string, args: string[]) =>
+  execFileSync('git', ['-C', repoRoot, ...args], { stdio: 'pipe' })
+
 function makeWorktree(repoRoot: string, id: string): { worktree: string; branch: string } {
   const repo = basename(repoRoot)
   const branch = `loop/${id}`
@@ -215,16 +226,12 @@ function makeWorktree(repoRoot: string, id: string): { worktree: string; branch:
   mkdirSync(wtParent, { recursive: true })
   let base = 'HEAD'
   try {
-    execSync('git rev-parse --verify --quiet main', { cwd: repoRoot, stdio: 'pipe' })
+    git(repoRoot, ['rev-parse', '--verify', '--quiet', 'main'])
     base = 'main'
   } catch {
     /* use HEAD */
   }
-  if (!existsSync(worktree))
-    execSync(`git worktree add -B ${JSON.stringify(branch)} ${JSON.stringify(worktree)} ${base}`, {
-      cwd: repoRoot,
-      stdio: 'pipe',
-    })
+  if (!existsSync(worktree)) git(repoRoot, ['worktree', 'add', '-B', branch, worktree, base])
   return { worktree, branch }
 }
 
@@ -281,10 +288,7 @@ export function restartLoop(id: string): LoopRecord | { error: string } {
   if (!rec) return { error: 'unknown loop' }
   // rule V: nuke the worktree, keep the contract.
   try {
-    execSync(`git worktree remove --force ${JSON.stringify(rec.worktree)}`, {
-      cwd: rec.repoRoot,
-      stdio: 'pipe',
-    })
+    git(rec.repoRoot, ['worktree', 'remove', '--force', rec.worktree])
   } catch {
     /* may already be gone */
   }

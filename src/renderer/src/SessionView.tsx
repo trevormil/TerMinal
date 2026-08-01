@@ -19,13 +19,14 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { TerminalPane } from './components/Terminal'
-import { PluginWidget } from './components/PluginWidget'
 import { PluginDrawer } from './components/PluginDrawer'
+import { WorkColumn } from './components/WorkColumn'
+import { useRepoTrustPrompt } from './components/RepoTrustReview'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
 import { useResizableWidth, ResizeHandle } from './components/ResizeHandle'
-import { ALL_PLUGINS } from './plugins/registry'
+import { COCKPIT_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
@@ -34,6 +35,13 @@ import { createTickCoalescer } from './lib/tickCoalescer'
 import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
+import { readCollapsed, writeCollapsed } from './lib/panelCollapse'
+import {
+  COLUMN_COLLAPSED_KEY,
+  COLUMN_COLLAPSED_WHEN_UNSET,
+  COLUMN_WIDTH,
+  COLUMN_WIDTH_KEY,
+} from './lib/columnLayout'
 import { pluginVisibleForEngine, reconcileFreshPlugins } from './lib/pluginVisibility'
 import { RepoOrientation } from './components/RepoOrientation'
 import {
@@ -157,7 +165,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
       </div>
       {confirmOpen && (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-5"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5"
           onClick={() => setConfirmOpen(false)}
         >
           <div
@@ -201,8 +209,8 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
 
 /**
  * One agent session: its terminal (always mounted so the PTY/scrollback
- * survives backgrounding), cockpit, and view-tabs. Only the `active` session
- * renders its cockpit/tab content (so backgrounded sessions don't poll).
+ * survives backgrounding), work column, and view-tabs. Only the `active`
+ * session renders its column/tab content (so backgrounded sessions don't poll).
  */
 export function SessionView({
   sessionKey,
@@ -233,7 +241,7 @@ export function SessionView({
   choice: Choice
   active: boolean
   onStarted: (info: Info) => void
-  /** Split/grid layouts are terminal-focused; hide workspace chrome and cockpit. */
+  /** Split/grid layouts are terminal-focused; hide workspace chrome and the work column. */
   terminalTile?: boolean
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
@@ -282,24 +290,37 @@ export function SessionView({
   const [known, setKnown] = useState<string[]>(() => load('gt.known', []))
   const [widgetOrder, setWidgetOrder] = useState<string[]>(() => load('gt.widgetOrder', []))
   const [drawer, setDrawer] = useState(false)
-  const [cockpitCollapsed, setCockpitCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('gt.cockpitCollapsed') === '1'
-    } catch {
-      return false
-    }
-  })
+  // A repo whose widgets are waiting on approval is surfaced on the Plugins
+  // chip — widgets are managed in that drawer, so the indicator sits where the
+  // fix is. Indicator only: approving still means opening the drawer and
+  // reading the literal commands. There is no approve-from-the-badge. Polled,
+  // because nothing pushes when the active session's cwd changes.
+  const trustPrompt = useRepoTrustPrompt(5000)
+  // One column, one collapse. The keys it reads are the cockpit's, which the
+  // Files column's were folded into on first launch (see lib/columnLayout).
+  const [columnCollapsed, setColumnCollapsed] = useState(() =>
+    readCollapsed(COLUMN_COLLAPSED_KEY, COLUMN_COLLAPSED_WHEN_UNSET),
+  )
   const [tabBadges, setTabBadges] = useState<Record<string, number>>({})
   const sessionRailW = useResizableWidth('gt.sessionRailWidth', 160, {
     min: 120,
     max: 360,
     edge: 'right',
   })
-  const cockpitW = useResizableWidth('gt.cockpitWidth', 320, { min: 240, max: 640, edge: 'left' })
+  // edge: 'left' — the column sits on the RIGHT of the terminal, so dragging
+  // left grows it.
+  const columnW = useResizableWidth(COLUMN_WIDTH_KEY, COLUMN_WIDTH.default, {
+    min: COLUMN_WIDTH.min,
+    max: COLUMN_WIDTH.max,
+    edge: 'left',
+  })
   const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
-    () => [...ALL_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
+    // COCKPIT_PLUGINS, not ALL_PLUGINS: Tickets and PRs/MRs have their own
+    // accordion sections now, and a plugin mounted in both places would poll
+    // twice.
+    () => [...COCKPIT_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
     [cmdPlugins],
   )
   const availablePlugins = useMemo(
@@ -355,13 +376,7 @@ export function SessionView({
     () => localStorage.setItem('gt.widgetOrder', JSON.stringify(widgetOrder)),
     [widgetOrder],
   )
-  useEffect(() => {
-    try {
-      localStorage.setItem('gt.cockpitCollapsed', cockpitCollapsed ? '1' : '0')
-    } catch {
-      /* ignore */
-    }
-  }, [cockpitCollapsed])
+  useEffect(() => writeCollapsed(COLUMN_COLLAPSED_KEY, columnCollapsed), [columnCollapsed])
 
   // Cross-tab navigation: any tab can call navigateTo(tabId, payload) to
   // jump the session view to a different tab. Receiving tabs read the payload
@@ -581,8 +596,10 @@ export function SessionView({
   }
   const activeWidgets = orderedPlugins.filter((p) => enabled.includes(p.id))
   const ActiveTab = tabs.find((t) => t.id === activeTab)
-  const showCockpit = !terminalTile && !isRemote
-  const cockpitVisible = showCockpit && !cockpitCollapsed
+  // A split/grid tile has no room for the column, and a remote session's files
+  // and widgets aren't on this machine.
+  const showColumn = !terminalTile && !isRemote
+  const columnVisible = showColumn && !columnCollapsed
   // Direct check rather than `!ActiveTab`. The latter is also true while
   // `tabs` is empty during ctx loading — a transient state that briefly
   // un-hid the terminal pane mid-tab-switch.
@@ -601,6 +618,14 @@ export function SessionView({
       <button
         key={id}
         style={noDrag}
+        // aria-current makes the selected tab legible to assistive tech and to
+        // the UX suite, which could otherwise only infer it from a CSS class.
+        // (Not role="tab": these pills live in a mixed header row, not a
+        // tablist, so the ARIA tab pattern would be a lie. DetailTabs is the
+        // real tablist.) data-tab-id is the stable handle — the visible label is
+        // forge-dependent ("PRs" vs "MRs"), so names are not reliable selectors.
+        aria-current={on ? 'page' : undefined}
+        data-tab-id={id}
         onClick={() => setActiveTab(id)}
         className={`${
           variant === 'side'
@@ -912,14 +937,14 @@ export function SessionView({
             </span>
           )
         })()}
-        {onTerminal && showCockpit && (
+        {onTerminal && showColumn && (
           <div className="flex items-center gap-1" style={noDrag}>
             <button
-              onClick={() => setCockpitCollapsed((v) => !v)}
-              title={cockpitCollapsed ? 'Show cockpit' : 'Hide cockpit'}
+              onClick={() => setColumnCollapsed((v) => !v)}
+              title={columnCollapsed ? 'Show work column' : 'Hide work column'}
               className="inline-flex h-6 w-7 items-center justify-center rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-400 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
             >
-              {cockpitCollapsed ? (
+              {columnCollapsed ? (
                 <PanelRightOpen size={13} strokeWidth={2} />
               ) : (
                 <PanelRightClose size={13} strokeWidth={2} />
@@ -927,10 +952,27 @@ export function SessionView({
             </button>
             <button
               onClick={() => setDrawer(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white"
+              title={
+                trustPrompt.pending
+                  ? 'This repo’s widgets need your approval before they can run — open Plugins to read them'
+                  : 'Plugins'
+              }
+              className={`relative inline-flex items-center gap-1.5 rounded-md border bg-[var(--gt-panel)] px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-[var(--gt-accent)]/60 hover:text-white ${
+                trustPrompt.pending
+                  ? 'border-[var(--gt-red)]/60 text-zinc-200'
+                  : 'border-[var(--gt-border)] text-zinc-300'
+              }`}
             >
               <LayoutGrid size={12} strokeWidth={2} />
               Plugins · {activeWidgets.length}
+              {/* Deliberately a dot, not a number: "needs attention", not a
+                  second count competing with the plugin count beside it. */}
+              {trustPrompt.pending && (
+                <span
+                  aria-label="Repo widgets need approval"
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[var(--gt-panel)] bg-[var(--gt-red)]"
+                />
+              )}
             </button>
           </div>
         )}
@@ -946,14 +988,15 @@ export function SessionView({
           </aside>
         )}
         <div className={sidebarTabs ? 'relative min-h-0 flex-1' : 'contents'}>
-          {/* Terminal + cockpit. Always laid out (visibility, not display) so xterm
-            keeps its size while backgrounded — no refit-from-zero, no flicker. */}
+          {/* Terminal + work column. Always laid out (visibility, not display) so
+            xterm keeps its size while backgrounded — no refit-from-zero, no
+            flicker. */}
           <div
             className="absolute inset-0 grid"
             style={{
-              gridTemplateColumns: cockpitVisible
-                ? `minmax(0,1fr) ${cockpitW.width}px`
-                : 'minmax(0,1fr)',
+              gridTemplateColumns: ['minmax(0,1fr)', columnVisible ? `${columnW.width}px` : null]
+                .filter(Boolean)
+                .join(' '),
               // Hide ONLY when on a non-terminal tab. Don't force 'visible' —
               // that would override the App-level wrapper's `visibility: hidden`
               // for inactive sessions, leaking the inactive session's terminal
@@ -1021,73 +1064,52 @@ export function SessionView({
                 </div>
               </div>
             </main>
-            {cockpitVisible && (
+            {columnVisible && (
               <ResizeHandle
-                onMouseDown={cockpitW.onResizeStart}
-                style={{ right: cockpitW.width }}
+                onMouseDown={columnW.onResizeStart}
+                style={{ right: columnW.width }}
                 className="absolute inset-y-0 -translate-x-1/2"
               />
             )}
-            {cockpitVisible && (
-              <aside className="min-w-0 overflow-y-auto border-l border-[var(--gt-border)] bg-[var(--gt-bg)] p-3">
-                <div className="mb-2 flex items-center justify-between px-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
-                    Cockpit
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-zinc-600">{activeWidgets.length} live</span>
-                    <button
-                      onClick={() => setCockpitCollapsed(true)}
-                      title="Hide cockpit"
-                      className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
-                    >
-                      <PanelRightClose size={12} strokeWidth={2} />
-                    </button>
-                  </div>
-                </div>
-                {/* render widgets only when active so backgrounded sessions don't poll */}
-                {!active ? null : activeWidgets.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[var(--gt-border)] p-4 text-center text-[12px] text-zinc-600">
-                    No plugins enabled.
-                    <button
-                      onClick={() =>
-                        setEnabled((e) =>
-                          Array.from(
-                            new Set([
-                              ...e,
-                              ...availablePlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
-                            ]),
-                          ),
-                        )
-                      }
-                      className="mx-auto mt-2 block rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] px-3 py-1 text-[11px] font-medium text-zinc-300 hover:border-[var(--gt-accent)]/60 hover:text-white"
-                    >
-                      Enable defaults
-                    </button>
-                  </div>
-                ) : (
-                  activeWidgets.map((p) => (
-                    <PluginWidget
-                      key={p.id}
-                      plugin={p}
-                      onHide={(id) => setEnabled((e) => e.filter((x) => x !== id))}
-                    />
-                  ))
-                )}
-              </aside>
+            {/* The one work column: Files · Tickets · PRs/MRs · Cockpit. It isn't
+                gated on `active` — the Files section lists once on mount and
+                never polls, so a backgrounded session costs one IPC — but every
+                polling section inside it is. */}
+            {columnVisible && (
+              <WorkColumn
+                ctx={ctx}
+                active={active}
+                known={known}
+                enabled={enabled}
+                widgets={activeWidgets}
+                onHideWidget={(id) => setEnabled((e) => e.filter((x) => x !== id))}
+                onEnableDefaults={() =>
+                  setEnabled((e) =>
+                    Array.from(
+                      new Set([
+                        ...e,
+                        ...availablePlugins.filter((p) => p.defaultEnabled).map((p) => p.id),
+                      ]),
+                    ),
+                  )
+                }
+                onOpenPlugins={() => setDrawer(true)}
+              />
             )}
           </div>
 
           {/* full-screen view tab */}
           {active && !onTerminal && ActiveTab && ctx && (
-            <div className="absolute inset-0 z-10">
+            // data-tab-pane is the UX suite's handle on "what the user is
+            // actually looking at" — several panes stay mounted at once.
+            <div className="absolute inset-0 z-10" data-tab-pane={ActiveTab.id}>
               <ErrorBoundary label={ActiveTab.title}>
                 <ActiveTab.Component ctx={ctx} />
               </ErrorBoundary>
             </div>
           )}
 
-          {active && showCockpit && drawer && (
+          {active && showColumn && drawer && (
             <PluginDrawer
               plugins={orderedPlugins}
               enabled={enabled}
@@ -1095,6 +1117,7 @@ export function SessionView({
               onMove={moveWidget}
               onReorder={reorderWidgets}
               onClose={() => setDrawer(false)}
+              trustPrompt={trustPrompt}
             />
           )}
         </div>

@@ -251,6 +251,33 @@ export type ObservabilityIndexQueryId =
   | 'session_events'
   | 'audit'
 
+/** Mirror of ObservabilityQueryFilter in src/main/observability-index.ts. */
+export type ObservabilityQueryFilter = {
+  since?: number
+  until?: number
+  repo?: string
+  engine?: string
+  model?: string
+}
+
+/** Mirror of Stack in src/main/stacks.ts — one GitHub native PR stack, layers
+ *  ordered bottom-to-top. Named PrStack here to avoid colliding with the DOM. */
+export type PrStack = {
+  id: number
+  size: number
+  baseRef: string
+  layers: { iid: number; position: number }[]
+}
+
+/** Mirror of DeliveryRecord in src/main/notify-log.ts. */
+export type DeliveryRecord = {
+  ts: number
+  channel: string
+  ok: boolean
+  title: string
+  error?: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -321,6 +348,9 @@ export type CommandWidget = {
   intervalMs: number
   mode: 'text' | 'big' | 'kv'
   source: 'global' | 'repo'
+  /** Global entries are always live; repo entries only once the repo's command
+   *  set has been approved (see src/main/repo-trust.ts). */
+  trusted: boolean
 }
 
 export type CommandResult = { ok: boolean; stdout: string; code: number }
@@ -335,9 +365,20 @@ export type CustomTab = {
   url?: string
   command?: string
   intervalMs?: number
+  /** See CommandWidget.trusted. */
+  trusted: boolean
 }
 
 export type TabRunResult = { ok: boolean; html: string; code: number }
+
+// The approval prompt's payload: the literal commands a repo wants to run, so
+// the user approves something they can actually read.
+export type RepoTrustStatus = {
+  repoRoot: string
+  hash: string
+  trusted: boolean
+  commands: string[]
+}
 
 export type Ticket = {
   slug: string
@@ -644,6 +685,14 @@ export type Settings = {
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
   openaiCompatApiKey: string
+  /**
+   * Which sealed secrets are set. `settings:get` masks the VALUES (see
+   * src/main/settings-mask.ts), so this is the only way the UI can tell
+   * "configured" from "not configured". Keyed by the dotted path
+   * (`telegram.botToken`, `alerts.webhook.url`, `openrouterApiKey`, …).
+   * Absent on any Settings object that didn't come from `settings:get`.
+   */
+  secretsSet?: Record<string, boolean>
 }
 export type SettingsPatch = Partial<
   Omit<
@@ -670,22 +719,42 @@ export type StorageEntry = {
   bytes: number
 }
 
+export type WorktreeStoreReport = {
+  bytes: number
+  thresholdBytes: number
+  planned: StorageEntry[]
+  deleted: StorageEntry[]
+  protectedRunning: StorageEntry[]
+  protectedDirty: StorageEntry[]
+}
+
 export type TerminalStateSweepReport = {
   root: string
   dryRun: boolean
   totalBytes: number
   reclaimableBytes: number
   reclaimedBytes: number
-  worktrees: {
+  worktrees: WorktreeStoreReport
+  agentWorktrees: WorktreeStoreReport & { dir: string }
+  leftovers: {
     bytes: number
-    thresholdBytes: number
     planned: StorageEntry[]
     deleted: StorageEntry[]
-    protectedRunning: StorageEntry[]
+  }
+  logs: {
+    bytes: number
+    maxBytes: number
+    planned: StorageEntry[]
+    rotated: StorageEntry[]
   }
   checkpoints: {
     bytes: number
     thresholdBytes: number
+    stores: {
+      maxAgeMs: number
+      planned: StorageEntry[]
+      deleted: StorageEntry[]
+    }
     gc: {
       planned: StorageEntry[]
       completed: (StorageEntry & { error?: string })[]
@@ -1028,6 +1097,42 @@ export type CycleStats = {
   openToMergeHours: number | null
 }
 export type Funnel = { filed: number; opened: number; merged: number }
+/** A kill-switched schedule, with why + when it went dark. */
+export type DisabledEntry = {
+  id: string
+  reason?: string
+  /** epoch ms; 0 for legacy records written before reasons existed. */
+  disabledAt: number
+}
+/** Per-agent reliability rollup over the last N runs. Computed from the run
+ *  stores already on disk — no new collection. */
+export type AgentScorecard = {
+  agentId: string
+  agentTitle: string
+  total: number
+  done: number
+  failed: number
+  running: number
+  /** null when nothing has settled — unknown, not 0% reliable. */
+  successRate: number | null
+  avgCostUsd?: number
+  totalCostUsd?: number
+  avgDurationMs?: number
+  evaluated: number
+  evalPass: number
+  evalFail: number
+  evalIncomplete: number
+  failingChecks: { id: string; title: string; count: number }[]
+  lastRunAt?: number
+  lastStatus?: string
+}
+export type CompactionResult = {
+  compacted: boolean
+  reason?: string
+  archivePath?: string
+  bytesBefore?: number
+  bytesAfter?: number
+}
 export type FactoryHealth = {
   generatedAt: number
   window24h: WindowStats
@@ -1035,6 +1140,8 @@ export type FactoryHealth = {
   agents: RunStats
   cron: RunStats & { recentFailures: number }
   hitlOpen: number
+  disabled: DisabledEntry[]
+  disabledCount: number
   cycle: CycleStats
   funnel: Funnel
   recentFailures: { title: string; ts: number; repo: string; kind: string }[]
@@ -1092,6 +1199,13 @@ export type CiTabJob = {
 export type CiListResult = { runs: CiRun[]; error?: string }
 export type CiJobsResult = { jobs: CiTabJob[]; error?: string }
 export type CiLogResult = { log: string; truncated?: boolean; error?: string }
+
+export type MonitorSaveResult = {
+  ok: boolean
+  saved: number
+  rejected: number
+  error?: string
+}
 
 /** Monitoring subsystem — mirror of src/main/monitors.ts. Deterministic infra
  *  observability, no inference. */
@@ -1243,6 +1357,9 @@ export type UnifiedRun = {
   /** Remote host this run came from. Undefined = local machine. */
   hostId?: string
   hostLabel?: string
+  /** Best-effort two-line "what actually got done", written after the run
+   *  settled. Absent when summarization was skipped or failed. */
+  summary?: string
 }
 
 export type CronRun = {
@@ -1930,7 +2047,10 @@ export type GtApi = {
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
-    save: (list: Monitor[]) => Promise<boolean>
+    /** Reports what was actually written — it used to return `true` even when
+     *  nothing was saved. Callers may ignore it; a UI that surfaces failures
+     *  should not. */
+    save: (list: Monitor[]) => Promise<MonitorSaveResult>
     run: (id: string) => Promise<MonitorWithState[]>
   }
   ci: {
@@ -1954,6 +2074,13 @@ export type GtApi = {
     health: () => Promise<FactoryHealth>
     start: (engine: Engine) => Promise<AgentRun | { error: string }>
   }
+  agentInsights: {
+    scorecard: (agentId: string) => Promise<AgentScorecard | null>
+    scorecards: () => Promise<AgentScorecard[]>
+    disabledDetail: () => Promise<DisabledEntry[]>
+    setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
+    compactMemory: (id: string) => Promise<CompactionResult>
+  }
   activity: {
     list: () => Promise<ActivityEvent[]>
     /** Count of events newer than `since` with kind in `kinds` — badge polling. */
@@ -1975,9 +2102,23 @@ export type GtApi = {
   sessionTasks: () => Promise<TaskItem[]>
   meta: () => Promise<SessionInfo>
   listCommandWidgets: () => Promise<CommandWidget[]>
-  runCommand: (command: string) => Promise<CommandResult>
+  runCommand: (id: string) => Promise<CommandResult>
   listCustomTabs: (cwd?: string) => Promise<CustomTab[]>
-  runTabView: (command: string, cwd?: string) => Promise<TabRunResult>
+  runTabView: (id: string, cwd?: string) => Promise<TabRunResult>
+  /** Always scoped to the ACTIVE session's cwd in main — no cwd argument, so a
+   *  compromised renderer cannot approve a repo of its choosing. */
+  repoTrust: {
+    status: () => Promise<RepoTrustStatus>
+    approve: () => Promise<boolean>
+    revoke: () => Promise<boolean>
+    /** Persisted refusal, so a repo the user said no to stops re-prompting.
+     *  Keyed on the command set, like approval — a repo that rewrites its
+     *  commands is a new decision and asks again. Takes a repo root because
+     *  denying only ever withholds capability; approve deliberately does not. */
+    denied: (repoRoot: string, hash: string) => Promise<boolean>
+    deny: (repoRoot: string, hash: string) => Promise<boolean>
+    undeny: (repoRoot: string) => Promise<boolean>
+  }
   scratchDir: () => Promise<string>
   onTick: (cb: () => void) => () => void
   tabContext: () => Promise<TabContext>
@@ -2129,7 +2270,21 @@ export type GtApi = {
     indexQuery: (
       query: ObservabilityIndexQueryId,
       arg?: string,
+      filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
+    filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  stacks: {
+    list: (repoRoot: string, repoPath: string) => Promise<{ stacks: PrStack[]; error?: string }>
+    extension: (repoRoot: string) => Promise<boolean>
+    merge: (repoRoot: string, iid: number) => Promise<{ ok: boolean; error?: string }>
+  }
+  inbox: {
+    snoozes: () => Promise<Record<string, number>>
+    snoozePresets: () => Promise<{ id: string; label: string; until: number }[]>
+    snooze: (id: string, until: number) => Promise<Record<string, number>>
+    unsnooze: (id: string) => Promise<Record<string, number>>
+    deliveryLog: (channel?: string, limit?: number) => Promise<DeliveryRecord[]>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
@@ -2276,6 +2431,35 @@ export type GtApi = {
     read: (rel: string) => Promise<{ ok: boolean; content: string; reason?: string }>
     write: (rel: string, content: string) => Promise<boolean>
   }
+  searchSessions: (
+    query: string,
+    opts?: { thisRepoOnly?: boolean; engine?: Engine; maxSessions?: number; maxHits?: number },
+  ) => Promise<TranscriptSearchResponse>
+}
+
+// ---- transcript search (src/main/session-search.ts) -------------------------
+
+export type TranscriptHit = {
+  line: number
+  role: 'user' | 'assistant' | 'tool' | 'other'
+  timestamp?: number
+  preview: string
+}
+
+export type SessionSearchResult = {
+  sessionId: string
+  engine: string
+  cwd: string
+  mtime: number
+  firstUserText?: string
+  hits: TranscriptHit[]
+}
+
+export type TranscriptSearchResponse = {
+  results: SessionSearchResult[]
+  totalHits: number
+  scanned: number
+  truncated: boolean
 }
 
 export type FileEntry = { name: string; path: string; dir: boolean; ignored?: boolean }
@@ -2337,4 +2521,11 @@ export type Plugin<T = unknown> = {
   /** Called on an interval. `prev` is the previous poll result (for rate/delta widgets). */
   poll: (gt: GtApi, prev: T | null) => Promise<T>
   render: (data: T | null) => ReactNode
+  /**
+   * Headline number for hosts that draw the plugin's title in their own chrome
+   * (the work column's accordion renders "Tickets · 12"). Return null when
+   * there is nothing to count yet — a loading or errored poll stays quiet
+   * rather than flashing a zero. Omit for plugins with no single count.
+   */
+  count?: (data: T | null) => number | null
 }

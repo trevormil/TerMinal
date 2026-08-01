@@ -9,12 +9,14 @@ import {
   Trash2,
   Server,
   FileText,
+  ArrowUpRight,
 } from 'lucide-react'
 import { Badge, ForceChip } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { EngineLogo } from '../../components/EngineLogo'
 import { navigateTo, onNavigate } from '../../lib/nav'
 import { engineLabel } from '../../lib/engines'
+import { fmtUsd } from '../../lib/format'
 import type { Tab, TabContext, UnifiedRun, RunArtifact } from '../../lib/types'
 import { RunLogPane } from './RunLogPane'
 import { RunEvaluationPanel } from '../../components/RunEvaluationPanel'
@@ -178,13 +180,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
       clearInterval(tc)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fmtUsd = (n: number) => {
-    if (n >= 10) return `$${n.toFixed(2)}`
-    if (n >= 0.01) return `$${n.toFixed(3).replace(/0$/, '')}`
-    if (n > 0) return `$${n.toFixed(4)}`
-    return '—'
-  }
 
   // Cross-tab nav: when another tab calls navigateTo('runs', { runId }) we
   // pre-select that run + scroll the list to it.
@@ -380,11 +375,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-        <ListChecks size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-        <span className="text-[12px] font-semibold text-zinc-200">Runs</span>
-      </div>
-
       <div className="flex min-h-0 flex-1">
         {/* List */}
         <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
@@ -558,48 +548,57 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <button
                     key={r.id}
                     onClick={() => setSel(r.id)}
-                    className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
+                    className={`block w-full border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
                       selectedHere ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
                     }`}
                   >
-                    <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                    <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
-                    {r.hostId && (
+                    <span className="flex w-full items-center gap-2">
+                      <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                      <Badge tone={sourceTone(r.source)}>{r.source}</Badge>
+                      {r.hostId && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
+                          title={`Remote host: ${r.hostLabel || r.hostId}`}
+                        >
+                          <Server size={8} strokeWidth={2} />
+                          {r.hostLabel || r.hostId}
+                        </span>
+                      )}
+                      {r.force && <ForceChip />}
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
+                        {r.agentTitle}
+                      </span>
+                      <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">
+                        {r.repoLabel}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
+                        <EngineLogo engine={r.engine} size={10} />
+                        {engineLabel(r.engine)}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">
+                        {dur}
+                      </span>
                       <span
-                        className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1 py-0.5 text-[9px] text-[var(--gt-accent-light)]"
-                        title={`Remote host: ${r.hostLabel || r.hostId}`}
+                        className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
+                        title={
+                          r.costUsd != null
+                            ? 'Cost reported by or-agent (OpenRouter)'
+                            : 'Cost from the AI fleet ledger (joined by runId)'
+                        }
                       >
-                        <Server size={8} strokeWidth={2} />
-                        {r.hostLabel || r.hostId}
+                        {fmtUsd(r.costUsd ?? costByRunId.get(r.id) ?? 0)}
+                      </span>
+                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                        {fmtWhen(r.startedAt)}
+                      </span>
+                    </span>
+                    {/* What actually got done. Best-effort — absent whenever the
+                        summarizer was skipped or unavailable. */}
+                    {r.summary && (
+                      <span className="mt-0.5 block truncate pl-1 text-[11px] leading-snug text-zinc-500">
+                        {r.summary}
                       </span>
                     )}
-                    {r.force && <ForceChip />}
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-200">
-                      {r.agentTitle}
-                    </span>
-                    <span className="shrink-0 font-mono text-[9.5px] text-zinc-600">
-                      {r.repoLabel}
-                    </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[9.5px] uppercase text-zinc-600">
-                      <EngineLogo engine={r.engine} size={10} />
-                      {engineLabel(r.engine)}
-                    </span>
-                    <span className="shrink-0 font-mono tabular-nums text-[10px] text-zinc-500">
-                      {dur}
-                    </span>
-                    <span
-                      className="w-14 shrink-0 text-right font-mono tabular-nums text-[10px] text-[var(--gt-accent-light)]"
-                      title={
-                        r.costUsd != null
-                          ? 'Cost reported by or-agent (OpenRouter)'
-                          : 'Cost from the AI fleet ledger (joined by runId)'
-                      }
-                    >
-                      {fmtUsd(r.costUsd ?? costByRunId.get(r.id) ?? 0)}
-                    </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
-                      {fmtWhen(r.startedAt)}
-                    </span>
                   </button>
                 )
               })
@@ -791,6 +790,14 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                   <X size={11} strokeWidth={2} />
                 </button>
               </header>
+              {selectedRun.summary && (
+                <div className="shrink-0 border-b border-[var(--gt-border)]/60 px-5 py-2 text-[11.5px] leading-snug text-zinc-400">
+                  <span className="mr-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                    Outcome
+                  </span>
+                  {selectedRun.summary}
+                </div>
+              )}
               {selectedRun.error && (
                 <div className="shrink-0 border-b border-[var(--gt-border)]/60 bg-[var(--gt-red)]/10 px-5 py-2 text-[11.5px] text-[var(--gt-red)]">
                   {selectedRun.error}
@@ -802,13 +809,29 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                       Trace
                     </span>
-                    {selectedRun.trace.ticketRef && (
-                      <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
-                    )}
-                    {selectedRun.trace.ticketSlug && (
-                      <span className="font-mono text-[10.5px] text-zinc-500">
-                        {selectedRun.trace.ticketSlug}
-                      </span>
+                    {/* The run -> ticket direction of the lineage link. The slug
+                        was already displayed here but was inert, so the loop
+                        only ever closed one way. */}
+                    {selectedRun.trace.ticketSlug ? (
+                      <button
+                        onClick={() =>
+                          navigateTo('tickets', { slug: selectedRun.trace?.ticketSlug })
+                        }
+                        title="Open this run's ticket"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-0.5 hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
+                      >
+                        {selectedRun.trace.ticketRef && (
+                          <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                        )}
+                        <span className="font-mono text-[10.5px] text-zinc-400">
+                          {selectedRun.trace.ticketSlug}
+                        </span>
+                        <ArrowUpRight size={11} strokeWidth={2} className="text-zinc-600" />
+                      </button>
+                    ) : (
+                      selectedRun.trace.ticketRef && (
+                        <Badge tone="blue">ticket {selectedRun.trace.ticketRef}</Badge>
+                      )
                     )}
                     {selectedRun.trace.prIid !== undefined && (
                       <Badge tone="accent">
