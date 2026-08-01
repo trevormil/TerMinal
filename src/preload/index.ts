@@ -581,6 +581,15 @@ const gt = {
     read: (rel: string) => ipcRenderer.invoke('workflow:read', rel),
     write: (rel: string, content: string) => ipcRenderer.invoke('workflow:write', rel, content),
   },
+  searchSessions: (
+    query: string,
+    opts?: {
+      thisRepoOnly?: boolean
+      engine?: string
+      maxSessions?: number
+      maxHits?: number
+    },
+  ) => ipcRenderer.invoke('sessions:search', query, opts),
 
   // fires the instant the attached session's transcript changes
   onTick: (cb: () => void) => {
