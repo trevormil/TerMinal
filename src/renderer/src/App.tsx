@@ -1909,7 +1909,7 @@ export default function App() {
           )}
           {inbox && !showEntry && (
             <div
-              className="absolute inset-0 z-50 flex justify-end bg-black/35"
+              className="absolute inset-0 z-50 flex justify-end bg-black/70"
               onClick={() => setInbox(false)}
             >
               <div
@@ -1926,7 +1926,7 @@ export default function App() {
           )}
           {activityOpen && !showEntry && (
             <div
-              className="absolute inset-0 z-50 flex justify-end bg-black/35"
+              className="absolute inset-0 z-50 flex justify-end bg-black/70"
               onClick={() => setActivityOpen(false)}
             >
               <div
@@ -1938,7 +1938,7 @@ export default function App() {
             </div>
           )}
           {searchOpen && activeCtx && !showEntry && (
-            <div className="absolute inset-0 z-50 bg-black/25" onClick={() => setSearchOpen(false)}>
+            <div className="absolute inset-0 z-50 bg-black/70" onClick={() => setSearchOpen(false)}>
               <div
                 className="absolute inset-x-3 top-3 flex h-[min(660px,calc(100%-24px))] overflow-hidden rounded-lg border border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
                 onClick={(e) => e.stopPropagation()}

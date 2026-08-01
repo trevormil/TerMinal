@@ -8,7 +8,7 @@ const SEARCH_CAP = 'sessionSearch'
 // without scanning anything. The tab folder auto-registers via import.meta.glob
 // but registerSessionSearchIpc is wired by hand in index.ts — until it is,
 // every invoke rejects, so don't offer the sub-tab at all.
-probeCapability(SEARCH_CAP, () => window.gt.searchSessions(''))
+void probeCapability(SEARCH_CAP, () => window.gt.searchSessions(''))
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
@@ -66,7 +66,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
 
   const load = () => window.gt.projectSessions().then(setList)
   useEffect(() => {
-    load()
+    void load()
   }, [ctx.sessionId])
 
   const open = async (slug: string) => setSel(await window.gt.getProjectSession(slug))

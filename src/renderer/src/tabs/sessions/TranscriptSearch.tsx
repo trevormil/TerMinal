@@ -162,11 +162,21 @@ export function TranscriptSearch() {
     }
     const mine = ++seq.current
     setBusy(true)
-    const r = await window.gt.searchSessions(query, { thisRepoOnly: repoOnly })
-    // Drop a stale response so fast typing can't show older results last.
-    if (mine === seq.current) {
-      setRes(r)
-      setBusy(false)
+    try {
+      const r = await window.gt.searchSessions(query, { thisRepoOnly: repoOnly })
+      // Drop a stale response so fast typing can't show older results last.
+      if (mine === seq.current) {
+        setRes(r)
+        setBusy(false)
+      }
+    } catch (e) {
+      // An unregistered main handler rejects the invoke. Without this the
+      // rejection was unhandled and the tab just stayed blank — the panel below
+      // was written to diagnose exactly this and could never render.
+      if (mine === seq.current) {
+        setFatal(e instanceof Error ? e.message : String(e))
+        setBusy(false)
+      }
     }
   }, [])
 

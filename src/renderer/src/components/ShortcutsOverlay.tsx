@@ -67,7 +67,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 p-4 pt-[10vh] backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex items-start justify-center bg-black/70 p-4 pt-[10vh] backdrop-blur-sm"
       onClick={onClose}
     >
       <div

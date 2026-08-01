@@ -2521,4 +2521,11 @@ export type Plugin<T = unknown> = {
   /** Called on an interval. `prev` is the previous poll result (for rate/delta widgets). */
   poll: (gt: GtApi, prev: T | null) => Promise<T>
   render: (data: T | null) => ReactNode
+  /**
+   * Headline number for hosts that draw the plugin's title in their own chrome
+   * (the work column's accordion renders "Tickets · 12"). Return null when
+   * there is nothing to count yet — a loading or errored poll stays quiet
+   * rather than flashing a zero. Omit for plugins with no single count.
+   */
+  count?: (data: T | null) => number | null
 }

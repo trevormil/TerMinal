@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 // cron-runs transitively imports events.ts, which imports electron. Same stub
 // the neighbouring cron-runs.test.ts uses.
-mock.module('electron', () => ({
+void mock.module('electron', () => ({
   Notification: class {
     static isSupported() {
       return false

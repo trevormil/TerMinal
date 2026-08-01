@@ -57,6 +57,7 @@ import { BashHighlight } from '../../components/BashHighlight'
 import { SkillHint } from '../../components/SkillHint'
 import type { BadgeTone } from '../../components/ui'
 import { navigateTo, onNavigate } from '../../lib/nav'
+import { fmtUsd } from '../../lib/format'
 import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import { engineLabel } from '../../lib/engines'
 import {
@@ -332,11 +333,6 @@ function QualityPanel({ quality }: { quality: AgentQuality }) {
 // otherwise silently absent from the roster.
 type DarkSchedule = { id: string; label: string; reason?: string }
 
-function fmtUsd(n?: number): string {
-  if (n === undefined) return '—'
-  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`
-}
-
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-md border border-[var(--gt-border)]/60 px-2 py-1.5">
@@ -444,7 +440,7 @@ function ScorecardPanel({ agentId }: { agentId: string }) {
             />
             <Stat label="Runs" value={String(card.total)} />
             <Stat label="Failed" value={String(card.failed)} />
-            <Stat label="Avg cost" value={fmtUsd(card.avgCostUsd)} />
+            <Stat label="Avg cost" value={fmtUsd(card.avgCostUsd ?? 0)} />
             <Stat
               label="Avg time"
               value={card.avgDurationMs === undefined ? '—' : fmtDuration(card.avgDurationMs)}
@@ -608,7 +604,7 @@ function AgentDesigner({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
       <div
@@ -866,7 +862,7 @@ function AgentEditor({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
       <div
@@ -1746,7 +1742,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
 
       {creating && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
           onClick={() => setCreating(false)}
         >
           <div

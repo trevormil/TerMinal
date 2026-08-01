@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { migrateColumnLayout } from './lib/columnLayout'
 import '@fontsource/ibm-plex-sans/400.css'
 import '@fontsource/ibm-plex-sans/500.css'
 import '@fontsource/ibm-plex-sans/600.css'
@@ -30,6 +31,11 @@ window.addEventListener('error', (e) => {
 // too (window-guard.ts) — this is the renderer half of the same guard.
 document.addEventListener('dragover', (e) => e.preventDefault())
 document.addEventListener('drop', (e) => e.preventDefault())
+
+// The cockpit and the Files column became one column; fold their two stored
+// layouts into one BEFORE the first render, because `useResizableWidth` reads
+// localStorage in its state initialiser. No-op after the first launch.
+migrateColumnLayout()
 
 // No StrictMode: its double-invoked effects would spawn the PTY twice in dev.
 createRoot(document.getElementById('root')!).render(<App />)
