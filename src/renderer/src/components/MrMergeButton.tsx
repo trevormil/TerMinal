@@ -21,10 +21,16 @@ export function MrMergeButton({
     stop(e)
     setStage('merging')
     setErr(null)
-    const r = await window.gt.mergeMr(iid)
-    setStage('idle')
-    if (r.ok) onMerged?.()
-    else setErr(r.error || 'Merge failed')
+    try {
+      const r = await window.gt.mergeMr(iid)
+      if (r.ok) onMerged?.()
+      else setErr(r.error || 'Merge failed')
+    } catch (e2) {
+      setErr((e2 as Error).message || 'Merge failed')
+    } finally {
+      // In `finally` so a rejection cannot pin the button to "merging…".
+      setStage('idle')
+    }
   }
 
   if (err)

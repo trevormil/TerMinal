@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, RefreshCw, Save, Workflow } from 'lucide-react'
-import { langs } from '@uiw/codemirror-extensions-langs'
 import type { Extension } from '@codemirror/state'
 import { CodeEditor } from '../../components/CodeEditor'
 import { fileIcon } from '../../lib/fileIcons'
+import { langExtensionFor, useLangsReady } from '../../lib/lazyLang'
 import type { FileEntry, Tab, TabContext } from '../../lib/types'
 
 const EXT: Record<string, string> = {
@@ -33,12 +33,7 @@ const EXT: Record<string, string> = {
 const base = (p: string) => p.split('/').pop() || p
 
 function langFor(path: string): Extension[] {
-  const key = EXT[path.split('.').pop()?.toLowerCase() || ''] as keyof typeof langs | undefined
-  try {
-    return key && langs[key] ? [langs[key]()] : []
-  } catch {
-    return []
-  }
+  return langExtensionFor(EXT[path.split('.').pop()?.toLowerCase() || ''] || '')
 }
 
 function TreeNode({
@@ -102,6 +97,12 @@ function TreeNode({
 type OpenWorkflowFile = { path: string; content: string; saved: string; err?: string }
 
 function WorkflowTab(_props: { ctx: TabContext }) {
+  // Pulls the (code-split) CodeMirror grammars in on first mount of a tab that
+  // can host an editor, and re-renders once they land. See lazyLang.ts. The
+  // returned flag MUST feed any memo over langFor(): keyed on the path alone,
+  // the first file opened on a cold tab stays permanently unhighlighted because
+  // nothing invalidates the memo when the chunk arrives.
+  const langsReady = useLangsReady()
   const [roots, setRoots] = useState<FileEntry[] | null>(null)
   const [active, setActive] = useState<OpenWorkflowFile | null>(null)
   const [saving, setSaving] = useState(false)
@@ -138,7 +139,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
     }
   }
 
-  const extensions = useMemo(() => (active ? langFor(active.path) : []), [active?.path])
+  const extensions = useMemo(() => (active ? langFor(active.path) : []), [active?.path, langsReady])
 
   return (
     <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">

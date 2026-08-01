@@ -482,8 +482,23 @@ const gt = {
     models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
-    indexQuery: (query: string, arg?: string) =>
-      ipcRenderer.invoke('observability:index-query', query, arg),
+    indexQuery: (query: string, arg?: string, filter?: unknown) =>
+      ipcRenderer.invoke('observability:index-query', query, arg, filter),
+    filterOptions: () => ipcRenderer.invoke('observability:filter-options'),
+  },
+  stacks: {
+    list: (repoRoot: string, repoPath: string) =>
+      ipcRenderer.invoke('stacks:list', repoRoot, repoPath),
+    extension: (repoRoot: string) => ipcRenderer.invoke('stacks:extension', repoRoot),
+    merge: (repoRoot: string, iid: number) => ipcRenderer.invoke('stacks:merge', repoRoot, iid),
+  },
+  inbox: {
+    snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
+    snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),
+    snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
+    unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),
+    deliveryLog: (channel?: string, limit?: number) =>
+      ipcRenderer.invoke('inbox:delivery-log', channel, limit),
   },
   agentview: {
     snapshot: (limit: number = 120) => ipcRenderer.invoke('agentview:snapshot', limit),

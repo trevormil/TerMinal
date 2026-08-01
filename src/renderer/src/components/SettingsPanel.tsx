@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
+  DeliveryRecord,
   Settings,
   SettingsPatch,
   DaemonCfg,
@@ -568,6 +569,73 @@ function PanelsSection({
         </button>
       </div>
     </Section>
+  )
+}
+
+// Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
+// failures so one dead webhook can't block the others — which also meant a
+// revoked token failed silently forever. This is where that becomes visible.
+function DeliveryLog() {
+  const [log, setLog] = useState<DeliveryRecord[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    setBusy(true)
+    try {
+      setLog(await window.gt.inbox.deliveryLog(undefined, 20))
+    } catch {
+      setLog([])
+    } finally {
+      setBusy(false)
+    }
+  }
+  useEffect(() => {
+    load()
+  }, [])
+
+  return (
+    <div className="mt-4 border-t border-[var(--gt-border)] pt-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+          Recent deliveries
+        </span>
+        <button
+          onClick={load}
+          disabled={busy}
+          className="rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200 disabled:opacity-40"
+        >
+          Refresh
+        </button>
+        <span className="text-[10.5px] text-zinc-600">
+          Three consecutive failures on a channel file an Activity event.
+        </span>
+      </div>
+      {log === null ? (
+        <div className="text-[11px] text-zinc-600">Loading…</div>
+      ) : log.length === 0 ? (
+        <div className="text-[11px] text-zinc-600">
+          No alerts dispatched yet — nothing to report.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {log.map((r, i) => (
+            <div key={i} className="flex items-baseline gap-2 text-[11px]">
+              <span className="w-16 shrink-0 tabular-nums text-zinc-600">
+                {new Date(r.ts).toLocaleTimeString()}
+              </span>
+              <span className="w-16 shrink-0 font-mono text-zinc-400">{r.channel}</span>
+              <span
+                className={`w-4 shrink-0 ${r.ok ? 'text-[var(--gt-green)]' : 'text-[var(--gt-red)]'}`}
+              >
+                {r.ok ? '✓' : '✗'}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-zinc-500" title={r.error || r.title}>
+                {r.error ? <span className="text-amber-400">{r.error}</span> : r.title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -3349,6 +3417,7 @@ export function SettingsPanel({
                         </div>
                       )}
                     </div>
+                    <DeliveryLog />
                   </div>
                 </Section>
 

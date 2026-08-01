@@ -251,6 +251,33 @@ export type ObservabilityIndexQueryId =
   | 'session_events'
   | 'audit'
 
+/** Mirror of ObservabilityQueryFilter in src/main/observability-index.ts. */
+export type ObservabilityQueryFilter = {
+  since?: number
+  until?: number
+  repo?: string
+  engine?: string
+  model?: string
+}
+
+/** Mirror of Stack in src/main/stacks.ts — one GitHub native PR stack, layers
+ *  ordered bottom-to-top. Named PrStack here to avoid colliding with the DOM. */
+export type PrStack = {
+  id: number
+  size: number
+  baseRef: string
+  layers: { iid: number; position: number }[]
+}
+
+/** Mirror of DeliveryRecord in src/main/notify-log.ts. */
+export type DeliveryRecord = {
+  ts: number
+  channel: string
+  ok: boolean
+  title: string
+  error?: string
+}
+
 export type ObservabilityIndexQueryResult = {
   query: ObservabilityIndexQueryId
   title: string
@@ -2188,7 +2215,21 @@ export type GtApi = {
     indexQuery: (
       query: ObservabilityIndexQueryId,
       arg?: string,
+      filter?: ObservabilityQueryFilter,
     ) => Promise<ObservabilityIndexQueryResult>
+    filterOptions: () => Promise<{ repos: string[]; engines: string[]; models: string[] }>
+  }
+  stacks: {
+    list: (repoRoot: string, repoPath: string) => Promise<{ stacks: PrStack[]; error?: string }>
+    extension: (repoRoot: string) => Promise<boolean>
+    merge: (repoRoot: string, iid: number) => Promise<{ ok: boolean; error?: string }>
+  }
+  inbox: {
+    snoozes: () => Promise<Record<string, number>>
+    snoozePresets: () => Promise<{ id: string; label: string; until: number }[]>
+    snooze: (id: string, until: number) => Promise<Record<string, number>>
+    unsnooze: (id: string) => Promise<Record<string, number>>
+    deliveryLog: (channel?: string, limit?: number) => Promise<DeliveryRecord[]>
   }
   agentview: {
     snapshot: (limit?: number) => Promise<ObservabilitySnapshot>
