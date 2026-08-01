@@ -26,13 +26,13 @@ describe('declutterTitle', () => {
 
 describe('declutterDetail', () => {
   test('strips a trailing path segment that repeats the repo basename', () => {
-    expect(
-      declutterDetail('exit 1 · ~/CompSci/gauntlet/knowledge-app', 'trevormil/knowledge-app'),
-    ).toBe('exit 1')
+    expect(declutterDetail('exit 1 · ~/code/knowledge-app', 'trevormil/knowledge-app')).toBe(
+      'exit 1',
+    )
   })
 
   test('drops the whole detail when it is only the repeated path', () => {
-    expect(declutterDetail('~/CompSci/gauntlet/knowledge-app', 'trevormil/knowledge-app')).toBe('')
+    expect(declutterDetail('~/code/knowledge-app', 'trevormil/knowledge-app')).toBe('')
   })
 
   test('leaves unrelated detail text untouched', () => {
@@ -42,8 +42,8 @@ describe('declutterDetail', () => {
   })
 
   test('leaves detail untouched when there is no repo', () => {
-    expect(declutterDetail('exit 1 · ~/CompSci/gauntlet/knowledge-app', undefined)).toBe(
-      'exit 1 · ~/CompSci/gauntlet/knowledge-app',
+    expect(declutterDetail('exit 1 · ~/code/knowledge-app', undefined)).toBe(
+      'exit 1 · ~/code/knowledge-app',
     )
   })
 })

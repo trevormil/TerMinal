@@ -2,7 +2,7 @@
   "name": "terminal",
   "productName": "TerMinal",
   "version": "0.2.0",
-  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability \u2014 no server, no account.",
+  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability — no server, no account.",
   "author": "Trevor Miller",
   "license": "MIT",
   "repository": {
@@ -26,6 +26,9 @@
     "test": "bun test",
     "test:effects": "bun scripts/effect-canary.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:baseline": "eslint . --suppress-all",
+    "lint:prune": "eslint . --prune-suppressions",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "rebuild": "electron-rebuild -f -o node-pty,better-sqlite3",
@@ -68,11 +71,14 @@
     "electron": "41.10.1",
     "electron-builder": "26.15.6",
     "electron-vite": "5.0.0",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "prettier": "3.9.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "tailwindcss": "4.3.2",
     "typescript": "5.7.2",
+    "typescript-eslint": "8.65.0",
     "vite": "7.3.6"
   },
   "overrides": {

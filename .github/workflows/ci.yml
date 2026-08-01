@@ -31,6 +31,18 @@ jobs:
       - name: Format
         run: bun run format:check
 
+      # Pre-existing violations are baselined in eslint-suppressions.json, so
+      # this fails only on NEW ones. If it fails with "suppressions left that do
+      # not occur anymore" you FIXED a baselined violation — run
+      # `bun run lint:prune`, which drops only the now-stale entries.
+      # Do NOT reach for `lint:baseline`: it regenerates from scratch and would
+      # re-suppress any genuinely new violation on your own branch.
+      - name: Lint
+        run: bun run lint
+
+      - name: No leaked machine paths
+        run: scripts/ci/no-machine-paths.sh
+
       - name: Typecheck
         run: bun run typecheck
 
@@ -62,6 +74,42 @@ jobs:
 
       - name: Audit
         run: bun audit --audit-level=high
+
+  # Packaging is the layer format/typecheck/test/build cannot reach: the native
+  # rebuild against Electron's ABI, the electron-builder config, and the ESM main
+  # bundle actually booting. Until now it was first exercised at tag time by
+  # release.yml, so a PR could break packaging and nobody found out until a
+  # release. See scripts/ci/smoke-packaged-app.sh.
+  package-smoke:
+    runs-on: macos-15
+    # macOS minutes bill at 10x, and `bun run dist` pulls Electron + dmgbuild
+    # over the network — a network hang would otherwise run to GitHub's 360m
+    # default. The job takes ~6m; 25 is generous headroom, not a target.
+    timeout-minutes: 25
+    steps:
+      # No `submodules: true`: the only submodule is the third-party
+      # vendor/agentview (ADR-0017), which nothing in the build touches. The
+      # template ships as ordinary tracked files under templates/ (ADR-0005),
+      # and __TEMPLATE_SHA__ comes from `git log` over those files.
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      # Full install, deliberately WITHOUT --ignore-scripts: the postinstall
+      # electron-rebuild is exactly what this job exists to exercise.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Package
+        run: bun run dist
+
+      # Blocking: verified on the hosted runner (the app opens 1 window and
+      # stays up in ~9s). If this ever goes flaky, fix the script rather than
+      # demoting the assertion — an unenforced smoke test is worse than none.
+      - name: Launch the packaged app
+        run: scripts/ci/smoke-packaged-app.sh
 
   # Flags vulnerable or newly-risky dependencies introduced by a PR's diff.
   dependency-review:
