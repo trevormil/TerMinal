@@ -708,14 +708,15 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      {/* open-file tab bar */}
-      <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-[var(--gt-border)]">
-        {open.length === 0 ? (
-          <div className="flex items-center px-4 text-[11px] text-zinc-600">
-            Open files from the tree → ⌘S save · ⌘W close · ⌘F find · ⌘⇧F search
-          </div>
-        ) : (
-          open.map((f) => {
+      {/* Open-file tab bar — absent, not empty, when nothing is open.
+          It used to render a shortcut cheatsheet as its empty state, which cost
+          a permanent 36px strip to tell you something you only need once. Same
+          call as the information-free Runs header row that was removed: chrome
+          has to earn its height every time it is on screen, not just the first
+          time. The shortcuts are still discoverable from the editor itself. */}
+      {open.length > 0 && (
+        <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-[var(--gt-border)]">
+          {open.map((f) => {
             const { Icon, cls } = fileIcon(base(f.path), false)
             return (
               <div
@@ -742,17 +743,17 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                 </button>
               </div>
             )
-          })
-        )}
-        <div className="flex-1" />
-        {activeFile && !activeFile.err && (
-          <span
-            className={`shrink-0 px-3 text-[11px] ${activeFile.dirty ? 'text-amber-400' : 'text-zinc-600'}`}
-          >
-            {activeFile.dirty ? 'saving…' : 'saved'}
-          </span>
-        )}
-      </div>
+          })}
+          <div className="flex-1" />
+          {activeFile && !activeFile.err && (
+            <span
+              className={`shrink-0 px-3 text-[11px] ${activeFile.dirty ? 'text-amber-400' : 'text-zinc-600'}`}
+            >
+              {activeFile.dirty ? 'saving…' : 'saved'}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* breadcrumbs — the active file's path, each segment clickable to reveal
           that folder in the tree. Also carries the detected indentation. */}
