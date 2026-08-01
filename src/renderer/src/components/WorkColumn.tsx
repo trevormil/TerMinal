@@ -83,8 +83,13 @@ function SectionAction({
     >
       <Icon size={11} strokeWidth={2} />
       {alert && (
+        // Decorative: this button's `title` already carries the full
+        // explanation, so labelling the dot too gave the control TWO accessible
+        // names — and made it indistinguishable from the identical dot on the
+        // column toggle, which is a different control doing a different job.
         <span
-          aria-label={alertLabel}
+          aria-hidden="true"
+          data-alert-label={alertLabel}
           className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--gt-red)]"
         />
       )}

@@ -18,13 +18,15 @@ import {
   TriangleAlert,
   Info,
   Search,
+  ArrowLeft,
+  ExternalLink,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
 import { badgeClasses } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
-import { InlineMd } from '../../components/Markdown'
+import { InlineMd, Markdown } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 
@@ -191,6 +193,12 @@ export function ActivityTab({
   // clamped on hover), so this makes "expanded or not" an explicit, provable
   // state instead of something to debug in devtools per-row.
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Mail-client model, matching the Inbox: the feed is the list, and opening an
+  // item replaces the whole pane with a back button and the full body. Clicking
+  // a row used to navigate AWAY to Runs/MRs/Tickets, which meant the activity's
+  // own detail — often the most informative part — was only ever readable as a
+  // two-line clamp on hover.
+  const [reading, setReading] = useState<string | null>(null)
   const newest = useRef<string>('') // id of the most recent event, for the live flash
 
   useEffect(() => {
@@ -247,6 +255,107 @@ export function ActivityTab({
   const clear = async () => {
     await window.gt.activity.clear()
     setEvents([])
+  }
+
+  // ---- detail view ---------------------------------------------------------
+  // Read from the full event list, not the filtered one: changing a filter while
+  // an item is open must not blank the pane out from under the reader.
+  const readingEvent = reading ? events.find((e) => e.id === reading) || null : null
+  useEffect(() => {
+    if (!reading) return
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        // Capture-phase + stopPropagation so Escape closes the detail view
+        // rather than the drawer this tab can be rendered inside.
+        ev.stopPropagation()
+        setReading(null)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [reading])
+
+  if (readingEvent) {
+    const e = readingEvent
+    const Icon = ICON[e.kind] || Info
+    const tone = activityTone(e.kind)
+    const hasNav = !!(e.runId || e.ref?.pr || e.ref?.ticket)
+    const navLabel = e.runId
+      ? 'Open run'
+      : e.ref?.pr
+        ? 'Open PR / MR'
+        : e.ref?.ticket
+          ? 'Open ticket'
+          : ''
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-3 py-2">
+          <button
+            onClick={() => setReading(null)}
+            title="Back to Activity (Esc)"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-zinc-400 transition-colors duration-150 hover:bg-white/5 hover:text-zinc-100"
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            Activity
+          </button>
+          <div className="flex-1" />
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide ${badgeClasses(
+              tone,
+            )}`}
+          >
+            <Icon size={10} strokeWidth={2.25} />
+            {KIND_LABEL[e.kind] || e.kind}
+          </span>
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="Close Activity"
+              className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/5 hover:text-zinc-200"
+            >
+              <X size={15} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[640px] px-6 py-5">
+            <h2 className="text-[17px] font-semibold leading-snug text-zinc-100">
+              <InlineMd text={e.title} keepLineBreaks />
+            </h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
+              {e.repo && <span className="font-medium text-zinc-400">{e.repo}</span>}
+              <span>{new Date(e.ts).toLocaleString()}</span>
+              <span>·</span>
+              <span>{reltime(e.ts)}</span>
+            </div>
+            <div className="my-4 border-t border-[var(--gt-border)]" />
+            {/* Full markdown, not the two-line clamp the row shows. Agents write
+                real prose here — fenced diffs, lists, links — and clamping it
+                was the reason the feed read as headlines with no story. */}
+            {e.detail ? (
+              <Markdown className="text-[12.5px] leading-relaxed text-zinc-300">
+                {e.detail}
+              </Markdown>
+            ) : (
+              <div className="text-[12px] italic text-zinc-600">No details.</div>
+            )}
+          </div>
+        </div>
+
+        {hasNav && (
+          <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--gt-border)] px-4 py-2.5">
+            <button
+              onClick={() => void navForEvent(e)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--gt-border)] px-2.5 py-1.5 text-[11.5px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 hover:bg-white/5"
+            >
+              <ExternalLink size={12} strokeWidth={2} />
+              {navLabel}
+            </button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -341,22 +450,21 @@ export function ActivityTab({
                 return (
                   <div
                     key={e.id}
-                    onClick={hasNav ? () => navForEvent(e) : undefined}
+                    onClick={() => setReading(e.id)}
                     onMouseEnter={() => setExpandedId(e.id)}
                     onMouseLeave={() => setExpandedId((id) => (id === e.id ? null : id))}
-                    role={hasNav ? 'button' : undefined}
-                    title={
-                      hasNav
-                        ? e.runId
-                          ? 'Jump to this run'
-                          : e.ref?.pr
-                            ? 'Open this PR/MR'
-                            : 'Open this ticket'
-                        : undefined
-                    }
-                    className={`group relative flex gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03] ${
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(ke) => {
+                      if (ke.key === 'Enter' || ke.key === ' ') {
+                        ke.preventDefault()
+                        setReading(e.id)
+                      }
+                    }}
+                    title={hasNav ? 'Open — the run / PR / ticket link is inside' : 'Open'}
+                    className={`group relative flex cursor-pointer gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03] ${
                       isNew ? 'gt-pop-in' : ''
-                    } ${hasNav ? 'cursor-pointer' : ''}`}
+                    }`}
                   >
                     {/* timeline rail: a continuous line with the kind node sitting on it */}
                     <div className="relative flex w-5 shrink-0 justify-center">

@@ -91,6 +91,19 @@ while :; do sleep 3600; done
  * Build a throwaway HOME + config dir + git fixture repo. Everything the app
  * could persist lands under here, and the caller deletes it afterwards.
  */
+/** Markdown that renders VISIBLY differently from its raw source, so the detail
+ *  view can be proven to render markdown rather than just echo the string. */
+export const FIXTURE_ACTIVITY_HEADING = 'Fixture activity heading'
+export const FIXTURE_ACTIVITY_DETAIL = [
+  `## ${FIXTURE_ACTIVITY_HEADING}`,
+  '',
+  'A paragraph of detail that is far longer than the two lines the feed row',
+  'clamps to, which is the whole reason this view exists.',
+  '',
+  '- first bullet',
+  '- second bullet',
+].join('\n')
+
 export function makeSandbox(): Sandbox {
   const home = mkdtempSync(join(tmpdir(), 'terminal-ux-home-'))
   const configDir = mkdtempSync(join(tmpdir(), 'terminal-ux-config-'))
@@ -128,6 +141,21 @@ export function makeSandbox(): Sandbox {
       null,
       2,
     ),
+  )
+
+  // One activity event with a real markdown body, so the feed has something to
+  // open and the detail view has something to render. Without it the drill-in
+  // test would pass against an empty feed and prove nothing.
+  writeFileSync(
+    join(configDir, 'activity.jsonl'),
+    `${JSON.stringify({
+      id: 'ux-fixture-activity',
+      ts: Date.now(),
+      kind: 'info',
+      title: 'Fixture activity event',
+      detail: FIXTURE_ACTIVITY_DETAIL,
+      repo: 'ux-fixture',
+    })}\n`,
   )
 
   return {
