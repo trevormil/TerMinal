@@ -126,15 +126,31 @@ function fireNotification(ev: ActivityEvent): void {
   dispatchAlert(alertChannels, ev, readSettings().notifications.matrix)
 }
 
+/**
+ * Electron 42 moved macOS notifications from the deprecated NSUserNotification
+ * API to UNNotification, which only delivers for a CODE-SIGNED app. This build
+ * ships with `identity: null` (electron-builder.yml), so on macOS the call
+ * succeeds, throws nothing, and nothing appears — the worst possible shape for
+ * a "Test" button, which would report success while the channel is dead.
+ *
+ * Not worked around, because there is no workaround: the fix is signing
+ * (ticket 93, blocked on Apple credentials). Surfaced instead, so the setting
+ * tells the truth. Telegram, webhook and iOS push are unaffected.
+ */
+const UNSIGNED_MACOS_NOTE =
+  'Sent — but this build is unsigned, and macOS only delivers notifications for signed apps ' +
+  '(Electron 42+). If nothing appeared, that is why; use Telegram or the iPhone bridge until ' +
+  'the app is signed and notarized.'
+
 /** Settings "Test" button for the desktop channel. */
-export function testDesktopAlert(): { ok: boolean; error?: string } {
+export function testDesktopAlert(): { ok: boolean; error?: string; note?: string } {
   if (blockEffect('notify', 'desktop-test'))
     return { ok: false, error: 'Notifications are blocked while running under test.' }
   if (!Notification.isSupported())
     return { ok: false, error: 'Desktop notifications are not supported on this system.' }
   try {
     new Notification({ title: 'TerMinal test alert', body: 'Desktop channel is working.' }).show()
-    return { ok: true }
+    return process.platform === 'darwin' ? { ok: true, note: UNSIGNED_MACOS_NOTE } : { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }

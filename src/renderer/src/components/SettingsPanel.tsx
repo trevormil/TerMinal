@@ -1941,7 +1941,7 @@ export function SettingsPanel({
     setTg(await window.gt.telegram.test())
   }
   const [alertTest, setAlertTest] = useState<
-    Partial<Record<AlertChannelId, { busy?: boolean; ok?: boolean; error?: string }>>
+    Partial<Record<AlertChannelId, { busy?: boolean; ok?: boolean; error?: string; note?: string }>>
   >({})
   const testAlert = async (channel: AlertChannelId) => {
     setAlertTest((p) => ({ ...p, [channel]: { busy: true } }))
@@ -3334,7 +3334,10 @@ export function SettingsPanel({
                           className={`text-[11px] ${alertTest.desktop.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
                         >
                           {alertTest.desktop.ok
-                            ? '✓ Sent — check your notifications.'
+                            ? // A `note` means it "succeeded" with a caveat — on an
+                              // unsigned macOS build the OS accepts the call and
+                              // shows nothing, so a bare "✓ Sent" would be a lie.
+                              alertTest.desktop.note || '✓ Sent — check your notifications.'
                             : alertTest.desktop.error}
                         </div>
                       )}
