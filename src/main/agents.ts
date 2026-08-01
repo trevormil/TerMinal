@@ -1104,6 +1104,13 @@ export function buildCmd(
   if (engine === 'cursor') {
     return `${shq(bin)} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
   }
+  if (engine === 'pi') {
+    // No workspace flag exists — pi operates on the process cwd, and the spawn
+    // already sets `cwd: worktree`. `--mode json` gives the JSONL event stream
+    // agent-stream.ts decodes; `--no-session` keeps one-shot agent runs out of
+    // the interactive session store the Sessions tab lists.
+    return `${shq(bin)} -p --mode json --no-session -a${modelFlag} ${shq(prompt)}`
+  }
   if (engine === 'hermes') {
     return hermesOneShot(bin, worktree, prompt, model)
   }
@@ -1141,6 +1148,9 @@ function displayCmd(
   }
   if (engine === 'cursor') {
     return `${bin} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${worktree}${modelFlag} <prompt>`
+  }
+  if (engine === 'pi') {
+    return `${bin} -p --mode json --no-session -a${modelFlag} <prompt>`
   }
   if (engine === 'hermes') {
     return `${bin} -z <prompt>${model ? ` -m ${model}` : ''} --usage-file … --yolo --accept-hooks`

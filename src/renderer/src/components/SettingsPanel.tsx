@@ -2825,6 +2825,7 @@ export function SettingsPanel({
                     {engineRow('claude')}
                     {engineRow('cursor')}
                     {!selectedIsRemote && engineRow('openrouter')}
+                    {!selectedIsRemote && engineRow('pi')}
                     {!selectedIsRemote && engineRow('hermes')}
                     {!selectedIsRemote && engineRow('openai-compat')}
                   </div>
@@ -2867,7 +2868,7 @@ export function SettingsPanel({
                   )}
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-[11px] text-zinc-500">Default:</span>
-                    {(['codex', 'claude', 'cursor', 'hermes'] as Engine[]).map((e) => {
+                    {(['codex', 'claude', 'cursor', 'pi', 'hermes'] as Engine[]).map((e) => {
                       // Grey engines the local machine doesn't have — the default
                       // engine drives scheduled/agent runs, so an absent one silently
                       // no-ops. (Remote profiles use the host probe, not local env.)
