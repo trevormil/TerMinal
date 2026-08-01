@@ -1,902 +1,261 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TerMinal — a local software factory for coding agents</title>
-    <meta
-      name="description"
-      content="A macOS desktop app that hosts the real Claude Code and Codex CLI with a live cockpit, scheduled agents, tickets, and cross-repo observability. Local-first: no server, no account."
-    />
-    <link rel="icon" type="image/png" href="logo.png" />
-    <meta property="og:title" content="TerMinal — a local software factory for coding agents" />
-    <meta
-      property="og:description"
-      content="Host the real Claude Code and Codex CLI in a desktop cockpit. Local-first: no server, no account."
-    />
-    <meta property="og:image" content="https://trevormil.github.io/TerMinal/logo.png" />
-    <meta name="theme-color" content="#06070a" />
-    <style>
-      /* ---- tokens: accents sampled from logo.png (hue 180 aqua -> hue 240 periwinkle) ---- */
-      :root {
-        --bg: #06070a;
-        --surface: #0d0f14;
-        --surface-2: #111419;
-        --border: #1c2029;
-        --text: #e8ecf2;
-        --muted: #8992a3;
-        --faint: #5a6272;
-        --accent: #5fe6d8;
-        --accent-2: #8fa4ff;
-        --radius: 14px;
-        --sans:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
-        --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-      }
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TerMinal — a local software factory for coding agents</title>
+<meta name="description" content="A macOS desktop app that hosts the real Claude Code and Codex CLI with a live cockpit, scheduled agents, tickets, runs and an inbox. Local-first: no server, no account.">
+<meta name="theme-color" content="#06070a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="TerMinal — a local software factory for coding agents">
+<meta property="og:description" content="Host the real Claude Code and Codex CLI in a desktop cockpit. Local-first: no server, no account.">
+<meta property="og:url" content="https://trevormil.github.io/TerMinal/">
+<meta property="og:image" content="https://trevormil.github.io/TerMinal/logo.png">
+<style>
+body{margin:0;background:#06070a;-webkit-font-smoothing:antialiased}
+a{color:#8fa4ff;text-decoration:none}
+a:hover{color:#5fe6d8}
+::selection{background:#5fe6d8;color:#04231f}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+.hv-card:hover{border-color:#2b3350;background:#0d0f14}
+.hv-btn:hover{color:#e8ecf2;border-color:#5a6272}
+.hv-cta:hover{background:#7bf0e4;border-color:#7bf0e4;color:#04231f}
+.hv-ghost:hover{border-color:#5a6272;background:#111419;color:#e8ecf2}
+</style>
+</head>
+<body>
+<div style="background:#06070a;color:#e8ecf2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;line-height:1.55;overflow-x:hidden">
 
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
+<header style="max-width:1160px;margin:0 auto;padding:22px 24px;display:flex;align-items:center;gap:10px">
+<span style="font-size:15.5px;font-weight:650;letter-spacing:-0.01em">TerMinal</span>
+<span style="display:inline-block;width:8px;height:15px;background:#5fe6d8;animation:caret 1.15s step-end infinite"></span>
+<nav style="margin-left:auto;display:flex;align-items:center;gap:22px;font-size:14px">
+<a href="#features" style="color:#8992a3">Features</a>
+<a href="#install" style="color:#8992a3">Install</a>
+<a href="https://github.com/trevormil/TerMinal" style="color:#8992a3">Source</a>
+</nav>
+</header>
 
-      html {
-        scroll-behavior: smooth;
-      }
+<div style="max-width:1160px;margin:0 auto;padding:26px 24px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:56px;align-items:start;animation:rise .6s ease both">
+<div style="min-width:0">
+<div style="font-size:13.5px;color:#5a6272;margin-bottom:24px">macOS desktop app &middot; Apple silicon &middot; MIT</div>
+<h1 style="margin:0;font-size:clamp(42px,6.2vw,72px);line-height:1.0;letter-spacing:-0.04em;font-weight:660">Not a wrapper.<br><span style="color:#5fe6d8">A workbench.</span></h1>
+<p style="margin:26px 0 0;font-size:clamp(16.5px,1.5vw,19.5px);color:#8992a3;max-width:47ch;text-wrap:pretty">An agent IDE assumes one agent and one human in one editor. TerMinal runs the <span style="color:#e8ecf2">real</span> Claude Code and Codex CLIs across every repo you own — and accounts for every run they make.</p>
+<div style="display:flex;flex-wrap:wrap;gap:11px;margin-top:32px">
+<a href="https://github.com/trevormil/TerMinal/releases/latest" id="dl-a" style="display:inline-flex;align-items:center;gap:9px;background:#5fe6d8;border:1px solid #5fe6d8;color:#04231f;border-radius:10px;padding:13px 19px;font-size:15px;font-weight:600;transition:background .18s" class="hv-cta">Download for macOS <span style="opacity:.7;font-weight:450;font-family:ui-monospace,Menlo,monospace;font-size:12.5px"><span id="rel-a"></span></span></a>
+<a href="#install" style="display:inline-flex;align-items:center;gap:9px;background:#0d0f14;border:1px solid #1c2029;color:#e8ecf2;border-radius:10px;padding:13px 19px;font-size:15px;font-weight:550;transition:border-color .18s,background .18s" class="hv-ghost">Build from source</a>
+</div>
+<div style="display:flex;align-items:center;gap:12px;min-width:0;background:#05070a;border:1px solid #1c2029;border-radius:10px;padding:12px 14px;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:12.5px;margin-top:16px;max-width:560px">
+<span style="color:#5fe6d8;user-select:none;flex:none">$</span>
+<code id="cmd-a" style="display:block;min-width:0;overflow-x:auto;white-space:nowrap;color:#cfd6e2;scrollbar-width:none">curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh | bash</code>
+<button type="button" data-copy="cmd-a" aria-label="Copy the install command" aria-live="polite" style="margin-left:auto;flex:none;background:transparent;border:1px solid #1c2029;color:#8992a3;border-radius:7px;padding:5px 11px;font:inherit;font-size:11.5px;cursor:pointer;transition:color .15s,border-color .15s" class="hv-btn">Copy</button>
+</div>
+<p style="margin:18px 0 0;font-size:13.5px;color:#5a6272;max-width:54ch;text-wrap:pretty">Unsigned build. On first open, right-click the app and choose <span style="color:#8992a3">Open</span> — a double-click will not get past Gatekeeper.</p>
+</div>
 
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--sans);
-        line-height: 1.55;
-        -webkit-font-smoothing: antialiased;
-      }
+<div style="min-width:0;justify-self:end;width:100%;max-width:430px">
+<div style="border:1px solid #1c2029;border-radius:14px;background:#0d0f14;padding:14px;box-shadow:0 30px 80px rgba(0,0,0,.6);font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace">
+<div style="display:flex;align-items:baseline;justify-content:space-between;padding:2px 4px 12px;font-size:10.5px;letter-spacing:.11em;color:#5a6272">
+<span>COCKPIT</span><span>11 live</span>
+</div>
+<div style="display:grid;gap:9px">
+<div style="border:1px solid #1c2029;border-radius:10px;background:#111419;padding:13px 14px">
+<div style="display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.11em;color:#8992a3"><span>SESSION</span><span style="color:#5a6272">3d8761</span></div>
+<div style="margin-top:9px;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:14.5px;font-weight:600;letter-spacing:-0.01em">Explore codex code review bash skill</div>
+<div style="margin-top:9px;display:flex;flex-wrap:wrap;align-items:center;gap:9px;font-size:11px;color:#8992a3">
+<span>opus-4.7</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;letter-spacing:.06em">ACCEPT-EDITS</span><span>main</span><span style="color:#5a6272">6 turns</span>
+</div>
+</div>
+<div style="border:1px solid #1c2029;border-radius:10px;background:#111419;padding:13px 14px">
+<div style="display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.11em;color:#8992a3"><span>CONTEXT WINDOW</span><span style="color:#5a6272">1.00M cap</span></div>
+<div style="margin-top:10px;display:flex;align-items:baseline;gap:8px"><span style="font-size:24px;font-weight:600;letter-spacing:-0.02em">5.7%</span><span style="font-size:11.5px;color:#5a6272">56.8k tok</span></div>
+<div style="margin-top:11px;height:7px;border-radius:99px;background:#1c2029;overflow:hidden"><div style="width:5.7%;min-width:14px;height:7px;border-radius:99px;background:#5fe6d8"></div></div>
+</div>
+<div style="border:1px solid #1c2029;border-radius:10px;background:#111419;padding:13px 14px">
+<div style="font-size:10.5px;letter-spacing:.11em;color:#8992a3">NOW DOING</div>
+<div style="margin-top:9px;display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:50%;background:#5fe6d8;flex:none"></span><span style="font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:14.5px;font-weight:600">Bash</span></div>
+<div style="margin-top:5px;font-size:11.5px;color:#8992a3">Find codex exec invocations</div>
+</div>
+<div style="border:1px solid #1c2029;border-radius:10px;background:#111419;padding:13px 14px">
+<div style="display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.11em;color:#8992a3"><span>PLAN USAGE</span><span style="color:#5a6272">5h window</span></div>
+<div style="margin-top:10px;display:flex;align-items:baseline;gap:8px"><span style="font-size:24px;font-weight:600;letter-spacing:-0.02em">38%</span><span style="font-size:11.5px;color:#5a6272">resets 4:15 PM</span></div>
+<div style="margin-top:11px;height:7px;border-radius:99px;background:#1c2029;overflow:hidden"><div style="width:38%;height:7px;border-radius:99px;background:#8fa4ff"></div></div>
+</div>
+<div style="border:1px solid #1c2029;border-radius:10px;background:#111419;padding:13px 14px">
+<div style="display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.11em;color:#8992a3"><span>GIT</span><span style="color:#3fb950;border:1px solid #1e3d28;border-radius:5px;padding:2px 6px">CLEAN</span></div>
+<div style="margin-top:9px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:14.5px;font-weight:600">main</span><span style="font-size:11px;color:#5a6272">vs upstream &nbsp;0 / 0</span></div>
+</div>
+</div>
+</div>
+<p style="margin:12px 2px 0;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#5a6272;line-height:1.55">Drawn illustration of the cockpit sidebar. Every number describes one session — never an aggregate.</p>
+</div>
+</div>
 
-      a {
-        color: inherit;
-      }
+<section id="features" style="max-width:1160px;margin:0 auto;padding:104px 24px 0;scroll-margin-top:24px">
+<h2 style="margin:0;font-size:clamp(27px,3.4vw,38px);letter-spacing:-0.03em;font-weight:650">Everything an editor leaves out.</h2>
+<p style="margin:18px 0 0;font-size:17px;color:#8992a3;max-width:60ch;text-wrap:pretty">Your CLIs are already good. What is missing is the layer above them.</p>
 
-      /* focus ring — one token, used everywhere (keyboard pass) */
-      a:focus-visible,
-      button:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 3px;
-        border-radius: 6px;
-      }
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,268px),1fr));gap:14px;margin-top:34px">
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">01</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Real PTYs, not a proxy</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Each session spawns the actual engine binary. Resume is the engine's own resume.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">02</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Many repos, one window</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Four-up grids across repos, <span style="font-family:ui-monospace,Menlo,monospace;font-size:13.5px;color:#e8ecf2">&#8984;K</span> to anywhere. An editor gives you one project.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">03</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">A cockpit per session</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Context window, plan usage, the current tool call, todos, git state, review verdict.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">04</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Agents, not prompts</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">A named roster with model policy and checks, versioned in <span style="font-family:ui-monospace,Menlo,monospace;font-size:13.5px;color:#e8ecf2">.agents/</span>.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">05</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Its own worktree</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Every code-touching run branches into isolation. Your checkout is never touched.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">06</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Schedules outlive the app</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Real launchd jobs on a headless runner. They fire with the app closed.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">07</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">A gate that gates</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">Blockers file to one inbox and ping your phone. A stalled agent is visible.</p></div>
+<div style="background:#0d0f14;border:1px solid #1c2029;border-radius:12px;padding:20px 20px 22px;transition:border-color .18s" class="hv-card"><div style="font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:.11em;color:#5fe6d8;margin-bottom:13px">08</div><h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Local-first, file-shaped</h3><p style="margin:7px 0 0;font-size:14.5px;color:#8992a3;text-wrap:pretty">No server, no account, no telemetry. Tickets and runs are files you can diff.</p></div>
+</div>
 
-      .wrap {
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 0 24px;
-      }
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px;margin-top:14px;align-items:start">
+<div style="min-width:0;border:1px solid #1c2029;border-radius:14px;background:#0d0f14;padding:24px">
+<h3 style="margin:0;font-size:17px;font-weight:600;letter-spacing:-0.01em">Agents never merge</h3>
+<p style="margin:9px 0 18px;font-size:14.5px;color:#8992a3;text-wrap:pretty">They ticket, branch, test, implement, open the pull request — and stop. The tooling enforces it; a prompt cannot talk one past the gate.</p>
+<ol style="list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:12px">
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#cfd6e2;background:#111419">Ticket</li>
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#cfd6e2;background:#111419">Worktree</li>
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#cfd6e2;background:#111419">Test first</li>
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#cfd6e2;background:#111419">Implement</li>
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#cfd6e2;background:#111419">Review to a bar</li>
+<li style="border:1px solid #1c2029;border-radius:7px;padding:6px 11px;color:#5fe6d8;background:#111419;box-shadow:inset 2px 0 0 #5fe6d8">You merge</li>
+</ol>
+<p style="margin:16px 0 0;font-size:14px;color:#5a6272;text-wrap:pretty">Tickets are markdown with acceptance criteria. GitHub Issues, Linear, or an Obsidian vault drop in as providers.</p>
+</div>
+<div style="min-width:0;border:1px solid #1c2029;border-radius:14px;background:#0d0f14;padding:24px">
+<h3 style="margin:0;font-size:17px;font-weight:600;letter-spacing:-0.01em">Whatever you already run</h3>
+<p style="margin:9px 0 18px;font-size:14.5px;color:#8992a3;text-wrap:pretty">Onboarding probes your <span style="font-family:ui-monospace,Menlo,monospace;font-size:13.5px;color:#e8ecf2">PATH</span> and lights up what you have. One engine is enough.</p>
+<div style="border:1px solid #1c2029;border-radius:10px;overflow:hidden;overflow-x:auto">
+<table style="border-collapse:collapse;width:100%;min-width:300px;font-size:13.5px">
+<thead><tr style="background:#0a0c10;color:#5a6272;font-size:11px;letter-spacing:.06em;text-align:left"><th style="padding:9px 13px;font-weight:500">ENGINE</th><th style="padding:9px 13px;font-weight:500">SESSION</th><th style="padding:9px 13px;font-weight:500">RUNS</th></tr></thead>
+<tbody>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">Claude Code</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td></tr>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">Codex</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td></tr>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">Cursor Agent</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td></tr><tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">Pi</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td></tr>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">OpenRouter</td><td style="padding:10px 13px;color:#5a6272">No</td><td style="padding:10px 13px;color:#5fe6d8">Any slug</td></tr>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">Hermes</td><td style="padding:10px 13px;color:#5a6272">No</td><td style="padding:10px 13px;color:#5fe6d8">Any slug</td></tr>
+<tr style="border-top:1px solid #1c2029"><td style="padding:10px 13px;font-weight:550">OpenAI-compatible</td><td style="padding:10px 13px;color:#5a6272">No</td><td style="padding:10px 13px;color:#5fe6d8">Yes</td></tr>
+</tbody>
+</table>
+</div>
+<p style="margin:16px 0 0;font-size:14px;color:#5a6272;text-wrap:pretty">Keys sealed in the OS keychain. Harness runs price themselves and stay out of the Claude and Codex ledger.</p>
+</div>
+</div>
 
-      /* ---------- atmosphere (background only; foreground text never moves) ---------- */
-      .bg-fx {
-        position: fixed;
-        inset: 0;
-        z-index: -1;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .bg-fx::before {
-        content: '';
-        position: absolute;
-        inset: -20%;
-        background:
-          radial-gradient(50% 38% at 50% -6%, rgba(95, 230, 216, 0.1), transparent 62%),
-          radial-gradient(42% 34% at 84% 2%, rgba(143, 164, 255, 0.08), transparent 60%);
-        filter: blur(14px);
-      }
-      #atmosphere {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0.75;
-      }
+<div style="margin-top:14px;border:1px solid #1c2029;border-radius:14px;background:#0d0f14;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #1c2029;background:#0a0c10;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#5a6272">
+<span style="color:#e8ecf2">All runs</span><span>16 / 16</span>
+<span style="color:#3fb950;border:1px solid #1e3d28;border-radius:5px;padding:2px 7px">3 DONE</span>
+<span style="color:#f85149;border:1px solid #4a1f1d;border-radius:5px;padding:2px 7px">2 FAILED</span>
+</div>
+<div style="overflow-x:auto">
+<div style="min-width:700px;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:12px">
+<div style="display:grid;grid-template-columns:96px 62px minmax(0,1fr) 130px 74px 62px 88px;gap:12px;align-items:center;padding:11px 16px"><span style="color:#3fb950;border:1px solid #1e3d28;border-radius:5px;padding:2px 6px;text-align:center">DONE</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;text-align:center">AGENT</span><span style="color:#e8ecf2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Design agent &middot; deterministic pass</span><span style="color:#5a6272;text-align:right">vellum-project</span><span style="color:#8992a3;text-align:right">CLAUDE</span><span style="color:#8992a3;text-align:right">2m 4s</span><span style="color:#5a6272;text-align:right">06:38 PM</span></div>
+<div style="display:grid;grid-template-columns:96px 62px minmax(0,1fr) 130px 74px 62px 88px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid #14181f;background:#0b0d12"><span style="color:#d29922;border:1px solid #3d3018;border-radius:5px;padding:2px 6px;text-align:center;font-size:10.5px">INTERRUPTED</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;text-align:center">CRON</span><span style="color:#e8ecf2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Process feedback queue</span><span style="color:#5a6272;text-align:right">autopilot-harness</span><span style="color:#8992a3;text-align:right">CODEX</span><span style="color:#8992a3;text-align:right">17m 6s</span><span style="color:#5a6272;text-align:right">04:46 PM</span></div>
+<div style="display:grid;grid-template-columns:96px 62px minmax(0,1fr) 130px 74px 62px 88px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid #14181f"><span style="color:#f85149;border:1px solid #4a1f1d;border-radius:5px;padding:2px 6px;text-align:center">FAILED</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;text-align:center">CRON</span><span style="color:#e8ecf2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Improve docs</span><span style="color:#5a6272;text-align:right">vellum-project</span><span style="color:#8992a3;text-align:right">CLAUDE</span><span style="color:#8992a3;text-align:right">2h 9m</span><span style="color:#5a6272;text-align:right">05:21 PM</span></div>
+<div style="display:grid;grid-template-columns:96px 62px minmax(0,1fr) 130px 74px 62px 88px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid #14181f;background:#0b0d12"><span style="color:#3fb950;border:1px solid #1e3d28;border-radius:5px;padding:2px 6px;text-align:center">DONE</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;text-align:center">AGENT</span><span style="color:#e8ecf2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Implement #231 from the backlog</span><span style="color:#5a6272;text-align:right">vellum-project</span><span style="color:#8992a3;text-align:right">CLAUDE</span><span style="color:#8992a3;text-align:right">44.9s</span><span style="color:#5a6272;text-align:right">04:22 PM</span></div>
+<div style="display:grid;grid-template-columns:96px 62px minmax(0,1fr) 130px 74px 62px 88px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid #14181f"><span style="color:#d29922;border:1px solid #3d3018;border-radius:5px;padding:2px 6px;text-align:center">CANCELED</span><span style="color:#8fa4ff;border:1px solid #2b3350;border-radius:5px;padding:2px 6px;text-align:center">AGENT</span><span style="color:#e8ecf2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Run /factory</span><span style="color:#5a6272;text-align:right">autopilot-harness</span><span style="color:#8992a3;text-align:right">CODEX</span><span style="color:#8992a3;text-align:right">5.2s</span><span style="color:#5a6272;text-align:right">03:11 PM</span></div>
+</div>
+</div>
+<p style="margin:0;padding:12px 16px;border-top:1px solid #1c2029;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#5a6272">Drawn illustration of the run ledger. Failures and cancellations are as visible as successes.</p>
+</div>
+</section>
 
-      /* ---------- header ---------- */
-      header {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        padding: 22px 0;
-      }
-      .logo {
-        width: 28px;
-        height: 28px;
-        border-radius: 8px;
-      }
-      .brand {
-        font-weight: 650;
-        letter-spacing: -0.01em;
-        font-size: 15px;
-      }
-      header nav {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: 22px;
-        font-size: 14px;
-      }
-      header nav a {
-        color: var(--muted);
-        text-decoration: none;
-      }
-      header nav a:hover {
-        color: var(--text);
-      }
+<section id="install" style="max-width:1160px;margin:0 auto;padding:104px 24px 0;scroll-margin-top:24px">
+<h2 style="margin:0;font-size:clamp(27px,3.4vw,38px);letter-spacing:-0.03em;font-weight:650">Install</h2>
+<p style="margin:18px 0 34px;font-size:17px;color:#8992a3;max-width:58ch">Take the DMG for the packaged app, or the source route to hack on it. Either way you need at least one engine CLI on your <span style="font-family:ui-monospace,Menlo,monospace;font-size:15px;color:#e8ecf2">PATH</span>.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:14px">
 
-      /* ---------- hero ---------- */
-      .hero {
-        padding: 78px 0 20px;
-      }
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--muted);
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 6px 13px;
-        margin-bottom: 26px;
-      }
-      .eyebrow b {
-        color: var(--accent);
-        font-weight: 500;
-      }
-      h1 {
-        font-size: clamp(52px, 11vw, 118px);
-        line-height: 0.94;
-        letter-spacing: -0.035em;
-        font-weight: 700;
-        background: linear-gradient(104deg, var(--accent) 2%, #e4ebf7 42%, var(--accent-2) 78%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-      .sub {
-        color: var(--muted);
-        font-size: clamp(17px, 2.2vw, 20px);
-        max-width: 54ch;
-        margin: 24px 0 34px;
-      }
-      .sub b {
-        color: var(--text);
-        font-weight: 550;
-      }
+<div style="min-width:0;border:1px solid #1c2029;border-radius:14px;background:#0d0f14;padding:26px;display:flex;flex-direction:column">
+<h3 style="margin:0;font-size:17px;font-weight:600">Download the app</h3>
+<p style="margin:8px 0 20px;font-size:14.5px;color:#8992a3">The packaged desktop build. Apple silicon, unsigned and un-notarized.</p>
+<ul style="list-style:none;margin:0;padding:0;display:grid;gap:10px;font-size:14.5px;color:#8992a3">
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>Open the DMG, drag <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#e8ecf2">TerMinal.app</span> to Applications.</span></li>
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>First launch: right-click, then <span style="color:#e8ecf2">Open</span>, then <span style="color:#e8ecf2">Open</span>. A double-click will be refused.</span></li>
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>Onboarding probes your machine and confirms your projects folder. Both steps are skippable.</span></li>
+</ul>
+<div style="background:#05070a;border:1px solid #1c2029;border-radius:10px;padding:12px 14px;margin-top:20px;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:12px;color:#8992a3;overflow-x:auto;white-space:nowrap"><span style="color:#5fe6d8">$</span> shasum -a 256 -c SHA256SUMS.txt</div>
+<div style="margin-top:auto;padding-top:20px;display:flex;flex-wrap:wrap;align-items:center;gap:14px">
+<a href="https://github.com/trevormil/TerMinal/releases/latest" id="dl-b" style="display:inline-flex;align-items:center;gap:9px;background:#5fe6d8;border:1px solid #5fe6d8;color:#04231f;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:600;transition:background .18s" class="hv-cta">Download for macOS <span style="opacity:.7;font-weight:450;font-family:ui-monospace,Menlo,monospace;font-size:12.5px"><span id="rel-b"></span></span></a>
+<a href="https://github.com/trevormil/TerMinal/releases/latest/download/SHA256SUMS.txt" style="font-size:13.5px;color:#8992a3">Checksums</a>
+</div>
+</div>
 
-      .ctas {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 12px;
-      }
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        color: var(--text);
-        background: var(--surface);
-        padding: 13px 18px;
-        font-size: 15px;
-        font-weight: 550;
-        text-decoration: none;
-        transition:
-          border-color 0.18s,
-          background 0.18s;
-      }
-      .btn:hover {
-        border-color: var(--faint);
-        background: var(--surface-2);
-      }
-      .btn.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: #04231f;
-      }
-      .btn.primary:hover {
-        background: #7bf0e4;
-        border-color: #7bf0e4;
-      }
-      .btn .v {
-        opacity: 0.72;
-        font-weight: 450;
-      }
+<div style="min-width:0;border:1px solid #1c2029;border-radius:14px;background:#0d0f14;padding:26px;display:flex;flex-direction:column">
+<h3 style="margin:0;font-size:17px;font-weight:600">Build from source</h3>
+<p style="margin:8px 0 20px;font-size:14.5px;color:#8992a3">Clones the repo and installs dependencies. Requires <a href="https://bun.sh" style="color:#8992a3">bun</a> and git.</p>
+<div style="display:flex;align-items:center;gap:12px;min-width:0;background:#05070a;border:1px solid #1c2029;border-radius:10px;padding:13px 14px;font-family:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;font-size:12.5px;margin-bottom:18px">
+<span style="color:#5fe6d8;user-select:none;flex:none">$</span>
+<code id="cmd-b" style="display:block;min-width:0;overflow-x:auto;white-space:nowrap;color:#cfd6e2;scrollbar-width:none">curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh | bash</code>
+<button type="button" data-copy="cmd-b" aria-label="Copy the install command" aria-live="polite" style="margin-left:auto;flex:none;background:transparent;border:1px solid #1c2029;color:#8992a3;border-radius:7px;padding:5px 11px;font:inherit;font-size:11.5px;cursor:pointer;transition:color .15s,border-color .15s" class="hv-btn">Copy</button>
+</div>
+<ul style="list-style:none;margin:0;padding:0;display:grid;gap:10px;font-size:14.5px;color:#8992a3">
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>Clones to <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#e8ecf2">~/TerMinal</span>, or pass a path to change it.</span></li>
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>Installs dependencies and rebuilds the native terminal against Electron.</span></li>
+<li style="display:flex;gap:10px"><span style="color:#5a6272;flex:none">&rarr;</span><span>Then <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#e8ecf2">bun run dev</span> to launch it.</span></li>
+</ul>
+<p style="margin:auto 0 0;padding-top:20px;font-size:14px;color:#5a6272;text-wrap:pretty">Dev works on Linux minus local schedules. Packaging, launchd, and the editor handoffs assume macOS.</p>
+</div>
+</div>
+</section>
 
-      .req {
-        margin-top: 20px;
-        font-size: 13.5px;
-        color: var(--faint);
-        max-width: 64ch;
+<footer style="border-top:1px solid #1c2029;margin-top:96px">
+<div style="max-width:1160px;margin:0 auto;padding:26px 24px 60px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;font-size:13.5px;color:#5a6272">
+<span style="color:#8992a3">TerMinal</span>
+<a href="https://github.com/trevormil/TerMinal" style="color:#8992a3">Source</a>
+<a href="https://github.com/trevormil/TerMinal/releases" style="color:#8992a3">Releases</a>
+<span style="margin-left:auto">MIT &middot; macOS &middot; Apple silicon</span>
+</div>
+</footer>
+</div>
+<script>
+// Two behaviours, hand-written rather than shipping a 69KB generated runtime
+// (and React) to render a static page: copy-to-clipboard, and pointing the
+// download button at the newest release asset.
+;(function () {
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.getElementById(btn.getAttribute('data-copy'))
+      var text = (el ? el.textContent : '').replace(/\s+/g, ' ').trim()
+      var done = function () {
+        btn.textContent = 'Copied'
+        setTimeout(function () { btn.textContent = 'Copy' }, 1600)
       }
-      .req a {
-        color: var(--muted);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done)
+        return
       }
+      var ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.cssText = 'position:fixed;opacity:0'
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy'); done() } catch (e) {}
+      document.body.removeChild(ta)
+    })
+  })
 
-      /* ---------- shared section shell (the one repeated structural token) ---------- */
-      section {
-        padding: 74px 0;
-      }
-      h2 {
-        font-size: clamp(26px, 3.6vw, 36px);
-        letter-spacing: -0.025em;
-        font-weight: 650;
-        margin-bottom: 12px;
-      }
-      .lede {
-        color: var(--muted);
-        max-width: 60ch;
-        margin-bottom: 34px;
-        font-size: 16.5px;
-      }
-      .panel {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-      }
-
-      /* ---------- window-chromed screenshot ---------- */
-      .shot {
-        overflow: hidden;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
-      }
-      .shot .bar {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        padding: 11px 14px;
-        background: #0a0c10;
-        border-bottom: 1px solid var(--border);
-      }
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-      }
-      .shot .bar span.t {
-        margin-left: 8px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        color: var(--faint);
-      }
-      .shot img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-
-      /* ---------- feature cards ---------- */
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-      }
-      .feat {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        padding: 24px;
-      }
-      .feat .n {
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--accent);
-        margin-bottom: 14px;
-      }
-      .feat h3 {
-        font-size: 17px;
-        font-weight: 600;
-        margin-bottom: 8px;
-        letter-spacing: -0.01em;
-      }
-      .feat p {
-        font-size: 14.5px;
-        color: var(--muted);
-      }
-
-      /* ---------- gallery ---------- */
-      .gallery {
-        display: grid;
-        grid-template-columns: 1.9fr 1fr;
-        gap: 18px;
-        align-items: start;
-      }
-      .gallery figure {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        overflow: hidden;
-        background: var(--surface);
-      }
-      .gallery img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-      .gallery figcaption {
-        font-size: 13px;
-        color: var(--faint);
-        padding: 12px 15px;
-        border-top: 1px solid var(--border);
-      }
-
-      /* ---------- install ---------- */
-      .install {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 18px;
-      }
-      .card {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        padding: 26px;
-        display: flex;
-        flex-direction: column;
-        /* grid/flex items default to min-width:auto, which lets the nowrap
-           install command widen the whole page. Reset it down the chain. */
-        min-width: 0;
-      }
-      .card h3 {
-        font-size: 17px;
-        font-weight: 600;
-        margin-bottom: 7px;
-      }
-      .card p {
-        font-size: 14.5px;
-        color: var(--muted);
-        margin-bottom: 20px;
-      }
-      .card .foot {
-        margin-top: auto;
-      }
-      .cmd {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        background: #05070a;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 13px 14px;
-        font-family: var(--mono);
-        font-size: 12.5px;
-        margin-bottom: 16px;
-        min-width: 0;
-      }
-      .cmd code {
-        /* min-width:0 is load-bearing: without it the nowrap command refuses to
-           shrink inside the flex row and widens the whole page at 375px. */
-        display: block;
-        min-width: 0;
-        overflow-x: auto;
-        white-space: nowrap;
-        color: #cfd6e2;
-        scrollbar-width: none;
-      }
-      .cmd code::-webkit-scrollbar {
-        display: none;
-      }
-      .cmd .d {
-        color: var(--accent);
-        user-select: none;
-      }
-      .copy {
-        margin-left: auto;
-        flex: none;
-        background: transparent;
-        border: 1px solid var(--border);
-        color: var(--muted);
-        border-radius: 7px;
-        padding: 5px 11px;
-        font: inherit;
-        font-size: 11.5px;
-        cursor: pointer;
-      }
-      .copy:hover {
-        color: var(--text);
-        border-color: var(--faint);
-      }
-      .copy[data-done='1'] {
-        color: var(--accent);
-        border-color: var(--accent);
-      }
-      .steps {
-        list-style: none;
-        font-size: 14px;
-        color: var(--muted);
-        display: grid;
-        gap: 9px;
-      }
-      .steps li {
-        display: flex;
-        gap: 10px;
-      }
-      .steps li::before {
-        content: '→';
-        color: var(--faint);
-        flex: none;
-      }
-      .steps code {
-        font-family: var(--mono);
-        font-size: 12.5px;
-        color: var(--text);
-      }
-
-      footer {
-        border-top: 1px solid var(--border);
-        padding: 28px 0 64px;
-        color: var(--faint);
-        font-size: 13px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 18px;
-        align-items: center;
-      }
-      footer a {
-        color: var(--muted);
-        text-decoration: none;
-      }
-      footer a:hover {
-        color: var(--text);
-      }
-      footer .sp {
-        margin-left: auto;
-      }
-
-      /* ---------- scroll reveal (sections only, never the hero) ----------
-         Gated behind .js so that with scripting off nothing is ever hidden. */
-      .js .reveal {
-        opacity: 0;
-        transform: translateY(16px);
-        transition:
-          opacity 0.5s ease,
-          transform 0.5s ease;
-      }
-      .js .reveal.in {
-        opacity: 1;
-        transform: none;
-      }
-
-      @media (max-width: 860px) {
-        .grid,
-        .gallery,
-        .install {
-          grid-template-columns: 1fr;
-        }
-        .hero {
-          padding-top: 48px;
-        }
-        section {
-          padding: 56px 0;
-        }
-        header nav a.hide-sm {
-          display: none;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        html {
-          scroll-behavior: auto;
-        }
-        *,
-        *::before,
-        *::after {
-          animation: none !important;
-          transition: none !important;
-        }
-        .js .reveal {
-          opacity: 1;
-          transform: none;
-        }
-      }
-    </style>
-    <script>
-      document.documentElement.className += ' js'
-    </script>
-  </head>
-  <body>
-    <div class="bg-fx"><canvas id="atmosphere"></canvas></div>
-
-    <div class="wrap">
-      <header>
-        <img class="logo" src="logo.png" alt="" />
-        <span class="brand">TerMinal</span>
-        <nav>
-          <a class="hide-sm" href="#what">What it is</a>
-          <a href="#install">Install</a>
-          <a href="https://github.com/trevormil/TerMinal">GitHub</a>
-        </nav>
-      </header>
-
-      <div class="hero">
-        <span class="eyebrow"><b>◆</b> macOS desktop app · local-first</span>
-        <h1>TerMinal</h1>
-        <p class="sub">
-          A software factory for coding agents. Hosts the <b>real</b> Claude Code and Codex CLI in a
-          desktop cockpit — with tickets, scheduled runs, and cross-repo observability around them.
-        </p>
-        <div class="ctas">
-          <a class="btn primary" id="dl" href="https://github.com/trevormil/TerMinal/releases/latest">
-            Download for macOS <span class="v" id="dl-v"></span>
-          </a>
-          <a class="btn" href="#install">Build from source</a>
-        </div>
-        <p class="req">
-          Apple silicon only. The build is unsigned — on first open, right-click the app and choose
-          <b>Open</b> to get past Gatekeeper. Verify your download against
-          <a
-            href="https://github.com/trevormil/TerMinal/releases/latest/download/SHA256SUMS.txt"
-            >SHA256SUMS.txt</a
-          >.
-        </p>
-      </div>
-
-      <section style="padding-top: 40px">
-        <div class="panel shot reveal">
-          <div class="bar">
-            <span class="dot" style="background: #ff5f57"></span>
-            <span class="dot" style="background: #febc2e"></span>
-            <span class="dot" style="background: #28c840"></span>
-            <span class="t">TerMinal — Tickets</span>
-          </div>
-          <img
-            src="shots/tickets.png"
-            width="1500"
-            height="941"
-            alt="TerMinal's Tickets tab: a backlog list on the left and the selected ticket rendered as markdown on the right."
-          />
-        </div>
-      </section>
-
-      <section id="what">
-        <h2 class="reveal">Not a wrapper. A workbench.</h2>
-        <p class="lede reveal">
-          The agent CLIs you already use, running as real terminal sessions — plus the workflow layer
-          they have always been missing.
-        </p>
-        <div class="grid">
-          <div class="feat reveal">
-            <div class="n">01</div>
-            <h3>Real agent sessions</h3>
-            <p>
-              Claude Code, Codex, or any local process in a real terminal tab. Sessions are
-              resumable, and a live cockpit reads out context window, current tool call, and git
-              state as it runs.
-            </p>
-          </div>
-          <div class="feat reveal">
-            <div class="n">02</div>
-            <h3>Work that outlives the tab</h3>
-            <p>
-              Tickets, pull requests, scheduled agents, run history, and human-approval gates are
-              first-class tabs — so a task survives closing the session it started in.
-            </p>
-          </div>
-          <div class="feat reveal">
-            <div class="n">03</div>
-            <h3>Yours, on disk</h3>
-            <p>
-              No server and no account. Agents, schedules, plugins, and widgets are plain files you
-              can read, diff, and commit alongside the repo they belong to.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2 class="reveal">Every run, accounted for</h2>
-        <p class="lede reveal">
-          Scheduled and in-session runs land in one history, across every repo you manage.
-        </p>
-        <div class="gallery">
-          <figure class="reveal">
-            <img
-              src="shots/runs.png"
-              width="1500"
-              height="941"
-              alt="TerMinal's Runs tab listing agent and cron runs with status, repo, engine, and duration."
-            />
-            <figcaption>Runs — cron and in-session runs in one filterable history.</figcaption>
-          </figure>
-          <figure class="reveal">
-            <img
-              src="shots/cockpit.png"
-              width="620"
-              height="884"
-              alt="TerMinal's cockpit rail showing session, context window usage, the current tool call, and plan usage."
-            />
-            <figcaption>Cockpit — live session telemetry beside the terminal.</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section id="install">
-        <h2 class="reveal">Install</h2>
-        <p class="lede reveal">
-          Take the DMG for the packaged app, or the source route if you want to hack on it.
-        </p>
-        <div class="install">
-          <div class="card reveal">
-            <h3>Download the app</h3>
-            <p>The packaged desktop build. Apple silicon, unsigned.</p>
-            <ul class="steps">
-              <li>Open the DMG and drag <code>TerMinal.app</code> to Applications.</li>
-              <li>First launch: right-click the app → <b>Open</b> → <b>Open</b>.</li>
-              <li>Onboarding detects your installed agent CLIs.</li>
-            </ul>
-            <div class="foot" style="margin-top: 22px">
-              <a
-                class="btn primary"
-                id="dl2"
-                href="https://github.com/trevormil/TerMinal/releases/latest"
-              >
-                Download for macOS <span class="v" id="dl2-v"></span>
-              </a>
-            </div>
-          </div>
-
-          <div class="card reveal">
-            <h3>Build from source</h3>
-            <p>
-              Clones the repo and installs dependencies. Requires
-              <a href="https://bun.sh" style="color: var(--muted)">bun</a> and git.
-            </p>
-            <div class="cmd">
-              <span class="d">$</span>
-              <code id="cmd-text"
-                >curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh |
-                bash</code
-              >
-              <button
-                class="copy"
-                id="copy-btn"
-                type="button"
-                aria-label="Copy install command"
-                aria-live="polite"
-              >
-                copy
-              </button>
-            </div>
-            <ul class="steps">
-              <li>Clones to <code>~/TerMinal</code> (pass a path to change it).</li>
-              <li>Then run <code>bun run dev</code> to launch.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <footer>
-        <span>◆ TerMinal</span>
-        <a href="https://github.com/trevormil/TerMinal">Source</a>
-        <a href="https://github.com/trevormil/TerMinal/releases">Releases</a>
-        <span class="sp">macOS · Apple silicon · MIT</span>
-      </footer>
-    </div>
-
-    <script>
-      ;(function () {
-        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-        /* ---- copy button ---- */
-        var btn = document.getElementById('copy-btn')
-        btn.addEventListener('click', function () {
-          var text = document.getElementById('cmd-text').textContent.replace(/\s+/g, ' ').trim()
-          var done = function () {
-            btn.textContent = 'copied'
-            btn.dataset.done = '1'
-            setTimeout(function () {
-              btn.textContent = 'copy'
-              delete btn.dataset.done
-            }, 1600)
-          }
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(done, fallback)
-          } else {
-            fallback()
-          }
-          function fallback() {
-            var ta = document.createElement('textarea')
-            ta.value = text
-            ta.setAttribute('readonly', '')
-            ta.style.position = 'fixed'
-            ta.style.opacity = '0'
-            document.body.appendChild(ta)
-            ta.select()
-            try {
-              document.execCommand('copy')
-              done()
-            } catch (e) {
-              /* leave the text visible for manual copy */
-            }
-            document.body.removeChild(ta)
-          }
-        })
-
-        /* ---- resolve the latest DMG ----
-           The asset filename embeds the version (TerMinal-<v>-arm64.dmg), so
-           /releases/latest/download/<name> cannot work without a per-release edit.
-           Links therefore point at /releases/latest (always correct, no JS needed)
-           and are upgraded to the direct asset URL when the API answers. */
-        fetch('https://api.github.com/repos/trevormil/TerMinal/releases/latest', {
-          headers: { Accept: 'application/vnd.github+json' },
-        })
-          .then(function (r) {
-            if (!r.ok) throw new Error(r.status)
-            return r.json()
-          })
-          .then(function (rel) {
-            var assets = rel.assets || []
-            var dmg = assets.filter(function (a) {
-              return /arm64\.dmg$/.test(a.name)
-            })[0]
-            if (dmg) {
-              var label = rel.tag_name + ' · ' + Math.round(dmg.size / 1048576) + ' MB'
-              ;['dl', 'dl2'].forEach(function (id) {
-                var el = document.getElementById(id)
-                if (!el) return
-                el.href = dmg.browser_download_url
-                document.getElementById(id + '-v').textContent = label
-              })
-            }
-          })
-          .catch(function () {
-            /* rate-limited or offline: the /releases/latest hrefs already work */
-          })
-
-        /* ---- scroll reveal (sections only) ---- */
-        var els = [].slice.call(document.querySelectorAll('.reveal'))
-        if (reduce || !('IntersectionObserver' in window)) {
-          els.forEach(function (el) {
-            el.classList.add('in')
-          })
-        } else {
-          var io = new IntersectionObserver(
-            function (entries) {
-              entries.forEach(function (e, i) {
-                if (!e.isIntersecting) return
-                e.target.style.transitionDelay = (i % 5) * 70 + 'ms'
-                e.target.classList.add('in')
-                io.unobserve(e.target)
-              })
-            },
-            { threshold: 0.12 },
-          )
-          els.forEach(function (el) {
-            io.observe(el)
-          })
-        }
-
-        /* ---- hero atmosphere: node graph with pulses travelling the edges ---- */
-        var cv = document.getElementById('atmosphere')
-        var ctx = cv.getContext && cv.getContext('2d')
-        if (!ctx) return
-
-        var nodes = [],
-          edges = [],
-          pulses = [],
-          dpr = 1,
-          w = 0,
-          h = 0,
-          raf = null
-
-        function build() {
-          dpr = Math.min(window.devicePixelRatio || 1, 2)
-          w = cv.clientWidth
-          h = Math.max(window.innerHeight, 620)
-          cv.width = w * dpr
-          cv.height = h * dpr
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-          var count = w < 700 ? 14 : 26
-          nodes = []
-          for (var i = 0; i < count; i++) {
-            nodes.push({
-              x: Math.random() * w,
-              y: Math.random() * h * 0.75,
-              r: 1 + Math.random() * 1.6,
-              ph: Math.random() * Math.PI * 2,
-            })
-          }
-          edges = []
-          var reach = w < 700 ? 190 : 240
-          for (var a = 0; a < nodes.length; a++) {
-            for (var b = a + 1; b < nodes.length; b++) {
-              var dx = nodes[a].x - nodes[b].x,
-                dy = nodes[a].y - nodes[b].y
-              var d = Math.sqrt(dx * dx + dy * dy)
-              if (d < reach) edges.push({ a: a, b: b, d: d })
-            }
-          }
-          pulses = []
-        }
-
-        function spawn() {
-          if (!edges.length || pulses.length > 14) return
-          var e = edges[(Math.random() * edges.length) | 0]
-          pulses.push({ e: e, t: 0, sp: 0.0016 + Math.random() * 0.0022, dir: Math.random() < 0.5 })
-        }
-
-        function draw(now) {
-          ctx.clearRect(0, 0, w, h)
-
-          ctx.lineWidth = 1
-          for (var i = 0; i < edges.length; i++) {
-            var e = edges[i],
-              na = nodes[e.a],
-              nb = nodes[e.b]
-            ctx.strokeStyle = 'rgba(125,155,200,' + (0.13 * (1 - e.d / 260)).toFixed(4) + ')'
-            ctx.beginPath()
-            ctx.moveTo(na.x, na.y)
-            ctx.lineTo(nb.x, nb.y)
-            ctx.stroke()
-          }
-
-          for (var j = 0; j < nodes.length; j++) {
-            var n = nodes[j]
-            var tw = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(now / 1400 + n.ph)
-            ctx.fillStyle = 'rgba(150,175,255,' + (0.22 + 0.4 * tw).toFixed(3) + ')'
-            ctx.beginPath()
-            ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
-            ctx.fill()
-          }
-
-          for (var k = pulses.length - 1; k >= 0; k--) {
-            var p = pulses[k]
-            p.t += p.sp * 16
-            if (p.t >= 1) {
-              pulses.splice(k, 1)
-              continue
-            }
-            var A = nodes[p.dir ? p.e.a : p.e.b],
-              B = nodes[p.dir ? p.e.b : p.e.a]
-            var t = p.t
-            var x = A.x + (B.x - A.x) * t,
-              y = A.y + (B.y - A.y) * t
-            var fade = Math.sin(t * Math.PI)
-            var g = ctx.createRadialGradient(x, y, 0, x, y, 16)
-            g.addColorStop(0, 'rgba(95,230,216,' + (0.5 * fade).toFixed(3) + ')')
-            g.addColorStop(1, 'rgba(95,230,216,0)')
-            ctx.fillStyle = g
-            ctx.beginPath()
-            ctx.arc(x, y, 16, 0, Math.PI * 2)
-            ctx.fill()
-          }
-
-          if (!reduce) raf = requestAnimationFrame(draw)
-        }
-
-        build()
-        if (reduce) {
-          /* one static frame: nodes + edges, no pulses, no loop */
-          draw(0)
-        } else {
-          raf = requestAnimationFrame(draw)
-          setInterval(spawn, 900)
-        }
-
-        var rt
-        window.addEventListener('resize', function () {
-          clearTimeout(rt)
-          rt = setTimeout(function () {
-            build()
-            if (reduce) draw(0)
-          }, 200)
-        })
-
-        document.addEventListener('visibilitychange', function () {
-          if (reduce) return
-          if (document.hidden) {
-            if (raf) cancelAnimationFrame(raf)
-            raf = null
-          } else if (!raf) {
-            raf = requestAnimationFrame(draw)
-          }
-        })
-      })()
-    </script>
-  </body>
+  // Progressive enhancement: both buttons already link to /releases/latest, so
+  // if this fetch fails (offline, rate-limited, API down) the page still works
+  // and simply shows no version label.
+  fetch('https://api.github.com/repos/trevormil/TerMinal/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json' },
+  })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status) })
+    .then(function (rel) {
+      var dmg = (rel.assets || []).filter(function (a) { return /arm64\.dmg$/.test(a.name) })[0]
+      if (!dmg) return
+      var label = rel.tag_name + ' \u00b7 ' + Math.round(dmg.size / 1048576) + ' MB'
+      ;['a', 'b'].forEach(function (k) {
+        var link = document.getElementById('dl-' + k)
+        if (link) link.href = dmg.browser_download_url
+        var span = document.getElementById('rel-' + k)
+        if (span) span.textContent = label
+      })
+    })
+    .catch(function () {})
+})()
+</script>
+</body>
 </html>
