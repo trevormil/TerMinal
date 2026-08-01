@@ -4,7 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderTree,
-  PanelRightClose,
+  LayoutGrid,
   RotateCw,
   type LucideIcon,
 } from 'lucide-react'
@@ -19,13 +19,13 @@ import type { FileEntry, Plugin, TabContext } from '../lib/types'
 
 /**
  * The Terminal tab's work column: ONE accordion down the right edge —
- * Files · Tickets · PRs / MRs · Vitals — each section independently
+ * Files · Tickets · PRs / MRs · Cockpit — each section independently
  * collapsible, several open at once. That last property is the whole point;
  * this is deliberately not a tab strip, which would force a choice between
  * them.
  *
- * Vitals is where the cockpit went. It is one section holding the entire
- * widget stack, all visible at once when expanded — NOT a second, nested
+ * Cockpit is the old standalone panel, folded in. It is one section holding the
+ * entire widget stack, all visible at once when expanded — NOT a second, nested
  * accordion. Widgets are still enabled/disabled/reordered in the Plugins
  * drawer; this only renders what that drawer decided.
  *
@@ -35,7 +35,7 @@ import type { FileEntry, Plugin, TabContext } from '../lib/types'
  * mount would double that forever.
  *
  * Height model: SIZE-TO-CONTENT, not drag-to-resize. Tickets and PRs/MRs take
- * the height their content wants; Files and Vitals split the remainder and
+ * the height their content wants; Files and Cockpit split the remainder and
  * scroll internally. No per-section drag handles and no persisted heights —
  * one less thing to store and get wrong.
  */
@@ -48,6 +48,36 @@ function useSectionCollapse(sectionId: string, whenUnset: boolean) {
   return [collapsed, () => setCollapsed((c) => !c)] as const
 }
 
+/**
+ * The one right-flexed affordance a section header can carry (Files' refresh,
+ * Cockpit's plugin drawer). One component so every section action is the same
+ * size, colour and hover — and so a click can never fall through to the header
+ * row underneath, which is the collapse toggle.
+ */
+function SectionAction({
+  icon: Icon,
+  title,
+  onClick,
+}: {
+  icon: LucideIcon
+  title: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
+    >
+      <Icon size={11} strokeWidth={2} />
+    </button>
+  )
+}
+
 function Section({
   icon: Icon,
   title,
@@ -55,7 +85,7 @@ function Section({
   collapsed,
   onToggle,
   actions,
-  /** This section splits the column's leftover height (Files and Vitals do). */
+  /** This section splits the column's leftover height (Files and Cockpit do). */
   grow,
   children,
 }: {
@@ -158,13 +188,11 @@ function FilesSection({
       onToggle={onToggle}
       grow
       actions={
-        <button
-          onClick={() => setVersion((v) => v + 1)}
+        <SectionAction
+          icon={RotateCw}
           title="Refresh files"
-          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
-        >
-          <RotateCw size={11} strokeWidth={2} />
-        </button>
+          onClick={() => setVersion((v) => v + 1)}
+        />
       }
     >
       <FileTree
@@ -203,7 +231,7 @@ function PluginSection({
           collapsed={collapsed}
           onToggle={toggle}
         >
-          {/* The plugin renders a titled Card in the Vitals stack; in here the
+          {/* The plugin renders a titled Card in the Cockpit stack; in here the
               section header IS that title, so Card drops its own frame.
               `empty:hidden` because a plugin that renders nothing (mr-summary
               before its first poll) would otherwise leave this div's insets
@@ -218,29 +246,32 @@ function PluginSection({
 }
 
 /**
- * The former cockpit, as one section: every enabled widget, boxed, stacked, all
+ * The cockpit, as one section: every enabled widget, boxed, stacked, all
  * visible at once. Deliberately NOT nested accordions — being able to sweep the
  * whole set of live session signals in one glance is the reason the cockpit was
  * worth keeping.
  */
-function VitalsSection({
+function CockpitSection({
   widgets,
   onHide,
   onEnableDefaults,
+  onOpenPlugins,
 }: {
   widgets: Plugin[]
   onHide: (id: string) => void
   onEnableDefaults: () => void
+  onOpenPlugins: () => void
 }) {
-  const [collapsed, toggle] = useSectionCollapse('vitals', false)
+  const [collapsed, toggle] = useSectionCollapse('cockpit', false)
   return (
     <Section
       icon={Activity}
-      title="Vitals"
+      title="Cockpit"
       count={widgets.length || null}
       collapsed={collapsed}
       onToggle={toggle}
       grow
+      actions={<SectionAction icon={LayoutGrid} title="Plugins" onClick={onOpenPlugins} />}
     >
       {widgets.length === 0 ? (
         <div className="m-2 rounded-xl border border-dashed border-[var(--gt-border)] p-3 text-center text-[11px] text-zinc-600">
@@ -271,26 +302,27 @@ function VitalsSection({
 
 export function WorkColumn({
   ctx,
-  onCollapse,
   active,
   known,
   enabled,
   widgets,
   onHideWidget,
   onEnableDefaults,
+  onOpenPlugins,
 }: {
   /** Null until the session reports its workspace; only Files needs it. */
   ctx: TabContext | null
-  onCollapse: () => void
   /** Only the focused session hosts the polling sections. */
   active: boolean
   /** Widget prefs, read once to seed each promoted section's collapse state. */
   known: string[]
   enabled: string[]
-  /** Enabled widgets, in the user's order, for the Vitals section. */
+  /** Enabled widgets, in the user's order, for the Cockpit section. */
   widgets: Plugin[]
   onHideWidget: (id: string) => void
   onEnableDefaults: () => void
+  /** Opens the same Plugins drawer the workspace header's chip opens. */
+  onOpenPlugins: () => void
 }) {
   const [filesCollapsed, toggleFiles] = useSectionCollapse('files', false)
   // A remote session, or one that hasn't resolved a workspace, has no tree to
@@ -298,18 +330,9 @@ export function WorkColumn({
   const showFiles = !!ctx && !!(ctx.repoRoot || ctx.cwd)
   return (
     <aside className="flex min-w-0 flex-col overflow-hidden border-l border-[var(--gt-border)] bg-[var(--gt-bg)]">
-      <div className="flex shrink-0 items-center gap-1 border-b border-[var(--gt-border)] px-2 py-1.5">
-        <span className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
-          Work
-        </span>
-        <button
-          onClick={onCollapse}
-          title="Hide work column"
-          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
-        >
-          <PanelRightClose size={12} strokeWidth={2} />
-        </button>
-      </div>
+      {/* No title row: the four section headers already name everything in
+          here, and hiding the column is a one-click affordance in the session
+          chrome. */}
       <div className="flex min-h-0 flex-1 flex-col">
         {showFiles && ctx && (
           <FilesSection ctx={ctx} collapsed={filesCollapsed} onToggle={toggleFiles} />
@@ -322,10 +345,11 @@ export function WorkColumn({
             {SECTION_PLUGINS.map((p) => (
               <PluginSection key={p.id} plugin={p} known={known} enabled={enabled} />
             ))}
-            <VitalsSection
+            <CockpitSection
               widgets={widgets}
               onHide={onHideWidget}
               onEnableDefaults={onEnableDefaults}
+              onOpenPlugins={onOpenPlugins}
             />
           </>
         )}

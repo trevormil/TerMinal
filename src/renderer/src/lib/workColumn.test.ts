@@ -10,33 +10,33 @@ import { readCollapsed, sectionCollapseKey, writeCollapsed } from './panelCollap
 const p = (id: string) => ({ id })
 
 describe('partitionPluginHosts', () => {
-  test('promoted plugins get their own section; everything else falls to Vitals', () => {
-    const { vitals, sections } = partitionPluginHosts([
+  test('promoted plugins get their own section; everything else falls to Cockpit', () => {
+    const { cockpit, sections } = partitionPluginHosts([
       p('session'),
       p('tickets'),
       p('usage'),
       p('mr-summary'),
     ])
 
-    expect(vitals.map((x) => x.id)).toEqual(['session', 'usage'])
+    expect(cockpit.map((x) => x.id)).toEqual(['session', 'usage'])
     expect(sections.map((x) => x.id)).toEqual(['tickets', 'mr-summary'])
   })
 
   test('the two section kinds never share a plugin — no plugin can poll twice', () => {
     const all = [p('session'), p('tickets'), p('usage'), p('mr-summary'), p('todos')]
-    const { vitals, sections } = partitionPluginHosts(all)
+    const { cockpit, sections } = partitionPluginHosts(all)
 
-    const ids = [...vitals, ...sections].map((x) => x.id)
+    const ids = [...cockpit, ...sections].map((x) => x.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids.sort()).toEqual(all.map((x) => x.id).sort())
   })
 
-  test('every promoted id is absent from Vitals, whatever order it arrives in', () => {
-    // The double-mount guard is one-directional in practice: Vitals renders
-    // whatever it is handed, so a promoted plugin leaking into `vitals` is the
+  test('every promoted id is absent from Cockpit, whatever order it arrives in', () => {
+    // The double-mount guard is one-directional in practice: Cockpit renders
+    // whatever it is handed, so a promoted plugin leaking into `cockpit` is the
     // failure that would poll twice.
-    const { vitals } = partitionPluginHosts([p('mr-summary'), p('tickets'), p('git')])
-    for (const id of SECTION_PLUGIN_IDS) expect(vitals.map((x) => x.id)).not.toContain(id)
+    const { cockpit } = partitionPluginHosts([p('mr-summary'), p('tickets'), p('git')])
+    for (const id of SECTION_PLUGIN_IDS) expect(cockpit.map((x) => x.id)).not.toContain(id)
   })
 
   test('section order follows SECTION_PLUGIN_IDS, not registry order', () => {
@@ -103,10 +103,10 @@ describe('section collapse persistence', () => {
 
   test('several sections stay open at once — collapse is not mutually exclusive', () => {
     const s = fake()
-    const all = ['files', ...SECTION_PLUGIN_IDS, 'vitals']
+    const all = ['files', ...SECTION_PLUGIN_IDS, 'cockpit']
     for (const id of all) writeCollapsed(sectionCollapseKey(id), false, s)
     const open = all.filter((id) => !readCollapsed(sectionCollapseKey(id), true, s))
-    expect(open).toEqual(['files', 'tickets', 'mr-summary', 'vitals'])
+    expect(open).toEqual(['files', 'tickets', 'mr-summary', 'cockpit'])
   })
 })
 

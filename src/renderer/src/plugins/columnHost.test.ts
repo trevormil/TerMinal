@@ -6,7 +6,7 @@ import type { Mr, Ticket } from '../lib/types'
 
 // The accordion picks its top-level sections out of the registry BY ID. A typo
 // (or a renamed plugin) would silently leave the section missing and the widget
-// still in the Vitals stack, so pin the two together.
+// still in the Cockpit stack, so pin the two together.
 describe('the work column hosts the real plugin specs', () => {
   test('SECTION_PLUGIN_IDS matches the plugins it names', () => {
     expect([tickets.id, mrSummary.id]).toEqual([...SECTION_PLUGIN_IDS])

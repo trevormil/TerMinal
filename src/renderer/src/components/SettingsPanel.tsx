@@ -1983,7 +1983,7 @@ export function SettingsPanel({
 
   if (!s)
     return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
         <Loader2 className="animate-spin text-zinc-500" />
       </div>
     )

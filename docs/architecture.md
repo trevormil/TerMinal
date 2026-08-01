@@ -34,16 +34,16 @@ Each `SessionView` mounts:
 
 - a **TerminalPane** (xterm.js) — always mounted; its PTY runs `claude`.
 - a **work column** aside on the right — one VS Code-style accordion of
-  Files / Tickets / PRs·MRs / **Vitals**, several sections open at once. Vitals
-  is the former cockpit: one section holding the whole widget stack, all of it
+  Files / Tickets / PRs·MRs / **Cockpit**, several sections open at once. Cockpit
+  is the old standalone panel folded in: one section holding the whole widget stack, all of it
   visible at once (not a nested accordion). Every polling section renders only
   when the session is active, so backgrounded sessions don't poll.
 - the **tab** overlay — full-screen surfaces that sit over the terminal grid.
 
-A top-level section and a Vitals widget are **two renderings of one `Plugin`
+A top-level section and a Cockpit widget are **two renderings of one `Plugin`
 contract**. `plugins/registry.ts` partitions the auto-discovered registry via
 `lib/workColumn.ts` (`SECTION_PLUGIN_IDS`), so every plugin is either its own
-section or a Vitals widget — never both, so it can never mount, and therefore
+section or a Cockpit widget — never both, so it can never mount, and therefore
 poll, twice. Promoting a widget to its own section is one line in that array. A
 section draws its own title, so it renders the plugin under
 `CardChromeProvider chrome="bare"` and `Card` drops its frame instead of

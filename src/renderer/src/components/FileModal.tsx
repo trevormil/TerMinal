@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, X } from 'lucide-react'
 import { CodeEditor } from './CodeEditor'
+import { FileViewer, hasViewer } from './FileViewer'
+import { needsBinaryRead, viewerKindFor } from '../../../shared/file-viewers'
 import { langForPath, useLangsReady } from '../lib/lazyLang'
 import { navigateTo } from '../lib/nav'
 import { fileIcon } from '../lib/fileIcons'
@@ -17,6 +19,12 @@ const openInFilesTab = (path: string) => {
  * A single file, opened and edited without leaving the Terminal tab. Portaled to
  * document.body so it escapes the session grid's stacking context.
  *
+ * Rendering is the Files tab's `FileViewer`, not a second implementation:
+ * images, PDFs, markdown, CSV, SVG and unknown binaries render the way they do
+ * over there, and only genuinely text-shaped files reach CodeMirror. Sending
+ * everything to the editor is the exact bug FileViewer was built to fix — an
+ * `icon.png` opened here used to be a failed utf8 read and nothing else.
+ *
  * Highlighting goes through the lazy grammar loader — importing the CodeMirror
  * language barrel here instead would pull ~7.2 MB back into the entry chunk.
  *
@@ -31,11 +39,24 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
   const [err, setErr] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Rendered-vs-source for the kinds that offer a toggle; owned here for the
+  // same reason the Files tab owns it — FileViewer is remounted when it flips.
+  const [viewerSource, setViewerSource] = useState(false)
   const dialog = useRef<HTMLDivElement>(null)
   // Read by the unmount flush, which must not close over a stale buffer.
   const latest = useRef<{ content: string; dirty: boolean }>({ content: '', dirty: false })
 
+  const kind = viewerKindFor(path)
+  // Binary kinds have no editable text: FileViewer loads their bytes itself.
+  const readOnly = needsBinaryRead(kind)
+
   useEffect(() => {
+    setViewerSource(false)
+    if (readOnly) {
+      setContent('')
+      latest.current = { content: '', dirty: false }
+      return
+    }
     let alive = true
     void window.gt.files.read(path).then((r) => {
       if (!alive) return
@@ -46,7 +67,7 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
     return () => {
       alive = false
     }
-  }, [path])
+  }, [path, readOnly])
 
   const save = async () => {
     if (!latest.current.dirty) return
@@ -96,7 +117,7 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
       <div
@@ -116,7 +137,9 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
           <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-400">
             {path}
           </span>
-          {content !== undefined && (
+          {/* Save state belongs to the editor. A read-only kind has nothing to
+              save, so it gets no status and no Save button. */}
+          {!readOnly && content !== undefined && (
             <span className={`shrink-0 text-[11px] ${dirty ? 'text-amber-400' : 'text-zinc-600'}`}>
               {saving ? 'saving…' : dirty ? 'unsaved' : 'saved'}
             </span>
@@ -148,23 +171,45 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {err ? (
-            // Binaries, images, and anything else the utf8 read refuses. The
-            // Files tab has the rendered viewers — the jump above is the fix.
+          {err && !hasViewer(path) ? (
             <div className="p-6 text-[12px] text-zinc-600">{err}</div>
           ) : content === undefined ? (
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
-          ) : (
-            <CodeEditor
+          ) : hasViewer(path) && !viewerSource ? (
+            // Rendered viewer (markdown/image/pdf/csv/svg/binary). Runs even
+            // when the utf8 read failed — an image legitimately fails that read
+            // and loads through the binary channel instead.
+            <FileViewer
               key={path}
-              value={content}
-              onChange={(v) => {
-                latest.current = { content: v, dirty: true }
-                setContent(v)
-                setDirty(true)
-              }}
-              extensions={langForPath(path)}
+              path={path}
+              text={content}
+              showSource={false}
+              onWantsSource={setViewerSource}
             />
+          ) : (
+            <div className="flex h-full min-h-0 flex-col">
+              {hasViewer(path) && (
+                <FileViewer
+                  key={`${path}:src`}
+                  path={path}
+                  text={content}
+                  showSource
+                  onWantsSource={setViewerSource}
+                />
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  key={path}
+                  value={content}
+                  onChange={(v) => {
+                    latest.current = { content: v, dirty: true }
+                    setContent(v)
+                    setDirty(true)
+                  }}
+                  extensions={langForPath(path)}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>

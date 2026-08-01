@@ -26,7 +26,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import type { Choice } from './components/EntryScreen'
 import { EngineLogo } from './components/EngineLogo'
 import { useResizableWidth, ResizeHandle } from './components/ResizeHandle'
-import { VITALS_PLUGINS } from './plugins/registry'
+import { COCKPIT_PLUGINS } from './plugins/registry'
 import { ALL_TABS } from './tabs/registry'
 import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
@@ -165,7 +165,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
       </div>
       {confirmOpen && (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-5"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5"
           onClick={() => setConfirmOpen(false)}
         >
           <div
@@ -317,10 +317,10 @@ export function SessionView({
   const isRemote = !!choice.remote
 
   const allPlugins = useMemo(
-    // VITALS_PLUGINS, not ALL_PLUGINS: Tickets and PRs/MRs have their own
+    // COCKPIT_PLUGINS, not ALL_PLUGINS: Tickets and PRs/MRs have their own
     // accordion sections now, and a plugin mounted in both places would poll
     // twice.
-    () => [...VITALS_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
+    () => [...COCKPIT_PLUGINS, ...cmdPlugins].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)),
     [cmdPlugins],
   )
   const availablePlugins = useMemo(
@@ -1063,7 +1063,7 @@ export function SessionView({
                 className="absolute inset-y-0 -translate-x-1/2"
               />
             )}
-            {/* The one work column: Files · Tickets · PRs/MRs · Vitals. It isn't
+            {/* The one work column: Files · Tickets · PRs/MRs · Cockpit. It isn't
                 gated on `active` — the Files section lists once on mount and
                 never polls, so a backgrounded session costs one IPC — but every
                 polling section inside it is. */}
@@ -1085,7 +1085,7 @@ export function SessionView({
                     ),
                   )
                 }
-                onCollapse={() => setColumnCollapsed(true)}
+                onOpenPlugins={() => setDrawer(true)}
               />
             )}
           </div>
