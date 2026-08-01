@@ -6,8 +6,8 @@ import type { RepoTrustStatus } from '../lib/types'
 // The review surface for the per-repo trust gate (src/main/repo-trust.ts) plus
 // its persisted refusal (src/main/ipc/repo-trust-denials.ts).
 //
-// One component, rendered in two places — the Plugins drawer (where the chip's
-// badge leads, and where widgets are managed) and the Inbox tab — so there is
+// One component, rendered in two places — the Plugins drawer (where the header's
+// trust dot leads, and where widgets are managed) and the Inbox tab — so there is
 // exactly one way this decision is ever presented. While a decision is
 // outstanding it always lists the literal commands: approving a hash you cannot
 // read is not consent, and the whole point of the gate is that repo-controlled

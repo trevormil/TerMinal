@@ -58,10 +58,16 @@ function SectionAction({
   icon: Icon,
   title,
   onClick,
+  /** Needs attention — draws a dot. Never the ONLY place that dot appears: a
+      collapsed section or column would hide it. See trustDotVisible. */
+  alert,
+  alertLabel,
 }: {
   icon: LucideIcon
   title: string
   onClick: () => void
+  alert?: boolean
+  alertLabel?: string
 }) {
   return (
     <button
@@ -71,9 +77,17 @@ function SectionAction({
         e.stopPropagation()
         onClick()
       }}
-      className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-white/5 hover:text-zinc-300"
+      className={`relative flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-white/5 hover:text-zinc-300 ${
+        alert ? 'text-[var(--gt-red)]' : 'text-zinc-600'
+      }`}
     >
       <Icon size={11} strokeWidth={2} />
+      {alert && (
+        <span
+          aria-label={alertLabel}
+          className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--gt-red)]"
+        />
+      )}
     </button>
   )
 }
@@ -256,11 +270,13 @@ function CockpitSection({
   onHide,
   onEnableDefaults,
   onOpenPlugins,
+  trustPending,
 }: {
   widgets: Plugin[]
   onHide: (id: string) => void
   onEnableDefaults: () => void
   onOpenPlugins: () => void
+  trustPending: boolean
 }) {
   const [collapsed, toggle] = useSectionCollapse('cockpit', false)
   return (
@@ -271,7 +287,19 @@ function CockpitSection({
       collapsed={collapsed}
       onToggle={toggle}
       grow
-      actions={<SectionAction icon={LayoutGrid} title="Plugins" onClick={onOpenPlugins} />}
+      actions={
+        <SectionAction
+          icon={LayoutGrid}
+          title={
+            trustPending
+              ? 'This repo’s widgets need your approval before they can run — open Plugins to read them'
+              : 'Plugins'
+          }
+          onClick={onOpenPlugins}
+          alert={trustPending}
+          alertLabel="Repo widgets need approval"
+        />
+      }
     >
       {widgets.length === 0 ? (
         <div className="m-2 rounded-xl border border-dashed border-[var(--gt-border)] p-3 text-center text-[11px] text-zinc-600">
@@ -309,6 +337,7 @@ export function WorkColumn({
   onHideWidget,
   onEnableDefaults,
   onOpenPlugins,
+  trustPending,
 }: {
   /** Null until the session reports its workspace; only Files needs it. */
   ctx: TabContext | null
@@ -321,8 +350,12 @@ export function WorkColumn({
   widgets: Plugin[]
   onHideWidget: (id: string) => void
   onEnableDefaults: () => void
-  /** Opens the same Plugins drawer the workspace header's chip opens. */
+  /** Opens the Plugins drawer, where widgets are managed and repo trust is
+      approved. This section header is the only button-shaped route to it. */
   onOpenPlugins: () => void
+  /** Repo widgets are waiting on approval — dot the Plugins action. The header's
+      column toggle carries the same dot, so collapsing this away loses nothing. */
+  trustPending: boolean
 }) {
   const [filesCollapsed, toggleFiles] = useSectionCollapse('files', false)
   // A remote session, or one that hasn't resolved a workspace, has no tree to
@@ -350,6 +383,7 @@ export function WorkColumn({
               onHide={onHideWidget}
               onEnableDefaults={onEnableDefaults}
               onOpenPlugins={onOpenPlugins}
+              trustPending={trustPending}
             />
           </>
         )}

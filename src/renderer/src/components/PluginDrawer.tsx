@@ -31,7 +31,7 @@ export function PluginDrawer({
   onMove: (id: string, dir: -1 | 1) => void
   onReorder: (ids: string[]) => void
   onClose: () => void
-  /** Shared with the Plugins chip's badge, so approving here clears it at once. */
+  /** Shared with the header's trust dot, so approving here clears it at once. */
   trustPrompt: RepoTrustPrompt
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
