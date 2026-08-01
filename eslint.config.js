@@ -32,4 +32,22 @@ export default tseslint.config(
       ],
     },
   },
+  // The UX suite and its scripts: same correctness rules, minus react-hooks —
+  // that plugin reads Playwright's `use()` fixture callback as a React hook.
+  {
+    files: ['tests/**/*.ts', 'scripts/**/*.ts'],
+    extends: [tseslint.configs.base],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
+      ],
+    },
+  },
 )

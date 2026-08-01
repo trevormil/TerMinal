@@ -618,6 +618,14 @@ export function SessionView({
       <button
         key={id}
         style={noDrag}
+        // aria-current makes the selected tab legible to assistive tech and to
+        // the UX suite, which could otherwise only infer it from a CSS class.
+        // (Not role="tab": these pills live in a mixed header row, not a
+        // tablist, so the ARIA tab pattern would be a lie. DetailTabs is the
+        // real tablist.) data-tab-id is the stable handle — the visible label is
+        // forge-dependent ("PRs" vs "MRs"), so names are not reliable selectors.
+        aria-current={on ? 'page' : undefined}
+        data-tab-id={id}
         onClick={() => setActiveTab(id)}
         className={`${
           variant === 'side'
@@ -1092,7 +1100,9 @@ export function SessionView({
 
           {/* full-screen view tab */}
           {active && !onTerminal && ActiveTab && ctx && (
-            <div className="absolute inset-0 z-10">
+            // data-tab-pane is the UX suite's handle on "what the user is
+            // actually looking at" — several panes stay mounted at once.
+            <div className="absolute inset-0 z-10" data-tab-pane={ActiveTab.id}>
               <ErrorBoundary label={ActiveTab.title}>
                 <ActiveTab.Component ctx={ctx} />
               </ErrorBoundary>

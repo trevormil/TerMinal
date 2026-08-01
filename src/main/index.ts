@@ -1182,8 +1182,17 @@ function appDocumentUrl(): string {
   )
 }
 
+// Electron has no true headless mode. `show: false` is the closest equivalent:
+// the window is created and the renderer runs and paints exactly as normal —
+// so every assertion and every screenshot still works — it just never appears
+// on screen or takes focus. Opt-IN via env, so production behaviour is
+// unchanged; the UX suite sets it, and `HEADED=1` turns it back off for
+// debugging. See docs/ux-testing.md.
+const headless = () => process.env.TERMINAL_HEADLESS === '1'
+
 function createWindow() {
   win = new BrowserWindow({
+    show: !headless(),
     width: 1320,
     height: 820,
     backgroundColor: '#0a0a0f',
@@ -1247,7 +1256,7 @@ function createWindow() {
   win.on('enter-full-screen', sendFullscreen)
   win.on('leave-full-screen', sendFullscreen)
   win.on('ready-to-show', () => {
-    win?.show()
+    if (!headless()) win?.show()
     sendFullscreen()
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
