@@ -135,8 +135,14 @@ export function makeSandbox(): Sandbox {
         engines,
         // The Panels tab hides itself until a panel is configured, so without
         // this the suite's "open every tab" test would silently skip it.
-        // about:blank keeps the embedded webview off the network.
-        pinnedPanels: [{ id: 'ux-fixture-panel', title: 'Fixture panel', url: 'about:blank' }],
+        //
+        // Must be a real http(s) URL: ticket 102 now validates panel URLs on the
+        // WRITE path, so `about:blank` is filtered out of settings and the tab
+        // disappears again. Port 1 on loopback is unroutable, so the frame still
+        // never reaches the network — the property the old value was chosen for.
+        pinnedPanels: [
+          { id: 'ux-fixture-panel', title: 'Fixture panel', url: 'http://127.0.0.1:1/' },
+        ],
       },
       null,
       2,
