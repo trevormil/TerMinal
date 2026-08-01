@@ -4,14 +4,7 @@
 // Storage: ~/.config/TerMinal/bg-tasks.json (single file, last 50 tasks)
 // Logs:    ~/.config/TerMinal/bg-tasks/<id>.log
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  openSync,
-  closeSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync } from 'node:fs'
 import { applySweepFinals } from './bg-sweep'
 import { join, basename } from 'node:path'
 import { readFileTail } from './fs-tail'
