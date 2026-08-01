@@ -3,479 +3,900 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TerMinal - local software factory for coding agents</title>
+    <title>TerMinal — a local software factory for coding agents</title>
+    <meta
+      name="description"
+      content="A macOS desktop app that hosts the real Claude Code and Codex CLI with a live cockpit, scheduled agents, tickets, and cross-repo observability. Local-first: no server, no account."
+    />
     <link rel="icon" type="image/png" href="logo.png" />
+    <meta property="og:title" content="TerMinal — a local software factory for coding agents" />
+    <meta
+      property="og:description"
+      content="Host the real Claude Code and Codex CLI in a desktop cockpit. Local-first: no server, no account."
+    />
+    <meta property="og:image" content="https://trevormil.github.io/TerMinal/logo.png" />
+    <meta name="theme-color" content="#06070a" />
     <style>
+      /* ---- tokens: accents sampled from logo.png (hue 180 aqua -> hue 240 periwinkle) ---- */
       :root {
-        --bg: #0a0a0f;
-        --panel: #12121a;
-        --border: #232334;
-        --accent: #7c5cff;
-        --accent2: #00e0c6;
-        --ok: #6ee7b7;
-        --warn: #ffb35c;
-        --text: #e7e7ee;
-        --mute: #8a8a9a;
+        --bg: #06070a;
+        --surface: #0d0f14;
+        --surface-2: #111419;
+        --border: #1c2029;
+        --text: #e8ecf2;
+        --muted: #8992a3;
+        --faint: #5a6272;
+        --accent: #5fe6d8;
+        --accent-2: #8fa4ff;
+        --radius: 14px;
+        --sans:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+        --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
       }
+
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
       body {
         background: var(--bg);
         color: var(--text);
-        font-family: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
-        line-height: 1.5;
+        font-family: var(--sans);
+        line-height: 1.55;
         -webkit-font-smoothing: antialiased;
-        background-image:
-          linear-gradient(rgba(124, 92, 255, 0.08) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(0, 224, 198, 0.05) 1px, transparent 1px);
-        background-size:
-          42px 42px,
-          42px 42px;
       }
+
+      a {
+        color: inherit;
+      }
+
+      /* focus ring — one token, used everywhere (keyboard pass) */
+      a:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+        border-radius: 6px;
+      }
+
       .wrap {
-        max-width: 980px;
+        max-width: 1080px;
         margin: 0 auto;
         padding: 0 24px;
       }
+
+      /* ---------- atmosphere (background only; foreground text never moves) ---------- */
+      .bg-fx {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .bg-fx::before {
+        content: '';
+        position: absolute;
+        inset: -20%;
+        background:
+          radial-gradient(50% 38% at 50% -6%, rgba(95, 230, 216, 0.1), transparent 62%),
+          radial-gradient(42% 34% at 84% 2%, rgba(143, 164, 255, 0.08), transparent 60%);
+        filter: blur(14px);
+      }
+      #atmosphere {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.75;
+      }
+
+      /* ---------- header ---------- */
       header {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 26px 0;
+        gap: 11px;
+        padding: 22px 0;
       }
       .logo {
-        width: 26px;
-        height: 26px;
-        border-radius: 7px;
-        display: inline-block;
-        vertical-align: middle;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
       }
       .brand {
-        font-weight: 700;
-        letter-spacing: 0;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        font-size: 15px;
       }
       header nav {
         margin-left: auto;
         display: flex;
-        gap: 18px;
-        font-size: 13px;
+        align-items: center;
+        gap: 22px;
+        font-size: 14px;
       }
       header nav a {
-        color: var(--mute);
+        color: var(--muted);
         text-decoration: none;
       }
       header nav a:hover {
         color: var(--text);
       }
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 18px;
+
+      /* ---------- hero ---------- */
+      .hero {
+        padding: 78px 0 20px;
       }
-      .btn {
+      .eyebrow {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--text);
-        background: #101018;
-        padding: 9px 12px;
-        font-size: 13px;
-        text-decoration: none;
-      }
-      .btn.primary {
-        border-color: rgba(124, 92, 255, 0.8);
-        background: rgba(124, 92, 255, 0.18);
-      }
-      .btn:hover {
-        border-color: var(--accent);
-      }
-
-      .hero {
-        padding: 56px 0 36px;
-      }
-      .tag {
-        display: inline-block;
+        font-family: var(--mono);
         font-size: 12px;
-        color: var(--accent2);
+        color: var(--muted);
         border: 1px solid var(--border);
         border-radius: 999px;
-        padding: 5px 12px;
-        margin-bottom: 22px;
+        padding: 6px 13px;
+        margin-bottom: 26px;
+      }
+      .eyebrow b {
+        color: var(--accent);
+        font-weight: 500;
       }
       h1 {
-        font-size: clamp(42px, 8vw, 72px);
-        line-height: 1.05;
-        letter-spacing: 0;
-        font-weight: 800;
-        max-width: 14ch;
-      }
-      h1 .grad {
-        background: linear-gradient(100deg, var(--accent), var(--accent2));
+        font-size: clamp(52px, 11vw, 118px);
+        line-height: 0.94;
+        letter-spacing: -0.035em;
+        font-weight: 700;
+        background: linear-gradient(104deg, var(--accent) 2%, #e4ebf7 42%, var(--accent-2) 78%);
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
       }
       .sub {
-        color: var(--mute);
+        color: var(--muted);
+        font-size: clamp(17px, 2.2vw, 20px);
+        max-width: 54ch;
+        margin: 24px 0 34px;
+      }
+      .sub b {
+        color: var(--text);
+        font-weight: 550;
+      }
+
+      .ctas {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--text);
+        background: var(--surface);
+        padding: 13px 18px;
+        font-size: 15px;
+        font-weight: 550;
+        text-decoration: none;
+        transition:
+          border-color 0.18s,
+          background 0.18s;
+      }
+      .btn:hover {
+        border-color: var(--faint);
+        background: var(--surface-2);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #04231f;
+      }
+      .btn.primary:hover {
+        background: #7bf0e4;
+        border-color: #7bf0e4;
+      }
+      .btn .v {
+        opacity: 0.72;
+        font-weight: 450;
+      }
+
+      .req {
+        margin-top: 20px;
+        font-size: 13.5px;
+        color: var(--faint);
+        max-width: 64ch;
+      }
+      .req a {
+        color: var(--muted);
+      }
+
+      /* ---------- shared section shell (the one repeated structural token) ---------- */
+      section {
+        padding: 74px 0;
+      }
+      h2 {
+        font-size: clamp(26px, 3.6vw, 36px);
+        letter-spacing: -0.025em;
+        font-weight: 650;
+        margin-bottom: 12px;
+      }
+      .lede {
+        color: var(--muted);
+        max-width: 60ch;
+        margin-bottom: 34px;
+        font-size: 16.5px;
+      }
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+
+      /* ---------- window-chromed screenshot ---------- */
+      .shot {
+        overflow: hidden;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      }
+      .shot .bar {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 11px 14px;
+        background: #0a0c10;
+        border-bottom: 1px solid var(--border);
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .shot .bar span.t {
+        margin-left: 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      /* ---------- feature cards ---------- */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      .feat {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 24px;
+      }
+      .feat .n {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--accent);
+        margin-bottom: 14px;
+      }
+      .feat h3 {
         font-size: 17px;
-        max-width: 62ch;
-        margin: 20px 0 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        letter-spacing: -0.01em;
+      }
+      .feat p {
+        font-size: 14.5px;
+        color: var(--muted);
+      }
+
+      /* ---------- gallery ---------- */
+      .gallery {
+        display: grid;
+        grid-template-columns: 1.9fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+      .gallery figure {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--surface);
+      }
+      .gallery img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .gallery figcaption {
+        font-size: 13px;
+        color: var(--faint);
+        padding: 12px 15px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* ---------- install ---------- */
+      .install {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 26px;
+        display: flex;
+        flex-direction: column;
+        /* grid/flex items default to min-width:auto, which lets the nowrap
+           install command widen the whole page. Reset it down the chain. */
+        min-width: 0;
+      }
+      .card h3 {
+        font-size: 17px;
+        font-weight: 600;
+        margin-bottom: 7px;
+      }
+      .card p {
+        font-size: 14.5px;
+        color: var(--muted);
+        margin-bottom: 20px;
+      }
+      .card .foot {
+        margin-top: auto;
       }
       .cmd {
         display: flex;
         align-items: center;
         gap: 12px;
-        background: var(--panel);
+        background: #05070a;
         border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 14px 16px;
-        font-size: 14px;
-        overflow-x: auto;
-      }
-      .cmd .dollar {
-        color: var(--accent);
+        border-radius: 10px;
+        padding: 13px 14px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        margin-bottom: 16px;
+        min-width: 0;
       }
       .cmd code {
+        /* min-width:0 is load-bearing: without it the nowrap command refuses to
+           shrink inside the flex row and widens the whole page at 375px. */
+        display: block;
+        min-width: 0;
+        overflow-x: auto;
         white-space: nowrap;
-        color: var(--text);
+        color: #cfd6e2;
+        scrollbar-width: none;
+      }
+      .cmd code::-webkit-scrollbar {
+        display: none;
+      }
+      .cmd .d {
+        color: var(--accent);
+        user-select: none;
       }
       .copy {
         margin-left: auto;
+        flex: none;
         background: transparent;
         border: 1px solid var(--border);
-        color: var(--mute);
+        color: var(--muted);
         border-radius: 7px;
-        padding: 5px 10px;
+        padding: 5px 11px;
         font: inherit;
-        font-size: 12px;
+        font-size: 11.5px;
         cursor: pointer;
       }
       .copy:hover {
         color: var(--text);
+        border-color: var(--faint);
+      }
+      .copy[data-done='1'] {
+        color: var(--accent);
         border-color: var(--accent);
       }
-
-      /* mock app */
-      .mock {
-        margin: 46px 0;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+      .steps {
+        list-style: none;
+        font-size: 14px;
+        color: var(--muted);
+        display: grid;
+        gap: 9px;
       }
-      .mock .bar {
+      .steps li {
         display: flex;
-        align-items: center;
-        gap: 7px;
-        padding: 11px 14px;
-        background: #0c0c12;
-        border-bottom: 1px solid var(--border);
-        font-size: 12px;
-        color: var(--mute);
+        gap: 10px;
       }
-      .dot {
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
+      .steps li::before {
+        content: '→';
+        color: var(--faint);
+        flex: none;
       }
-      .mock .body {
-        display: grid;
-        grid-template-columns: 1fr 240px;
-        min-height: 300px;
-      }
-      .term {
-        padding: 16px;
-        font-size: 13px;
-        background: var(--bg);
-      }
-      .term .p {
-        color: var(--accent2);
-      }
-      .term .line {
-        color: #cfcfdd;
-        margin: 3px 0;
-      }
-      .term .tool {
-        color: var(--mute);
-      }
-      .side {
-        border-left: 1px solid var(--border);
-        background: var(--bg);
-        padding: 12px;
-      }
-      .side .h {
-        font-size: 9px;
-        letter-spacing: 0;
-        color: #5b5b6e;
-        margin-bottom: 10px;
-      }
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 10px;
-        margin-bottom: 9px;
-      }
-      .card .t {
-        font-size: 9.5px;
-        letter-spacing: 0;
-        color: var(--mute);
-        text-transform: uppercase;
-        margin-bottom: 6px;
-      }
-      .card .v {
-        font-size: 20px;
-        font-weight: 700;
-      }
-      .gauge {
-        height: 7px;
-        border-radius: 99px;
-        background: #000;
-        margin-top: 7px;
-        overflow: hidden;
-      }
-      .gauge > i {
-        display: block;
-        height: 100%;
-        border-radius: 99px;
-      }
-      .badge {
-        font-size: 9px;
-        padding: 2px 6px;
-        border-radius: 6px;
-        border: 1px solid;
-      }
-      .b-ok {
-        color: #6ee7b7;
-        border-color: #34d39955;
-        background: #10b9811a;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin: 40px 0;
-      }
-      .feat {
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 18px;
-        background: var(--panel);
-      }
-      .feat .ic {
-        font-size: 22px;
-      }
-      .feat h3 {
-        font-size: 15px;
-        margin: 10px 0 6px;
-      }
-      .feat p {
-        font-size: 13px;
-        color: var(--mute);
-      }
-      .pill {
-        border: 1px solid rgba(124, 92, 255, 0.45);
-        border-radius: 999px;
-        color: #c9c0ff;
-        font-size: 11px;
-        padding: 3px 8px;
-        white-space: nowrap;
-      }
-
-      .snip {
-        margin: 18px 0 50px;
-        background: #0c0c12;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 18px;
+      .steps code {
+        font-family: var(--mono);
         font-size: 12.5px;
-        white-space: pre;
-        overflow-x: auto;
-        color: #c8c8d6;
+        color: var(--text);
       }
-      .snip .k {
-        color: var(--accent);
-      }
-      .snip .s {
-        color: var(--accent2);
-      }
-      .snip .c {
-        color: #5b5b6e;
-      }
-      h2 {
-        font-size: 13px;
-        letter-spacing: 0;
-        text-transform: uppercase;
-        color: var(--mute);
-        margin: 16px 0;
-      }
+
       footer {
         border-top: 1px solid var(--border);
-        padding: 26px 0 60px;
-        color: #5b5b6e;
-        font-size: 12px;
+        padding: 28px 0 64px;
+        color: var(--faint);
+        font-size: 13px;
         display: flex;
-        gap: 16px;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: center;
       }
       footer a {
-        color: var(--mute);
+        color: var(--muted);
         text-decoration: none;
       }
-      @media (max-width: 760px) {
-        header {
-          flex-wrap: wrap;
-        }
-        header nav {
-          width: 100%;
-          margin-left: 0;
-        }
-        .mock .body,
-        .grid {
+      footer a:hover {
+        color: var(--text);
+      }
+      footer .sp {
+        margin-left: auto;
+      }
+
+      /* ---------- scroll reveal (sections only, never the hero) ----------
+         Gated behind .js so that with scripting off nothing is ever hidden. */
+      .js .reveal {
+        opacity: 0;
+        transform: translateY(16px);
+        transition:
+          opacity 0.5s ease,
+          transform 0.5s ease;
+      }
+      .js .reveal.in {
+        opacity: 1;
+        transform: none;
+      }
+
+      @media (max-width: 860px) {
+        .grid,
+        .gallery,
+        .install {
           grid-template-columns: 1fr;
         }
-        .side {
-          border-left: 0;
-          border-top: 1px solid var(--border);
+        .hero {
+          padding-top: 48px;
+        }
+        section {
+          padding: 56px 0;
+        }
+        header nav a.hide-sm {
+          display: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+        .js .reveal {
+          opacity: 1;
+          transform: none;
         }
       }
     </style>
+    <script>
+      document.documentElement.className += ' js'
+    </script>
   </head>
   <body>
+    <div class="bg-fx"><canvas id="atmosphere"></canvas></div>
+
     <div class="wrap">
       <header>
         <img class="logo" src="logo.png" alt="" />
         <span class="brand">TerMinal</span>
         <nav>
+          <a class="hide-sm" href="#what">What it is</a>
           <a href="#install">Install</a>
           <a href="https://github.com/trevormil/TerMinal">GitHub</a>
         </nav>
       </header>
 
-      <section class="hero">
-        <span class="tag">local-first · Claude Code · Codex · Cursor Agent</span>
+      <div class="hero">
+        <span class="eyebrow"><b>◆</b> macOS desktop app · local-first</span>
         <h1>TerMinal</h1>
         <p class="sub">
-          A desktop cockpit for coding agents: real terminal sessions, a fleet view,
-          inbox-driven human gates, scheduled runs, snippets, plugins, and local-first
-          workflow automation.
+          A software factory for coding agents. Hosts the <b>real</b> Claude Code and Codex CLI in a
+          desktop cockpit — with tickets, scheduled runs, and cross-repo observability around them.
         </p>
-        <div class="cmd" id="install">
-          <span class="dollar">$</span>
-          <code id="cmd-text">curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh | bash</code>
-          <button class="copy" onclick="copyCmd()">copy</button>
+        <div class="ctas">
+          <a class="btn primary" id="dl" href="https://github.com/trevormil/TerMinal/releases/latest">
+            Download for macOS <span class="v" id="dl-v"></span>
+          </a>
+          <a class="btn" href="#install">Build from source</a>
         </div>
-        <div class="actions">
-          <a class="btn primary" href="https://github.com/trevormil/TerMinal">GitHub repo</a>
+        <p class="req">
+          Apple silicon only. The build is unsigned — on first open, right-click the app and choose
+          <b>Open</b> to get past Gatekeeper. Verify your download against
+          <a
+            href="https://github.com/trevormil/TerMinal/releases/latest/download/SHA256SUMS.txt"
+            >SHA256SUMS.txt</a
+          >.
+        </p>
+      </div>
+
+      <section style="padding-top: 40px">
+        <div class="panel shot reveal">
+          <div class="bar">
+            <span class="dot" style="background: #ff5f57"></span>
+            <span class="dot" style="background: #febc2e"></span>
+            <span class="dot" style="background: #28c840"></span>
+            <span class="t">TerMinal — Tickets</span>
+          </div>
+          <img
+            src="shots/tickets.png"
+            width="1500"
+            height="941"
+            alt="TerMinal's Tickets tab: a backlog list on the left and the selected ticket rendered as markdown on the right."
+          />
         </div>
       </section>
 
-      <!-- mock -->
-      <div class="mock">
-        <div class="bar">
-          <span class="dot" style="background: #ff5f57"></span>
-          <span class="dot" style="background: #febc2e"></span>
-          <span class="dot" style="background: #28c840"></span>
-          <span style="margin-left: 8px">◆ TerMinal - codex · my-project</span>
-          <span style="margin-left: auto">Inbox · 2 · Plugins · 4</span>
-        </div>
-        <div class="body">
-          <div class="term">
-            <div class="line"><span class="p">&gt;</span> implement ticket 0042 and keep going</div>
-            <div class="line tool">● Read&nbsp;&nbsp;src/main/data.ts</div>
-            <div class="line tool">● Edit&nbsp;&nbsp;plugins/tdd/index.tsx</div>
-            <div class="line tool">● Bash&nbsp;&nbsp;bun test &nbsp;<span style="color:#6ee7b7">74/74 pass</span></div>
-            <div class="line"><span class="p">&gt;</span> <span style="opacity:.6">done - committed, pushed, and filed one inbox item for review.</span></div>
+      <section id="what">
+        <h2 class="reveal">Not a wrapper. A workbench.</h2>
+        <p class="lede reveal">
+          The agent CLIs you already use, running as real terminal sessions — plus the workflow layer
+          they have always been missing.
+        </p>
+        <div class="grid">
+          <div class="feat reveal">
+            <div class="n">01</div>
+            <h3>Real agent sessions</h3>
+            <p>
+              Claude Code, Codex, or any local process in a real terminal tab. Sessions are
+              resumable, and a live cockpit reads out context window, current tool call, and git
+              state as it runs.
+            </p>
           </div>
-          <div class="side">
-            <div class="h">COCKPIT · 4 LIVE</div>
-            <div class="card">
-              <div class="t">Context Window</div>
-              <div class="v">74.9%</div>
-              <div class="gauge">
-                <i style="width: 75%; background: var(--accent2)"></i>
-              </div>
-            </div>
-            <div class="card">
-              <div class="t">Now Doing</div>
-              <div style="font-size: 13px; font-weight: 600">Bash</div>
-              <div style="font-size: 11px; color: var(--mute)">bun test</div>
-            </div>
-            <div class="card">
-              <div class="t">Plan Usage</div>
-              <div style="font-size: 11px; color: var(--mute); margin-bottom: 3px">5-hour · 41%</div>
-              <div class="gauge"><i style="width: 41%; background: var(--accent2)"></i></div>
-              <div style="font-size: 11px; color: var(--mute); margin: 6px 0 3px">weekly · 63%</div>
-              <div class="gauge"><i style="width: 63%; background: #ffb35c"></i></div>
-            </div>
-            <div class="card">
-              <div class="t" style="display: flex; justify-content: space-between">
-                TDD / Review <span class="badge b-ok">current</span>
-              </div>
-              <div class="v">86</div>
-              <div style="font-size: 11px; color: var(--mute)">verdict approve · tests pass</div>
-            </div>
+          <div class="feat reveal">
+            <div class="n">02</div>
+            <h3>Work that outlives the tab</h3>
+            <p>
+              Tickets, pull requests, scheduled agents, run history, and human-approval gates are
+              first-class tabs — so a task survives closing the session it started in.
+            </p>
+          </div>
+          <div class="feat reveal">
+            <div class="n">03</div>
+            <h3>Yours, on disk</h3>
+            <p>
+              No server and no account. Agents, schedules, plugins, and widgets are plain files you
+              can read, diff, and commit alongside the repo they belong to.
+            </p>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="grid">
-        <div class="feat">
-          <div class="ic">01</div>
-          <h3>Agent terminals</h3>
-          <p>Run Claude, Codex, Cursor Agent, or local processes in real terminal tabs with snippets and resumable sessions.</p>
+      <section>
+        <h2 class="reveal">Every run, accounted for</h2>
+        <p class="lede reveal">
+          Scheduled and in-session runs land in one history, across every repo you manage.
+        </p>
+        <div class="gallery">
+          <figure class="reveal">
+            <img
+              src="shots/runs.png"
+              width="1500"
+              height="941"
+              alt="TerMinal's Runs tab listing agent and cron runs with status, repo, engine, and duration."
+            />
+            <figcaption>Runs — cron and in-session runs in one filterable history.</figcaption>
+          </figure>
+          <figure class="reveal">
+            <img
+              src="shots/cockpit.png"
+              width="620"
+              height="884"
+              alt="TerMinal's cockpit rail showing session, context window usage, the current tool call, and plan usage."
+            />
+            <figcaption>Cockpit — live session telemetry beside the terminal.</figcaption>
+          </figure>
         </div>
-        <div class="feat">
-          <div class="ic">02</div>
-          <h3>Workflow cockpit</h3>
-          <p>Tickets, PRs, agents, schedules, CI, reports, activity, docs, and inbox items stay visible while work runs.</p>
-        </div>
-        <div class="feat">
-          <div class="ic">03</div>
-          <h3>Extensible by files</h3>
-          <p>Plugins, widgets, skills, agents, and snippets stay as plain files that can be versioned with your repo.</p>
-        </div>
-      </div>
+      </section>
 
-      <h2 id="plugins">A plugin file</h2>
-      <div class="snip"><span class="c">// src/renderer/src/plugins/context/index.tsx</span>
-<span class="k">const</span> plugin: Plugin&lt;TranscriptStats&gt; = {
-  id: <span class="s">'context'</span>,
-  title: <span class="s">'Context Window'</span>,
-  icon: <span class="s">'🧠'</span>,
-  intervalMs: <span class="s">2000</span>,
-  defaultEnabled: <span class="k">true</span>,
-  poll: (gt) =&gt; gt.<span class="s">transcript</span>(),        <span class="c">// read live state</span>
-  render: (d) =&gt; (
-    &lt;Card icon=<span class="s">"🧠"</span> title=<span class="s">"Context Window"</span>&gt;
-      &lt;Big value={<span class="s">`${d.contextPct.toFixed(1)}%`</span>} /&gt;
-      &lt;Gauge pct={d.contextPct} /&gt;
-    &lt;/Card&gt;
-  ),
-}
-<span class="k">export default</span> plugin</div>
+      <section id="install">
+        <h2 class="reveal">Install</h2>
+        <p class="lede reveal">
+          Take the DMG for the packaged app, or the source route if you want to hack on it.
+        </p>
+        <div class="install">
+          <div class="card reveal">
+            <h3>Download the app</h3>
+            <p>The packaged desktop build. Apple silicon, unsigned.</p>
+            <ul class="steps">
+              <li>Open the DMG and drag <code>TerMinal.app</code> to Applications.</li>
+              <li>First launch: right-click the app → <b>Open</b> → <b>Open</b>.</li>
+              <li>Onboarding detects your installed agent CLIs.</li>
+            </ul>
+            <div class="foot" style="margin-top: 22px">
+              <a
+                class="btn primary"
+                id="dl2"
+                href="https://github.com/trevormil/TerMinal/releases/latest"
+              >
+                Download for macOS <span class="v" id="dl2-v"></span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card reveal">
+            <h3>Build from source</h3>
+            <p>
+              Clones the repo and installs dependencies. Requires
+              <a href="https://bun.sh" style="color: var(--muted)">bun</a> and git.
+            </p>
+            <div class="cmd">
+              <span class="d">$</span>
+              <code id="cmd-text"
+                >curl -fsSL https://raw.githubusercontent.com/trevormil/TerMinal/main/install.sh |
+                bash</code
+              >
+              <button
+                class="copy"
+                id="copy-btn"
+                type="button"
+                aria-label="Copy install command"
+                aria-live="polite"
+              >
+                copy
+              </button>
+            </div>
+            <ul class="steps">
+              <li>Clones to <code>~/TerMinal</code> (pass a path to change it).</li>
+              <li>Then run <code>bun run dev</code> to launch.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
       <footer>
         <span>◆ TerMinal</span>
-        <a href="https://github.com/trevormil/TerMinal">source</a>
-        <span>·</span>
-        <span>macOS · MIT · local-first</span>
+        <a href="https://github.com/trevormil/TerMinal">Source</a>
+        <a href="https://github.com/trevormil/TerMinal/releases">Releases</a>
+        <span class="sp">macOS · Apple silicon · MIT</span>
       </footer>
     </div>
 
     <script>
-      function copyCmd() {
-        navigator.clipboard.writeText(document.getElementById('cmd-text').innerText.trim())
-        const b = document.querySelector('.copy')
-        b.innerText = 'copied ✓'
-        setTimeout(() => (b.innerText = 'copy'), 1500)
-      }
+      ;(function () {
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+        /* ---- copy button ---- */
+        var btn = document.getElementById('copy-btn')
+        btn.addEventListener('click', function () {
+          var text = document.getElementById('cmd-text').textContent.replace(/\s+/g, ' ').trim()
+          var done = function () {
+            btn.textContent = 'copied'
+            btn.dataset.done = '1'
+            setTimeout(function () {
+              btn.textContent = 'copy'
+              delete btn.dataset.done
+            }, 1600)
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, fallback)
+          } else {
+            fallback()
+          }
+          function fallback() {
+            var ta = document.createElement('textarea')
+            ta.value = text
+            ta.setAttribute('readonly', '')
+            ta.style.position = 'fixed'
+            ta.style.opacity = '0'
+            document.body.appendChild(ta)
+            ta.select()
+            try {
+              document.execCommand('copy')
+              done()
+            } catch (e) {
+              /* leave the text visible for manual copy */
+            }
+            document.body.removeChild(ta)
+          }
+        })
+
+        /* ---- resolve the latest DMG ----
+           The asset filename embeds the version (TerMinal-<v>-arm64.dmg), so
+           /releases/latest/download/<name> cannot work without a per-release edit.
+           Links therefore point at /releases/latest (always correct, no JS needed)
+           and are upgraded to the direct asset URL when the API answers. */
+        fetch('https://api.github.com/repos/trevormil/TerMinal/releases/latest', {
+          headers: { Accept: 'application/vnd.github+json' },
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error(r.status)
+            return r.json()
+          })
+          .then(function (rel) {
+            var assets = rel.assets || []
+            var dmg = assets.filter(function (a) {
+              return /arm64\.dmg$/.test(a.name)
+            })[0]
+            if (dmg) {
+              var label = rel.tag_name + ' · ' + Math.round(dmg.size / 1048576) + ' MB'
+              ;['dl', 'dl2'].forEach(function (id) {
+                var el = document.getElementById(id)
+                if (!el) return
+                el.href = dmg.browser_download_url
+                document.getElementById(id + '-v').textContent = label
+              })
+            }
+          })
+          .catch(function () {
+            /* rate-limited or offline: the /releases/latest hrefs already work */
+          })
+
+        /* ---- scroll reveal (sections only) ---- */
+        var els = [].slice.call(document.querySelectorAll('.reveal'))
+        if (reduce || !('IntersectionObserver' in window)) {
+          els.forEach(function (el) {
+            el.classList.add('in')
+          })
+        } else {
+          var io = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (e, i) {
+                if (!e.isIntersecting) return
+                e.target.style.transitionDelay = (i % 5) * 70 + 'ms'
+                e.target.classList.add('in')
+                io.unobserve(e.target)
+              })
+            },
+            { threshold: 0.12 },
+          )
+          els.forEach(function (el) {
+            io.observe(el)
+          })
+        }
+
+        /* ---- hero atmosphere: node graph with pulses travelling the edges ---- */
+        var cv = document.getElementById('atmosphere')
+        var ctx = cv.getContext && cv.getContext('2d')
+        if (!ctx) return
+
+        var nodes = [],
+          edges = [],
+          pulses = [],
+          dpr = 1,
+          w = 0,
+          h = 0,
+          raf = null
+
+        function build() {
+          dpr = Math.min(window.devicePixelRatio || 1, 2)
+          w = cv.clientWidth
+          h = Math.max(window.innerHeight, 620)
+          cv.width = w * dpr
+          cv.height = h * dpr
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+          var count = w < 700 ? 14 : 26
+          nodes = []
+          for (var i = 0; i < count; i++) {
+            nodes.push({
+              x: Math.random() * w,
+              y: Math.random() * h * 0.75,
+              r: 1 + Math.random() * 1.6,
+              ph: Math.random() * Math.PI * 2,
+            })
+          }
+          edges = []
+          var reach = w < 700 ? 190 : 240
+          for (var a = 0; a < nodes.length; a++) {
+            for (var b = a + 1; b < nodes.length; b++) {
+              var dx = nodes[a].x - nodes[b].x,
+                dy = nodes[a].y - nodes[b].y
+              var d = Math.sqrt(dx * dx + dy * dy)
+              if (d < reach) edges.push({ a: a, b: b, d: d })
+            }
+          }
+          pulses = []
+        }
+
+        function spawn() {
+          if (!edges.length || pulses.length > 14) return
+          var e = edges[(Math.random() * edges.length) | 0]
+          pulses.push({ e: e, t: 0, sp: 0.0016 + Math.random() * 0.0022, dir: Math.random() < 0.5 })
+        }
+
+        function draw(now) {
+          ctx.clearRect(0, 0, w, h)
+
+          ctx.lineWidth = 1
+          for (var i = 0; i < edges.length; i++) {
+            var e = edges[i],
+              na = nodes[e.a],
+              nb = nodes[e.b]
+            ctx.strokeStyle = 'rgba(125,155,200,' + (0.13 * (1 - e.d / 260)).toFixed(4) + ')'
+            ctx.beginPath()
+            ctx.moveTo(na.x, na.y)
+            ctx.lineTo(nb.x, nb.y)
+            ctx.stroke()
+          }
+
+          for (var j = 0; j < nodes.length; j++) {
+            var n = nodes[j]
+            var tw = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(now / 1400 + n.ph)
+            ctx.fillStyle = 'rgba(150,175,255,' + (0.22 + 0.4 * tw).toFixed(3) + ')'
+            ctx.beginPath()
+            ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+            ctx.fill()
+          }
+
+          for (var k = pulses.length - 1; k >= 0; k--) {
+            var p = pulses[k]
+            p.t += p.sp * 16
+            if (p.t >= 1) {
+              pulses.splice(k, 1)
+              continue
+            }
+            var A = nodes[p.dir ? p.e.a : p.e.b],
+              B = nodes[p.dir ? p.e.b : p.e.a]
+            var t = p.t
+            var x = A.x + (B.x - A.x) * t,
+              y = A.y + (B.y - A.y) * t
+            var fade = Math.sin(t * Math.PI)
+            var g = ctx.createRadialGradient(x, y, 0, x, y, 16)
+            g.addColorStop(0, 'rgba(95,230,216,' + (0.5 * fade).toFixed(3) + ')')
+            g.addColorStop(1, 'rgba(95,230,216,0)')
+            ctx.fillStyle = g
+            ctx.beginPath()
+            ctx.arc(x, y, 16, 0, Math.PI * 2)
+            ctx.fill()
+          }
+
+          if (!reduce) raf = requestAnimationFrame(draw)
+        }
+
+        build()
+        if (reduce) {
+          /* one static frame: nodes + edges, no pulses, no loop */
+          draw(0)
+        } else {
+          raf = requestAnimationFrame(draw)
+          setInterval(spawn, 900)
+        }
+
+        var rt
+        window.addEventListener('resize', function () {
+          clearTimeout(rt)
+          rt = setTimeout(function () {
+            build()
+            if (reduce) draw(0)
+          }, 200)
+        })
+
+        document.addEventListener('visibilitychange', function () {
+          if (reduce) return
+          if (document.hidden) {
+            if (raf) cancelAnimationFrame(raf)
+            raf = null
+          } else if (!raf) {
+            raf = requestAnimationFrame(draw)
+          }
+        })
+      })()
     </script>
   </body>
 </html>

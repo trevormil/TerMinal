@@ -1,59 +1,23 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import {
-  Plus,
-  Hand,
-  ArrowUpRight,
-  CircleDot,
-  GitPullRequest,
-  ListChecks,
-  Check,
-  X,
-  MessageSquare,
-  Bot,
-} from 'lucide-react'
+import { Plus, Hand, ArrowUpRight, CircleDot, ListChecks, Check, X, Bot } from 'lucide-react'
 import { Badge, badgeClasses } from './ui'
 import { Markdown } from './Markdown'
+import { DetailTabs } from './DetailTabs'
+import { TicketLineagePanel, useTicketLineage, lineageTabCount } from './TicketLineagePanel'
+import { TicketOwnerPanel } from './TicketOwnerPanel'
 import { groupLogEntries } from '../lib/ticketLog'
 import { logTimestamp, fullTimestamp } from '../lib/time'
 import {
-  statusTone,
-  priorityTone,
-  typeTone,
-  horizonTone,
-  stateTone,
-  verdictTone,
-  testTone,
-} from '../lib/badges'
+  activeTicketDetailTab,
+  ticketDetailTabs,
+  type TicketDetailSelection,
+} from '../lib/detailTabs'
+import { statusTone, priorityTone, typeTone, horizonTone } from '../lib/badges'
 import type { BadgeTone } from './ui'
-import type {
-  Ticket,
-  TicketAgent,
-  TicketAgentRecommendation,
-  TicketComment,
-  Mr,
-  Persona,
-} from '../lib/types'
-
-// A ticket's `prs:` entries are forge URLs (…/-/merge_requests/N or …/pull/N).
-// Parse the change number so we can link to the in-app MR view instead of
-// opening the upstream forge in a browser.
-export function prIidFromUrl(url: string): number | null {
-  const m = url.match(/(?:\/-\/merge_requests\/|\/pull\/|\/merge_requests\/)(\d+)/)
-  return m ? Number(m[1]) : null
-}
+import type { Ticket, TicketAgentRecommendation, TicketComment, Mr, Persona } from '../lib/types'
 
 const STATUSES = ['open', 'in-progress', 'closed', 'stuck', 'icebox']
 const PRIORITIES = ['critical', 'high', 'medium', 'low']
-
-export function ticketAgentContextId(agent?: TicketAgent): string {
-  if (!agent?.id) return ''
-  return agent.kind === 'persistent' ? `persistent:${agent.id}` : `agent:${agent.id}`
-}
-
-function contextToTicketAgent(context: Persona | undefined): TicketAgent | null {
-  if (!context?.agentId || !context.agentScope || !context.agentKind) return null
-  return { id: context.agentId, scope: context.agentScope, kind: context.agentKind }
-}
 
 function FieldSelect({
   value,
@@ -267,13 +231,9 @@ function LogSection({
   const blocks = groupLogEntries(comments)
 
   return (
-    <div className="mt-5 border-t border-[var(--gt-border)] pt-3">
-      <div className="mb-3 flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-zinc-500">
-        <MessageSquare size={12} strokeWidth={2} /> Log
-        {comments.length > 0 && (
-          <span className="tabular-nums text-zinc-600">{comments.length}</span>
-        )}
-      </div>
+    // The tab strip already names this pane and counts it, so the section owns
+    // nothing but the thread and its composer.
+    <div>
       {blocks.length > 0 && (
         <div className="mb-4">
           {blocks.map((b, bi) => (
@@ -366,14 +326,21 @@ function LogSection({
 }
 
 /**
- * The formatted ticket detail pane — header badges (status/priority/type/agent),
- * suggested-owner row, depends_on chips, PR list, acceptance criteria, and the
- * markdown body. Extracted from TicketsBrowser so the Tickets tab and the
- * cockpit widget's in-place modal render the same content from one place.
+ * The formatted ticket detail pane. A pinned identity header (id, status,
+ * priority, owner, title) stays visible above three horizontal tabs:
+ *
+ *   Ticket  — the default. Relations, acceptance criteria, body. What you
+ *             opened the ticket to read, sharing space with nothing.
+ *   Lineage — the changes this ticket produced and the runs that worked it.
+ *   Log     — the comment thread and its composer.
+ *
+ * Extracted from TicketsBrowser so the Tickets tab and the cockpit widget's
+ * in-place modal render the same content from one place. The host must give
+ * this a bounded height (it manages its own scrolling).
  *
  * `children` is the caller-specific action row (Implement → PR, run buttons in
- * the tab) rendered between the acceptance section and the body. When `onViewMr`
- * is absent, PR links open in the external browser instead of the in-app MR view.
+ * the tab) rendered on the Ticket tab. When `onViewMr` is absent, PR links open
+ * in the external browser instead of the in-app MR view.
  */
 export function TicketDetail({
   ticket,
@@ -382,6 +349,7 @@ export function TicketDetail({
   mrByIid,
   forgeLabel,
   forgeSym,
+  repoRoot,
   onChanged,
   onSelectTicket,
   onViewMr,
@@ -393,6 +361,8 @@ export function TicketDetail({
   mrByIid: Map<number, Mr>
   forgeLabel: string
   forgeSym: string
+  /** Active repo — scopes the Lineage tab's runs, whose source store is global. */
+  repoRoot: string
   onChanged: () => void
   onSelectTicket?: (slug: string) => void
   onViewMr?: (iid: number) => void
@@ -417,242 +387,194 @@ export function TicketDetail({
     }
   }, [selected.slug, selected.title, selected.type, selected.body])
 
+  // A tab choice belongs to the ticket it was made on, so a different ticket
+  // always opens on its own content. Derived rather than reset in an effect —
+  // an effect would render one frame of the previous ticket's tab first.
+  const [tabSelection, setTabSelection] = useState<TicketDetailSelection | null>(null)
+  const tab = activeTicketDetailTab(tabSelection, selected.slug)
+  const lineage = useTicketLineage(selected, repoRoot)
+  const tabs = ticketDetailTabs({
+    lineageCount: lineageTabCount(selected, lineage),
+    logCount: (selected.comments || []).length,
+  })
+
   return (
-    <div className="p-5">
-      <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
-        <span className="font-mono">{selected.externalKey || `#${selected.id}`}</span>
-        <FieldSelect
-          value={selected.status}
-          options={STATUSES}
-          tone={statusTone(selected.status)}
-          onChange={async (v) => {
-            await window.gt.tickets.update(selected.slug, { status: v })
-            onChanged()
-          }}
-        />
-        <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
-        <FieldSelect
-          value={selected.priority}
-          options={PRIORITIES}
-          tone={priorityTone(selected.priority)}
-          onChange={async (v) => {
-            await window.gt.tickets.update(selected.slug, { priority: v })
-            onChanged()
-          }}
-        />
-        {selected.horizon !== 'now' && (
-          <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
-        )}
-        {selected.provider === 'obsidian' && (
-          <button
-            onClick={() => window.gt.tickets.openInObsidian(selected.slug)}
-            title="Open this ticket in Obsidian"
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
-          >
-            <ArrowUpRight size={11} strokeWidth={2} />
-            Obsidian
-          </button>
-        )}
-        <select
-          value={ticketAgentContextId(selected.agent)}
-          onChange={async (e) => {
-            const context = agentContexts.find((a) => a.id === e.target.value)
-            const agent = contextToTicketAgent(context)
-            if (!agent) return
-            await window.gt.tickets.update(selected.slug, { agent })
-            onChanged()
-          }}
-          className="cursor-pointer rounded-md border border-[var(--gt-border)] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-300 outline-none focus:border-[var(--gt-accent)]/60"
-          title="Assigned agent for this ticket"
-        >
-          {agentContexts.map((a) => (
-            <option
-              key={a.id}
-              value={a.id}
-              className="bg-[var(--gt-panel)] normal-case text-zinc-200"
-            >
-              {a.title}
-            </option>
-          ))}
-        </select>
-        {selected.hitl && (
-          <Badge tone="red">
-            <Hand size={10} strokeWidth={2.25} />
-            HITL
-          </Badge>
-        )}
-        {selected.url && (
-          <button
-            onClick={() => window.gt.openExternal(selected.url || '')}
-            className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-accent-2)] hover:underline"
-          >
-            open
-            <ArrowUpRight size={10} strokeWidth={2} />
-          </button>
-        )}
-        {selected.status === 'stuck' && (
-          <button
-            onClick={async () => {
-              await window.gt.tickets.update(selected.slug, { status: 'open' })
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 px-5 pb-3 pt-5">
+        <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
+          <span className="font-mono">{selected.externalKey || `#${selected.id}`}</span>
+          <FieldSelect
+            value={selected.status}
+            options={STATUSES}
+            tone={statusTone(selected.status)}
+            onChange={async (v) => {
+              await window.gt.tickets.update(selected.slug, { status: v })
               onChanged()
             }}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/15"
-            title="Move this ticket back to open once the blocker is cleared."
-          >
-            <CircleDot size={10} strokeWidth={2.25} />
-            Unblock
-          </button>
-        )}
-      </div>
-      {/* Only surface the recommendation when it DIFFERS from the current
-          owner — recommending the owner you already have is pure noise.
-          When it differs, keep it to one quiet, borderless line; the
-          rationale + signals live in the hover title. */}
-      {agentRecommendation &&
-        (selected.agent.id !== agentRecommendation.agent.id ||
-          selected.agent.scope !== agentRecommendation.agent.scope ||
-          selected.agent.kind !== agentRecommendation.agent.kind) && (
-          <div
-            className="mb-3 mt-2.5 flex items-center gap-1.5 text-[11px] text-zinc-500"
-            title={[agentRecommendation.reason, agentRecommendation.signals.join(', ')]
-              .filter(Boolean)
-              .join(' · ')}
-          >
-            <span className="text-zinc-600">Suggested owner:</span>
-            <Badge tone="accent">
-              {agentContexts.find(
-                (a) =>
-                  a.agentId === agentRecommendation.agent.id &&
-                  a.agentKind === agentRecommendation.agent.kind,
-              )?.title || agentRecommendation.agent.id}
+          />
+          <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
+          <FieldSelect
+            value={selected.priority}
+            options={PRIORITIES}
+            tone={priorityTone(selected.priority)}
+            onChange={async (v) => {
+              await window.gt.tickets.update(selected.slug, { priority: v })
+              onChanged()
+            }}
+          />
+          {selected.horizon !== 'now' && (
+            <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+          )}
+          {selected.provider === 'obsidian' && (
+            <button
+              onClick={() => window.gt.tickets.openInObsidian(selected.slug)}
+              title="Open this ticket in Obsidian"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
+            >
+              <ArrowUpRight size={11} strokeWidth={2} />
+              Obsidian
+            </button>
+          )}
+          {selected.hitl && (
+            <Badge tone="red">
+              <Hand size={10} strokeWidth={2.25} />
+              HITL
             </Badge>
+          )}
+          {selected.url && (
+            <button
+              onClick={() => window.gt.openExternal(selected.url || '')}
+              className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-accent-2)] hover:underline"
+            >
+              open
+              <ArrowUpRight size={10} strokeWidth={2} />
+            </button>
+          )}
+          {selected.status === 'stuck' && (
             <button
               onClick={async () => {
-                await window.gt.tickets.update(selected.slug, {
-                  agent: agentRecommendation.agent,
-                })
+                await window.gt.tickets.update(selected.slug, { status: 'open' })
                 onChanged()
               }}
-              className="text-[10.5px] font-semibold text-[var(--gt-accent-light)] hover:underline"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/15"
+              title="Move this ticket back to open once the blocker is cleared."
             >
-              Apply
+              <CircleDot size={10} strokeWidth={2.25} />
+              Unblock
             </button>
-          </div>
-        )}
-      <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
-      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
-        {selected.created && <span>created {selected.created}</span>}
-        {selected.updated && <span>updated {selected.updated}</span>}
-      </div>
-      {selected.depends_on.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">depends on</span>
-          {selected.depends_on.map((depId) => {
-            const dep = allTickets?.find((t) => t.id === depId)
-            const blocked = dep && dep.status !== 'closed'
-            return (
-              <button
-                key={depId}
-                onClick={() => dep && onSelectTicket?.(dep.slug)}
-                title={
-                  dep
-                    ? `${dep.title} · ${dep.status}${blocked ? ' (blocking this)' : ''}`
-                    : `#${depId} not found in this backlog`
-                }
-                disabled={!dep}
-                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
-                  blocked
-                    ? 'border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10 text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20'
-                    : 'border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-300 hover:border-[var(--gt-accent)]/50'
-                }`}
-              >
-                <span className="font-mono">#{String(depId).padStart(4, '0')}</span>
-                {dep && <span className="text-[10px] text-zinc-500">{dep.status}</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {/* The other three relations. `blocks` is derived from every other
-          ticket's depends_on rather than stored, so the two directions of one
-          dependency can never disagree. */}
-      <RelationRow
-        label="blocks"
-        ids={(allTickets || []).filter((t) => t.depends_on.includes(selected.id)).map((t) => t.id)}
-        allTickets={allTickets}
-        onSelectTicket={onSelectTicket}
-      />
-      <RelationRow
-        label="related"
-        ids={selected.related || []}
-        allTickets={allTickets}
-        onSelectTicket={onSelectTicket}
-      />
-      <RelationRow
-        label="duplicate of"
-        ids={selected.duplicateOf ? [selected.duplicateOf] : []}
-        allTickets={allTickets}
-        onSelectTicket={onSelectTicket}
-      />
-      {(selected.prs.length > 0 || selected.workedBy.length > 0) && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {selected.prs.map((p) => {
-            const iid = prIidFromUrl(p)
-            if (iid == null)
-              return (
-                <button
-                  key={p}
-                  onClick={() => window.gt.openExternal(p)}
-                  className="inline-flex items-center gap-0.5 text-[11px] text-[var(--gt-accent-2)] hover:underline"
-                >
-                  {p.replace(/^https?:\/\/[^/]+\//, '')}
-                  <ArrowUpRight size={11} strokeWidth={2} />
-                </button>
-              )
-            const mr = mrByIid.get(iid)
-            return (
-              <button
-                key={p}
-                onClick={() => (onViewMr ? onViewMr(iid) : window.gt.openExternal(p))}
-                title={
-                  onViewMr
-                    ? `View ${forgeLabel} ${forgeSym}${iid} in-app`
-                    : `Open ${forgeLabel} ${forgeSym}${iid} in the browser`
-                }
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2 py-1 text-[11px] hover:border-[var(--gt-accent)]/50 hover:bg-white/5"
-              >
-                <GitPullRequest size={12} strokeWidth={2} className="text-zinc-500" />
-                <span className="font-mono text-zinc-300">
-                  {forgeSym}
-                  {forgeLabel}
-                  {iid}
-                </span>
-                {mr && <Badge tone={stateTone(mr.state)}>{mr.state}</Badge>}
-                {mr?.review && (
-                  <Badge tone={verdictTone(mr.review.verdict)}>{mr.review.verdict}</Badge>
-                )}
-                {mr?.review && (
-                  <Badge tone={testTone(mr.review.testStatus)}>tests {mr.review.testStatus}</Badge>
-                )}
-              </button>
-            )
-          })}
-          {selected.workedBy.length > 0 && (
-            <span
-              className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500"
-              title="Model(s) that wrote this MR"
-            >
-              ✍ written by {selected.workedBy.join(', ')}
-            </span>
           )}
         </div>
-      )}
-      <AcceptanceSection criteria={selected.acceptance} slug={selected.slug} onSaved={onChanged} />
-      {children}
-      {/* Run detail lives in the Runs view (via "View run" above) — the
-          ticket view stays purely ticket content. */}
-      <Markdown>{selected.body}</Markdown>
-      <LogSection comments={selected.comments || []} slug={selected.slug} onSaved={onChanged} />
+        <h1 className="mb-2 text-lg font-bold text-zinc-100">{selected.title}</h1>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
+          {selected.created && <span>created {selected.created}</span>}
+          {selected.updated && <span>updated {selected.updated}</span>}
+        </div>
+      </div>
+
+      <DetailTabs
+        tabs={tabs}
+        active={tab}
+        onSelect={(id) => setTabSelection({ slug: selected.slug, tab: id })}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === 'ticket' && (
+          <div className="px-5 pb-6 pt-4">
+            {selected.depends_on.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-[10.5px] uppercase tracking-wider text-zinc-600">
+                  depends on
+                </span>
+                {selected.depends_on.map((depId) => {
+                  const dep = allTickets?.find((t) => t.id === depId)
+                  const blocked = dep && dep.status !== 'closed'
+                  return (
+                    <button
+                      key={depId}
+                      onClick={() => dep && onSelectTicket?.(dep.slug)}
+                      title={
+                        dep
+                          ? `${dep.title} · ${dep.status}${blocked ? ' (blocking this)' : ''}`
+                          : `#${depId} not found in this backlog`
+                      }
+                      disabled={!dep}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                        blocked
+                          ? 'border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10 text-[var(--gt-red)] hover:bg-[var(--gt-red)]/20'
+                          : 'border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-300 hover:border-[var(--gt-accent)]/50'
+                      }`}
+                    >
+                      <span className="font-mono">#{String(depId).padStart(4, '0')}</span>
+                      {dep && <span className="text-[10px] text-zinc-500">{dep.status}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {/* The other three relations. `blocks` is derived from every other
+          ticket's depends_on rather than stored, so the two directions of one
+          dependency can never disagree. */}
+            <RelationRow
+              label="blocks"
+              ids={(allTickets || [])
+                .filter((t) => t.depends_on.includes(selected.id))
+                .map((t) => t.id)}
+              allTickets={allTickets}
+              onSelectTicket={onSelectTicket}
+            />
+            <RelationRow
+              label="related"
+              ids={selected.related || []}
+              allTickets={allTickets}
+              onSelectTicket={onSelectTicket}
+            />
+            <RelationRow
+              label="duplicate of"
+              ids={selected.duplicateOf ? [selected.duplicateOf] : []}
+              allTickets={allTickets}
+              onSelectTicket={onSelectTicket}
+            />
+            <AcceptanceSection
+              criteria={selected.acceptance}
+              slug={selected.slug}
+              onSaved={onChanged}
+            />
+            {children}
+            <Markdown>{selected.body}</Markdown>
+          </div>
+        )}
+
+        {tab === 'owner' && (
+          <TicketOwnerPanel
+            ticket={selected}
+            agentContexts={agentContexts}
+            recommendation={agentRecommendation}
+            onChanged={onChanged}
+          />
+        )}
+
+        {tab === 'lineage' && (
+          <TicketLineagePanel
+            ticket={selected}
+            repoRoot={repoRoot}
+            lineage={lineage}
+            mrByIid={mrByIid}
+            forgeLabel={forgeLabel}
+            forgeSym={forgeSym}
+            onViewMr={onViewMr}
+          />
+        )}
+
+        {tab === 'log' && (
+          <div className="px-5 pb-6 pt-4">
+            <LogSection
+              comments={selected.comments || []}
+              slug={selected.slug}
+              onSaved={onChanged}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
