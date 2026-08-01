@@ -40,6 +40,9 @@ struct WsRun: Codable, Identifiable, Hashable {
     /// Which log store holds this run — REQUIRED to fetch its log.
     let source: String
     let hostId: String?
+    /// Best-effort "what actually got done" — absent on runs the desktop never
+    /// summarized, so decoding must tolerate a missing key.
+    let summary: String?
 
     var isRunning: Bool { status == "running" || status == "working" }
     var failed: Bool { status == "error" || status == "failed" }

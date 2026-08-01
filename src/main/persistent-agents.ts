@@ -8,7 +8,6 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { basename, extname, join, resolve, sep } from 'node:path'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { quarantineCorruptFile, readJsonState, writeJsonAtomic } from './atomic-write'
 import { configPath } from './config-dir'
@@ -22,6 +21,8 @@ import {
   writeFile as writeScopedFile,
 } from './files'
 
+/** Resolved per call (not at module load) through the one config-dir seam, so a
+ *  test can point this at a temp dir. See src/main/config-dir.ts. */
 export const persistentAgentsRoot = (): string => configPath('persistent-agents')
 
 export type PersistentAgent = {
@@ -336,6 +337,208 @@ export function updatePersistentAgentFile(
   return getPersistentAgent(agent.id)!
 }
 
+// ---- memory compaction ----------------------------------------------------
+//
+// Nothing else bounds MEMORY.md / JOURNAL.md growth, so a long-lived persistent
+// agent eventually blows its own context on every run. Past a size threshold we
+// summarize the journal into MEMORY.md and shrink JOURNAL.md to its newest
+// entries — but ONLY after the original has been copied verbatim into
+// archive/. History is never deleted, only moved; if any step fails the live
+// journal is left exactly as it was. Mirrors the retention discipline in
+// run-retention.ts.
+
+/** Journal size (bytes) at which the next compaction pass runs. */
+export const JOURNAL_COMPACT_THRESHOLD_BYTES = 48_000
+
+/** How many trailing bytes of the journal stay live after compaction. */
+const JOURNAL_KEEP_BYTES = 8_000
+
+export function shouldCompactJournal(
+  bytes: number,
+  threshold = JOURNAL_COMPACT_THRESHOLD_BYTES,
+): boolean {
+  return bytes >= threshold && bytes > 0
+}
+
+export type CompactionResult = {
+  compacted: boolean
+  reason?: string
+  archivePath?: string
+  bytesBefore?: number
+  bytesAfter?: number
+}
+
+export type CompactionOptions = {
+  threshold?: number
+  /** Injectable so tests never shell out. Defaults to the cheap-llm path. */
+  summarize?: (journal: string, agentTitle: string) => Promise<string>
+  /** Injectable so tests don't need electron. Defaults to emitActivity. */
+  emit?: (e: { kind: 'info'; title: string; detail?: string }) => void
+}
+
+async function defaultSummarize(journal: string, agentTitle: string): Promise<string> {
+  const { cheapCall } = await import('./cheap-llm')
+  const res = await cheapCall({
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You compact an AI agent run journal into durable memory. Output 5-12 terse markdown bullets covering recurring decisions, stable facts, preferences, and lessons that should change future runs. Drop one-off run chatter. No preamble.',
+      },
+      { role: 'user', content: `Agent: ${agentTitle}\n\nJournal:\n${journal.slice(-60_000)}` },
+    ],
+    model: 'haiku',
+    maxTokens: 700,
+    temperature: 0.1,
+    timeoutMs: 60_000,
+  })
+  if (!res.ok || !res.text?.trim()) throw new Error(res.error || 'empty summary')
+  return res.text.trim()
+}
+
+async function defaultEmit(e: { kind: 'info'; title: string; detail?: string }): Promise<void> {
+  try {
+    const { emitActivity } = await import('./events')
+    emitActivity(e)
+  } catch {
+    /* best effort — compaction already succeeded on disk */
+  }
+}
+
+/** Summarize an oversized journal into MEMORY.md, archiving the original first.
+ *  Never throws; a failure leaves every file untouched. */
+export async function compactPersistentAgentMemory(
+  id: string,
+  opts: CompactionOptions = {},
+): Promise<CompactionResult> {
+  let agent: PersistentAgent | null = null
+  try {
+    agent = readMeta(safeId(id))
+  } catch {
+    agent = null
+  }
+  if (!agent) return { compacted: false, reason: 'agent not found' }
+
+  // Two overlapping compactions would archive the same history twice and pay
+  // for two summaries. Launches can land back to back, so guard the whole pass.
+  if (compacting.has(agent.id)) return { compacted: false, reason: 'compaction already running' }
+  compacting.add(agent.id)
+  try {
+    return await compactInner(agent, opts)
+  } finally {
+    compacting.delete(agent.id)
+  }
+}
+
+const compacting = new Set<string>()
+
+async function compactInner(
+  agent: PersistentAgent,
+  opts: CompactionOptions,
+): Promise<CompactionResult> {
+  const journalPath = join(agent.dir, 'JOURNAL.md')
+  const journal = readText(journalPath)
+  const bytesBefore = Buffer.byteLength(journal)
+  if (!shouldCompactJournal(bytesBefore, opts.threshold))
+    return { compacted: false, reason: 'journal under threshold', bytesBefore }
+
+  // 1. Archive the ORIGINAL first. If this fails, compaction does not happen.
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  let archiveRel = join('archive', `JOURNAL-${stamp}.md`)
+  try {
+    mkdirSync(join(agent.dir, 'archive'), { recursive: true })
+    // Never overwrite an existing archive — two compactions can land in the
+    // same millisecond, and an archive is the only copy of that history.
+    for (let n = 1; existsSync(join(agent.dir, archiveRel)); n++)
+      archiveRel = join('archive', `JOURNAL-${stamp}-${n}.md`)
+  } catch {
+    /* handled by the write below */
+  }
+  const archiveAbs = join(agent.dir, archiveRel)
+  // Any abort after the archive exists must remove it. The journal is untouched
+  // on every failure path, so a left-behind archive is a pure duplicate — and
+  // compaction retries on every launch, so keeping them would pile up one full
+  // journal copy per launch whenever the summarizer is down (e.g. rate limited).
+  const abort = (reason: string): CompactionResult => {
+    try {
+      rmSync(archiveAbs, { force: true })
+    } catch {
+      /* nothing better to do; the journal is intact either way */
+    }
+    return { compacted: false, reason, bytesBefore }
+  }
+
+  try {
+    writeFileSync(archiveAbs, journal)
+    if (readText(archiveAbs) !== journal) throw new Error('archive verification failed')
+  } catch (e) {
+    return abort(`archive failed: ${(e as Error).message}`)
+  }
+
+  // 2. Summarize. A failed or empty summary aborts — better an oversized
+  //    journal than a truncated one with nothing recorded in its place.
+  let summary = ''
+  try {
+    summary = (await (opts.summarize || defaultSummarize)(journal, agent.title)).trim()
+  } catch (e) {
+    return abort(`summarize failed: ${(e as Error).message}`)
+  }
+  if (!summary) return abort('summarize returned nothing')
+
+  try {
+    // 3. Re-read the journal. The summarizer call above can take a minute, and
+    //    the agent whose launch triggered this is a SEPARATE process appending
+    //    its own entries the whole time. Truncating with the pre-await string
+    //    would silently destroy every entry written during the await — they'd
+    //    be missing from the live journal AND from the archive taken before it.
+    //    So: keep only what we archived, and re-attach anything appended since.
+    const current = readText(journalPath)
+    if (!current.startsWith(journal)) {
+      // Rewritten out from under us (manual edit, a concurrent compaction).
+      // We can't tell what is safe to drop, so drop nothing.
+      return abort('journal changed during summarization')
+    }
+    const appended = current.slice(journal.length)
+
+    // 4. Fold into MEMORY.md (append — durable memory is never rewritten).
+    const memoryPath = join(agent.dir, 'MEMORY.md')
+    const memory = readText(memoryPath, defaultMemory()).replace(/\s*$/, '')
+    writeFileSync(
+      memoryPath,
+      `${memory}\n\n## Compacted ${stamp}\n_Source journal archived at ${archiveRel}_\n\n${summary}\n`,
+    )
+
+    // 5. Shrink to the newest archived entries + everything appended since.
+    //    Slice on BYTES to match bytesBefore/JOURNAL_KEEP_BYTES accounting, then
+    //    resync to an entry boundary — that also discards any partial codepoint
+    //    a byte slice may have split. With no boundary in the kept window (one
+    //    giant entry), keep nothing rather than open the journal mid-entry;
+    //    the archive still has all of it.
+    const buf = Buffer.from(journal, 'utf8')
+    const kept = buf.subarray(Math.max(0, buf.length - JOURNAL_KEEP_BYTES)).toString('utf8')
+    const cut = kept.indexOf('\n## ')
+    const tail = cut >= 0 ? kept.slice(cut + 1) : ''
+    const next = `# Journal\n\n_Entries before ${stamp} were summarized into MEMORY.md and archived verbatim at ${archiveRel}._\n\n${tail}${appended}`
+    writeFileSync(journalPath, next)
+
+    agent.updatedAt = Date.now()
+    writeMeta(agent)
+
+    const detail = `journal ${Math.round(bytesBefore / 1024)}KB → ${Math.round(Buffer.byteLength(next) / 1024)}KB · archived at ${archiveRel}`
+    const emit = opts.emit || defaultEmit
+    emit({ kind: 'info', title: `Memory compacted · ${agent.title}`, detail })
+
+    return {
+      compacted: true,
+      archivePath: archiveRel,
+      bytesBefore,
+      bytesAfter: Buffer.byteLength(next),
+    }
+  } catch (e) {
+    return abort(`compaction failed: ${(e as Error).message}`)
+  }
+}
+
 export type PersistentAgentLaunchOptions = {
   repoRoot?: string
   engine?: Engine
@@ -354,6 +557,10 @@ export function persistentAgentLaunchPrompt(
   detail.lastRunAt = now
   detail.updatedAt = now
   writeMeta(detail)
+  // Best-effort, fire-and-forget: an oversized journal is compacted on the next
+  // launch rather than blocking this one. compactPersistentAgentMemory never
+  // throws and no-ops below the threshold.
+  void compactPersistentAgentMemory(id).catch(() => {})
   const taskText =
     task.trim() || 'Review your current STATE.md and continue the most important open thread.'
   const repoLine = opts.repoRoot

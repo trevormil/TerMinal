@@ -81,6 +81,15 @@ struct RunRow: View {
                         Text("· \(relativeTime(run.startedAt))")
                             .font(GT.mono(10)).foregroundStyle(GT.textFaint)
                     }
+                    // What actually got done. This is the line that matters most
+                    // when checking from a phone — status alone never says it.
+                    if let summary = run.summary, !summary.isEmpty {
+                        Text(summary)
+                            .font(GT.sans(11))
+                            .foregroundStyle(GT.textMuted)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 4)
                 Text(run.status)

@@ -439,6 +439,10 @@ struct RunDetailView: View {
                     }
                     Text("· \(run.source)").font(GT.mono(11)).foregroundStyle(GT.textFaint)
                 }
+                if let summary = run.summary, !summary.isEmpty {
+                    sectionLabel("Outcome")
+                    Text(summary).font(GT.sans(13)).foregroundStyle(GT.textMuted)
+                }
                 sectionLabel("Log")
                 CodeViewer(text: log.text, truncated: log.truncated)
             }
