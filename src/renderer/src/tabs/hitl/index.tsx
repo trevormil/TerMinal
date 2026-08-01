@@ -79,6 +79,7 @@ const SOURCE_TONE: Record<string, BadgeTone> = {
   listener: 'blue',
   'completion-hook': 'accent',
   'review-pattern': 'yellow',
+  monitor: 'red',
   manual: 'mute',
 }
 

@@ -199,6 +199,7 @@ import {
   validateMonitors,
   runMonitorProbe,
 } from './monitors'
+import { startMonitorLivenessWatch } from './monitor-liveness-runtime'
 import { listCiRuns, listCiJobs, fetchCiLog } from './ci'
 import { classifyBootstrapStatus } from './bootstrap'
 import { bakedTemplateSha, resolveTemplateSha, writeBootstrapStamp } from './bootstrap-stamp'
@@ -1300,6 +1301,9 @@ function createWindow() {
   onDigestEvent((channel, payload) => send(channel, payload))
   loadPersistedRuns() // restore past agent runs
   if (!activityTimer) activityTimer = setInterval(pollActivity, 1500)
+  // A dead monitoring daemon cannot report itself dead (ticket 117), so the
+  // liveness check has to run in a process that is definitely alive.
+  startMonitorLivenessWatch()
   if (!bootstrapped) {
     bootstrapped = true
     installBinariesAndReconcile()

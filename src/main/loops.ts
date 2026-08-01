@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
 import { emitActivity } from './events'
 import { enginePath, resolvedWorktreesDir } from './settings'
+import { parseWeightedScore } from './loop-score'
 import { gateSpawn } from './budgets'
 import { decideOutcome } from './loop-decide'
 import { localDay } from './local-day'
@@ -537,12 +538,14 @@ function decide(rec: LoopRecord): void {
       .filter((f) => f.endsWith('.md'))
       .sort()
     if (files.length >= 2) {
-      const val = (f: string): number =>
-        parseFloat(
-          (readFileSync(join(d, 'scores', f), 'utf8').match(/weighted:\s*([\d.]+)/) || [])[1] ||
-            '0',
-        )
-      plateau = Math.abs(val(files[files.length - 1]) - val(files[files.length - 2])) <= 0.02
+      const val = (f: string): number | null =>
+        parseWeightedScore(readFileSync(join(d, 'scores', f), 'utf8'))
+      const last = val(files[files.length - 1])
+      const prev = val(files[files.length - 2])
+      // An UNSCORED evaluation is not a plateau. The old parser defaulted a
+      // missing score to 0, so two unscored files read as a perfect 0.00 → 0.00
+      // convergence and terminated the loop on no evidence at all.
+      plateau = last !== null && prev !== null && Math.abs(last - prev) <= 0.02
     } else {
       plateau = false
     }

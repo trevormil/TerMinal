@@ -10,12 +10,14 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { SkillHint } from '../../components/SkillHint'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
+import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
 import type {
   Tab,
   TabContext,
@@ -92,8 +94,10 @@ function reltime(ms?: number): string {
   return ms ? relativeTime(ms) : 'never'
 }
 function isStale(m: MonitorWithState): boolean {
-  if (!m.state?.lastCheckedAt) return false
-  return Date.now() - m.state.lastCheckedAt > m.intervalSec * 1000 * 3
+  // One definition of stale, shared with the daemon-liveness policy. Two
+  // copies would let the banner and the per-row treatment disagree about
+  // whether the same result is trustworthy (ticket 117).
+  return stalenessOf(m.state?.lastCheckedAt, m.intervalSec, Date.now()).state === 'stale'
 }
 function stripState(list: MonitorWithState[]): Monitor[] {
   return list.map(({ state: _state, ...rest }) => rest)
@@ -933,6 +937,11 @@ function MonitoringTab(_: { ctx: TabContext }) {
   const failingCount = (monitors ?? []).filter(
     (m) => m.enabled && m.state?.status === 'fail',
   ).length
+  // A frozen-green tab is indistinguishable from a healthy one, which is how a
+  // 23-hour outage went unnoticed. Compute the daemon's own liveness, not just
+  // each check's result (ticket 117).
+  const statusById = new Map((monitors ?? []).map((m) => [m.id, m.state]))
+  const daemon = daemonHealth(monitors ?? [], (id) => statusById.get(id) ?? null, Date.now())
 
   return (
     <div className="flex h-full min-h-0 bg-[var(--gt-bg)]">
@@ -958,6 +967,25 @@ function MonitoringTab(_: { ctx: TabContext }) {
             Add monitor
           </button>
         </div>
+        {daemon.stale && (
+          <div className="shrink-0 border-b border-[var(--gt-border)] bg-[var(--gt-red)]/10 px-3 py-2">
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle
+                size={13}
+                strokeWidth={2}
+                className="mt-[1px] shrink-0 text-[var(--gt-red)]"
+              />
+              <div className="text-[11px] leading-relaxed text-zinc-300">
+                <span className="font-semibold text-zinc-100">
+                  Results are{' '}
+                  {daemon.ageMs === null ? 'stale' : relativeTime(Date.now() - daemon.ageMs)} old.
+                </span>{' '}
+                The monitor daemon has stopped writing. Everything below is the last known state,
+                not the current one — a stale green is not a healthy green.
+              </div>
+            </div>
+          </div>
+        )}
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
           <SkillHint>
             Monitors run on their own schedule via the monitor daemon — no agent, no inference. For

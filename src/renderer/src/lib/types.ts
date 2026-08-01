@@ -1157,6 +1157,7 @@ export type HitlSource =
   | 'listener'
   | 'completion-hook'
   | 'review-pattern'
+  | 'monitor'
 /** A session currently mirrored to the phone (registered + not ended). */
 export type RemoteActiveSession = {
   id: string

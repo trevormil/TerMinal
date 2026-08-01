@@ -34,6 +34,7 @@ export type HitlSource =
   | 'listener'
   | 'completion-hook'
   | 'review-pattern'
+  | 'monitor'
 export { itemSeverity, type HitlSeverity } from './hitl-severity'
 
 export type HitlItem = {
