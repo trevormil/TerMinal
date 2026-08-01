@@ -21,11 +21,12 @@ KEY_ID=$(basename "$KEY_SRC" | sed -n 's/^AuthKey_\([A-Z0-9]*\)\.p8$/\1/p')
 
 cd "$(dirname "$0")/.."
 # From .xcodegen.env (gitignored), the single source of Apple identifiers.
-[ -f .xcodegen.env ] && { set -a; . ./.xcodegen.env; set +a; }
+. scripts/env.sh
+gt_load_env .xcodegen.env || true
 TEAM_ID="${DEVELOPMENT_TEAM:-}"
 BUNDLE_ID="${PRODUCT_BUNDLE_ID:-}"
-[ -n "$TEAM_ID" ] || { echo "set DEVELOPMENT_TEAM in ios/.xcodegen.env (see .xcodegen.env.example)" >&2; exit 1; }
-[ -n "$BUNDLE_ID" ] || { echo "set PRODUCT_BUNDLE_ID in ios/.xcodegen.env" >&2; exit 1; }
+[ -n "$TEAM_ID" ] || { echo "DEVELOPMENT_TEAM is unset — an APNs key is bound to a team." >&2; gt_env_missing .xcodegen.env; exit 1; }
+[ -n "$BUNDLE_ID" ] || { echo "PRODUCT_BUNDLE_ID is unset — an APNs key is bound to a bundle id." >&2; gt_env_missing .xcodegen.env; exit 1; }
 
 DIR="$HOME/.config/TerMinal/bridge"
 mkdir -p "$DIR"
