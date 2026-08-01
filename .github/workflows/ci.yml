@@ -37,6 +37,13 @@ jobs:
       - name: Test
         run: bun run test
 
+      # A test must never reach the operator's activity feed, chat or phone.
+      # Re-runs the suite under an independent observer and fails if it made a
+      # single outbound request or appended a single activity event — something
+      # the guard's own unit tests cannot see across a whole run.
+      - name: Effect canary
+        run: bun run test:effects
+
       - name: Build
         run: bun run build
 

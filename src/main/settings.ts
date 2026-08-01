@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
+import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } from './atomic-write'
+import { configPath } from './config-dir'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
 import { NOTIFY_CATEGORIES, NOTIFY_CHANNELS, type NotifyMatrix } from '../shared/notifications'
@@ -444,7 +446,7 @@ export function migrate(raw: unknown): Settings {
   return s
 }
 
-const FILE = join(homedir(), '.config', 'TerMinal', 'settings.json')
+export const settingsFile = (): string => configPath('settings.json')
 
 function isEncryptedSecret(value: unknown): value is EncryptedSecret {
   return (
@@ -516,10 +518,29 @@ export function sealSettingsForDisk(
 }
 
 let cache: Settings | null = null
+
+/** Drop the in-process cache. Tests only — the app reads settings for its life. */
+export function resetSettingsCache(): void {
+  cache = null
+}
+
+/**
+ * Whether the settings file on disk exists but cannot be parsed.
+ *
+ * Kept separate from readSettings on purpose: reading has to keep working (the
+ * app must still boot with defaults), but WRITING against a corrupt file would
+ * persist those defaults over the user's real config and drop sealed secrets.
+ */
+function settingsCorrupt(): boolean {
+  return readJsonState<unknown>(settingsFile(), () => null, {
+    accept: (v) => !!v && typeof v === 'object' && !Array.isArray(v),
+  }).corrupt
+}
+
 export function readSettings(): Settings {
   if (cache) return cache
   try {
-    cache = migrate(openSettingsFromDisk(JSON.parse(readFileSync(FILE, 'utf8'))))
+    cache = migrate(openSettingsFromDisk(JSON.parse(readFileSync(settingsFile(), 'utf8'))))
   } catch {
     cache = defaultSettings()
   }
@@ -569,23 +590,33 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
 
 /** Deep-merge a patch over current settings (telegram/engines merge per-key). */
 export function patchSettings(patch: SettingsPatch): Settings {
-  const next = mergeSettingsPatch(readSettings(), patch)
-  cache = next
-  try {
-    mkdirSync(dirname(FILE), { recursive: true })
+  const file = settingsFile()
+  const next = withFileLock(file, () => {
+    // A corrupt settings.json means readSettings() handed us defaults. Merging a
+    // patch onto those and saving would overwrite the user's real config —
+    // including sealed secrets — with defaults plus one changed key. Move the
+    // bad file aside and make the caller deal with it instead.
+    if (settingsCorrupt()) {
+      throw new Error(
+        `settings.json is unreadable; moved aside to ${quarantineCorruptFile(file)} rather than overwriting it with defaults`,
+      )
+    }
+    const merged = mergeSettingsPatch(readSettings(), patch)
+    cache = merged
     // 0600: settings.json holds sealed secrets (and, when OS encryption is
     // available, nothing sensitive in cleartext) — but keep it owner-only
-    // regardless so no other local user can read it. writeFileSync only applies
-    // mode on create, so chmod a pre-existing file too.
-    writeFileSync(FILE, JSON.stringify(sealSettingsForDisk(next), null, 2), { mode: 0o600 })
+    // regardless so no other local user can read it. The atomic write only
+    // applies mode on create, so chmod a pre-existing file too.
+    writeFileAtomic(file, `${JSON.stringify(sealSettingsForDisk(merged), null, 2)}\n`, {
+      mode: 0o600,
+    })
     try {
-      chmodSync(FILE, 0o600)
+      chmodSync(file, 0o600)
     } catch {
       /* best effort */
     }
-  } catch {
-    /* best effort */
-  }
+    return merged
+  })
   syncTelegramSidecar(next)
   return next
 }
@@ -598,7 +629,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
 // app therefore mirrors the DECRYPTED creds to a 0600 sidecar those processes
 // read. See resolveTelegramCreds for the read side (inlined identically in each
 // bin script). Deleted when creds are cleared so stale creds never linger.
-const TELEGRAM_SIDECAR = join(homedir(), '.config', 'TerMinal', 'telegram.local.json')
+const telegramSidecarFile = (): string => configPath('telegram.local.json')
 
 /** The creds worth mirroring (both fields present), or null to clear. */
 export function telegramSidecarPayload(s: Settings): { botToken: string; chatId: string } | null {
@@ -633,18 +664,19 @@ export function resolveTelegramCreds(
 
 /** Mirror decrypted telegram creds to the 0600 sidecar, or remove it when cleared. */
 export function syncTelegramSidecar(s: Settings = readSettings()): void {
+  const file = telegramSidecarFile()
   try {
     const creds = telegramSidecarPayload(s)
     if (creds) {
-      writeFileSync(TELEGRAM_SIDECAR, JSON.stringify(creds), { mode: 0o600 })
-      // writeFileSync only applies mode on create; force-tighten a pre-existing file.
+      writeFileAtomic(file, JSON.stringify(creds), { mode: 0o600 })
+      // The atomic write only applies mode on create; force-tighten a pre-existing file.
       try {
-        chmodSync(TELEGRAM_SIDECAR, 0o600)
+        chmodSync(file, 0o600)
       } catch {
         /* best effort */
       }
-    } else if (existsSync(TELEGRAM_SIDECAR)) {
-      unlinkSync(TELEGRAM_SIDECAR)
+    } else if (existsSync(file)) {
+      unlinkSync(file)
     }
   } catch {
     /* best effort — telegram is a non-critical side channel */

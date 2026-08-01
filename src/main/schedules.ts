@@ -1,7 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { writeJsonAtomic } from './atomic-write'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { readJsonState, updateJsonState } from './atomic-write'
+import { configPath } from './config-dir'
 import { randomUUID } from 'node:crypto'
 import type { Engine } from './agents'
 import type { ScheduleSpec } from './cron'
@@ -11,7 +9,7 @@ import type { ScheduleSpec } from './cron'
 // per-schedule LaunchAgents and the headless runner (bin/terminal-cron) executes
 // them. Each schedule snapshots everything the runner needs so it stays
 // self-contained (no app import at run time).
-const FILE = join(homedir(), '.config', 'TerMinal', 'schedules.json')
+export const schedulesFile = (): string => configPath('schedules.json')
 
 export type ScheduleStatus = 'never' | 'running' | 'done' | 'failed'
 export type Schedule = {
@@ -107,24 +105,31 @@ function migrate(s: Record<string, unknown>, now: number): Schedule {
 }
 
 export function readSchedules(now = Date.now()): Schedule[] {
-  if (!existsSync(FILE)) return []
-  try {
-    const a = JSON.parse(readFileSync(FILE, 'utf8'))
-    if (!Array.isArray(a)) return []
-    return a.map((s) => migrate(s, now))
-  } catch {
-    return []
-  }
+  const raw = readJsonState<Record<string, unknown>[]>(schedulesFile(), () => [], {
+    accept: Array.isArray,
+  })
+  return raw.value.map((s) => migrate(s, now))
 }
 
-function write(list: Schedule[]): boolean {
-  try {
-    mkdirSync(dirname(FILE), { recursive: true })
-    writeJsonAtomic(FILE, list)
-    return true
-  } catch {
-    return false
-  }
+/**
+ * Locked read-modify-write over the schedule list.
+ *
+ * Every mutation goes through here on purpose. Four processes write this file,
+ * and the classic failure is the cron runner stamping `lastRun` from a snapshot
+ * it read before the user disabled the schedule — the write-back resurrects
+ * `enabled: true` and a disabled job keeps firing. Re-reading under the lock
+ * makes that impossible.
+ */
+function mutate(
+  fn: (list: Schedule[]) => Schedule[] | undefined,
+  now = Date.now(),
+): Schedule[] | undefined {
+  return updateJsonState<Schedule[]>(
+    schedulesFile(),
+    () => [],
+    (raw) => fn((raw as unknown as Record<string, unknown>[]).map((s) => migrate(s, now))),
+    { accept: Array.isArray },
+  )
 }
 
 export function getSchedule(id: string): Schedule | null {
@@ -138,7 +143,7 @@ export type NewSchedule = Omit<
 
 export function addSchedule(s: NewSchedule, now = Date.now()): Schedule {
   const sched: Schedule = { ...s, id: randomUUID(), createdAt: now, lastStatus: 'never' }
-  write([...readSchedules(), sched])
+  mutate((list) => [...list, sched], now)
   return sched
 }
 
@@ -152,19 +157,37 @@ export function seedSchedule(s: NewSchedule, now = Date.now()): Schedule {
   return addSchedule({ ...s, enabled: false }, now)
 }
 
+/**
+ * Apply a FIELD-LEVEL patch to one schedule under the lock.
+ *
+ * Everything that changes a schedule goes through here, including the cron
+ * runner stamping lastRun/lastStatus/lastRunId. Writing back a whole list read
+ * minutes earlier is what resurrected `enabled: true` on a schedule the user had
+ * just disabled (R1) — patching the freshly-read record makes that impossible.
+ */
 export function updateSchedule(id: string, patch: Partial<Schedule>): Schedule | null {
-  const list = readSchedules()
-  const i = list.findIndex((s) => s.id === id)
-  if (i < 0) return null
-  list[i] = { ...list[i], ...patch, id } // id immutable
-  write(list)
-  return list[i]
+  let updated: Schedule | null = null
+  mutate((list) => {
+    const i = list.findIndex((s) => s.id === id)
+    if (i < 0) return undefined
+    const next = [...list]
+    next[i] = { ...next[i], ...patch, id } // id immutable
+    updated = next[i]
+    return next
+  })
+  return updated
 }
 
 export function removeSchedule(id: string): boolean {
-  return write(readSchedules().filter((s) => s.id !== id))
+  let removed = false
+  mutate((list) => {
+    const next = list.filter((s) => s.id !== id)
+    removed = next.length !== list.length
+    return removed ? next : undefined
+  })
+  return removed
 }
 
 export function toggleSchedule(id: string, enabled: boolean): boolean {
-  return write(readSchedules().map((s) => (s.id === id ? { ...s, enabled } : s)))
+  return !!updateSchedule(id, { enabled })
 }

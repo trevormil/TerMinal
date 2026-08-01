@@ -40,7 +40,11 @@ test('budget-refused cron run exits 0 and files a HITL (no TDZ crash)', () => {
     let exitCode = 0
     try {
       execFileSync('bun', [CRON, 'run', id], {
-        env: { ...process.env, HOME: home },
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINAL_CONFIG_DIR: join(home, '.config', 'TerMinal'),
+        },
         encoding: 'utf8',
         stdio: 'pipe',
       })

@@ -50,6 +50,7 @@ import { listMrs, getMr } from './mrs'
 import { readCronRuns } from './cron-runs'
 import { runUpdateBatch } from './telegram-batch'
 import { readFileTail } from './fs-tail'
+import { blockEffect } from './effect-guard'
 import { readActivity } from './events'
 // Static, not lazy `require`: main bundles to ESM, where the createRequire shim
 // resolves relative to the emitted bundle and `require('./bg-tasks')` throws
@@ -191,6 +192,7 @@ function knownRepos(): RepoCtx[] {
  *  inline keyboard (taps surface as callback_query updates which the poll
  *  loop routes via dispatchCallback). */
 function reply(text: string, buttons?: TgInlineKeyboard) {
+  if (blockEffect('notify', 'telegram-reply')) return
   const t = readSettings().telegram
   if (t.botToken && t.chatId) {
     const body: Record<string, unknown> = { chat_id: t.chatId, text }
@@ -209,6 +211,7 @@ function reply(text: string, buttons?: TgInlineKeyboard) {
 /** Ack the callback query so the user's button stops spinning. Pass an optional
  *  short `text` for a transient toast (max 200 chars per the Bot API). */
 function ack(queryId: string, text?: string) {
+  if (blockEffect('notify', 'telegram-ack')) return
   const t = readSettings().telegram
   if (!t.botToken || !queryId) return
   fetch(answerCallbackUrl(t.botToken), {
@@ -1535,6 +1538,8 @@ export async function pollTelegramOnce() {
 
 /** Settings "Test" button: send a one-off confirmation, surfacing API errors. */
 export async function testTelegram(): Promise<{ ok: boolean; error?: string }> {
+  if (blockEffect('notify', 'telegram-test'))
+    return { ok: false, error: 'Notifications are blocked while running under test.' }
   const t = readSettings().telegram
   if (!t.botToken || !t.chatId)
     return { ok: false, error: 'Set both the bot token and chat id first.' }
