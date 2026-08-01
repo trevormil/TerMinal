@@ -375,11 +375,6 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[var(--gt-bg)]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
-        <ListChecks size={14} strokeWidth={2} className="text-[var(--gt-accent-light)]" />
-        <span className="text-[12px] font-semibold text-zinc-200">Runs</span>
-      </div>
-
       <div className="flex min-h-0 flex-1">
         {/* List */}
         <div className="flex w-[58%] min-w-[420px] shrink-0 flex-col border-r border-[var(--gt-border)]">
