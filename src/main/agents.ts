@@ -31,7 +31,7 @@ import {
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
-import { readGlobalAgents, saveGlobalAgent } from './agents-global'
+import { normalizeAgentEntry, readGlobalAgents, saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
 import { hiddenPresetIds } from './presets'
@@ -766,22 +766,12 @@ export function saveAgent(
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) return { error: 'id must be kebab-case (a-z, 0-9, -)' }
   if (!agent.title?.trim()) return { error: 'title is required' }
   if (!agent.prompt?.trim()) return { error: 'prompt is required' }
-  const entry: Agent = {
-    id,
-    title: agent.title.trim(),
-    prompt: agent.prompt.trim(),
-    description: agent.description?.trim() || undefined,
-    icon: agent.icon || undefined,
-    engine: agent.engine,
-    model: agent.model?.trim() || undefined,
-    modelPolicy: agent.modelPolicy,
-    quality: agent.quality,
-    outputContract: agent.outputContract?.trim() || undefined,
-    acceptanceCriteria: agent.acceptanceCriteria,
-    opensPr: agent.opensPr,
-    inPlace: agent.inPlace,
-    force: agent.force,
-  }
+  // ONE definition of the persisted shape, shared with the global registry
+  // (ticket 96). The two used to be identical hand-written literals, which is
+  // exactly the state in which duplication is invisible — and #78 exists
+  // because an earlier divergence silently dropped modelPolicy, quality, model,
+  // outputContract, acceptanceCriteria and force on every save.
+  const entry = normalizeAgentEntry({ ...agent, id })
   const dir = join(repoRoot, '.agents')
   const f = join(dir, 'agents.json')
   const list = readRepoAgents(repoRoot).filter((a) => a.id !== id)
