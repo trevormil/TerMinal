@@ -1846,7 +1846,10 @@ export type GtApi = {
     test: () => Promise<{ ok: boolean; error?: string }>
   }
   alerts: {
-    test: (channel: AlertChannelId) => Promise<{ ok: boolean; error?: string }>
+    // `note` = succeeded WITH a caveat. macOS delivers notifications only for
+    // signed apps since Electron 42, and this build is unsigned (ticket 93), so
+    // the desktop channel can report ok while showing nothing.
+    test: (channel: AlertChannelId) => Promise<{ ok: boolean; error?: string; note?: string }>
   }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
