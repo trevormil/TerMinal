@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // hitl.ts → events.ts → Electron's Notification, which doesn't exist here.
-mock.module('electron', () => ({
+void mock.module('electron', () => ({
   Notification: class {
     show(): void {}
     static isSupported(): boolean {
