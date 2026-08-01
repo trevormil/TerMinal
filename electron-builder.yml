@@ -43,6 +43,19 @@ mac:
     - dmg
   icon: build/icon.icns
   category: public.app-category.developer-tools
-  # Unsigned local build — skip code signing / notarization. First launch needs
-  # right-click → Open (Gatekeeper), then it runs normally.
-  identity: null
+  # Signing (ticket 93). `identity` is intentionally UNSET so electron-builder
+  # resolves it from CSC_NAME / the keychain — that way one config covers both
+  # the signed path and an unsigned fallback, instead of two divergent configs.
+  #
+  # Set TERMINAL_UNSIGNED=1 to force the old ad-hoc behaviour (a contributor
+  # without the cert can still build). bin/release passes it automatically when
+  # no Developer ID identity is present.
+  #
+  # Notarization is REQUIRED, not cosmetic: since Electron 42 macOS only
+  # delivers notifications for a signed app, so an unsigned build silently loses
+  # the desktop alert channel.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false # bin/release + release.yml notarize explicitly (notarytool)
