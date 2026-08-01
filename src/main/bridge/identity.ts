@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, networkInterfaces } from 'node:os'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { configPath } from '.././config-dir'
 
 // Pairing material for the mobile bridge. Deliberately NOT in settings.json:
 // that file seals secrets through Electron safeStorage, which DROPS the value
@@ -11,7 +11,7 @@ import { homedir } from 'node:os'
 // phone would silently stop working after a restart in dev. A 0600 file under
 // the existing config root has none of that failure mode and is the same
 // trust boundary as the private key it sits next to.
-export const BRIDGE_DIR = join(homedir(), '.config', 'TerMinal', 'bridge')
+export const BRIDGE_DIR = (): string => configPath('bridge')
 
 /** Default listen port. Chosen to stay clear of common dev servers. */
 export const DEFAULT_BRIDGE_PORT = 8790
@@ -97,7 +97,7 @@ function generateCert(dir: string): { certPem: string; keyPem: string } {
  * existing token/cert pair is reused verbatim so enabling the bridge twice
  * never invalidates a paired phone.
  */
-export function ensureIdentity(dir: string = BRIDGE_DIR): BridgeIdentity {
+export function ensureIdentity(dir: string = BRIDGE_DIR()): BridgeIdentity {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const tokenPath = p(dir, 'token')
   let token = ''
@@ -126,14 +126,14 @@ export function ensureIdentity(dir: string = BRIDGE_DIR): BridgeIdentity {
 }
 
 /** New token — every paired phone must re-scan. Cert/key are left alone. */
-export function rotateToken(dir: string = BRIDGE_DIR): BridgeIdentity {
+export function rotateToken(dir: string = BRIDGE_DIR()): BridgeIdentity {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   writeSecret(p(dir, 'token'), newToken() + '\n')
   return ensureIdentity(dir)
 }
 
 /** Throw away cert + key + token. Next ensureIdentity() regenerates all three. */
-export function resetIdentity(dir: string = BRIDGE_DIR): void {
+export function resetIdentity(dir: string = BRIDGE_DIR()): void {
   for (const f of ['token', 'cert.pem', 'key.pem']) {
     try {
       rmSync(p(dir, f))

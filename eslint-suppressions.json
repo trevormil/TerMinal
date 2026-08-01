@@ -6,11 +6,6 @@
   },
   "src/main/ai-runs.ts": {
     "@typescript-eslint/no-unused-vars": {
-      "count": 2
-    }
-  },
-  "src/main/bg-tasks.ts": {
-    "@typescript-eslint/no-unused-vars": {
       "count": 1
     }
   },
@@ -22,16 +17,6 @@
   "src/main/index.ts": {
     "@typescript-eslint/no-floating-promises": {
       "count": 3
-    }
-  },
-  "src/main/listeners.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/main/monitors.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
     }
   },
   "src/main/mrs.test.ts": {

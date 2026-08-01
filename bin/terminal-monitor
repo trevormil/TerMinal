@@ -28,7 +28,14 @@ import { connect as tlsConnect } from 'node:tls'
 import { connect as netConnect } from 'node:net'
 import { resolve as dnsResolve } from 'node:dns/promises'
 
-const CFG = join(homedir(), '.config', 'TerMinal')
+// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
+// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
+// same files as the app, so a sandboxed run that only redirected the app would
+// still have this script clobbering real state — which is precisely how an agent
+// script would do it (ticket 108). Eager is fine here and not in the app: each
+// invocation is a fresh short-lived process that reads the env at startup.
+const CFG =
+  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
 const MONITORS_FILE = join(CFG, 'monitors.json')
 const STATE_DIR = join(CFG, 'monitor-state')
 const CLI = join(CFG, 'bin', 'terminal-cli')

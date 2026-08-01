@@ -10,7 +10,6 @@ import {
   mkdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
-import { homedir } from 'node:os'
 import { listRuns as listAgentRuns, type AgentRun } from './agents'
 import { listBgTasks, type BgTask } from './bg-tasks'
 import {
@@ -19,18 +18,19 @@ import {
   readOutcomeSummaries,
   readRunLogTail,
 } from './run-summarizer'
+import { configPath } from './config-dir'
 
 // Read the run records the headless runner (bin/terminal-cron) writes per run.
-const DEFAULT_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'cron-runs')
-const DEFAULT_SESSION_RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'session-runs')
+const DEFAULT_RUNS_DIR = (): string => configPath('cron-runs')
+const DEFAULT_SESSION_RUNS_DIR = (): string => configPath('session-runs')
 const STALE_MS = 2 * 60 * 60 * 1000 // matches terminal-cron's STALE_MS
 export const SESSION_RUN_LOG_MAX_BYTES = 1024 * 1024
 const SESSION_RUN_LOG_FLUSH_MS = 250
 const SESSION_RUN_LOG_TRUNCATED = '[TerMinal: earlier session log truncated]\n'
 
-const cronRunsDir = (): string => process.env.TERMINAL_CRON_RUNS_DIR || DEFAULT_RUNS_DIR
+const cronRunsDir = (): string => process.env.TERMINAL_CRON_RUNS_DIR || DEFAULT_RUNS_DIR()
 const sessionRunsDir = (): string =>
-  process.env.TERMINAL_SESSION_RUNS_DIR || DEFAULT_SESSION_RUNS_DIR
+  process.env.TERMINAL_SESSION_RUNS_DIR || DEFAULT_SESSION_RUNS_DIR()
 
 export type CronRun = {
   id: string

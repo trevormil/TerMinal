@@ -1,10 +1,14 @@
 import { test, expect, describe, afterEach } from 'bun:test'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { readStatusLine, statuslineSettingsArg } from './statusline'
+import { configPath } from './config-dir'
 
-const CACHE_DIR = join(homedir(), '.config', 'TerMinal', 'statusline')
+// Through the seam, not homedir(): this test used to write into the operator's
+// REAL ~/.config/TerMinal/statusline/ on every run. It only started failing once
+// statusline.ts began honouring TERMINAL_CONFIG_DIR — which is exactly the
+// pollution ticket 108 exists to make impossible.
+const CACHE_DIR = configPath('statusline')
 const SID = '__statusline_test__'
 const file = join(CACHE_DIR, `${SID}.json`)
 

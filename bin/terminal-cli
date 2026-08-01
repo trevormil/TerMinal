@@ -165,7 +165,14 @@ function updateJsonListShared(file, update) {
   })
 }
 
-const CFG = join(homedir(), '.config', 'TerMinal')
+// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
+// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
+// same files as the app, so a sandboxed run that only redirected the app would
+// still have this script clobbering real state — which is precisely how an agent
+// script would do it (ticket 108). Eager is fine here and not in the app: each
+// invocation is a fresh short-lived process that reads the env at startup.
+const CFG =
+  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
 const ACTIVITY = join(CFG, 'activity.jsonl')
 const HITL_FILE = join(CFG, 'hitl.json')
 const SETTINGS_FILE = join(CFG, 'settings.json')
@@ -1440,7 +1447,7 @@ function applyProfileCli(repo, profile) {
 // ---- remote sessions (the phone) -------------------------------------------
 // Self-contained on purpose: this file is a standalone Bun script the runner
 // injects into agent scripts, so it cannot import from src/main.
-const REMOTE_DIR = join(homedir(), '.config', 'TerMinal', 'remote')
+const REMOTE_DIR = join(CFG, 'remote')
 const remoteMeta = (id) => join(REMOTE_DIR, `${id}.json`)
 const remoteLog = (id) => join(REMOTE_DIR, `${id}.jsonl`)
 const validRemoteId = (id) => typeof id === 'string' && /^[\w-]{1,64}$/.test(id)

@@ -13,13 +13,14 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { specToTrigger, type CalendarDict } from './cron'
 import { readSchedules, type Schedule } from './schedules'
+import { terminalConfigDir } from './config-dir'
 
 // Real macOS cron via per-schedule LaunchAgents. Every job shares the
 // `com.terminal.cron.` label prefix, so reconcileSchedules() can guarantee no
 // orphans by diffing the loaded jobs against schedules.json.
 const LA_DIR = join(homedir(), 'Library', 'LaunchAgents')
-const CFG = join(homedir(), '.config', 'TerMinal')
-const RUNNER = join(CFG, 'bin', 'terminal-cron') // stable path, survives app moves
+const CFG = (): string => terminalConfigDir()
+const RUNNER = (): string => join(CFG(), 'bin', 'terminal-cron') // stable path, survives app moves
 const PREFIX = 'com.terminal.cron.'
 const label = (id: string) => `${PREFIX}${id}`
 const plistPath = (id: string) => join(LA_DIR, `${label(id)}.plist`)
@@ -45,9 +46,9 @@ function resolveBun(): string {
 export function installRunner(srcPath: string): void {
   try {
     if (!existsSync(srcPath)) return
-    mkdirSync(join(CFG, 'bin'), { recursive: true })
-    copyFileSync(srcPath, RUNNER)
-    chmodSync(RUNNER, 0o755)
+    mkdirSync(join(CFG(), 'bin'), { recursive: true })
+    copyFileSync(srcPath, RUNNER())
+    chmodSync(RUNNER(), 0o755)
   } catch {
     /* best effort */
   }
@@ -59,8 +60,8 @@ export function installRunner(srcPath: string): void {
 export function installCli(srcPath: string): void {
   try {
     if (!existsSync(srcPath)) return
-    mkdirSync(join(CFG, 'bin'), { recursive: true })
-    const dest = join(CFG, 'bin', 'terminal-cli')
+    mkdirSync(join(CFG(), 'bin'), { recursive: true })
+    const dest = join(CFG(), 'bin', 'terminal-cli')
     copyFileSync(srcPath, dest)
     chmodSync(dest, 0o755)
   } catch {
@@ -76,7 +77,7 @@ export function installCli(srcPath: string): void {
 export function installOrTier(binSrcDir: string, mrSrcDir: string): void {
   try {
     if (!existsSync(binSrcDir)) return
-    const binDir = join(CFG, 'bin')
+    const binDir = join(CFG(), 'bin')
     mkdirSync(binDir, { recursive: true })
     for (const name of ['or-exec', 'or-agent', 'or-spend']) {
       const src = join(binSrcDir, name)
@@ -85,7 +86,7 @@ export function installOrTier(binSrcDir: string, mrSrcDir: string): void {
       copyFileSync(src, dest)
       chmodSync(dest, 0o755)
     }
-    const mrDir = join(CFG, 'model-routing')
+    const mrDir = join(CFG(), 'model-routing')
     mkdirSync(mrDir, { recursive: true })
     const libSrc = join(mrSrcDir, 'lib.ts')
     if (existsSync(libSrc)) copyFileSync(libSrc, join(mrDir, 'lib.ts'))
@@ -103,8 +104,8 @@ export function installOrTier(binSrcDir: string, mrSrcDir: string): void {
 export function installMcpServer(srcPath: string): void {
   try {
     if (!existsSync(srcPath)) return
-    mkdirSync(join(CFG, 'bin'), { recursive: true })
-    const dest = join(CFG, 'bin', 'terminal-mcp-server')
+    mkdirSync(join(CFG(), 'bin'), { recursive: true })
+    const dest = join(CFG(), 'bin', 'terminal-mcp-server')
     copyFileSync(srcPath, dest)
     chmodSync(dest, 0o755)
   } catch {
@@ -117,25 +118,25 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 // ── Monitoring daemon ──────────────────────────────────────────────────────
 // A SINGLE launchd job (not per-monitor) that ticks the monitor daemon on a
 // short interval — its own process, wholly separate from the cron jobs above.
-const MONITOR_RUNNER = join(CFG, 'bin', 'terminal-monitor')
+const MONITOR_RUNNER = (): string => join(CFG(), 'bin', 'terminal-monitor')
 const MONITOR_LABEL = 'com.terminal.monitor'
 const monitorPlistPath = () => join(LA_DIR, `${MONITOR_LABEL}.plist`)
 
 export function installMonitorDaemon(srcPath: string): void {
   try {
     if (!existsSync(srcPath)) return
-    mkdirSync(join(CFG, 'bin'), { recursive: true })
-    copyFileSync(srcPath, MONITOR_RUNNER)
-    chmodSync(MONITOR_RUNNER, 0o755)
+    mkdirSync(join(CFG(), 'bin'), { recursive: true })
+    copyFileSync(srcPath, MONITOR_RUNNER())
+    chmodSync(MONITOR_RUNNER(), 0o755)
   } catch {
     /* best effort */
   }
 }
 
 function monitorPlistXml(intervalSec: number): string {
-  const args = [resolveBun(), MONITOR_RUNNER, 'tick']
+  const args = [resolveBun(), MONITOR_RUNNER(), 'tick']
   const argsXml = args.map((a) => `    <string>${esc(a)}</string>`).join('\n')
-  const logOut = join(CFG, 'monitor.launchd.log')
+  const logOut = join(CFG(), 'monitor.launchd.log')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -193,7 +194,7 @@ export function syncMonitorDaemon(intervalSec = 30): { ok: boolean; error?: stri
 
 function plistXml(s: Schedule): string {
   const trig = specToTrigger(s.spec)
-  const args = [resolveBun(), RUNNER, 'run', s.id]
+  const args = [resolveBun(), RUNNER(), 'run', s.id]
   const argsXml = args.map((a) => `    <string>${esc(a)}</string>`).join('\n')
   // Always StartCalendarInterval — fires at fixed wall-clock times and re-fires
   // on wake, unlike the drift-prone StartInterval we no longer emit.
@@ -204,7 +205,7 @@ function plistXml(s: Schedule): string {
       .join('\n') +
     '\n    </dict>'
   const trigXml = `  <key>StartCalendarInterval</key>\n  <array>\n${trig.entries.map(dict).join('\n')}\n  </array>`
-  const logOut = join(CFG, 'cron-runs', `${s.id}.launchd.log`)
+  const logOut = join(CFG(), 'cron-runs', `${s.id}.launchd.log`)
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -430,7 +431,7 @@ export function removeAllJobs(): number {
 // Fire a schedule immediately, out of band (detached so it outlives this call).
 export function runScheduleNow(id: string): void {
   try {
-    spawn(resolveBun(), [RUNNER, 'run', id], { detached: true, stdio: 'ignore' }).unref()
+    spawn(resolveBun(), [RUNNER(), 'run', id], { detached: true, stdio: 'ignore' }).unref()
   } catch {
     /* best effort */
   }

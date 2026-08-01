@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { repoRoot } from './widgets'
 import { isHttpUrl } from '../shared/url-safety'
+import { configPath } from './config-dir'
 
 // ---------------------------------------------------------------------------
 // Custom tabs — full-screen repo-specific views, the tab analogue of
@@ -34,7 +35,7 @@ export type CustomTab = {
   intervalMs?: number
 }
 
-const GLOBAL_CFG = join(homedir(), '.config', 'TerMinal', 'tabs.json')
+const GLOBAL_CFG = (): string => configPath('tabs.json')
 
 function stableKey(value: string): string {
   let hash = 5381
@@ -79,7 +80,7 @@ function loadFile(path: string, source: 'global' | 'repo', scope = ''): CustomTa
 }
 
 export function listCustomTabs(cwd: string): CustomTab[] {
-  const global = loadFile(GLOBAL_CFG, 'global')
+  const global = loadFile(GLOBAL_CFG(), 'global')
   const root = cwd ? repoRoot(cwd) : ''
   const repo = root ? loadFile(join(root, '.TerMinal', 'tabs.json'), 'repo', root) : []
   return [...global, ...repo]

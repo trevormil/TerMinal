@@ -14,6 +14,7 @@ import { createMetaCache } from './session-meta-cache'
 import { repoForCwd, repoRootOf } from './repo'
 import { reviewForPrDir, newestReviewDirForRepo } from './review'
 import { readStatusLine } from './statusline'
+import { configPath } from './config-dir'
 
 // ---------------------------------------------------------------------------
 // Claude Code transcript reader
@@ -481,9 +482,12 @@ function newestFileStats(files: string[], limit = SESSION_PICKER_LIMIT): FileSta
 // Picker metadata is cached per transcript keyed by (size, mtime) — see
 // session-meta-cache.ts. Without this every picker open re-read a ~384KB
 // window of every transcript (hundreds of MB of I/O + parse per call).
-const sessionMetaCache = createMetaCache<SessionMeta>(
-  join(homedir(), '.config', 'TerMinal', 'session-meta-cache.json'),
-)
+// Memoised, not eager: building it at import resolved the config path before
+// any test could redirect it (ticket 108). The cache instance is still created
+// once per process — just on first USE, by which time the seam is settled.
+let _sessionMetaCache: ReturnType<typeof createMetaCache<SessionMeta>> | null = null
+const sessionMetaCache = (): ReturnType<typeof createMetaCache<SessionMeta>> =>
+  (_sessionMetaCache ??= createMetaCache<SessionMeta>(configPath('session-meta-cache.json')))
 
 function readPickerWindow(file: string): { raw: string; mtime: number } | null {
   try {
@@ -1446,7 +1450,7 @@ function listClaudeSessions(): SessionMeta[] {
   const idsByFile = new Map(files.map((f) => [f.file, f.id]))
   return newestFileStats(files.map((f) => f.file))
     .map((st) =>
-      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () =>
+      sessionMetaCache().get(st.file, st.size, st.mtimeMs, () =>
         parseClaudeSessionMeta(st.file, idsByFile.get(st.file) || ''),
       ),
     )
@@ -1534,7 +1538,7 @@ function listCodexSessions(): SessionMeta[] {
   if (!existsSync(CODEX_SESSIONS_DIR)) return []
   return newestFileStats(walkJsonlFiles(CODEX_SESSIONS_DIR))
     .map((st) =>
-      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () => parseCodexSessionFile(st.file)),
+      sessionMetaCache().get(st.file, st.size, st.mtimeMs, () => parseCodexSessionFile(st.file)),
     )
     .filter((s): s is SessionMeta => !!s)
 }
@@ -1607,7 +1611,7 @@ function listCursorSessions(): SessionMeta[] {
   }
   return newestFileStats(files)
     .map((st) =>
-      sessionMetaCache.get(st.file, st.size, st.mtimeMs, () => parseCursorSessionFile(st.file)),
+      sessionMetaCache().get(st.file, st.size, st.mtimeMs, () => parseCursorSessionFile(st.file)),
     )
     .filter((s): s is SessionMeta => !!s)
 }

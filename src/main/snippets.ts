@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { hiddenPresetIds } from './presets'
+import { terminalConfigDir } from './config-dir'
 
 export type PromptSnippet = {
   id: string
@@ -17,8 +17,8 @@ type SnippetFile = {
   snippets?: unknown
 }
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-const GLOBAL_FILE = join(CFG, 'snippets.json')
+const CFG = (): string => terminalConfigDir()
+const GLOBAL_FILE = (): string => join(CFG(), 'snippets.json')
 const REPO_FILE = '.TerMinal/snippets.json'
 const LEGACY_REPO_FILE = '.terminal/snippets.json'
 const SNIPPET_SCHEMA_VERSION = 2
@@ -384,18 +384,18 @@ function readSnippetFile(path: string): PromptSnippet[] {
 }
 
 function ensureGlobalFile(): void {
-  mkdirSync(CFG, { recursive: true })
-  if (!existsSync(GLOBAL_FILE)) {
+  mkdirSync(CFG(), { recursive: true })
+  if (!existsSync(GLOBAL_FILE())) {
     writeFileSync(
-      GLOBAL_FILE,
+      GLOBAL_FILE(),
       JSON.stringify({ version: SNIPPET_SCHEMA_VERSION, snippets: [] }, null, 2),
     )
     return
   }
   try {
-    const raw = JSON.parse(readFileSync(GLOBAL_FILE, 'utf8')) as SnippetFile
+    const raw = JSON.parse(readFileSync(GLOBAL_FILE(), 'utf8')) as SnippetFile
     if (raw.version === SNIPPET_SCHEMA_VERSION) return
-    writeFileSync(GLOBAL_FILE, JSON.stringify({ ...raw, ...migrateSnippetFile(raw) }, null, 2))
+    writeFileSync(GLOBAL_FILE(), JSON.stringify({ ...raw, ...migrateSnippetFile(raw) }, null, 2))
   } catch {
     /* unreadable user file: leave it untouched and fall back to built-ins at runtime */
   }
@@ -435,9 +435,9 @@ export function savePromptSnippet(input: {
   const id = slug(String(input.snippet.id || title))
   if (!id) return { error: 'id is required' }
   const path =
-    input.scope === 'global' ? GLOBAL_FILE : input.repoRoot ? join(input.repoRoot, REPO_FILE) : ''
+    input.scope === 'global' ? GLOBAL_FILE() : input.repoRoot ? join(input.repoRoot, REPO_FILE) : ''
   if (!path) return { error: 'repo root is required' }
-  mkdirSync(input.scope === 'global' ? CFG : join(input.repoRoot!, '.TerMinal'), {
+  mkdirSync(input.scope === 'global' ? CFG() : join(input.repoRoot!, '.TerMinal'), {
     recursive: true,
   })
   const file = snippetFile(path)
@@ -472,10 +472,10 @@ export function listPromptSnippets(repoRoot: string): {
   const hidden = hiddenPresetIds('snippets')
   for (const s of BUILT_IN_SNIPPETS)
     if (!hidden.has(s.id)) byId.set(s.id, { ...s, source: 'preset' })
-  for (const s of readSnippetFile(GLOBAL_FILE)) byId.set(s.id, { ...s, source: 'global' })
+  for (const s of readSnippetFile(GLOBAL_FILE())) byId.set(s.id, { ...s, source: 'global' })
   for (const s of legacyRepoPath ? readSnippetFile(legacyRepoPath) : [])
     byId.set(s.id, { ...s, source: 'repo' })
   for (const s of repoPath ? readSnippetFile(repoPath) : [])
     byId.set(s.id, { ...s, source: 'repo' })
-  return { snippets: [...byId.values()], globalPath: GLOBAL_FILE, repoPath }
+  return { snippets: [...byId.values()], globalPath: GLOBAL_FILE(), repoPath }
 }

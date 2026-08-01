@@ -48,6 +48,7 @@ import { getRepoTicket, repoTicketProvider, ticketProviderInstructions } from '.
 import { promptLogBlock, type TicketComment } from './ticket-comments'
 import { getTicket as getLocalTicket, updateTicket as updateLocalTicket } from './backlog'
 import type { TicketAgent } from './backlog'
+import { configPath } from './config-dir'
 
 export { listPipelines, type PipelineId } from './pipelines'
 
@@ -738,8 +739,7 @@ export function readAgents(repoRoot: string): Agent[] {
   // on file existence, but the agent list cares only about the merged metadata.
   for (const a of DEFAULT_AGENTS) if (!hiddenDefaults.has(a.id)) merge(a, 'default')
   for (const a of readGlobalAgents()) merge(a, 'global')
-  for (const a of readScriptAgents(join(homedir(), '.config', 'TerMinal', 'scripts')))
-    merge(a, 'global')
+  for (const a of readScriptAgents(configPath('scripts'))) merge(a, 'global')
   if (repoRoot) for (const a of readRepoAgents(repoRoot)) merge(a, 'repo')
   if (repoRoot) for (const a of readScriptAgents(join(repoRoot, '.agents'))) merge(a, 'repo')
 
@@ -840,9 +840,9 @@ export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
 }
 
 // --- persistence: one <id>.json (metadata) + <id>.log (output) per run --------
-const RUNS_DIR = join(homedir(), '.config', 'TerMinal', 'agent-runs')
-const metaPath = (id: string) => join(RUNS_DIR, `${id}.json`)
-const logPath = (id: string) => join(RUNS_DIR, `${id}.log`)
+const RUNS_DIR = (): string => configPath('agent-runs')
+const metaPath = (id: string) => join(RUNS_DIR(), `${id}.json`)
+const logPath = (id: string) => join(RUNS_DIR(), `${id}.log`)
 /** On-disk log path for the runs:log-tail IPC (tail-reads without loading the file). */
 export const agentRunLogPath = logPath
 
@@ -859,7 +859,7 @@ export function readAgentRunLog(id: string): string {
 
 function persistMeta(run: AgentRun) {
   try {
-    mkdirSync(RUNS_DIR, { recursive: true })
+    mkdirSync(RUNS_DIR(), { recursive: true })
     const { output: _o, ...meta } = run
     writeFileSync(metaPath(run.id), JSON.stringify(meta))
   } catch {
@@ -882,14 +882,14 @@ export function loadPersistedRuns() {
   loaded = true
   let files: string[] = []
   try {
-    files = readdirSync(RUNS_DIR).filter((f) => f.endsWith('.json'))
+    files = readdirSync(RUNS_DIR()).filter((f) => f.endsWith('.json'))
   } catch {
     return
   }
   const metas: AgentRun[] = []
   for (const f of files) {
     try {
-      const m = JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8')) as AgentRun
+      const m = JSON.parse(readFileSync(join(RUNS_DIR(), f), 'utf8')) as AgentRun
       if (m.status === 'running') m.status = 'interrupted'
       metas.push(m)
     } catch {
@@ -970,12 +970,12 @@ export function getRun(id: string): AgentRun | null {
 // repo can override a global agent's body. The runner branches: if a script
 // exists, exec it with env vars; else fall back to the prompt-based agent
 // prompt-wrap built by buildCmd().
-const TERMINAL_BIN_DIR = join(homedir(), '.config', 'TerMinal', 'bin')
-const GLOBAL_SCRIPTS_DIR = join(homedir(), '.config', 'TerMinal', 'scripts')
+const TERMINAL_BIN_DIR = (): string => configPath('bin')
+const GLOBAL_SCRIPTS_DIR = (): string => configPath('scripts')
 export function locateScript(repoRoot: string, agentId: string): string | null {
   const perRepo = join(repoRoot, '.agents', `${agentId}.sh`)
   if (existsSync(perRepo)) return perRepo
-  const global = join(GLOBAL_SCRIPTS_DIR, `${agentId}.sh`)
+  const global = join(GLOBAL_SCRIPTS_DIR(), `${agentId}.sh`)
   if (existsSync(global)) return global
   return null
 }
@@ -984,9 +984,9 @@ export function locateScript(repoRoot: string, agentId: string): string | null {
 //   ~/.config/TerMinal/agent-state/<repo-basename>/<agentId>.json
 // We expose read + reset to the renderer so the Agents tab can surface
 // "last scanned X ago" without users `cat`-ing the JSON.
-const AGENT_STATE_DIR = join(homedir(), '.config', 'TerMinal', 'agent-state')
+const AGENT_STATE_DIR = (): string => configPath('agent-state')
 function agentStateFile(repoRoot: string, agentId: string): string {
-  return join(AGENT_STATE_DIR, basename(repoRoot) || 'unknown', `${agentId}.json`)
+  return join(AGENT_STATE_DIR(), basename(repoRoot) || 'unknown', `${agentId}.json`)
 }
 export type AgentState = {
   lastScannedSha?: string
@@ -1740,7 +1740,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Inject TerMinal's bin dir so scripts can call `terminal-cli ...`.
-      PATH: `${TERMINAL_BIN_DIR}:${process.env.PATH || ''}`,
+      PATH: `${TERMINAL_BIN_DIR()}:${process.env.PATH || ''}`,
       TERMINAL_REPO: repoRoot,
       TERMINAL_RUN_ID: run.id,
       TERMINAL_AGENT_ID: spec.id,
@@ -1920,10 +1920,7 @@ export function runDesignerSpawn(
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const targetDir =
-    scope === 'global'
-      ? join(homedir(), '.config', 'TerMinal', 'scripts')
-      : join(repoRoot, '.agents')
+  const targetDir = scope === 'global' ? configPath('scripts') : join(repoRoot, '.agents')
   const scopeLabel =
     scope === 'global'
       ? "TerMinal's GLOBAL script registry (~/.config/TerMinal/scripts/)"
@@ -2088,7 +2085,7 @@ export function runScheduleDesignerSpawn(
 ): AgentRun | { error: string } {
   const t = text.trim()
   if (!t) return { error: 'empty request' }
-  const schedulesFile = join(homedir(), '.config', 'TerMinal', 'schedules.json')
+  const schedulesFile = configPath('schedules.json')
   const agents = readAgents(repoRoot)
   const agentSummary = agents.length
     ? agents

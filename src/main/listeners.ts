@@ -1,5 +1,4 @@
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -10,7 +9,6 @@ import {
   type FSWatcher,
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
 import { emitActivity, type ActivityKind } from './events'
 import { createTicket } from './backlog'
@@ -19,16 +17,17 @@ import { runAgent, type Engine } from './agents'
 import { spawnBgTask } from './bg-tasks'
 import { resolvedProjectsDir, resolvedWorktreesDir } from './settings'
 import { isRepoRootWithin } from './repo-allowlist'
+import { terminalConfigDir } from './config-dir'
 
 function assertRepoRootAllowed(repoRoot: string): void {
   if (!isRepoRootWithin(repoRoot, [resolvedProjectsDir(), resolvedWorktreesDir()]))
     throw new Error(`refusing to dispatch: repoRoot is outside the projects directory: ${repoRoot}`)
 }
 
-const CFG = join(homedir(), '.config', 'TerMinal')
-const ROOT = join(CFG, 'automation-inbox')
-const SETTINGS = join(ROOT, 'settings.json')
-const PROCESSED = join(ROOT, 'processed.json')
+const CFG = (): string => terminalConfigDir()
+const ROOT = (): string => join(CFG(), 'automation-inbox')
+const SETTINGS = (): string => join(ROOT(), 'settings.json')
+const PROCESSED = (): string => join(ROOT(), 'processed.json')
 const DIRS = ['new', 'processing', 'done', 'failed', 'dead-letter'] as const
 
 export type ListenerDir = (typeof DIRS)[number]
@@ -126,8 +125,8 @@ export type ListenerStatus = {
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
 function ensure(): void {
-  mkdirSync(ROOT, { recursive: true })
-  for (const d of DIRS) mkdirSync(join(ROOT, d), { recursive: true })
+  mkdirSync(ROOT(), { recursive: true })
+  for (const d of DIRS) mkdirSync(join(ROOT(), d), { recursive: true })
 }
 
 function readJson<T>(path: string, fallback: T): T {
@@ -145,7 +144,7 @@ function writeJson(path: string, value: unknown): void {
 
 export function readListenerSettings(): ListenerSettings {
   ensure()
-  const raw = readJson<Partial<ListenerSettings>>(SETTINGS, {})
+  const raw = readJson<Partial<ListenerSettings>>(SETTINGS(), {})
   // Opt-in by default: the inbox auto-runs full-access agents on any dropped
   // file, so it must be enabled deliberately (never on for a fresh install).
   return { enabled: raw.enabled === true }
@@ -153,29 +152,29 @@ export function readListenerSettings(): ListenerSettings {
 
 export function setListenerEnabled(enabled: boolean): ListenerSettings {
   const s = { ...readListenerSettings(), enabled }
-  writeJson(SETTINGS, s)
+  writeJson(SETTINGS(), s)
   emitActivity({
     kind: 'check',
     title: `Listener inbox ${enabled ? 'enabled' : 'paused'}`,
-    detail: ROOT,
+    detail: ROOT(),
   })
   return s
 }
 
 function processedKeys(): string[] {
-  const raw = readJson<{ keys?: unknown[] } | unknown[]>(PROCESSED, [])
+  const raw = readJson<{ keys?: unknown[] } | unknown[]>(PROCESSED(), [])
   const arr = Array.isArray(raw) ? raw : Array.isArray(raw.keys) ? raw.keys : []
   return arr.filter((x): x is string => typeof x === 'string')
 }
 
 function rememberKey(key: string): void {
   const keys = [key, ...processedKeys().filter((x) => x !== key)].slice(0, 2000)
-  writeJson(PROCESSED, { keys })
+  writeJson(PROCESSED(), { keys })
 }
 
 function fileCount(dir: ListenerDir): number {
   try {
-    return readdirSync(join(ROOT, dir)).filter((f) => f.endsWith('.json')).length
+    return readdirSync(join(ROOT(), dir)).filter((f) => f.endsWith('.json')).length
   } catch {
     return 0
   }
@@ -203,7 +202,7 @@ export function enqueueListenerEvent(
   if (typeof env.type !== 'string' || !env.type.trim()) return { error: 'type is required' }
   const id = typeof env.id === 'string' && env.id.trim() ? env.id.trim() : randomUUID()
   const file = `${safeFileName(id)}.json`
-  const path = join(ROOT, 'new', file)
+  const path = join(ROOT(), 'new', file)
   writeJson(path, { ...env, id, createdAt: env.createdAt || new Date().toISOString() })
   return { ok: true, path }
 }
@@ -230,7 +229,7 @@ function moveWithMeta(
   env: ListenerEnvelope,
   meta: NonNullable<ListenerProcessedFile['_terminal']>,
 ): string {
-  const target = join(ROOT, dir, basename(from))
+  const target = join(ROOT(), dir, basename(from))
   writeJson(from, { ...env, _terminal: meta })
   renameSync(from, target)
   return target
@@ -334,7 +333,7 @@ export function processListenerInbox(limit = 20): {
 } {
   ensure()
   if (!readListenerSettings().enabled) return { processed: 0, failed: 0, skipped: 0 }
-  const files = readdirSync(join(ROOT, 'new'))
+  const files = readdirSync(join(ROOT(), 'new'))
     .filter((f) => f.endsWith('.json'))
     .sort()
     .slice(0, limit)
@@ -344,8 +343,8 @@ export function processListenerInbox(limit = 20): {
   const keys = new Set(processedKeys())
 
   for (const f of files) {
-    const newPath = join(ROOT, 'new', f)
-    const processingPath = join(ROOT, 'processing', f)
+    const newPath = join(ROOT(), 'new', f)
+    const processingPath = join(ROOT(), 'processing', f)
     try {
       renameSync(newPath, processingPath)
     } catch {
@@ -389,7 +388,7 @@ export function processListenerInbox(limit = 20): {
           error,
         })
       } catch {
-        const target = join(ROOT, 'dead-letter', f)
+        const target = join(ROOT(), 'dead-letter', f)
         writeFileSync(processingPath, rawText || '{}')
         renameSync(processingPath, target)
       }
@@ -402,10 +401,10 @@ export function processListenerInbox(limit = 20): {
 
 function recentFrom(dir: ListenerDir) {
   try {
-    return readdirSync(join(ROOT, dir))
+    return readdirSync(join(ROOT(), dir))
       .filter((f) => f.endsWith('.json'))
       .map((f) => {
-        const path = join(ROOT, dir, f)
+        const path = join(ROOT(), dir, f)
         const env = readJson<ListenerProcessedFile>(path, {} as ListenerProcessedFile)
         const fileTs = statSync(path).mtimeMs
         const createdAt =
@@ -444,7 +443,7 @@ export function readListenerStatus(): ListenerStatus {
     ListenerDir,
     number
   >
-  const dirs = Object.fromEntries(DIRS.map((d) => [d, join(ROOT, d)])) as Record<
+  const dirs = Object.fromEntries(DIRS.map((d) => [d, join(ROOT(), d)])) as Record<
     ListenerDir,
     string
   >
@@ -515,7 +514,7 @@ export function readListenerStatus(): ListenerStatus {
   }
   return {
     enabled: readListenerSettings().enabled,
-    inboxDir: ROOT,
+    inboxDir: ROOT(),
     dirs,
     counts,
     listeners: [...byListener.values()]
@@ -533,7 +532,7 @@ export function startListenerInboxWatcher(): void {
   if (!timer) timer = setInterval(() => processListenerInbox(), 5000)
   try {
     watcher?.close()
-    watcher = watch(join(ROOT, 'new'), () => setTimeout(() => processListenerInbox(), 100))
+    watcher = watch(join(ROOT(), 'new'), () => setTimeout(() => processListenerInbox(), 100))
   } catch {
     /* polling still works */
   }

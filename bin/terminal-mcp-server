@@ -25,7 +25,14 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 
-const CFG = join(homedir(), '.config', 'TerMinal')
+// Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
+// same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
+// same files as the app, so a sandboxed run that only redirected the app would
+// still have this script clobbering real state — which is precisely how an agent
+// script would do it (ticket 108). Eager is fine here and not in the app: each
+// invocation is a fresh short-lived process that reads the env at startup.
+const CFG =
+  process.env.TERMINAL_CONFIG_DIR?.trim() || join(homedir(), '.config', 'TerMinal')
 const SETTINGS_FILE = join(CFG, 'settings.json')
 const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
@@ -998,7 +1005,7 @@ function updateTicketRun(args) {
 function fileHitlTool(args) {
   const { title, action, detail, repo, source = 'agent', runId, ticketPath, severity } = args
   if (!title) throw new Error('title is required')
-  const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+  const cfg = CFG
   mkdirSync(cfg, { recursive: true })
   const hitlFile = join(cfg, 'hitl.json')
   const item = {
@@ -1043,7 +1050,7 @@ function fileHitlTool(args) {
 function resolveHitlTool(args) {
   const { id, resolved = true } = args
   if (!id) throw new Error('id is required')
-  const hitlFile = join(process.env.HOME || '', '.config', 'TerMinal', 'hitl.json')
+  const hitlFile = join(CFG, 'hitl.json')
   // The find and the write must happen under ONE lock, or the index found here
   // can address a different item by the time we write it back.
   let updated = null
@@ -1079,7 +1086,7 @@ function resolveHitlTool(args) {
 // --- emit_activity --------------------------------------------------------
 
 function emitActivityRaw({ kind, title, detail, repo, repoRoot, hitlId, runId, suppressTelegram }) {
-  const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+  const cfg = CFG
   mkdirSync(cfg, { recursive: true })
   const file = join(cfg, 'activity.jsonl')
   const ev = {
@@ -1112,7 +1119,7 @@ function stateFilePath(repoArg, agentId) {
   if (!agentId) throw new Error('agent is required')
   const root = findRepoRoot(repoArg)
   const slug = root ? basename(root) : repoArg
-  return join(process.env.HOME || '', '.config', 'TerMinal', 'agent-state', slug, `${agentId}.json`)
+  return join(CFG, 'agent-state', slug, `${agentId}.json`)
 }
 
 function setAgentStateTool(args) {
@@ -1146,7 +1153,7 @@ function getAgentStateTool(args) {
 
 function listActivityTool(args) {
   const { kind, repo, sinceMs, limit = 50 } = args || {}
-  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'activity.jsonl')
+  const file = join(CFG, 'activity.jsonl')
   if (!existsSync(file)) return []
   let raw = ''
   try {
@@ -1185,7 +1192,7 @@ function listActivityTool(args) {
 
 function listHitlTool(args) {
   const { status = 'open', repo, limit = 50 } = args || {}
-  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'hitl.json')
+  const file = join(CFG, 'hitl.json')
   if (!existsSync(file)) return []
   try {
     const arr = JSON.parse(readFileSync(file, 'utf8'))
@@ -1217,7 +1224,7 @@ function listHitlTool(args) {
 
 function listBgTasksTool(args) {
   const { status, repo, limit = 20 } = args || {}
-  const file = join(process.env.HOME || '', '.config', 'TerMinal', 'bg-tasks.json')
+  const file = join(CFG, 'bg-tasks.json')
   if (!existsSync(file)) return []
   try {
     const arr = JSON.parse(readFileSync(file, 'utf8'))
@@ -1233,7 +1240,7 @@ function listBgTasksTool(args) {
 // --- harness_status -------------------------------------------------------
 
 function harnessStatusTool() {
-  const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+  const cfg = CFG
   const hitlFile = join(cfg, 'hitl.json')
   let hitlOpen = 0
   try {
@@ -1282,7 +1289,7 @@ function harnessStatusTool() {
 function setRunOutcomeTool(args) {
   const { runId, outcome } = args
   if (!runId || !outcome) throw new Error('runId and outcome are required')
-  const dir = join(process.env.HOME || '', '.config', 'TerMinal', 'ai-runs')
+  const dir = join(CFG, 'ai-runs')
   if (!existsSync(dir)) return { ok: false, reason: 'no ai-runs/ dir' }
   // Find the AIRun by runId (the harness id), not the AIRun file's own id
   let updated = 0
@@ -1512,7 +1519,7 @@ function listAgentsTool(args) {
 function noteFirstDelegation(title, repo, agentId) {
   try {
     const sessionId = process.env.GT_TERMINAL_SESSION_ID || ''
-    const cfg = join(process.env.HOME || '', '.config', 'TerMinal')
+    const cfg = CFG
     const dir = join(cfg, 'delegation-seen')
     mkdirSync(dir, { recursive: true, mode: 0o700 })
     const marker = join(dir, `${(sessionId || 'no-session').replace(/[^\w-]/g, '_')}.json`)

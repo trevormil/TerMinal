@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, resolve, sep } from 'node:path'
-import { homedir } from 'node:os'
+import { configPath } from './config-dir'
 
 // Notes:
 //   global → ~/.config/TerMinal/notes.md  (unbound, spans all repos)
@@ -10,7 +10,7 @@ import { homedir } from 'node:os'
 export type NotesScope = 'repo' | 'global'
 export type NoteFolderEntry = { name: string; path: string; dir: boolean }
 
-const GLOBAL = join(homedir(), '.config', 'TerMinal', 'notes.md')
+const GLOBAL = (): string => configPath('notes.md')
 const repoNotesPath = (repoRoot: string) => join(repoRoot, '.TerMinal', 'notes.md')
 
 // keep notes.md out of git without touching the committed widgets.json
@@ -28,7 +28,7 @@ function ensureGitignored(repoRoot: string) {
 }
 
 function pathFor(scope: NotesScope, repoRoot: string): string {
-  return scope === 'global' ? GLOBAL : repoRoot ? repoNotesPath(repoRoot) : ''
+  return scope === 'global' ? GLOBAL() : repoRoot ? repoNotesPath(repoRoot) : ''
 }
 
 export function readNotes(scope: NotesScope, repoRoot: string): string {

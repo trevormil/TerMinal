@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
+import { dirname } from 'node:path'
 import { writeJsonAtomic } from './atomic-write'
+import { configPath } from './config-dir'
 
 // ---------------------------------------------------------------------------
 // Per-repo trust for REPO-SOURCED command widgets and tabs.
@@ -25,7 +25,7 @@ import { writeJsonAtomic } from './atomic-write'
 export type TrustRecord = { hash: string; approvedAt: number }
 export type TrustStore = Record<string, TrustRecord>
 
-export const TRUST_FILE = join(homedir(), '.config', 'TerMinal', 'repo-trust.json')
+export const TRUST_FILE = (): string => configPath('repo-trust.json')
 
 /**
  * Stable fingerprint of everything a repo would execute or embed. Order-
@@ -43,7 +43,7 @@ export function commandSetHash(commands: string[]): string {
   return createHash('sha256').update(JSON.stringify(norm)).digest('hex').slice(0, 16)
 }
 
-export function readTrustStore(file: string = TRUST_FILE): TrustStore {
+export function readTrustStore(file: string = TRUST_FILE()): TrustStore {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8'))
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -60,7 +60,7 @@ export function readTrustStore(file: string = TRUST_FILE): TrustStore {
   }
 }
 
-export function writeTrustStore(store: TrustStore, file: string = TRUST_FILE): void {
+export function writeTrustStore(store: TrustStore, file: string = TRUST_FILE()): void {
   mkdirSync(dirname(file), { recursive: true })
   writeJsonAtomic(file, store)
 }
