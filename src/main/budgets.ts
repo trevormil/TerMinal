@@ -5,14 +5,15 @@
 // Mid-turn aborts NOT supported (kills worktree state). Current runs
 // finish; only NEW background spawns are refused at the cap.
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { existsSync, mkdirSync } from 'node:fs'
 import { summaryFor } from './ai-runs'
+import { readJsonState, updateJsonState, writeFileAtomic } from './atomic-write'
+import { configPath, terminalConfigDir } from './config-dir'
 import { fileHitl } from './hitl'
 import { localDay } from './local-day'
 
-const FILE = join(homedir(), '.config', 'TerMinal', 'budgets.json')
+/** Resolved per call, never at import — see config-dir.ts. */
+const budgetsFile = (): string => configPath('budgets.json')
 
 export type Budgets = {
   dailyTotalUsd: number // 0 = no global cap
@@ -29,24 +30,50 @@ const DEFAULTS: Budgets = {
 }
 
 function ensure(): void {
-  const dir = join(homedir(), '.config', 'TerMinal')
+  const dir = terminalConfigDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
-export function readBudgets(): Budgets {
+/** A budgets object, not an array and not null — anything else is corruption. */
+const looksLikeBudgets = (v: unknown): boolean =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+export type BudgetsRead = { budgets: Budgets; corrupt: boolean }
+
+/**
+ * Read the caps, saying explicitly whether the file was unreadable.
+ *
+ * This distinction is the whole ticket (111). `dailyTotalUsd: 0` is a REAL
+ * configuration meaning "no cap", so collapsing a torn file into the defaults
+ * makes an unparseable budgets.json indistinguishable from an account the user
+ * deliberately left uncapped — and the caller then spends money on the guess.
+ * Absent is still fine: no file means no cap was ever configured.
+ */
+export function readBudgetsState(): BudgetsRead {
   ensure()
-  if (!existsSync(FILE)) return { ...DEFAULTS }
-  try {
-    const raw = JSON.parse(readFileSync(FILE, 'utf8'))
-    return { ...DEFAULTS, ...raw }
-  } catch {
-    return { ...DEFAULTS }
-  }
+  const read = readJsonState<Partial<Budgets>>(budgetsFile(), () => ({}), {
+    accept: looksLikeBudgets,
+  })
+  return { budgets: { ...DEFAULTS, ...read.value }, corrupt: read.corrupt }
+}
+
+export function readBudgets(): Budgets {
+  return readBudgetsState().budgets
 }
 
 export function writeBudgets(b: Budgets): Budgets {
   ensure()
-  writeFileSync(FILE, JSON.stringify(b, null, 2))
+  // Locked + atomic, and refuses to overwrite a corrupt file rather than
+  // silently replacing a cap the user set with whatever this caller had in
+  // hand (ticket 110 — the cron runner reads this same file).
+  updateJsonState<Partial<Budgets>>(
+    budgetsFile(),
+    () => ({}),
+    () => b,
+    {
+      accept: looksLikeBudgets,
+    },
+  )
   return b
 }
 
@@ -85,7 +112,19 @@ export type GateDecision = {
  *  are set OR override is active OR spend is well under cap. Returns 'refuse'
  *  when at/over cap. 'warn' covers the warning-band states. */
 export function gateSpawn(agentId?: string): GateDecision {
-  const b = readBudgets()
+  const { budgets: b, corrupt } = readBudgetsState()
+  // Fail CLOSED. Every other guard in this area does, and this is the only one
+  // where guessing wrong spends money directly: an unreadable file could be
+  // hiding a $20 cap, and proceeding treats it as no cap at all (ticket 111).
+  if (corrupt) {
+    return {
+      decision: 'refuse',
+      reason: 'budgets.json is unreadable — refusing to spawn rather than assume no cap',
+      spentTodayUsd: 0,
+      capRemainingUsd: 0,
+      capUsd: 0,
+    }
+  }
   // Override window — bypass the gate entirely
   if (b.overrideUntil && b.overrideUntil > Date.now()) {
     return {
@@ -156,18 +195,16 @@ export function gateSpawn(agentId?: string): GateDecision {
 
 // ---- warn-threshold tracker (file-of-record so we don't re-ping) ----------
 
-const PINGED_FILE = join(homedir(), '.config', 'TerMinal', 'budget-pings.json')
+const pingedFile = (): string => configPath('budget-pings.json')
 
 function readPinged(): Record<string, number> {
-  try {
-    return existsSync(PINGED_FILE) ? JSON.parse(readFileSync(PINGED_FILE, 'utf8')) : {}
-  } catch {
-    return {}
-  }
+  // Single-writer bookkeeping, not shared state: losing it re-sends one warning,
+  // so the fail-open above is right here and wrong for the caps themselves.
+  return readJsonState<Record<string, number>>(pingedFile(), () => ({})).value
 }
 function writePinged(p: Record<string, number>): void {
   try {
-    writeFileSync(PINGED_FILE, JSON.stringify(p))
+    writeFileAtomic(pingedFile(), JSON.stringify(p))
   } catch {
     /* best effort */
   }

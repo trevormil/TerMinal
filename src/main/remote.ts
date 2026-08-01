@@ -147,10 +147,28 @@ function home(){return process.env.HOME||''}
 function cfg(){return path.join(home(),'.config','TerMinal')}
 function readJson(p,f){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return f}}
 function writeJson(p,v){fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(v,null,2));return true}
+// --- crash-safe shared-state writes (ticket 0110) ---------------------------
+// The remote host runs its OWN terminal-cron and terminal-cli against the same
+// hitl.json and schedules.json, and both of those take an advisory lock. An
+// advisory lock protects a file only if EVERY writer takes it, so this script
+// writing through them is what manufactures the torn read that makes THEM
+// quarantine the file and refuse — losing the whole inbox on that host.
+//
+// Canonical impl + tests: src/main/atomic-write.ts, mirrored in bin/terminal-cron.
+// This copy is CommonJS (the script ships via node -e) so it cannot be the
+// byte-identical copy those two share; remote.test.ts exercises it directly.
+function sleepSyncShared(ms){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}
+function readLockShared(l){try{const p=JSON.parse(fs.readFileSync(l,'utf8'));return typeof p&&typeof p.token==='string'?p:null}catch{return null}}
+function pidAliveShared(pid){if(!Number.isInteger(pid)||pid<=0)return false;try{process.kill(pid,0);return true}catch(e){return e&&e.code==='EPERM'}}
+function writeJsonAtomicShared(f,v){fs.mkdirSync(path.dirname(f),{recursive:true});const t=f+'.'+process.pid+'.tmp';try{fs.writeFileSync(t,JSON.stringify(v,null,2)+'\n');fs.renameSync(t,f)}catch(e){try{fs.unlinkSync(t)}catch{}throw e}}
+function withFileLockShared(f,fn,timeoutMs,staleMs){const l=f+'.lock';const token=require('crypto').randomUUID();fs.mkdirSync(path.dirname(f),{recursive:true});const deadline=Date.now()+(timeoutMs||5000);for(;;){let took=false;try{const fd=fs.openSync(l,'wx');try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid,at:Date.now(),token}))}finally{fs.closeSync(fd)}sleepSyncShared(2);const h=readLockShared(l);took=!!h&&h.token===token}catch{}if(took)break;const held=readLockShared(l);if(held===null||!pidAliveShared(held.pid)||Date.now()-held.at>(staleMs||30000)||Date.now()>deadline){try{fs.unlinkSync(l)}catch{}continue}sleepSyncShared(10)}try{return fn()}finally{const h=readLockShared(l);if(h&&h.token===token){try{fs.unlinkSync(l)}catch{}}}}
+// Returning [] for an unparseable file and writing that back is how a torn file
+// silently deletes every entry — quarantine and refuse instead.
+function updateJsonListShared(f,update){return withFileLockShared(f,()=>{let raw=null;try{raw=fs.readFileSync(f,'utf8')}catch{}let cur=[];if(raw!==null&&raw.trim()!==''){let parsed;try{parsed=JSON.parse(raw)}catch{parsed=undefined}if(!Array.isArray(parsed)){const dest=f+'.corrupt-'+Date.now();fs.renameSync(f,dest);throw new Error('corrupt state file '+f+'; moved aside to '+dest)}cur=parsed}const next=update(cur);if(next===undefined)return false;writeJsonAtomicShared(f,next);return true})}
 function agentArr(v){return Array.isArray(v)?v:(Array.isArray(v&&v.agents)?v.agents:[])}
 function readRepoAgents(root){const out=[];const dir=path.join(root,'.agents');for(const a of agentArr(readJson(path.join(dir,'agents.json'),[]))){if(a&&a.id&&a.title)out.push({...a,source:'repo',hasScript:exists(path.join(dir,a.id+'.sh'))})}if(exists(dir)){for(const f of fs.readdirSync(dir)){if(!f.endsWith('.sh'))continue;const id=f.replace(/\.sh$/,'');if(out.some(a=>a.id===id))continue;out.push({id,title:id.replace(/-/g,' '),prompt:'Script-based remote agent · body in .agents/'+f,source:'repo',hasScript:true})}}return out}
 function readAgentScript(root,id){const safe=String(id||'').replace(/[^\w-]/g,'');const p=path.join(root,'.agents',safe+'.sh');if(!exists(p))return null;return {path:p,body:fs.readFileSync(p,'utf8')}}
-function schedules(){return readJson(path.join(cfg(),'schedules.json'),[])}
+function schedules(){return readJson(schedulesFile(),[])}
 function sweepStaleRuns(){const dir=path.join(cfg(),'cron-runs');if(!exists(dir))return;const now=Date.now();const STALE=2*60*60*1000;for(const f of fs.readdirSync(dir)){if(!f.endsWith('.json'))continue;const p=path.join(dir,f);try{const r=JSON.parse(fs.readFileSync(p,'utf8'));if(r.status!=='running')continue;if(now-(r.startedAt||0)<STALE)continue;r.status='failed';r.endedAt=now;r.exitCode=Number.isFinite(r.exitCode)?r.exitCode:0;r.error='stale: remote watchdog finalized (>2h with no in-app activity)';fs.writeFileSync(p,JSON.stringify(r,null,2))}catch{}}}
 function cronRuns(scheduleId,limit){const dir=path.join(cfg(),'cron-runs');if(!exists(dir))return [];sweepStaleRuns();const out=[];for(const f of fs.readdirSync(dir)){if(!f.endsWith('.json'))continue;try{const r=JSON.parse(fs.readFileSync(path.join(dir,f),'utf8'));if(!scheduleId||r.scheduleId===scheduleId)out.push(r)}catch{}}return out.sort((a,b)=>(b.startedAt||0)-(a.startedAt||0)).slice(0,limit||200)}
 function unifiedRuns(){return cronRuns(null,400).map(r=>({id:r.id,source:r.source||'cron',agentId:r.agentId,agentTitle:r.agentTitle,engine:r.engine,status:r.status,startedAt:r.startedAt,endedAt:r.endedAt,exitCode:r.exitCode,repoRoot:r.repoRoot||'',repoLabel:r.repoLabel||'',branch:r.branch||'',worktree:r.worktree||'',scheduleId:r.scheduleId,error:r.error}))}
@@ -272,16 +290,21 @@ function runStart(root,input){
   fs.writeFileSync(jsonFile,JSON.stringify(record,null,2));
   return {...record,output:'▸ remote run started\\n',force:false}
 }
-function schedulesSave(input){const list=schedules();const idx=list.findIndex(s=>s.id===input.id);if(idx>=0)list[idx]=input;else list.push(input);writeJson(path.join(cfg(),'schedules.json'),list);return {ok:true,id:input.id}}
-function hitlList(){try{const p=path.join(cfg(),'hitl.json');if(!exists(p))return [];const a=JSON.parse(fs.readFileSync(p,'utf8'));return Array.isArray(a)?a.filter(h=>h&&h.status==='open'):[]}catch{return []}}
+function schedulesFile(){return path.join(cfg(),'schedules.json')}
+function hitlFile(){return path.join(cfg(),'hitl.json')}
+// Read AND modify inside the lock: a list read before acquiring is a snapshot,
+// and writing it back is exactly how one process reinstates a schedule the user
+// just disabled in another.
+function schedulesSave(input){updateJsonListShared(schedulesFile(),cur=>{const list=cur.slice();const idx=list.findIndex(s=>s.id===input.id);if(idx>=0)list[idx]=input;else list.push(input);return list});return {ok:true,id:input.id}}
+function hitlList(){try{const p=hitlFile();if(!exists(p))return [];const a=JSON.parse(fs.readFileSync(p,'utf8'));return Array.isArray(a)?a.filter(h=>h&&h.status==='open'):[]}catch{return []}}
 // One-axis inbox: resolve = mark read, reopen = mark unread (also clears a
 // legacy resolved status). Mirrors src/main/hitl.ts resolveHitl.
-function hitlResolve(id,resolved){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const it=a.find(h=>h&&h.id===id);if(!it)return false;if(resolved===false){it.status='open';delete it.resolvedAt;delete it.readAt}else{it.readAt=Date.now()}writeJson(p,a);return true}catch{return false}}
-function hitlRemove(id){try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));writeJson(p,a.filter(h=>h&&h.id!==id));return true}catch{return false}}
-function hitlMarkRead(ids,read){const on=read!==false;try{const p=path.join(cfg(),'hitl.json');const a=JSON.parse(fs.readFileSync(p,'utf8'));const set=new Set(Array.isArray(ids)?ids:[]);let n=0;for(const h of a){if(h&&set.has(h.id)&&(on?!h.readAt:!!h.readAt)){if(on)h.readAt=Date.now();else delete h.readAt;n++}}if(n)writeJson(p,a);return n}catch{return 0}}
+function hitlResolve(id,resolved){try{let found=false;updateJsonListShared(hitlFile(),cur=>{const a=cur.slice();const it=a.find(h=>h&&h.id===id);if(!it)return undefined;found=true;if(resolved===false){it.status='open';delete it.resolvedAt;delete it.readAt}else{it.readAt=Date.now()}return a});return found}catch{return false}}
+function hitlRemove(id){try{updateJsonListShared(hitlFile(),cur=>cur.filter(h=>h&&h.id!==id));return true}catch{return false}}
+function hitlMarkRead(ids,read){const on=read!==false;try{let n=0;updateJsonListShared(hitlFile(),cur=>{const a=cur.slice();const set=new Set(Array.isArray(ids)?ids:[]);n=0;for(const h of a){if(h&&set.has(h.id)&&(on?!h.readAt:!!h.readAt)){if(on)h.readAt=Date.now();else delete h.readAt;n++}}return n?a:undefined});return n}catch{return 0}}
 function runCancel(id){try{const p=path.join(cfg(),'cron-runs',id+'.json');const rec=JSON.parse(fs.readFileSync(p,'utf8'));if(rec.runnerPid){try{process.kill(rec.runnerPid,'SIGTERM')}catch(e){}}return true}catch(e){return false}}
-function scheduleRemove(id){const next=schedules().filter(s=>s.id!==id);writeJson(path.join(cfg(),'schedules.json'),next);return true}
-function scheduleToggle(id,enabled){const list=schedules();const s=list.find(x=>x.id===id);if(!s)return false;s.enabled=!!enabled;writeJson(path.join(cfg(),'schedules.json'),list);return true}
+function scheduleRemove(id){updateJsonListShared(schedulesFile(),cur=>cur.filter(s=>s.id!==id));return true}
+function scheduleToggle(id,enabled){let found=false;updateJsonListShared(schedulesFile(),cur=>{const list=cur.slice();const s=list.find(x=>x.id===id);if(!s)return undefined;found=true;s.enabled=!!enabled;return list});return found}
 function out(v){process.stdout.write(JSON.stringify(v))}
 try{const op=input.op;const root=repoRoot()||cwdInput; if(op==='probe'){const rr=repoRoot();const f=rr?forge(rr):{repo:null,kind:'github',label:'PR',sym:'#'};out({cwd:cwdInput,repoRoot:rr,repoPath:f.repo?f.repo.path:'',repoHost:f.repo?f.repo.host:'',forgeKind:f.kind,forgeLabel:f.label,forgeSym:f.sym,hasBacklog:!!(rr&&areaPaths(rr,'backlog').length),hasDocs:!!(rr&&(exists(path.join(rr,'docs'))||areaPaths(rr,'reports').length||areaPaths(rr,'checks').length||exists(path.join(rr,'CHANGELOG.md')))),hasSessions:!!(rr&&areaPaths(rr,'sessions').length),hasAgents:!!(rr&&exists(path.join(rr,'.agents'))),engines:{claude:run('bash',['-lc','command -v claude || true']),codex:run('bash',['-lc','command -v codex || true']),cursor:run('bash',['-lc','command -v cursor-agent || true'])},tools:{node:run('bash',['-lc','command -v node || true']),git:run('bash',['-lc','command -v git || true']),gh:run('bash',['-lc','command -v gh || true']),glab:run('bash',['-lc','command -v glab || true']),rg:run('bash',['-lc','command -v rg || true'])}})}
 else if(op==='gitStatus'){const b=run('git',['-C',root,'rev-parse','--abbrev-ref','HEAD']);const ab=run('git',['-C',root,'rev-list','--left-right','--count','@{upstream}...HEAD']);const p=run('git',['-C',root,'status','--porcelain']);const parts=ab?ab.split(/\s+/).map(Number):[0,0];out({ok:!!b,branch:b,ahead:parts[1]||0,behind:parts[0]||0,dirty:p?p.split('\n').filter(Boolean).length:0})}

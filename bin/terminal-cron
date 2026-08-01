@@ -315,15 +315,53 @@ function writeAIRun(opts) {
   }
 }
 
+// ABSENT vs PRESENT-BUT-UNREADABLE — the distinction ticket 111 is about.
+//
+// `dailyTotalUsd: 0` is a REAL configuration meaning "no cap", so a reader that
+// swallows a parse failure and falls through to the defaults makes a torn
+// budgets.json indistinguishable from an account the operator deliberately left
+// uncapped. This gate then spawns unbounded, and the refusal HITL never fires
+// because from here there was never a cap. Every other guard in this runner
+// fails closed; this one used to be the exception, and it is the only one where
+// guessing wrong costs money directly.
+//
+// Returns { value: object }  — caps to apply
+//         { value: null }    — no file: no cap was ever configured, proceed
+//         { refused: string }— unreadable: refuse, do not guess
+function readBudgetsOrRefuse() {
+  const budgetsFile = join(CFG, 'budgets.json')
+  if (!existsSync(budgetsFile)) return { value: null }
+  let raw
+  try {
+    raw = readFileSync(budgetsFile, 'utf8')
+  } catch (e) {
+    return { refused: `budgets.json unreadable (${e && e.message}) — refusing rather than assuming no cap` }
+  }
+  // An empty file is what a truncating writer leaves behind mid-crash, but it is
+  // also what `touch` leaves. Treat it as absent rather than wedging every run.
+  if (raw.trim() === '') return { value: null }
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { refused: 'budgets.json is corrupt — refusing rather than assuming no cap' }
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { refused: 'budgets.json is not a budgets object — refusing rather than assuming no cap' }
+  }
+  return { value: parsed }
+}
+
 // Budget gate — cron-side mirror of src/main/budgets.gateSpawn. Reads the
 // budgets.json + sums today's ai-runs to decide. Returns true to allow,
-// false to refuse. Refused fires emit a HITL via fileHitl so the operator
-// sees the skipped run.
+// or { refused } to refuse. Refused fires emit a HITL via fileHitl so the
+// operator sees the skipped run.
 function budgetAllowsSpawn(agentId) {
+  const budgets = readBudgetsOrRefuse()
+  if (budgets.refused) return budgets
+  if (budgets.value === null) return true // no cap ever configured
   try {
-    const bf = join(CFG, 'budgets.json')
-    if (!existsSync(bf)) return true
-    const b = JSON.parse(readFileSync(bf, 'utf8'))
+    const b = budgets.value
     // Override window bypasses entirely
     if (b.overrideUntil && b.overrideUntil > Date.now()) return true
     const cap = b.dailyTotalUsd || 0

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
-import { writeJsonAtomic } from './atomic-write'
+import { updateJsonState } from './atomic-write'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -257,7 +257,16 @@ export function readMonitors(file = MONITORS_FILE): Monitor[] {
 
 export function writeMonitors(list: Monitor[], file = MONITORS_FILE): void {
   mkdirSync(CFG, { recursive: true })
-  writeJsonAtomic(file, list)
+  // `bin/terminal-cli monitor add/rm/...` edits this same file from a separate
+  // process and takes the advisory lock. Writing atomically but WITHOUT the lock
+  // still loses the CLI's edit whenever the two overlap — atomicity stops a torn
+  // file, not a lost update (ticket 110).
+  updateJsonState<Monitor[]>(
+    file,
+    () => [],
+    () => list,
+    { accept: Array.isArray },
+  )
 }
 
 export function readMonitorStatus(id: string, dir = MONITOR_STATE_DIR): MonitorStatus | null {
