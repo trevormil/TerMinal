@@ -281,8 +281,8 @@ function HelpTab(_props: { ctx: TabContext }) {
             </p>
             <p>
               <span className="font-semibold text-zinc-200">Work column (right):</span> one
-              accordion — Files, Tickets, PRs / MRs, and Vitals — each section collapsible on its
-              own, several open at once. Vitals holds the live widgets (context window, usage +
+              accordion — Files, Tickets, PRs / MRs, and Cockpit — each section collapsible on its
+              own, several open at once. Cockpit holds the live widgets (context window, usage +
               burn-rate, TDD status, git, todos, Skills), all visible together. Toggle any of them
               from the Plugins drawer; the × on a widget hides it.
             </p>

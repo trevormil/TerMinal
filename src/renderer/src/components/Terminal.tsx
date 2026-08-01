@@ -1465,7 +1465,7 @@ export function TerminalPane({
         </div>
       )}
       {showEnhanceModal && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm md:p-8">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm md:p-8">
           <div className="flex h-[min(780px,100%)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-xl border border-[var(--gt-border)] bg-[var(--gt-panel)] shadow-2xl">
             <div className="flex shrink-0 items-center gap-3 border-b border-[var(--gt-border)] px-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1838,7 +1838,7 @@ export function TerminalPane({
       )}
       {menuOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-6"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-6"
           onClick={() => setMenuOpen(false)}
         >
           <div
@@ -1953,7 +1953,7 @@ export function TerminalPane({
       )}
       {newOpen && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-6"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-6"
           onClick={() => setNewOpen(false)}
         >
           <div

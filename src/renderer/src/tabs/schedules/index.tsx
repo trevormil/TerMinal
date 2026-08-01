@@ -1038,7 +1038,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
       </div>
       {creating && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
           onClick={() => setCreating(false)}
         >
           <div
