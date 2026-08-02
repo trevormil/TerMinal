@@ -13,6 +13,7 @@ import {
   Server,
   Square,
   SquareTerminal,
+  Wrench,
   X,
   XCircle,
   type LucideIcon,
@@ -121,7 +122,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-3 py-1.5 text-[11px] text-zinc-200">
-        <span className="text-[14px]">🛠</span>
+        <Wrench size={13} strokeWidth={2} className="shrink-0" />
         {state === 'done' ? (
           <span className="flex-1">
             Bootstrapped{templateSha ? ` (template ${templateSha.slice(0, 7)})` : ''} — reload tabs
@@ -943,7 +944,8 @@ export function SessionView({
               title={cwd}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 py-px text-[10px] font-medium text-[var(--gt-yellow)]"
             >
-              🌿 worktree
+              <GitBranch size={10} strokeWidth={2.25} />
+              Worktree
             </span>
           )
         })()}

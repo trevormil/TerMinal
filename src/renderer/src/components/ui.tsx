@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import { Check, type LucideIcon } from 'lucide-react'
+import { Check, TriangleAlert, type LucideIcon } from 'lucide-react'
 
 // Shared widget primitives. Plugins compose these so cards look consistent.
 
@@ -76,7 +76,11 @@ export function Card({
   // or margin — no phantom inset in an otherwise empty section.
   if (useContext(CardChromeContext) === 'bare') return <>{children}</>
   return (
-    <div className="mb-1.5 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] px-2.5 py-2 transition-colors hover:border-[var(--gt-border)]/80">
+    // No fill. This card sits INSIDE a panel, so filling it with the panel
+    // colour again renders a third surface — which is why the cockpit read as
+    // a stack of boxes rather than a column of information. Depth comes from
+    // the border (design-system.md §2.1).
+    <div className="mb-1.5 rounded-lg border border-[var(--gt-border)] px-2.5 py-2 transition-colors hover:border-[var(--gt-border)]/80">
       <div className="mb-1.5 flex items-center gap-1.5">
         <Icon size={12} strokeWidth={2.25} className="shrink-0 text-zinc-500" />
         <span className="flex-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
@@ -175,7 +179,8 @@ export function ForceChip({ size = 'sm' }: { size?: 'sm' | 'md' }) {
       className={cls}
       title="FORCE — this agent runs with main-push authority (TERMINAL_FORCE_MAIN=1)"
     >
-      ⚠ Force
+      <TriangleAlert size={9} strokeWidth={2.5} className="shrink-0" />
+      Force
     </span>
   )
 }

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  FolderOpen,
-  CircleCheck,
-  CircleSlash,
   ArrowLeft,
   ArrowRight,
+  CircleCheck,
+  CircleSlash,
+  FolderOpen,
   Loader2,
   RefreshCw,
   Send,
@@ -356,7 +356,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 projectsDirValidation.reason === 'no-repos-found' && (
                   <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
                     <span className="min-w-0 flex-1">
-                      ⚠ 0 repos found here — they may be nested one level deeper.
+                      0 repos found here — they may be nested one level deeper.
                     </span>
                     {projectsDirValidation.suggestedChild && (
                       <button

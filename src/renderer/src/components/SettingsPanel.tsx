@@ -1,42 +1,42 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
-  X,
-  FolderOpen,
-  Loader2,
-  Send,
+  Activity,
+  AppWindow,
+  ArrowUpCircle,
+  BellDot,
+  BellRing,
+  Check,
   CircleCheck,
   CircleSlash,
-  RotateCcw,
-  TerminalSquare,
   ClipboardCopy,
-  Settings as SettingsIcon,
-  FolderTree,
   Cpu,
-  GitPullRequest,
-  AppWindow,
-  Inbox,
-  Smartphone,
-  RefreshCw,
-  MessageCircle,
-  Sparkles,
-  PlugZap,
-  Rows3,
   Eye,
-  Activity,
+  FolderOpen,
+  FolderTree,
+  GitPullRequest,
+  Inbox,
+  LayoutGrid,
+  Loader2,
+  MessageCircle,
+  Monitor,
+  Moon,
   PackageOpen,
   Palette,
-  Moon,
-  Sun,
-  Monitor,
-  Server,
-  Ticket as TicketIcon,
-  LayoutGrid,
+  PlugZap,
   Plus,
+  RefreshCw,
+  RotateCcw,
+  Rows3,
+  Send,
+  Server,
+  Settings as SettingsIcon,
+  Smartphone,
+  Sparkles,
+  Sun,
+  TerminalSquare,
+  Ticket as TicketIcon,
   Trash2,
-  BellRing,
-  BellDot,
-  Check,
-  ArrowUpCircle,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
@@ -2497,7 +2497,7 @@ export function SettingsPanel({
                         projectsDirValidation.reason === 'no-repos-found' && (
                           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10.5px] text-amber-200">
                             <span className="min-w-0 flex-1">
-                              ⚠ 0 repos found here — they may be nested one level deeper.
+                              0 repos found here — they may be nested one level deeper.
                             </span>
                             {projectsDirValidation.suggestedChild && (
                               <button
@@ -2778,7 +2778,7 @@ export function SettingsPanel({
                         })}
                       </div>
                     </div>
-                    <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel-2)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
+                    <div className="grid gap-2 rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)]/70 p-2 md:grid-cols-[1fr_1.2fr]">
                       <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-panel)] p-2">
                         <div className="mb-2 flex items-center justify-between">
                           <span className="text-[11px] font-semibold text-zinc-100">Preview</span>
@@ -2788,8 +2788,8 @@ export function SettingsPanel({
                         </div>
                         <div className="space-y-1.5">
                           <div className="h-2 rounded-full bg-[var(--gt-accent)]" />
-                          <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border-strong)]" />
-                          <div className="h-2 w-2/3 rounded-full bg-[var(--gt-surface-hover)]" />
+                          <div className="h-2 w-4/5 rounded-full bg-[var(--gt-border)]" />
+                          <div className="h-2 w-2/3 rounded-full bg-[var(--gt-panel)]" />
                         </div>
                       </div>
                       <div className="rounded-md border border-[var(--gt-border)] bg-[var(--gt-terminal-bg)] p-2 font-mono text-[11px] text-[var(--gt-terminal-fg)]">
@@ -2895,9 +2895,9 @@ export function SettingsPanel({
                   </div>
                   {!selectedIsRemote && env && !localEngineFound(selectedDaemon.defaultEngine) && (
                     <div className="mt-1.5 text-[10.5px] text-amber-400">
-                      ⚠ {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed —
-                      scheduled, ticket, and background agent runs will fail. Install it or pick an
-                      installed engine.
+                      {engineLabel(selectedDaemon.defaultEngine)} isn&apos;t installed — scheduled,
+                      ticket, and background agent runs will fail. Install it or pick an installed
+                      engine.
                     </div>
                   )}
                 </Section>
@@ -3545,9 +3545,9 @@ export function SettingsPanel({
                         </div>
                         <div className="mt-1.5 text-[10px] text-zinc-600">
                           <span className="text-zinc-500">/feature</span> drafts a ticket from plain
-                          text, then offers a 🚀 Start work button that builds it and links the PR
+                          text, then offers a "Start work" button that builds it and links the PR
                           back. Plain English works too — it's translated to a command. HITL pings
-                          include inline ✅ Resolve / 🪵 Tail run buttons.
+                          include inline "Resolve" and "Tail run" buttons.
                         </div>
                       </details>
                     )}
