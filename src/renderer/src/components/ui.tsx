@@ -144,7 +144,7 @@ const BADGE_MAP: Record<BadgeTone, string> = {
   bad: 'bg-[var(--gt-red)]/10 text-[var(--gt-red)] border-[var(--gt-red)]/25',
   red: 'bg-[var(--gt-red)]/10 text-[var(--gt-red)] border-[var(--gt-red)]/25',
   blue: 'bg-[var(--gt-blue)]/10 text-[var(--gt-blue)] border-[var(--gt-blue)]/25',
-  accent: 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)] border-[var(--gt-accent)]/30',
+  accent: 'bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)] border-[var(--gt-accent)]/30',
   mute: 'bg-white/10 text-zinc-400 border-white/20',
 }
 

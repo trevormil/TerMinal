@@ -791,7 +791,7 @@ export function SessionView({
         {p.loopRole && (
           <span
             title={`Linked loop — ${p.loopRole}`}
-            className="flex shrink-0 items-center gap-0.5 rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent)]"
+            className="flex shrink-0 items-center gap-0.5 rounded bg-[var(--gt-accent)]/10 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent)]"
           >
             <Repeat size={8} strokeWidth={2.5} />
             {p.loopRole}

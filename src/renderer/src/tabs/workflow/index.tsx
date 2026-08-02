@@ -187,7 +187,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
               disabled={!dirty || saving}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                 dirty
-                  ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20'
+                  ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20'
                   : 'cursor-not-allowed border-[var(--gt-border)] text-zinc-600'
               }`}
             >

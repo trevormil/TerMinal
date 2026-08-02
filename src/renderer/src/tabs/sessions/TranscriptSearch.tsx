@@ -63,7 +63,7 @@ function ContextWindow({ sessionId, line }: { sessionId: string; line: number })
         <div
           key={l.line}
           className={`flex gap-2 px-1 py-0.5 font-mono text-[10.5px] leading-snug ${
-            l.line === line ? 'rounded bg-[var(--gt-accent)]/15' : ''
+            l.line === line ? 'rounded bg-[var(--gt-accent)]/20' : ''
           }`}
         >
           <span className="w-10 shrink-0 text-right text-zinc-700">{l.line}</span>

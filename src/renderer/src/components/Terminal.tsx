@@ -1441,7 +1441,7 @@ export function TerminalPane({
                     title={s.prompt}
                     className="group flex min-w-0 items-start gap-2 rounded-md border border-[var(--gt-border)] bg-black/20 px-2.5 py-2 text-left hover:border-[var(--gt-accent)]/60 hover:bg-[var(--gt-accent)]/10"
                   >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)]">
                       <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
                     </span>
                     <span className="min-w-0 flex-1">
@@ -1576,7 +1576,7 @@ export function TerminalPane({
                         className="rounded-lg border border-[var(--gt-border)] bg-black/20 p-4"
                       >
                         <div className="mb-2 flex items-center gap-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/15 text-[11px] font-bold tabular-nums text-[var(--gt-accent-light)]">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--gt-accent)]/10 text-[11px] font-bold tabular-nums text-[var(--gt-accent-light)]">
                             {i + 1}
                           </span>
                           <span className="text-[13px] font-semibold text-zinc-100">{s.label}</span>
@@ -1901,8 +1901,8 @@ export function TerminalPane({
                           <span
                             className={`shrink-0 rounded px-1 py-px text-[8.5px] font-bold uppercase tracking-wide ${
                               s.kind === 'skill'
-                                ? 'bg-[var(--gt-blue)]/15 text-[var(--gt-blue)]'
-                                : 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                                ? 'bg-[var(--gt-blue)]/10 text-[var(--gt-blue)]'
+                                : 'bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)]'
                             }`}
                           >
                             {s.kind}

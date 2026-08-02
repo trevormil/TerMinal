@@ -68,7 +68,7 @@ export function MrMergeButton({
         <button
           onClick={doMerge}
           title="Confirm merge"
-          className="inline-flex items-center rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/15 p-1 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
+          className="inline-flex items-center rounded-md border border-[var(--gt-green)]/40 bg-[var(--gt-green)]/10 p-1 text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
         >
           <Check size={12} strokeWidth={2.5} />
         </button>

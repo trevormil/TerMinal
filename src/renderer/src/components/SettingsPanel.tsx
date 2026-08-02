@@ -1254,7 +1254,7 @@ function TicketProviderPanel() {
       onClick={() => setProvider(kind)}
       className={`min-h-[70px] rounded-lg border px-3 py-2 text-left transition-colors ${
         provider === kind
-          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
           : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
       }`}
     >
@@ -2195,7 +2195,7 @@ export function SettingsPanel({
       onClick={() => saveDaemon({ forge: val })}
       className={`flex-1 rounded-lg border px-3 py-2 text-left transition-colors ${
         selectedDaemon.forge === val
-          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
           : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50'
       }`}
     >
@@ -2209,7 +2209,7 @@ export function SettingsPanel({
       onClick={() => save({ appearance: { mode } })}
       className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
         s.appearance.mode === mode
-          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
           : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
       }`}
     >
@@ -2223,7 +2223,7 @@ export function SettingsPanel({
       onClick={() => save({ appearance: { tabLayout: layout } })}
       className={`flex min-w-0 flex-1 flex-col rounded-lg border px-3 py-2 text-left transition-colors ${
         s.appearance.tabLayout === layout
-          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
           : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
       }`}
     >
@@ -2317,7 +2317,7 @@ export function SettingsPanel({
                   onClick={() => setActive(id)}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11.5px] transition-colors ${
                     active === id
-                      ? 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                      ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
                       : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                   }`}
                 >
@@ -2372,7 +2372,7 @@ export function SettingsPanel({
                         onClick={() => setProfile('local')}
                         className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
                           profile === 'local'
-                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                            ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                             : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                         }`}
                       >
@@ -2401,7 +2401,7 @@ export function SettingsPanel({
                           onClick={() => setProfile(h.id)}
                           className={`flex min-h-[58px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
                             profile === h.id
-                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                               : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                           }`}
                         >
@@ -2884,7 +2884,7 @@ export function SettingsPanel({
                           }
                           className={`rounded-md border px-2.5 py-1 text-[11px] ${
                             selectedDaemon.defaultEngine === e
-                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                               : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                           } ${missing ? 'opacity-45' : ''}`}
                         >
@@ -3226,7 +3226,7 @@ export function SettingsPanel({
                             onClick={() => save({ inbox: { notifyThreshold: val } })}
                             className={`rounded-md border px-2.5 py-1 text-[11px] ${
                               s.inbox.notifyThreshold === val
-                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                                 : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                             }`}
                           >

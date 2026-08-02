@@ -390,7 +390,7 @@ function DigestBody({
               onClick={() => setSection(n.key)}
               className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[12px] ${
                 active === n.key
-                  ? 'bg-[var(--gt-accent)]/15 text-zinc-100'
+                  ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >

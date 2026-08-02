@@ -100,7 +100,7 @@ function RoleCard({
             }}
             className={`flex items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-[11px] transition-colors ${
               engine === e
-                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                 : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
             }`}
           >
@@ -560,7 +560,7 @@ export function EntryScreen({
   const pickButton = (active: boolean, disabled = false) =>
     `group flex min-h-[44px] items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
       active
-        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
         : disabled
           ? 'cursor-not-allowed border-[var(--gt-border)] bg-black/10 text-zinc-700'
           : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
@@ -703,7 +703,7 @@ export function EntryScreen({
                           onClick={() => setProjProvider(p)}
                           className={`rounded-full border px-2.5 py-0.5 ${
                             projProvider === p
-                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                               : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                           }`}
                         >
@@ -727,7 +727,7 @@ export function EntryScreen({
                               onClick={() => setProjVaultLoc(v)}
                               className={`rounded-full border px-2.5 py-0.5 ${
                                 projVaultLoc === v
-                                  ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                                  ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                                   : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                               }`}
                             >
@@ -1114,7 +1114,7 @@ export function EntryScreen({
                           }}
                           className={`inline-flex max-w-[260px] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                             remoteHostId === h.id
-                              ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
+                              ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 text-zinc-100'
                               : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                           }`}
                         >

@@ -244,7 +244,7 @@ function LogSection({
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold ${
                     b.kind === 'agent'
-                      ? 'border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                      ? 'border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
                       : 'border-[var(--gt-border)] bg-[var(--gt-panel)] text-zinc-400'
                   }`}
                   title={b.kind === 'agent' ? `agent ${b.author}` : b.author}
@@ -456,7 +456,7 @@ export function TicketDetail({
                 await window.gt.tickets.update(selected.slug, { status: 'open' })
                 onChanged()
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/15"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-green)]/35 bg-[var(--gt-green)]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--gt-green)] hover:bg-[var(--gt-green)]/20"
               title="Move this ticket back to open once the blocker is cleared."
             >
               <CircleDot size={10} strokeWidth={2.25} />

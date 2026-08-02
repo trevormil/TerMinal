@@ -280,7 +280,7 @@ export function EnginePicker({
                       onClick={() => setOpenrouterHarness(h)}
                       className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors ${
                         openrouterHarness === h
-                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                           : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -307,7 +307,7 @@ export function EnginePicker({
             ) : (
               <button
                 onClick={() => setModelConfirmed(true)}
-                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/10 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
               >
                 Continue with{' '}
                 {model ||
@@ -379,7 +379,7 @@ export function EnginePicker({
             {persona !== null && (
               <button
                 onClick={() => setPersonaConfirmed(true)}
-                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/10 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
               >
                 Continue with {persona ? selectedContext?.title || persona : 'no agent context'}
               </button>
@@ -463,7 +463,7 @@ export function EnginePicker({
                       onClick={() => setLanes(n)}
                       className={`min-w-[34px] rounded-lg border px-2 py-1 text-[12px] font-semibold transition-colors ${
                         lanes === n
-                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                          ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
                           : 'border-[var(--gt-border)] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200'
                       }`}
                     >

@@ -351,7 +351,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSel(idx)}
                   onClick={() => it.run()}
                   className={`flex w-full items-center gap-2.5 px-3.5 py-1.5 text-left text-[13px] ${
-                    idx === sel ? 'bg-[var(--gt-accent)]/15 text-zinc-100' : 'text-zinc-300'
+                    idx === sel ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-300'
                   }`}
                 >
                   {Icon ? (

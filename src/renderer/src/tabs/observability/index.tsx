@@ -673,7 +673,7 @@ function ToolsView({
                     onClick={() => setSort(id as ToolSort)}
                     className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10.5px] font-semibold ${
                       sort === id
-                        ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                        ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                         : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
@@ -697,7 +697,7 @@ function ToolsView({
                       onClick={() => setSelectedCallId(tool.callId)}
                       className={`mb-1.5 block w-full rounded-md border border-l-2 px-2.5 py-2 text-left ${statusBorder(tool.status)} ${
                         on
-                          ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15'
+                          ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20'
                           : 'border-[var(--gt-border)] bg-black/20 hover:bg-white/5'
                       }`}
                     >
@@ -848,7 +848,7 @@ function TokensView({ detail }: { detail: ObservabilitySessionDetail }) {
               onClick={() => setSort(id as typeof sort)}
               className={`h-7 rounded-md border px-2 text-[10.5px] font-semibold ${
                 sort === id
-                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                   : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -1222,7 +1222,7 @@ function QueryRail({
         <button
           onClick={onRebuild}
           disabled={busy || status?.sqliteAvailable === false}
-          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
+          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/10 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
         >
           <RefreshCw size={13} className={busy ? 'animate-spin' : ''} />
           Reindex {status?.indexedAt ? `(${reltime(status.indexedAt)})` : ''}
@@ -1251,7 +1251,7 @@ function QueryRail({
                   disabled={busy || !status?.exists}
                   className={`flex h-8 w-full items-center gap-2 rounded-md border px-2 text-left text-[11px] font-semibold ${
                     active === id
-                      ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                      ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                       : 'border-transparent bg-transparent text-zinc-500 hover:border-[var(--gt-border)] hover:bg-black/15 hover:text-zinc-300'
                   } disabled:opacity-45`}
                 >
@@ -1571,7 +1571,7 @@ function ResultGrid({
                 }}
                 className={`shrink-0 rounded-md border px-2 py-1 text-[10.5px] font-semibold ${
                   sortCol === column
-                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                     : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
                 }`}
               >
@@ -1622,7 +1622,7 @@ function ResultGrid({
                     onClick={() => onSelect(query.query, row)}
                     className={`cursor-pointer border-b border-[var(--gt-border)]/70 odd:bg-white/[0.025] hover:bg-[var(--gt-accent)]/10 ${
                       on
-                        ? 'bg-[var(--gt-accent)]/15 outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/45'
+                        ? 'bg-[var(--gt-accent)]/20 outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/45'
                         : ''
                     }`}
                   >
@@ -1713,7 +1713,7 @@ function CallFocus({
               onClick={() => setPayloadTab(id as typeof payloadTab)}
               className={`h-7 flex-1 rounded-md border px-2 text-[10.5px] font-semibold ${
                 payloadTab === id
-                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                   : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -1880,7 +1880,7 @@ function PayloadInspect({ row }: { row: Record<string, unknown> | null }) {
               onClick={() => setTab(index)}
               className={`h-7 rounded-md border px-2 text-[10.5px] font-semibold ${
                 index === Math.min(tab, fields.length - 1)
-                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                   : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -1963,7 +1963,7 @@ function InspectorPane({
               onClick={() => onMode(id as typeof mode)}
               className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[10.5px] font-semibold ${
                 mode === id
-                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                  ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                   : 'border-[var(--gt-border)] bg-black/20 text-zinc-500 hover:text-zinc-300'
               }`}
             >
