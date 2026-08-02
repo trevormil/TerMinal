@@ -319,7 +319,7 @@ function SummaryView({
         </div>
       </div>
       {detail && detail.warnings.length > 0 && (
-        <div className="rounded-md border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/5 p-2">
+        <div className="rounded-md border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 p-2">
           <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--gt-yellow)]">
             <AlertTriangle size={12} /> {nf.format(detail.warnings.length)} parse warning
             {detail.warnings.length === 1 ? '' : 's'}
@@ -1222,7 +1222,7 @@ function QueryRail({
         <button
           onClick={onRebuild}
           disabled={busy || status?.sqliteAvailable === false}
-          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/25 disabled:opacity-50"
+          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20 disabled:opacity-50"
         >
           <RefreshCw size={13} className={busy ? 'animate-spin' : ''} />
           Reindex {status?.indexedAt ? `(${reltime(status.indexedAt)})` : ''}
@@ -1380,7 +1380,7 @@ function ScopeBar({
                 })
               }
               className={`h-5 rounded px-1.5 text-[10.5px] font-semibold disabled:opacity-40 ${
-                on ? 'bg-[var(--gt-accent)]/25 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                on ? 'bg-[var(--gt-accent)]/20 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {label}

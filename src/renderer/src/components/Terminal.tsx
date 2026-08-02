@@ -1596,7 +1596,7 @@ export function TerminalPane({
                           </button>
                           <button
                             onClick={() => runSuggestion(s.prompt)}
-                            className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+                            className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
                           >
                             Input + Enter
                           </button>

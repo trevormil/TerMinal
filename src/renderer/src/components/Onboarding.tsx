@@ -174,7 +174,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const stepDot = (n: 1 | 2) => (
     <span
       className={`h-1.5 rounded-full transition-all ${
-        step === n ? 'w-5 bg-[var(--gt-accent)]' : 'w-1.5 bg-zinc-700'
+        step === n ? 'w-5 bg-[var(--gt-accent)]' : 'w-1.5 bg-white/20'
       }`}
     />
   )

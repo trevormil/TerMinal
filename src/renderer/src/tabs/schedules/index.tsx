@@ -438,7 +438,7 @@ function ScheduleForm({
                   onClick={() => toggleWd(i)}
                   className={`h-6 w-7 rounded text-[10px] ${
                     weekdays.includes(i)
-                      ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                       : 'border border-[var(--gt-border)] text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
@@ -880,7 +880,7 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
                   }}
                   title={s.enabled ? 'enabled — click to pause' : 'paused — click to enable'}
                   className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-                    s.enabled ? 'bg-[var(--gt-green)]/70' : 'bg-zinc-700'
+                    s.enabled ? 'bg-[var(--gt-green)]' : 'bg-white/10'
                   }`}
                 >
                   <span

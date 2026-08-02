@@ -18,8 +18,8 @@ import { spanStyle } from './ciShared'
 
 const lineTone: Record<CiLogLine['kind'], string> = {
   normal: '',
-  error: 'border-l-2 border-[var(--gt-red)] bg-[var(--gt-red)]/8 pl-1.5',
-  warning: 'border-l-2 border-[var(--gt-yellow)] bg-[var(--gt-yellow)]/8 pl-1.5',
+  error: 'border-l-2 border-[var(--gt-red)] bg-[var(--gt-red)]/10 pl-1.5',
+  warning: 'border-l-2 border-[var(--gt-yellow)] bg-[var(--gt-yellow)]/10 pl-1.5',
   command: 'border-l-2 border-[var(--gt-accent)]/50 pl-1.5 text-[var(--gt-accent-light)]',
 }
 
@@ -211,7 +211,7 @@ export function LogView({
       </header>
 
       {truncated && (
-        <div className="shrink-0 border-b border-[var(--gt-yellow)]/25 bg-[var(--gt-yellow)]/8 px-3 py-1 text-[10.5px] text-[var(--gt-yellow)]">
+        <div className="shrink-0 border-b border-[var(--gt-yellow)]/25 bg-[var(--gt-yellow)]/10 px-3 py-1 text-[10.5px] text-[var(--gt-yellow)]">
           Log truncated — showing the tail. Open on {forgeLabel} for the full output.
         </div>
       )}
@@ -226,7 +226,7 @@ export function LogView({
             Loading log…
           </div>
         ) : error ? (
-          <div className="m-3 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/8 px-3 py-2 text-[11px] text-[var(--gt-red)]">
+          <div className="m-3 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/10 px-3 py-2 text-[11px] text-[var(--gt-red)]">
             {error}
           </div>
         ) : parsed && parsed.sections.length > 0 ? (

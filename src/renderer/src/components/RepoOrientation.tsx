@@ -208,7 +208,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
                       </span>
                       <button
                         onClick={runBootstrap}
-                        className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[10.5px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+                        className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[10.5px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
                       >
                         Run
                       </button>
@@ -222,7 +222,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
                   ) : (
                     <button
                       onClick={() => setBootstrap('confirm')}
-                      className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[10.5px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+                      className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[10.5px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
                     >
                       Bootstrap…
                     </button>
@@ -311,7 +311,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
           </span>
           <button
             onClick={askAgent}
-            className="shrink-0 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2.5 py-1 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+            className="shrink-0 rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2.5 py-1 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
           >
             Ask the agent
           </button>

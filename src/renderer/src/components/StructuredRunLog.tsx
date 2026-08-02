@@ -144,7 +144,7 @@ const statusDot = (status: 'ok' | 'error' | 'unknown') => (
         ? 'bg-[var(--gt-green)]'
         : status === 'error'
           ? 'bg-[var(--gt-red)]'
-          : 'bg-zinc-600'
+          : 'bg-white/20'
     }`}
   />
 )
@@ -337,7 +337,7 @@ function Entry({ entry }: { entry: RunLogEntry }) {
       )
     case 'summary':
       return (
-        <div className="rounded-md border border-[var(--gt-green)]/30 bg-[var(--gt-green)]/8 px-2 py-1.5">
+        <div className="rounded-md border border-[var(--gt-green)]/30 bg-[var(--gt-green)]/10 px-2 py-1.5">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 size={12} strokeWidth={2} className="shrink-0 text-[var(--gt-green)]" />
             <span className="text-[9.5px] font-semibold uppercase tracking-wider text-[var(--gt-green)]">
@@ -388,7 +388,7 @@ function StepSection({ section, children }: { section: Section; children: ReactN
           step.status === 'failed'
             ? 'border-[var(--gt-red)]/40 bg-[var(--gt-red)]/10 text-[var(--gt-red)]'
             : step.status === 'ok'
-              ? 'border-[var(--gt-green)]/30 bg-[var(--gt-green)]/8 text-[var(--gt-green)]'
+              ? 'border-[var(--gt-green)]/30 bg-[var(--gt-green)]/10 text-[var(--gt-green)]'
               : 'border-[var(--gt-accent)]/25 bg-[var(--gt-accent)]/10 text-[var(--gt-accent-light)]'
         }`}
       >

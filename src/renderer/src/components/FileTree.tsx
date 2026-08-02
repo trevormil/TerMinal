@@ -113,7 +113,7 @@ export function TreeNode({
             : undefined
         }
         className={`group flex cursor-pointer items-center gap-1 py-[3px] pr-1.5 text-[12px] hover:bg-white/5 ${
-          sel ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
+          sel ? 'bg-[var(--gt-accent)]/10 text-zinc-100' : 'text-zinc-300'
         } ${entry.ignored ? 'opacity-45' : ''} ${
           dropHover
             ? 'bg-[var(--gt-accent)]/20 outline outline-1 -outline-offset-1 outline-[var(--gt-accent)]/50'

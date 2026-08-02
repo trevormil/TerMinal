@@ -76,8 +76,11 @@ design needs a third step, the answer is a border or a weight change.
 ### [2.3] Never introduce a raw colour
 
 No `bg-zinc-*`, no `bg-[#rrggbb]`. If a colour is worth using twice it is worth a
-token; if it is used once it is probably a mistake. The audit found 12 raw
-`bg-zinc-*` uses and one hex literal.
+token; if it is used once it is probably a mistake. The original audit found 12
+raw uses; they are now zero and the enforcement test asserts the empty list.
+Neutral fills (inactive dots, off-state toggle tracks) use the white-overlay
+idiom — `bg-white/10` for control fills, `bg-white/20` for small indicator dots
+— a tint over whatever surface is beneath, never a named grey at a fixed depth.
 
 ---
 

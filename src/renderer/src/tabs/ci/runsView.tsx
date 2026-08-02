@@ -197,7 +197,7 @@ function JobsPane({
             Loading jobs…
           </div>
         ) : error ? (
-          <div className="m-1 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/8 px-3 py-2 text-[11px] text-[var(--gt-red)]">
+          <div className="m-1 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/10 px-3 py-2 text-[11px] text-[var(--gt-red)]">
             {error}
           </div>
         ) : jobs && jobs.length === 0 ? (
@@ -385,7 +385,7 @@ export function RunsView({ ctx }: { ctx: TabContext }) {
             Loading runs…
           </div>
         ) : error ? (
-          <div className="m-1 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/8 px-3 py-2 text-[11px] leading-relaxed text-[var(--gt-red)]">
+          <div className="m-1 rounded-md border border-[var(--gt-red)]/30 bg-[var(--gt-red)]/10 px-3 py-2 text-[11px] leading-relaxed text-[var(--gt-red)]">
             {error}
           </div>
         ) : groups.length === 0 ? (

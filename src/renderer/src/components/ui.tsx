@@ -137,15 +137,15 @@ export type BadgeTone =
   'ok' | 'warn' | 'bad' | 'mute' | 'red' | 'yellow' | 'green' | 'blue' | 'accent'
 
 const BADGE_MAP: Record<BadgeTone, string> = {
-  ok: 'bg-[var(--gt-green)]/12 text-[var(--gt-green)] border-[var(--gt-green)]/25',
-  green: 'bg-[var(--gt-green)]/12 text-[var(--gt-green)] border-[var(--gt-green)]/25',
-  warn: 'bg-[var(--gt-yellow)]/12 text-[var(--gt-yellow)] border-[var(--gt-yellow)]/25',
-  yellow: 'bg-[var(--gt-yellow)]/12 text-[var(--gt-yellow)] border-[var(--gt-yellow)]/25',
-  bad: 'bg-[var(--gt-red)]/12 text-[var(--gt-red)] border-[var(--gt-red)]/25',
-  red: 'bg-[var(--gt-red)]/12 text-[var(--gt-red)] border-[var(--gt-red)]/25',
-  blue: 'bg-[var(--gt-blue)]/12 text-[var(--gt-blue)] border-[var(--gt-blue)]/25',
+  ok: 'bg-[var(--gt-green)]/10 text-[var(--gt-green)] border-[var(--gt-green)]/25',
+  green: 'bg-[var(--gt-green)]/10 text-[var(--gt-green)] border-[var(--gt-green)]/25',
+  warn: 'bg-[var(--gt-yellow)]/10 text-[var(--gt-yellow)] border-[var(--gt-yellow)]/25',
+  yellow: 'bg-[var(--gt-yellow)]/10 text-[var(--gt-yellow)] border-[var(--gt-yellow)]/25',
+  bad: 'bg-[var(--gt-red)]/10 text-[var(--gt-red)] border-[var(--gt-red)]/25',
+  red: 'bg-[var(--gt-red)]/10 text-[var(--gt-red)] border-[var(--gt-red)]/25',
+  blue: 'bg-[var(--gt-blue)]/10 text-[var(--gt-blue)] border-[var(--gt-blue)]/25',
   accent: 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)] border-[var(--gt-accent)]/30',
-  mute: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/25',
+  mute: 'bg-white/10 text-zinc-400 border-white/20',
 }
 
 export const badgeClasses = (tone: BadgeTone) => BADGE_MAP[tone]

@@ -258,7 +258,7 @@ function Toggle({
       </span>
       <span
         className={`relative ml-3 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-          on ? 'bg-[var(--gt-accent)]' : 'bg-zinc-700'
+          on ? 'bg-[var(--gt-accent)]' : 'bg-white/10'
         }`}
       >
         <span
@@ -373,7 +373,7 @@ function MobileSection({
                   Reachable at
                 </span>
                 {tailscale?.available && (
-                  <div className="rounded-md border border-[var(--gt-accent-2)]/25 bg-[var(--gt-accent-2)]/5 px-2 py-1.5">
+                  <div className="rounded-md border border-[var(--gt-accent-2)]/25 bg-[var(--gt-accent-2)]/10 px-2 py-1.5">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--gt-accent-2)]">
                       Tailscale — pair with no QR
                     </div>
@@ -1722,7 +1722,7 @@ function NotificationMatrix({
                         title={`${on ? 'Disable' : 'Enable'} ${CATEGORY_META[cat].label} → ${CHANNEL_META[ch].label}`}
                         className={`inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded transition-colors ${
                           on
-                            ? 'bg-[var(--gt-accent)]/25 text-[var(--gt-accent-light)]'
+                            ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
                             : 'bg-black/20 text-transparent hover:bg-white/5'
                         }`}
                       >

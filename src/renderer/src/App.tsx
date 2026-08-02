@@ -1213,7 +1213,7 @@ export default function App() {
       title={title}
       className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
         terminalLayout === mode
-          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
           : disabled
             ? 'cursor-not-allowed text-zinc-700'
             : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
@@ -1540,7 +1540,7 @@ export default function App() {
             <ActivityIcon size={13} strokeWidth={2} />
             Activity
             {activityUnread > 0 && (
-              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
+              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/20 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
                 {activityUnread}
               </span>
             )}
@@ -1564,7 +1564,7 @@ export default function App() {
             <Mail size={13} strokeWidth={2} />
             Inbox
             {inboxUnreadCount > 0 && (
-              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/25 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
+              <span className="ml-0.5 rounded-full bg-[var(--gt-red)]/20 px-1.5 text-[9px] font-bold tabular-nums text-[var(--gt-red)]">
                 {inboxUnreadCount}
               </span>
             )}
@@ -1659,7 +1659,7 @@ export default function App() {
                           key={s.key}
                           className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${
                             isActive
-                              ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+                              ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                               : needsAttention
                                 ? 'bg-[var(--gt-yellow)]/10 text-zinc-200'
                                 : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
@@ -1765,7 +1765,7 @@ export default function App() {
                                   <span
                                     className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
                                       checked
-                                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/30'
+                                        ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20'
                                         : 'border-zinc-600'
                                     }`}
                                   >

@@ -147,7 +147,7 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
           {dirty && (
             <button
               onClick={save}
-              className="shrink-0 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 px-2 py-1 text-[11px] font-medium text-zinc-100 hover:bg-[var(--gt-accent)]/25"
+              className="shrink-0 rounded-md border border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 px-2 py-1 text-[11px] font-medium text-zinc-100 hover:bg-[var(--gt-accent)]/20"
             >
               Save ⌘S
             </button>

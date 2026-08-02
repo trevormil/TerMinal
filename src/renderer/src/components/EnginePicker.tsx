@@ -307,7 +307,7 @@ export function EnginePicker({
             ) : (
               <button
                 onClick={() => setModelConfirmed(true)}
-                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
               >
                 Continue with{' '}
                 {model ||
@@ -379,7 +379,7 @@ export function EnginePicker({
             {persona !== null && (
               <button
                 onClick={() => setPersonaConfirmed(true)}
-                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/25"
+                className="mt-3 w-full rounded-xl border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 px-3 py-2 text-[12px] font-semibold text-zinc-100 transition-colors hover:bg-[var(--gt-accent)]/20"
               >
                 Continue with {persona ? selectedContext?.title || persona : 'no agent context'}
               </button>

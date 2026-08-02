@@ -579,7 +579,7 @@ export function InboxDrawer({
           </button>
         )}
         {selectedIds.length === 0 && unread.length > 0 && (
-          <span className="rounded-full bg-[var(--gt-accent)]/25 px-2 py-0.5 text-[10px] font-bold text-[var(--gt-accent-light)]">
+          <span className="rounded-full bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[10px] font-bold text-[var(--gt-accent-light)]">
             {unread.length} unread
           </span>
         )}
