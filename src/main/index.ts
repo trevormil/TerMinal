@@ -86,6 +86,7 @@ import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
 import { registerAgentsIpc } from './ipc/agents'
 import { registerFilesIpc } from './ipc/files'
+import { buildEngineLaunch } from './engine-launch'
 import { registerPersistentAgentsIpc } from './ipc/persistent-agents'
 import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
@@ -372,7 +373,6 @@ import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed
 import { resolveWithinAny } from './path-guard'
 import { createEpochRegistry } from './session-epoch'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
-import { modelArgs, resumeArgs } from '../shared/engines'
 import { configPath, terminalConfigDir } from './config-dir'
 
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
@@ -490,7 +490,6 @@ type StartOpts = {
 }
 
 const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
-const CLAUDE_AUTO_FLAGS = ['--permission-mode', 'auto']
 
 function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
   const target = remote.label || remote.sshTarget
@@ -581,8 +580,6 @@ function startSession(key: string, opts: StartOpts) {
   const cwd = remote ? remote.cwd || opts.cwd || '' : processSpawnCwd(opts.cwd || homedir())
   const displayCwd = remote ? displayRemoteCwd(remote, cwd) : cwd
   const engine = opts.engine || 'claude'
-  const args: string[] = []
-  let sessionId: string
   // Per-session pick (opts.model) wins; else the engine's configured default.
   const defaultModel =
     engine !== 'local'
@@ -590,102 +587,16 @@ function startSession(key: string, opts: StartOpts) {
         remote?.daemon?.engines?.[engine]?.defaultModel ||
         (!remote ? engineDefaultModel(engine) : '')
       : ''
-
-  if (engine === 'local') {
-    sessionId = opts.sessionId || randomUUID()
-  } else if (engine === 'codex') {
-    args.push('-s', 'danger-full-access', '-a', 'never')
-    if (opts.mode === 'resume' && opts.sessionId) {
-      sessionId = opts.sessionId
-      args.push('resume', sessionId)
-    } else {
-      sessionId = randomUUID()
-    }
-  } else if (engine === 'cursor') {
-    if (opts.mode === 'resume' && opts.sessionId) {
-      sessionId = opts.sessionId
-      args.push('--resume', sessionId)
-    } else {
-      sessionId = opts.sessionId || randomUUID()
-    }
-  } else if (engine === 'hermes') {
-    // Interactive Hermes TUI. Resume attaches to an existing ~/.hermes session
-    // (`hermes --resume <id> --tui`); -m applies to --tui per hermes(1).
-    args.push('--tui')
-    if (opts.mode === 'resume' && opts.sessionId) {
-      sessionId = opts.sessionId
-      args.push('--resume', sessionId)
-    } else {
-      sessionId = opts.sessionId || randomUUID()
-    }
-    if (defaultModel) args.push('-m', defaultModel)
-  } else if (engine === 'openrouter') {
-    // Interactive OpenRouter via the chosen harness (default codex). enginePath
-    // ('openrouter') is the one-shot or-agent — NOT usable interactively — so the
-    // spawn binary is resolved from the harness below (openrouterLaunchBin).
-    sessionId = opts.sessionId || randomUUID()
-    if ((opts.openrouterHarness || 'codex') === 'hermes') {
-      args.push('--tui', '--provider', 'openrouter')
-      if (defaultModel) args.push('-m', defaultModel)
-    } else {
-      args.push('-c', 'model_provider=openrouter', '-s', 'danger-full-access', '-a', 'never')
-      if (defaultModel) args.push('-m', defaultModel)
-    }
-  } else if (engine === 'openai-compat') {
-    // Interactive self-hosted endpoint: the Codex TUI with an inline
-    // OpenAI-compatible provider (mirrors or-agent's one-shot definition; the
-    // one-shot or-agent binary itself is not usable interactively).
-    const baseUrl = openAICompatBaseUrl()
-    if (!baseUrl)
-      throw new Error('openai-compat: no base URL configured (Settings → Engines → Self-hosted)')
-    sessionId = opts.sessionId || randomUUID()
-    args.push(
-      '-c',
-      'model_provider=openai-compat',
-      '-c',
-      'model_providers.openai-compat.name=OpenAI-compatible',
-      '-c',
-      `model_providers.openai-compat.base_url=${baseUrl}`,
-      '-c',
-      'model_providers.openai-compat.env_key=OPENAI_API_KEY',
-      '-c',
-      'model_providers.openai-compat.wire_api=chat',
-      '-s',
-      'danger-full-access',
-      '-a',
-      'never',
-    )
-    if (defaultModel) args.push('-m', defaultModel)
-  } else if (engine === 'opencode') {
-    // opencode starts its TUI by default; `-s <id>` continues a session. Model
-    // (`-m provider/model`) and the launch seed (`--prompt`) come from the
-    // registry below, so this branch only owns session-id policy.
-    if (opts.mode === 'resume' && opts.sessionId) {
-      sessionId = opts.sessionId
-      args.push(...resumeArgs('opencode', sessionId))
-    } else {
-      sessionId = opts.sessionId || randomUUID()
-    }
-  } else if (opts.mode === 'resume' && opts.sessionId) {
-    sessionId = opts.sessionId
-    args.push('--resume', sessionId)
-  } else {
-    sessionId = randomUUID()
-    args.push('--session-id', sessionId)
-    if (opts.name) args.push('--name', opts.name)
-  }
-  if (engine === 'claude') args.push(...CLAUDE_AUTO_FLAGS)
-  // Model flag comes from the registry (--model vs -m vs none) instead of the
-  // negative list this replaced, which silently gave any new engine `--model`.
-  // hermes/openrouter/openai-compat already pushed their own `-m` above.
-  if (
-    defaultModel &&
-    engine !== 'local' &&
-    engine !== 'hermes' &&
-    engine !== 'openrouter' &&
-    engine !== 'openai-compat'
-  )
-    args.push(...modelArgs(engine, defaultModel))
+  const { sessionId, args: launchArgs } = buildEngineLaunch({
+    engine,
+    mode: opts.mode,
+    sessionId: opts.sessionId,
+    name: opts.name,
+    model: defaultModel,
+    openrouterHarness: opts.openrouterHarness,
+    openAICompatBaseUrl: engine === 'openai-compat' ? openAICompatBaseUrl() : undefined,
+  })
+  const args = [...launchArgs]
   // For interactive OpenRouter/openai-compat the binary is the harness (codex/
   // hermes), not the one-shot or-agent.
   const openrouterLaunchBin =
