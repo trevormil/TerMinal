@@ -931,50 +931,104 @@ function linearPriority(priority: string): number {
   }
 }
 
-export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
-  const cfg = readConfig(repoRoot)
-  // A webview provider has no queryable ticket store — the page itself IS the
-  // Tickets tab (see tabs/tickets/index.tsx). Every CRUD entry point below
-  // degrades the same way rather than erroring, since callers (ticket-spawn,
-  // agent tooling) already treat "no tickets" as a valid, if uninteresting,
-  // answer for a repo with an empty backlog.
-  if (cfg.provider === 'webview') return []
-  if (cfg.provider === 'github') return listGithubTickets(repoRoot, cfg.github || {})
-  if (cfg.provider === 'linear') return listLinearTickets(cfg.linear || {})
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    return dir ? listLocalTickets(repoRoot, dir).map(stampObsidian) : []
+/** One provider's full CRUD surface. The five entry points below used to each
+ *  re-implement the same five-branch provider ladder (30 branches in all); the
+ *  ladder now runs once, here, and every entry point is a one-line dispatch.
+ *  Per-provider degradation contracts are unchanged and pinned by tests:
+ *  webview has no queryable store (reads empty, writes refused, create loud —
+ *  silently dropping a new ticket would lose data); obsidian without a vault
+ *  fails closed rather than falling back to the repo backlog. */
+type TicketBackend = {
+  list(): Promise<Ticket[]>
+  get(slug: string): Promise<Ticket | null>
+  create(input: NewTicket): Promise<Ticket>
+  update(slug: string, patch: TicketPatch): Promise<boolean>
+  comment(slug: string, comment: NewTicketComment): Promise<boolean>
+}
+
+function backendFor(
+  repoRoot: string,
+  cfg: RepoTicketsConfig = readConfig(repoRoot),
+): TicketBackend {
+  const provider = normProvider(cfg.provider)
+  if (provider === 'webview')
+    return {
+      list: async () => [],
+      get: async () => null,
+      create: async () => {
+        throw new Error('This repo has no ticket store — its Tickets tab is a webview.')
+      },
+      update: async () => false,
+      comment: async () => false,
+    }
+  if (provider === 'github') {
+    const gh = cfg.github || {}
+    return {
+      list: () => listGithubTickets(repoRoot, gh),
+      get: (slug) => getGithubTicket(repoRoot, gh, parseExternalNumber(slug)),
+      create: (input) => createGithubTicket(repoRoot, gh, input),
+      update: (slug, patch) => updateGithubTicket(repoRoot, gh, slug, patch),
+      comment: async (slug, comment) => {
+        const number = parseExternalNumber(slug)
+        if (!/^\d+$/.test(number)) return false
+        await ghRun(repoRoot, ['issue', 'comment', number, '--body', remoteCommentBody(comment)])
+        return true
+      },
+    }
   }
-  return listLocalTickets(repoRoot)
+  if (provider === 'linear') {
+    const linear = cfg.linear || {}
+    return {
+      list: () => listLinearTickets(linear),
+      get: (slug) => getLinearTicket(linear, slug),
+      create: (input) => createLinearTicket(linear, input),
+      update: (slug, patch) => updateLinearTicket(linear, slug, patch),
+      comment: async (slug, comment) => {
+        await callMcpTool(linear, linear.tools?.comment || 'save_comment', {
+          issueId: linearIssueKey(slug),
+          body: remoteCommentBody(comment),
+        })
+        return true
+      },
+    }
+  }
+  if (provider === 'obsidian') {
+    const dir = obsidianBaseDir(cfg.obsidian)
+    return {
+      list: async () => (dir ? listLocalTickets(repoRoot, dir).map(stampObsidian) : []),
+      get: async (slug) => {
+        if (!dir) return null
+        const t = getLocalTicket(repoRoot, slug, dir)
+        return t ? stampObsidian(t) : null
+      },
+      create: async (input) => {
+        if (!dir) throw new Error('Obsidian vault path is not configured for this repo.')
+        return stampObsidian(createLocalTicket(repoRoot, input, dir))
+      },
+      update: async (slug, patch) => (dir ? updateLocalTicket(repoRoot, slug, patch, dir) : false),
+      comment: async (slug, comment) =>
+        dir ? appendLocalComment(repoRoot, slug, comment, dir) : false,
+    }
+  }
+  return {
+    list: async () => listLocalTickets(repoRoot),
+    get: async (slug) => getLocalTicket(repoRoot, slug),
+    create: async (input) => createLocalTicket(repoRoot, input),
+    update: async (slug, patch) => updateLocalTicket(repoRoot, slug, patch),
+    comment: async (slug, comment) => appendLocalComment(repoRoot, slug, comment),
+  }
+}
+
+export async function listRepoTickets(repoRoot: string): Promise<Ticket[]> {
+  return backendFor(repoRoot).list()
 }
 
 export async function getRepoTicket(repoRoot: string, slug: string): Promise<Ticket | null> {
-  const cfg = readConfig(repoRoot)
-  if (cfg.provider === 'webview') return null
-  if (cfg.provider === 'github')
-    return getGithubTicket(repoRoot, cfg.github || {}, parseExternalNumber(slug))
-  if (cfg.provider === 'linear') return getLinearTicket(cfg.linear || {}, slug)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    if (!dir) return null
-    const t = getLocalTicket(repoRoot, slug, dir)
-    return t ? stampObsidian(t) : null
-  }
-  return getLocalTicket(repoRoot, slug)
+  return backendFor(repoRoot).get(slug)
 }
 
 export async function createRepoTicket(repoRoot: string, input: NewTicket): Promise<Ticket> {
-  const cfg = readConfig(repoRoot)
-  if (cfg.provider === 'webview')
-    throw new Error('This repo has no ticket store — its Tickets tab is a webview.')
-  if (cfg.provider === 'github') return createGithubTicket(repoRoot, cfg.github || {}, input)
-  if (cfg.provider === 'linear') return createLinearTicket(cfg.linear || {}, input)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    if (!dir) throw new Error('Obsidian vault path is not configured for this repo.')
-    return stampObsidian(createLocalTicket(repoRoot, input, dir))
-  }
-  return createLocalTicket(repoRoot, input)
+  return backendFor(repoRoot).create(input)
 }
 
 export async function updateRepoTicket(
@@ -982,15 +1036,7 @@ export async function updateRepoTicket(
   slug: string,
   patch: TicketPatch,
 ): Promise<boolean> {
-  const cfg = readConfig(repoRoot)
-  if (cfg.provider === 'webview') return false
-  if (cfg.provider === 'github') return updateGithubTicket(repoRoot, cfg.github || {}, slug, patch)
-  if (cfg.provider === 'linear') return updateLinearTicket(cfg.linear || {}, slug, patch)
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    return dir ? updateLocalTicket(repoRoot, slug, patch, dir) : false
-  }
-  return updateLocalTicket(repoRoot, slug, patch)
+  return backendFor(repoRoot).update(slug, patch)
 }
 
 /** Who a comment typed in the UI is attributed to. Git identity first — it is
@@ -1020,27 +1066,7 @@ export async function commentOnRepoTicket(
   comment: NewTicketComment,
 ): Promise<boolean> {
   if (!comment.body.trim() || !comment.author.trim()) return false
-  const cfg = readConfig(repoRoot)
-  if (cfg.provider === 'webview') return false
-  if (cfg.provider === 'github') {
-    const number = parseExternalNumber(slug)
-    if (!/^\d+$/.test(number)) return false
-    await ghRun(repoRoot, ['issue', 'comment', number, '--body', remoteCommentBody(comment)])
-    return true
-  }
-  if (cfg.provider === 'linear') {
-    const linear = cfg.linear || {}
-    await callMcpTool(linear, linear.tools?.comment || 'save_comment', {
-      issueId: linearIssueKey(slug),
-      body: remoteCommentBody(comment),
-    })
-    return true
-  }
-  if (cfg.provider === 'obsidian') {
-    const dir = obsidianBaseDir(cfg.obsidian)
-    return dir ? appendLocalComment(repoRoot, slug, comment, dir) : false
-  }
-  return appendLocalComment(repoRoot, slug, comment)
+  return backendFor(repoRoot).comment(slug, comment)
 }
 
 /** GitHub/Linear attribute every comment to the authenticated account, so an
