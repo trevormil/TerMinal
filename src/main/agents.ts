@@ -78,9 +78,7 @@ import type {
   PrAgentKind,
   RerunSpec,
 } from './agent-types'
-import { DEFAULT_AGENTS as CATALOG, FORCE_PREAMBLE as FORCE_TEXT } from './agent-catalog'
-const DEFAULT_AGENTS = CATALOG
-const FORCE_PREAMBLE = FORCE_TEXT
+import { FORCE_PREAMBLE } from './agent-catalog'
 
 // One definition, from the shared registry — this was a verbatim copy of
 // settings.EngineId that could (and did) drift from it.
