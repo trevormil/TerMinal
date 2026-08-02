@@ -133,6 +133,22 @@ export function shouldNotify(
   return now - lastAt >= renotifyAfterSec * 1000
 }
 
+/**
+ * Whether a probe result needs a confirmation re-probe before it is believed.
+ *
+ * Every "is down" the Inbox saw over a week of real use was a single blown
+ * probe — "no response" once, HTTP 200 on the next check (laptop sleep/wake,
+ * Wi-Fi blip) — each one filing an urgent item plus a recovery. So a result
+ * that would move a monitor to a WORSE state is probed a second time before
+ * the transition is recorded; a real outage fails the confirm probe too and
+ * still alerts within seconds of the first probe. Recoveries and steady states
+ * are believed immediately — delaying "it's back" helps nobody.
+ */
+export function needsConfirmation(prev: MonitorState, next: MonitorState): boolean {
+  const rank: Record<MonitorState, number> = { ok: 0, warn: 1, fail: 2 }
+  return rank[next] > rank[prev]
+}
+
 export const DEFAULT_NOTIFY: MonitorNotify = {
   onFailure: 'urgent',
   onRecovery: true,
