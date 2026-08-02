@@ -18,8 +18,11 @@ import { REMOTE_SCRIPT } from './remote'
 
 /** Extract the locking block from the shipped script into a loadable module. */
 function extractHelpers(): string {
+  // Anchored on the function that FOLLOWS the lock block, not on line shape —
+  // the script is a real prettier-formatted .cjs now (ticket 91), so the old
+  // "one function per line" slice would truncate mid-body.
   const start = REMOTE_SCRIPT.indexOf('// --- crash-safe shared-state writes')
-  const end = REMOTE_SCRIPT.indexOf('\n', REMOTE_SCRIPT.indexOf('function updateJsonListShared'))
+  const end = REMOTE_SCRIPT.indexOf('\nfunction agentArr')
   expect(start).toBeGreaterThan(-1)
   expect(end).toBeGreaterThan(start)
   return `const fs = require('fs')
