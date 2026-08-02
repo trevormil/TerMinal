@@ -23,8 +23,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import Database from 'better-sqlite3'
 import { createMetaCache } from './session-meta-cache'
-import { repoForCwd, repoRootOf } from './repo'
-import { reviewForPrDir, newestReviewDirForRepo } from './review'
+import { repoRootOf } from './repo'
 import { readStatusLine } from './statusline'
 import { configPath } from './config-dir'
 
@@ -2242,49 +2241,6 @@ export function readObservabilityTranscriptWindow(
   return { sessionId, sourceFile: file, startLine, endLine, totalLines, lines }
 }
 
-// ---------------------------------------------------------------------------
-// Autopilot-harness TDD reader — scoped to the attached session's repo.
-// Derives owner/repo from the cwd's git remote, reads that repo's newest
-// tracked PR review artifact (shared logic in review.ts).
-// ---------------------------------------------------------------------------
-
-export type TddInfo = {
-  ok: boolean
-  repo: string
-  number: number
-  overall: number | null
-  verdict: string
-  testStatus: string
-  stale: boolean
-  commitsBehind: number
-  ts: number
-}
-
-let tddCache: { cwd: string; ts: number; info: TddInfo } | null = null
-export function readHarnessTdd(cwd: string): TddInfo {
-  if (tddCache && tddCache.cwd === cwd && Date.now() - tddCache.ts < 2000) return tddCache.info
-  const info = computeHarnessTdd(cwd)
-  tddCache = { cwd, ts: Date.now(), info }
-  return info
-}
-
-function computeHarnessTdd(cwd: string): TddInfo {
-  const repo = repoForCwd(cwd)
-  const base: TddInfo = {
-    ok: false,
-    repo: repo?.path || '',
-    number: 0,
-    overall: null,
-    verdict: 'none',
-    testStatus: 'none',
-    stale: false,
-    commitsBehind: 0,
-    ts: Date.now(),
-  }
-  if (!repo) return base
-  const dir = newestReviewDirForRepo(repoRootOf(cwd), repo.host, repo.path)
-  if (!dir) return base
-  const r = reviewForPrDir(dir)
-  if (!r) return base
-  return { ...base, ok: true, ...r }
-}
+// The TDD reader moved to review.ts, next to the review-artifact parsing it
+// wraps (ticket 91). Re-exported for existing importers.
+export { readHarnessTdd, type TddInfo } from './review'
