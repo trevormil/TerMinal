@@ -210,13 +210,26 @@ private struct CategoryMenu: View {
                 set: { model.activeCategory = $0 }
             )) {
                 ForEach(model.categories) { c in
-                    Text("\(c.name) (\(c.count))").tag(c.name)
+                    // Nesting shows as an indented leaf, not a full path — a
+                    // row reading `Monitoring/Certs` directly under `Monitoring`
+                    // says the parent's name twice. A Menu row cannot take
+                    // padding, so the indent is literal; figure spaces (U+2007)
+                    // are fixed-width, so it stays aligned in a proportional font.
+                    Text(
+                        String(
+                            repeating: "\u{2007}\u{2007}",
+                            count: InboxCategories.depth(of: c.name)
+                        ) + "\(InboxCategories.leaf(of: c.name)) (\(c.count))"
+                    ).tag(c.name)
                 }
             }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "line.3.horizontal.decrease.circle")
                 if model.activeCategory != InboxCategories.all {
+                    // The leaf alone would be ambiguous here — two branches can
+                    // both end in `Certs`, and this is the only place the
+                    // current filter is named.
                     Text(model.activeCategory).font(GT.sans(13))
                 }
             }
