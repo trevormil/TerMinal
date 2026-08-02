@@ -17,6 +17,39 @@ final class InboxViewModel {
 
     var unread: [HitlItem] { hitl.filter(\.isUnread) }
 
+    // MARK: Categories (ticket 121)
+
+    private static let categoryKey = "inboxCategory"
+
+    /// Persisted so the phone reopens where you left it.
+    ///
+    /// A plain observed property backed by UserDefaults, NOT `@AppStorage`.
+    /// `@AppStorage` is a `DynamicProperty` that only republishes from a View;
+    /// inside an `@Observable` class it has to be `@ObservationIgnored`, and
+    /// then selecting a category persists the choice but never notifies —
+    /// the list keeps rendering the old filter. It compiles and looks right.
+    private var storedCategory: String = UserDefaults.standard
+        .string(forKey: InboxViewModel.categoryKey) ?? InboxCategories.all
+    {
+        didSet { UserDefaults.standard.set(storedCategory, forKey: Self.categoryKey) }
+    }
+
+    var categories: [InboxCategories.CategoryCount] { InboxCategories.derive(items) }
+
+    /// The selection actually in force. Never trust the stored value directly:
+    /// the category it names can be gone, and a filter matching nothing reads
+    /// as a sync failure rather than an empty category.
+    var activeCategory: String {
+        get { InboxCategories.resolveSelection(storedCategory, categories) }
+        set { storedCategory = newValue }
+    }
+
+    var showFilter: Bool { InboxCategories.shouldShowFilter(categories) }
+
+    /// What the list renders — the one definition both the rows and the
+    /// bulk actions read, so they can never disagree about what is on screen.
+    var shown: [HitlItem] { InboxCategories.filter(items, activeCategory) }
+
     @MainActor
     func refresh() async { await feed.refresh() }
 
@@ -37,8 +70,10 @@ final class InboxViewModel {
         Task { try? await client.markHitlRead(ids: [item.id], read: false) }
     }
 
+    /// Reads what is ON SCREEN, not the whole inbox. The scoping decision lives
+    /// in `InboxCategories.bulkReadTargets`, where it is unit-tested.
     @MainActor
-    func markAllRead() { markRead(hitl) }
+    func markAllRead() { markRead(InboxCategories.bulkReadTargets(items, activeCategory)) }
 }
 
 /// Global, cross-workspace: everything that needs you, read like email — a list
@@ -50,7 +85,7 @@ struct InboxView: View {
     /// the alert lands on the thing it was about, not just the tab.
     var focusedId: String?
 
-    private var shown: [HitlItem] { model.items }
+    private var shown: [HitlItem] { model.shown }
 
     var body: some View {
         ZStack {
@@ -64,7 +99,12 @@ struct InboxView: View {
                 }
                 if shown.isEmpty && !model.loading {
                     GTPanel {
-                        Text("Inbox zero.")
+                        // An empty CATEGORY is not an empty inbox. Saying
+                        // "Inbox zero" while a filter hides twelve items is a
+                        // lie the user has no way to spot.
+                        Text(model.activeCategory == InboxCategories.all
+                            ? "Inbox zero."
+                            : "Nothing in \(model.activeCategory).")
                             .font(GT.sans(12)).foregroundStyle(GT.textMuted)
                     }
                     .plainRow()
@@ -129,7 +169,10 @@ struct InboxView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             GTPinnedHeader(title: "Inbox") {
                 HStack(spacing: 14) {
-                    if !model.unread.isEmpty {
+                    if model.showFilter { CategoryMenu(model: model) }
+                    // Scoped to the visible category, so the label cannot offer
+                    // to read items the filter is hiding.
+                    if shown.contains(where: \.isUnread) {
                         Button("Read all") { model.markAllRead() }.font(GT.sans(13))
                     }
                     Button(action: onSettings) { Image(systemName: "gearshape") }
@@ -147,6 +190,38 @@ struct InboxView: View {
     private func scrollTo(_ id: String?, _ proxy: ScrollViewProxy) {
         guard let id, model.items.contains(where: { $0.id == id }) else { return }
         withAnimation { proxy.scrollTo(id, anchor: .center) }
+    }
+}
+
+/// The phone's answer to the desktop sidebar.
+///
+/// A 160pt rail on a 390pt screen is most of the width, so the same derived
+/// list becomes a menu instead. Identical rules, different affordance — the
+/// selection, the counts, and the ordering all come from `InboxCategories`.
+private struct CategoryMenu: View {
+    @Bindable var model: InboxViewModel
+
+    var body: some View {
+        Menu {
+            // A Picker inside a Menu gets the native checkmark on the active
+            // row for free, which is the whole reason to prefer it here.
+            Picker("Category", selection: Binding(
+                get: { model.activeCategory },
+                set: { model.activeCategory = $0 }
+            )) {
+                ForEach(model.categories) { c in
+                    Text("\(c.name) (\(c.count))").tag(c.name)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                if model.activeCategory != InboxCategories.all {
+                    Text(model.activeCategory).font(GT.sans(13))
+                }
+            }
+        }
+        .tint(GT.accent)
     }
 }
 

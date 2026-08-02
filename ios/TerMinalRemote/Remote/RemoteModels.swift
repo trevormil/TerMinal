@@ -45,9 +45,13 @@ struct HitlItem: Codable, Identifiable, Hashable {
     /// 'push' notifies; 'normal' is inbox-only. Absent ⇒ treat as push.
     let severity: String?
     /// 'open' | 'resolved'. Absent ⇒ open.
-    let status: String?
+    var status: String?
     /// When first seen; absent ⇒ unread.
-    let readAt: Double?
+    var readAt: Double?
+    /// Free-form, named by the caller that filed the item. NOT an enum —
+    /// see InboxCategories and src/shared/inbox-categories.ts. Absent for most
+    /// existing items, which is a real state, not a gap.
+    let category: String?
 
     var isNormal: Bool { severity == "normal" }
     var isResolved: Bool { status == "resolved" }
@@ -55,21 +59,27 @@ struct HitlItem: Codable, Identifiable, Hashable {
     // Mirrors src/main/hitl.ts isHitlRead.
     var isUnread: Bool { readAt == nil && status != "resolved" }
 
-    /// A copy marked read now (struct is immutable, so rebuild it).
+    // The copies below mutate a `var copy = self` rather than calling the
+    // memberwise init field by field. The old form silently dropped any field
+    // added after it was written — adding `category` would have made the
+    // optimistic mark-read wipe an item's category until the next refresh put
+    // it back. A copy that enumerates fields is a bug waiting for the next one.
+
+    /// A copy marked read now.
     func markedRead() -> HitlItem {
-        HitlItem(
-            id: id, title: title, detail: detail, action: action, repo: repo, source: source,
-            createdAt: createdAt, severity: severity, status: status,
-            readAt: Date().timeIntervalSince1970 * 1000)
+        var copy = self
+        copy.readAt = Date().timeIntervalSince1970 * 1000
+        return copy
     }
 
     /// A copy back on the unread pile — the email "keep this on my plate" move.
     /// Clears BOTH readAt and a legacy resolved status, or a once-resolved item
     /// could never return to unread. Mirrors markHitlRead(read:false).
     func markedUnread() -> HitlItem {
-        HitlItem(
-            id: id, title: title, detail: detail, action: action, repo: repo, source: source,
-            createdAt: createdAt, severity: severity, status: "open", readAt: nil)
+        var copy = self
+        copy.status = "open"
+        copy.readAt = nil
+        return copy
     }
 
     /// Preserve optimistic read-state across a server refresh.
