@@ -81,15 +81,9 @@ import {
   readObservabilityToolCallPayload,
   readObservabilityTranscriptWindow,
 } from './data'
-import {
-  observabilityFilterOptions,
-  observabilityIndexStatus,
-  queryObservabilityIndex,
-  rebuildObservabilityIndex,
-  type ObservabilityIndexQueryId,
-  type ObservabilityQueryFilter,
-} from './observability-index'
 import { registerAgentInsightsIpc } from './ipc/agent-insights'
+import { registerObservabilityIpc } from './ipc/observability'
+import { registerPersistentAgentsIpc } from './ipc/persistent-agents'
 import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
 import { registerSessionSearchIpc } from './ipc/session-search'
@@ -227,8 +221,6 @@ import {
   runTicketSpawn,
   runFactorySpawn,
   runDesignerSpawn,
-  runPersistentAgent,
-  runPersistentAgentDesignerSpawn,
   runScheduleDesignerSpawn,
   locateScript,
   readAgentState,
@@ -248,21 +240,6 @@ import {
   type PrAgentKind,
   killAllAgentRuns,
 } from './agents'
-import {
-  getPersistentAgent,
-  createPersistentAgentFile,
-  listPersistentAgentArtifacts,
-  listPersistentAgents,
-  listPersistentAgentFiles,
-  persistentAgentLaunchPrompt,
-  readPersistentAgentArtifact,
-  readPersistentAgentFile,
-  removePersistentAgent,
-  removePersistentAgentFile,
-  savePersistentAgent,
-  updatePersistentAgentFile,
-  writePersistentAgentFile,
-} from './persistent-agents'
 import {
   readSchedules,
   addSchedule,
@@ -349,7 +326,6 @@ const openExternalSafe = (url: unknown): void => {
   if (isExternallyOpenableUrl(url)) void shell.openExternal(url)
   else console.error('[gt] refused openExternal for non-web URL:', String(url).slice(0, 80))
 }
-import { summaryFor, agentROI, dailySpend, listAIRuns, type Range } from './ai-runs'
 import { startAICollectionLoop } from './ai-collectors'
 import {
   processListenerInbox,
@@ -357,7 +333,6 @@ import {
   setListenerEnabled,
   startListenerInboxWatcher,
 } from './listeners'
-import { knownModels } from './ai-pricing'
 import {
   readBudgets,
   setDailyCap,
@@ -2615,51 +2590,8 @@ ipcMain.handle('agents:cancel', (_e, runId: string) => (curRemote() ? false : ca
 ipcMain.handle('agents:remove-worktree', (_e, runId: string) =>
   curRemote() ? false : removeWorktree(runId),
 )
-ipcMain.handle('persistent-agents:list', () => listPersistentAgents())
-ipcMain.handle('persistent-agents:get', (_e, id: string) => getPersistentAgent(id))
-ipcMain.handle('persistent-agents:save', (_e, input: unknown) => savePersistentAgent(input as any))
-ipcMain.handle('persistent-agents:remove', (_e, id: string) => removePersistentAgent(id))
-ipcMain.handle('persistent-agents:update-file', (_e, id: string, file: string, body: string) =>
-  updatePersistentAgentFile(id, file as any, body),
-)
-ipcMain.handle(
-  'persistent-agents:launch-prompt',
-  (_e, id: string, task: string, repoRoot?: string, engine?: Engine, model?: string) =>
-    persistentAgentLaunchPrompt(id, task, {
-      repoRoot: repoRoot || repoRootOf(cur().cwd),
-      engine,
-      model,
-    }),
-)
-ipcMain.handle(
-  'persistent-agents:run',
-  (_e, id: string, task: string, engine?: Engine, model?: string) =>
-    runPersistentAgent(repoRootOf(cur().cwd), id, task, engine, model),
-)
-ipcMain.handle('persistent-agents:design', (_e, text: string, engine: Engine, model?: string) =>
-  runPersistentAgentDesignerSpawn(repoRootOf(cur().cwd), text, engine, model),
-)
-ipcMain.handle('persistent-agents:files-list', (_e, id: string, rel: string) =>
-  listPersistentAgentFiles(id, rel || ''),
-)
-ipcMain.handle('persistent-agents:files-read', (_e, id: string, rel: string) =>
-  readPersistentAgentFile(id, rel),
-)
-ipcMain.handle('persistent-agents:files-write', (_e, id: string, rel: string, content: string) =>
-  writePersistentAgentFile(id, rel, content),
-)
-ipcMain.handle('persistent-agents:files-create', (_e, id: string, rel: string, dir: boolean) =>
-  createPersistentAgentFile(id, rel, dir),
-)
-ipcMain.handle('persistent-agents:files-delete', (_e, id: string, rel: string) =>
-  removePersistentAgentFile(id, rel),
-)
-ipcMain.handle('persistent-agents:artifacts-list', (_e, id: string) =>
-  listPersistentAgentArtifacts(id),
-)
-ipcMain.handle('persistent-agents:artifacts-read', (_e, id: string, rel: string) =>
-  readPersistentAgentArtifact(id, rel),
-)
+registerPersistentAgentsIpc({ activeRepoRoot: () => repoRootOf(cur().cwd) })
+
 // Schedules are backed by real launchd jobs; every mutation syncs launchd in
 // lockstep, and `enriched` annotates each with its human cadence + next fire.
 ipcMain.handle('schedules:list', () => {
@@ -3935,55 +3867,7 @@ ipcMain.handle('budgets:override', (_e, durationMs: number) => {
 ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
 
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
-ipcMain.handle('observability:summary', (_e, range: Range = 'today') =>
-  curRemote()
-    ? { totalUsd: 0, totalRuns: 0, byModel: {}, bySource: {}, byAgent: {}, byRepo: {} }
-    : summaryFor(range),
-)
-ipcMain.handle('observability:byAgent', (_e, range: Range = 'week') =>
-  curRemote() ? [] : agentROI(range),
-)
-ipcMain.handle('observability:daily', (_e, days: number = 7) =>
-  curRemote() ? [] : dailySpend(days),
-)
-ipcMain.handle('observability:runs', (_e, limit: number = 100) =>
-  curRemote() ? [] : listAIRuns(limit),
-)
-ipcMain.handle('observability:models', () => knownModels())
-ipcMain.handle('observability:index-status', () =>
-  curRemote()
-    ? {
-        ...observabilityIndexStatus(),
-        ok: false,
-        error: 'Remote observability indexing is not wired yet.',
-      }
-    : observabilityIndexStatus(),
-)
-ipcMain.handle('observability:index-rebuild', (_e, limit: number = 240) =>
-  curRemote()
-    ? {
-        ...observabilityIndexStatus(),
-        ok: false,
-        error: 'Remote observability indexing is not wired yet.',
-        durationMs: 0,
-        indexedSessions: 0,
-      }
-    : rebuildObservabilityIndex(limit),
-)
-ipcMain.handle(
-  'observability:index-query',
-  (_e, query: ObservabilityIndexQueryId, arg?: string, filter?: ObservabilityQueryFilter) =>
-    curRemote()
-      ? {
-          ...queryObservabilityIndex(query, arg, filter),
-          rows: [],
-          error: 'Remote observability indexing is not wired yet.',
-        }
-      : queryObservabilityIndex(query, arg, filter),
-)
-ipcMain.handle('observability:filter-options', () =>
-  curRemote() ? { repos: [], engines: [], models: [] } : observabilityFilterOptions(),
-)
+registerObservabilityIpc({ isRemote: () => !!curRemote() })
 
 // Inbox snooze + alert delivery log. Same reason: the renderer already invokes
 // these channels, so leaving them unregistered is an unhandled-invoke rejection.
