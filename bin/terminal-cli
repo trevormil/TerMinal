@@ -1857,9 +1857,14 @@ switch (cmd) {
     else fileTicket(args[0], args[1], args[2])
     break
   case 'hitl': {
-    const sevFlag = args.find((a) => a.startsWith('--severity='))
-    const rest = args.filter((a) => !a.startsWith('--severity='))
-    fileHitl(rest[0], rest[1], { severity: sevFlag?.slice('--severity='.length) })
+    // Both flags are parsed here and stripped before the positionals are read,
+    // so `hitl "title" "action" --category=X` works in any order.
+    const flag = (name) => {
+      const hit = args.find((a) => a.startsWith(`--${name}=`))
+      return hit ? hit.slice(name.length + 3) : undefined
+    }
+    const rest = args.filter((a) => !a.startsWith('--severity=') && !a.startsWith('--category='))
+    fileHitl(rest[0], rest[1], { severity: flag('severity'), category: flag('category') })
     break
   }
   case 'monitor':
