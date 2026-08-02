@@ -10,6 +10,7 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildFixtureRepo } from './fixture-repo'
+import { seedDemoRuns, seedDemoSession, seedDemoStatusline } from './demo-session'
 import { makeSandbox, type Sandbox } from './isolation'
 
 const here = join(fileURLToPath(new URL('.', import.meta.url)))
@@ -67,6 +68,18 @@ export type UxApp = {
 export async function launchApp(): Promise<{ app: UxApp; dispose: () => Promise<void> }> {
   const sandbox = makeSandbox()
   buildFixtureRepo(sandbox.repo)
+  // README capture only (ticket 98). A cold sandbox has no live session, so the
+  // cockpit — the hero's entire pitch — renders six empty cards. The numbers are
+  // staged; the UI rendering them is the real one. Never set by the test suite.
+  if (process.env.TERMINAL_UX_DEMO === '1') {
+    seedDemoSession(sandbox.home, sandbox.repo)
+    seedDemoStatusline(sandbox.configDir)
+    seedDemoRuns(
+      sandbox.configDir,
+      sandbox.repo,
+      process.env.TERMINAL_UX_REMOTE_SLUG || 'acme/acme-api',
+    )
+  }
 
   const electronApp = await _electron.launch({
     args: [join(repoRootDir, 'out', 'main', 'index.js')],

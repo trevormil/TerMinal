@@ -2,7 +2,7 @@
   "name": "terminal",
   "productName": "TerMinal",
   "version": "0.2.0",
-  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability — no server, no account.",
+  "description": "A standalone, local-first software factory for coding agents: hosts the real Claude Code / Codex CLI with a live cockpit, autonomous build loop, scheduling, and cross-repo observability \u2014 no server, no account.",
   "author": "Trevor Miller",
   "license": "MIT",
   "repository": {
@@ -35,7 +35,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "rebuild": "electron-rebuild -f -o node-pty,better-sqlite3",
-    "postinstall": "electron-rebuild -f -o node-pty,better-sqlite3"
+    "postinstall": "electron-rebuild -f -o node-pty,better-sqlite3",
+    "shots": "bun scripts/capture-readme-shots.ts"
   },
   "dependencies": {
     "@codemirror/language": "6.12.3",

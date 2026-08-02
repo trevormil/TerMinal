@@ -53,8 +53,21 @@ export function buildFixtureRepo(repo: string): void {
   git(repo, 'init', '-q', '-b', 'main')
   // A forge remote so the MRs/CI tabs apply and render their real "no results"
   // state rather than the "this repo has no forge remote" bail-out.
-  git(repo, 'remote', 'add', 'origin', 'https://github.com/ux-suite/fixture.git')
+  // Overridable for README capture, where the slug is VISIBLE in the run/PR
+  // filters and `ux-suite/fixture` reads as test scaffolding rather than a
+  // product. Tests keep the default.
+  const slug = process.env.TERMINAL_UX_REMOTE_SLUG || 'ux-suite/fixture'
+  git(repo, 'remote', 'add', 'origin', `https://github.com/${slug}.git`)
 
+  // Bootstrap markers. `bootstrapStatus` (src/main/remote.ts) looks for six:
+  // .agents, backlog, docs, sessions, .claude/skills, .codex/skills. With any
+  // missing, every screen carries a yellow "This repo is partially bootstrapped"
+  // banner — which is honest but wrong for a fixture that is supposed to
+  // represent a fully-provisioned repo, and it dominates the README shots.
+  for (const dir of ['docs', 'sessions', '.claude/skills', '.codex/skills']) {
+    mkdirSync(join(repo, dir), { recursive: true })
+    writeFileSync(join(repo, dir, '.gitkeep'), '')
+  }
   writeFileSync(join(repo, 'README.md'), '# fixture\n\nUX suite fixture repo.\n')
   writeFileSync(join(repo, 'CLAUDE.md'), '# CLAUDE.md\n\nFixture repo instructions.\n')
 
