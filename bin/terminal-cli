@@ -10,6 +10,8 @@
 // Subcommands:
 //   terminal-cli ticket "<title>" "<body>"              file a ticket on TERMINAL_REPO's configured provider
 //   terminal-cli hitl "<title>" "<action>"              file a global HITL item + Telegram ping
+//                    [--severity=urgent|normal|low] [--category=<Name>]
+//                    --category is free-form: any name groups the Inbox sidebar.
 //   terminal-cli activity <kind> "<title>" "<detail>"   emit one activity-feed event
 //   terminal-cli deploy "<env>" "[sha]" "[detail]"      emit a deploy activity event
 //   terminal-cli notify "<message>"                     send a Telegram message (raw)
@@ -339,6 +341,7 @@ const SEVERITY_RANK = { urgent: 3, normal: 2, low: 1 }
 
 function fileHitl(title, action, opts = {}) {
   const severity = SEVERITY_RANK[opts.severity] ? opts.severity : undefined
+  const category = normalizeCategoryShared(opts.category)
   const item = {
     id: randomUUID(),
     title: title || 'untitled',
@@ -349,6 +352,7 @@ function fileHitl(title, action, opts = {}) {
     status: 'open',
     createdAt: Date.now(),
     ...(severity ? { severity } : {}),
+    ...(category ? { category } : {}),
     ...(runId ? { runId, runSource: 'cron' } : {}),
     sessionId: process.env.GT_TERMINAL_SESSION_ID || '',
     terminalKey: process.env.GT_TERMINAL_SESSION_KEY || '',
@@ -367,6 +371,15 @@ function fileHitl(title, action, opts = {}) {
       hitlButtons(item),
     )
   console.log(item.id)
+}
+
+// Category normalization (ticket 120). Inlined rather than imported: these are
+// standalone Bun scripts copied to remote hosts with no sibling modules.
+// Canonical impl + tests: src/shared/inbox-categories.ts — keep in sync.
+function normalizeCategoryShared(raw) {
+  if (typeof raw !== 'string') return undefined
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').trim()
+  return clean ? clean.slice(0, 40) : undefined
 }
 
 // ── monitor ──────────────────────────────────────────────────────────────

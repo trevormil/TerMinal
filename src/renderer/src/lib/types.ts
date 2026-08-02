@@ -1258,6 +1258,9 @@ export type HitlItem = {
   status: 'open' | 'resolved'
   /** urgent notifies; normal/low are inbox-only. Legacy 'push' reads as urgent. */
   severity?: 'urgent' | 'normal' | 'low' | 'push'
+  /** Free-form Inbox grouping (ticket 120). Deliberately NOT a union — a caller
+   *  names a category by passing one; absent ⇒ 'Uncategorized'. */
+  category?: string
   /** When first seen; absent ⇒ unread. */
   readAt?: number
   createdAt: number

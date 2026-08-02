@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { normalizeCategory } from '../shared/inbox-categories'
 import { readJsonState, updateJsonState } from './atomic-write'
 import { configPath } from './config-dir'
 import { join } from 'node:path'
@@ -49,6 +50,12 @@ export type HitlItem = {
   /** Alert loudness — see HitlSeverity. Absent on legacy items ⇒ treated as
    *  'push' so nothing that used to notify goes silent after the upgrade. */
   severity?: HitlSeverity
+  /** Free-form grouping for the Inbox sidebar (ticket 120). Deliberately NOT a
+   *  union: a caller names a category by passing one, and nothing else changes.
+   *  Absent ⇒ 'Uncategorized'. Normalized on write, never validated against a
+   *  list — membership checks are how a free string becomes an enum by the back
+   *  door. */
+  category?: string
   /** When you first saw it. Absent ⇒ unread. Independent of resolve: an item
    *  can be read-but-open (you saw it, haven't acted) or unread-and-resolved
    *  (auto-resolved before you looked). */
@@ -204,6 +211,10 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     id: randomUUID(),
     status: 'open',
     severity: input.severity ?? defaultSeverity(input.source),
+    // Normalized HERE, at the only write path, so a bad value from a
+    // shell-built CLI call never reaches the file — and every reader can then
+    // trust the field without re-checking it.
+    category: normalizeCategory(input.category),
     createdAt: Date.now(),
     occurrenceCount: 1,
   }

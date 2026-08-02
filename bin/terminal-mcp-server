@@ -1000,10 +1000,20 @@ function updateTicketRun(args) {
   return updateTicket(args)
 }
 
+// Category normalization (ticket 120). Inlined rather than imported: these are
+// standalone Bun scripts copied to remote hosts with no sibling modules.
+// Canonical impl + tests: src/shared/inbox-categories.ts — keep in sync.
+function normalizeCategoryShared(raw) {
+  if (typeof raw !== 'string') return undefined
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').trim()
+  return clean ? clean.slice(0, 40) : undefined
+}
+
 // --- file_hitl ------------------------------------------------------------
 
 function fileHitlTool(args) {
-  const { title, action, detail, repo, source = 'agent', runId, ticketPath, severity } = args
+  const { title, action, detail, repo, source = 'agent', runId, ticketPath, severity, category } =
+    args
   if (!title) throw new Error('title is required')
   const cfg = CFG
   mkdirSync(cfg, { recursive: true })
@@ -1017,6 +1027,7 @@ function fileHitlTool(args) {
     source,
     status: 'open',
     createdAt: Date.now(),
+    ...(normalizeCategoryShared(category) ? { category: normalizeCategoryShared(category) } : {}),
     ...(severity === 'urgent' || severity === 'normal' || severity === 'low'
       ? { severity }
       : {}),
