@@ -87,6 +87,17 @@ echo "[ux-suite stub engine] argv: $*"
 while :; do sleep 3600; done
 `
 
+// The same stub, minus the argv dump, for README capture. The default MUST keep
+// printing that line — sandbox.spec asserts on it, and it is the proof that no
+// real engine binary can be reached. But it is raw debug output, and the README
+// hero is a picture of the terminal, so it would be the first thing a visitor
+// reads. Opt-in via TERMINAL_UX_DEMO so the tests are unaffected.
+const DEMO_ENGINE = `#!/bin/sh
+# UX-suite stub engine (demo mode). Never talks to a network or a paid API.
+printf '\\033[2m%s\\033[0m\\n' 'Claude Code — demo capture, no engine is running'
+while :; do sleep 3600; done
+`
+
 /**
  * Build a throwaway HOME + config dir + git fixture repo. Everything the app
  * could persist lands under here, and the caller deletes it afterwards.
@@ -105,15 +116,23 @@ export const FIXTURE_ACTIVITY_DETAIL = [
 ].join('\n')
 
 export function makeSandbox(): Sandbox {
-  const home = mkdtempSync(join(tmpdir(), 'terminal-ux-home-'))
-  const configDir = mkdtempSync(join(tmpdir(), 'terminal-ux-config-'))
+  // Both default to mkdtemp, which is what every TEST wants — a fresh, unique,
+  // disposable sandbox. The overrides exist for README screenshot capture
+  // (scripts/capture-readme-shots.ts), where the paths are VISIBLE in the image
+  // and `/var/folders/.../terminal-ux-home-Xk2p9k/fixture-repo` reads as a bug
+  // rather than a product. They are opt-in and never set by the suite, so test
+  // isolation is unchanged.
+  const home = process.env.TERMINAL_UX_HOME || mkdtempSync(join(tmpdir(), 'terminal-ux-home-'))
+  mkdirSync(home, { recursive: true })
+  const configDir =
+    process.env.TERMINAL_UX_CONFIG_DIR || mkdtempSync(join(tmpdir(), 'terminal-ux-config-'))
   const binDir = join(home, 'bin')
   mkdirSync(binDir, { recursive: true })
   const stub = join(binDir, 'stub-engine')
-  writeFileSync(stub, STUB_ENGINE)
+  writeFileSync(stub, process.env.TERMINAL_UX_DEMO === '1' ? DEMO_ENGINE : STUB_ENGINE)
   chmodSync(stub, 0o755)
 
-  const repo = join(home, 'fixture-repo')
+  const repo = join(home, process.env.TERMINAL_UX_REPO_NAME || 'fixture-repo')
   mkdirSync(repo, { recursive: true })
 
   // Settings: already onboarded (the Onboarding + Orientation screens gate the
