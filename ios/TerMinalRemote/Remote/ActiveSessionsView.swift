@@ -95,7 +95,7 @@ struct ActiveSessionsView: View {
                                 } label: {
                                     Label("End", systemImage: "stop.circle")
                                 }
-                                .tint(.orange)
+                                .tint(GT.yellow)
                             }
                         }
                         .contextMenu {
