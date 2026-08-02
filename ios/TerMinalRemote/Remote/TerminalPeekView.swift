@@ -31,7 +31,7 @@ struct TerminalPeekView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Text("read-only")
+                Text("Read-only")
                     .font(GT.sans(10.5))
                     .foregroundStyle(GT.textFaint)
             }

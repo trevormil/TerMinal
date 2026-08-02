@@ -177,10 +177,10 @@ private struct DiffFileRow: View {
     }
 
     private var badge: (String, Color)? {
-        if file.isBinary { return ("binary", GT.textMuted) }
-        if file.isNew { return ("new", GT.green) }
-        if file.isDeleted { return ("deleted", GT.red) }
-        if file.isRename { return ("renamed", GT.blue) }
+        if file.isBinary { return ("Binary", GT.textMuted) }
+        if file.isNew { return ("New", GT.green) }
+        if file.isDeleted { return ("Deleted", GT.red) }
+        if file.isRename { return ("Renamed", GT.blue) }
         return nil
     }
 }

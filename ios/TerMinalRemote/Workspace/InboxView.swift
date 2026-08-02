@@ -319,9 +319,9 @@ private struct SeverityTag: View {
     let severity: String?
     private var tier: (String, Color) {
         switch severity {
-        case "normal": return ("normal", GT.accentLight)
-        case "low": return ("low", GT.textFaint)
-        default: return ("urgent", GT.yellow)  // 'urgent' | legacy 'push' | nil
+        case "normal": return ("Normal", GT.accentLight)
+        case "low": return ("Low", GT.textFaint)
+        default: return ("Urgent", GT.yellow)  // 'urgent' | legacy 'push' | nil
         }
     }
     var body: some View {

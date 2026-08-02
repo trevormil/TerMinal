@@ -146,3 +146,67 @@ describe('the mobile brand surface is deliberate (ticket 121)', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('the design-system rules apply to the phone (ticket 121)', () => {
+  // docs/design-system.md §9. The desktop half of these is enforced by
+  // src/renderer/src/design-system.test.ts; this is the mobile half. Both exist
+  // because this repo has the evidence that a documented-only rule decays —
+  // the three test-isolation incidents, the two fmtUsd copies, and the drifted
+  // tab strip all happened under documentation that already said not to.
+
+  /** SF Symbol names are data (`envelope.open`), not labels — §9.3. */
+  const SYMBOL_ARG = /(?:systemImage|systemName):\s*"/
+
+  test('no emoji in mobile UI strings — SF Symbols is the phone\'s lucide', () => {
+    // Deliberately does not match arrows or box-drawing: those are typographic
+    // marks, which §5 exempts, and the desktop guard exempts them too.
+    const EMOJI = /[\u{1F300}-\u{1FAFF}\u{1F900}-\u{1F9FF}\u{2700}-\u{27BF}\u{FE0F}]/u
+    const offenders: string[] = []
+    for (const rel of swiftFiles()) {
+      read(rel)
+        .split('\n')
+        .forEach((line, i) => {
+          if (EMOJI.test(line)) offenders.push(`${rel}:${i + 1} — ${line.trim()}`)
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test('every user-facing label starts with a capital', () => {
+    // §4, unchanged on mobile. Only inspects literals in the label position of
+    // Text/Button/Label — an interpolated or variable string is data whose case
+    // is the system's to decide, and forcing it would be a lie about the value.
+    const LOWER_LABEL = /\b(?:Text|Button|Label)\(\s*"([a-z][^"]*)"/g
+    const offenders: string[] = []
+    for (const rel of swiftFiles()) {
+      read(rel)
+        .split('\n')
+        .forEach((line, i) => {
+          if (SYMBOL_ARG.test(line)) return
+          for (const m of line.matchAll(LOWER_LABEL)) {
+            offenders.push(`${rel}:${i + 1} — "${m[1]}"`)
+          }
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test('surfaceHover is absent — touch has no hover state', () => {
+    // §9.2. The token could only ever be dead here, and a dead token is an
+    // invitation to invent a use for it.
+    const theme = read(THEME)
+    expect(theme).not.toMatch(/static let surfaceHover/)
+    expect(theme).not.toMatch(/static let elevated/)
+  })
+
+  test('panel2 is still here — it has real uses, unlike on desktop', () => {
+    // The trap §9.2 exists to stop: someone reads that desktop dropped these as
+    // vestigial and sweeps the phone to match, taking the chat bubbles and the
+    // lock screen with it. A count on one platform says nothing about the other.
+    expect(read(THEME)).toMatch(/static let panel2/)
+    const uses = swiftFiles()
+      .filter((f) => !f.endsWith('Design/Theme.swift'))
+      .reduce((n, f) => n + (read(f).match(/GT\.panel2\b/g) ?? []).length, 0)
+    expect(uses).toBeGreaterThan(1)
+  })
+})

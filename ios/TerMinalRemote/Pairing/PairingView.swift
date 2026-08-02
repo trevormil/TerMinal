@@ -174,7 +174,7 @@ struct PairingView: View {
                                 recentRow(host)
                             }
                         }
-                        Text("or enter another")
+                        Text("Or enter another")
                             .font(GT.sans(11))
                             .foregroundStyle(GT.textFaint)
                             .padding(.top, 2)

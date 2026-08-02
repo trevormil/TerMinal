@@ -484,7 +484,7 @@ struct ScheduleDetailView: View {
                     }
                 }
                 if let next = s.nextRun {
-                    Text("next run \(relativeTime(next))")
+                    Text("Next run \(relativeTime(next))")
                         .font(GT.sans(12)).foregroundStyle(GT.textSoft)
                 }
                 sectionLabel("Prompt")

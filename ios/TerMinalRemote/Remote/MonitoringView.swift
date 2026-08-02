@@ -264,7 +264,7 @@ struct MonitorDetailView: View {
                     if isStale(monitor) { pill("stale", tint: GT.textFaint) }
                     Spacer()
                     if let checkedAt = monitor.state?.lastCheckedAt {
-                        Text("checked \(relativeTime(checkedAt))")
+                        Text("Checked \(relativeTime(checkedAt))")
                             .font(GT.mono(10)).foregroundStyle(GT.textFaint)
                     }
                 }

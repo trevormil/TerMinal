@@ -5,13 +5,22 @@ import UIKit
 /// (`src/renderer/src/index.css`). The phone should look like the same product,
 /// so these hex values are the single source of truth here — if the desktop
 /// palette changes, change it here too rather than eyeballing something close.
+///
+/// That is now ENFORCED, not requested: `src/shared/token-parity.test.ts` fails
+/// if a value here drifts from the CSS, or if a token appears here that the
+/// desktop does not have. See `docs/design-system.md` §9 for what else is
+/// shared and where the phone deliberately differs.
 enum GT {
     // surfaces
+    //
+    // Two, plus two special-purpose — the desktop's hierarchy (§2). `elevated`
+    // and `surfaceHover` were dropped in ticket 121: zero uses here, and
+    // `surfaceHover` cannot have any, because touch has no hover state.
+    // `panel2` stays — 7 real uses (chat bubbles, the lock screen). A token
+    // used seven times is a surface; one used zero times is a suggestion.
     static let bg = Color(hex: 0x0B0B10)
     static let panel = Color(hex: 0x131318)
     static let panel2 = Color(hex: 0x171720)
-    static let elevated = Color(hex: 0x181820)
-    static let surfaceHover = Color(hex: 0x1A1A22)
     static let terminalBg = Color(hex: 0x0A0A0F)
     static let codeBg = Color(hex: 0x0C0C11)
 

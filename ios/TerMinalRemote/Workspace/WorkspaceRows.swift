@@ -15,7 +15,7 @@ struct TicketRow: View {
                         pill(t.status, tint: statusTint)
                         Text(t.type).font(GT.mono(10)).foregroundStyle(GT.textFaint)
                         if t.priority == "high" {
-                            Text("high").font(GT.mono(10)).foregroundStyle(GT.yellow)
+                            Text("High").font(GT.mono(10)).foregroundStyle(GT.yellow)
                         }
                         if t.hitl {
                             Image(systemName: "person.fill.questionmark")
@@ -114,7 +114,7 @@ struct ScheduleRow: View {
                 }
                 Spacer(minLength: 4)
                 if !s.enabled {
-                    Text("paused").font(GT.sans(10)).foregroundStyle(GT.textFaint)
+                    Text("Paused").font(GT.sans(10)).foregroundStyle(GT.textFaint)
                 } else if let next = s.nextRun {
                     Text(relativeTime(next)).font(GT.mono(10)).foregroundStyle(GT.textMuted)
                 }
