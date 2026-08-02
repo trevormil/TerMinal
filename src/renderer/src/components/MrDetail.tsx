@@ -791,11 +791,7 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
         )}
       </div>
       <CiPanel ci={ci} />
-      {mr.description ? (
-        <Markdown>{mr.description}</Markdown>
-      ) : (
-        <Empty>No description.</Empty>
-      )}
+      {mr.description ? <Markdown>{mr.description}</Markdown> : <Empty>No description.</Empty>}
     </div>
   )
 }

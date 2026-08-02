@@ -54,7 +54,8 @@ describe('the persisted agent shape has ONE definition (ticket 96)', () => {
     // The actual acceptance criterion. Asserted at the source level because a
     // behavioural test cannot distinguish "one definition" from "two identical
     // definitions" — and it was the second state that shipped the #78 bug.
-    const src = readFileSync(join(import.meta.dir, 'agents.ts'), 'utf8')
+    // saveAgent moved to agent-registry.ts in the ticket-91 decomposition.
+    const src = readFileSync(join(import.meta.dir, 'agent-registry.ts'), 'utf8')
     const save = src.slice(src.indexOf('export function saveAgent'))
     const body = save.slice(0, save.indexOf('\n}\n'))
     expect(body).toContain('normalizeAgentEntry')
@@ -62,7 +63,7 @@ describe('the persisted agent shape has ONE definition (ticket 96)', () => {
   })
 
   test('validation is shared too, not re-implemented per writer', () => {
-    const src = readFileSync(join(import.meta.dir, 'agents.ts'), 'utf8')
+    const src = readFileSync(join(import.meta.dir, 'agent-registry.ts'), 'utf8')
     const global = readFileSync(join(import.meta.dir, 'agents-global.ts'), 'utf8')
     // Same rule, one source. If they diverge, one registry accepts ids the
     // other rejects and the same agent becomes unsaveable in one scope.

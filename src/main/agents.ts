@@ -9,7 +9,6 @@ import {
   unlinkSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
-import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
@@ -31,10 +30,9 @@ import {
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
-import { normalizeAgentEntry, readGlobalAgents, saveGlobalAgent } from './agents-global'
+import { saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
-import { hiddenPresetIds } from './presets'
 import {
   getPersistentAgent,
   listPersistentAgents,
@@ -58,6 +56,11 @@ export { listPipelines, type PipelineId } from './pipelines'
 // mechanical.
 export type * from './agent-types'
 export { DEFAULT_AGENTS, FORCE_PREAMBLE } from './agent-catalog'
+// The definition registry moved to agent-registry.ts (ticket 91); re-exported
+// so the ~15 existing importers of readAgents/saveAgent/locateScript via
+// './agents' keep working unchanged.
+export { readAgents, saveAgent, resetAgent, hasAgents, locateScript } from './agent-registry'
+import { readAgents, locateScript } from './agent-registry'
 
 // Imported as well as re-exported: `export ... from` forwards names to
 // consumers without binding them locally, and this module uses most of them.
@@ -75,162 +78,13 @@ import type {
   PrAgentKind,
   RerunSpec,
 } from './agent-types'
-import { DEFAULT_AGENTS as CATALOG, FORCE_PREAMBLE as FORCE_TEXT } from './agent-catalog'
-const DEFAULT_AGENTS = CATALOG
-const FORCE_PREAMBLE = FORCE_TEXT
+import { FORCE_PREAMBLE } from './agent-catalog'
 
 // One definition, from the shared registry — this was a verbatim copy of
 // settings.EngineId that could (and did) drift from it.
 const OUTPUT_CAP = 400_000
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
-
-function readRepoAgents(repoRoot: string): Agent[] {
-  const f = join(repoRoot, '.agents', 'agents.json')
-  if (!existsSync(f)) return []
-  try {
-    const a = JSON.parse(readFileSync(f, 'utf8'))
-    const list = Array.isArray(a) ? a : Array.isArray(a?.agents) ? a.agents : []
-    return list.filter((x: Agent) => x && x.id && x.title && x.prompt)
-  } catch {
-    return []
-  }
-}
-
-/** Built-in defaults, with the repo's .agents/agents.json overriding by id.
- *  Each agent is annotated with its `source` so the UI can distinguish a stock
- *  default, a default this repo has customized, and a repo-only agent. */
-// Discover script-only agents from a directory: any `<id>.sh` paired with an
-// optional sidecar `<id>.json` of metadata. No JSON entry in agents.json
-// required — drop the .sh and the agent shows up.
-function readScriptAgents(dir: string): Agent[] {
-  if (!existsSync(dir)) return []
-  const out: Agent[] = []
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return []
-  }
-  for (const f of entries) {
-    if (!f.endsWith('.sh')) continue
-    const id = f.slice(0, -3)
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) continue
-    // Sidecar JSON (optional) provides metadata; otherwise we synthesize sane defaults.
-    let meta: Partial<Agent> = {}
-    const sidecar = join(dir, `${id}.json`)
-    if (existsSync(sidecar)) {
-      try {
-        meta = JSON.parse(readFileSync(sidecar, 'utf8'))
-      } catch {
-        /* malformed sidecar — fall back to defaults */
-      }
-    }
-    out.push({
-      id,
-      title: meta.title || id,
-      description: meta.description,
-      icon: meta.icon || 'Wrench',
-      // The prompt is the canonical "what does this agent do" surface in the UI;
-      // for script-only agents we point at the file rather than duplicate the bash.
-      prompt: meta.prompt || `Script-based agent · body in ${dir.replace(homedir(), '~')}/${f}`,
-      opensPr: meta.opensPr,
-      engine: meta.engine,
-      model: meta.model,
-      modelPolicy: meta.modelPolicy,
-      quality: meta.quality,
-      outputContract: meta.outputContract,
-      acceptanceCriteria: meta.acceptanceCriteria,
-      inPlace: meta.inPlace,
-      force: meta.force,
-    })
-  }
-  return out
-}
-
-export function readAgents(repoRoot: string): Agent[] {
-  type Layered = { agent: Agent; layers: Set<'default' | 'global' | 'repo'> }
-  const byId = new Map<string, Layered>()
-  const hiddenDefaults = hiddenPresetIds('agents')
-  const merge = (a: Agent, layer: 'default' | 'global' | 'repo') => {
-    const existing = byId.get(a.id)
-    if (existing) {
-      existing.layers.add(layer)
-      // later layer wins for individual fields (only override fields it sets)
-      existing.agent = { ...existing.agent, ...a }
-    } else {
-      byId.set(a.id, { agent: { ...a }, layers: new Set([layer]) })
-    }
-  }
-  // Layer order: defaults → global (json then scripts) → repo (json then scripts).
-  // Script bodies are independent from the JSON metadata; the runtime branches
-  // on file existence, but the agent list cares only about the merged metadata.
-  for (const a of DEFAULT_AGENTS) if (!hiddenDefaults.has(a.id)) merge(a, 'default')
-  for (const a of readGlobalAgents()) merge(a, 'global')
-  for (const a of readScriptAgents(configPath('scripts'))) merge(a, 'global')
-  if (repoRoot) for (const a of readRepoAgents(repoRoot)) merge(a, 'repo')
-  if (repoRoot) for (const a of readScriptAgents(join(repoRoot, '.agents'))) merge(a, 'repo')
-
-  const out: Agent[] = []
-  for (const { agent, layers } of byId.values()) {
-    let source: Agent['source']
-    if (layers.has('repo'))
-      source = layers.has('default') || layers.has('global') ? 'repo-override' : 'repo'
-    else if (layers.has('global')) source = layers.has('default') ? 'global-override' : 'global'
-    else source = 'default'
-    out.push({ ...agent, source, hasScript: !!locateScript(repoRoot, agent.id) })
-  }
-  return out
-}
-
-/** Upsert an agent into <repo>/.agents/agents.json (creates it). Overriding a
- *  built-in default = writing an entry with the same id. */
-export function saveAgent(
-  repoRoot: string,
-  agent: Partial<Agent> & { id: string; title: string; prompt: string },
-): { ok: true } | { error: string } {
-  if (!repoRoot) return { error: 'not a git repo' }
-  const id = (agent.id || '').trim()
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) return { error: 'id must be kebab-case (a-z, 0-9, -)' }
-  if (!agent.title?.trim()) return { error: 'title is required' }
-  if (!agent.prompt?.trim()) return { error: 'prompt is required' }
-  // ONE definition of the persisted shape, shared with the global registry
-  // (ticket 96). The two used to be identical hand-written literals, which is
-  // exactly the state in which duplication is invisible — and #78 exists
-  // because an earlier divergence silently dropped modelPolicy, quality, model,
-  // outputContract, acceptanceCriteria and force on every save.
-  const entry = normalizeAgentEntry({ ...agent, id })
-  const dir = join(repoRoot, '.agents')
-  const f = join(dir, 'agents.json')
-  const list = readRepoAgents(repoRoot).filter((a) => a.id !== id)
-  list.push(entry)
-  try {
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(f, JSON.stringify(list, null, 2) + '\n')
-    return { ok: true }
-  } catch (e) {
-    return { error: (e as Error).message }
-  }
-}
-
-/** Remove an agent override from .agents/agents.json — a customized default
- *  reverts to the built-in; a repo-only agent is deleted. */
-export function resetAgent(repoRoot: string, id: string): { ok: true } | { error: string } {
-  const f = join(repoRoot, '.agents', 'agents.json')
-  if (!existsSync(f)) return { ok: true }
-  try {
-    const list = readRepoAgents(repoRoot).filter((a) => a.id !== id)
-    writeFileSync(f, JSON.stringify(list, null, 2) + '\n')
-    return { ok: true }
-  } catch (e) {
-    return { error: (e as Error).message }
-  }
-}
-
-// every git repo gets the default agents
-export function hasAgents(repoRoot: string): boolean {
-  return !!repoRoot
-}
 
 const runs = new Map<string, AgentRun>()
 const procs = new Map<string, ChildProcess>()
@@ -384,19 +238,7 @@ export function getRun(id: string): AgentRun | null {
 // Build the engine command. codex needs -C; claude uses cwd. Both run through a
 // login shell so $PATH has brew/local bins, and with stdin = /dev/null (else
 // they block reading "additional input from stdin" on an empty pipe).
-// Locate an executable script for this agent. Per-repo wins over global so a
-// repo can override a global agent's body. The runner branches: if a script
-// exists, exec it with env vars; else fall back to the prompt-based agent
-// prompt-wrap built by buildCmd().
 const TERMINAL_BIN_DIR = (): string => configPath('bin')
-const GLOBAL_SCRIPTS_DIR = (): string => configPath('scripts')
-export function locateScript(repoRoot: string, agentId: string): string | null {
-  const perRepo = join(repoRoot, '.agents', `${agentId}.sh`)
-  if (existsSync(perRepo)) return perRepo
-  const global = join(GLOBAL_SCRIPTS_DIR(), `${agentId}.sh`)
-  if (existsSync(global)) return global
-  return null
-}
 
 // State sidecar — mirrors terminal-cli's path layout exactly:
 //   ~/.config/TerMinal/agent-state/<repo-basename>/<agentId>.json

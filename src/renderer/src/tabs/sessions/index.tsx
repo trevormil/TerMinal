@@ -201,11 +201,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
                     </button>
                   ))}
                 </div>
-                {sel.body ? (
-                  <Markdown>{sel.body}</Markdown>
-                ) : (
-                  <Empty>No body.</Empty>
-                )}
+                {sel.body ? <Markdown>{sel.body}</Markdown> : <Empty>No body.</Empty>}
               </div>
             )}
           </div>

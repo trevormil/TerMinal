@@ -192,7 +192,9 @@ function ChunkRow({
               <FileDiff file={file} mode="unified" mechanicalHunks={chunk.hunks} />
             </div>
           ) : (
-            <div className="px-3 py-2"><Empty>Diff unavailable</Empty></div>
+            <div className="px-3 py-2">
+              <Empty>Diff unavailable</Empty>
+            </div>
           )}
         </div>
       )}
