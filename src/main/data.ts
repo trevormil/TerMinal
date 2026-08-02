@@ -7,6 +7,18 @@ import {
   readSync,
   closeSync,
 } from 'node:fs'
+import {
+  isRecord,
+  messageOf,
+  sidecarOf,
+  parseLine,
+  isTextBlock,
+  isToolResultBlock,
+  isToolUseBlock,
+  textOf as schemaTextOf,
+  toolFailed,
+  usageTotals,
+} from './transcript-schema'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import Database from 'better-sqlite3'
@@ -373,14 +385,10 @@ function summarizeToolInput(tool: string, input: Record<string, unknown>): strin
 }
 
 function textOf(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .filter((b) => b && typeof b === 'object' && (b as any).type === 'text')
-      .map((b) => (b as any).text)
-      .join(' ')
-  }
-  return ''
+  // Delegates to the shared guards (ticket 91). The ' ' separator is
+  // load-bearing — this feeds session previews, where '' would run words
+  // together across blocks.
+  return schemaTextOf(content, ' ')
 }
 
 function compactPreview(value: unknown, max = 900): string {
@@ -396,30 +404,17 @@ function resultText(content: unknown, toolUseResult?: unknown): string {
     const parts: string[] = []
     let nonText = 0
     for (const block of content) {
-      if (
-        block &&
-        typeof block === 'object' &&
-        (block as any).type === 'text' &&
-        typeof (block as any).text === 'string'
-      ) {
-        parts.push((block as any).text)
-      } else if (block && typeof block === 'object') {
-        nonText++
-      }
+      if (isTextBlock(block)) parts.push(block.text)
+      else if (isRecord(block)) nonText++
     }
     if (nonText > 0) parts.push(`[${nonText} non-text block${nonText === 1 ? '' : 's'}]`)
     return parts.join('\n')
   }
-  if (
-    toolUseResult &&
-    typeof toolUseResult === 'object' &&
-    (toolUseResult as any).success === false
-  )
-    return 'command failed'
+  if (isRecord(toolUseResult) && toolUseResult.success === false) return 'command failed'
   return ''
 }
 
-function timestampMs(obj: any, line: number): number {
+function timestampMs(obj: Record<string, unknown> | undefined, line: number): number {
   if (typeof obj?.timestamp === 'string') {
     const parsed = Date.parse(obj.timestamp)
     if (Number.isFinite(parsed)) return parsed
@@ -544,8 +539,8 @@ export function lastAssistantMessage(m: { content?: unknown }): string {
   const content = m?.content
   const text = Array.isArray(content)
     ? content
-        .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
-        .map((b: any) => b.text)
+        .filter(isTextBlock)
+        .map((b) => b.text)
         .join(' ')
     : typeof content === 'string'
       ? content
@@ -566,18 +561,14 @@ export function lastAssistantTurn(
     closeSync(fd)
     const lines = buf.toString('utf8').split('\n').filter(Boolean)
     for (let i = lines.length - 1; i >= 0; i--) {
-      let o: any
-      try {
-        o = JSON.parse(lines[i])
-      } catch {
-        continue // first line in the window may be truncated — skip
-      }
+      const o = parseLine(lines[i])
+      if (!o) continue // first line in the window may be truncated — skip
       if (o?.type === 'assistant') {
-        const m = o.message || {}
+        const m = messageOf(o)
         return {
-          id: String(m.id || o.uuid || o.timestamp || i),
-          endTurn: m.stop_reason === 'end_turn',
-          summary: lastAssistantMessage(m),
+          id: String(m?.id || o.uuid || o.timestamp || i),
+          endTurn: isRecord(o.message) && o.message.stop_reason === 'end_turn',
+          summary: lastAssistantMessage(m ?? {}),
         }
       }
     }
@@ -601,18 +592,14 @@ export function lastAssistantText(file: string): string {
     closeSync(fd)
     const lines = buf.toString('utf8').split('\n').filter(Boolean)
     for (let i = lines.length - 1; i >= 0; i--) {
-      let o: any
-      try {
-        o = JSON.parse(lines[i])
-      } catch {
-        continue
-      }
+      const o = parseLine(lines[i])
+      if (!o) continue
       if (o?.type === 'assistant') {
-        const c = o.message?.content
+        const c = messageOf(o)?.content
         if (Array.isArray(c))
           return c
-            .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
-            .map((b: any) => b.text)
+            .filter(isTextBlock)
+            .map((b) => b.text)
             .join('\n')
             .trim()
         if (typeof c === 'string') return c.trim()
@@ -680,22 +667,17 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
 
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const obj = parseLine(line)
+    if (!obj) continue
     if (!cwd && typeof obj.cwd === 'string') cwd = obj.cwd
     if (!gitBranch && typeof obj.gitBranch === 'string') gitBranch = obj.gitBranch
     // Claude writes these as standalone lines (no message); keep the latest.
-    if (obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle
-    else if (obj.type === 'permission-mode' && obj.permissionMode)
-      permissionMode = obj.permissionMode
-    else if (obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string')
-      lastPrompt = obj.lastPrompt
+    const sidecar = sidecarOf(obj)
+    if (sidecar?.type === 'ai-title') aiTitle = sidecar.aiTitle
+    else if (sidecar?.type === 'permission-mode') permissionMode = sidecar.permissionMode
+    else if (sidecar?.type === 'last-prompt') lastPrompt = sidecar.lastPrompt
 
-    const msg = obj.message
+    const msg = messageOf(obj)
     if (!msg) continue
 
     if (msg.role === 'user' && !firstUserText) {
@@ -715,9 +697,7 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
       seenUsage.add(usageKey)
       turns++
       if (msg.model) model = msg.model
-      const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
-      const cacheRead = u.cache_read_input_tokens || 0
-      const output = u.output_tokens || 0
+      const { input, cacheRead, output } = usageTotals(u)
       totalInput += input
       totalCacheRead += cacheRead
       totalOutput += output
@@ -826,23 +806,19 @@ export function foldTranscriptStatsLines(
   const source = Array.isArray(lines) ? lines : lines.split('\n')
   for (const line of source) {
     if (!line.trim()) continue
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const obj = parseLine(line)
+    if (!obj) continue
     if (!accumulator.cwd && typeof obj.cwd === 'string') accumulator.cwd = obj.cwd
     if (!accumulator.gitBranch && typeof obj.gitBranch === 'string')
       accumulator.gitBranch = obj.gitBranch
     // Claude writes standalone lines (no message); keep latest.
-    if (obj.type === 'ai-title' && obj.aiTitle) accumulator.aiTitle = obj.aiTitle
-    else if (obj.type === 'permission-mode' && obj.permissionMode)
-      accumulator.permissionMode = obj.permissionMode
-    else if (obj.type === 'last-prompt' && typeof obj.lastPrompt === 'string')
-      accumulator.lastPrompt = obj.lastPrompt
+    const sidecar = sidecarOf(obj)
+    if (sidecar?.type === 'ai-title') accumulator.aiTitle = sidecar.aiTitle
+    else if (sidecar?.type === 'permission-mode')
+      accumulator.permissionMode = sidecar.permissionMode
+    else if (sidecar?.type === 'last-prompt') accumulator.lastPrompt = sidecar.lastPrompt
 
-    const msg = obj.message
+    const msg = messageOf(obj)
     if (!msg) continue
 
     if (msg.role === 'user' && !accumulator.firstUserText) {
@@ -863,9 +839,7 @@ export function foldTranscriptStatsLines(
       accumulator.seenUsage.add(usageKey)
       accumulator.turns++
       if (msg.model) accumulator.model = msg.model
-      const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
-      const cacheRead = u.cache_read_input_tokens || 0
-      const output = u.output_tokens || 0
+      const { input, cacheRead, output } = usageTotals(u)
       accumulator.totalInput += input
       accumulator.totalCacheRead += cacheRead
       accumulator.totalOutput += output
@@ -1037,45 +1011,38 @@ export function parseTranscriptDetailFile(
   raw.split('\n').forEach((line, index) => {
     const lineNo = index + 1
     if (!line.trim()) return
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch (e) {
+    const obj = parseLine(line)
+    if (!obj) {
       warnings.push(`line ${lineNo}: malformed JSON`)
       pushEvent({
         timestamp: lineNo,
         line: lineNo,
         kind: 'parse_error',
         severity: 'error',
-        previewText: (e as Error).message || 'Malformed JSON',
+        previewText: 'Malformed JSON',
       })
       return
     }
 
     const timestamp = timestampMs(obj, lineNo)
-    const msg = obj.message
+    const msg = messageOf(obj)
     const role = msg?.role || obj.role
     const content = msg?.content ?? obj.content
 
     if (role === 'user') {
       const blocks = Array.isArray(content) ? content : []
-      const results = blocks.filter(
-        (block) => block && typeof block === 'object' && (block as any).type === 'tool_result',
-      )
+      const results = blocks.filter(isToolResultBlock)
       if (results.length > 0) {
         for (const block of results) {
-          const full = resultText((block as any).content, obj.toolUseResult)
-          const isError = !!((block as any).is_error || obj.toolUseResult?.success === false)
+          const full = resultText(block.content, obj.toolUseResult)
+          const isError = toolFailed(block, obj.toolUseResult)
           pushEvent({
             timestamp,
             line: lineNo,
             kind: 'tool_result',
             severity: isError ? 'error' : 'info',
             turnId: currentTurn || undefined,
-            callId:
-              typeof (block as any).tool_use_id === 'string'
-                ? (block as any).tool_use_id
-                : undefined,
+            callId: typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined,
             previewText: compactPreview(full, 1200) || 'tool completed',
             outputPreview: compactPreview(full, 4000),
             outputBytes: Buffer.byteLength(full || '', 'utf8'),
@@ -1173,9 +1140,7 @@ export function parseTranscriptDetailFile(
     )
     if (u && !seenUsage.has(usageKey)) {
       seenUsage.add(usageKey)
-      const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
-      const cachedInput = u.cache_read_input_tokens || 0
-      const output = u.output_tokens || 0
+      const { input, cacheRead: cachedInput, output } = usageTotals(u)
       const total = input + cachedInput + output
       if (total > 0) {
         cumulativeInput += input + cachedInput
@@ -1397,16 +1362,12 @@ function parseClaudeSessionMeta(file: string, id: string): SessionMeta | null {
 
   for (const line of win.raw.split('\n')) {
     if (!line.trim()) continue
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const obj = parseLine(line)
+    if (!obj) continue
     if (!cwd && typeof obj.cwd === 'string') cwd = obj.cwd
     if (!gitBranch && typeof obj.gitBranch === 'string') gitBranch = obj.gitBranch
 
-    const msg = obj.message
+    const msg = messageOf(obj)
     if (!msg) continue
     if (msg.role === 'user' && !firstUserText) {
       const t = textOf(msg.content).trim()
@@ -1495,13 +1456,9 @@ export function parseCodexSessionFile(file: string): SessionMeta | null {
 
   for (const line of win.raw.split('\n')) {
     if (!line.trim()) continue
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      continue
-    }
-    const payload = obj.payload || {}
+    const obj = parseLine(line)
+    if (!obj) continue
+    const payload = isRecord(obj.payload) ? obj.payload : {}
     if (obj.type === 'session_meta') {
       if (typeof payload.id === 'string') id = payload.id
       if (!cwd && typeof payload.cwd === 'string') cwd = payload.cwd
@@ -1566,18 +1523,14 @@ export function parseCursorSessionFile(file: string): SessionMeta | null {
   let turns = 0
   for (const line of win.raw.split('\n')) {
     if (!line.trim()) continue
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const obj = parseLine(line)
+    if (!obj) continue
     if (typeof obj.session_id === 'string') id = obj.session_id
     if (typeof obj.model === 'string') model = obj.model
-    if (obj.role === 'user' || obj.message?.role === 'user') {
+    if (obj.role === 'user' || messageOf(obj)?.role === 'user') {
       turns++
       if (!firstUserText) {
-        firstUserText = textOf(obj.message?.content ?? obj.content)
+        firstUserText = textOf(messageOf(obj)?.content ?? obj.content)
           .replace(/<timestamp>[\s\S]*?<\/timestamp>/g, '')
           .replace(/<\/?user_query>/g, '')
           .trim()
@@ -1880,16 +1833,12 @@ export function readObservabilityToolCallPayload(
 
   raw.split('\n').forEach((line, index) => {
     if (!line.trim()) return
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      return
-    }
-    const content = obj.message?.content ?? obj.content
-    if (obj.message?.role === 'assistant' && Array.isArray(content)) {
+    const obj = parseLine(line)
+    if (!obj) return
+    const content = messageOf(obj)?.content ?? obj.content
+    if (messageOf(obj)?.role === 'assistant' && Array.isArray(content)) {
       for (const block of content) {
-        if (!block || typeof block !== 'object' || (block as any).type !== 'tool_use') continue
+        if (!isToolUseBlock(block)) continue
         if ((block as any).id !== callId) continue
         const input = inputRecord((block as any).input)
         toolName = String((block as any).name || 'tool')
@@ -1907,14 +1856,14 @@ export function readObservabilityToolCallPayload(
             : undefined
       }
     }
-    if (obj.message?.role === 'user' && Array.isArray(content)) {
+    if (messageOf(obj)?.role === 'user' && Array.isArray(content)) {
       for (const block of content) {
         if (!block || typeof block !== 'object' || (block as any).type !== 'tool_result') continue
-        if ((block as any).tool_use_id !== callId) continue
-        outputText = resultText((block as any).content, obj.toolUseResult)
+        if (!isToolResultBlock(block) || block.tool_use_id !== callId) continue
+        outputText = resultText(block.content, obj.toolUseResult)
         outputBytes = Buffer.byteLength(outputText || '', 'utf8')
         completedLine = index + 1
-        status = (block as any).is_error || obj.toolUseResult?.success === false ? 'error' : 'ok'
+        status = toolFailed(block, obj.toolUseResult) ? 'error' : 'ok'
       }
     }
   })
@@ -2004,10 +1953,8 @@ export function parseObservabilityIndexRecordsFile(
   raw.split('\n').forEach((line, index) => {
     const lineNo = index + 1
     if (!line.trim()) return
-    let obj: any
-    try {
-      obj = JSON.parse(line)
-    } catch (e) {
+    const obj = parseLine(line)
+    if (!obj) {
       pushEvent({
         line: lineNo,
         timestamp: lineNo,
@@ -2017,12 +1964,12 @@ export function parseObservabilityIndexRecordsFile(
         callId: '',
         toolName: '',
         role: '',
-        text: (e as Error).message || 'Malformed JSON',
+        text: 'Malformed JSON',
       })
       return
     }
     const timestamp = timestampMs(obj, lineNo)
-    const msg = obj.message
+    const msg = messageOf(obj)
     const role = msg?.role || obj.role
     const content = msg?.content ?? obj.content
 
@@ -2035,8 +1982,8 @@ export function parseObservabilityIndexRecordsFile(
         for (const block of results) {
           const callId =
             typeof (block as any).tool_use_id === 'string' ? (block as any).tool_use_id : ''
-          const full = resultText((block as any).content, obj.toolUseResult)
-          const isError = !!((block as any).is_error || obj.toolUseResult?.success === false)
+          const full = resultText(block.content, obj.toolUseResult)
+          const isError = toolFailed(block, obj.toolUseResult)
           pushEvent({
             line: lineNo,
             timestamp,
@@ -2267,15 +2214,13 @@ export function readObservabilityTranscriptWindow(
       const obj: any = JSON.parse(text)
       row.timestamp = timestampMs(obj, lineNo)
       row.kind = String(obj.type || obj.message?.type || '')
-      row.role = String(obj.message?.role || obj.role || '')
-      const content = obj.message?.content ?? obj.content
+      row.role = String(messageOf(obj)?.role || obj.role || '')
+      const content = messageOf(obj)?.content ?? obj.content
       if (Array.isArray(content)) {
         const toolUse = content.find(
           (block) => block && typeof block === 'object' && (block as any).type === 'tool_use',
         )
-        const toolResult = content.find(
-          (block) => block && typeof block === 'object' && (block as any).type === 'tool_result',
-        )
+        const toolResult = content.find(isToolResultBlock)
         if (toolUse) {
           row.callId = typeof (toolUse as any).id === 'string' ? (toolUse as any).id : undefined
           row.toolName =
