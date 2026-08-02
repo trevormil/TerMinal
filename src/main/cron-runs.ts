@@ -10,7 +10,10 @@ import {
   mkdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
-import { listRuns as listAgentRuns, type AgentRun } from './agents'
+// Store, not runtime: the whole point of the ticket-91 extraction is that
+// reading run records must not drag in the spawn machinery.
+import { listRuns as listAgentRuns } from './agent-run-store'
+import type { AgentRun } from './agent-types'
 import { listBgTasks, type BgTask } from './bg-tasks'
 import {
   pruneOutcomeSummaries,

@@ -1,21 +1,11 @@
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
-import {
-  readFileSync,
-  existsSync,
-  appendFileSync,
-  writeFileSync,
-  mkdirSync,
-  readdirSync,
-  unlinkSync,
-} from 'node:fs'
+import { spawn, execFileSync } from 'node:child_process'
+import { readFileSync, existsSync, unlinkSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { emitActivity } from './events'
 import { AGENT_TIMEOUT_EXIT, killProcessGroup, resolveRunTimeoutMs } from './process-group'
 import { scriptWrapperArgs } from './script-wrapper'
-import { inMemoryWorkingSet } from './run-retention'
-import { readFileTail } from './fs-tail'
 import { repoForCwd } from './repo'
 import { forgeFor } from './forge'
 import { getPersona } from './personas'
@@ -30,6 +20,29 @@ import {
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
+// The run store moved to agent-run-store.ts (ticket 91); re-exported so the
+// existing importers via './agents' keep working unchanged.
+export {
+  agentRunLogPath,
+  getRun,
+  killAllAgentRuns,
+  listRuns,
+  loadPersistedRuns,
+  onAgentEvent,
+  readAgentRunLog,
+} from './agent-run-store'
+import {
+  appendRunLog,
+  emitAgent,
+  getProc,
+  getRun,
+  listRuns,
+  loadPersistedRuns,
+  persistRunMeta,
+  releaseProc,
+  trackProc,
+  trackRun,
+} from './agent-run-store'
 import { saveGlobalAgent } from './agents-global'
 import { fileHitl } from './hitl'
 import { composeSteps, pipelineLabel, type Step } from './pipelines'
@@ -86,109 +99,6 @@ const OUTPUT_CAP = 400_000
 const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
 
-const runs = new Map<string, AgentRun>()
-const procs = new Map<string, ChildProcess>()
-
-/**
- * Kill every in-process agent run. Called from `will-quit`: without it, quitting
- * TerMinal with agent sessions running left `claude`/`codex` children alive —
- * invisible, billable, and still pushing commits.
- *
- * SIGKILL, not SIGTERM: `will-quit` gives us no time to wait for a graceful
- * shutdown, and a half-exited engine is worse than a killed one.
- */
-export function killAllAgentRuns(): number {
-  let killed = 0
-  for (const [, p] of procs) {
-    killProcessGroup(p, 'SIGKILL')
-    killed++
-  }
-  procs.clear()
-  return killed
-}
-let emit: (channel: string, payload: unknown) => void = () => {}
-export function onAgentEvent(fn: (channel: string, payload: unknown) => void) {
-  emit = fn
-}
-
-// --- persistence: one <id>.json (metadata) + <id>.log (output) per run --------
-const RUNS_DIR = (): string => configPath('agent-runs')
-const metaPath = (id: string) => join(RUNS_DIR(), `${id}.json`)
-const logPath = (id: string) => join(RUNS_DIR(), `${id}.log`)
-/** On-disk log path for the runs:log-tail IPC (tail-reads without loading the file). */
-export const agentRunLogPath = logPath
-
-// Read a persisted agent run's full log from disk by id — so a run that aged out
-// of the in-memory working set is still viewable in the Runs tab. Returns '' if
-// absent. Mirrors readCronRunLog.
-export function readAgentRunLog(id: string): string {
-  try {
-    return readFileSync(logPath(id), 'utf8')
-  } catch {
-    return ''
-  }
-}
-
-function persistMeta(run: AgentRun) {
-  try {
-    mkdirSync(RUNS_DIR(), { recursive: true })
-    const { output: _o, ...meta } = run
-    writeFileSync(metaPath(run.id), JSON.stringify(meta))
-  } catch {
-    /* best effort */
-  }
-}
-function appendLog(id: string, chunk: string) {
-  try {
-    appendFileSync(logPath(id), chunk)
-  } catch {
-    /* best effort */
-  }
-}
-
-// Load past runs from disk into memory at startup. Runs still marked 'running'
-// were orphaned by an app quit → mark 'interrupted'. Prune to the newest N.
-let loaded = false
-export function loadPersistedRuns() {
-  if (loaded) return
-  loaded = true
-  let files: string[] = []
-  try {
-    files = readdirSync(RUNS_DIR()).filter((f) => f.endsWith('.json'))
-  } catch {
-    return
-  }
-  const metas: AgentRun[] = []
-  for (const f of files) {
-    try {
-      const m = JSON.parse(readFileSync(join(RUNS_DIR(), f), 'utf8')) as AgentRun
-      if (m.status === 'running') m.status = 'interrupted'
-      metas.push(m)
-    } catch {
-      /* skip corrupt */
-    }
-  }
-  // Never delete run files (storage is cheap — the user prunes manually). Only
-  // load the most recent N into memory to bound RAM; older runs stay on disk and
-  // remain viewable via readAgentRunLog. 0 = load all.
-  // Logs are read AFTER the cap is applied, and only their last OUTPUT_CAP
-  // bytes — run history grows without bound, and reading every log in full at
-  // startup blocked the main process linearly with it.
-  const cap = readSettings().runMemoryCap
-  const inMemory = inMemoryWorkingSet(metas, cap)
-  for (const m of inMemory) {
-    if (runs.has(m.id)) continue // never clobber a live (in-memory) run
-    let output = ''
-    try {
-      output = readFileTail(logPath(m.id), OUTPUT_CAP).text
-    } catch {
-      /* no log */
-    }
-    runs.set(m.id, { ...m, output })
-    if (m.status === 'interrupted') persistMeta(m) // persist the corrected status
-  }
-}
-
 // `defaultBase` costs up to three git invocations, and runSpec called it TWICE
 // per run (header line + the worktree add) with no memoisation — driven
 // sequentially up to 100x by runTicketLanes, that is up to 600 synchronous git
@@ -225,14 +135,6 @@ function computeDefaultBase(repoRoot: string): string {
     }
   }
   return 'HEAD'
-}
-
-export function listRuns(): AgentRun[] {
-  loadPersistedRuns()
-  return [...runs.values()].sort((a, b) => b.startedAt - a.startedAt)
-}
-export function getRun(id: string): AgentRun | null {
-  return runs.get(id) ?? null
 }
 
 // Build the engine command. codex needs -C; claude uses cwd. Both run through a
@@ -760,7 +662,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
   // Concurrent-run guard: never let two runs of the same agent on the same
   // repo overlap. If one is already running, surface HITL + refuse the new
   // run rather than silently allowing duplicates to thrash on the same worktree.
-  for (const r of runs.values()) {
+  for (const r of listRuns()) {
     if (r.status === 'running' && r.agentId === spec.id && r.repoRoot === repoRoot) {
       const msg = `${spec.title} is already running (run ${r.id.slice(0, 8)}) — refusing to start a duplicate`
       fileHitl({
@@ -882,10 +784,10 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     force: spec.force,
     trace: spec.trace,
   }
-  runs.set(run.id, run)
-  persistMeta(run)
-  appendLog(run.id, run.output)
-  emit('agent:status', run)
+  trackRun(run)
+  persistRunMeta(run)
+  appendRunLog(run.id, run.output)
+  emitAgent('agent:status', run)
   emitActivity(
     {
       kind: 'agent-run',
@@ -901,8 +803,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     if (!chunk) return
     run.output += chunk
     if (run.output.length > OUTPUT_CAP) run.output = run.output.slice(-OUTPUT_CAP)
-    appendLog(run.id, chunk)
-    emit('agent:output', { runId: run.id, chunk })
+    appendRunLog(run.id, chunk)
+    emitAgent('agent:output', { runId: run.id, chunk })
   }
 
   let settled = false
@@ -925,8 +827,8 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       if (m) run.costUsd = Number(m[1])
     }
     run.evaluation = evaluateAgentRun(run, spec, status, append)
-    procs.delete(run.id)
-    persistMeta(run)
+    releaseProc(run.id)
+    persistRunMeta(run)
     if (spec.rerun?.kind === 'ticket') {
       try {
         const current = getLocalTicket(repoRoot, spec.rerun.slug)
@@ -939,7 +841,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
         /* ticket run-link status is observability-only */
       }
     }
-    emit('agent:status', run)
+    emitAgent('agent:status', run)
     // Try to extract claude -p / codex exec usage from the captured output
     // and record an AIRun ledger entry. Best-effort — silent on miss.
     try {
@@ -1062,7 +964,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       // the `script` wrapper. See killProcessGroup.
       detached: true,
     })
-    procs.set(run.id, p)
+    trackProc(run.id, p)
     // Hard cap per step, mirroring terminal-cron (SIGKILL + exit 124). Without
     // it a hung engine leaves the run 'running' forever — and the duplicate-run
     // guard then blocks that agent permanently until the app restarts.
@@ -1671,7 +1573,7 @@ export function runPrAgent(
 
 export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: string }> {
   loadPersistedRuns()
-  const run = runs.get(runId)
+  const run = getRun(runId)
   if (!run) return { error: 'run not found' }
   if (run.status === 'running') return { error: 'run is already running' }
   const spec = run.rerun
@@ -1751,11 +1653,11 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
 }
 
 export function cancelRun(runId: string): boolean {
-  const run = runs.get(runId)
-  const p = procs.get(runId)
+  const run = getRun(runId)
+  const p = getProc(runId)
   if (run && run.status === 'running') {
     run.status = 'canceled'
-    persistMeta(run)
+    persistRunMeta(run)
   }
   if (p) killProcessGroup(p, 'SIGTERM')
   return !!p
@@ -1763,7 +1665,7 @@ export function cancelRun(runId: string): boolean {
 
 /** Remove a finished run's worktree (the branch/commits/PR remain). */
 export function removeWorktree(runId: string): boolean {
-  const run = runs.get(runId)
+  const run = getRun(runId)
   if (!run || run.status === 'running') return false
   if (run.worktree === run.repoRoot) return false // in-place run — never remove the repo
   try {
