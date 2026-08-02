@@ -157,7 +157,7 @@ describe('the design-system rules apply to the phone (ticket 121)', () => {
   /** SF Symbol names are data (`envelope.open`), not labels — §9.3. */
   const SYMBOL_ARG = /(?:systemImage|systemName):\s*"/
 
-  test('no emoji in mobile UI strings — SF Symbols is the phone\'s lucide', () => {
+  test("no emoji in mobile UI strings — SF Symbols is the phone's lucide", () => {
     // Deliberately does not match arrows or box-drawing: those are typographic
     // marks, which §5 exempts, and the desktop guard exempts them too.
     const EMOJI = /[\u{1F300}-\u{1FAFF}\u{1F900}-\u{1F9FF}\u{2700}-\u{27BF}\u{FE0F}]/u
