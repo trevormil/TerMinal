@@ -19,7 +19,7 @@ import parseDiff from 'parse-diff'
 import hljs from 'highlight.js/lib/common'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { Badge, CopyButton } from './ui'
+import { Badge, CopyButton, Empty } from './ui'
 import { Markdown } from './Markdown'
 import { PrAgentActions } from './PrAgentActions'
 import { MrMergeButton } from './MrMergeButton'
@@ -794,7 +794,7 @@ function Overview({ mr, ci }: { mr: MrDetail; ci: CiInfo | null | undefined }) {
       {mr.description ? (
         <Markdown>{mr.description}</Markdown>
       ) : (
-        <div className="text-[12px] italic text-zinc-600">No description.</div>
+        <Empty>No description.</Empty>
       )}
     </div>
   )
@@ -806,7 +806,7 @@ function ReviewBody({ mr }: { mr: MrDetail }) {
       {mr.reviewMd ? (
         <Markdown>{mr.reviewMd}</Markdown>
       ) : (
-        <div className="text-[12px] italic text-zinc-600">No review artifact recorded yet.</div>
+        <Empty>No review artifact recorded yet.</Empty>
       )}
     </div>
   )
