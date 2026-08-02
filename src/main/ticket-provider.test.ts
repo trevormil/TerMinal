@@ -69,6 +69,31 @@ describe('repoTicketProvider', () => {
   })
 })
 
+describe('webview provider dispatch', () => {
+  test('has no ticket store: reads degrade to empty, writes are refused, create is loud', async () => {
+    const repo = repoWithTicketConfig({
+      provider: 'webview',
+      webview: { url: 'https://t.example' },
+    })
+    expect(await listRepoTickets(repo)).toEqual([])
+    expect(await getRepoTicket(repo, '0001-x')).toBeNull()
+    expect(await updateRepoTicket(repo, '0001-x', { status: 'closed' })).toBe(false)
+    expect(
+      await commentOnRepoTicket(repo, '0001-x', { author: 'me', kind: 'human', body: 'hi' }),
+    ).toBe(false)
+    // The one loud failure: silently dropping a new ticket would lose data.
+    expect(
+      createRepoTicket(repo, {
+        title: 't',
+        type: 'feature',
+        priority: 'low',
+        status: 'open',
+        body: '',
+      }),
+    ).rejects.toThrow(/no ticket store/)
+  })
+})
+
 describe('obsidian provider dispatch', () => {
   test('writes tickets into the vault (not the repo) and stamps provider:obsidian', async () => {
     const vault = mkdtempSync(join(tmpdir(), 'terminal-obs-vault-'))
