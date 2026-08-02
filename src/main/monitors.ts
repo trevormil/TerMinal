@@ -186,7 +186,12 @@ export function runMonitorProbe(
       opts.bin ?? MONITOR_BIN(),
       ['run', id],
       {
-        timeout: opts.timeoutMs ?? 40_000,
+        // Must cover the daemon's worst case INCLUDING a confirmation re-probe:
+        // a hanging command monitor at its default 30s timeout takes
+        // 30s + 5s confirm delay + 30s ≈ 65s before the state file is written.
+        // The old 40s cap killed the daemon mid-confirm and the click reported
+        // an error with no state update.
+        timeout: opts.timeoutMs ?? 90_000,
         // The old call used stdio:'ignore'; execFile buffers instead, and the
         // 1 MB default would SIGTERM a chatty command monitor with ENOBUFS.
         maxBuffer: 8 * 1024 * 1024,
