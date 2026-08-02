@@ -38,6 +38,23 @@ describe('category survives every writer (ticket 120)', () => {
     // Computing it and forgetting to spread it is exactly the half-wiring that
     // lint caught here once already.
     expect(cli).toContain('...(category ? { category } : {})')
+    // ...and the DISPATCH must pass it, which the two checks above cannot see.
+    // The flag shipped documented-but-dead because this assertion was missing:
+    // fileHitl read `opts.category` and the `hitl` case never set it.
+    const dispatch = cli.slice(cli.indexOf("case 'hitl':"), cli.indexOf("case 'monitor':"))
+    expect(dispatch).toContain('--category=')
+    expect(dispatch).toMatch(/category: flag\('category'\)/)
+  })
+
+  test('the documented flags are the flags that are parsed', () => {
+    // A flag in --help that the parser ignores is worse than an undocumented
+    // one: it fails silently and looks like the feature is broken.
+    const cli = read('bin/terminal-cli')
+    const help = cli.slice(0, cli.indexOf('import '))
+    const dispatch = cli.slice(cli.indexOf("case 'hitl':"), cli.indexOf("case 'monitor':"))
+    for (const m of help.matchAll(/\[--(\w+)=/g)) {
+      expect(dispatch, `--${m[1]} is documented but not parsed`).toContain(`--${m[1]}=`)
+    }
   })
 
   test('bin/terminal-mcp-server accepts it too', () => {
