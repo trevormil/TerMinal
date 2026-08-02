@@ -97,8 +97,6 @@ describe('bin/terminal-monitor confirms a worsening probe before believing it', 
     runDaemon(cfg)
     const state = JSON.parse(readFileSync(stateFile, 'utf8'))
     expect(state.status).toBe('ok')
-    expect(state.lastTransition).toEqual(
-      expect.objectContaining({ from: 'fail', to: 'ok' }),
-    )
+    expect(state.lastTransition).toEqual(expect.objectContaining({ from: 'fail', to: 'ok' }))
   })
 })
