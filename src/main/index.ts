@@ -85,6 +85,7 @@ import { registerAgentInsightsIpc } from './ipc/agent-insights'
 import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
 import { registerAgentsIpc } from './ipc/agents'
+import { registerFilesIpc } from './ipc/files'
 import { registerPersistentAgentsIpc } from './ipc/persistent-agents'
 import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
@@ -342,7 +343,6 @@ import {
 import { factoryHealth } from './factory-health'
 import { describeSpec, nextRun } from './cron'
 import { composeSteps, pipelineLabel } from './pipelines'
-import { type WorkspaceSearchKind } from './workspace-search'
 import {
   remoteAgents,
   remoteCommandForEngine,
@@ -369,7 +369,7 @@ import {
   reviewBaseFor,
 } from './checkpoints'
 import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
-import { resolveWithin, resolveWithinAny } from './path-guard'
+import { resolveWithinAny } from './path-guard'
 import { createEpochRegistry } from './session-epoch'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { modelArgs, resumeArgs } from '../shared/engines'
@@ -2841,17 +2841,6 @@ ipcMain.handle('git:file-at-head-binary', (_e, rel: string) => {
 ipcMain.handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
 })
-ipcMain.handle('files:reveal', (_e, rel: string) => {
-  // Resolve against the workspace root and refuse anything that escapes it —
-  // the renderer must not be able to reveal arbitrary filesystem paths. This
-  // has to be resolveWithin and not a startsWith prefix test: with root
-  // /tmp/repo, `../repo-private/x` normalises to /tmp/repo-private/x, which
-  // shares the prefix but is a different directory.
-  const abs = resolveWithin(activeDaemon().filesRoot(), rel)
-  if (!abs) return false
-  shell.showItemInFolder(abs)
-  return true
-})
 ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
 ipcMain.handle('checkpoints:create', (_e, label: string) =>
   createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
@@ -3433,56 +3422,7 @@ ipcMain.handle('knowledge:rag-search', (_e, scope: KnowledgeScope, item: any, qu
   knowledgeRagSearch({ scope, repoRoot: activeDaemon().repoRoot(), item, query }),
 )
 
-// ---- files (Cursor-like editor; scoped to repo root / cwd) ----
-ipcMain.handle('files:list', (_e, rel: string) => {
-  return activeDaemon().filesList(rel || '')
-})
-ipcMain.handle('files:read', (_e, rel: string) => {
-  return activeDaemon().filesRead(rel)
-})
-ipcMain.handle('files:readBinary', (_e, rel: string) => {
-  return activeDaemon().filesReadBinary(rel)
-})
-ipcMain.handle('files:write', (_e, rel: string, content: string) => {
-  return activeDaemon().filesWrite(rel, content)
-})
-type FilesSearchOptions = {
-  regex?: boolean
-  caseSensitive?: boolean
-  wholeWord?: boolean
-  include?: string
-  exclude?: string
-}
-ipcMain.handle('files:search', (_e, q: string, opts?: FilesSearchOptions) => {
-  return activeDaemon().filesSearch(q, opts)
-})
-ipcMain.handle('files:format', (_e, rel: string, content: string) => {
-  return activeDaemon().filesFormat(rel, content)
-})
-ipcMain.handle(
-  'files:replace',
-  (
-    _e,
-    q: string,
-    replacement: string,
-    targets: { file: string; line: number }[],
-    opts?: FilesSearchOptions,
-  ) => {
-    return activeDaemon().filesReplace(q, replacement, targets, opts)
-  },
-)
-ipcMain.handle('workspace:search', (_e, q: string, kinds?: WorkspaceSearchKind[]) => {
-  return activeDaemon().search(q, kinds)
-})
-ipcMain.handle('files:create', (_e, rel: string, dir: boolean) => {
-  return activeDaemon().filesCreate(rel, dir)
-})
-ipcMain.handle('files:rename', (_e, from: string, to: string) => {
-  return activeDaemon().filesRename(from, to)
-})
-ipcMain.handle('files:delete', (_e, rel: string) => {
-  return activeDaemon().filesDelete(rel)
-})
+registerFilesIpc({ activeDaemon })
 
 // ---- my workflow (local Claude/Codex configuration) ----
 ipcMain.handle('workflow:list', (_e, rel: string) => listWorkflowFiles(rel || ''))
