@@ -23,7 +23,7 @@ import {
   SquareTerminal,
   Ticket,
 } from 'lucide-react'
-import { Badge } from '../../components/ui'
+import { Badge, Empty } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { RepoTrustReview, useRepoTrustPrompt } from '../../components/RepoTrustReview'
@@ -416,7 +416,7 @@ export function InboxDrawer({
             {body ? (
               <Markdown className="text-[12.5px] leading-relaxed text-zinc-300">{body}</Markdown>
             ) : (
-              <div className="text-[12px] italic text-zinc-600">No details.</div>
+              <Empty>No details.</Empty>
             )}
           </div>
         </div>

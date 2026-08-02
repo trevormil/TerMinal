@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import parseDiff from 'parse-diff'
+import { Empty } from './ui'
 import {
   ChevronDown,
   ChevronRight,
@@ -191,7 +192,7 @@ function ChunkRow({
               <FileDiff file={file} mode="unified" mechanicalHunks={chunk.hunks} />
             </div>
           ) : (
-            <div className="px-3 py-2 text-[11px] italic text-zinc-600">Diff unavailable</div>
+            <div className="px-3 py-2"><Empty>Diff unavailable</Empty></div>
           )}
         </div>
       )}

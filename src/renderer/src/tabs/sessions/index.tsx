@@ -9,7 +9,7 @@ const SEARCH_CAP = 'sessionSearch'
 // but registerSessionSearchIpc is wired by hand in index.ts — until it is,
 // every invoke rejects, so don't offer the sub-tab at all.
 void probeCapability(SEARCH_CAP, () => window.gt.searchSessions(''))
-import { Badge } from '../../components/ui'
+import { Badge, Empty } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
 import { SkillHint } from '../../components/SkillHint'
 import { sessionStatusTone } from '../../lib/badges'
@@ -204,7 +204,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
                 {sel.body ? (
                   <Markdown>{sel.body}</Markdown>
                 ) : (
-                  <div className="text-[12px] italic text-zinc-600">No body.</div>
+                  <Empty>No body.</Empty>
                 )}
               </div>
             )}

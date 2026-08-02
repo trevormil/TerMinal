@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { activityTone } from '../../lib/badges'
-import { badgeClasses } from '../../components/ui'
+import { badgeClasses, Empty } from '../../components/ui'
 import { navigateTo } from '../../lib/nav'
 import { InlineMd, Markdown } from '../../components/Markdown'
 import type { Tab, TabContext, ActivityEvent, ActivityKind } from '../../lib/types'
@@ -338,7 +338,7 @@ export function ActivityTab({
                 {e.detail}
               </Markdown>
             ) : (
-              <div className="text-[12px] italic text-zinc-600">No details.</div>
+              <Empty>No details.</Empty>
             )}
           </div>
         </div>
