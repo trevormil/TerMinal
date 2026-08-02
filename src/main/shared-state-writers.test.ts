@@ -61,7 +61,7 @@ const EXPECTED: Record<
   'hitl.json': {
     'src/main/hitl.ts': 'updateJsonState',
     'src/main/bridge/push.ts': 'read-only',
-    'src/main/remote.ts': 'updateJsonListShared',
+    'src/main/remote-host-script.cjs': 'updateJsonListShared',
     'bin/terminal-cron': 'updateJsonListShared',
     'bin/terminal-cli': 'updateJsonListShared',
     'bin/terminal-mcp-server': 'updateJsonListShared',
@@ -74,7 +74,7 @@ const EXPECTED: Record<
   'schedules.json': {
     'src/main/schedules.ts': 'updateJsonState',
     'src/main/agents.ts': 'read-only',
-    'src/main/remote.ts': 'updateJsonListShared',
+    'src/main/remote-host-script.cjs': 'updateJsonListShared',
     'bin/terminal-cron': 'updateJsonListShared',
     'bin/terminal-mcp-server': 'read-only',
   },

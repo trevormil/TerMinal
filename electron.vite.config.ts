@@ -2,7 +2,8 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 // Build stamp — baked in at build time so the running app can report exactly
 // which commit it was built from. Critical now that we release from main after a
@@ -83,10 +84,24 @@ const cspMetaPlugin = {
   },
 }
 
+// remote.ts reads its host-side helper (remote-host-script.cjs) next to the
+// built bundle via new URL(..., import.meta.url). Vite does not emit assets
+// for that pattern in node builds, so copy the file into out/main ourselves —
+// without it the packaged app's remote features fail on a missing script.
+const copyRemoteHostScript = {
+  name: 'terminal-copy-remote-host-script',
+  writeBundle() {
+    const from = fileURLToPath(new URL('./src/main/remote-host-script.cjs', import.meta.url))
+    const to = fileURLToPath(new URL('./out/main/remote-host-script.cjs', import.meta.url))
+    mkdirSync(fileURLToPath(new URL('./out/main', import.meta.url)), { recursive: true })
+    copyFileSync(from, to)
+  },
+}
+
 // node-pty is a native module — keep it external so it isn't bundled.
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), copyRemoteHostScript],
     define,
   },
   preload: {
