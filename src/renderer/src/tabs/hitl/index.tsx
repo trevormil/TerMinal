@@ -222,6 +222,9 @@ export function InboxDrawer({
   // Unread counts the WHOLE inbox, not the filtered view: a badge that drops
   // when you pick a category would say the work went away.
   const unread = unsnoozed.filter(isUnread)
+  // What a bulk action operates on — the visible list, which is the only thing
+  // the button can honestly claim to be acting on.
+  const scopedUnread = shown.filter(isUnread)
 
   // Group ids by owning host — a remote item's readAt must persist on the host
   // that owns it (like resolve), or the 15s reload flips it back to unread.
@@ -248,14 +251,34 @@ export function InboxDrawer({
     void window.gt.hitl.markRead([h.id], h.hostId, false).catch(() => 0)
     setReading(null)
   }
+  /**
+   * Mark read what you can SEE.
+   *
+   * With a category selected, this used to clear the whole inbox — you filter to
+   * Monitoring, hit the button, and silently lose the unread state on everything
+   * else. A bulk action has to mean the same thing as the list in front of it.
+   *
+   * `hitl.markAllRead()` is the whole-inbox IPC, so it is only correct on All;
+   * a scoped run sends explicit ids instead.
+   */
   const markAllRead = async () => {
-    if (!unread.length) return
-    const remoteUnread = unread.filter((h) => h.hostId)
-    setItems((prev) => (prev || []).map((h) => (isUnread(h) ? { ...h, readAt: Date.now() } : h)))
+    const targets = scopedUnread
+    if (!targets.length) return
+    const ids = new Set(targets.map((h) => h.id))
+    setItems((prev) => (prev || []).map((h) => (ids.has(h.id) ? { ...h, readAt: Date.now() } : h)))
+
+    const remote = targets.filter((h) => h.hostId)
     await Promise.all([
-      window.gt.hitl.markAllRead(),
-      ...[...byHost(remoteUnread)].map(([hostId, ids]) =>
-        window.gt.hitl.markRead(ids, hostId).catch(() => 0),
+      activeCategory === ALL
+        ? window.gt.hitl.markAllRead()
+        : window.gt.hitl
+            .markRead(
+              targets.filter((h) => !h.hostId).map((h) => h.id),
+              undefined,
+            )
+            .catch(() => 0),
+      ...[...byHost(remote)].map(([hostId, hostIds]) =>
+        window.gt.hitl.markRead(hostIds, hostId).catch(() => 0),
       ),
     ])
   }
@@ -516,13 +539,19 @@ export function InboxDrawer({
             </button>
           </>
         )}
-        {selectedIds.length === 0 && unread.length > 0 && (
+        {selectedIds.length === 0 && scopedUnread.length > 0 && (
           <button
             onClick={markAllRead}
-            title="Mark every unread item read"
+            title={
+              activeCategory === ALL
+                ? 'Mark every unread item read'
+                : `Mark the ${scopedUnread.length} unread item(s) in ${activeCategory} read`
+            }
             className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 transition-colors duration-150 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
           >
-            Mark all read
+            {/* Naming the scope is the point: "Mark all read" under a filter is
+                a promise the button no longer keeps. */}
+            {activeCategory === ALL ? 'Mark all read' : `Mark ${activeCategory} read`}
           </button>
         )}
         {selectedIds.length === 0 && unread.length > 0 && (
@@ -543,7 +572,9 @@ export function InboxDrawer({
 
       <div className="flex min-h-0 flex-1">
         {shouldShowSidebar(categories) && (
-          <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)] py-1.5">
+          // Darker than the list it sits beside, and flush to the top — a
+          // leading gap above "All" reads as a missing row.
+          <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-bg)]">
             {categories.map((c) => {
               const active = c.name === activeCategory
               return (
@@ -551,10 +582,10 @@ export function InboxDrawer({
                   key={c.name}
                   onClick={() => pickCategory(c.name)}
                   aria-current={active ? 'true' : undefined}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors ${
+                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left text-[11px] transition-colors duration-150 ${
                     active
-                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
-                      : 'text-zinc-500 hover:text-zinc-200'
+                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
+                      : 'border-transparent text-zinc-500 hover:bg-[var(--gt-accent)]/10 hover:text-zinc-200'
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate">{c.name}</span>

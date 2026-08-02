@@ -1913,7 +1913,12 @@ export default function App() {
               onClick={() => setInbox(false)}
             >
               <div
-                className="relative h-full w-full max-w-[760px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
+                // 3/4 of the window rather than a fixed 760px: the category
+                // sidebar costs 160px of the reading area, and on a wide display
+                // a fixed cap left the item text cramped while acres of dimmed
+                // background sat beside it. The cap survives so it cannot become
+                // a full-screen takeover on an ultrawide.
+                className="relative h-full w-3/4 max-w-[1100px] min-w-[560px] border-l border-[var(--gt-border)] bg-[var(--gt-bg)] shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <InboxDrawer

@@ -116,8 +116,10 @@ describe('the sidebar is built on the design system (ticket 119)', () => {
   const tab = read('src/renderer/src/tabs/hitl/index.tsx')
 
   test('it uses an allowed surface, not a new one', () => {
+    // The RULE is the allowlist, not one specific token — pinning `--gt-panel`
+    // here made a legitimate "make it darker" change look like a violation.
     const aside = tab.slice(tab.indexOf('<aside'), tab.indexOf('</aside>'))
-    expect(aside).toContain('bg-[var(--gt-panel)]')
+    expect(aside).toMatch(/bg-\[var\(--gt-(bg|panel)\)\]/)
     expect(aside).not.toMatch(/bg-\[var\(--gt-(elevated|panel-2|surface-hover)\)\]/)
   })
 
@@ -131,5 +133,37 @@ describe('the sidebar is built on the design system (ticket 119)', () => {
     expect(normalizeCategory('Monitoring')).toBe('Monitoring')
     const cats = deriveCategories([{}])
     for (const c of cats) expect(c.name[0]).toBe(c.name[0].toUpperCase())
+  })
+})
+
+describe('bulk actions mean what the visible list says (ticket 120)', () => {
+  const tab = read('src/renderer/src/tabs/hitl/index.tsx')
+
+  test('mark-all-read operates on the FILTERED set, not the whole inbox', () => {
+    // The bug: filter to Monitoring, hit "Mark all read", and the unread state
+    // on every other category is silently gone. A bulk action has to mean the
+    // same thing as the list in front of it.
+    const fn = tab.slice(tab.indexOf('const markAllRead'), tab.indexOf('const remove ='))
+    expect(fn).toContain('scopedUnread')
+    // The whole-inbox IPC is only correct when nothing is filtered.
+    expect(fn).toMatch(/activeCategory === ALL\s*\?\s*window\.gt\.hitl\.markAllRead\(\)/)
+  })
+
+  test('the scoped set is derived from `shown`, which is the rendered list', () => {
+    expect(tab).toContain('const scopedUnread = shown.filter(isUnread)')
+  })
+
+  test('the button names its scope', () => {
+    // "Mark all read" under a filter is a promise the button no longer keeps.
+    expect(tab).toMatch(
+      /activeCategory === ALL \? 'Mark all read' : `Mark \$\{activeCategory\} read`/,
+    )
+  })
+
+  test('the unread BADGE still counts the whole inbox', () => {
+    // Deliberately different from the button. The badge answers "how much is
+    // left?", which a filter must not change; the button answers "what will
+    // this do?", which a filter must.
+    expect(tab).toContain('const unread = unsnoozed.filter(isUnread)')
   })
 })
