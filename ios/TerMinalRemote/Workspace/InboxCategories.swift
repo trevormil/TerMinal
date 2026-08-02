@@ -19,6 +19,13 @@ enum InboxCategories {
     /// The pseudo-category that selects everything. Always present, always first.
     static let all = "All"
 
+    /// Categories nest with `/`, the way mail folders do: `Monitoring/Certs`.
+    /// Parents are synthesised from the paths present, never registered.
+    static let sep: Character = "/"
+
+    /// Bounded so a pathological path cannot render a 40-deep tree.
+    static let maxDepth = 5
+
     struct CategoryCount: Equatable, Identifiable, Hashable {
         let name: String
         let count: Int
@@ -35,13 +42,43 @@ enum InboxCategories {
         guard let raw else { return nil }
         let stripped = raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
         let clean = String(String.UnicodeScalarView(stripped))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.isEmpty { return nil }
-        return String(clean.prefix(40))
+        // Split on the separator FIRST, then clean each segment.
+        // `/Monitoring//Certs/` is what a shell-built `terminal-cli hitl` call
+        // actually produces, and empty segments would render as blank rows.
+        let segments = clean
+            .split(separator: sep, omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .prefix(maxDepth)
+            // Capped per SEGMENT, not per path: the cap bounds one row's width,
+            // and only the leaf is ever drawn.
+            .map { String($0.prefix(40)) }
+        if segments.isEmpty { return nil }
+        return segments.joined(separator: String(sep))
     }
 
     /// The category an item belongs to — its own, or the residue bucket.
     static func bucket(_ raw: String?) -> String { normalize(raw) ?? uncategorized }
+
+    /// Every ancestor of a path, outermost first: `A/B/C` → `["A", "A/B"]`.
+    static func ancestors(of name: String) -> [String] {
+        if name == all || name == uncategorized { return [] }
+        let parts = name.split(separator: sep).map(String.init)
+        guard parts.count > 1 else { return [] }
+        return (1..<parts.count).map { parts[0..<$0].joined(separator: String(sep)) }
+    }
+
+    /// How deep a category sits: `Monitoring` → 0, `Monitoring/Certs` → 1.
+    static func depth(of name: String) -> Int {
+        if name == all || name == uncategorized { return 0 }
+        return name.split(separator: sep).count - 1
+    }
+
+    /// The last segment — what a row shows, since the indent says the parent.
+    static func leaf(of name: String) -> String {
+        if name == all || name == uncategorized { return name }
+        return name.split(separator: sep).last.map(String.init) ?? name
+    }
 
     /// All, then every category present, with counts.
     ///
@@ -54,7 +91,14 @@ enum InboxCategories {
     /// peer, and most existing items land in it until callers pass a category.
     static func derive(_ items: [HitlItem]) -> [CategoryCount] {
         var counts: [String: Int] = [:]
-        for item in items { counts[bucket(item.category), default: 0] += 1 }
+        for item in items {
+            let name = bucket(item.category)
+            counts[name, default: 0] += 1
+            // Every ancestor gets the item too, so a parent's count means "what
+            // selecting this row will show me". A parent reading 0 beside
+            // children reading 3 looks like a bug, and the parent is selectable.
+            for ancestor in ancestors(of: name) { counts[ancestor, default: 0] += 1 }
+        }
 
         // `localeCompare` on the TypeScript side; `.compare` with no options is
         // its closest equivalent and agrees for the ASCII names in practice.
@@ -92,9 +136,21 @@ enum InboxCategories {
     }
 
     /// Filter items by the resolved selection. `All` is not a filter.
+    ///
+    /// Selecting a parent includes everything beneath it — otherwise a parent
+    /// with only children selects to nothing and the row just tapped reads as
+    /// broken.
+    ///
+    /// Matching is on SEGMENT boundaries, not string prefixes: a naive
+    /// `hasPrefix(selected)` makes `Build` select `Builds`, which is a silent
+    /// wrong answer rather than a visible failure.
     static func filter(_ items: [HitlItem], _ selected: String) -> [HitlItem] {
         if selected == all { return items }
-        return items.filter { bucket($0.category) == selected }
+        let prefix = selected + String(sep)
+        return items.filter {
+            let name = bucket($0.category)
+            return name == selected || name.hasPrefix(prefix)
+        }
     }
 
     /// What a bulk "Read all" is allowed to touch: the unread items IN THE

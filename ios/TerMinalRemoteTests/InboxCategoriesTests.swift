@@ -227,4 +227,96 @@ final class InboxCategoriesTests: XCTestCase {
         XCTAssertNotNil(old)
         XCTAssertNil(old?.category)
     }
+
+    // MARK: nesting — mirrors the "categories nest with /" block in the TS suite
+
+    func testAParentAppearsEvenWhenNoItemIsFiledDirectlyInIt() {
+        // THE test for nesting. Filing to `Monitoring/Certs` must produce a
+        // selectable `Monitoring` row, or the tree has holes.
+        let cats = InboxCategories.derive([
+            item("a", category: "Monitoring/Certs"),
+            item("b", category: "Monitoring/Uptime"),
+        ])
+        XCTAssertEqual(cats.map(\.name), ["All", "Monitoring", "Monitoring/Certs", "Monitoring/Uptime"])
+    }
+
+    func testAParentsCountIncludesItsDescendants() {
+        let cats = InboxCategories.derive([
+            item("a", category: "Monitoring"),
+            item("b", category: "Monitoring/Certs"),
+            item("c", category: "Monitoring/Certs/Expiry"),
+            item("d", category: "Builds"),
+        ])
+        let by = { (n: String) in cats.first { $0.name == n }?.count }
+        XCTAssertEqual(by("Monitoring"), 3)
+        XCTAssertEqual(by("Monitoring/Certs"), 2)
+        XCTAssertEqual(by("Builds"), 1)
+        XCTAssertEqual(by("All"), 4)
+    }
+
+    func testSelectingAParentShowsEverythingBeneathIt() {
+        let items = [
+            item("a", category: "Monitoring"),
+            item("b", category: "Monitoring/Certs"),
+            item("c", category: "Monitoring/Certs/Expiry"),
+            item("d", category: "Builds"),
+        ]
+        XCTAssertEqual(InboxCategories.filter(items, "Monitoring").map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(InboxCategories.filter(items, "Monitoring/Certs").map(\.id), ["b", "c"])
+    }
+
+    func testAPrefixThatIsNotAPathSegmentDoesNotMatch() {
+        // The bug a naive hasPrefix() gives you: `Build` selecting `Builds`.
+        let items = [
+            item("a", category: "Monitoring"),
+            item("b", category: "MonitoringOther"),
+            item("c", category: "Builds"),
+            item("d", category: "Build"),
+        ]
+        XCTAssertEqual(InboxCategories.filter(items, "Monitoring").map(\.id), ["a"])
+        XCTAssertEqual(InboxCategories.filter(items, "Build").map(\.id), ["d"])
+    }
+
+    func testSeparatorNoiseIsCleanedRatherThanCreatingEmptyFolders() {
+        XCTAssertEqual(InboxCategories.normalize("/Monitoring//Certs/"), "Monitoring/Certs")
+        XCTAssertEqual(InboxCategories.normalize("  Monitoring / Certs  "), "Monitoring/Certs")
+        XCTAssertNil(InboxCategories.normalize("///"))
+    }
+
+    func testDepthIsBoundedAndSegmentsAreCappedIndividually() {
+        XCTAssertLessThanOrEqual(
+            InboxCategories.normalize("a/b/c/d/e/f/g/h/i/j")?.split(separator: "/").count ?? 0, 5)
+        let long = String(repeating: "x", count: 60) + "/" + String(repeating: "y", count: 60)
+        for seg in (InboxCategories.normalize(long) ?? "").split(separator: "/") {
+            XCTAssertLessThanOrEqual(seg.count, 40)
+        }
+    }
+
+    func testDepthAndLeafComeOffTheName() {
+        XCTAssertEqual(InboxCategories.depth(of: "Monitoring"), 0)
+        XCTAssertEqual(InboxCategories.depth(of: "Monitoring/Certs"), 1)
+        XCTAssertEqual(InboxCategories.leaf(of: "Monitoring/Certs/Expiry"), "Expiry")
+        XCTAssertEqual(InboxCategories.leaf(of: "All"), "All")
+        XCTAssertEqual(InboxCategories.depth(of: "Uncategorized"), 0)
+    }
+
+    func testFlatCategoriesAreCompletelyUnaffected() {
+        // The regression that matters most: every existing item is flat.
+        let cats = InboxCategories.derive([
+            item("a", category: "Monitoring"), item("b", category: "Builds"), item("c"),
+        ])
+        XCTAssertEqual(cats.map(\.name), ["All", "Builds", "Monitoring", "Uncategorized"])
+    }
+
+    func testBulkReadUnderAParentCoversTheWholeBranch() {
+        // Scoping and nesting have to agree: "Read all" under a parent must
+        // touch exactly what the parent is showing, no more and no less.
+        let items = [
+            item("a", category: "Monitoring/Certs"),
+            item("b", category: "Monitoring"),
+            item("c", category: "Builds"),
+        ]
+        XCTAssertEqual(
+            InboxCategories.bulkReadTargets(items, "Monitoring").map(\.id), ["a", "b"])
+    }
 }

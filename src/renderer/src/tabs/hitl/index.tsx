@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ALL,
+  categoryDepth,
+  categoryLeaf,
   deriveCategories,
   filterByCategory,
+  hasChildren,
   resolveSelection,
   shouldShowSidebar,
+  visibleCategories,
 } from '../../../../shared/inbox-categories'
 import {
   ArrowLeft,
@@ -159,6 +163,26 @@ export function InboxDrawer({
   const pickCategory = (name: string) => {
     setCategory(name)
     localStorage.setItem('gt.inbox.category', name)
+  }
+  // Which parents are folded shut. Persisted alongside the selection so the
+  // sidebar you arranged is the sidebar you come back to.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('gt.inbox.collapsed')
+      return new Set<string>(raw ? JSON.parse(raw) : [])
+    } catch {
+      // A corrupt value must not take the Inbox down with it — worst case the
+      // tree opens fully expanded, which is the default anyway.
+      return new Set()
+    }
+  })
+  const toggleCollapsed = (name: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      localStorage.setItem('gt.inbox.collapsed', JSON.stringify([...next]))
+      return next
+    })
   }
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
@@ -575,20 +599,49 @@ export function InboxDrawer({
           // Darker than the list it sits beside, and flush to the top — a
           // leading gap above "All" reads as a missing row.
           <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-bg)]">
-            {categories.map((c) => {
+            {visibleCategories(categories, collapsed).map((c) => {
               const active = c.name === activeCategory
+              const depth = categoryDepth(c.name)
+              const parent = hasChildren(c.name, categories)
+              const isCollapsed = collapsed.has(c.name)
               return (
                 <button
                   key={c.name}
                   onClick={() => pickCategory(c.name)}
                   aria-current={active ? 'true' : undefined}
-                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left text-[11px] transition-colors duration-150 ${
+                  // The full path is the accessible name; the row only draws the
+                  // leaf, because at depth the indent already says the parent.
+                  title={c.name}
+                  className={`flex w-full items-center gap-1 border-l-2 py-1.5 pr-3 text-left text-[11px] transition-colors duration-150 ${
                     active
                       ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                       : 'border-transparent text-zinc-500 hover:bg-[var(--gt-accent)]/10 hover:text-zinc-200'
                   }`}
+                  style={{ paddingLeft: `${12 + depth * 12}px` }}
                 >
-                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  {parent ? (
+                    // A span, not a nested <button> — a button inside a button
+                    // is invalid HTML and the inner one stops receiving clicks
+                    // in some browsers. stopPropagation keeps the disclosure
+                    // from also selecting the row.
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      aria-label={isCollapsed ? `Expand ${c.name}` : `Collapse ${c.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleCollapsed(c.name)
+                      }}
+                      className="-ml-1 shrink-0 rounded px-0.5 text-zinc-600 hover:text-zinc-300"
+                    >
+                      {isCollapsed ? '▸' : '▾'}
+                    </span>
+                  ) : (
+                    // Reserve the disclosure's width so leaf rows at the same
+                    // depth line up with their siblings that have children.
+                    <span className="shrink-0 pl-2.5" aria-hidden />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{categoryLeaf(c.name)}</span>
                   <span className="shrink-0 tabular-nums text-zinc-600">{c.count}</span>
                 </button>
               )
