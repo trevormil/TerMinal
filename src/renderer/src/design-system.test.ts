@@ -92,9 +92,10 @@ describe('surfaces (design-system.md §2)', () => {
           }
         })
     }
-    // PINNED, not asserted to zero: these predate the system. The number may
-    // only go down. Lowering it is the fix; raising it fails the build.
-    expect(offenders.length).toBeLessThanOrEqual(12)
+    // Burned to zero (was pinned at 12). Inactive dots and off-state toggle
+    // tracks use the white-overlay idiom (bg-white/10, /20) — a neutral tint
+    // over whatever surface is beneath, not a named colour at a fixed depth.
+    expect(offenders).toEqual([])
   })
 
   test('tints use two steps, not five', () => {
@@ -108,11 +109,11 @@ describe('surfaces (design-system.md §2)', () => {
         found.add(m[1])
       }
     }
-    // PINNED at today's real spread (10). The doc says the target is two; this
-    // is the ratchet, not the goal. Shrinking it is the migration; growing it
-    // fails the build. Stating the true number beats asserting an aspirational
-    // one and disabling the test the first time it goes red.
-    expect(found.size).toBeLessThanOrEqual(10)
+    // PINNED at today's real spread: {10, 15, 20} (was 10 distinct). The doc
+    // says the target is two; /15's 60-odd uses collapse in their own PR
+    // because that one is visible everywhere. Shrinking it is the migration;
+    // growing it fails the build.
+    expect(found.size).toBeLessThanOrEqual(3)
   })
 })
 

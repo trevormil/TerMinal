@@ -64,7 +64,7 @@ function TreeNode({
         title={entry.ignored ? `${entry.name} not found` : entry.path}
         style={{ paddingLeft: depth * 12 + 8 }}
         className={`group flex w-full items-center gap-1 py-[3px] pr-2 text-left text-[12px] hover:bg-white/5 ${
-          selected ? 'bg-[var(--gt-accent)]/12 text-zinc-100' : 'text-zinc-300'
+          selected ? 'bg-[var(--gt-accent)]/10 text-zinc-100' : 'text-zinc-300'
         } ${entry.ignored ? 'cursor-not-allowed opacity-40' : ''}`}
       >
         <span className="flex w-3 shrink-0 items-center justify-center text-zinc-600">
@@ -187,7 +187,7 @@ function WorkflowTab(_props: { ctx: TabContext }) {
               disabled={!dirty || saving}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
                 dirty
-                  ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/25'
+                  ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)] hover:bg-[var(--gt-accent)]/20'
                   : 'cursor-not-allowed border-[var(--gt-border)] text-zinc-600'
               }`}
             >

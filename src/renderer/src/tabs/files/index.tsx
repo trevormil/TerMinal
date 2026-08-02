@@ -846,7 +846,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
 
       {/* pinned review comments — batched into ONE revision prompt (0049) */}
       {comments.length > 0 && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-accent)]/5 px-3 py-1 text-[11px]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] bg-[var(--gt-accent)]/10 px-3 py-1 text-[11px]">
           <MessageSquarePlus size={12} strokeWidth={2} className="shrink-0 text-zinc-400" />
           <span className="min-w-0 flex-1 truncate text-zinc-400">
             {comments.length} pinned comment{comments.length === 1 ? '' : 's'} ·{' '}
@@ -1022,7 +1022,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                         title={path}
                         className={`flex w-full items-center gap-1.5 px-3 py-1 text-left text-[11.5px] hover:bg-white/5 ${
                           changesFile === path
-                            ? 'bg-[var(--gt-accent)]/12 text-zinc-100'
+                            ? 'bg-[var(--gt-accent)]/10 text-zinc-100'
                             : 'text-zinc-400'
                         }`}
                       >
@@ -1279,7 +1279,7 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
                               seg.hit ? (
                                 <mark
                                   key={j}
-                                  className="rounded-sm bg-[var(--gt-accent)]/25 px-px text-zinc-200"
+                                  className="rounded-sm bg-[var(--gt-accent)]/20 px-px text-zinc-200"
                                 >
                                   {seg.text}
                                 </mark>

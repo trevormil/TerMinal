@@ -39,7 +39,7 @@ function ViewToggle({ view, onChange }: { view: CiView; onChange: (v: CiView) =>
       onClick={() => onChange(v)}
       className={`inline-flex h-[26px] items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors ${
         view === v
-          ? 'bg-[var(--gt-accent)]/25 text-[var(--gt-accent-light)]'
+          ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
           : 'text-zinc-400 hover:text-zinc-200'
       }`}
     >

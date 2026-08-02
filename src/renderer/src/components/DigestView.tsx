@@ -266,7 +266,7 @@ export function DigestView({
       <div className="flex min-w-0 items-center gap-2 text-[11px]">
         {digest && <span className="font-mono text-zinc-600">digest @ {digest.short_sha}</span>}
         {stale && (
-          <span className="rounded bg-[#d6a84a]/15 px-1.5 py-0.5 text-[#d6a84a]">
+          <span className="rounded bg-[var(--gt-yellow)]/10 px-1.5 py-0.5 text-[var(--gt-yellow)]">
             Stale · head {headShort}
           </span>
         )}

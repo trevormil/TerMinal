@@ -165,7 +165,7 @@ export function PluginDrawer({
                   }}
                   title={on ? 'Disable' : 'Enable'}
                   className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors ${
-                    on ? 'justify-end bg-[var(--gt-accent)]' : 'justify-start bg-zinc-700'
+                    on ? 'justify-end bg-[var(--gt-accent)]' : 'justify-start bg-white/10'
                   }`}
                 >
                   <span className="h-4 w-4 rounded-full bg-white" />

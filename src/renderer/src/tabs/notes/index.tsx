@@ -972,7 +972,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                   onClick={() => setActiveCategoryId(category.id)}
                   className={`group mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-2 text-left ${
                     activeCategoryId === category.id
-                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/12 text-zinc-100'
+                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/10 text-zinc-100'
                       : 'border-transparent text-zinc-400 hover:border-[var(--gt-border)] hover:bg-white/5 hover:text-zinc-200'
                   }`}
                 >
@@ -1049,7 +1049,7 @@ function KnowledgeTab({ ctx }: { ctx: TabContext }) {
                       onClick={() => setActiveItemId(item.id)}
                       className={`mb-1.5 w-full overflow-hidden rounded-lg border text-left ${
                         activeItemId === item.id
-                          ? 'border-[var(--gt-accent)]/55 bg-[var(--gt-accent)]/12'
+                          ? 'border-[var(--gt-accent)]/55 bg-[var(--gt-accent)]/10'
                           : 'border-[var(--gt-border)] bg-black/15 hover:border-[var(--gt-accent)]/35 hover:bg-white/5'
                       }`}
                     >

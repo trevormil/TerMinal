@@ -95,7 +95,7 @@ export function FleetView({
                             <div className="flex items-center gap-2">
                               <span
                                 className={`h-2 w-2 shrink-0 rounded-full ${
-                                  wk ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-zinc-600'
+                                  wk ? 'bg-[var(--gt-green)] gt-pulse' : 'bg-white/20'
                                 }`}
                               />
                               <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-zinc-100">

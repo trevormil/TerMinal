@@ -142,7 +142,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
           {state === 'needed' && (
             <button
               onClick={() => setConfirmOpen(true)}
-              className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+              className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
             >
               Bootstrap
             </button>
@@ -196,7 +196,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
               </button>
               <button
                 onClick={run}
-                className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/30"
+                className="rounded-md border border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-[var(--gt-accent)]/20"
               >
                 Confirm Bootstrap
               </button>
@@ -654,7 +654,7 @@ export function SessionView({
           <span
             className={`ml-auto rounded-full px-1.5 text-[9px] font-bold tabular-nums ${
               id === 'hitl'
-                ? 'bg-[var(--gt-red)]/25 text-[var(--gt-red)]'
+                ? 'bg-[var(--gt-red)]/20 text-[var(--gt-red)]'
                 : 'bg-[var(--gt-yellow)]/20 text-[var(--gt-yellow)]'
             }`}
           >
@@ -679,7 +679,7 @@ export function SessionView({
       title={title}
       className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
         terminalLayout === mode
-          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
           : disabled
             ? 'cursor-not-allowed text-zinc-700'
             : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
@@ -716,7 +716,7 @@ export function SessionView({
       title={title}
       className={`flex h-6 w-7 items-center justify-center rounded-md transition-colors ${
         sessionRail === mode
-          ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+          ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
           : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
       }`}
     >
@@ -767,7 +767,7 @@ export function SessionView({
           variant === 'side' ? 'w-full ' : ''
         }${
           on
-            ? 'bg-[var(--gt-accent)]/25 text-zinc-100'
+            ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
             : p.needsAttention
               ? 'bg-[var(--gt-yellow)]/10 text-zinc-200 ring-1 ring-inset ring-[var(--gt-yellow)]/35'
               : draggingKey === p.key

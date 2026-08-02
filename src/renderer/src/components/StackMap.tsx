@@ -78,7 +78,7 @@ export function StackMap({
             >
               <span
                 className={`z-10 h-2 w-2 shrink-0 rounded-full ring-2 ring-[var(--gt-bg)] ${
-                  current ? 'bg-[var(--gt-accent)]' : 'bg-zinc-600'
+                  current ? 'bg-[var(--gt-accent)]' : 'bg-white/20'
                 }`}
               />
               <span className="w-10 shrink-0 text-[10px] tabular-nums text-zinc-600">

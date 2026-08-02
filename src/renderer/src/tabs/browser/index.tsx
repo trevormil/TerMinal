@@ -421,7 +421,7 @@ function BrowserTab({ ctx }: { ctx: TabContext }) {
                     toolsExpanded ? 'px-2 text-left' : 'justify-center px-0'
                   } ${
                     active
-                      ? 'bg-[var(--gt-accent)]/18 text-zinc-100'
+                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                       : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                   }`}
                 >

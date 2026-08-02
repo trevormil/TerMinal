@@ -2373,7 +2373,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       : last?.status === 'failed'
                         ? 'bg-[var(--gt-red)]'
                         : last
-                          ? 'bg-zinc-500'
+                          ? 'bg-white/20'
                           : ''
                   const dotTitle = busy
                     ? 'Run in progress'
@@ -2902,7 +2902,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                                       ? 'bg-[var(--gt-red)]'
                                       : r.status === 'running'
                                         ? 'bg-[var(--gt-accent-light)] gt-pulse'
-                                        : 'bg-zinc-600'
+                                        : 'bg-white/20'
                                 const when = new Date(r.startedAt).toLocaleString()
                                 const durLabel = r.dur === null ? 'running' : fmtDuration(r.dur)
                                 return (

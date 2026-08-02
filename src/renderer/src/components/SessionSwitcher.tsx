@@ -30,7 +30,7 @@ export function SessionSwitcher({ entries, index }: { entries: SwitcherEntry[]; 
             }`}
           >
             <span
-              className={`h-2 w-2 shrink-0 rounded-full ${DOT[s.status || ''] || 'bg-zinc-700'}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${DOT[s.status || ''] || 'bg-white/20'}`}
             />
             <span
               className={`min-w-0 flex-1 truncate text-[12.5px] ${
