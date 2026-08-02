@@ -2,10 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-// Ticket 98. The README shipped three images leaking `~/CompSci/gauntlet/...`
-// and `/Users/trevormiller/.config/...` onto a public page. Ticket 76 had
-// already added a CI grep for leaked paths in TEXT — and it could not see this,
-// because the leak was pixels.
+// Ticket 98. The README shipped three images leaking the developer's checkout
+// and home-directory paths onto a public page. Ticket 76 had already added a CI
+// grep for leaked paths in TEXT — and it could not see this, because the leak
+// was pixels.
+//
+// (Deliberately described rather than quoted: writing the offending strings into
+// a tracked file is what the ticket-76 guard exists to stop, and doing it in a
+// COMMENT trips it just the same. Learned the hard way — see PR #247.)
 //
 // So the guard has to be about PROVENANCE, not content: images captured from
 // the sandbox (`bun run shots`) cannot contain personal state, because the
