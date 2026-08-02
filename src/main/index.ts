@@ -19,12 +19,10 @@ import {
   readdirSync,
   readFileSync,
   writeFileSync,
-  renameSync,
   openSync,
   mkdirSync,
 } from 'node:fs'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
-import * as pty from 'node-pty'
 
 // The main bundle is ESM (package.json "type": "module"), so __dirname doesn't
 // exist — derive the module dir the ESM-canonical way or the window never opens.
@@ -75,7 +73,6 @@ import {
   findSessionFile,
   readSessionTasks,
   lastAssistantTurn,
-  lastAssistantText,
   readObservabilitySnapshot,
   readObservabilitySessionDetail,
   readObservabilityToolCallPayload,
@@ -86,7 +83,27 @@ import { registerObservabilityIpc } from './ipc/observability'
 import { registerSchedulesIpc } from './ipc/schedules'
 import { registerAgentsIpc } from './ipc/agents'
 import { registerFilesIpc } from './ipc/files'
-import { buildEngineLaunch } from './engine-launch'
+import { createBridgeDeps } from './bridge-deps'
+import {
+  bindSessionSender,
+  cur,
+  curRemote,
+  killAllSessionPtys,
+  loopListenerDeps,
+  remoteFromHostId,
+  repoLabelFor,
+  requestedRemote,
+  sessions,
+  activeSessionKey,
+  setActiveSession,
+  startSession,
+  stopSession,
+  watchSession,
+  stopWatchSession,
+  activeDaemon,
+  daemonForRequest,
+  type StartOpts,
+} from './session-registry'
 import { registerPersistentAgentsIpc } from './ipc/persistent-agents'
 import { registerInboxIpc } from './ipc/inbox'
 import { registerRepoTrustDenialIpc } from './ipc/repo-trust-denials'
@@ -103,7 +120,7 @@ import {
 } from './events'
 import { testWebhook } from './notify-channels'
 import { readUsage } from './usage'
-import { installStatuslineShim, statuslineSettingsArg } from './statusline'
+import { installStatuslineShim } from './statusline'
 import { listCommandWidgets, runCommand, repoRoot as widgetRepoRoot } from './widgets'
 import { listCustomTabs, runTabCommand } from './tabs'
 import {
@@ -117,12 +134,10 @@ import {
 import { repoRootOf, repoForCwd } from './repo'
 import { orderFleetSnapshotEntries, restoreFleetSnapshotEntryOrder } from './fleet-snapshot'
 import { checkForUpdate } from './update-check'
-import { getTicket, recommendTicketAgent, updateTicket } from './backlog'
+import { recommendTicketAgent } from './backlog'
 import type { NewTicket, TicketAgentRecommendationInput, TicketPatch } from './backlog'
 import {
   listLinearTeams,
-  obsidianRepoVault,
-  commentOnRepoTicket,
   type NewTicketComment,
   readRepoTicketConfig,
   resolveHumanAuthor,
@@ -172,19 +187,13 @@ import {
   resolvedBrowserApp,
   resolvedTemplateRepo,
   enginePath,
-  engineDefaultModel,
   resolveEngineModel,
-  resolvedOpenRouterKey,
-  resolvedOpenAICompatKey,
-  openAICompatBaseUrl,
   classifyProjectsDir,
   countGitReposOneLevel,
   pickDensestRoot,
   CANDIDATE_ROOT_NAMES,
   type Settings,
   type SettingsPatch,
-  type RemotePlatform,
-  type DaemonCfg,
 } from './settings'
 import {
   listMonitorsWithStatus,
@@ -222,7 +231,7 @@ import {
   type Engine,
   killAllAgentRuns,
 } from './agents'
-import { readSchedules, getSchedule } from './schedules'
+import { readSchedules } from './schedules'
 import {
   installRunner,
   installCli,
@@ -238,9 +247,6 @@ import { provisionHost } from './host-provision'
 import { checkHostHealth } from './host-health'
 import { registerMcpEverywhere } from './mcp-register'
 import {
-  appendSessionRunLog,
-  beginSessionRun,
-  finalizeSessionRun,
   flushAllSessionRunLogs,
   readCronRuns,
   getCronRun,
@@ -248,35 +254,16 @@ import {
   cronRunLogPath,
   readSessionRunLog,
   sessionRunLogPath,
-  readSessionRunLogTail,
   listAllRuns,
   sweepStaleCronRuns,
   sweepStaleSessionRuns,
 } from './cron-runs'
 import { clearTerminalScratch, sweepTerminalState } from './run-retention'
-import {
-  bridgeStatus,
-  startBridge,
-  stopBridge,
-  type BridgeDeps,
-  type BridgeText,
-} from './bridge/server'
+import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
-import { tailscalePeerAllowed, tailscaleSelf } from './bridge/tailscale'
-import { apnsPaths, pushStatus, registerDevice } from './bridge/push'
-import {
-  deleteRemoteSession,
-  endRemoteSession,
-  imagePath,
-  listRemoteSessions,
-  messageCount,
-  postMessage,
-  readMessages,
-  readRemoteSession,
-  registerRemoteSession,
-  saveImage,
-  stripAnsi,
-} from './remote-sessions'
+import { tailscaleSelf } from './bridge/tailscale'
+import { apnsPaths, pushStatus } from './bridge/push'
+import { listRemoteSessions } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl, isObsidianDeepLink } from '../shared/url-safety'
@@ -324,14 +311,7 @@ import {
   startLoopWatcher,
   type CreateLoopInput,
 } from './loops'
-import {
-  startLoopListener,
-  registerLoopSession,
-  unregisterLoopSession,
-  noteLoopTurnComplete,
-  noteSingleLoopTurn,
-} from './loop-listener'
-import { itemSeverity } from './hitl-severity'
+import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
 import {
   readHitl,
   fileHitl,
@@ -342,12 +322,9 @@ import {
   type HitlItem,
 } from './hitl'
 import { factoryHealth } from './factory-health'
-import { describeSpec, nextRun } from './cron'
 import { composeSteps, pipelineLabel } from './pipelines'
 import {
   remoteAgents,
-  remoteCommandForEngine,
-  isSafeSshTarget,
   remoteDirs,
   remoteProbe,
   remoteProject,
@@ -355,12 +332,8 @@ import {
   remoteHitl,
   remoteSettings,
 } from './remote'
-import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
-import { sanitizeLog } from '../shared/run-log/sanitize'
-import { runLogAuthorized } from './bridge/run-auth'
 import { listCursorModels } from './cursor-models'
 import { readFileTail } from './fs-tail'
-import { processSpawnCwd } from './spawn-cwd'
 import {
   checkpointChangedRanges,
   createCheckpoint,
@@ -369,13 +342,9 @@ import {
   restoreCheckpoint,
   reviewBaseFor,
 } from './checkpoints'
-import { engineInitialPromptArgs, engineSupportsLaunchSeed } from './engine-seed'
 import { resolveWithinAny } from './path-guard'
-import { createEpochRegistry } from './session-epoch'
 import { maskSettingsSecrets, stripMaskedSecrets } from './settings-mask'
 import { configPath, terminalConfigDir } from './config-dir'
-
-const LOGIN_SHELL = process.env.SHELL || '/bin/zsh'
 
 setSettingsSecretStorage({
   canEncrypt: () => safeStorage.isEncryptionAvailable(),
@@ -398,476 +367,7 @@ function send(channel: string, ...args: unknown[]) {
     win.webContents.send(channel, ...args)
   }
 }
-// One window now hosts MANY sessions, each its own PTY, keyed by a renderer-
-// generated tab key. Data IPC reads the *active* session; PTY IPC is routed by
-// key so every (even backgrounded) terminal keeps streaming.
-type SessionEngine = Engine | 'local'
-type RemoteSession = {
-  hostId: string
-  label: string
-  sshTarget: string
-  cwd?: string
-  platform?: RemotePlatform
-  daemon?: DaemonCfg
-}
-type Pinned = {
-  sessionId: string
-  cwd: string
-  mode: '' | 'new' | 'resume'
-  name: string
-  engine: SessionEngine
-  remote?: RemoteSession
-}
-const sessions = new Map<string, { pty: pty.IPty; pinned: Pinned }>()
-let activeKey = ''
-
-// Deps for the paired-loop listener (always-on channel between a loop's two live
-// sessions). Kept here where the pty registry + transcript lookup live.
-const loopListenerDeps = {
-  writeToSession: (k: string, d: string): boolean => {
-    const s = sessions.get(k)
-    if (!s) return false
-    s.pty.write(d)
-    return true
-  },
-  sessionIdOf: (k: string): string | undefined => sessions.get(k)?.pinned.sessionId,
-  lastAssistantText: (sid: string): string => {
-    const f = findSessionFile(sid)
-    return f ? lastAssistantText(f) : ''
-  },
-}
-const cur = (): Pinned =>
-  sessions.get(activeKey)?.pinned ?? {
-    sessionId: '',
-    cwd: '',
-    mode: '',
-    name: '',
-    engine: 'claude',
-  }
-const curRemote = () => cur().remote
-function requestedRemote(input: unknown): RemoteSession | undefined {
-  if (
-    !input ||
-    typeof input !== 'object' ||
-    !('sshTarget' in input) ||
-    typeof input.sshTarget !== 'string'
-  )
-    return undefined
-  return input as RemoteSession
-}
-function sshPathBasename(cwdOrRoot: string): string {
-  const rest = cwdOrRoot.replace(/^ssh:\/\//, '')
-  const slash = rest.indexOf('/')
-  const remotePath = slash >= 0 ? rest.slice(slash + 1) : ''
-  return (
-    remotePath.replace(/\/$/, '').split('/').filter(Boolean).pop() ||
-    (slash >= 0 ? rest.slice(0, slash) : rest)
-  )
-}
-const repoLabelFor = (cwdOrRoot: string) =>
-  cwdOrRoot.startsWith('ssh://')
-    ? sshPathBasename(cwdOrRoot)
-    : repoForCwd(cwdOrRoot)?.path || basename(repoRootOf(cwdOrRoot) || cwdOrRoot || '')
-
-type StartOpts = {
-  mode: 'new' | 'resume'
-  engine?: SessionEngine
-  /** Per-session model override → passed as --model. Falls back to the engine's default. */
-  model?: string
-  sessionId?: string
-  cwd?: string
-  name?: string
-  initialInput?: string
-  ticketSlug?: string
-  remote?: RemoteSession
-  /** Live-paired loop linkage — set on the two sessions of a paired loop. */
-  loopId?: string
-  loopRole?: 'driver' | 'worker'
-  /** Which harness runs an `openrouter` session (default 'codex'). */
-  openrouterHarness?: 'codex' | 'hermes'
-  cols: number
-  rows: number
-}
-
-const shq = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`)
-
-function displayRemoteCwd(remote: RemoteSession, cwd: string): string {
-  const target = remote.label || remote.sshTarget
-  const path = cwd || '~'
-  return `ssh://${target}${path.startsWith('/') ? path : `/${path}`}`
-}
-
-function daemonForRemote(remote: RemoteSession, displayCwd?: string) {
-  return createSshWorkspaceDaemon(remote, displayCwd || displayRemoteCwd(remote, remote.cwd || '~'))
-}
-
-function activeDaemon() {
-  const pinned = cur()
-  return pinned.remote
-    ? daemonForRemote(pinned.remote, pinned.cwd)
-    : createLocalWorkspaceDaemon(pinned.cwd)
-}
-
-function daemonForRequest(input: unknown) {
-  const remote = requestedRemote(input)
-  return remote ? daemonForRemote(remote) : activeDaemon()
-}
-
-function displaySessionName(cwd: string, fallback = 'session') {
-  return repoLabelFor(cwd) || basename(cwd) || fallback
-}
-
-function remoteFromHostId(hostId: string, cwd?: string): RemoteSession | null {
-  const host = readSettings().remoteHosts.find((h) => h.id === hostId)
-  if (!host) return null
-  return {
-    hostId: host.id,
-    label: host.label,
-    sshTarget: host.sshTarget,
-    cwd: cwd || host.defaultCwd || host.daemon.projectsDir || '~',
-    platform: host.platform,
-    daemon: host.daemon,
-  }
-}
-
-// Pre-accept Claude Code's workspace-trust dialog for a directory, so an
-// unattended phone spawn's seeded prompt isn't swallowed by it. Claude records
-// trust in ~/.claude.json under projects[dir].hasTrustDialogAccepted; choosing to
-// spawn there IS the trust decision. Best-effort — on any failure the trust
-// dialog simply remains (the pre-existing behavior).
-function pretrustClaudeProject(dir: string): void {
-  try {
-    const file = join(homedir(), '.claude.json')
-    if (!existsSync(file)) return
-    const cfg = JSON.parse(readFileSync(file, 'utf8')) as {
-      projects?: Record<string, { hasTrustDialogAccepted?: boolean }>
-    }
-    if (!cfg.projects || typeof cfg.projects !== 'object') cfg.projects = {}
-    const entry = cfg.projects[dir] || {}
-    if (entry.hasTrustDialogAccepted === true) return // already trusted — don't churn the file
-    entry.hasTrustDialogAccepted = true
-    cfg.projects[dir] = entry
-    // Atomic write: Claude Code also writes ~/.claude.json frequently, so write
-    // a temp file and rename it into place — a rename is atomic, so a concurrent
-    // reader/writer never sees a half-written config (worst case a lost update,
-    // which just re-shows the trust dialog — the harmless fallback).
-    const tmp = `${file}.tm-${process.pid}.tmp`
-    writeFileSync(tmp, JSON.stringify(cfg, null, 2))
-    renameSync(tmp, file)
-  } catch {
-    /* best-effort */
-  }
-}
-
-// Restart-under-the-same-key generation counter. `startSession` on a live key
-// kills the old pty, but node-pty still delivers that pty's `onExit` — and the
-// old closure captures `key`, so it fired `pty:exit` against the BRAND NEW
-// session, marking a fresh terminal as exited and un-pairing it from its loop.
-// Each start takes an epoch; a stale closure sees its epoch superseded and does
-// nothing.
-const sessionEpochs = createEpochRegistry()
-
-function startSession(key: string, opts: StartOpts) {
-  try {
-    sessions.get(key)?.pty.kill()
-  } catch {
-    /* already dead — the restart must still proceed */
-  }
-  const epoch = sessionEpochs.next(key)
-  const isCurrentEpoch = () => sessionEpochs.isCurrent(key, epoch)
-
-  const remote = opts.remote?.sshTarget ? opts.remote : undefined
-  const cwd = remote ? remote.cwd || opts.cwd || '' : processSpawnCwd(opts.cwd || homedir())
-  const displayCwd = remote ? displayRemoteCwd(remote, cwd) : cwd
-  const engine = opts.engine || 'claude'
-  // Per-session pick (opts.model) wins; else the engine's configured default.
-  const defaultModel =
-    engine !== 'local'
-      ? opts.model ||
-        remote?.daemon?.engines?.[engine]?.defaultModel ||
-        (!remote ? engineDefaultModel(engine) : '')
-      : ''
-  const { sessionId, args: launchArgs } = buildEngineLaunch({
-    engine,
-    mode: opts.mode,
-    sessionId: opts.sessionId,
-    name: opts.name,
-    model: defaultModel,
-    openrouterHarness: opts.openrouterHarness,
-    openAICompatBaseUrl: engine === 'openai-compat' ? openAICompatBaseUrl() : undefined,
-  })
-  const args = [...launchArgs]
-  // For interactive OpenRouter/openai-compat the binary is the harness (codex/
-  // hermes), not the one-shot or-agent.
-  const openrouterLaunchBin =
-    engine === 'openrouter'
-      ? enginePath((opts.openrouterHarness || 'codex') === 'hermes' ? 'hermes' : 'codex')
-      : engine === 'openai-compat'
-        ? enginePath('codex')
-        : undefined
-  const remoteEnginePath =
-    remote && engine !== 'local' ? remote.daemon?.engines?.[engine]?.path : undefined
-  const repoRoot = remote ? '' : repoRootOf(cwd)
-  const repoLabel = repoLabelFor(displayCwd)
-  const startedAt = Date.now()
-
-  // Wire Claude sessions to the status-line shim (zero-API usage + context).
-  if (engine === 'claude' && !remote) args.push('--settings', statuslineSettingsArg())
-
-  // Seed the FIRST prompt as a launch argument instead of pasting it into the
-  // booted TUI after a readiness heuristic (see engine-seed.ts) — deterministic,
-  // conversational, and provider-agnostic. Local + new sessions only; the
-  // renderer skips its paste path when `seeded` comes back true.
-  let seeded = false
-  if (opts.mode === 'new' && opts.initialInput && !remote && engineSupportsLaunchSeed(engine)) {
-    if (engine === 'claude') pretrustClaudeProject(cwd)
-    args.push(...engineInitialPromptArgs(engine, opts.initialInput, opts.openrouterHarness))
-    seeded = true
-  }
-
-  const env = {
-    ...process.env,
-    TERM: 'xterm-256color',
-    COLORTERM: 'truecolor',
-    TERM_PROGRAM: process.env.TERM_PROGRAM || 'TerMinal',
-    CLICOLOR: '1',
-    GT_TERMINAL_SESSION_KEY: key,
-    GT_TERMINAL_SESSION_ID: sessionId,
-    GT_TERMINAL_CWD: displayCwd,
-  } as Record<string, string>
-  delete env.NO_COLOR
-  // Obsidian-provider repos: expose the vault so a session's native file tools
-  // can browse tickets directly (no MCP needed). Local only.
-  if (repoRoot) {
-    const ov = obsidianRepoVault(repoRoot)
-    if (ov) {
-      env.OBSIDIAN_VAULT_PATH = ov.vaultPath
-      env.OBSIDIAN_TICKETS_DIR = ov.ticketsDir
-    }
-  }
-  // OpenRouter (either harness) and Hermes bill through OpenRouter — inject the
-  // sealed key so the interactive session authenticates (mirrors the agent runner).
-  if (engine === 'openrouter' || engine === 'hermes') {
-    const orKey = resolvedOpenRouterKey()
-    if (orKey) env.OPENROUTER_API_KEY = orKey
-  }
-  // Self-hosted endpoint: codex reads the key via the inline provider's
-  // env_key=OPENAI_API_KEY. 'none' placeholder for keyless local servers.
-  if (engine === 'openai-compat') env.OPENAI_API_KEY = resolvedOpenAICompatKey() || 'none'
-  // Strip inherited Claude Code session-context markers. If TerMinal itself was
-  // launched from inside a Claude Code session (e.g. `claude` in the terminal
-  // that ran it), its env carries CLAUDE_CODE_CHILD_SESSION=1 + the parent's
-  // CLAUDE_CODE_SESSION_ID. Leaking those into a session we spawn makes the new
-  // `claude` believe it's a nested child — the native binary then does NOT
-  // persist a top-level transcript to ~/.claude/projects or append to
-  // history.jsonl, so the session never shows up in the Resume picker (and
-  // can't be --resumed). Each spawned session must be a fresh top-level session.
-  for (const k of Object.keys(env)) {
-    if (k.startsWith('CLAUDE_CODE_')) delete env[k]
-  }
-  delete env.CLAUDECODE
-
-  if (remote && !isSafeSshTarget(remote.sshTarget)) {
-    throw new Error(`refusing to ssh to unsafe target: ${JSON.stringify(remote.sshTarget)}`)
-  }
-  const proc = remote
-    ? pty.spawn(
-        'ssh',
-        ['-tt', remote.sshTarget, remoteCommandForEngine(engine, args, cwd, remoteEnginePath)],
-        {
-          name: 'xterm-256color',
-          cols: opts.cols || 80,
-          rows: opts.rows || 30,
-          cwd: homedir(),
-          env,
-        },
-      )
-    : engine === 'local'
-      ? pty.spawn(LOGIN_SHELL, ['-l'], {
-          name: 'xterm-256color',
-          cols: opts.cols || 80,
-          rows: opts.rows || 30,
-          cwd,
-          env,
-        })
-      : pty.spawn(
-          LOGIN_SHELL,
-          ['-l', '-c', [openrouterLaunchBin || enginePath(engine), ...args].map(shq).join(' ')],
-          {
-            name: 'xterm-256color',
-            cols: opts.cols || 80,
-            rows: opts.rows || 30,
-            cwd,
-            env,
-          },
-        )
-  try {
-    beginSessionRun({
-      id: sessionId,
-      source: 'session',
-      agentId: opts.ticketSlug ? 'ticket-terminal' : 'terminal-session',
-      agentTitle: opts.ticketSlug
-        ? `Ticket terminal · ${opts.ticketSlug}`
-        : opts.name || displaySessionName(displayCwd),
-      engine,
-      status: 'running',
-      startedAt,
-      repoRoot,
-      repoLabel,
-      branch: '',
-      worktree: displayCwd,
-      sessionId,
-      remote: !!remote,
-      ticketSlug: opts.ticketSlug,
-    })
-  } catch {
-    /* session logs are best-effort */
-  }
-  if (opts.ticketSlug && repoRoot) {
-    updateTicket(repoRoot, opts.ticketSlug, {
-      run: {
-        id: sessionId,
-        source: 'session',
-        sessionId,
-        startedAt: new Date(startedAt).toISOString(),
-        status: 'running',
-      },
-    })
-  }
-
-  proc.onData((d) => {
-    send('pty:data', key, d)
-    appendSessionRunLog(sessionId, d)
-  })
-  proc.onExit(({ exitCode }) => {
-    // A superseded session's exit must not touch the live one that replaced it.
-    if (!isCurrentEpoch()) return
-    send('pty:exit', key, exitCode)
-    unregisterLoopSession(key)
-    const status = exitCode === 0 ? 'done' : 'failed'
-    const endedAt = Date.now()
-    finalizeSessionRun(sessionId, {
-      status,
-      endedAt,
-      exitCode: exitCode ?? 0,
-      error: exitCode === 0 ? undefined : `exit ${exitCode ?? 0}`,
-    })
-    if (opts.ticketSlug && repoRoot) {
-      const t = getTicket(repoRoot, opts.ticketSlug)
-      if (t?.run?.id === sessionId) {
-        updateTicket(repoRoot, opts.ticketSlug, {
-          run: { id: sessionId, source: 'session', sessionId, startedAt: t.run.startedAt, status },
-        })
-      }
-    }
-    emitActivity(
-      {
-        kind: exitCode === 0 ? 'session-end' : 'error',
-        title: `${opts.name || displaySessionName(displayCwd)} · ${engine} · exited`,
-        detail: `exit ${exitCode ?? 0} · ${displayCwd.replace(homedir(), '~')}`,
-        repo: repoLabel,
-        repoRoot,
-        sessionId,
-        runId: sessionId,
-        runSource: 'session',
-      },
-      { notify: exitCode !== 0 },
-    )
-  })
-
-  sessions.set(key, {
-    pty: proc,
-    pinned: { sessionId, cwd: displayCwd, mode: opts.mode, name: opts.name || '', engine, remote },
-  })
-  if (opts.loopId && (opts.loopRole === 'driver' || opts.loopRole === 'worker'))
-    registerLoopSession(key, opts.loopId, opts.loopRole)
-  activeKey = key
-  watchSession()
-  emitActivity({
-    kind: 'session-start',
-    title: `${opts.name || displaySessionName(displayCwd)} · ${remote ? 'remote · ' : ''}${engine} · ${opts.mode === 'resume' ? 'resumed' : 'started'}`,
-    detail: displayCwd.replace(homedir(), '~'),
-    repo: repoLabel,
-    repoRoot,
-    sessionId,
-    runId: sessionId,
-    runSource: 'session',
-  })
-  return { sessionId, cwd: displayCwd, remote, seeded }
-}
-
-/** Kill every session pty. Guarded PER SESSION: the identical call in
- *  `stopSession` was already wrapped, but this loop wasn't — so one dead pty
- *  threw and every session after it was never killed. */
-function killAllSessionPtys(): void {
-  for (const s of sessions.values()) {
-    try {
-      s.pty.kill()
-    } catch {
-      /* already gone — keep going */
-    }
-  }
-  sessions.clear()
-  sessionEpochs.clear()
-}
-
-function setActiveSession(key: string) {
-  if (sessions.has(key)) {
-    activeKey = key
-    watchSession()
-  }
-}
-
-function stopSession(key: string) {
-  const s = sessions.get(key)
-  if (s) {
-    try {
-      s.pty.kill()
-    } catch {
-      /* already gone */
-    }
-    sessions.delete(key)
-    // Retire the epoch too, so this pty's late onExit can't fire against a
-    // session started under the same key a moment later.
-    sessionEpochs.forget(key)
-  }
-  if (activeKey === key) {
-    activeKey = sessions.keys().next().value ?? ''
-    watchSession()
-  }
-}
-
-// Watch the ACTIVE session's transcript and push a tick the instant it grows
-// (i.e. as the agent writes each turn / tool call) so realtime widgets refresh
-// without waiting for their poll interval. A cheap stat — no Claude hook needed.
-let watchTimer: ReturnType<typeof setInterval> | null = null
-let watchedFile = ''
-let lastMtime = 0
-function watchSession() {
-  if (watchTimer) clearInterval(watchTimer)
-  watchedFile = ''
-  lastMtime = 0
-  watchTimer = setInterval(() => {
-    if (cur().remote) return
-    const sid = cur().sessionId
-    if (!sid) return
-    if (!watchedFile) {
-      const f = findSessionFile(sid)
-      if (!f) return
-      watchedFile = f
-    }
-    try {
-      const m = statSync(watchedFile).mtimeMs
-      if (m !== lastMtime) {
-        lastMtime = m
-        send('gt:tick')
-      }
-    } catch {
-      watchedFile = ''
-    }
-  }, 400)
-}
-
+bindSessionSender(send)
 // Per-session turn watcher → activity feed + notifications. Watches EVERY
 // running session's transcript (backgrounded ones too — that's the point) and
 // fires a "ready" event the moment a turn completes (stop_reason 'end_turn'),
@@ -913,7 +413,7 @@ function pollActivity() {
     // Single-loop Claude fallback: kick the auto-grader if the live generator
     // finished without appending an event. No-ops for non-single sessions.
     noteSingleLoopTurn(key)
-    const focusedHere = key === activeKey && (win?.isFocused() ?? false)
+    const focusedHere = key === activeSessionKey() && (win?.isFocused() ?? false)
     const label = s.pinned.name || basename(s.pinned.cwd) || 'session'
     const st = readTranscriptStats(sid)
     // Say WHAT the agent just did, not a generic "ready". The turn's closing
@@ -1201,7 +701,7 @@ ipcMain.handle('session:stop', (_e, key: string) => stopSession(key))
 function fleetSnapshot() {
   const entries = [...sessions]
   const out = []
-  for (const [key, s] of orderFleetSnapshotEntries(entries, activeKey)) {
+  for (const [key, s] of orderFleetSnapshotEntries(entries, activeSessionKey())) {
     const sid = s.pinned.sessionId
     const st = readTranscriptStats(sid)
     let status: 'working' | 'idle' = 'idle'
@@ -1238,583 +738,22 @@ function fleetSnapshot() {
 }
 ipcMain.handle('fleet:list', () => fleetSnapshot())
 
-// ---- mobile bridge (TerMinal Remote for iOS) --------------------------------
-// A second transport over the SAME live ptys the desktop drives — never a
-// parallel session store. Terminals only: a phone attached to a live agent can
-// ask it about tickets/PRs/CI itself, so the bridge grows no bespoke endpoints.
-/**
- * The first thing a phone-started session is told. It has to do three jobs:
- * adopt the thread that is already waiting for it, learn the reporting
- * contract, and get on with the work — with no human at the keyboard to
- * correct it.
- */
-/** Cap oversized text for the wire. Logs keep the TAIL (where failures are);
- *  diffs keep the head. */
-function capText(s: string, max: number, opts: { keepTail?: boolean } = {}): BridgeText {
-  if (s.length <= max) return { text: s, truncated: false }
-  return {
-    text: opts.keepTail ? s.slice(s.length - max) : s.slice(0, max),
-    truncated: true,
-  }
-}
-
-/**
- * One run's log, routed the same way the runs:log IPC does — EXCEPT it never
- * falls back to the focused session's remote. A phone request carries its own
- * host on the run row; inheriting whatever terminal happens to be focused would
- * silently read a different machine's log.
- */
-/** The repo NAMES the bridge advertises (immediate subdirs of the projects dir).
- *  Used to authorize an opaque run id against the workspace boundary — the same
- *  set repos() exposes and workspaceRuns() filters by. */
-function advertisedRepoNames(): Set<string> {
-  try {
-    return new Set(readdirSync(resolvedProjectsDir()).filter((n) => !n.startsWith('.')))
-  } catch {
-    return new Set()
-  }
-}
-
-function readRunLogFor(source: string, runId: string, hostId?: string): string | Promise<string> {
-  const remote = hostId ? remoteFromHostId(hostId) : null
-  if (remote) return remoteRuns.log(remote, runId).catch(() => '')
-  if (source === 'cron') return readCronRunLog(runId)
-  if (source === 'session') return readSessionRunLog(runId)
-  if (source === 'bg') return readBgTaskLog(runId)
-  return listRuns().find((r) => r.id === runId)?.output || readAgentRunLog(runId)
-}
-
-function spawnPrompt(remoteId: string, task?: string): string {
-  // Absolute path to THIS app's terminal-cli, which always has the `remote`
-  // subcommand. Bare `terminal-cli` isn't on an interactive session's PATH, and
-  // the repo's own bin/ may be on a branch that predates `remote` — the agent
-  // otherwise burns several turns guessing. Quote it in case the path has spaces.
-  const cli = `"${cliSrcPath()}"`
-  const lines = [
-    `You were started from TerMinal Remote on a phone. There is no one at this Mac —`,
-    `report through the phone, not the terminal.`,
-    ``,
-    `A remote thread is already registered for you. Adopt it, then use it`,
-    `(use this exact path — bare terminal-cli is not on PATH):`,
-    ``,
-    `    ${cli} remote register --id ${remoteId} "<short title>"`,
-    `    ${cli} remote post --id ${remoteId} "<update>"`,
-    `    ${cli} remote ask  --id ${remoteId} "<question>"   # blocks for a reply`,
-    ``,
-    `Follow the remote-terminal skill for when to post vs ask. Post at real`,
-    `checkpoints, not every command. Ask only at a genuine fork; otherwise pick`,
-    `the safe default and say so in a post.`,
-    ``,
-    `This session stays live between turns. When you finish a task, post the result`,
-    `and just stop — the human's next phone message is handed to you automatically`,
-    `as your next instruction, so you do NOT need to keep an ask open to stay`,
-    `reachable.`,
-  ]
-  if (task) lines.push(``, `Your task:`, ``, task)
-  else
-    lines.push(
-      ``,
-      `No task was given — post that you are ready and stop; wait for the first message.`,
-    )
-  return lines.join('\n')
-}
-
-// Harness-agnostic listener. Claude keeps its remote-check.sh Stop hook, which
-// parks INSIDE a turn and hands the phone message back as the block reason — but
-// that hook is Claude-only, so Codex/cursor/hermes finish a turn, idle at their
-// prompt, and never see the queued reply. For those engines the APP pushes the
-// reply straight into the live pty (bracketed paste + Enter) so the idle agent
-// receives it as its next instruction. Best-effort: no live pty → the reply
-// still sits in the log for a `terminal-cli remote` collect.
-function deliverReplyToPty(remoteId: string, text: string, images: string[]): void {
-  try {
-    const remote = readRemoteSession(remoteId)
-    if (!remote || remote.engine === 'claude') return // claude: the Stop hook delivers
-    const live = [...sessions.values()]
-    // Exact match on the app's own session id (agentSessionId === pinned.sessionId,
-    // set for every engine now). cwd is ambiguous — two sessions can share a repo —
-    // so only fall back to it when it resolves to EXACTLY one live session; never
-    // guess and inject into the wrong one.
-    let match = remote.agentSessionId
-      ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
-      : undefined
-    if (!match && remote.cwd) {
-      const inCwd = live.filter((s) => s.pinned.cwd === remote.cwd)
-      if (inCwd.length === 1) match = inCwd[0]
-    }
-    if (!match) return
-    const pty = match.pty
-    const imageNote = images.length
-      ? `\n\n[${images.length} image(s) attached — read them with: terminal-cli remote messages --id ${remoteId}]`
-      : ''
-    // A short reminder so the agent treats this as a phone message AND posts its
-    // reply back — otherwise its answer only shows in the terminal, never on the
-    // phone (the phone thread shows posts, not raw terminal output).
-    const body =
-      `[Phone message via TerMinal Remote — reply by posting: ` +
-      `terminal-cli remote post --id ${remoteId} "<your reply>"]\n\n${text}${imageNote}`
-    pty.write(`\x1b[200~${body}\x1b[201~`)
-    setTimeout(() => pty.write('\r'), 80)
-  } catch {
-    /* best-effort — the log-collect path remains */
-  }
-}
-
-const bridgeDeps: BridgeDeps = {
-  // Only sessions that opted in via the remote-terminal skill. Nothing is
-  // scraped from a pty, so this is identical for every engine.
-  sessions: () =>
-    listRemoteSessions().map((s) => ({
-      id: s.id,
-      title: s.title,
-      repo: s.repo,
-      branch: s.branch,
-      engine: s.engine,
-      status: s.status,
-      question: s.question,
-      lastSeenAt: s.lastSeenAt,
-      messages: messageCount(s.id),
+const bridgeDeps = createBridgeDeps({
+  liveSessions: () =>
+    [...sessions.values()].map((s) => ({
+      sessionId: s.pinned.sessionId,
+      cwd: s.pinned.cwd,
+      write: (d: string) => s.pty.write(d),
     })),
-  messages: (id, opts) => readMessages(id, opts),
-  // Always log the reply (phone history + the collect cursor). For engines
-  // without a Claude-style Stop hook, ALSO push it into the live pty so the idle
-  // agent actually receives it — otherwise Codex/cursor "don't listen".
-  reply: (id, text, images) => {
-    const ok = !!postMessage(id, 'user', text, images ?? [])
-    if (ok) deliverReplyToPty(id, text, images ?? [])
-    return ok
+  cliSrcPath: () => cliSrcPath(),
+  remoteFromHostId,
+  hasWindow: () => !!win,
+  openSessionInRenderer: (payload) => {
+    if (!win) return false
+    win.webContents.send('remote:open-session', payload)
+    return true
   },
-  endRemote: (id) => !!endRemoteSession(id),
-  deleteRemote: (id) => deleteRemoteSession(id),
-  saveImage: (id, data, ext) => saveImage(id, data, ext),
-  imagePath: (id, name) => imagePath(id, name),
-
-  // Read-only terminal peek. Correlate the remote thread to a live desktop pty
-  // the same way the desktop's "on phone" indicator does — engine session id
-  // first, cwd as a fallback — then serve the tail of that pty's output log.
-  remoteTerminal: (id) => {
-    const remote = readRemoteSession(id)
-    if (!remote) return null
-    const live = [...sessions.values()]
-    const match =
-      (remote.agentSessionId
-        ? live.find((s) => s.pinned.sessionId === remote.agentSessionId)
-        : undefined) ?? (remote.cwd ? live.find((s) => s.pinned.cwd === remote.cwd) : undefined)
-    if (!match) return null
-    const tail = readSessionRunLogTail(match.pinned.sessionId)
-    return tail ? { text: stripAnsi(tail.text), updatedAt: tail.updatedAt } : null
-  },
-
-  // Local items plus every configured host's. An agent blocked on `tm` pages
-  // nobody otherwise, which defeats the whole point of an AFK remote.
-  hitl: async () => {
-    // ALL local items (open + resolved), so the phone can show read/unread and
-    // filter — capped newest-first so a long resolved history stays wire-cheap.
-    const local = readHitl()
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, 200)
-      .map((h) => ({
-        id: h.id,
-        title: h.title,
-        detail: h.detail,
-        action: h.action,
-        repo: h.repo,
-        source: h.source,
-        createdAt: h.createdAt,
-        severity: itemSeverity(h),
-        status: h.status,
-        readAt: h.readAt,
-      }))
-    const hosts = readSettings().remoteHosts.map((h) => ({ id: h.id, label: h.label }))
-    if (!hosts.length) return local
-    // Best-effort: an unreachable host contributes nothing, never a failure.
-    const remote = await collectRemoteHitl(hosts, async (h) => {
-      const ref = remoteFromHostId(h.id)
-      return ref ? remoteHitl.list(ref) : []
-    }).catch(() => null)
-    const mapped = (remote?.items ?? [])
-      .filter((h) => h.status === 'open')
-      .map((h) => ({
-        id: h.id,
-        title: h.title,
-        detail: h.detail,
-        action: h.action,
-        // Label which machine is blocked, or the queue is ambiguous.
-        repo: h.hostLabel ? `${h.hostLabel} · ${h.repo || ''}`.trim() : h.repo,
-        source: h.source,
-        createdAt: h.createdAt,
-        // Host blocks are always "look at me"; host read-state isn't tracked here.
-        severity: itemSeverity(h),
-        status: h.status ?? 'open',
-        readAt: h.readAt,
-      }))
-    return [...local, ...mapped].sort((a, b) => b.createdAt - a.createdAt)
-  },
-  resolveHitl: (id, resolved) => resolveHitl(id, resolved),
-  markHitlRead: (ids, read) => markHitlRead(ids, read),
-  repos: () => {
-    // Most recent activity per repo, so the phone can surface what you actually
-    // work in instead of an alphabetical wall. Desktop pins/recents live in
-    // renderer localStorage, which main can't read — this is derived from data
-    // main owns (runs + registered sessions) and is honest on any machine.
-    const lastUsed = new Map<string, number>()
-    const bump = (root: string, at: number) => {
-      if (!root) return
-      if ((lastUsed.get(root) ?? 0) < at) lastUsed.set(root, at)
-    }
-    try {
-      for (const r of listAllRuns()) bump(r.repoRoot, r.startedAt)
-    } catch {
-      /* runs unreadable — ordering just degrades to alphabetical */
-    }
-    try {
-      for (const s of listRemoteSessions()) bump(repoRootOf(s.cwd) || s.cwd, s.lastSeenAt)
-    } catch {
-      /* same */
-    }
-
-    const base = resolvedProjectsDir()
-    // Cheap CI-configured probe (no git call): the phone shows a CI tab only
-    // when workflow files exist.
-    const forgeOf = (p: string): string | undefined => {
-      try {
-        if (existsSync(join(p, '.github', 'workflows'))) return 'github'
-        if (existsSync(join(p, '.gitlab-ci.yml'))) return 'gitlab'
-      } catch {
-        /* ignore */
-      }
-      return undefined
-    }
-    let repos: {
-      name: string
-      path: string
-      lastUsedAt?: number
-      scratch?: boolean
-      forge?: string
-    }[] = []
-    try {
-      repos = readdirSync(base)
-        .filter((n) => !n.startsWith('.'))
-        .map((n) => ({ name: n, path: join(base, n) }))
-        .filter((d) => {
-          try {
-            return statSync(d.path).isDirectory()
-          } catch {
-            return false
-          }
-        })
-        .map((d) => ({ ...d, lastUsedAt: lastUsed.get(d.path), forge: forgeOf(d.path) }))
-        // Recently used first; everything else alphabetical behind it.
-        .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name))
-    } catch {
-      repos = []
-    }
-    // The throwaway workspace always rides along, so a repo-less session is
-    // one tap away exactly like the desktop's Scratch panel.
-    const scratch = configPath('scratch')
-    return [
-      { name: 'Scratch', path: scratch, scratch: true, lastUsedAt: lastUsed.get(scratch) },
-      ...repos,
-    ]
-  },
-
-  // Monitors + latest state for the phone's Monitoring surface.
-  monitors: () => listMonitorsWithStatus(),
-  activity: () => readActivity(200),
-
-  // Every engine the desktop can launch, labelled the way the desktop labels
-  // them — the phone should never render a bare lowercase "codex". The Mac's
-  // configured default leads because the phone preselects the first entry.
-  engines: () => {
-    const all = [
-      { id: 'claude', label: 'Claude' },
-      { id: 'codex', label: 'Codex' },
-      { id: 'cursor', label: 'Cursor' },
-      { id: 'openrouter', label: 'OpenRouter' },
-      { id: 'hermes', label: 'Hermes' },
-      { id: 'openai-compat', label: 'Self-hosted' },
-      { id: 'local', label: 'Local' },
-    ]
-    const def = readSettings().defaultEngine
-    return all.sort((a, b) => Number(b.id === def) - Number(a.id === def))
-  },
-
-  // Per-workspace read-only cockpit data. Each resolves a local daemon for the
-  // requested repo path (the same machinery the desktop tabs use), then projects
-  // to the compact shape the phone lists. Best-effort: a repo without tickets/a
-  // gh auth issue returns an empty list rather than failing the request.
-  workspaceTickets: async (repoPath) => {
-    try {
-      const tickets = await createLocalWorkspaceDaemon(repoPath).ticketsList()
-      return tickets.map((t) => ({
-        slug: t.slug,
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        type: t.type,
-        hitl: t.hitl,
-      }))
-    } catch {
-      return []
-    }
-  },
-  workspacePrs: async (repoPath) => {
-    try {
-      const { mrs } = await createLocalWorkspaceDaemon(repoPath).mrsList()
-      return mrs.map((m) => ({
-        iid: m.iid,
-        title: m.title,
-        state: m.state,
-        draft: m.draft,
-        author: m.author,
-        url: m.webUrl,
-        labels: m.labels,
-        verdict: m.review?.verdict,
-        score: m.review?.overall ?? undefined,
-      }))
-    } catch {
-      return []
-    }
-  },
-  workspaceRuns: (repoPath) => {
-    const root = repoRootOf(repoPath) || repoPath
-    return listAllRuns()
-      .filter((r) => r.repoRoot === root || r.repoLabel === basename(repoPath))
-      .slice(0, 60)
-      .map((r) => ({
-        id: r.id,
-        title: r.agentTitle,
-        engine: r.engine,
-        status: r.status,
-        startedAt: r.startedAt,
-        endedAt: r.endedAt,
-        branch: r.branch,
-        // Required to fetch the log — the store can't be derived from the id.
-        source: r.source,
-        hostId: r.hostId,
-        // The outcome side-car listAllRuns() already joined. Without this the
-        // phone's run-summary half renders nothing.
-        summary: r.summary,
-      }))
-  },
-
-  // ---- drill-downs: the full readable content behind a row ----------------
-  workspaceTicket: async (repoPath, slug) => {
-    try {
-      const t = await createLocalWorkspaceDaemon(repoPath).ticketGet(slug)
-      if (!t) return null
-      return {
-        slug: t.slug,
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        type: t.type,
-        hitl: t.hitl,
-        // The whole markdown body, plus acceptance criteria — which live
-        // OUTSIDE the body and would otherwise be invisible on the phone.
-        body: t.body || '',
-        acceptance: t.acceptance,
-        prs: t.prs,
-        comments: t.comments,
-      }
-    } catch {
-      return null
-    }
-  },
-  // The phone's one ticket write: leave a note on a ticket an agent is
-  // working, without opening the Mac.
-  commentOnTicket: async (repoPath, slug, body) => {
-    try {
-      return await commentOnRepoTicket(repoPath, slug, {
-        author: await resolveHumanAuthor(repoPath),
-        kind: 'human',
-        body,
-      })
-    } catch {
-      return false
-    }
-  },
-  workspacePr: async (repoPath, iid) => {
-    try {
-      const daemon = createLocalWorkspaceDaemon(repoPath)
-      const [d, ci] = await Promise.all([
-        daemon.mrGet(iid),
-        Promise.resolve(daemon.mrCi(iid)).catch(() => null),
-      ])
-      if (!d) return null
-      return {
-        iid: d.iid,
-        title: d.title,
-        state: d.state,
-        draft: d.draft,
-        author: d.author,
-        url: d.webUrl,
-        // MrDetail carries no labels — those are a list-row field.
-        labels: [],
-        verdict: d.reviewMeta?.verdict,
-        score: d.reviewMeta?.overall ?? undefined,
-        description: d.description || '',
-        branch: d.sourceBranch,
-        testStatus: d.reviewMeta?.testStatus,
-        riskTier: d.reviewMeta?.riskTier,
-        reviewNotes: capText(d.reviewMd || '', 120_000).text,
-        findings: (d.findings || []).slice(0, 60).map((f) => ({
-          severity: f.severity,
-          title: f.title,
-          file: f.file,
-          line: f.line,
-          text: f.text || f.body,
-        })),
-        suggestions: (d.suggestions || []).slice(0, 60).map((f) => ({
-          severity: f.severity,
-          title: f.title,
-          file: f.file,
-          line: f.line,
-          text: f.text || f.body,
-        })),
-        // Overall status plus any failing job names — the part worth reading
-        // on a phone when CI is red.
-        ci: ci
-          ? [ci.status, ...ci.jobs.filter((j) => /fail|error/i.test(j.status)).map((j) => j.name)]
-              .filter(Boolean)
-              .join(' · ') || undefined
-          : undefined,
-      }
-    } catch {
-      return null
-    }
-  },
-  workspacePrDiff: async (repoPath, iid) => {
-    try {
-      return capText(await createLocalWorkspaceDaemon(repoPath).mrDiff(iid), 400_000)
-    } catch {
-      return { text: '', truncated: false }
-    }
-  },
-  // Logs come back whole and ANSI-laden with no pagination, so cap + strip here
-  // rather than shipping megabytes of escape codes to a phone. Keep the TAIL —
-  // that is where a failure is.
-  workspaceRunLog: async (runId) => {
-    try {
-      // Authorize POSITIVELY: only serve when we can see the run AND it's a host
-      // run or its repo is advertised. An id we can't find — aged out of the run
-      // window or guessed — is refused, never a fall-through to the raw readers.
-      const run = listAllRuns().find((r) => r.id === runId)
-      if (!run || !runLogAuthorized(run, advertisedRepoNames())) {
-        return { text: '', truncated: false }
-      }
-      // Read with the AUTHORIZED row's own store/host — never the phone's copy,
-      // which could point the readers at a different log than we authorized.
-      const raw = await Promise.resolve(readRunLogFor(run.source, runId, run.hostId))
-      return capText(sanitizeLog(raw || ''), 200_000, { keepTail: true })
-    } catch {
-      return { text: '', truncated: false }
-    }
-  },
-  workspaceSchedule: (repoPath, id) => {
-    const s = getSchedule(id)
-    const root = repoRootOf(repoPath) || repoPath
-    // server.ts already fenced repoPath to the advertised set; also require the
-    // schedule to actually belong to it, so one allowed repo's token can't read
-    // another repo's schedule prompt by guessing its id.
-    if (!s || !(s.repoRoot === root || s.repoLabel === basename(repoPath))) return null
-    const now = Date.now()
-    return {
-      id: s.id,
-      title: s.agentTitle,
-      describe: describeSpec(s.spec),
-      nextRun: nextRun(s.spec, now) ?? undefined,
-      enabled: s.enabled,
-      engine: s.engine,
-      model: s.model,
-      // The snapshot of the agent prompt this schedule actually runs — the
-      // thing you'd want to read from your phone.
-      prompt: s.prompt || '',
-      host: s.host,
-      runtime: s.runtime,
-    }
-  },
-  workspaceSchedules: (repoPath) => {
-    const root = repoRootOf(repoPath) || repoPath
-    const now = Date.now()
-    return readSchedules(now)
-      .filter((s) => s.repoRoot === root || s.repoLabel === basename(repoPath))
-      .map((s) => ({
-        id: s.id,
-        title: s.agentTitle,
-        describe: describeSpec(s.spec),
-        nextRun: nextRun(s.spec, now) ?? undefined,
-        enabled: s.enabled,
-      }))
-  },
-  // Native CI for the phone's per-workspace CI tab — the same run/job data the
-  // desktop CI tab's Runs view uses.
-  workspaceCi: (repoPath) => listCiRuns(repoRootOf(repoPath) || repoPath, 40),
-  workspaceCiJobs: (repoPath, runId) => listCiJobs(repoRootOf(repoPath) || repoPath, runId),
-
-  // Start a session from the phone. The remote thread is registered up front so
-  // the phone can open it immediately, then the RENDERER is asked to open the
-  // terminal — spawning the pty from main directly would leave an orphan with
-  // no tab on the desktop, and would skip initialInput delivery entirely.
-  spawn: ({ cwd, engine, task }) => {
-    if (!win) return { error: 'TerMinal is not running' }
-    // The scratch workspace is app-owned and may not exist yet on a fresh
-    // machine — create it on demand, exactly like the scratch:dir handler.
-    if (cwd === configPath('scratch')) {
-      try {
-        mkdirSync(cwd, { recursive: true })
-      } catch {
-        /* already exists / race */
-      }
-    }
-    const repo = repoForCwd(cwd)?.path || basename(repoRootOf(cwd) || cwd)
-    const session = registerRemoteSession({
-      title: task ? task.slice(0, 60) : `${repo} · from phone`,
-      repo,
-      cwd,
-      engine: engine || readSettings().defaultEngine,
-      origin: 'phone',
-    })
-    postMessage(
-      session.id,
-      'agent',
-      `Starting a ${engine || readSettings().defaultEngine} session in ${repo}…`,
-    )
-    win.webContents.send('remote:open-session', {
-      cwd,
-      engine: engine || readSettings().defaultEngine,
-      remoteId: session.id,
-      initialInput: spawnPrompt(session.id, task),
-    })
-    return { id: session.id }
-  },
-
-  registerDevice: (token, environment) => {
-    registerDevice(token, environment)
-    emitActivity({
-      kind: 'info',
-      title: 'Phone registered for notifications',
-      detail: `${environment} · alerts will now reach TerMinal Remote`,
-    })
-  },
-
-  // Hand the pairing payload to a verified same-user tailnet peer. The identity
-  // check is in tailscale.ts; here we just turn a yes into the token.
-  tailscalePair: async (peerAddress) => {
-    const { ok, peer } = await tailscalePeerAllowed(peerAddress)
-    if (!ok) return null
-    const identity = ensureIdentity()
-    const payload = pairingPayload({ port: readSettings().bridge.port, identity })
-    emitActivity({
-      kind: 'info',
-      title: 'Phone paired over Tailscale',
-      detail: peer?.node || peer?.login || 'tailnet peer',
-    })
-    return { token: payload.t, fp: payload.fp, name: payload.n }
-  },
-}
+})
 
 async function applyBridgeSetting(): Promise<void> {
   const cfg = readSettings().bridge
@@ -3448,10 +2387,9 @@ app.on('will-quit', () => {
 // polling timers do stop — nothing is watching. On non-macOS, closing the last
 // window IS quitting, so app.quit() runs will-quit and the sessions die there.
 app.on('window-all-closed', () => {
-  if (watchTimer) clearInterval(watchTimer)
+  stopWatchSession()
   if (activityTimer) clearInterval(activityTimer)
   if (telegramTimer) clearInterval(telegramTimer)
-  watchTimer = null
   activityTimer = null
   telegramTimer = null
   if (process.platform !== 'darwin') app.quit()
