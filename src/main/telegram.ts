@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { HELP_TEXT, commandIndex, nlCommandList } from './telegram-commands'
 import {
   existsSync,
   readFileSync,
@@ -289,44 +290,7 @@ function resolveWriteRepo(token?: string): RepoCtx | { error: string } {
 const short = (root: string) => root.split('/').pop() || root
 
 function cmdHelp() {
-  reply(
-    [
-      '🤖 TerMinal — AFK control',
-      '',
-      'REPOS',
-      '/repos · /cd <repo>',
-      '',
-      'RUNS · AGENTS',
-      '/runs · /run <agent> [codex|claude|cursor|openrouter|hermes|openai-compat] [persona] [pipeline] [@repo] · /cancel <n>',
-      '/agents [@repo] · /state <agent> [@repo] · /reset-state <agent> [@repo]',
-      '',
-      'TICKETS',
-      '/feature <what you want built> [@repo]   draft a ticket, tap to build it',
-      '/tickets [@repo] · /ticket <slug> · /ticket new <title>',
-      '/close <slug>',
-      '',
-      'SCHEDULES',
-      '/schedules · /pause <id|all> · /resume <id|all> · /runnow <id>',
-      '',
-      'HITL',
-      '/hitl · /resolve <n|all> · /reopen <n>',
-      '',
-      'MRS · ACTIVITY · HARNESS',
-      '/mrs [@repo] · /mr <iid> · /activity [N] · /harness · /status',
-      '',
-      'BACKGROUND',
-      '/bg [@repo] [claude|codex|cursor] [model] <prompt>',
-      '/bg list · /bg cancel <n|id>',
-      '',
-      'BUDGETS',
-      '/budget · /budget set <usd> · /budget set <agent> <usd>',
-      '/budget override <Nh|Nm|clear>',
-      '',
-      'INFRASTRUCTURE',
-      '/sessions · /tail <id|n> · /rebuild · /about',
-      '/install <agent> [@repo]   copy from project-template',
-    ].join('\n'),
-  )
+  reply(HELP_TEXT)
 }
 
 function cmdRepos() {
@@ -1205,32 +1169,7 @@ async function translateNaturalLanguage(text: string): Promise<string | null> {
   const SYSTEM = `You translate the user's natural-language request into a TerMinal slash command. Output EXACTLY one command line starting with /, or "NONE" if the request doesn't match.
 
 Available commands (with example syntax):
-  /feature [@repo] <description>
-  /bg [@repo] [claude|codex|cursor] [haiku|sonnet|opus] <prompt>
-  /run <agentId> [@repo] [engine] [persona] [pipeline]
-  /tickets [@repo]
-  /ticket <slug|n>
-  /ticket new <title>
-  /close <slug|n>
-  /schedules
-  /pause <id|all>
-  /resume <id|all>
-  /runnow <id>
-  /hitl
-  /resolve <n|all>
-  /mrs [@repo]
-  /mr <iid>
-  /runs
-  /cancel <n>
-  /tail <runId|n>
-  /sessions
-  /status
-  /harness
-  /activity [N]
-  /budget
-  /budget set <usd>
-  /repos
-  /cd <repo>
+  ${nlCommandList()}
 
 /feature vs /bg — the one distinction that matters:
   /feature  new capability or behavior change worth tracking. Files a ticket first, then builds it.
@@ -1283,78 +1222,53 @@ async function handle(text: string) {
     }
   }
   const { cmd, args } = parseCommand(text)
-  switch (cmd) {
-    case '/help':
-    case '/start':
-      return cmdHelp()
-    case '/repos':
-      return cmdRepos()
-    case '/cd':
-      return cmdCd(args)
-    case '/agents':
-      return cmdAgents(args[0])
-    case '/runs':
-      return cmdRuns()
-    case '/run':
-      return cmdRun(args)
-    case '/cancel':
-      return cmdCancel(args)
-    case '/status':
-      return cmdStatus()
-    case '/tickets':
-      return cmdTickets(args[0])
-    case '/ticket':
-      return cmdTicket(args)
-    case '/feature':
-      return cmdFeature(args)
-    case '/close':
-      return cmdClose(args)
-    case '/schedules':
-      return cmdSchedules()
-    case '/pause':
-      return cmdPause(args, true)
-    case '/resume':
-      return cmdPause(args, false)
-    case '/runnow':
-      return cmdRunNow(args)
-    case '/hitl':
-      return cmdHitl()
-    case '/resolve':
-      return cmdResolveHitl(args, true)
-    case '/reopen':
-      return cmdResolveHitl(args, false)
-    case '/mrs':
-    case '/prs':
-      return cmdMrs(args[0])
-    case '/mr':
-    case '/pr':
-      return cmdMr(args)
-    case '/state':
-      return cmdState(args)
-    case '/reset-state':
-      return cmdResetState(args)
-    case '/harness':
-      return cmdHarness()
-    case '/activity':
-      return cmdActivity(args)
-    case '/sessions':
-      return cmdSessions()
-    case '/tail':
-      return cmdTail(args)
-    case '/rebuild':
-      return cmdRebuild()
-    case '/about':
-    case '/whoami':
-      return cmdAbout()
-    case '/install':
-      return cmdInstall(args)
-    case '/bg':
-      return cmdBg(args)
-    case '/budget':
-      return cmdBudget(args)
-    default:
-      return reply(`Unknown command ${cmd}. Send /help.`)
+  const spec = COMMAND_INDEX.get(cmd)
+  const run = spec && HANDLERS[spec.cmds[0]]
+  if (!run) {
+    reply(`Unknown command ${cmd}. Send /help.`)
+    return
   }
+  await run(args)
+}
+
+// One handler per COMMAND_SPECS entry, keyed by the primary token. The specs
+// (tokens, aliases, NL usage) live in telegram-commands.ts as pure data;
+// telegram-commands.test.ts holds this map, the help text and the NL prompt
+// to that one registry.
+const COMMAND_INDEX = commandIndex()
+const HANDLERS: Record<string, (args: string[]) => unknown> = {
+  '/help': () => cmdHelp(),
+  '/repos': () => cmdRepos(),
+  '/cd': (a) => cmdCd(a),
+  '/agents': (a) => cmdAgents(a[0]),
+  '/runs': () => cmdRuns(),
+  '/run': (a) => cmdRun(a),
+  '/cancel': (a) => cmdCancel(a),
+  '/status': () => cmdStatus(),
+  '/tickets': (a) => cmdTickets(a[0]),
+  '/ticket': (a) => cmdTicket(a),
+  '/feature': (a) => cmdFeature(a),
+  '/close': (a) => cmdClose(a),
+  '/schedules': () => cmdSchedules(),
+  '/pause': (a) => cmdPause(a, true),
+  '/resume': (a) => cmdPause(a, false),
+  '/runnow': (a) => cmdRunNow(a),
+  '/hitl': () => cmdHitl(),
+  '/resolve': (a) => cmdResolveHitl(a, true),
+  '/reopen': (a) => cmdResolveHitl(a, false),
+  '/mrs': (a) => cmdMrs(a[0]),
+  '/mr': (a) => cmdMr(a),
+  '/state': (a) => cmdState(a),
+  '/reset-state': (a) => cmdResetState(a),
+  '/harness': () => cmdHarness(),
+  '/activity': (a) => cmdActivity(a),
+  '/sessions': () => cmdSessions(),
+  '/tail': (a) => cmdTail(a),
+  '/rebuild': () => cmdRebuild(),
+  '/about': () => cmdAbout(),
+  '/install': (a) => cmdInstall(a),
+  '/bg': (a) => cmdBg(a),
+  '/budget': (a) => cmdBudget(a),
 }
 
 // Inline-button callback dispatcher. Callback data is small (max 64 bytes per
