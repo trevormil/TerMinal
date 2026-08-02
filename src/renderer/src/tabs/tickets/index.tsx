@@ -93,7 +93,7 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
               onClick={() => setActive(i)}
               className={`rounded px-1.5 py-0.5 ${
                 i === active
-                  ? 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]'
+                  ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
                   : 'text-zinc-500 hover:text-zinc-200'
               }`}
             >

@@ -70,7 +70,7 @@ export function StackMap({
               disabled={current || !onOpen}
               className={`relative flex w-full items-center gap-2 rounded-md px-1 py-1 text-left ${
                 current
-                  ? 'bg-[var(--gt-accent)]/15'
+                  ? 'bg-[var(--gt-accent)]/20'
                   : onOpen
                     ? 'cursor-pointer hover:bg-white/5'
                     : ''

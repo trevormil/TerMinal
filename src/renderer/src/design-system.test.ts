@@ -109,11 +109,10 @@ describe('surfaces (design-system.md §2)', () => {
         found.add(m[1])
       }
     }
-    // PINNED at today's real spread: {10, 15, 20} (was 10 distinct). The doc
-    // says the target is two; /15's 60-odd uses collapse in their own PR
-    // because that one is visible everywhere. Shrinking it is the migration;
-    // growing it fails the build.
-    expect(found.size).toBeLessThanOrEqual(3)
+    // AT TARGET: the doc's two steps, {10, 20}. /10 = worth noticing (badges,
+    // tags, resting action fills), /20 = selected or hovered. A third step
+    // fails the build; the doc says the answer is a border or a weight change.
+    expect(found.size).toBeLessThanOrEqual(2)
   })
 })
 

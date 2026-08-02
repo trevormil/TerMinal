@@ -1362,7 +1362,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                 key={a.id}
                 onClick={() => setSelectedId(a.id)}
                 className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-2.5 py-2 text-left ${
-                  selectedId === a.id ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                  selectedId === a.id ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
                 }`}
               >
                 <Bot size={14} strokeWidth={2} className="shrink-0 text-[var(--gt-accent-light)]" />
@@ -1506,7 +1506,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                           onClick={() => setSelectedArtifactId(artifact.id)}
                           className={`block w-full border-b border-[var(--gt-border)]/50 px-3 py-2 text-left ${
                             selectedArtifactId === artifact.id
-                              ? 'bg-[var(--gt-accent)]/15'
+                              ? 'bg-[var(--gt-accent)]/20'
                               : 'hover:bg-white/5'
                           }`}
                         >
@@ -1630,7 +1630,7 @@ Use the persistent agent schema TerMinal expects. Keep the files concise. Do not
                         }
                         className={`group flex w-full items-center gap-1.5 border-b border-[var(--gt-border)]/40 px-2 py-1.5 text-left text-[11px] ${
                           agentFilePath === entry.path
-                            ? 'bg-[var(--gt-accent)]/15 text-zinc-100'
+                            ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
                             : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                         }`}
                       >
@@ -2302,7 +2302,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                         }}
                         title={d.description || d.title}
                         className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-1.5 text-left ${
-                          on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                          on ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
                         }`}
                       >
                         <Icon
@@ -2386,7 +2386,7 @@ function AgentsTab({ ctx }: { ctx: TabContext }) {
                       onClick={() => setSelAgentId(a.id)}
                       title={a.description || a.title}
                       className={`flex w-full items-center gap-2 border-b border-[var(--gt-border)]/40 px-3 py-1.5 text-left ${
-                        on ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                        on ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
                       }`}
                     >
                       <Icon

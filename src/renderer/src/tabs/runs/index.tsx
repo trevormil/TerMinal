@@ -481,7 +481,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                 title="Runs triggered by the automation inbox (/enqueue-request, terminal-cli inbox enqueue)"
                 className={`rounded-md border px-1.5 py-0.5 text-[10.5px] ${
                   inboxOnly
-                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/15 text-zinc-100'
+                    ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/20 text-zinc-100'
                     : 'border-[var(--gt-border)] text-zinc-500 hover:border-[var(--gt-accent)]/50 hover:text-zinc-300'
                 }`}
               >
@@ -549,7 +549,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                     key={r.id}
                     onClick={() => setSel(r.id)}
                     className={`block w-full border-b border-[var(--gt-border)]/40 px-3 py-2 text-left ${
-                      selectedHere ? 'bg-[var(--gt-accent)]/15' : 'hover:bg-white/5'
+                      selectedHere ? 'bg-[var(--gt-accent)]/20' : 'hover:bg-white/5'
                     }`}
                   >
                     <span className="flex w-full items-center gap-2">
@@ -772,7 +772,7 @@ function RunsTab({ ctx }: { ctx: TabContext }) {
                                 ? `Re-run on ${selectedRun.hostLabel || selectedRun.hostId}`
                                 : 'Re-run this agent'
                   }
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/15 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-accent)]/40 bg-[var(--gt-accent)]/10 px-1.5 py-0.5 text-[10.5px] text-zinc-100 hover:border-[var(--gt-accent)]/60 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={10} strokeWidth={2} />
                   {rerunBusy ? 'Starting…' : 'Re-run'}

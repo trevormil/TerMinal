@@ -195,7 +195,7 @@ export function WorkspaceSearchPanel({
                 onClick={() => toggleKind(k.id)}
                 className={`inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-[11px] ${
                   on
-                    ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/15 text-zinc-100'
+                    ? 'border-[var(--gt-accent)]/60 bg-[var(--gt-accent)]/20 text-zinc-100'
                     : 'border-[var(--gt-border)] bg-black/10 text-zinc-500 hover:text-zinc-300'
                 }`}
               >

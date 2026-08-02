@@ -292,7 +292,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                           title={missing ? `${e} was not found on your PATH` : undefined}
                           className={`rounded-md border px-2.5 py-1 text-[11px] capitalize ${
                             defaultEngine === e
-                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                              ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                               : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                           } ${missing ? 'opacity-45' : ''}`}
                         >

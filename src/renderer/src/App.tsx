@@ -1332,7 +1332,7 @@ export default function App() {
                   }}
                   className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] ${
                     workspaceActive
-                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/15 text-zinc-100'
+                      ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/20 text-zinc-100'
                       : needsAttention
                         ? 'border-[var(--gt-yellow)]/60 bg-[var(--gt-yellow)]/10 text-zinc-200'
                         : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
@@ -1357,7 +1357,7 @@ export default function App() {
                   )}
                   <span className="max-w-[180px] truncate font-semibold">{ws.label}</span>
                   {ws.remote && (
-                    <span className="rounded bg-[var(--gt-accent)]/15 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
+                    <span className="rounded bg-[var(--gt-accent)]/10 px-1 text-[9px] uppercase tracking-wide text-[var(--gt-accent-2)]">
                       ssh
                     </span>
                   )}

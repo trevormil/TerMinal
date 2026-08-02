@@ -57,7 +57,7 @@ function PanelsTab({ ctx: _ctx }: { ctx: TabContext }) {
               <button
                 key={p.url + i}
                 onClick={() => setActive(i)}
-                className={`rounded px-1.5 py-0.5 ${i === active ? 'bg-[var(--gt-accent)]/15 text-[var(--gt-accent-light)]' : 'hover:text-zinc-200'}`}
+                className={`rounded px-1.5 py-0.5 ${i === active ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]' : 'hover:text-zinc-200'}`}
               >
                 {p.label || p.url}
               </button>

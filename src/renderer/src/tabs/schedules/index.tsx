@@ -413,7 +413,7 @@ function ScheduleForm({
                 onClick={() => setKind(k)}
                 className={`rounded-full border px-2.5 py-0.5 text-[11px] capitalize ${
                   kind === k
-                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                    ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                     : 'border-[var(--gt-border)] text-zinc-400 hover:text-zinc-200'
                 }`}
               >

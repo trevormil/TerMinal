@@ -254,7 +254,7 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
                   disabled={providerBusy}
                   className={`rounded-md border px-2 py-0.5 text-[10.5px] capitalize ${
                     provider === k
-                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/15 text-zinc-100'
+                      ? 'border-[var(--gt-accent)] bg-[var(--gt-accent)]/20 text-zinc-100'
                       : 'border-[var(--gt-border)] text-zinc-500 hover:text-zinc-200'
                   } disabled:opacity-50`}
                 >
