@@ -1,7 +1,7 @@
 // Capture the README screenshots (ticket 98).
 //
-// The old images leaked `~/CompSci/gauntlet/TerMinal` in the README HERO and
-// `/Users/trevormiller/.config/TerMinal/...` in the Agents shot. They were
+// The old images leaked the developer's checkout path in the README HERO and a
+// home-directory path in the Agents shot. They were
 // taken by pointing a camera at the developer's real daily-driver instance, so
 // the leak was inevitable — the fix cannot be "be more careful next time".
 //

@@ -3,9 +3,9 @@
 //   bun run shots
 //
 // The old images were taken against the developer's real instance and leaked
-// `~/CompSci/gauntlet/TerMinal` (the README hero) and
-// `/Users/trevormiller/.config/TerMinal/...` (the Agents shot) onto a public
-// page. This captures from a throwaway HOME with a fixture repo instead, so
+// their home-directory and checkout paths (in the README hero, and in the
+// Agents shot's STATE row) onto a public page. This captures from a throwaway
+// HOME with a fixture repo instead, so
 // there is no personal state in the process to leak — clean by construction,
 // not by remembering to check.
 //
