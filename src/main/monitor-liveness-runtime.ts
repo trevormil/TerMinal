@@ -83,6 +83,9 @@ export function realLivenessDeps(): LivenessDeps {
         detail: item.detail,
         source: 'monitor',
         severity: 'urgent',
+        // First real caller of the category field (ticket 120). Nothing was
+        // registered to make this work — passing the string IS the API.
+        category: 'Monitoring',
       }),
   }
 }

@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  ALL,
+  deriveCategories,
+  filterByCategory,
+  resolveSelection,
+  shouldShowSidebar,
+} from '../../../../shared/inbox-categories'
+import {
   ArrowLeft,
   Check,
   ChevronDown,
@@ -144,6 +151,15 @@ export function InboxDrawer({
   const [presetsOpenedAt, setPresetsOpenedAt] = useState(0)
   const presets = useMemo(() => snoozePresets(presetsOpenedAt || Date.now()), [presetsOpenedAt])
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  // Persisted, so it survives a reload — which is exactly why resolveSelection
+  // has to cope with the category having disappeared meanwhile.
+  const [category, setCategory] = useState<string>(
+    () => localStorage.getItem('gt.inbox.category') || ALL,
+  )
+  const pickCategory = (name: string) => {
+    setCategory(name)
+    localStorage.setItem('gt.inbox.category', name)
+  }
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
   // Repo-widget trust approvals surface here too — same cadence as the list, so
@@ -198,8 +214,14 @@ export function InboxDrawer({
   const snoozedItems = all.filter(isSnoozed)
   // A snoozed item is off your plate: out of the list AND out of the unread
   // count, or "ask me tomorrow" would still nag you today.
-  const shown = all.filter((h) => !isSnoozed(h))
-  const unread = shown.filter(isUnread)
+  const unsnoozed = all.filter((h) => !isSnoozed(h))
+  // Derived from the items present — no registry, no union (ticket 120).
+  const categories = deriveCategories(unsnoozed)
+  const activeCategory = resolveSelection(category, categories)
+  const shown = filterByCategory(unsnoozed, activeCategory)
+  // Unread counts the WHOLE inbox, not the filtered view: a badge that drops
+  // when you pick a category would say the work went away.
+  const unread = unsnoozed.filter(isUnread)
 
   // Group ids by owning host — a remote item's readAt must persist on the host
   // that owns it (like resolve), or the 15s reload flips it back to unread.
@@ -519,142 +541,166 @@ export function InboxDrawer({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Not a HITL item on disk — a live decision about the active repo. It
-            sits above the list because it is the one thing here that is
-            actively blocking a feature the user can see is missing. */}
-        {trustPrompt.pending && (
-          <div className="px-4 pt-4">
-            <RepoTrustReview prompt={trustPrompt} hideWhenSettled />
-          </div>
-        )}
-        {items === null ? (
-          <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
-        ) : shown.length === 0 ? (
-          !trustPrompt.pending && (
-            <div className="p-4 text-[12px] text-zinc-600">
-              Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here from
-              any repo.
-            </div>
-          )
-        ) : (
-          // Flat mail-style rows: hairline dividers, hover highlight, click to
-          // open the message full-pane.
-          <div className="divide-y divide-[var(--gt-border)]/60">
-            {shown.map((h) => {
-              const unreadRow = isUnread(h)
-              const snippet = snippetOf(h)
-              const tier = ageTierOf(h.createdAt, now)
-              const tierColor = ageColor(tier)
-              const picked = selected.has(h.id)
+      <div className="flex min-h-0 flex-1">
+        {shouldShowSidebar(categories) && (
+          <aside className="w-40 shrink-0 overflow-y-auto border-r border-[var(--gt-border)] bg-[var(--gt-panel)] py-1.5">
+            {categories.map((c) => {
+              const active = c.name === activeCategory
               return (
-                <div
-                  key={h.id}
-                  className={`group flex w-full items-start gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-white/[0.04] ${
-                    picked ? 'bg-[var(--gt-accent)]/10' : ''
+                <button
+                  key={c.name}
+                  onClick={() => pickCategory(c.name)}
+                  aria-current={active ? 'true' : undefined}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors ${
+                    active
+                      ? 'bg-[var(--gt-accent)]/20 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-200'
                   }`}
-                  // Aging stripe: the item's whole left edge reddens as it sits.
-                  style={tierColor ? { boxShadow: `inset 2px 0 0 0 ${tierColor}` } : undefined}
                 >
-                  <input
-                    type="checkbox"
-                    checked={picked}
-                    onChange={() => toggleSelect(h.id)}
-                    title="Select for bulk actions"
-                    className={`mt-[5px] h-3 w-3 shrink-0 cursor-pointer accent-[var(--gt-accent)] ${
-                      picked || selectedIds.length > 0
-                        ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100'
-                    }`}
-                  />
-                  <button
-                    onClick={() => {
-                      setReading(h.id)
-                      if (unreadRow) markRead([h.id])
-                    }}
-                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 text-left"
-                  >
-                    <span
-                      className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`min-w-0 flex-1 truncate text-[12.5px] ${unreadRow ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
-                        >
-                          {h.title}
-                        </span>
-                        <SeverityTag sev={severityOf(h)} />
-                        <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
-                        {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
-                          <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
-                            x{h.occurrenceCount}
-                          </span>
-                        )}
-                        <span
-                          title={ageLabel(tier)}
-                          className="shrink-0 text-[10px] font-medium tabular-nums"
-                          style={{ color: tierColor || 'var(--color-zinc-600, #52525b)' }}
-                        >
-                          {reltime(h.createdAt)}
-                        </span>
-                      </span>
-                      {(snippet || h.repo) && (
-                        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
-                          {h.repo && <span className="shrink-0 text-zinc-500">{h.repo}</span>}
-                          {h.repo && snippet && <span>—</span>}
-                          <span className="truncate">{snippet}</span>
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                </div>
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <span className="shrink-0 tabular-nums text-zinc-600">{c.count}</span>
+                </button>
               )
             })}
-          </div>
+          </aside>
         )}
-
-        {snoozedItems.length > 0 && (
-          <div className="border-t border-[var(--gt-border)]">
-            <button
-              onClick={() => setShowSnoozed((v) => !v)}
-              className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
-            >
-              {showSnoozed ? (
-                <ChevronDown size={12} strokeWidth={2} />
-              ) : (
-                <ChevronRight size={12} strokeWidth={2} />
-              )}
-              <Clock size={11} strokeWidth={2} />
-              Snoozed
-              <span className="tabular-nums text-zinc-600">{snoozedItems.length}</span>
-            </button>
-            {showSnoozed && (
-              <div className="divide-y divide-[var(--gt-border)]/60">
-                {snoozedItems.map((h) => (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* Not a HITL item on disk — a live decision about the active repo. It
+            sits above the list because it is the one thing here that is
+            actively blocking a feature the user can see is missing. */}
+          {trustPrompt.pending && (
+            <div className="px-4 pt-4">
+              <RepoTrustReview prompt={trustPrompt} hideWhenSettled />
+            </div>
+          )}
+          {items === null ? (
+            <div className="p-4 text-[12px] text-zinc-600">Loading…</div>
+          ) : shown.length === 0 ? (
+            !trustPrompt.pending && (
+              <div className="p-4 text-[12px] text-zinc-600">
+                Inbox zero. Human-needs (decisions, approvals, creds, failed cron runs) land here
+                from any repo.
+              </div>
+            )
+          ) : (
+            // Flat mail-style rows: hairline dividers, hover highlight, click to
+            // open the message full-pane.
+            <div className="divide-y divide-[var(--gt-border)]/60">
+              {shown.map((h) => {
+                const unreadRow = isUnread(h)
+                const snippet = snippetOf(h)
+                const tier = ageTierOf(h.createdAt, now)
+                const tierColor = ageColor(tier)
+                const picked = selected.has(h.id)
+                return (
                   <div
                     key={h.id}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-left opacity-70"
+                    className={`group flex w-full items-start gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-white/[0.04] ${
+                      picked ? 'bg-[var(--gt-accent)]/10' : ''
+                    }`}
+                    // Aging stripe: the item's whole left edge reddens as it sits.
+                    style={tierColor ? { boxShadow: `inset 2px 0 0 0 ${tierColor}` } : undefined}
                   >
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-400">
-                      {h.title}
-                    </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
-                      due in {untilLabel(snoozes[h.id], now)}
-                    </span>
+                    <input
+                      type="checkbox"
+                      checked={picked}
+                      onChange={() => toggleSelect(h.id)}
+                      title="Select for bulk actions"
+                      className={`mt-[5px] h-3 w-3 shrink-0 cursor-pointer accent-[var(--gt-accent)] ${
+                        picked || selectedIds.length > 0
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100'
+                      }`}
+                    />
                     <button
-                      onClick={() => unsnooze(h.id)}
-                      title="Bring this back to the inbox now"
-                      className="shrink-0 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      onClick={() => {
+                        setReading(h.id)
+                        if (unreadRow) markRead([h.id])
+                      }}
+                      className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 text-left"
                     >
-                      Wake
+                      <span
+                        className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${unreadRow ? 'bg-[var(--gt-accent)]' : ''}`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`min-w-0 flex-1 truncate text-[12.5px] ${unreadRow ? 'font-semibold text-zinc-100' : 'font-medium text-zinc-300'}`}
+                          >
+                            {h.title}
+                          </span>
+                          <SeverityTag sev={severityOf(h)} />
+                          <Badge tone={SOURCE_TONE[h.source] || 'mute'}>{h.source}</Badge>
+                          {(h.occurrenceCount || 1) > 1 && h.source !== 'completion-hook' && (
+                            <span className="shrink-0 rounded-full border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1.5 text-[9.5px] font-semibold text-[var(--gt-yellow)]">
+                              x{h.occurrenceCount}
+                            </span>
+                          )}
+                          <span
+                            title={ageLabel(tier)}
+                            className="shrink-0 text-[10px] font-medium tabular-nums"
+                            style={{ color: tierColor || 'var(--color-zinc-600, #52525b)' }}
+                          >
+                            {reltime(h.createdAt)}
+                          </span>
+                        </span>
+                        {(snippet || h.repo) && (
+                          <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-600">
+                            {h.repo && <span className="shrink-0 text-zinc-500">{h.repo}</span>}
+                            {h.repo && snippet && <span>—</span>}
+                            <span className="truncate">{snippet}</span>
+                          </span>
+                        )}
+                      </span>
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )}
+
+          {snoozedItems.length > 0 && (
+            <div className="border-t border-[var(--gt-border)]">
+              <button
+                onClick={() => setShowSnoozed((v) => !v)}
+                className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-[11px] text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
+              >
+                {showSnoozed ? (
+                  <ChevronDown size={12} strokeWidth={2} />
+                ) : (
+                  <ChevronRight size={12} strokeWidth={2} />
+                )}
+                <Clock size={11} strokeWidth={2} />
+                Snoozed
+                <span className="tabular-nums text-zinc-600">{snoozedItems.length}</span>
+              </button>
+              {showSnoozed && (
+                <div className="divide-y divide-[var(--gt-border)]/60">
+                  {snoozedItems.map((h) => (
+                    <div
+                      key={h.id}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left opacity-70"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-400">
+                        {h.title}
+                      </span>
+                      <span className="shrink-0 text-[10px] tabular-nums text-zinc-600">
+                        due in {untilLabel(snoozes[h.id], now)}
+                      </span>
+                      <button
+                        onClick={() => unsnooze(h.id)}
+                        title="Bring this back to the inbox now"
+                        className="shrink-0 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+                      >
+                        Wake
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
