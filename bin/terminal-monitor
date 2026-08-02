@@ -320,11 +320,28 @@ function compose(m, prevStatus, next, res, now, since) {
 }
 
 // ---- run one monitor -------------------------------------------------------
+// Mirrors src/main/monitors.ts:needsConfirmation — keep in sync. A probe that
+// would move a monitor to a WORSE state gets one confirmation re-probe before
+// the transition is believed: a single timed-out fetch (laptop sleep/wake,
+// Wi-Fi blip) otherwise files an urgent "is down" plus a recovery minutes
+// later. A real outage fails the confirm probe too and still alerts on this
+// same tick.
+const RANK = { ok: 0, warn: 1, fail: 2 }
+function needsConfirmation(prev, next) {
+  return RANK[next] > RANK[prev]
+}
+
 async function runOne(m, now) {
   const prev = readState(m.id)
-  const res = await probe(m)
-  const next = res.status
+  let res = await probe(m)
   const prevStatus = prev && ['ok', 'warn', 'fail'].includes(prev.status) ? prev.status : 'ok'
+  if (needsConfirmation(prevStatus, res.status)) {
+    const raw = Number(m.config?.confirmDelayMs)
+    const delayMs = Number.isFinite(raw) && raw >= 0 ? raw : 5000
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs))
+    res = await probe(m)
+  }
+  const next = res.status
   const changed = prevStatus !== next
   const notify = m.notify || {}
 
