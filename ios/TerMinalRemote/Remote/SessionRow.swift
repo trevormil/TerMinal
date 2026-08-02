@@ -26,7 +26,7 @@ struct SessionRow: View {
                 }
                 Spacer(minLength: 6)
                 if session.isAwaiting {
-                    Text("asking")
+                    Text("Asking")
                         .font(GT.sans(10, .semibold))
                         .foregroundStyle(GT.accent2)
                         .padding(.horizontal, 7)
@@ -34,7 +34,7 @@ struct SessionRow: View {
                         .background(GT.accent2.opacity(0.12))
                         .clipShape(Capsule())
                 } else if session.isIdle {
-                    Text("idle")
+                    Text("Idle")
                         .font(GT.sans(10, .semibold))
                         .foregroundStyle(GT.yellow)
                         .padding(.horizontal, 7)
@@ -42,9 +42,9 @@ struct SessionRow: View {
                         .background(GT.yellow.opacity(0.1))
                         .clipShape(Capsule())
                 } else if session.hasEnded {
-                    Text("done").font(GT.sans(10)).foregroundStyle(GT.textFaint)
+                    Text("Done").font(GT.sans(10)).foregroundStyle(GT.textFaint)
                 } else {
-                    Text("working").font(GT.sans(10)).foregroundStyle(GT.green.opacity(0.8))
+                    Text("Working").font(GT.sans(10)).foregroundStyle(GT.green.opacity(0.8))
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
