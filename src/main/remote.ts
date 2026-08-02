@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { normalizeRunStatus } from '../shared/run-record'
 import { fileURLToPath } from 'node:url'
 import { readSettings, type RemoteHost } from './settings'
 import type { Ticket, NewTicket, TicketPatch } from './backlog'
@@ -251,7 +252,12 @@ export const remoteHitl = {
     remoteJson<number>(remote, { op: 'hitl.markRead', ids, read }),
 }
 export const remoteRuns = {
-  all: (remote: RemoteSessionRef) => remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }),
+  // The one status boundary we don't control: the host may run an older or
+  // newer build, so normalize into the shared vocabulary (ticket 91).
+  all: (remote: RemoteSessionRef) =>
+    remoteJson<UnifiedRun[]>(remote, { op: 'runs.all' }).then((rows) =>
+      rows.map((r) => ({ ...r, status: normalizeRunStatus(r.status) })),
+    ),
   log: (remote: RemoteSessionRef, runId: string) =>
     remoteJson<string>(remote, { op: 'runs.log', runId }),
   cancel: (remote: RemoteSessionRef, id: string) =>

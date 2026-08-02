@@ -13,6 +13,7 @@ import { join, basename } from 'node:path'
 // Store, not runtime: the whole point of the ticket-91 extraction is that
 // reading run records must not drag in the spawn machinery.
 import { listRuns as listAgentRuns } from './agent-run-store'
+import { finalizeStaleRun, type RunStatus } from '../shared/run-record'
 import type { AgentRun } from './agent-types'
 import { listBgTasks, type BgTask } from './bg-tasks'
 import {
@@ -41,7 +42,7 @@ export type CronRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: 'running' | 'done' | 'failed' | 'canceled'
+  status: Extract<RunStatus, 'running' | 'done' | 'failed' | 'canceled'>
   startedAt: number
   endedAt?: number
   exitCode?: number
@@ -59,7 +60,7 @@ export type SessionRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: 'running' | 'done' | 'failed' | 'interrupted'
+  status: Extract<RunStatus, 'running' | 'done' | 'failed' | 'interrupted'>
   startedAt: number
   endedAt?: number
   exitCode?: number
@@ -167,18 +168,19 @@ export function sweepStaleCronRuns(): { swept: number } {
     const path = join(dir, f)
     try {
       const r = JSON.parse(readFileSync(path, 'utf8')) as CronRun & { worktree?: string }
-      if (r.status !== 'running') continue
-      if (now - (r.startedAt || 0) < STALE_MS) continue
-      // No process / no worktree match → phantom. Skip the live-process check
-      // when we have no worktree (very old records): fall through to sweep.
-      // We don't bother shelling out — the cost of a false sweep is the user
-      // sees a "failed: stale" badge instead of the truth, which is fine.
-      const finalized = {
-        ...r,
-        status: 'failed' as const,
-        endedAt: now,
-        error: 'stale: app-side watchdog finalized (>2h with no in-app activity)',
-      }
+      // No process / no worktree match → phantom. We don't bother shelling
+      // out — the cost of a false sweep is the user sees a "failed: stale"
+      // badge instead of the truth, which is fine.
+      const finalized = finalizeStaleRun(
+        r,
+        {
+          finalStatus: 'failed',
+          error: 'stale: app-side watchdog finalized (>2h with no in-app activity)',
+          olderThanMs: STALE_MS,
+        },
+        now,
+      )
+      if (!finalized) continue
       writeFileSync(path, JSON.stringify(finalized, null, 2))
       bustRunsListCache()
       swept++
@@ -372,20 +374,13 @@ export function sweepStaleSessionRuns(): { swept: number } {
     const path = join(dir, f)
     try {
       const r = JSON.parse(readFileSync(path, 'utf8')) as SessionRun
-      if (r.status !== 'running') continue
-      writeFileSync(
-        path,
-        JSON.stringify(
-          {
-            ...r,
-            status: 'interrupted',
-            endedAt: r.endedAt ?? now,
-            error: r.error ?? 'interrupted: app restarted',
-          },
-          null,
-          2,
-        ),
+      const finalized = finalizeStaleRun(
+        r,
+        { finalStatus: 'interrupted', error: 'interrupted: app restarted' },
+        now,
       )
+      if (!finalized) continue
+      writeFileSync(path, JSON.stringify(finalized, null, 2))
       bustRunsListCache()
       swept++
     } catch {
@@ -449,7 +444,9 @@ export type UnifiedRun = {
   agentId: string
   agentTitle: string
   engine: string
-  status: string
+  // Narrowed from `string` (ticket 91): the four stores share one vocabulary
+  // now, and remote records normalize at the fetch boundary.
+  status: RunStatus
   startedAt: number
   endedAt?: number
   exitCode?: number

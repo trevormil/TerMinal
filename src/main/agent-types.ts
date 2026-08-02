@@ -159,7 +159,10 @@ export type Agent = {
 
 export type AgentRunContext = Persona
 
-export type AgentRunStatus = 'running' | 'done' | 'failed' | 'canceled' | 'interrupted'
+import type { RunStatus } from '../shared/run-record'
+// Derived from the ONE shared vocabulary (ticket 91) — this store never
+// writes 'queued'.
+export type AgentRunStatus = Exclude<RunStatus, 'queued'>
 export type AgentRun = {
   id: string
   agentId: string
