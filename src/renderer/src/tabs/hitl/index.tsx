@@ -447,9 +447,6 @@ export function InboxDrawer({
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <Mail size={14} strokeWidth={2} className="text-[var(--gt-accent)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Inbox</span>
-        <span className="text-[11px] text-zinc-600">
-          one global inbox · everything that needs you
-        </span>
         <div className="flex-1" />
         {selectedIds.length > 0 && (
           <>
