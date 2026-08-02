@@ -3,7 +3,6 @@ import { ClipboardList, FileText, ChevronDown, ChevronRight, ExternalLink } from
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
-import { SkillHint } from '../../components/SkillHint'
 import type { Tab, TabContext, DocsTree, DocEntry } from '../../lib/types'
 import { relativeTime } from '../../lib/time'
 
@@ -187,12 +186,7 @@ function ReportsTab({ ctx }: { ctx: TabContext }) {
             {ctx.repoPath || ctx.repoRoot.replace(/^.*\//, '')}
           </span>
         </div>
-        <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
-          <SkillHint>
-            Run artifacts from scheduled agents and checks: health, drift, coverage, deps,
-            performance, tickets, and HITL.
-          </SkillHint>
-        </div>
+        <div className="shrink-0 border-b border-[var(--gt-border)] p-2"></div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto p-2">
           {runs === null ? (

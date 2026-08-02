@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import { Markdown } from '../../components/Markdown'
-import { SkillHint } from '../../components/SkillHint'
 import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, DocsTree, DocEntry, DocCategory } from '../../lib/types'
 
@@ -175,12 +174,7 @@ function DocsTab({ ctx }: { ctx: TabContext }) {
           <span className="text-[11px] text-zinc-600">{totalCount}</span>
         </div>
         <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
-          <div className="mb-2">
-            <SkillHint>
-              Durable project memory: architecture, ADRs, runbooks, learnings, changelog, and
-              generated references.
-            </SkillHint>
-          </div>
+          <div className="mb-2"></div>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}

@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import { Badge } from '../../components/ui'
 import type { BadgeTone } from '../../components/ui'
-import { SkillHint } from '../../components/SkillHint'
 import { useResizableWidth, ResizeHandle } from '../../components/ResizeHandle'
 import { relativeTime } from '../../lib/time'
 import { daemonHealth, stalenessOf } from '../../../../shared/monitor-liveness'
@@ -986,12 +985,7 @@ function MonitoringTab(_: { ctx: TabContext }) {
             </div>
           </div>
         )}
-        <div className="shrink-0 border-b border-[var(--gt-border)] p-2">
-          <SkillHint>
-            Monitors run on their own schedule via the monitor daemon — no agent, no inference. For
-            automation, use a Schedule.
-          </SkillHint>
-        </div>
+        <div className="shrink-0 border-b border-[var(--gt-border)] p-2"></div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {monitors === null ? (

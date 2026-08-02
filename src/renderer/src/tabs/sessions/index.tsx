@@ -111,8 +111,7 @@ function SessionsTab({ ctx }: { ctx: TabContext }) {
           <div className="w-[42%] min-w-[280px] overflow-y-auto border-r border-[var(--gt-border)]">
             <div className="border-b border-[var(--gt-border)] p-2">
               <SkillHint>
-                Working notebook for one goal: context, checklist, tickets, branches, PRs,
-                decisions, and follow-ups. Use{' '}
+                Start and end from the terminal with{' '}
                 <code className="font-mono text-zinc-300">/session-start "goal"</code> and{' '}
                 <code className="font-mono text-zinc-300">/session-end</code>.
               </SkillHint>
