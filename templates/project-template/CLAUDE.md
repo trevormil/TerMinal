@@ -11,7 +11,14 @@
 ## [1] Operating principles
 
 Global §11 (production-grade always, code is cheap / maintenance is not,
-don't trust your internal clock, nothing is static) applies. The loop:
+don't trust your internal clock, nothing is static) applies.
+
+> **Skill names:** workflow skills are written bare here (`/ticket`,
+> `/session-start`, …). In **Claude Code** they ship globally via the tm
+> plugin and are invoked namespaced: `/tm:ticket`, `/tm:session-start`, etc.
+> In **Codex** the per-repo `.codex/skills` mirror keeps the bare names.
+
+The loop:
 
 ```
 /session-start "<goal>"   →  seed live session doc (central state)
@@ -25,7 +32,8 @@ don't trust your internal clock, nothing is static) applies. The loop:
 ```
 
 Supporting: `/test-suite`, `/security-scan`, `/check`, `/merge-sync`,
-`/document` + `/document-audit`, `/notify`, `/stacked-mr`, `/factory`.
+`/document` + `/document-audit`, `/stacked-mr`, `/factory` (+ `/notify` —
+Codex mirror / personal setup only).
 
 ## [2] TDD gate (non-negotiable)
 

@@ -62,6 +62,7 @@ import type {
   PinnedPanel,
   AlertChannelId,
   UpdateCheckResult,
+  TmPluginStatus,
   BridgePairing,
   BridgePushStatus,
   BridgeStatus,
@@ -890,13 +891,7 @@ function RebuildPanel() {
 // ~/.config/TerMinal/plugin and linked as ~/.claude/skills/tm. Startup keeps it
 // current; Sync repairs the copy + symlink on demand.
 function TmPluginPanel() {
-  const [status, setStatus] = useState<{
-    installed: boolean
-    linked: boolean
-    version?: string
-    path?: string
-    codexSkills?: number
-  } | null>(null)
+  const [status, setStatus] = useState<TmPluginStatus | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -912,6 +907,8 @@ function TmPluginPanel() {
       const r = await window.gt.plugin.sync()
       if (!r.ok) setError(r.error)
       await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setSyncing(false)
     }
@@ -922,8 +919,8 @@ function TmPluginPanel() {
     : !status.installed
       ? 'Not installed'
       : !status.linked
-        ? `v${status.version} installed — ~/.claude/skills/tm link missing`
-        : `v${status.version} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
+        ? `v${status.version ?? '?'} installed — ~/.claude/skills/tm link missing`
+        : `v${status.version ?? '?'} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
   const stateColor =
     status && status.installed && status.linked ? 'text-[var(--gt-green)]' : 'text-amber-400'
 
@@ -932,7 +929,9 @@ function TmPluginPanel() {
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-[11.5px] text-zinc-300">tm plugin (global skills)</div>
-          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>{stateText}</div>
+          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>
+            {stateText}
+          </div>
         </div>
         <button
           onClick={sync}

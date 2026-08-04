@@ -59,7 +59,7 @@ say ".codex/skills, .codex/hooks, .codex/hooks.workflow.json, .agents, .github/w
 # `notify` is intentionally NOT in the list: it is personal machinery excluded
 # from the plugin, so an existing per-repo copy keeps working.
 echo "[migrate] per-repo Claude machinery → tm plugin"
-removed=0
+migrated=0
 BACKUP="$DST/.claude/pre-tm-backup"
 migrate() { # <path relative to .claude/>
   local src="$DST/.claude/$1"
@@ -67,7 +67,7 @@ migrate() { # <path relative to .claude/>
   mkdir -p "$BACKUP/$(dirname "$1")"
   rm -rf "${BACKUP:?}/$1"
   mv "$src" "$BACKUP/$1"
-  removed=1
+  migrated=1
 }
 for s in check code-review digest document document-audit emergency-fix \
          enqueue-request factory knowledge knowledge-rag listener-inbox \
@@ -87,9 +87,12 @@ for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
   migrate "hooks/$h"
 done
 rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" 2>/dev/null || true
-# Drop settings.json hook entries that point at the removed scripts.
-if [ -f "$DST/.claude/settings.json" ] && command -v python3 >/dev/null 2>&1; then
-  python3 - "$DST/.claude/settings.json" <<'PY' || true
+# Drop settings.json hook entries that point at the removed scripts. If this
+# can't run (no python3 / unparseable settings.json), warn — otherwise every
+# tool call in the repo exits 127 on the missing hook until fixed by hand.
+if [ -f "$DST/.claude/settings.json" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$DST/.claude/settings.json" <<'PY' || say "WARNING: could not rewrite .claude/settings.json — remove hook entries pointing at .claude/hooks/*.sh by hand"
 import json, sys
 p = sys.argv[1]
 d = json.load(open(p))
@@ -117,8 +120,11 @@ if isinstance(hooks, dict):
 if changed:
     open(p, 'w').write(json.dumps(d, indent=2) + '\n')
 PY
+  else
+    say "WARNING: python3 not found — remove settings.json hook entries pointing at .claude/hooks/*.sh by hand"
+  fi
 fi
-[ "$removed" = 1 ] && say "moved old per-repo Claude skills/bin/hooks to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
+[ "$migrated" = 1 ] && say "moved old per-repo Claude skills/bin/hooks to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
                    || say "no legacy Claude machinery found"
 
 # forge selector — don't clobber an existing choice

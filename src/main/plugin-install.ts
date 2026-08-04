@@ -1,4 +1,17 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { terminalConfigDir } from './config-dir'
@@ -33,7 +46,9 @@ function resolvePaths(opts?: PluginPaths): {
 
 function readVersion(pluginDir: string): string | undefined {
   try {
-    const manifest = JSON.parse(readFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf8'))
+    const manifest = JSON.parse(
+      readFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf8'),
+    )
     return typeof manifest.version === 'string' ? manifest.version : undefined
   } catch {
     return undefined
@@ -43,13 +58,15 @@ function readVersion(pluginDir: string): string | undefined {
 export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInstallResult {
   const { configDir, claudeSkillsDir, codexSkillsDir } = resolvePaths(opts)
   const manifest = join(srcDir, '.claude-plugin', 'plugin.json')
-  if (!existsSync(manifest)) return { ok: false, error: `plugin source missing manifest: ${manifest}` }
+  if (!existsSync(manifest))
+    return { ok: false, error: `plugin source missing manifest: ${manifest}` }
   const version = readVersion(srcDir)
   if (!version) return { ok: false, error: `unreadable plugin.json version in ${srcDir}` }
 
   const dest = join(configDir, 'plugin')
-  // pid-suffixed staging so concurrent installs (launch + Settings sync) never
-  // interleave writes into the same staging tree.
+  // pid-suffixed staging so two app *instances* (no single-instance lock)
+  // never interleave writes into the same staging tree; within one process
+  // this is synchronous and can't race.
   const staging = `${dest}.staging-${process.pid}`
   const old = `${dest}.old-${process.pid}`
   try {
@@ -62,12 +79,24 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
     cpSync(srcDir, staging, { recursive: true })
     if (existsSync(dest)) renameSync(dest, old)
     renameSync(staging, dest)
-    rmSync(old, { recursive: true, force: true })
   } catch (e) {
     // Roll the old tree back if the swap died between the renames.
     if (!existsSync(dest) && existsSync(old)) renameSync(old, dest)
     rmSync(staging, { recursive: true, force: true })
     return { ok: false, error: `plugin copy failed: ${e instanceof Error ? e.message : String(e)}` }
+  }
+  // Post-swap cleanup is best-effort: the install already succeeded, so a
+  // failed delete must not fail the call. Sweeps this run's old tree plus any
+  // staging/old leftovers from crashed runs whose pid is no longer alive.
+  try {
+    rmSync(old, { recursive: true, force: true })
+    for (const entry of readdirSync(configDir)) {
+      const m = entry.match(/^plugin\.(?:staging|old)-(\d+)$/)
+      if (m && Number(m[1]) !== process.pid && !isProcessAlive(Number(m[1])))
+        rmSync(join(configDir, entry), { recursive: true, force: true })
+    }
+  } catch {
+    /* best effort */
   }
 
   const link = join(claudeSkillsDir, 'tm')
@@ -82,7 +111,10 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
     if (st) {
       if (!st.isSymbolicLink()) {
         // A real ~/.claude/skills/tm is the user's own — never overwrite it.
-        return { ok: false, error: `~/.claude/skills/tm exists and is not a symlink — move it aside to enable the tm plugin` }
+        return {
+          ok: false,
+          error: `~/.claude/skills/tm exists and is not a symlink — move it aside to enable the tm plugin`,
+        }
       }
       // A symlink pointing elsewhere is repointed (deliberate: symlinks here
       // are install wiring, not content; a user's real skill dir is protected
@@ -91,7 +123,10 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
     }
     if (!existsSync(link)) symlinkSync(dest, link)
   } catch (e) {
-    return { ok: false, error: `plugin symlink failed: ${e instanceof Error ? e.message : String(e)}` }
+    return {
+      ok: false,
+      error: `plugin symlink failed: ${e instanceof Error ? e.message : String(e)}`,
+    }
   }
 
   // Vendor adapters beyond Claude. Codex has no plugin/namespace mechanism, so
@@ -140,8 +175,25 @@ export function syncCodexSkills(pluginDir: string, codexSkillsDir: string): void
     renameSync(stagingDir, dest)
   }
   for (const entry of readdirSync(codexSkillsDir)) {
-    if (entry.startsWith('tm-') && !entry.includes('.staging-') && !wanted.has(entry))
-      rmSync(join(codexSkillsDir, entry), { recursive: true, force: true })
+    if (!entry.startsWith('tm-') || wanted.has(entry)) continue
+    // Only directories are managed — a user's stray tm-*.md file is theirs.
+    if (!lstatSync(join(codexSkillsDir, entry)).isDirectory()) continue
+    // Another live process's staging dir is off-limits; stale staging dirs
+    // from dead runs get swept with the rest.
+    if (entry.includes('.staging-') && !entry.endsWith(`.staging-${process.pid}`)) {
+      const pid = Number(entry.split('.staging-')[1])
+      if (pid && isProcessAlive(pid)) continue
+    }
+    rmSync(join(codexSkillsDir, entry), { recursive: true, force: true })
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -166,10 +218,19 @@ export function tmPluginStatus(opts?: PluginPaths): PluginStatus {
   }
   let codexSkills = 0
   try {
-    codexSkills = readdirSync(codexSkillsDir).filter((e) => e.startsWith('tm-')).length
+    codexSkills = readdirSync(codexSkillsDir).filter(
+      (e) =>
+        e.startsWith('tm-') &&
+        !e.includes('.staging-') &&
+        lstatSync(join(codexSkillsDir, e)).isDirectory(),
+    ).length
   } catch {
     /* codex not installed */
   }
-  if (!installed) return { installed: false, linked, codexSkills }
-  return { installed, linked, version: readVersion(dest), path: dest, codexSkills }
+  return {
+    installed,
+    linked,
+    codexSkills,
+    ...(installed ? { version: readVersion(dest), path: dest } : {}),
+  }
 }

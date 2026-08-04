@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 const ROOT = join(import.meta.dir, '..', 'plugin')
 const skillDirs = readdirSync(join(ROOT, 'skills')).filter((d) =>
-  statSync(join(ROOT, 'skills', d)).isDirectory()
+  statSync(join(ROOT, 'skills', d)).isDirectory(),
 )
 
 function* walkFiles(dir: string): Generator<string> {
@@ -19,6 +19,15 @@ function* walkFiles(dir: string): Generator<string> {
   }
 }
 
+// Double-path bugs from mechanical rewrites: an absolute root pasted onto
+// another path. One alternative per bug shape:
+//   $(git rev-parse --show-toplevel)/${CLAUDE_PLUGIN_ROOT}/... or .../$HOME/...
+//   ~/$HOME/...
+//   $HOME/$... (any var glued after $HOME)
+//   ${CLAUDE_PLUGIN_ROOT}/$... (any var glued after the plugin root)
+const DOUBLED_PATH =
+  /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
+
 describe('plugin manifest', () => {
   test('plugin.json parses and is named tm', () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8'))
@@ -26,11 +35,29 @@ describe('plugin manifest', () => {
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.description.length).toBeGreaterThan(0)
   })
+
+  test('marketplace.json stays in version lockstep with plugin.json', () => {
+    const manifest = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8'))
+    const marketplace = JSON.parse(
+      readFileSync(join(ROOT, '..', '.claude-plugin', 'marketplace.json'), 'utf8'),
+    )
+    const entry = marketplace.plugins.find((p: { name: string }) => p.name === 'tm')
+    expect(entry.version).toBe(manifest.version)
+    expect(entry.source).toBe('./plugin')
+  })
 })
 
 describe('skills', () => {
   test('at least the core workflow skills are present', () => {
-    for (const s of ['ticket', 'session-start', 'session-end', 'pr-creation', 'code-review', 'factory', 'vibe'])
+    for (const s of [
+      'ticket',
+      'session-start',
+      'session-end',
+      'pr-creation',
+      'code-review',
+      'factory',
+      'vibe',
+    ])
       expect(skillDirs).toContain(s)
   })
 
@@ -54,22 +81,32 @@ describe('no stale per-repo machinery paths', () => {
   // .claude/forge is per-repo *config* (forge selector) and stays; everything
   // else under .claude/ was machinery that now lives in the plugin itself.
   const stale = /\.claude\/(bin|skills|hooks)[/\s`]/
-  // Double-path bugs from mechanical rewrites: an absolute root
-  // (${CLAUDE_PLUGIN_ROOT} or $HOME) appended to another path.
-  const doubled = /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
 
-  for (const file of [...walkFiles(join(ROOT, 'skills')), ...walkFiles(join(ROOT, 'bin')), ...walkFiles(join(ROOT, 'hooks'))]) {
+  for (const file of [
+    ...walkFiles(join(ROOT, 'skills')),
+    ...walkFiles(join(ROOT, 'bin')),
+    ...walkFiles(join(ROOT, 'hooks')),
+  ]) {
     test(file.slice(ROOT.length + 1), () => {
       const body = readFileSync(file, 'utf8')
-      const hits = body.split('\n').filter((l) => stale.test(l) || doubled.test(l))
+      const hits = body.split('\n').filter((l) => stale.test(l) || DOUBLED_PATH.test(l))
       expect(hits).toEqual([])
-      expect(body).not.toContain('autopilot-harness')
+    })
+  }
+})
+
+describe('no private machine references', () => {
+  // Public plugin content must not name the local-only harness repo (its
+  // exemption lives in the machine-local allow-direct-main file instead).
+  for (const dir of ['skills', 'bin', 'hooks']) {
+    test(dir, () => {
+      for (const file of walkFiles(join(ROOT, dir)))
+        expect(readFileSync(file, 'utf8')).not.toContain('autopilot-harness')
     })
   }
 })
 
 describe('template codex mirror + agent specs have no double-path bugs', () => {
-  const doubled = /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
   const TEMPLATE = join(import.meta.dir, '..', 'templates', 'project-template')
 
   for (const dir of ['.codex/skills', '.agents']) {
@@ -77,7 +114,7 @@ describe('template codex mirror + agent specs have no double-path bugs', () => {
       const hits: string[] = []
       for (const file of walkFiles(join(TEMPLATE, dir))) {
         for (const l of readFileSync(file, 'utf8').split('\n'))
-          if (doubled.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
+          if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
       }
       expect(hits).toEqual([])
     })
@@ -100,7 +137,7 @@ describe('hooks', () => {
       for (const m of matchers) for (const h of m.hooks) commands.push(h.command)
     expect(commands.length).toBeGreaterThanOrEqual(3)
     for (const cmd of commands) {
-      expect(cmd.startsWith('${CLAUDE_PLUGIN_ROOT}/')) .toBe(true)
+      expect(cmd).toStartWith('${CLAUDE_PLUGIN_ROOT}/')
       const rel = cmd.replace('${CLAUDE_PLUGIN_ROOT}/', '')
       const p = join(ROOT, rel)
       expect(existsSync(p)).toBe(true)

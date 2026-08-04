@@ -22,8 +22,9 @@ final `git push origin main`. Three legitimate ways to be authorized:
 2. **A deliberate manual launch:** `TERMINAL_FORCE_MAIN=1 claude` from
    the shell, with a written reason in your scrollback. Do NOT export
    the var in `~/.zshrc` — that's how accidents happen.
-3. **A hook-exempt repo** — if the hook on this machine carves out a
-   local-only repo by path, the force-mode mechanism is irrelevant there.
+3. **An allowlisted repo** — repos listed in
+   `~/.config/TerMinal/allow-direct-main` are exempt from the hook; the
+   force-mode mechanism is irrelevant there.
 
 If you are NOT in one of those three contexts, this skill is the wrong
 tool — use `/pr-creation` instead.

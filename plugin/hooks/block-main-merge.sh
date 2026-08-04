@@ -4,9 +4,10 @@
 # human approval. Reads tool call JSON from stdin. Exits 2 with stderr to
 # deny the tool call.
 #
-# Shipped globally by the tm plugin. It has NO repo bypass path — every repo
-# it runs in is treated as a real project where merge-to-main is human-only.
-# (TERMINAL_FORCE_MAIN=1 remains the explicit per-command override.)
+# Shipped globally by the tm plugin. Two escape hatches only: the explicit
+# per-command TERMINAL_FORCE_MAIN=1 override, and a machine-local allowlist
+# (~/.config/TerMinal/allow-direct-main) for repos that are legitimately
+# direct-to-main. Everything else: merge-to-main is human-only.
 
 set -u
 
@@ -35,6 +36,19 @@ fi
 if printf '%s' "$cmd" | grep -qE '(^|[[:space:]&|;(])TERMINAL_FORCE_MAIN=1([[:space:]])'; then
   echo "⚠ FORCE override (TERMINAL_FORCE_MAIN=1): allowing main/master operation — CLAUDE.md §8." >&2
   exit 0
+fi
+
+# Exception: machine-local allowlist. Some repos are legitimately direct-to-main
+# (e.g. a local-only orchestrator repo with no remote and no human-facing MRs —
+# global CLAUDE.md §8's carve-out). The plugin ships to any machine, so those
+# paths live in machine config, not here: one absolute repo path per line in
+# ~/.config/TerMinal/allow-direct-main. Lines starting with # are comments.
+ALLOWLIST="$HOME/.config/TerMinal/allow-direct-main"
+if [ -n "$cwd" ] && [ -f "$ALLOWLIST" ]; then
+  toplevel=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || echo "")
+  if [ -n "$toplevel" ] && grep -qxF "$toplevel" "$ALLOWLIST"; then
+    exit 0
+  fi
 fi
 
 block() {

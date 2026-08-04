@@ -419,7 +419,7 @@ const ROLE_SKILL: Record<LoopRole, string> = {
 function turnPrompt(rec: LoopRecord, role: LoopRole): string {
   const d = loopDir(rec)
   return [
-    `You are the ${role.toUpperCase()} in a TerMinal loop. Read and follow the /${ROLE_SKILL[role]} skill and its shared references under .claude/skills/loop-driver/references/ (principles.md, state.md, roles.md, taste.md).`,
+    `You are the ${role.toUpperCase()} in a TerMinal loop. Read and follow the /tm:${ROLE_SKILL[role]} skill (bare /${ROLE_SKILL[role]} outside Claude Code) and its shared references under ~/.config/TerMinal/plugin/skills/loop-driver/references/ (principles.md, state.md, roles.md, taste.md).`,
     ``,
     `Loop id: ${rec.id}`,
     `Goal: ${rec.goal}`,

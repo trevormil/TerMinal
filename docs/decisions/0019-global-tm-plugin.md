@@ -45,8 +45,9 @@ and support for bundled agents, hooks, and arbitrary files referenced via
 - `templates/project-template` no longer ships `.claude/{skills,bin,hooks}`.
   `bootstrap.sh` seeds repo *data* (`.TerMinal/`, docs skeleton, CI,
   `.agents` contracts) plus the `.codex` mirror, and migrates old repos by
-  removing the machinery earlier bootstraps copied in (name-scoped) and
-  stripping the matching hook entries from `.claude/settings.json`.
+  moving the machinery earlier bootstraps copied in to a recoverable
+  `.claude/pre-tm-backup/` (name-scoped; per-repo `notify` is left in place)
+  and stripping the matching hook entries from `.claude/settings.json`.
 - `.claude-plugin/marketplace.json` at the repo root makes the plugin
   installable without the app: `claude plugin marketplace add <repo>` →
   `claude plugin install tm@terminal`.
@@ -64,9 +65,16 @@ and support for bundled agents, hooks, and arbitrary files referenced via
 - Repos bootstrapped before this change keep working (their local copies
   remain, un-namespaced) and are cleaned up the next time `bootstrap.sh`
   runs against them.
-- Skill invocations change name: `/ticket` → `/tm:ticket`, etc. Agent specs
-  and docs shipped by the template were updated; personal muscle memory will
-  lag for a while.
-- The repo's own `.claude/bin` + `.claude/hooks` copies remain for
-  contributors who don't run the app (settings.json still wires them);
+- Skill invocations change name in Claude Code: `/ticket` → `/tm:ticket`,
+  etc. The Codex mirror keeps bare names, so the template CLAUDE.md documents
+  the bare names with a namespacing note rather than rewriting every mention;
+  personal muscle memory will lag for a while.
+- The merge gate keeps two escape hatches: the per-command
+  `TERMINAL_FORCE_MAIN=1` override and a machine-local allowlist
+  (`~/.config/TerMinal/allow-direct-main`, one absolute repo path per line)
+  for repos that are legitimately direct-to-main (global §8's carve-out) —
+  machine-specific paths never ship inside the public plugin.
+- **TerMinal's own** `.claude/bin` + `.claude/hooks` copies remain for
+  contributors who don't run the app (its settings.json still wires them);
   the plugin's global hooks double-fire harmlessly on machines with the app.
+  Bootstrapped repos, by contrast, have theirs migrated to the backup.

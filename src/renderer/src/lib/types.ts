@@ -1743,6 +1743,17 @@ export type TddInfo = {
   ts: number
 }
 
+// Global tm plugin install state (src/main/plugin-install.ts): the canonical
+// copy at ~/.config/TerMinal/plugin, the ~/.claude/skills/tm link, and the
+// count of synced ~/.codex/skills/tm-* dirs.
+export type TmPluginStatus = {
+  installed: boolean
+  linked: boolean
+  version?: string
+  path?: string
+  codexSkills?: number
+}
+
 // Installed-build update check (src/main/update-check.ts). status 'behind'
 // means the installed app's baked commit is an ancestor of origin/main with
 // commits on top; 'diverged' means it was built from unmerged/branch code.
@@ -2230,13 +2241,7 @@ export type GtApi = {
     onStatus: (cb: (r: UpdateCheckResult) => void) => () => void
   }
   plugin: {
-    status: () => Promise<{
-      installed: boolean
-      linked: boolean
-      version?: string
-      path?: string
-      codexSkills?: number
-    }>
+    status: () => Promise<TmPluginStatus>
     sync: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   }
   observability: {
