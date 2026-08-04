@@ -69,6 +69,13 @@ and support for bundled agents, hooks, and arbitrary files referenced via
   etc. The Codex mirror keeps bare names, so the template CLAUDE.md documents
   the bare names with a namespacing note rather than rewriting every mention;
   personal muscle memory will lag for a while.
+- **The merge gate now runs in every repo, so its false positives cost more.**
+  Matching is textual: the pattern fires wherever the trigger text appears in a
+  command, including inside quotes, a heredoc, or a grep — so writing a doc that
+  mentions the command is blocked too. Kept deliberately: a blocked harmless
+  command is recoverable, an unnoticed push to a protected branch is not. The
+  block message tells the caller how to rephrase. Narrowing the pattern would
+  turn the gate into a bypass.
 - The merge gate keeps two escape hatches: the per-command
   `TERMINAL_FORCE_MAIN=1` override and a machine-local allowlist
   (`~/.config/TerMinal/allow-direct-main`, one absolute repo path per line)

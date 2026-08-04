@@ -51,10 +51,18 @@ if [ -n "$cwd" ] && [ -f "$ALLOWLIST" ]; then
   fi
 fi
 
+# Matching is deliberately textual and conservative: the pattern fires wherever
+# the trigger text appears in the command, including inside quotes or a heredoc
+# (writing docs that mention it, grepping for it, echoing instructions). That
+# false-positive cost is accepted — a blocked-but-harmless command is
+# recoverable, an unnoticed push to a protected branch is not. Do NOT "fix"
+# this by narrowing the pattern into a bypass; the message below tells the
+# caller how to proceed instead.
 block() {
   echo "BLOCKED: $1" >&2
   echo "Rule: no merges or pushes to main/master without human approval (global CLAUDE.md §8)." >&2
   echo "If the human has approved this specific action, run it in a non-Claude terminal." >&2
+  echo "If this command does not actually push (the text just appears in a string, doc, or grep), rewrite it so the literal trigger text isn't in the command — e.g. write the file with the Write tool instead of an inline heredoc." >&2
   exit 2
 }
 
