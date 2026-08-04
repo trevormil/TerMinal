@@ -886,6 +886,71 @@ function RebuildPanel() {
 // origin/main (main process, update-check.ts) and offers the update action —
 // which is just the existing Rebuild flow: bin/release pulls a clean main
 // checkout before building, so "Update now" == release:start.
+// The global tm plugin (skills/hooks for every repo) is installed by the app at
+// ~/.config/TerMinal/plugin and linked as ~/.claude/skills/tm. Startup keeps it
+// current; Sync repairs the copy + symlink on demand.
+function TmPluginPanel() {
+  const [status, setStatus] = useState<{
+    installed: boolean
+    linked: boolean
+    version?: string
+    path?: string
+  } | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = async () => setStatus(await window.gt.plugin.status())
+  useEffect(() => {
+    void refresh()
+  }, [])
+
+  const sync = async () => {
+    setError(null)
+    setSyncing(true)
+    try {
+      const r = await window.gt.plugin.sync()
+      if (!r.ok) setError(r.error)
+      await refresh()
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const stateText = !status
+    ? 'Checking…'
+    : !status.installed
+      ? 'Not installed'
+      : !status.linked
+        ? `v${status.version} installed — ~/.claude/skills/tm link missing`
+        : `v${status.version} · linked as /tm:* skills in every repo`
+  const stateColor =
+    status && status.installed && status.linked ? 'text-[var(--gt-green)]' : 'text-amber-400'
+
+  return (
+    <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11.5px] text-zinc-300">tm plugin (global skills)</div>
+          <div className={`text-[10.5px] ${status ? stateColor : 'text-zinc-500'}`}>{stateText}</div>
+        </div>
+        <button
+          onClick={sync}
+          disabled={syncing}
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
+        >
+          {syncing ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <RotateCcw size={12} strokeWidth={2} />
+          )}
+          Sync
+        </button>
+      </div>
+      {error && <div className="mt-1.5 text-[10.5px] text-amber-400">{error}</div>}
+    </div>
+  )
+}
+
 function UpdatesPanel() {
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
@@ -3686,6 +3751,7 @@ export function SettingsPanel({
                   desc="Is the installed app behind main? Compares the baked build commit against origin/main (local checkout first, GitHub API fallback)."
                 >
                   <UpdatesPanel />
+                  <TmPluginPanel />
                 </Section>
 
                 {/* In-app rebuild — eats own dog food. Spawns bin/release fully

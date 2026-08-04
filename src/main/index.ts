@@ -38,6 +38,8 @@ const cliSrcPath = () =>
   app.isPackaged
     ? join(process.resourcesPath, 'terminal-cli')
     : join(moduleDir, '../../bin/terminal-cli')
+const tmPluginSrcDir = () =>
+  app.isPackaged ? join(process.resourcesPath, 'plugin') : join(moduleDir, '../../plugin')
 
 function sourceCheckoutRoot(marker: string): string {
   const candidates = [
@@ -232,6 +234,7 @@ import {
   killAllAgentRuns,
 } from './agents'
 import { readSchedules } from './schedules'
+import { installTmPlugin, tmPluginStatus } from './plugin-install'
 import {
   installRunner,
   installCli,
@@ -469,6 +472,9 @@ function installBinariesAndReconcile() {
     ? join(process.resourcesPath, 'terminal-mcp-server')
     : join(moduleDir, '../../bin/terminal-mcp-server')
   installMcpServer(mcpSrc)
+  // Global tm plugin: skills/hooks land once at ~/.config/TerMinal/plugin and
+  // load in every repo via the ~/.claude/skills/tm symlink (no per-repo copies).
+  installTmPlugin(tmPluginSrcDir())
   // The Monitoring daemon: refresh the runner + load its single launchd job so
   // checks run on their own process even when the app is closed.
   const monitorSrc = app.isPackaged
@@ -1872,6 +1878,11 @@ function runUpdateCheck() {
   })
 }
 ipcMain.handle('update:check', () => runUpdateCheck())
+
+// Global tm plugin status/sync for the Settings panel. Sync re-copies the
+// bundled plugin and repairs the ~/.claude/skills/tm symlink.
+ipcMain.handle('plugin:status', () => tmPluginStatus())
+ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to
 // a log file the renderer can tail. The release script kills the running

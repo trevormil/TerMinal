@@ -2229,6 +2229,10 @@ export type GtApi = {
     check: () => Promise<UpdateCheckResult>
     onStatus: (cb: (r: UpdateCheckResult) => void) => () => void
   }
+  plugin: {
+    status: () => Promise<{ installed: boolean; linked: boolean; version?: string; path?: string }>
+    sync: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
+  }
   observability: {
     summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{
       totalUsd: number
