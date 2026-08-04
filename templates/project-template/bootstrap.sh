@@ -140,10 +140,15 @@ mkdir -p "$DST/.github" "$DST/.gitlab/merge_request_templates"
   cp "$SRC/.gitlab/merge_request_templates/Default.md" "$DST/.gitlab/merge_request_templates/Default.md"
 say ".editorconfig + PR/MR templates seeded (existing left untouched)"
 
-# settings.json — don't clobber an existing one
+# settings.json — don't clobber an existing one (and don't churn a
+# .workflow copy when the existing file already matches the template)
 if [ -f "$DST/.claude/settings.json" ]; then
-  cp "$SRC/.claude/settings.json" "$DST/.claude/settings.workflow.json"
-  say "settings.json EXISTS → wrote settings.workflow.json (merge the deny list by hand)"
+  if cmp -s "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; then
+    say "settings.json already matches the template"
+  else
+    cp "$SRC/.claude/settings.json" "$DST/.claude/settings.workflow.json"
+    say "settings.json EXISTS → wrote settings.workflow.json (merge the deny list by hand)"
+  fi
 else
   cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"
   say "settings.json installed"

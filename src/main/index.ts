@@ -1817,9 +1817,10 @@ ipcMain.handle('workspace:is-bootstrapped', (_e, repoRoot: string) => {
   if (!repoRoot) return { bootstrapped: true, state: 'full', missing: [], message: '' }
   return classifyBootstrapStatus(repoRoot, (rel) => existsSync(join(repoRoot, rel)))
 })
-// Run project-template/bootstrap.sh against a repo. The script is idempotent
-// and skips clobbering existing files (it writes `<name>.workflow` sidecars
-// for conflicts). Streams nothing — we just wait and return ok/error.
+// Run project-template/bootstrap.sh against a repo. The script is idempotent:
+// keeps repo data, writes `<name>.workflow` sidecars on conflict, and moves
+// legacy per-repo Claude machinery to .claude/pre-tm-backup/ (the tm plugin
+// serves it now). Streams nothing — we just wait and return ok/error.
 ipcMain.handle('workspace:bootstrap', async (_e, repoRoot: string) => {
   const remote = curRemote()
   if (remote) {

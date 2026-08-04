@@ -2036,7 +2036,7 @@ export function SettingsPanel({
       'Help me finish one-time setup on this machine. Check what already exists before changing anything.',
       '',
       '1. CLIs: ensure `claude` (required) is installed + logged in, plus any of `codex`, `gh`, `glab` I plan to use. Walk me through `gh auth login` / `glab auth login` if needed.',
-      `2. Global agent skills: clone ${repo} and follow its setup docs to install the project-template workflow skills (code-review, iterate, test-suite, document, pr-creation, stacked-mr, notify) into ~/.claude/skills (and ~/.codex/skills for codex). Verify each resolves.`,
+      '2. Global agent skills: nothing to install for Claude Code — TerMinal already installed its tm plugin (~/.claude/skills/tm; /tm:ticket, /tm:code-review, …) and synced tm-* skills into ~/.codex/skills. Just verify `/tm:` skills resolve in a fresh claude session (Settings → Updates → Sync repairs them).',
       '3. (Optional) Telegram: help me create a bot with @BotFather and find my numeric chat id, so I can paste the token + id into TerMinal → Settings → Telegram.',
       '',
       'Summarize what you did and what is left for me.',

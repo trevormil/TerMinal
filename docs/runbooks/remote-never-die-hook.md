@@ -6,8 +6,9 @@ what stops a session from going idle and "dying" after it finishes a task.
 
 ## What it is
 
-- Script: `.claude/hooks/remote-check.sh` (source of truth in this repo; mirrored
-  into `templates/project-template/.claude/hooks/`).
+- Script: `plugin/hooks/remote-check.sh` (source of truth in this repo; shipped
+  globally by the tm plugin's hooks.json — no per-repo install needed. TerMinal's
+  own `.claude/hooks/remote-check.sh` copy remains for app-less contributors).
 - Only **phone-spawned** sessions park (`origin: phone`, set by registering
   with `--origin=phone`). A session registered locally via `/remote-terminal`
   stays `origin: local`: the hook hands it any queued replies and returns
