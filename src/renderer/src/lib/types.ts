@@ -2230,7 +2230,13 @@ export type GtApi = {
     onStatus: (cb: (r: UpdateCheckResult) => void) => () => void
   }
   plugin: {
-    status: () => Promise<{ installed: boolean; linked: boolean; version?: string; path?: string }>
+    status: () => Promise<{
+      installed: boolean
+      linked: boolean
+      version?: string
+      path?: string
+      codexSkills?: number
+    }>
     sync: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   }
   observability: {

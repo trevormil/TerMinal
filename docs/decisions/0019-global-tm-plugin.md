@@ -1,4 +1,4 @@
-# 19. Claude workflow skills ship as a global tm plugin, not per-repo copies
+# 19. Workflow skills ship as a global tm plugin, not per-repo copies
 
 Date: 2026-08-04
 
@@ -30,9 +30,18 @@ and support for bundled agents, hooks, and arbitrary files referenced via
   helper `bin/` scripts. The personal `notify` skill (Telegram dotfile deps)
   is excluded.
 - The app installs it on launch (`plugin-install.ts`): copy to
-  `~/.config/TerMinal/plugin` (staged swap), symlink `~/.claude/skills/tm`.
-  Settings → Updates shows the version + a Sync action. Skills are invoked as
-  `/tm:<skill>` everywhere; hooks apply globally.
+  `~/.config/TerMinal/plugin` (staged swap) — the **vendor-neutral canonical
+  source** — then per-harness adapters expose it:
+  - **Claude Code**: symlink `~/.claude/skills/tm` (skills-dir plugin,
+    `/tm:<skill>` everywhere; hooks apply globally).
+  - **Codex**: skills sync into `~/.codex/skills/tm-<name>` with
+    `${CLAUDE_PLUGIN_ROOT}` rewritten to the literal plugin path (Codex has no
+    plugin/namespace mechanism; only `tm-*` dirs are managed, and the adapter
+    no-ops when `~/.codex` doesn't exist).
+  - **Cursor** has no native skill loading — it is covered via TerMinal's
+    engine picker, not file sync. New harnesses = new adapters over the same
+    canonical dir.
+  Settings → Updates shows the version + a Sync action.
 - `templates/project-template` no longer ships `.claude/{skills,bin,hooks}`.
   `bootstrap.sh` seeds repo *data* (`.TerMinal/`, docs skeleton, CI,
   `.agents` contracts) plus the `.codex` mirror, and migrates old repos by
@@ -46,11 +55,12 @@ and support for bundled agents, hooks, and arbitrary files referenced via
 
 - One source of truth; updating TerMinal updates every repo's workflow at
   once. No more per-repo skill drift, no shadowing of global skills.
-- **Codex is deliberately out of scope**: `codex exec` agents keep the
-  per-repo `.codex/skills` mirror (bootstrap still installs it) because
-  `~/.codex/skills` already holds different same-named global skills and
-  agent specs address skills by bare name. Follow-up: globalize the Codex
-  side once a namespacing story exists.
+- **The per-repo `.codex/skills` mirror survives for now**: bootstrap still
+  installs it because existing repos and agent specs address those skills by
+  bare (unprefixed) name, and `~/.codex/skills` already holds different
+  same-named personal skills. The global `tm-*` sync is additive and
+  collision-free; a follow-up can retire the mirror once bare-name callers
+  migrate to `tm-*`.
 - Repos bootstrapped before this change keep working (their local copies
   remain, un-namespaced) and are cleaned up the next time `bootstrap.sh`
   runs against them.

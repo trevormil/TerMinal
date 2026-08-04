@@ -90,10 +90,14 @@ the **tm plugin** to `~/.config/TerMinal/plugin` and links it as
 with zero setup. **Settings → Updates** shows the installed plugin version and
 a Sync action.
 
-Agents the app spins out are plain `claude -p` / `codex exec` processes, so
-they also inherit the rest of your global config — `~/.claude/CLAUDE.md`,
-`~/.codex/`, and any personal skills. Codex still uses the per-repo
-`.codex/skills` mirror seeded by bootstrap.
+The install is vendor-agnostic: `~/.config/TerMinal/plugin` is the canonical
+source and per-harness adapters expose it — Claude gets the `/tm:*` plugin,
+Codex gets the same skills synced as `~/.codex/skills/tm-*` (path variables
+resolved), and new harnesses just need a new adapter. Agents the app spins out
+are plain `claude -p` / `codex exec` processes, so they also inherit the rest
+of your global config — `~/.claude/CLAUDE.md`, `~/.codex/`, and any personal
+skills. Repos bootstrapped from the template additionally carry the per-repo
+`.codex/skills` mirror (bare-name skills for existing agent specs).
 
 The app works without a rich global config — it enhances the agent/PR
 workflow, it doesn't gate sessions.

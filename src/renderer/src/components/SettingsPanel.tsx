@@ -895,6 +895,7 @@ function TmPluginPanel() {
     linked: boolean
     version?: string
     path?: string
+    codexSkills?: number
   } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -922,7 +923,7 @@ function TmPluginPanel() {
       ? 'Not installed'
       : !status.linked
         ? `v${status.version} installed — ~/.claude/skills/tm link missing`
-        : `v${status.version} · linked as /tm:* skills in every repo`
+        : `v${status.version} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
   const stateColor =
     status && status.installed && status.linked ? 'text-[var(--gt-green)]' : 'text-amber-400'
 

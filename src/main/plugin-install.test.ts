@@ -74,6 +74,43 @@ describe('installTmPlugin', () => {
   })
 })
 
+describe('codex sync (vendor-agnostic adapter)', () => {
+  test('installs skills as ~/.codex/skills/tm-<name> with plugin root resolved', () => {
+    const codex = join(tmp, 'codex-skills')
+    writeFileSync(
+      join(src, 'skills', 'ticket', 'SKILL.md'),
+      '---\nname: ticket\ndescription: d\n---\nRun ${CLAUDE_PLUGIN_ROOT}/bin/activity\n'
+    )
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills, codexSkillsDir: codex })
+    expect(res.ok).toBe(true)
+    const out = readFileSync(join(codex, 'tm-ticket', 'SKILL.md'), 'utf8')
+    expect(out).toContain('name: tm-ticket')
+    expect(out).toContain(`${join(cfg, 'plugin')}/bin/activity`)
+    expect(out).not.toContain('CLAUDE_PLUGIN_ROOT')
+  })
+
+  test('removes stale tm-* dirs but never touches foreign skills', () => {
+    const codex = join(tmp, 'codex-skills')
+    mkdirSync(join(codex, 'tm-oldskill'), { recursive: true })
+    mkdirSync(join(codex, 'user-skill'), { recursive: true })
+    writeFileSync(join(codex, 'user-skill', 'SKILL.md'), 'mine')
+    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills, codexSkillsDir: codex })
+    expect(existsSync(join(codex, 'tm-oldskill'))).toBe(false)
+    expect(readFileSync(join(codex, 'user-skill', 'SKILL.md'), 'utf8')).toBe('mine')
+  })
+
+  test('skips codex sync when no codex dir parent exists', () => {
+    // homedir has no ~/.codex → adapter should no-op rather than create one
+    const res = installTmPlugin(src, {
+      configDir: cfg,
+      claudeSkillsDir: skills,
+      codexSkillsDir: join(tmp, 'no-codex-here', 'skills'),
+    })
+    expect(res.ok).toBe(true)
+    expect(existsSync(join(tmp, 'no-codex-here'))).toBe(false)
+  })
+})
+
 describe('tmPluginStatus', () => {
   test('reports not installed before install', () => {
     const st = tmPluginStatus({ configDir: cfg, claudeSkillsDir: skills })
@@ -81,12 +118,14 @@ describe('tmPluginStatus', () => {
     expect(st.linked).toBe(false)
   })
 
-  test('reports version and link after install', () => {
-    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
-    const st = tmPluginStatus({ configDir: cfg, claudeSkillsDir: skills })
+  test('reports version, link, and codex sync after install', () => {
+    const codex = join(tmp, 'codex-skills')
+    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills, codexSkillsDir: codex })
+    const st = tmPluginStatus({ configDir: cfg, claudeSkillsDir: skills, codexSkillsDir: codex })
     expect(st.installed).toBe(true)
     expect(st.version).toBe('0.1.0')
     expect(st.linked).toBe(true)
     expect(st.path).toBe(join(cfg, 'plugin'))
+    expect(st.codexSkills).toBe(1)
   })
 })
