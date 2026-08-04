@@ -2030,7 +2030,6 @@ export function SettingsPanel({
     else setMcpState({ ok: true, installed: r.installed })
   }
   const copySetupPrompt = async () => {
-    const repo = s?.templateRepo || 'https://github.com/trevormil/project-template'
     const prompt = [
       'I just installed TerMinal (an Electron alt-terminal for AI coding agents).',
       'Help me finish one-time setup on this machine. Check what already exists before changing anything.',
