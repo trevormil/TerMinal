@@ -71,7 +71,7 @@ anything else that can run a shell command.
 - **Replies queue behind a delivery cursor**, so a message sent while the agent
   is busy is handed over at its next check — exactly once — rather than needing
   the agent to be blocked at that moment.
-- **`.claude/hooks/remote-check.sh`** is the always-on listener: a Stop hook
+- **the tm plugin's `remote-check.sh` hook** is the always-on listener: a Stop hook
   that blocks the turn ending when something is waiting, so replies arrive
   without the agent polling. Silent and exit 0 wherever no session is
   registered, which is most sessions.
@@ -174,6 +174,10 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   `git check-ignore` marking for the dimmed tree.
 - `scaffold.ts` — new-repo scaffolding from the embedded template (or a
   clone fallback in the packaged app).
+- `plugin-install.ts` — installs the global **tm plugin** on launch: copies the
+  bundled `plugin/` (workflow skills/hooks/bin) to `~/.config/TerMinal/plugin`
+  and links `~/.claude/skills/tm`, so every repo gets `/tm:*` skills with no
+  per-repo bootstrap ([ADR-0019](decisions/0019-global-tm-plugin.md)).
 - `repo.ts` — `repoForCwd` (origin → host/owner/repo), `repoRootOf`, git status.
 - `settings.ts` — self-configuring persisted settings (every key has a working
   default; `''` resolves at read time) + legacy-shape migration. `env.ts`
@@ -197,7 +201,7 @@ offline, survive a fresh clone):
 
 - `activity.jsonl` — the event feed. `events.ts` emits in-process (and notifies
   per a `NOTIFY` map) **and** tails the file so *external* writers — the
-  project-template `.claude/bin/activity` hook, CI, any script — broadcast to the
+  tm plugin's `bin/activity` helper, CI, any script — broadcast to the
   renderer and trigger notifications too (deduped by event id). Events carry an
   optional `ref:{ticket?,pr?}` join key. Notifications fan out through the
   channel-agnostic alert layer (`notify-channels.ts`: Telegram, desktop,

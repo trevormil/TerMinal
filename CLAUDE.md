@@ -91,7 +91,7 @@ contract lives in [`docs/workflow/agent-process.md`](./docs/workflow/agent-proce
 mode is explicit, temporary, gates-off exploration in a disposable worktree/
 `vibe/*` branch — output is disposable signal, never shipped directly. Enter
 with `/vibe`; full contract in
-[`.claude/skills/vibe/SKILL.md`](./.claude/skills/vibe/SKILL.md) (and template
+the `/tm:vibe` skill (and template
 CLAUDE.md §14). This is also where the persona/lanes machinery
 (`src/main/personas.ts`, `runTicketLanes`) earns its keep.
 

@@ -1,0 +1,16 @@
+{
+  "name": "terminal",
+  "owner": {
+    "name": "TerMinal"
+  },
+  "plugins": [
+    {
+      "name": "tm",
+      "source": "./plugin",
+      "description": "TerMinal software-factory workflow for Claude Code: in-repo tickets and sessions, PR/MR flow with a human merge gate, six-axis code review, cadence checks, agent creation, and autonomous factory orchestration — namespaced as /tm:* in every repo.",
+      "version": "0.1.0",
+      "category": "workflow",
+      "keywords": ["terminal", "workflow", "tickets", "code-review", "agents"]
+    }
+  ]
+}
