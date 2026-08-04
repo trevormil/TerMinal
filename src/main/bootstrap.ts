@@ -11,7 +11,7 @@ export const BOOTSTRAP_MARKERS = [
   { label: 'backlog', anyOf: ['.TerMinal/backlog', 'backlog'] },
   { label: 'docs', anyOf: ['docs'] },
   { label: 'sessions', anyOf: ['.TerMinal/sessions', 'sessions'] },
-  { label: '.claude/skills', anyOf: ['.claude/skills'] },
+  // Claude-side skills are global (tm plugin) — only the Codex mirror is per-repo.
   { label: '.codex/skills', anyOf: ['.codex/skills'] },
 ] as const
 

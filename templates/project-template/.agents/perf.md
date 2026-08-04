@@ -50,7 +50,7 @@ If the repo has **no benchmark script**, write a single artifact
      to inefficient form) → opt-in fix-attempt PR. Default off.
 6. **Write artifact** to `.TerMinal/reports/perf/<short_sha>.md`.
 7. **Update state** + (if improvement and stable) baseline.
-8. **Activity** — `.claude/bin/activity check "Perf · <regressions> regressions · <improvements> wins" "@ <short_sha>"`.
+8. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Perf · <regressions> regressions · <improvements> wins" "@ <short_sha>"`.
 
 ## Output artifact
 

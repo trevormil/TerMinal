@@ -55,10 +55,10 @@ published). Reasonable cadence: skip only if `<5 min` since `lastRunAt` AND
      dep audit shows High CVEs, last commit > 30 days.
    - **`healthy`** — none of the above.
 4. **Write artifact** — `.TerMinal/reports/health/<short_sha>.md` with the breakdown.
-5. **HITL if unhealthy** — `.claude/bin/hitl "Repo health: unhealthy" "<list of failing probes>"`.
+5. **HITL if unhealthy** — `$HOME/.config/TerMinal/plugin/bin/hitl "Repo health: unhealthy" "<list of failing probes>"`.
    Skip HITL on `degraded` (just emit Activity) to avoid alert fatigue.
 6. **Update state** — `lastScannedSha`, `lastRunAt`, `lastStatus`.
-7. **Activity** — `.claude/bin/activity check "Health · <status> · <N>/N probes ok" "@ <short_sha>"`.
+7. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Health · <status> · <N>/N probes ok" "@ <short_sha>"`.
 
 ## Output artifact
 

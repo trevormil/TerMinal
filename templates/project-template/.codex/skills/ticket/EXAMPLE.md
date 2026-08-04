@@ -89,7 +89,7 @@ tickets and link them with `depends_on`.
 
 `.TerMinal/backlog/NNNN-kebab-case-title.md`, e.g.
 `.TerMinal/backlog/0042-rate-limit-join.md`.
-Allocate the next id atomically with `.claude/skills/ticket/bin/next-ticket-id`.
+Allocate the next id atomically with `$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id`.
 
 ## Body
 

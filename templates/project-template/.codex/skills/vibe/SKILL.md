@@ -39,7 +39,7 @@ This skill sets up that contract and arms the guardrails. See CLAUDE.md §14.
    ```
 
    For a single-file spike, at minimum cut a `vibe/*` branch. The
-   `.claude/hooks/block-main-merge.sh` hook (global §8) already makes
+   `block-main-merge.sh` hook (tm plugin, global §8) already makes
    merge-to-main impossible — vibe mode does not loosen that.
 
 2. **No production side effects.** No prod infra, secrets, external services,

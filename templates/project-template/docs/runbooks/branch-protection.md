@@ -4,7 +4,7 @@ last-verified: 2026-01-01
 anchor: RB-branch-protection
 ---
 
-The `.claude/hooks/block-main-merge.sh` hook stops *agents* from merging/pushing
+The tm plugin's `block-main-merge.sh` hook stops *agents* from merging/pushing
 to `main`. Forge-side **branch protection** is the complement: it stops a
 *human* (or a stray force-push from the web UI) from bypassing review. Set it up
 once per repo. ~2 minutes; costs nothing.

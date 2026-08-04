@@ -56,8 +56,8 @@ model="${TERMINAL_MODEL:-haiku}"
 # terminal-cli mcp request_agent_artifact repo="$(basename "$repo")" agentId=knowledge-base title="Question" prompt="..."
 #
 # Portable repo-local fallbacks available in project-template repos:
-# .claude/bin/list-agents
-# .claude/bin/request-agent-artifact --agent knowledge-base --title "Question" -- "Prompt..."
+# $HOME/.config/TerMinal/plugin/bin/list-agents
+# $HOME/.config/TerMinal/plugin/bin/request-agent-artifact --agent knowledge-base --title "Question" -- "Prompt..."
 ```
 
 When calling an engine from inside the script:
@@ -82,10 +82,10 @@ Rules:
 - Never merge to `main`/`master`.
 - Open a PR/MR only when the script creates concrete code changes.
 - Use `terminal-cli ticket` for findings the agent should not fix in the same run.
-- Use `terminal-cli mcp list_agents` or `.claude/bin/list-agents` before filing
+- Use `terminal-cli mcp list_agents` or `$HOME/.config/TerMinal/plugin/bin/list-agents` before filing
   tickets that need an owner agent.
 - Use `terminal-cli mcp request_agent_artifact` or
-  `.claude/bin/request-agent-artifact` for focused cross-domain knowledge
+  `$HOME/.config/TerMinal/plugin/bin/request-agent-artifact` for focused cross-domain knowledge
   requests. Keep the returned artifact path and a short summary; do not paste
   long delegated transcripts into the parent prompt.
 - At the end of implementation-style agents, file follow-up tickets for any

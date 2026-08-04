@@ -65,7 +65,7 @@ ticket closed or a new ADR landed — check each category independently.
 5. **Open PR** with `--base main` and title `docs: auto-regen <category list>`.
    Branch: `auto-docs/<short_sha>`. Body: per-file regen reason summary.
 6. **Update state** — `lastScannedSha = HEAD`.
-7. **Activity** — `.claude/bin/activity doc "Auto-docs · <N> files regenerated" "<categories>"`.
+7. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity doc "Auto-docs · <N> files regenerated" "<categories>"`.
 
 ## Owned files (per category, declared in `owned.yml`)
 

@@ -135,9 +135,9 @@ check `.agents/owned.yml`).
 
 Per the spec's decision rules, choose for each finding:
 - **auto-PR** (writer mode only) — branch `<kind>/<short_sha>`, commit,
-  `git push -u origin`, open PR via `.claude/skills/pr-creation` (forge-aware).
-- **ticket** — `.claude/skills/ticket` with the artifact path attached.
-- **HITL** — `.claude/bin/hitl "<title>" "<action needed>"` for true blockers
+  `git push -u origin`, open PR via the pr-creation skill (forge-aware).
+- **ticket** — the ticket skill with the artifact path attached.
+- **HITL** — `$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>"` for true blockers
   (Critical CVE, ADR contradiction the agent can't resolve, etc.).
 - **activity-only** — for findings worth surfacing but not actionable yet.
 
@@ -167,7 +167,7 @@ Kinds may persist additional fields (coverage: `lastCoveragePct`, perf:
 ### 8. Activity
 
 ```bash
-.claude/bin/activity check "Check · <kind> · <summary>" "@ <short_sha>"
+$HOME/.config/TerMinal/plugin/bin/activity check "Check · <kind> · <summary>" "@ <short_sha>"
 ```
 
 ## Hard rules

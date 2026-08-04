@@ -16,7 +16,7 @@ Ticket intake
   |
   v
 Agent selection
-  - list_agents / .claude/bin/list-agents
+  - list_agents / $HOME/.config/TerMinal/plugin/bin/list-agents
   - split multi-agent work into linked tickets
   |
   v
@@ -70,7 +70,7 @@ list_agents({repo})
 Fallback:
 
 ```bash
-.claude/bin/list-agents
+$HOME/.config/TerMinal/plugin/bin/list-agents
 ```
 
 The result is a compact list of assignable agents:
@@ -177,7 +177,7 @@ request_agent_artifact({
 Fallback:
 
 ```bash
-.claude/bin/request-agent-artifact --agent security-sweep --title "Auth risk check" -- "Review ticket #123 for auth risks and cite paths."
+$HOME/.config/TerMinal/plugin/bin/request-agent-artifact --agent security-sweep --title "Auth risk check" -- "Review ticket #123 for auth risks and cite paths."
 ```
 
 The delegate writes `.TerMinal/agent-requests/<run>/report.md`. The caller keeps

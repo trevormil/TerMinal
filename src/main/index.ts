@@ -1791,9 +1791,9 @@ ipcMain.handle('mcp:install', () => {
 })
 
 // Workspace bootstrap helpers.
-// "Bootstrapped" === the project-template machinery is present in the repo
-// (we check .agents/ as a low-effort proxy — the other dirs come together
-// with it). Used by the in-session banner.
+// "Bootstrapped" === the project-template repo data + Codex mirror are present
+// (BOOTSTRAP_MARKERS in bootstrap.ts; Claude skills come from the global tm
+// plugin, not the repo). Used by the in-session banner.
 // First-user-prompt for an arbitrary session id (not just the active one).
 // Used by the auto-naming flow in App.tsx — labels brand-new sessions with a
 // truncated version of what the user actually asked Claude to do, instead of

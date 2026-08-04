@@ -23,7 +23,7 @@ set -uo pipefail
 : "${TERMINAL_REPO:?must be invoked via the harness}"
 
 cd "$TERMINAL_REPO" || exit 1
-forge=$(./.claude/bin/forge 2>/dev/null || echo "github")
+forge=$($HOME/.config/TerMinal/plugin/bin/forge 2>/dev/null || echo "github")
 
 # Dry-run mode: classify + log, but DON'T push. Toggle in
 # ~/.config/TerMinal/ci-watchdog.json: { "dryRun": true }

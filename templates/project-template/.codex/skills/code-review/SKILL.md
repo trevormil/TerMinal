@@ -14,7 +14,7 @@ in v2 repos, or `.reviews/<pr-number>/<short_sha>.md` in legacy v1 repos.
 The schema, scoring rubric, severity rules, and verdict logic live in
 [`.agents/code-review.md`](../../../.agents/code-review.md).
 
-Forge: **GitHub or GitLab**, auto-detected (`.claude/bin/forge`). Artifacts
+Forge: **GitHub or GitLab**, auto-detected (`$HOME/.config/TerMinal/plugin/bin/forge`). Artifacts
 are **in-repo** — no central dashboard.
 
 ## Workflow (three deterministic stages around one codex call)
@@ -32,7 +32,7 @@ are **in-repo** — no central dashboard.
 **Stage 1 — preflight (always runs, free, fast):**
 
 ```bash
-PACKET=$(./.claude/bin/code-review-preflight "$PR_URL")
+PACKET=$($HOME/.config/TerMinal/plugin/bin/code-review-preflight "$PR_URL")
 EXIT=$?
 ```
 
@@ -91,7 +91,7 @@ via the externalized prompt template `prompt.md`:
 sed "s|{{PR_URL}}|$PR_URL|; s|{{HEAD_SHA}}|$HEAD|; s|{{SHORT_SHA}}|$SHORT|; \
      s|{{PR_NUMBER}}|$PR|; s|{{BASE_BRANCH}}|$BASE|; s|{{PACKET_PATH}}|$PACKET|; \
      s|{{REPO_BASENAME}}|$REPO|" \
-  .claude/skills/code-review/prompt.md > /tmp/cr-prompt-$$.txt
+  $HOME/.config/TerMinal/plugin/skills/code-review/prompt.md > /tmp/cr-prompt-$$.txt
 
 codex exec -s danger-full-access -C "$PWD" "$(cat /tmp/cr-prompt-$$.txt)"
 ```
@@ -100,7 +100,7 @@ The prompt instructs codex to:
 - Read the packet for recon (no shell turns to rediscover PR metadata)
 - Pull the diff with `git diff origin/<base>...<head>`
 - Score six axes per `.agents/code-review.md`
-- Run `.claude/skills/security-scan` in diff mode for the Security axis floor
+- Run the security-scan skill in diff mode for the Security axis floor
 - Emit FRESH scan findings in a fenced ` ```findings-new ` JSON block at the
   end of the artifact body (NOT the merged state — the helper handles that)
 - NOT compute verdict / merge_ready — the helper does it deterministically
@@ -119,7 +119,7 @@ REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .revie
 awk '/```findings-new/{f=1;next} /```/{f=0} f' "$REVIEW_ROOT/$PR/$SHORT.md" > /tmp/findings-new-$$.json
 
 # Merge with prior findings.json — handles ids, first_seen_sha, auto-resolved
-STATS=$(./.claude/bin/findings-merge "$PR" "$HEAD" /tmp/findings-new-$$.json)
+STATS=$($HOME/.config/TerMinal/plugin/bin/findings-merge "$PR" "$HEAD" /tmp/findings-new-$$.json)
 
 # Extract scorecard from artifact frontmatter
 SCORECARD=$(yq -r '{correctness, security, architecture, conformance, quality, dependencies}' \
@@ -127,7 +127,7 @@ SCORECARD=$(yq -r '{correctness, security, architecture, conformance, quality, d
 
 # Compute verdict deterministically
 TEST_STATUS=$(jq -r '.test_result.status' "$PACKET")
-VERDICT=$(./.claude/bin/compute-verdict "$PR" /tmp/scorecard-$$.json --test-status "$TEST_STATUS")
+VERDICT=$($HOME/.config/TerMinal/plugin/bin/compute-verdict "$PR" /tmp/scorecard-$$.json --test-status "$TEST_STATUS")
 
 # Patch verdict + merge_ready back into the artifact frontmatter
 VERDICT_VAL=$(echo "$VERDICT" | jq -r '.verdict')
@@ -149,9 +149,9 @@ after Stage 3, only when the review passed (`approve` + `merge_ready`), and only
 if the repo has the `/digest` tooling:
 
 ```bash
-if [ "$VERDICT_VAL" = "approve" ] && [ "$MERGE_READY" = "true" ] && [ -x .claude/bin/chunk-diff ]; then
+if [ "$VERDICT_VAL" = "approve" ] && [ "$MERGE_READY" = "true" ] && [ -x $HOME/.config/TerMinal/plugin/bin/chunk-diff ]; then
   git diff "origin/$BASE...$HEAD" > "$REVIEW_ROOT/$PR/$SHORT.diff.patch"
-  .claude/bin/chunk-diff --patch "$REVIEW_ROOT/$PR/$SHORT.diff.patch" \
+  $HOME/.config/TerMinal/plugin/bin/chunk-diff --patch "$REVIEW_ROOT/$PR/$SHORT.diff.patch" \
     --pr "$REPO#$PR" --short "$SHORT" \
     --out "$REVIEW_ROOT/$PR/$SHORT.chunks.json" \
     --scoped-out "$REVIEW_ROOT/$PR/$SHORT.scoped.diff" \
@@ -159,11 +159,11 @@ if [ "$VERDICT_VAL" = "approve" ] && [ "$MERGE_READY" = "true" ] && [ -x .claude
 
   sed "s|{{PR}}|$PR|; s|{{SHORT}}|$SHORT|; s|{{BASE}}|$BASE|; s|{{HEAD}}|$HEAD|; \
        s|{{DIR}}|$REVIEW_ROOT/$PR|; s|{{DIFF_PATH}}|$REVIEW_ROOT/$PR/$SHORT.scoped.diff|" \
-    .claude/skills/digest/prompt.md > /tmp/cr-digest-$$.txt
+    $HOME/.config/TerMinal/plugin/skills/digest/prompt.md > /tmp/cr-digest-$$.txt
   codex exec -s workspace-write -c model_reasoning_effort="low" -C "$PWD" \
     "$(cat /tmp/cr-digest-$$.txt)" < /dev/null
 
-  [ -f "$REVIEW_ROOT/$PR/$SHORT.digest-patch.json" ] && .claude/bin/merge-digest \
+  [ -f "$REVIEW_ROOT/$PR/$SHORT.digest-patch.json" ] && $HOME/.config/TerMinal/plugin/bin/merge-digest \
     --chunks "$REVIEW_ROOT/$PR/$SHORT.chunks.json" \
     --patch  "$REVIEW_ROOT/$PR/$SHORT.digest-patch.json" || true
 fi

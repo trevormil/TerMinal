@@ -48,7 +48,7 @@ DIR="$REVIEW_ROOT/$PR"; mkdir -p "$DIR"
 # and a SCOPED diff (non-🟢 blocks only) that is what the model actually reads.
 git diff "origin/$BASE...$HEAD" > "$DIR/$SHORT.diff.patch"
 
-.claude/bin/chunk-diff \
+$HOME/.config/TerMinal/plugin/bin/chunk-diff \
   --patch "$DIR/$SHORT.diff.patch" \
   $( [ -f "$DIR/findings.json" ] && echo --findings "$DIR/findings.json" ) \
   --pr "$REPO#$PR" --short "$SHORT" \
@@ -68,7 +68,7 @@ For a **joint MR** (factory/stacked-MR), add `--joint "<member-mr-csv>"`.
 ```bash
 sed "s|{{PR}}|$PR|; s|{{SHORT}}|$SHORT|; s|{{BASE}}|$BASE|; s|{{HEAD}}|$HEAD|; \
      s|{{DIR}}|$DIR|; s|{{DIFF_PATH}}|$DIR/$SHORT.scoped.diff|" \
-  .claude/skills/digest/prompt.md > /tmp/digest-prompt-$$.txt
+  $HOME/.config/TerMinal/plugin/skills/digest/prompt.md > /tmp/digest-prompt-$$.txt
 
 codex exec -s workspace-write -c model_reasoning_effort="low" -C "$PWD" \
   "$(cat /tmp/digest-prompt-$$.txt)" < /dev/null
@@ -96,7 +96,7 @@ around it.
 decisions, recomputes stats):
 
 ```bash
-.claude/bin/merge-digest \
+$HOME/.config/TerMinal/plugin/bin/merge-digest \
   --chunks "$DIR/$SHORT.chunks.json" \
   --patch  "$DIR/$SHORT.digest-patch.json"
 ```

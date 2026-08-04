@@ -14,7 +14,7 @@ that are hurting real users RIGHT NOW. Every other change goes through
 
 The skill ONLY works when the caller is launched with
 `TERMINAL_FORCE_MAIN=1` in the environment. Without it, the global
-`~/.claude/hooks/block-main-merge.sh` PreToolUse hook will refuse the
+`block-main-merge.sh` PreToolUse hook (shipped by the tm plugin) will refuse the
 final `git push origin main`. Three legitimate ways to be authorized:
 
 1. **TerMinal's `emergency-fix` / `unblock-ci` / `revert-main` agents** —

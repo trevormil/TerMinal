@@ -101,5 +101,5 @@ If unclear, ask the user once per candidate.
 After a doc is written, emit a feed event:
 
 ```bash
-.claude/bin/activity doc "Doc · <ADR/runbook/learning> written" "<title>"
+$HOME/.config/TerMinal/plugin/bin/activity doc "Doc · <ADR/runbook/learning> written" "<title>"
 ```

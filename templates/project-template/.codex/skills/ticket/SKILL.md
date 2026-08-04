@@ -33,7 +33,7 @@ installs via Settings), use these instead of reading sections below:
 Saves ~7k tokens vs reading SKILL.md + EXAMPLE.md. The thinker work
 (when to file, type/priority judgment, drafting ACs) still belongs to
 you. Shell-helper path below is the fallback when MCP isn't installed; use
-`.claude/bin/list-agents` as the non-MCP fallback for owner-agent selection.
+`$HOME/.config/TerMinal/plugin/bin/list-agents` as the non-MCP fallback for owner-agent selection.
 
 ---
 
@@ -47,7 +47,7 @@ Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-SKILL="$ROOT/.claude/skills/ticket"
+SKILL="$HOME/.config/TerMinal/plugin/skills/ticket"
 BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$ROOT/.TerMinal/backlog")
 
 "$SKILL/bin/next-ticket-id"      # atomically allocate next id
@@ -84,7 +84,7 @@ Infer from context; ask once only if genuinely unclear.
 - **Agent** — every ticket is assigned to exactly one agent:
   `agent_id`, `agent_scope` (`repo` | `global`), and `agent_kind`
   (`classic` | `persistent`). Use `list_agents({repo})` when MCP is available
-  or `.claude/bin/list-agents` otherwise.
+  or `$HOME/.config/TerMinal/plugin/bin/list-agents` otherwise.
   Default generic implementation work to `1000x-ai-engineer`; route docs,
   testing, security, performance, and DX/tooling tickets to their matching
   specialist when the type or content clearly signals that domain.
@@ -94,7 +94,7 @@ Infer from context; ask once only if genuinely unclear.
 ### 2. Allocate an id
 
 ```bash
-id=$("$(git rev-parse --show-toplevel)/.claude/skills/ticket/bin/next-ticket-id")
+id=$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
 ```
 
 Never hand-edit `.next-id` — use the script.
@@ -146,7 +146,7 @@ Tickets track work; HITL is for human-only blockers (decisions, approvals,
 creds, OAuth/browser flows). Raise to the global inbox (CLAUDE.md [4.2]):
 
 ```bash
-.claude/bin/hitl "<title>" "<exact action + any url/options>"
+$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<exact action + any url/options>"
 ```
 
 Lead with the action; include the url. The HITL helper is append-only from the
@@ -188,12 +188,8 @@ Edit the file directly:
 
 ## Porting to a new repo
 
-If bootstrapped from the workflow template, `bootstrap.sh` already
-installed it — skip. Standalone:
-
-1. Copy `.claude/skills/ticket/` into the target repo.
-2. `chmod +x .claude/skills/ticket/bin/*`.
-3. Add `.TerMinal/backlog/.next-id.lock` (or legacy `backlog/.next-id.lock`) to `.gitignore`.
+Nothing to copy — the skill ships globally with the tm plugin. Per repo, just
+add `.TerMinal/backlog/.next-id.lock` (or legacy `backlog/.next-id.lock`) to `.gitignore`.
 
 First call bootstraps the backlog directory + `.next-id`. Commit the backlog
 directory so the tracker travels with the code.
@@ -201,7 +197,7 @@ directory so the tracker travels with the code.
 ## Activity
 
 ```bash
-.claude/bin/activity ticket-filed "Ticket filed · #<id>" "<title>" --ticket <id>
-.claude/bin/hitl "<title>" "<action needed>"  # only for human-only blockers
-.claude/bin/activity ticket-closed "Ticket closed · #<id>" "<title>" --ticket <id>
+$HOME/.config/TerMinal/plugin/bin/activity ticket-filed "Ticket filed · #<id>" "<title>" --ticket <id>
+$HOME/.config/TerMinal/plugin/bin/hitl "<title>" "<action needed>"  # only for human-only blockers
+$HOME/.config/TerMinal/plugin/bin/activity ticket-closed "Ticket closed · #<id>" "<title>" --ticket <id>
 ```

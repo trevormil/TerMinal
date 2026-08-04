@@ -64,7 +64,7 @@ If it times out it exits non-zero and prints nothing. Choose the safe path,
 
 ## 4. Replies arrive on their own
 
-A **Stop hook** (`.claude/hooks/remote-check.sh`) runs whenever you are about to
+A **Stop hook** (the tm plugin's `remote-check.sh`) runs whenever you are about to
 end a turn. If the human sent something while you were working, it blocks the
 stop and hands you the message as a new instruction. You do not have to poll for
 it, and a message can never sit unread while you idle.

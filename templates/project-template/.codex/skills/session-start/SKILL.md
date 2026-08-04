@@ -41,7 +41,7 @@ for the session — every later skill (and `/session-end`) reads and updates it.
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "$ROOT/.TerMinal/sessions")
-id=$("$ROOT/.claude/skills/session-start/bin/next-session-id")   # e.g. 0007
+id=$("$HOME/.config/TerMinal/plugin/skills/session-start/bin/next-session-id")   # e.g. 0007
 ```
 
 Never hand-edit `.next-id`. Derive a kebab `slug` (≤ 6 words) from the goal.
@@ -53,7 +53,7 @@ This is what makes a session start well. Scan the repo **read-only** and gather
 only goal-relevant context. Run these in parallel where possible and keep the
 model context capped:
 
-- **In-scope tickets** — `"$ROOT/.claude/skills/ticket/bin/tickets" open` and
+- **In-scope tickets** — `"$HOME/.config/TerMinal/plugin/skills/ticket/bin/tickets" open` and
   `... in-progress`. Pull the ones matching the goal (by id if the user named
   them, else by keyword). Read at most 8 ticket bodies; for each, capture the
   one-line title + acceptance criteria. These drive the checklist.
@@ -62,11 +62,11 @@ model context capped:
   List relevant ADRs (`docs/decisions/`), runbooks (`docs/runbooks/`),
   learnings (`docs/learnings/`), and `docs/architecture.md` sections. Read
   only the files that match.
-- **Existing tools / skills** — note which `.claude/skills/` and repo `bin/`
+- **Existing tools / skills** — note which workflow skills and repo `bin/`
   tools apply to this goal so we reuse instead of rebuild. List names first
   (`find .claude/skills -maxdepth 2 -name SKILL.md | head -40`) and open only
   directly relevant skill docs.
-- **Prior sessions** — `"$ROOT/.claude/skills/session-start/bin/sessions"`.
+- **Prior sessions** — `"$HOME/.config/TerMinal/plugin/skills/session-start/bin/sessions"`.
   Read at most 3 recent or keyword-related session docs, especially their
   **Follow-ups** sections — unfinished work and suggested tickets carry
   forward. Link them in `prior_sessions`.
@@ -124,7 +124,7 @@ referencing, and leave `future`/`icebox` ones as-is.
 
 ### 7. Refresh the live status + announce
 
-Refresh the human-facing snapshot: `.claude/bin/status > .status.md` (gitignored;
+Refresh the human-facing snapshot: `$HOME/.config/TerMinal/plugin/bin/status > .status.md` (gitignored;
 the at-a-glance state for whoever is managing agents in this repo).
 
 Point the user at the session doc path and give a tight summary:
@@ -153,5 +153,5 @@ wait, if the user only wanted the session seeded).
 After seeding the session doc, emit a feed event:
 
 ```bash
-.claude/bin/activity session-start "Session · <goal>" "<slug>"
+$HOME/.config/TerMinal/plugin/bin/activity session-start "Session · <goal>" "<slug>"
 ```

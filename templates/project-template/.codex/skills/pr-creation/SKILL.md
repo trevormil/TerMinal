@@ -29,8 +29,8 @@ Use MCP for deterministic bookkeeping when available:
 Fallback commands:
 
 ```bash
-.claude/bin/list-agents
-.claude/bin/request-agent-artifact --agent knowledge-base --title "Question" -- "Prompt..."
+$HOME/.config/TerMinal/plugin/bin/list-agents
+$HOME/.config/TerMinal/plugin/bin/request-agent-artifact --agent knowledge-base --title "Question" -- "Prompt..."
 ```
 
 ## Inputs
@@ -58,7 +58,7 @@ Fallback commands:
 7. **File follow-up tickets.** Before opening the PR/MR, file owner-scoped
    tickets for deferred work and link dependencies with `depends_on`.
 8. **Push and open PR/MR.** Use `gh pr create` or `glab mr create` according to
-   `.claude/bin/forge`. Do not pass merge/automerge flags.
+   `$HOME/.config/TerMinal/plugin/bin/forge`. Do not pass merge/automerge flags.
 9. **Link back.** Append the PR/MR URL to each ticket's `prs:` and leave status
    `in-progress`; `/merge-sync` closes tickets after human merge.
 10. **Handoff.** Report ticket ids, owner agent, PR/MR URL, branch/head SHA,

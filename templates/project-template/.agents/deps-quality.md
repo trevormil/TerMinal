@@ -49,11 +49,11 @@ If `HEAD == lastScannedSha` AND last advisory feed update was before
 5. **TODO/FIXME aging** — flag entries >90 days old (via `git blame`).
 6. **Decide**:
    - Safe bumps + auto-fix changes → single PR `chore: deps + lint sweep`.
-   - Critical CVE that can't be auto-fixed → HITL via `.claude/bin/hitl`.
+   - Critical CVE that can't be auto-fixed → HITL via `$HOME/.config/TerMinal/plugin/bin/hitl`.
    - Aging TODO/FIXME (>90d) → ticket per cluster.
 7. **Write artifact** to `.TerMinal/reports/deps-quality/<short_sha>.md`.
 8. **Update state** — `lastScannedSha`, `lastAuditAt`, `lastDeps`.
-9. **Activity** — `.claude/bin/activity check "Deps+quality · <N> bumps · <C> CVEs" "@ <short_sha>"`.
+9. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Deps+quality · <N> bumps · <C> CVEs" "@ <short_sha>"`.
 
 ## Output artifact
 

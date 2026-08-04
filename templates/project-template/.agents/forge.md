@@ -10,10 +10,10 @@ already blocks both `gh pr merge` and `glab mr merge`.
 Run the detector — it prints `github` or `gitlab`:
 
 ```bash
-forge="$("$(git rev-parse --show-toplevel)/.claude/bin/forge")"
+forge="$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/bin/forge")"
 ```
 
-Resolution order (`.claude/bin/forge`):
+Resolution order (`$HOME/.config/TerMinal/plugin/bin/forge`):
 1. **Explicit override** — `.claude/forge` file containing `github` or `gitlab`
    (the reliable choice, and required for self-hosted GitLab whose host doesn't
    contain "gitlab", e.g. `git.example.com`).
