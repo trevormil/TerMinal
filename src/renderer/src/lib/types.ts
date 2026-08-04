@@ -1752,6 +1752,8 @@ export type TmPluginStatus = {
   version?: string
   path?: string
   codexSkills?: number
+  /** A marketplace-installed plugin also named tm, which Claude loads instead. */
+  shadowedBy?: string
 }
 
 // Installed-build update check (src/main/update-check.ts). status 'behind'

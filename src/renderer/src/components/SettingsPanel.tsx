@@ -918,11 +918,15 @@ function TmPluginPanel() {
     ? 'Checking…'
     : !status.installed
       ? 'Not installed'
-      : !status.linked
-        ? `v${status.version ?? '?'} installed — ~/.claude/skills/tm link missing`
-        : `v${status.version ?? '?'} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
+      : status.shadowedBy
+        ? `v${status.version ?? '?'} installed but NOT loaded — ${status.shadowedBy} takes precedence. Uninstall it (claude plugin uninstall ${status.shadowedBy}) to use the app-managed copy.`
+        : !status.linked
+          ? `v${status.version ?? '?'} installed — ~/.claude/skills/tm link missing`
+          : `v${status.version ?? '?'} · /tm:* skills in every repo${status.codexSkills ? ` · ${status.codexSkills} codex tm-* skills` : ''}`
   const stateColor =
-    status && status.installed && status.linked ? 'text-[var(--gt-green)]' : 'text-amber-400'
+    status && status.installed && status.linked && !status.shadowedBy
+      ? 'text-[var(--gt-green)]'
+      : 'text-amber-400'
 
   return (
     <div className="mt-2 rounded-lg border border-[var(--gt-border)] bg-black/20 p-3">

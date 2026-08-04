@@ -16,6 +16,20 @@ if (!process.env.TERMINAL_CONFIG_DIR) {
   process.env.TERMINAL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'terminal-test-config-'))
 }
 
+// The same lesson again, for the paths the tm plugin installs into. These live
+// under ~/.claude and ~/.codex, not the TerMinal config dir, so the override
+// above does not cover them — and syncCodexSkills DELETES managed tm-* dirs
+// missing from its source, so one test calling installTmPlugin without an
+// explicit codexSkillsDir wiped 34 real skills out of the developer's
+// ~/.codex/skills. Same rule as above: you may override, you may not forget.
+for (const key of [
+  'TERMINAL_CLAUDE_SKILLS_DIR',
+  'TERMINAL_CODEX_SKILLS_DIR',
+  'TERMINAL_CLAUDE_PLUGINS_DIR',
+]) {
+  if (!process.env[key]) process.env[key] = mkdtempSync(join(tmpdir(), 'terminal-test-skills-'))
+}
+
 // The same lesson one layer out: sandboxing STATE did not sandbox EFFECTS. A
 // test that filed a HITL still appended to the real activity feed (which the
 // running app tails and mirrors to the phone) and still POSTed the Telegram Bot

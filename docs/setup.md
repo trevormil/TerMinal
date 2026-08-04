@@ -88,7 +88,19 @@ the **tm plugin** to `~/.config/TerMinal/plugin` and links it as
 `~/.claude/skills/tm`, so every repo (and every `claude -p` agent) has the
 `/tm:*` skills, the merge-gate/Inbox/remote-check hooks, and the helper `bin/`
 with zero setup. **Settings → Updates** shows the installed plugin version and
-a Sync action. (No app? `claude plugin marketplace add trevormil/TerMinal` then `claude plugin install tm@terminal` gets the same `/tm:*` skills standalone.)
+a Sync action.
+
+**Not running the app?** Install the same skills straight from this repo:
+
+```sh
+claude plugin marketplace add trevormil/TerMinal
+claude plugin install tm@terminal
+```
+
+Pick **one** of the two — they're alternatives, not complements. A
+marketplace-installed `tm` takes precedence over the app's
+`~/.claude/skills/tm`, so doing both leaves the app's copy loaded-but-ignored
+(Settings flags this and tells you which one to uninstall).
 
 The install is vendor-agnostic: `~/.config/TerMinal/plugin` is the canonical
 source and per-harness adapters expose it — Claude gets the `/tm:*` plugin,

@@ -22,7 +22,12 @@ import { terminalConfigDir } from './config-dir'
 // session as tm@skills-dir, skills namespaced /tm:*). Replaces the old
 // per-repo bootstrap copies of skills/hooks/bin.
 
-export type PluginPaths = { configDir?: string; claudeSkillsDir?: string; codexSkillsDir?: string }
+export type PluginPaths = {
+  configDir?: string
+  claudeSkillsDir?: string
+  codexSkillsDir?: string
+  pluginsDir?: string
+}
 export type PluginInstallResult = { ok: true; version: string } | { ok: false; error: string }
 export type PluginStatus = {
   installed: boolean
@@ -30,17 +35,49 @@ export type PluginStatus = {
   version?: string
   path?: string
   codexSkills?: number
+  /** A marketplace-installed plugin also named tm, which Claude loads instead. */
+  shadowedBy?: string
 }
 
 function resolvePaths(opts?: PluginPaths): {
   configDir: string
   claudeSkillsDir: string
   codexSkillsDir: string
+  pluginsDir: string
 } {
+  // Env overrides are the same seam as terminalConfigDir(): syncCodexSkills
+  // DELETES managed tm-* dirs, so a caller that forgets to pass a path must
+  // not fall through to the developer's real ~/.codex/skills. src/
+  // test-preload.ts points these at throwaway dirs for the whole suite.
   return {
     configDir: opts?.configDir ?? terminalConfigDir(),
-    claudeSkillsDir: opts?.claudeSkillsDir ?? join(homedir(), '.claude', 'skills'),
-    codexSkillsDir: opts?.codexSkillsDir ?? join(homedir(), '.codex', 'skills'),
+    claudeSkillsDir:
+      opts?.claudeSkillsDir ??
+      process.env.TERMINAL_CLAUDE_SKILLS_DIR ??
+      join(homedir(), '.claude', 'skills'),
+    codexSkillsDir:
+      opts?.codexSkillsDir ??
+      process.env.TERMINAL_CODEX_SKILLS_DIR ??
+      join(homedir(), '.codex', 'skills'),
+    pluginsDir:
+      opts?.pluginsDir ??
+      process.env.TERMINAL_CLAUDE_PLUGINS_DIR ??
+      join(homedir(), '.claude', 'plugins'),
+  }
+}
+
+// A plugin installed from a marketplace under the name `tm` wins over the
+// skills-dir copy this app manages, and Claude then ignores
+// ~/.claude/skills/tm entirely. Without this the panel would report a healthy
+// link while a different (possibly stale) copy is what actually loads.
+function findShadowingInstall(pluginsDir: string): string | undefined {
+  try {
+    const registry = JSON.parse(
+      readFileSync(join(pluginsDir, 'installed_plugins.json'), 'utf8'),
+    ) as { plugins?: Record<string, unknown> }
+    return Object.keys(registry.plugins ?? {}).find((id) => id === 'tm' || id.startsWith('tm@'))
+  } catch {
+    return undefined // no registry, unreadable, or no marketplace plugins
   }
 }
 
@@ -206,7 +243,7 @@ function* walkFiles(dir: string): Generator<string> {
 }
 
 export function tmPluginStatus(opts?: PluginPaths): PluginStatus {
-  const { configDir, claudeSkillsDir, codexSkillsDir } = resolvePaths(opts)
+  const { configDir, claudeSkillsDir, codexSkillsDir, pluginsDir } = resolvePaths(opts)
   const dest = join(configDir, 'plugin')
   const installed = existsSync(join(dest, '.claude-plugin', 'plugin.json'))
   let linked = false
@@ -227,10 +264,12 @@ export function tmPluginStatus(opts?: PluginPaths): PluginStatus {
   } catch {
     /* codex not installed */
   }
+  const shadowedBy = findShadowingInstall(pluginsDir)
   return {
     installed,
     linked,
     codexSkills,
+    ...(shadowedBy ? { shadowedBy } : {}),
     ...(installed ? { version: readVersion(dest), path: dest } : {}),
   }
 }

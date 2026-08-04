@@ -11,7 +11,7 @@ import {
   symlinkSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { installTmPlugin, tmPluginStatus } from './plugin-install'
 
 let tmp: string
@@ -140,6 +140,69 @@ describe('codex sync (vendor-agnostic adapter)', () => {
     })
     expect(res.ok).toBe(true)
     expect(existsSync(join(tmp, 'no-codex-here'))).toBe(false)
+  })
+})
+
+describe('path seam: defaults never reach the real home under test', () => {
+  // syncCodexSkills deletes managed tm-* dirs, so a caller that omits a path
+  // must land in the throwaway dirs set by src/test-preload.ts. Forgetting one
+  // here previously destroyed 34 skills in the developer's ~/.codex/skills.
+  test('omitting every path writes only inside the test overrides', () => {
+    const res = installTmPlugin(src, { configDir: cfg })
+    expect(res.ok).toBe(true)
+    const home = homedir()
+    for (const key of [
+      'TERMINAL_CLAUDE_SKILLS_DIR',
+      'TERMINAL_CODEX_SKILLS_DIR',
+      'TERMINAL_CLAUDE_PLUGINS_DIR',
+    ]) {
+      expect(process.env[key]).toBeDefined()
+      expect(process.env[key]!.startsWith(join(home, '.claude'))).toBe(false)
+      expect(process.env[key]!.startsWith(join(home, '.codex'))).toBe(false)
+    }
+    // and the install really did land in the override, not the real home
+    expect(existsSync(join(process.env.TERMINAL_CLAUDE_SKILLS_DIR!, 'tm'))).toBe(true)
+  })
+})
+
+describe('tmPluginStatus shadowing detection', () => {
+  // Installing tm from the marketplace AND running the app puts two plugins
+  // named tm on the machine; Claude loads the marketplace copy and silently
+  // ignores ~/.claude/skills/tm, which would otherwise leave Settings claiming
+  // "linked" while Sync does nothing the user can see.
+  const writeRegistry = (pluginsDir: string, entry: string) => {
+    mkdirSync(pluginsDir, { recursive: true })
+    writeFileSync(
+      join(pluginsDir, 'installed_plugins.json'),
+      JSON.stringify({ version: 2, plugins: { [entry]: [{ scope: 'user' }] } }),
+    )
+  }
+
+  test('reports the competing install that takes precedence', () => {
+    const pluginsDir = join(tmp, 'claude-plugins')
+    writeRegistry(pluginsDir, 'tm@terminal')
+    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+    const st = tmPluginStatus({ configDir: cfg, claudeSkillsDir: skills, pluginsDir })
+    expect(st.linked).toBe(true)
+    expect(st.shadowedBy).toBe('tm@terminal')
+  })
+
+  test('no shadowing reported for unrelated installed plugins', () => {
+    const pluginsDir = join(tmp, 'claude-plugins')
+    writeRegistry(pluginsDir, 'compound-engineering@every')
+    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+    const st = tmPluginStatus({ configDir: cfg, claudeSkillsDir: skills, pluginsDir })
+    expect(st.shadowedBy).toBeUndefined()
+  })
+
+  test('no registry file is not an error', () => {
+    installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+    const st = tmPluginStatus({
+      configDir: cfg,
+      claudeSkillsDir: skills,
+      pluginsDir: join(tmp, 'nope'),
+    })
+    expect(st.shadowedBy).toBeUndefined()
   })
 })
 
