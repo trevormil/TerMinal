@@ -14,9 +14,9 @@ AFK", "ping me when done", "steer from Telegram", "going for a walk").
 The send/receive scripts and credentials live in the user's home, not the repo
 (they're personal + secret, so they can't be committed):
 
-- `~/$HOME/.config/TerMinal/plugin/bin/telegram-notify.sh` — **send** a message
-- `~/$HOME/.config/TerMinal/plugin/bin/telegram-poll.sh` — **fetch** new messages (offset-tracked)
-- `~/$HOME/.config/TerMinal/plugin/bin/tg-listener.sh` — **foreground listener loop** (receive)
+- `~/.claude/bin/telegram-notify.sh` — **send** a message
+- `~/.claude/bin/telegram-poll.sh` — **fetch** new messages (offset-tracked)
+- `~/.claude/bin/tg-listener.sh` — **foreground listener loop** (receive)
 - `~/.claude/.telegram-notify.json` — `bot_token` + `chat_id` (mode 600)
 
 If these don't exist on the machine, the bridge can't run — tell the user and
@@ -27,11 +27,11 @@ this skill just operationalizes them for the current repo/session.
 
 1. **Immediately** launch the listener via `Bash(run_in_background=true)`:
    ```
-   Bash(command="~/$HOME/.config/TerMinal/plugin/bin/tg-listener.sh", run_in_background=true)
+   Bash(command="~/.claude/bin/tg-listener.sh", run_in_background=true)
    ```
    The loop polls Telegram and exits the moment a message arrives — that exit
    wakes the session. Double-arming is safe (it self-prunes prior instances).
-2. Send a one-line ack: `~/$HOME/.config/TerMinal/plugin/bin/telegram-notify.sh --kind=info "On it — armed for AFK."`
+2. Send a one-line ack: `~/.claude/bin/telegram-notify.sh --kind=info "On it — armed for AFK."`
 3. Work autonomously. When the listener fires, ingest the message and respond.
 4. **Re-arm a fresh listener at the end of every turn while AFK** — that's what
    keeps the bridge continuously connected.
@@ -57,8 +57,8 @@ is watching on screen.
 outcome, include URLs/paths, plain text (no markdown). Never send secrets.
 
 ```bash
-~/$HOME/.config/TerMinal/plugin/bin/telegram-notify.sh --kind=done "PR #42 opened, tests green. Review running in background."
-~/$HOME/.config/TerMinal/plugin/bin/telegram-notify.sh --kind=blocked "Migration needs prod creds. Skip backfill and ship, or wait?"
+~/.claude/bin/telegram-notify.sh --kind=done "PR #42 opened, tests green. Review running in background."
+~/.claude/bin/telegram-notify.sh --kind=blocked "Migration needs prod creds. Skip backfill and ship, or wait?"
 ```
 
 ## Relationship to autonomous modes

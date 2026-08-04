@@ -48,15 +48,24 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
   if (!version) return { ok: false, error: `unreadable plugin.json version in ${srcDir}` }
 
   const dest = join(configDir, 'plugin')
-  const staging = `${dest}.staging`
+  // pid-suffixed staging so concurrent installs (launch + Settings sync) never
+  // interleave writes into the same staging tree.
+  const staging = `${dest}.staging-${process.pid}`
+  const old = `${dest}.old-${process.pid}`
   try {
-    // Stage + swap so a Claude session never reads a half-copied tree.
+    // Stage, then swap via two renames so the path a running Claude session
+    // resolves through ~/.claude/skills/tm is only ever a complete tree — the
+    // gap is between two rename syscalls, not a full recursive delete.
     rmSync(staging, { recursive: true, force: true })
+    rmSync(old, { recursive: true, force: true })
     mkdirSync(configDir, { recursive: true })
     cpSync(srcDir, staging, { recursive: true })
-    rmSync(dest, { recursive: true, force: true })
+    if (existsSync(dest)) renameSync(dest, old)
     renameSync(staging, dest)
+    rmSync(old, { recursive: true, force: true })
   } catch (e) {
+    // Roll the old tree back if the swap died between the renames.
+    if (!existsSync(dest) && existsSync(old)) renameSync(old, dest)
     rmSync(staging, { recursive: true, force: true })
     return { ok: false, error: `plugin copy failed: ${e instanceof Error ? e.message : String(e)}` }
   }
@@ -75,6 +84,9 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
         // A real ~/.claude/skills/tm is the user's own — never overwrite it.
         return { ok: false, error: `~/.claude/skills/tm exists and is not a symlink — move it aside to enable the tm plugin` }
       }
+      // A symlink pointing elsewhere is repointed (deliberate: symlinks here
+      // are install wiring, not content; a user's real skill dir is protected
+      // above).
       if (readlinkSync(link) !== dest) rmSync(link)
     }
     if (!existsSync(link)) symlinkSync(dest, link)
@@ -112,18 +124,23 @@ export function syncCodexSkills(pluginDir: string, codexSkillsDir: string): void
     const destName = `tm-${name}`
     wanted.add(destName)
     const dest = join(codexSkillsDir, destName)
-    rmSync(dest, { recursive: true, force: true })
-    cpSync(join(srcSkills, name), dest, { recursive: true })
-    for (const file of walkFiles(dest)) {
+    // Stage + rename per dir so a concurrent codex agent never reads a
+    // half-copied skill.
+    const stagingDir = `${dest}.staging-${process.pid}`
+    rmSync(stagingDir, { recursive: true, force: true })
+    cpSync(join(srcSkills, name), stagingDir, { recursive: true })
+    for (const file of walkFiles(stagingDir)) {
       const body = readFileSync(file, 'utf8')
       let next = body.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginDir)
-      if (file === join(dest, 'SKILL.md'))
+      if (file === join(stagingDir, 'SKILL.md'))
         next = next.replace(/^name:\s*\S+\s*$/m, `name: ${destName}`)
       if (next !== body) writeFileSync(file, next)
     }
+    rmSync(dest, { recursive: true, force: true })
+    renameSync(stagingDir, dest)
   }
   for (const entry of readdirSync(codexSkillsDir)) {
-    if (entry.startsWith('tm-') && !wanted.has(entry))
+    if (entry.startsWith('tm-') && !entry.includes('.staging-') && !wanted.has(entry))
       rmSync(join(codexSkillsDir, entry), { recursive: true, force: true })
   }
 }

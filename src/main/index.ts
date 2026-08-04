@@ -474,7 +474,8 @@ function installBinariesAndReconcile() {
   installMcpServer(mcpSrc)
   // Global tm plugin: skills/hooks land once at ~/.config/TerMinal/plugin and
   // load in every repo via the ~/.claude/skills/tm symlink (no per-repo copies).
-  installTmPlugin(tmPluginSrcDir())
+  const tmInstall = installTmPlugin(tmPluginSrcDir())
+  if (!tmInstall.ok) console.error('[tm-plugin] launch install failed:', tmInstall.error)
   // The Monitoring daemon: refresh the runner + load its single launchd job so
   // checks run on their own process even when the app is closed.
   const monitorSrc = app.isPackaged

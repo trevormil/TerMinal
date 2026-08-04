@@ -94,7 +94,7 @@ Infer from context; ask once only if genuinely unclear.
 ### 2. Allocate an id
 
 ```bash
-id=$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
+id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
 ```
 
 Never hand-edit `.next-id` — use the script.

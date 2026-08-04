@@ -4,7 +4,7 @@ A deterministic preflight has already done the recon. Read the packet at {{PACKE
 
 Pull the diff yourself with `git diff origin/{{BASE_BRANCH}}...{{HEAD_SHA}}` — this is the source of truth for what you're reviewing.
 
-Follow .agents/code-review.md for the scoring rubric + artifact format. Score the six axes (correctness, security, architecture, conformance, quality, dependencies). For Security, run the `/tm:security-scan` skill in diff mode first; take the lower of its recommended score and your manual read.
+Follow .agents/code-review.md for the scoring rubric + artifact format. Score the six axes (correctness, security, architecture, conformance, quality, dependencies). For Security, run the tm security-scan skill in diff mode first (`/tm:security-scan` in Claude Code, `tm-security-scan` in Codex); take the lower of its recommended score and your manual read.
 
 Compose findings with copy-pasteable fix prompts in the body. After writing the artifact, emit a fenced ```findings-new ... ``` block containing the FRESH scan findings as a flat JSON array — the harness helper merges this with the prior findings.json deterministically (handles ids, first_seen_sha, auto-resolved transitions). Do NOT compute verdict or merge_ready yourself — the verdict helper will compute those from the scorecard + findings + test_status.
 

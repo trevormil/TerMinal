@@ -53,16 +53,43 @@ describe('skills', () => {
 describe('no stale per-repo machinery paths', () => {
   // .claude/forge is per-repo *config* (forge selector) and stays; everything
   // else under .claude/ was machinery that now lives in the plugin itself.
-  const stale = /\.claude\/(bin|skills|hooks)\//
+  const stale = /\.claude\/(bin|skills|hooks)[/\s`]/
+  // Double-path bugs from mechanical rewrites: an absolute root
+  // (${CLAUDE_PLUGIN_ROOT} or $HOME) appended to another path.
+  const doubled = /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
 
   for (const file of [...walkFiles(join(ROOT, 'skills')), ...walkFiles(join(ROOT, 'bin')), ...walkFiles(join(ROOT, 'hooks'))]) {
     test(file.slice(ROOT.length + 1), () => {
       const body = readFileSync(file, 'utf8')
-      const hits = body.split('\n').filter((l) => stale.test(l))
+      const hits = body.split('\n').filter((l) => stale.test(l) || doubled.test(l))
       expect(hits).toEqual([])
       expect(body).not.toContain('autopilot-harness')
     })
   }
+})
+
+describe('template codex mirror + agent specs have no double-path bugs', () => {
+  const doubled = /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
+  const TEMPLATE = join(import.meta.dir, '..', 'templates', 'project-template')
+
+  for (const dir of ['.codex/skills', '.agents']) {
+    test(dir, () => {
+      const hits: string[] = []
+      for (const file of walkFiles(join(TEMPLATE, dir))) {
+        for (const l of readFileSync(file, 'utf8').split('\n'))
+          if (doubled.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
+      }
+      expect(hits).toEqual([])
+    })
+  }
+})
+
+describe('merge gate keeps the FORCE override', () => {
+  test('block-main-merge.sh implements TERMINAL_FORCE_MAIN (env + inline)', () => {
+    const hook = readFileSync(join(ROOT, 'hooks', 'block-main-merge.sh'), 'utf8')
+    expect(hook).toContain('"${TERMINAL_FORCE_MAIN:-}" = "1"')
+    expect(hook).toContain('TERMINAL_FORCE_MAIN=1([[:space:]])')
+  })
 })
 
 describe('hooks', () => {

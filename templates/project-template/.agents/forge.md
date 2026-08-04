@@ -10,7 +10,7 @@ already blocks both `gh pr merge` and `glab mr merge`.
 Run the detector — it prints `github` or `gitlab`:
 
 ```bash
-forge="$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/bin/forge")"
+forge="$("$HOME/.config/TerMinal/plugin/bin/forge")"
 ```
 
 Resolution order (`$HOME/.config/TerMinal/plugin/bin/forge`):

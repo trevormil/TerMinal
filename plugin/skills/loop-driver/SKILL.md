@@ -129,7 +129,7 @@ git worktree add -B loop/<loop-id> ../.worktrees/<repo>/loop-<loop-id>
 ## When to insert a human (HITL gate)
 
 Insert a human **only when the contract itself is wrong**, not when the build is.
-File HITL (see the `notify` skill for AFK) for exactly these:
+File HITL (see the personal `notify` skill for AFK, if installed) for exactly these:
 
 - The contract no longer matches what the user actually wants.
 - A destructive / irreversible / outward-facing action, a protected-branch merge,

@@ -101,7 +101,7 @@ Infer from context; ask once only if genuinely unclear.
 ### 2. Allocate an id
 
 ```bash
-id=$("$(git rev-parse --show-toplevel)/${CLAUDE_PLUGIN_ROOT}/skills/ticket/bin/next-ticket-id")
+id=$("${CLAUDE_PLUGIN_ROOT}/skills/ticket/bin/next-ticket-id")
 ```
 
 Never hand-edit `.next-id` — use the script.

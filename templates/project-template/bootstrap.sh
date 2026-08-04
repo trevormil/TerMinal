@@ -54,25 +54,37 @@ chmod +x "$DST/.codex/skills/ticket/bin/"* \
 say ".codex/skills, .codex/hooks, .codex/hooks.workflow.json, .agents, .github/workflows/ci.yml installed"
 
 # --- migrate: remove Claude machinery older bootstraps copied in -------------
-# Name-scoped so repo-authored skills/scripts in the same dirs survive.
+# Name-scoped, and MOVED to a backup rather than deleted — a repo-authored
+# skill that happens to share a name (e.g. its own `document`) is recoverable.
+# `notify` is intentionally NOT in the list: it is personal machinery excluded
+# from the plugin, so an existing per-repo copy keeps working.
 echo "[migrate] per-repo Claude machinery → tm plugin"
 removed=0
+BACKUP="$DST/.claude/pre-tm-backup"
+migrate() { # <path relative to .claude/>
+  local src="$DST/.claude/$1"
+  [ -e "$src" ] || return 0
+  mkdir -p "$BACKUP/$(dirname "$1")"
+  rm -rf "${BACKUP:?}/$1"
+  mv "$src" "$BACKUP/$1"
+  removed=1
+}
 for s in check code-review digest document document-audit emergency-fix \
          enqueue-request factory knowledge knowledge-rag listener-inbox \
          loop-driver loop-evaluator loop-implementer loop-planner merge-sync \
          migrate-agents new-agent new-inbox-source new-knowledge \
-         new-persistent-agent new-schedule new-snippet notify pr-creation \
+         new-persistent-agent new-schedule new-snippet pr-creation \
          remote-terminal revert-main security-scan session-end session-start \
          stacked-mr terminal-widget test-suite ticket unblock-ci vibe; do
-  [ -d "$DST/.claude/skills/$s" ] && { rm -rf "$DST/.claude/skills/$s"; removed=1; }
+  migrate "skills/$s"
 done
 for b in activity chunk-diff code-review-preflight compute-verdict \
          findings-merge forge hitl list-agents merge-digest merge-sync \
          request-agent-artifact status; do
-  [ -f "$DST/.claude/bin/$b" ] && { rm -f "$DST/.claude/bin/$b"; removed=1; }
+  migrate "bin/$b"
 done
 for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
-  [ -f "$DST/.claude/hooks/$h" ] && { rm -f "$DST/.claude/hooks/$h"; removed=1; }
+  migrate "hooks/$h"
 done
 rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" 2>/dev/null || true
 # Drop settings.json hook entries that point at the removed scripts.
@@ -106,7 +118,7 @@ if changed:
     open(p, 'w').write(json.dumps(d, indent=2) + '\n')
 PY
 fi
-[ "$removed" = 1 ] && say "removed old per-repo Claude skills/bin/hooks (now served by the tm plugin)" \
+[ "$removed" = 1 ] && say "moved old per-repo Claude skills/bin/hooks to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
                    || say "no legacy Claude machinery found"
 
 # forge selector — don't clobber an existing choice
@@ -186,9 +198,9 @@ fi
 echo "[gitignore] appending workflow entries if missing"
 touch "$DST/.gitignore"
 if [ "$LAYOUT" = "v1" ]; then
-  lock_lines=("backlog/.next-id.lock" "sessions/.next-id.lock" ".status.md")
+  lock_lines=("backlog/.next-id.lock" "sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
 else
-  lock_lines=(".TerMinal/backlog/.next-id.lock" ".TerMinal/sessions/.next-id.lock" ".status.md")
+  lock_lines=(".TerMinal/backlog/.next-id.lock" ".TerMinal/sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
 fi
 for line in "${lock_lines[@]}"; do
   grep -qxF "$line" "$DST/.gitignore" || printf '%s\n' "$line" >> "$DST/.gitignore"

@@ -19,6 +19,24 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // ""')
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
 
+# Exception: FORCE-MODE agents. TerMinal's emergency-fix / unblock-ci /
+# revert-main agents (and a manually-launched `TERMINAL_FORCE_MAIN=1 claude`)
+# carry an env-var bypass. The var is set per-spawn by TerMinal's runner and
+# is NEVER persisted into the user's shell profile — a normal session never
+# sees it. Use only for true production emergencies (CLAUDE.md §8).
+if [ "${TERMINAL_FORCE_MAIN:-}" = "1" ]; then
+  exit 0
+fi
+
+# Same exception, inline form: `TERMINAL_FORCE_MAIN=1 git push origin main`. The
+# env check above only sees the hook's OWN environment; an inline assignment
+# applies to the command process, not this hook (which runs first), so it must
+# be matched in the command text. Echo to stderr so the FORCE use stays visible.
+if printf '%s' "$cmd" | grep -qE '(^|[[:space:]&|;(])TERMINAL_FORCE_MAIN=1([[:space:]])'; then
+  echo "⚠ FORCE override (TERMINAL_FORCE_MAIN=1): allowing main/master operation — CLAUDE.md §8." >&2
+  exit 0
+fi
+
 block() {
   echo "BLOCKED: $1" >&2
   echo "Rule: no merges or pushes to main/master without human approval (global CLAUDE.md §8)." >&2
@@ -40,8 +58,10 @@ echo "$cmd" | grep -qE '\bgit[[:space:]]+push\b.*(--all|--mirror)\b' \
   && block "git push --all/--mirror could include main/master"
 
 # 4. Bare `git push` (no refspec) while the cwd's current branch is main/master.
+#    `git -C` resolves the branch from any subdirectory and in worktrees
+#    (where .git is a file, not a directory) — don't gate on a .git dir.
 if echo "$cmd" | grep -qE '(^|[[:space:]&|;])git[[:space:]]+push([[:space:]]+(-u|--set-upstream))?[[:space:]]*($|[&|;])'; then
-  if [ -n "$cwd" ] && [ -d "$cwd/.git" ]; then
+  if [ -n "$cwd" ]; then
     branch=$(git -C "$cwd" branch --show-current 2>/dev/null || echo "")
     case "$branch" in
       main|master) block "bare 'git push' while on $branch" ;;

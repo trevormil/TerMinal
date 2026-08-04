@@ -64,7 +64,7 @@ model context capped:
   only the files that match.
 - **Existing tools / skills** — note which workflow skills and repo `bin/`
   tools apply to this goal so we reuse instead of rebuild. List names first
-  (`find .claude/skills -maxdepth 2 -name SKILL.md | head -40`) and open only
+  (`find "$HOME/.config/TerMinal/plugin/skills" -maxdepth 2 -name SKILL.md | head -40`) and open only
   directly relevant skill docs.
 - **Prior sessions** — `"$HOME/.config/TerMinal/plugin/skills/session-start/bin/sessions"`.
   Read at most 3 recent or keyword-related session docs, especially their

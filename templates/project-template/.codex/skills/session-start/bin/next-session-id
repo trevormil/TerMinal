@@ -5,7 +5,7 @@
 # Bootstraps the sessions directory and counter on first use, so dropping the
 # session-start/session-end skills into a fresh repo "just works".
 #
-#   id=$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/skills/session-start/bin/next-session-id")
+#   id=$("$HOME/.config/TerMinal/plugin/skills/session-start/bin/next-session-id")
 #   mkdir -p "$SESSIONS_REL/${id}-my-slug"
 #
 # v2 repos use .TerMinal/sessions/.next-id; legacy v1 repos use sessions/.next-id.
