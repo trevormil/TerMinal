@@ -43,11 +43,25 @@ fi
 # global CLAUDE.md §8's carve-out). The plugin ships to any machine, so those
 # paths live in machine config, not here: one absolute repo path per line in
 # ~/.config/TerMinal/allow-direct-main. Lines starting with # are comments.
+#
+# Both sides are resolved to a physical path before comparing, so an entry
+# written by hand still matches: `~` expands, trailing slashes are irrelevant,
+# and a path reached through a symlink (on macOS /tmp -> /private/tmp) resolves
+# the way git reports it. Matching stays exact after resolution — a prefix match
+# would exempt every repo under an allowlisted parent.
 ALLOWLIST="$HOME/.config/TerMinal/allow-direct-main"
 if [ -n "$cwd" ] && [ -f "$ALLOWLIST" ]; then
   toplevel=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || echo "")
-  if [ -n "$toplevel" ] && grep -qxF "$toplevel" "$ALLOWLIST"; then
-    exit 0
+  toplevel=$(cd "$toplevel" 2>/dev/null && pwd -P || echo "")
+  if [ -n "$toplevel" ]; then
+    while IFS= read -r entry || [ -n "$entry" ]; do
+      case "$entry" in '' | '#'*) continue ;; esac
+      case "$entry" in '~/'*) entry="$HOME/${entry#\~/}" ;; esac
+      resolved=$(cd "$entry" 2>/dev/null && pwd -P || echo "")
+      if [ -n "$resolved" ] && [ "$resolved" = "$toplevel" ]; then
+        exit 0
+      fi
+    done < "$ALLOWLIST"
   fi
 fi
 

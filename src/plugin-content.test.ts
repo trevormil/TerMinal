@@ -19,14 +19,48 @@ function* walkFiles(dir: string): Generator<string> {
   }
 }
 
-// Double-path bugs from mechanical rewrites: an absolute root pasted onto
-// another path. One alternative per bug shape:
+// Double-path bugs from mechanical rewrites: one absolute root pasted onto
+// another. Each alternative is a bug shape actually seen in this migration:
 //   $(git rev-parse --show-toplevel)/${CLAUDE_PLUGIN_ROOT}/... or .../$HOME/...
 //   ~/$HOME/...
-//   $HOME/$... (any var glued after $HOME)
-//   ${CLAUDE_PLUGIN_ROOT}/$... (any var glued after the plugin root)
-const DOUBLED_PATH =
-  /(show-toplevel\)"?\/+"?\$\{?(CLAUDE_PLUGIN_ROOT|HOME)|~\/\$HOME|\$HOME\/\$|\$\{CLAUDE_PLUGIN_ROOT\}\/\$)/
+//   $HOME/$HOME/... or $HOME/${CLAUDE_PLUGIN_ROOT}/...
+//   ${CLAUDE_PLUGIN_ROOT}/$HOME/... or ${CLAUDE_PLUGIN_ROOT}/${CLAUDE_PLUGIN_ROOT}/...
+// It must match a second ROOT specifically — `$HOME/${some_var}` is ordinary
+// shell expansion, not a bug, and matching it would flag correct code.
+const ROOT_VAR = String.raw`\$\{?(?:HOME|CLAUDE_PLUGIN_ROOT)`
+const DOUBLED_PATH = new RegExp(
+  [
+    String.raw`show-toplevel\)"?\/+"?${ROOT_VAR}`,
+    String.raw`~\/\$HOME`,
+    String.raw`\$HOME\/${ROOT_VAR}`,
+    String.raw`\$\{CLAUDE_PLUGIN_ROOT\}\/${ROOT_VAR}`,
+  ].join('|'),
+)
+
+describe('the double-path guard itself', () => {
+  // A guard that silently stops matching is worse than no guard, and one that
+  // over-matches blocks correct code (this regex once flagged the legitimate
+  // `$HOME/${entry#~/}` expansion in the merge-gate hook).
+  test.each([
+    'id=$("$(git rev-parse --show-toplevel)/${CLAUDE_PLUGIN_ROOT}/skills/ticket/bin/next-ticket-id")',
+    'forge="$("$(git rev-parse --show-toplevel)/$HOME/.config/TerMinal/plugin/bin/forge")"',
+    '- `~/$HOME/.config/TerMinal/plugin/bin/telegram-notify.sh` — send a message',
+    'x="$HOME/$HOME/nope"',
+    'y="${CLAUDE_PLUGIN_ROOT}/$HOME/nope"',
+  ])('flags the real bug shape: %s', (line) => {
+    expect(DOUBLED_PATH.test(line)).toBe(true)
+  })
+
+  test.each([
+    'entry="$HOME/${entry#\\~/}"',
+    'ALLOWLIST="$HOME/.config/TerMinal/allow-direct-main"',
+    'SKILL="${CLAUDE_PLUGIN_ROOT}/skills/ticket"',
+    'id=$("${CLAUDE_PLUGIN_ROOT}/skills/ticket/bin/next-ticket-id")',
+    'root=$(git rev-parse --show-toplevel)',
+  ])('leaves correct code alone: %s', (line) => {
+    expect(DOUBLED_PATH.test(line)).toBe(false)
+  })
+})
 
 describe('plugin manifest', () => {
   test('plugin.json parses and is named tm', () => {
