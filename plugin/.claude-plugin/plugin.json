@@ -1,0 +1,8 @@
+{
+  "name": "tm",
+  "version": "0.1.0",
+  "description": "TerMinal software-factory workflow: tickets, sessions, PR flow, code review, agents, factory orchestration. Installed globally by the TerMinal app; skills load in every repo as /tm:<skill>.",
+  "author": {
+    "name": "TerMinal"
+  }
+}
