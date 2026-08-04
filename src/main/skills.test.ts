@@ -47,24 +47,27 @@ describe('listSkills', () => {
     expect(skill?.platforms).toEqual(['claude', 'codex', 'cursor'])
   })
 
-  test('sees this repo workflow skills as Claude/Codex mirrors', () => {
+  test('sees this repo workflow skills as Codex-only (Claude side is the tm plugin)', () => {
     const skills = listSkills(process.cwd()).filter((s) => s.scope === 'project')
     const ticket = skills.find((s) => s.name === 'ticket')
     const newAgent = skills.find((s) => s.name === 'new-agent')
     const newSchedule = skills.find((s) => s.name === 'new-schedule')
 
-    expect(ticket?.platforms).toEqual(['claude', 'codex'])
-    expect(newAgent?.platforms).toEqual(['claude', 'codex'])
-    expect(newSchedule?.platforms).toEqual(['claude', 'codex'])
+    expect(ticket?.platforms).toEqual(['codex'])
+    expect(newAgent?.platforms).toEqual(['codex'])
+    expect(newSchedule?.platforms).toEqual(['codex'])
   })
 
-  test('keeps this repo Claude and Codex skill mirrors in lockstep', () => {
-    const skillNames = (platform: '.claude' | '.codex') =>
-      readdirSync(join(process.cwd(), platform, 'skills'), { withFileTypes: true })
+  test('every repo Codex mirror skill exists in the tm plugin (except personal notify)', () => {
+    const skillNames = (dir: string) =>
+      readdirSync(join(process.cwd(), dir), { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
-        .sort()
 
-    expect(skillNames('.claude')).toEqual(skillNames('.codex'))
+    const pluginSkills = new Set(skillNames('plugin/skills'))
+    const codexOnly = skillNames('.codex/skills').filter(
+      (n) => n !== 'notify' && !pluginSkills.has(n),
+    )
+    expect(codexOnly).toEqual([])
   })
 })

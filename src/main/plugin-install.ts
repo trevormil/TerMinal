@@ -1,6 +1,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { terminalConfigDir } from './config-dir'
 
 // Installs the tm plugin globally: copy the bundled plugin/ tree to the stable
 // ~/.config/TerMinal/plugin path, then expose it to Claude Code as a
@@ -24,7 +25,7 @@ function resolvePaths(opts?: PluginPaths): {
   codexSkillsDir: string
 } {
   return {
-    configDir: opts?.configDir ?? join(homedir(), '.config', 'TerMinal'),
+    configDir: opts?.configDir ?? terminalConfigDir(),
     claudeSkillsDir: opts?.claudeSkillsDir ?? join(homedir(), '.claude', 'skills'),
     codexSkillsDir: opts?.codexSkillsDir ?? join(homedir(), '.codex', 'skills'),
   }
