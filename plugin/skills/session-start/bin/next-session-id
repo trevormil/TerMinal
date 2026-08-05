@@ -12,12 +12,13 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# The sidecar path is ABSOLUTE; only the legacy in-repo dir is relative to
+# $ROOT. Joining them would put the sidecar under the repo.
 if [ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
-  SESSIONS_REL="sessions"
+  SESSIONS="$ROOT/sessions"
 else
-  SESSIONS_REL="$TERMINAL_SESSIONS_DIR"
+  SESSIONS="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions)}"
 fi
-SESSIONS="$ROOT/$SESSIONS_REL"
 COUNTER="$SESSIONS/.next-id"
 LOCK="$SESSIONS/.next-id.lock"
 

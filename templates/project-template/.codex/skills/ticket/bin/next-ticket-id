@@ -12,12 +12,13 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# The sidecar path is ABSOLUTE; only the legacy in-repo dir is relative to
+# $ROOT. Joining them would put the sidecar under the repo.
 if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
-  BACKLOG_REL="backlog"
+  BACKLOG="$ROOT/backlog"
 else
-  BACKLOG_REL="$TERMINAL_BACKLOG_DIR"
+  BACKLOG="${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"
 fi
-BACKLOG="$ROOT/$BACKLOG_REL"
 COUNTER="$BACKLOG/.next-id"
 LOCK="$BACKLOG/.next-id.lock"
 
