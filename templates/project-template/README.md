@@ -10,8 +10,9 @@ Loads on top of your global agent guidance (`~/.claude/CLAUDE.md` for Claude,
 Codex's AGENTS/CLAUDE fallback for Codex, and Cursor's project rules when you
 run Cursor Agent). For Claude Code the workflow skills ship globally via the
 **tm plugin** (installed by the TerMinal app, invoked as `/tm:<skill>` in every
-repo — nothing to copy per repo); `.codex/skills/` is still a per-repo mirror
-for Codex. TerMinal agents and schedules can also run through `cursor-agent`.
+repo — nothing to copy per repo), and the same skills sync to
+`~/.codex/skills/tm-*` for Codex. No repo carries a copy for either harness.
+TerMinal agents and schedules can also run through `cursor-agent`.
 **Forge is per-repo** (GitHub `gh`/"PR" or GitLab `glab`/"MR"), resolved by the
 tm plugin's `bin/forge` — switch with `.claude/forge`. Merge to `main` is
 **human-only** (global §8).
@@ -44,8 +45,9 @@ app installs the **tm plugin** once (`~/.config/TerMinal/plugin`, linked as
 step, no drift. Repos may still add their own `.claude/skills/` for
 project-specific extras; plugin skills are namespaced so nothing collides.
 
-**Codex** still uses the per-repo `.codex/skills/` mirror (bootstrap installs
-it). Cursor Agent is supported by TerMinal's engine picker, background runs,
+**Codex** loads the same skills globally as `~/.codex/skills/tm-*`, synced by
+the app from the one plugin source — invoke them as `tm-ticket`, `tm-check`,
+and so on. Cursor Agent is supported by TerMinal's engine picker, background runs,
 schedules, and terminal instances; Cursor does not use the skill folders as
 native slash skills. So:
 

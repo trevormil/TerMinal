@@ -47,6 +47,14 @@ Workflow state for a repo lives in a **per-project sidecar** at
   established for v1→v2. The sidecar is the highest-priority read root and the
   only write root, so state already committed in a repo stays visible with no
   migration step, while nothing new lands in the shared checkout.
+  **The write rule is unconditional.** The first cut of this decision let a
+  repo "opt out" implicitly: if it had a v1 state dir and no v2 marker, the
+  shell helpers wrote there. Every repo predating the sidecar matches that, so
+  the migration was a no-op on exactly the repos that had state to migrate —
+  and because the app had no such branch, the two wrote to different places
+  from different id counters. Two helpers resolve this now and neither has a
+  branch: `tm-state-dir <area>` (the single write target) and
+  `tm-state-dirs <area>` (every readable root, highest priority first).
 - **`.agents/` and `docs/` stay in the repo.** Agent contracts are shared with
   the team the same way CI config is, and skills reference `../../../.agents`
   relatively.
@@ -72,10 +80,18 @@ Workflow state for a repo lives in a **per-project sidecar** at
   backlog achievable by adding a remote, but nothing pushes or pulls yet. Until
   that lands, a ticket filed by a scheduled agent on another host stays on that
   host — the same gap ADR-0002 already documented, in a new location.
-- **Hand-written paths are the remaining risk.** A prompt or skill that says
-  `.TerMinal/reviews/` writes back into the shared repo. A hygiene test fails on
-  any literal state path in model-facing content, which is the only thing
-  keeping 50+ skill files honest.
+- **Hand-written paths are the remaining risk.** A prompt or skill that names
+  a literal state path writes back into the shared repo. A hygiene test fails on
+  any such path in model-facing content, which is the only thing keeping 50+
+  skill files honest. It must match BOTH spellings — `.TerMinal/<area>` and the
+  bare v1 dirs (`backlog/`, `.reviews/`, `$ROOT/sessions`). The first version
+  matched only the former and so caught none of the real leaks, all of which
+  used the v1 spelling.
+- **Every process that spawns a model against a repo must inject the vars.**
+  There are more of these than the obvious three, and the guard that enforces
+  it discovers them by walking the tree rather than from a list — a list only
+  ever contains the sites already known, which is how loops, background tasks,
+  the digest runner and the entire remote host script were each missed.
 - Obsidian-provider repos are unaffected: the vault still wins for tickets, and
   that precedence is now consistent across the app, the CLI, cron and MCP
   (cron previously ignored it entirely — ticket 0281).

@@ -108,8 +108,8 @@ Codex gets the same skills synced as `~/.codex/skills/tm-*` (path variables
 resolved), and new harnesses just need a new adapter. Agents the app spins out
 are plain `claude -p` / `codex exec` processes, so they also inherit the rest
 of your global config — `~/.claude/CLAUDE.md`, `~/.codex/`, and any personal
-skills. Repos bootstrapped from the template additionally carry the per-repo
-`.codex/skills` mirror (bare-name skills for existing agent specs).
+skills. Bootstrapped repos carry no skill copies of their own — both
+harnesses load them from the one global install.
 
 The app works without a rich global config — it enhances the agent/PR
 workflow, it doesn't gate sessions.
