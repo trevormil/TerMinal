@@ -10,6 +10,7 @@
 // only reads, via `gh`, and exposes pure shaping functions for the renderer.
 
 import { execFile } from 'node:child_process'
+import { ghEnvFor } from './repo'
 
 /** The `stack` field on a GitHub pull request object. Field names and shape are
  *  taken verbatim from the REST pulls docs — see the ticket's verified spec. */
@@ -137,7 +138,13 @@ const defaultRunner: Runner = (cli, args, cwd) =>
     execFile(
       cli,
       args,
-      { cwd, timeout: 20_000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' },
+      {
+        cwd,
+        env: cli === 'gh' ? ghEnvFor(cwd) : undefined, // survive url.*.insteadOf
+        timeout: 20_000,
+        maxBuffer: 8 * 1024 * 1024,
+        encoding: 'utf8',
+      },
       (err, stdout, stderr) => resolve({ err, stdout: stdout || '', stderr: stderr || '' }),
     ),
   )
