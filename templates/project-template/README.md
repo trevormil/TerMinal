@@ -73,14 +73,14 @@ bootstrap.sh                  inject the workflow into an existing repo
   forge                       github | gitlab — the repo's forge selector
 .codex/
   hooks.json                  Codex hook template to merge/install for this repo
-  hooks/stop-notify.sh        Codex Stop hook mirror for completion Inbox filing
-  skills/                     mirror of .claude/skills for Codex
-.agents/
-  forge.md                    GitHub/GitLab detection + gh↔glab command mapping
-  code-review.md              review contract: schema, six-axis rubric, verdicts
-  digest.md                   human-review digest contract: chunk schema, classification, decisions
-  testing.md                  test-runner detection
-  dead-code.md                example cadence-check spec (+ pattern to copy)
+  hooks/stop-notify.sh        Codex Stop hook for completion Inbox filing
+                              (skills are global: ~/.codex/skills/tm-*)
+.agents/                      agent CONFIG and bodies — contracts ship with the
+                              plugin and are resolved via `tm-agent-spec <kind>`;
+                              add a .md here only to override one
+  <id>.sh                     an agent's executable body (per-repo wins)
+  <id>.json                   its cadence/model metadata
+  owned.yml                   which agent owns which paths
 .github/workflows/ci.yml      format + typecheck + test (+ optional eval gate)
 .github/PULL_REQUEST_TEMPLATE.md  + .gitlab/merge_request_templates/  PR/MR checklist
 .editorconfig                 uniform whitespace across editors

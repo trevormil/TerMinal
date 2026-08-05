@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 // What the template CONTAINS is what a new repo gets: `scaffoldProject` copies
@@ -43,5 +43,33 @@ describe('the project template ships no workflow state', () => {
     expect(statSync(join(TEMPLATE, '.agents')).isDirectory()).toBe(true)
     expect(statSync(join(TEMPLATE, 'docs')).isDirectory()).toBe(true)
     expect(existsSync(join(TEMPLATE, 'CLAUDE.md'))).toBe(true)
+  })
+})
+
+// CLAUDE.md is the first thing every agent reads in a bootstrapped repo, and it
+// linked `[.agents/forge.md](./.agents/forge.md)` long after bootstrap stopped
+// creating that file. A relative link to something the repo will not contain
+// sends the model to a dead path on its very first lookup.
+describe('template docs only link to files a bootstrapped repo will have', () => {
+  const RELATIVE_LINK = /\]\((\.\/[^)]+)\)/g
+
+  for (const doc of ['CLAUDE.md', 'README.md']) {
+    test(doc, () => {
+      const body = readFileSync(join(TEMPLATE, doc), 'utf8')
+      const missing: string[] = []
+      for (const [, target] of body.matchAll(RELATIVE_LINK)) {
+        // Strip any anchor; a link to a heading in another file still needs
+        // the file itself.
+        const rel = target.replace(/#.*$/, '').replace(/^\.\//, '')
+        if (!rel || rel.startsWith('http')) continue
+        if (!existsSync(join(TEMPLATE, rel))) missing.push(target)
+      }
+      expect(missing).toEqual([])
+    })
+  }
+
+  test('the guard sees relative links at all (a guard matching nothing is not a guard)', () => {
+    const found = [...'see [x](./docs/architecture.md) and [y](./nope.md)'.matchAll(RELATIVE_LINK)]
+    expect(found.map((m) => m[1])).toEqual(['./docs/architecture.md', './nope.md'])
   })
 })

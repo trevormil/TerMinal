@@ -138,7 +138,7 @@ gate.
 **Per-repo forge.** `$HOME/.config/TerMinal/plugin/bin/forge` prints `github` or `gitlab` (reads
 `.claude/forge` override, else detects from origin). Use the matching
 CLI + terminology — `gh`/"PR" or `glab`/"MR". Mapping:
-[`.agents/forge.md`](./.agents/forge.md). Self-hosted GitLab requires the
+the forge contract (`tm-agent-spec forge`). Self-hosted GitLab requires the
 `.claude/forge` override.
 
 Always work on a feature branch; **never commit/push to `main`** (global
@@ -157,8 +157,7 @@ human-only.
 
 The `code-review` agent writes one combined review+tests artifact at
 `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` (+ `findings.json` / `suggestions.json`).
-Contract:
-[`.agents/code-review.md`](./.agents/code-review.md).
+Contract: `tm-agent-spec code-review`.
 
 - **Merge bar:** `verdict: approve` + `test_status: pass` + zero findings
   ≥ medium. Overall score is informational.
@@ -172,9 +171,9 @@ Contract:
 **Cadence checks** are the other half: `/check <kind>` runs a repo-level
 inspection (dead-code, dep-drift) on a cadence, writing dated artifacts
 to `$TERMINAL_CHECKS_DIR/<kind>/<sha>.md`.
-Each kind is a contract at
-`.agents/<kind>.md`. Checks are **advisory** — they report; cleanup
-becomes a ticket.
+Each kind is a contract, resolved with `tm-agent-spec <kind>` — this repo's
+`.agents/<kind>.md` when it overrides one, otherwise the plugin default.
+Checks are **advisory** — they report; cleanup becomes a ticket.
 
 ## [7] Documentation & knowledge base
 
