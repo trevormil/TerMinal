@@ -286,9 +286,11 @@ by appending a line.
 
 TerMinal ships its project template embedded at `templates/project-template`
 — a scaffold carrying the whole workflow: sessions → tickets → branches → PRs
-→ review → human merge, with the TDD gate, in-repo `.reviews/`, cadence
-checks, and the schemas these tabs read. It versions with the app itself (one
-repo, one history).
+→ review → human merge, with the TDD gate, cadence checks, and the schemas
+these tabs read. It versions with the app itself (one repo, one history). What
+it puts in your repo is deliberately small — agent contracts, CI and docs.
+Skills come from the global tm plugin and workflow state lives in a
+per-project sidecar, so neither is copied per repo.
 
 - **From the picker:** "New project from template" — name it, pick a parent,
   Create. Fresh directory, `git init`, first commit, session opened, per-repo
@@ -298,8 +300,10 @@ repo, one history).
 
 Existing repos adopt the same workflow via the in-app Bootstrap banner (or the
 per-repo orientation's Setup row) — your files are never clobbered; legacy
-per-repo Claude skills are moved to a backup, since the workflow now ships
-globally as the tm plugin.
+per-repo skill copies (Claude *and* Codex) are moved to a backup, since the
+workflow now ships globally as the tm plugin. Tickets and reviews already
+committed in a repo keep working and stay visible; Settings → Updates offers
+the one-time move out of the checkout when you want it.
 
 ## Setup & settings
 
@@ -320,7 +324,7 @@ Electron in three layers: **main** owns PTYs, filesystem, and CLI calls;
 **preload** exposes one typed `gt` bridge; the **renderer** is React 19 +
 Tailwind v4. Cockpit data comes from the session's own transcript on disk; plan
 usage mirrors the `/usage` endpoint with the OAuth token Claude Code already
-stores in your keychain; review state reads in-repo `.reviews/` artifacts.
+stores in your keychain; review state reads the project sidecar's artifacts.
 Scheduling routes per schedule to launchd (local), systemd, or k8s (remote
 hosts). The full map, including the loop engine and the multi-session model:
 [`docs/architecture.md`](docs/architecture.md).

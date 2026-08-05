@@ -166,10 +166,12 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   and the `PR`/`MR` + `#`/`!` vocabulary from the remote host (or the
   `settings.forge` override). `mrs.ts` delegates here; the renderer is forge-agnostic.
 - `mrs.ts` — merge/pull requests via the forge adapter, enriched with review state.
-- `review.ts` — resolves code-review artifacts from in-repo `.reviews/<pr>/`
-  (project-template) **or** the legacy autopilot-harness `prs/` store; handles
-  the meta.json (commit-ordered) and no-meta (mtime) cases, with staleness.
-- `sessions.ts` — per-repo session docs `<repo>/sessions/NNNN-slug/session.md`.
+- `review.ts` — resolves code-review artifacts from the project sidecar's
+  `reviews/<pr>/` (merging any not yet migrated out of the repo) **or** the
+  legacy autopilot-harness `prs/` store; handles the meta.json (commit-ordered)
+  and no-meta (mtime) cases, with staleness.
+- `sessions.ts` — session docs at `<sidecar>/sessions/NNNN-slug/session.md`,
+  resolved through `project-layout.ts` like every other area.
 - `files.ts` — path-guarded dir/read/write/search (`git grep`), with
   `git check-ignore` marking for the dimmed tree.
 - `scaffold.ts` — new-repo scaffolding from the embedded template (or a
