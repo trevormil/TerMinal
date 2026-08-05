@@ -199,3 +199,40 @@ describe('bin', () => {
     expect(scripts().length).toBeGreaterThan(8)
   })
 })
+
+// The plugin is installed at ~/.config/TerMinal/plugin, so a relative link that
+// climbs out of it resolves somewhere in the user's config dir — not, as these
+// were written to when the skills lived at <repo>/.claude/skills/<name>/, the
+// target repo. Six skills pointed at `../../../.agents/...` and
+// `../../../docs/...` and would have sent the model to a path that cannot
+// exist. Files in the TARGET repo must be named as plain repo-relative paths,
+// which the model resolves against its working directory.
+describe('plugin content never links outside the plugin', () => {
+  for (const dir of ['skills', 'bin', 'hooks']) {
+    test(dir, () => {
+      const offenders: string[] = []
+      for (const file of walkFiles(join(ROOT, dir))) {
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            // A markdown link climbing above the plugin root. Skill dirs are
+            // one level deep, so `../..` already reaches it and anything more
+            // escapes. Shell `$(dirname $0)/../../../bin/...` is a different
+            // shape (not a markdown link) and stays inside by construction.
+            if (/\]\(\.\.\/\.\.\/\.\.\//.test(line))
+              offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
+          })
+      }
+      expect(offenders).toEqual([])
+    })
+  }
+
+  test('the guard matches the shape it is meant to catch', () => {
+    const bad = '[`.agents/code-review.md`](../../../.agents/code-review.md).'
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test(bad)).toBe(true)
+    // A link WITHIN the plugin is fine.
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test('[state](../state.md)')).toBe(false)
+    // The shell idiom that legitimately reaches plugin/bin is untouched.
+    expect(/\]\(\.\.\/\.\.\/\.\.\//.test('"$(dirname "$0")/../../../bin/tm-state-dir"')).toBe(false)
+  })
+})

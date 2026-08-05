@@ -7,7 +7,7 @@ description: "Take owner-compatible backlog tickets from idea to open PR/MR: kno
 
 Implements one assigned-agent lane into one PR/MR. The canonical owner,
 knowledge, artifact, and follow-up contract is
-[`docs/workflow/agent-process.md`](../../../docs/workflow/agent-process.md).
+`docs/workflow/agent-process.md` in the repo you are working in.
 
 This skill stops when the PR/MR is open and linked. It does **not** run
 the `code-review` agent and never merges.

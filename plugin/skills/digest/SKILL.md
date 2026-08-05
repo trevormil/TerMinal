@@ -12,7 +12,7 @@ surface. It does not decide merge-readiness. It makes a technical reviewer read
 a diff in seconds by ranking it, never by hiding code — every line stays
 reachable; the digest only decides what's expanded vs. collapsed and where your
 eyes land. The contract + schema live in
-[`.agents/digest.md`](../../../.agents/digest.md).
+`.agents/digest.md` in the repo you are working in.
 
 Output: one **in-repo** artifact `$TERMINAL_REVIEWS_DIR/<pr>/<short>.chunks.json`
 , next to the review `.md`.
