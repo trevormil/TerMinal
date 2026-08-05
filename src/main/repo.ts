@@ -5,13 +5,20 @@ export type RepoId = { host: string; path: string }
 
 const execFileAsync = promisify(execFile)
 
+// Any scheme git speaks (https, ssh, git, ...) with optional credentials and an
+// optional port. The port must be split off explicitly: without that,
+// `ssh://git@ssh.github.com:443/owner/repo` — GitHub's own ssh-over-https
+// workaround — yields the path "443/owner/repo".
+const SCHEME_URL = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i
+const SCP_LIKE = /^[\w.-]+@([^:/]+)[:/](.+)$/
+
 export function parseRemote(url: string): RepoId | null {
-  const u = url.trim().replace(/\.git$/, '')
-  let m = u.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
-  if (m) return { host: m[1], path: m[2] }
-  m = u.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/) // scp-like or ssh://
-  if (m) return { host: m[1], path: m[2] }
-  return null
+  const u = url
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
+  const m = u.match(SCHEME_URL) || u.match(SCP_LIKE)
+  return m ? { host: m[1], path: m[2] } : null
 }
 
 function gitLine(cwd: string, args: string[]): string {
@@ -37,15 +44,20 @@ function gitLine(cwd: string, args: string[]): string {
  * (`gh:owner/repo`) that only names a repo once insteadOf expands it.
  */
 export function repoForCwd(cwd: string): RepoId | null {
-  if (!cwd) return null
-  for (const args of [
-    ['config', '--get', 'remote.origin.url'],
-    ['remote', 'get-url', 'origin'],
-  ]) {
-    const repo = parseRemote(gitLine(cwd, args))
-    if (repo) return repo
-  }
-  return null
+  return parseRemote(originUrlFor(cwd))
+}
+
+/**
+ * The origin URL that names the forge — the configured value when it parses,
+ * else the insteadOf-rewritten one. Also the URL to hand to another machine:
+ * an insteadOf rewrite (ssh alias, local mirror) is local to this one, so the
+ * rewritten form is not clonable anywhere else.
+ */
+export function originUrlFor(cwd: string): string {
+  if (!cwd) return ''
+  const raw = gitLine(cwd, ['config', '--get', 'remote.origin.url'])
+  if (parseRemote(raw)) return raw.trim()
+  return gitLine(cwd, ['remote', 'get-url', 'origin']).trim()
 }
 
 /**

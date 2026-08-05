@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import {
   parseRemote,
   repoForCwd,
+  originUrlFor,
   getWorkingDiff,
   getStatusPorcelain,
   getFileAtHead,
@@ -51,6 +52,47 @@ describe('parseRemote', () => {
   test('garbage → null', () => {
     expect(parseRemote('not a url')).toBeNull()
     expect(parseRemote('')).toBeNull()
+  })
+
+  // gh itself accepts every one of these; the parser is the weak link, and a
+  // path with the port glued on ("443/owner/repo") is worse than no answer —
+  // it mis-keys review dirs and pins gh to a repo that does not exist.
+  test('an explicit port is not part of the host or the path', () => {
+    expect(parseRemote('ssh://git@github.com:22/owner/repo.git')).toEqual({
+      host: 'github.com',
+      path: 'owner/repo',
+    })
+    expect(parseRemote('https://github.com:443/owner/repo.git')).toEqual({
+      host: 'github.com',
+      path: 'owner/repo',
+    })
+  })
+
+  test("GitHub's ssh-over-https workaround host", () => {
+    expect(parseRemote('ssh://git@ssh.github.com:443/owner/repo.git')).toEqual({
+      host: 'ssh.github.com',
+      path: 'owner/repo',
+    })
+  })
+
+  test('git:// protocol', () => {
+    expect(parseRemote('git://github.com/owner/repo.git')).toEqual({
+      host: 'github.com',
+      path: 'owner/repo',
+    })
+  })
+
+  test('trailing slash is not part of the path', () => {
+    expect(parseRemote('https://github.com/owner/repo/')).toEqual({
+      host: 'github.com',
+      path: 'owner/repo',
+    })
+  })
+
+  test('local paths name no forge → null', () => {
+    expect(parseRemote('/Users/t/mirrors/repo.git')).toBeNull()
+    expect(parseRemote('file:///Users/t/mirrors/repo.git')).toBeNull()
+    expect(parseRemote('../sibling-repo')).toBeNull()
   })
 })
 
@@ -98,6 +140,22 @@ describe('repoForCwd under url.<base>.insteadOf', () => {
 
   test('no origin remote → null', () => {
     expect(repoForCwd(dir)).toBeNull()
+  })
+
+  test('originUrlFor hands out the clonable URL, not the machine-local rewrite', () => {
+    git('remote', 'add', 'origin', 'git@github.com:owner/repo.git')
+    git('config', 'url.git@github-personal:.insteadOf', 'git@github.com:')
+    expect(originUrlFor(dir)).toBe('git@github.com:owner/repo.git')
+  })
+
+  test('originUrlFor falls back to the rewritten URL for an alias origin', () => {
+    git('remote', 'add', 'origin', 'gh:owner/repo.git')
+    git('config', 'url.https://github.com/.insteadOf', 'gh:')
+    expect(originUrlFor(dir)).toBe('https://github.com/owner/repo.git')
+  })
+
+  test('originUrlFor with no origin → empty', () => {
+    expect(originUrlFor(dir)).toBe('')
   })
 })
 

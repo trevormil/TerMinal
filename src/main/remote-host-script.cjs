@@ -54,16 +54,21 @@ function stat(p) {
 function repoRoot() {
   return run('git', ['rev-parse', '--show-toplevel'])
 }
+// This script is copied to the host standalone, so it cannot import src/main/repo.ts —
+// repoRemote/parseRemote are a deliberate mirror of repoForCwd/parseRemote there.
+// Keep the two in step.
 function repoRemote(root) {
-  return run('git', ['-C', root, 'remote', 'get-url', 'origin'])
+  const raw = run('git', ['-C', root, 'config', '--get', 'remote.origin.url'])
+  return parseRemote(raw) ? raw : run('git', ['-C', root, 'remote', 'get-url', 'origin'])
 }
 function parseRemote(url) {
   url = String(url || '')
     .trim()
+    .replace(/\/+$/, '')
     .replace(/\.git$/, '')
-  let m = url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
-  if (m) return { host: m[1], path: m[2] }
-  m = url.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/)
+  const m =
+    url.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
+    url.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
   return m ? { host: m[1], path: m[2] } : null
 }
 function forge(root) {

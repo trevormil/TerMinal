@@ -4,9 +4,10 @@
 // the host convention (~/repos/<name>, expanded by the runner against the host
 // home) and ensure the repo is cloned there before the schedule fires.
 
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { shq, isSafeSshTarget } from './remote'
+import { originUrlFor } from './repo'
 
 const safeName = (root: string) => basename(root).match(/[\w.-]+/)?.[0] || 'repo'
 
@@ -45,14 +46,9 @@ export async function ensureHostRepo(
   macRepoRoot: string,
 ): Promise<{ repoRoot: string; ok: boolean; error?: string }> {
   const repoRoot = hostRepoRoot(macRepoRoot)
-  let originUrl = ''
-  try {
-    originUrl = execFileSync('git', ['-C', macRepoRoot, 'remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-    }).trim()
-  } catch {
-    /* no origin */
-  }
+  // Not `git remote get-url`: a url.<base>.insteadOf rewrite (ssh alias, local
+  // mirror) is local to this Mac, and the host cannot clone the rewritten form.
+  const originUrl = originUrlFor(macRepoRoot)
   if (!originUrl)
     return { repoRoot, ok: false, error: 'local repo has no origin remote to clone on the host' }
   const r = await ssh(sshTarget, ensureRepoClonedCmd(safeName(macRepoRoot), originUrl))
