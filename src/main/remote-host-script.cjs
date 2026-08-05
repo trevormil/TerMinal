@@ -765,11 +765,6 @@ function readJson(p, f) {
     return f
   }
 }
-function writeJson(p, v) {
-  fs.mkdirSync(path.dirname(p), { recursive: true })
-  fs.writeFileSync(p, JSON.stringify(v, null, 2))
-  return true
-}
 // --- crash-safe shared-state writes (ticket 0110) ---------------------------
 // The remote host runs its OWN terminal-cron and terminal-cli against the same
 // hitl.json and schedules.json, and both of those take an advisory lock. An

@@ -69,6 +69,21 @@ export default tseslint.config(
       ],
     },
   },
+  // remote-host-script.cjs ships to remote hosts, so it cannot import from the
+  // app bundle and carries a generated copy of the shared repo-state block.
+  // That block is pinned byte-identical across all four copies and the other
+  // three are TypeScript, so its `eslint-disable @typescript-eslint/no-unused-vars`
+  // has to resolve here too — otherwise the pragma is itself the lint error.
+  {
+    files: ['src/**/*.cjs'],
+    extends: [tseslint.configs.base],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
+      ],
+    },
+  },
   // The UX suite and its scripts: same correctness rules, minus react-hooks —
   // that plugin reads Playwright's `use()` fixture callback as a React hook.
   {
