@@ -13,7 +13,9 @@
 // `rev-parse --show-toplevel` before hashing, so a path reached through a
 // symlink (macOS /tmp -> /private/tmp) produces the same key in both.
 
-export const REPO_STATE_BLOCK = `// --- BEGIN repo-state (canonical: src/main/repo-state-inline.js — do not edit by hand) ---
+export const REPO_STATE_BLOCK = `// --- BEGIN repo-state (canonical: src/main/repo-state-inline.ts — do not edit by hand) ---
+/* eslint-disable @typescript-eslint/no-unused-vars -- one shared block; not every
+   script uses every helper, and the copies must stay byte-identical. */
 const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
 const repoStateKeyCache = new Map()
 function repoStateDir() {
@@ -92,4 +94,20 @@ function maxAreaId(dirs) {
   }
   return max
 }
+// Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
+// the app injects, so a scheduled run resolves state identically to an
+// interactive one. Scripts reference these instead of literal paths.
+function repoStateEnv(root) {
+  const out = {}
+  if (!root) return out
+  const key = repoStateKey(root)
+  if (!key) return out
+  const base = join(repoStateDir(), key)
+  out.TERMINAL_STATE_DIR = base
+  for (const area of SIDECAR_AREAS) {
+    out['TERMINAL_' + area.toUpperCase() + '_DIR'] = join(base, area)
+  }
+  return out
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // --- END repo-state ---`

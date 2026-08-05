@@ -161,15 +161,44 @@ describe('repoStateEnv', () => {
   })
 })
 
-describe('spawned processes receive the sidecar env', () => {
-  // Agent runs (agents.ts) and interactive sessions (session-registry.ts) both
-  // build their own env. A prompt that says "write to $TERMINAL_REPORTS_DIR"
-  // resolves to an empty string in any spawn that forgets these — which is
-  // exactly how the first cut of this shipped.
-  const sources = ['agents.ts', 'session-registry.ts']
-  for (const file of sources) {
-    test(`${file} injects repoStateEnv`, () => {
-      const src = readFileSync(join(import.meta.dir, file), 'utf8')
+describe('every spawn path receives the sidecar env', () => {
+  // Three separate spawn sites were each missed in turn: interactive sessions,
+  // in-process agent runs, then scheduled cron runs — every time by keeping a
+  // hand-written list of files. So DISCOVER the spawn sites instead: anything
+  // that builds a child env with TERMINAL_REPO must also inject repoStateEnv,
+  // or a script told to write to $TERMINAL_REPORTS_DIR resolves an empty path.
+  const ROOT = join(import.meta.dir, '..', '..')
+  const CANDIDATES = [
+    'src/main/session-registry.ts',
+    'src/main/agents.ts',
+    'bin/terminal-cron',
+    'bin/terminal-cli',
+    'bin/terminal-mcp-server',
+    'src/main/remote-host-script.cjs',
+  ]
+
+  const spawnSites = CANDIDATES.filter((rel) => {
+    const src = readFileSync(join(ROOT, rel), 'utf8')
+    // Builds a child environment for an agent/session, rather than merely
+    // reading its own env.
+    return /TERMINAL_REPO:\s/.test(src)
+  })
+
+  test('the scan finds the known spawn sites (a guard matching nothing is not a guard)', () => {
+    expect(spawnSites).toContain('src/main/agents.ts')
+    expect(spawnSites).toContain('bin/terminal-cron')
+    expect(spawnSites.length).toBeGreaterThanOrEqual(2)
+  })
+
+  for (const rel of ['src/main/session-registry.ts', ...spawnSites]) {
+    test(`${rel} injects repoStateEnv into the child env`, () => {
+      // Must USE the helper, not merely define it: the standalone scripts
+      // carry their own copy in the inline block, so matching the bare name
+      // passed even with the injection deleted — which it did, once. Strip the
+      // definition, then require a remaining call.
+      const src = readFileSync(join(ROOT, rel), 'utf8')
+        .replace(/function repoStateEnv\(root\)[\s\S]*?\n\}/, '')
+        .replace(/export function repoStateEnv\([\s\S]*?\n\}/, '')
       expect(src).toContain('repoStateEnv(')
     })
   }
