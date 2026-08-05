@@ -17,7 +17,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
   SESSIONS="$ROOT/sessions"
 else
-  SESSIONS="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions)}"
+  SESSIONS="${TERMINAL_SESSIONS_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" sessions)}"
 fi
 COUNTER="$SESSIONS/.next-id"
 LOCK="$SESSIONS/.next-id.lock"

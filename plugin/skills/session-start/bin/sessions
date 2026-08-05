@@ -28,7 +28,8 @@ printf '%-6s %-9s %-12s %s\n' "----" "------" "-------" "-----"
 shopt -s nullglob 2>/dev/null || true
 found=""
 # newest first
-for d in $(ls -1d "$TERMINAL_SESSIONS_DIR"/[0-9]*/ "$ROOT/sessions"/[0-9]*/ 2>/dev/null | sort -r); do
+SESSIONS_DIR="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions 2>/dev/null || true)}"
+for d in $(ls -1d "$SESSIONS_DIR"/[0-9]*/ "$ROOT/sessions"/[0-9]*/ 2>/dev/null | sort -r); do
   f="$d/session.md"
   [ -e "$f" ] || continue
   found=1

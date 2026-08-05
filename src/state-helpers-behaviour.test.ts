@@ -128,3 +128,34 @@ describe('skill helpers resolve into the sidecar, never into the repo', () => {
     expect(out).toBe(join(repo, 'backlog'))
   })
 })
+
+describe('lister helpers see sidecar state in a plain shell', () => {
+  // These only READ, so the "nothing lands in the repo" check above can't see
+  // them — and with TERMINAL_*_DIR unset they silently listed nothing at all,
+  // which looks like an empty backlog rather than a broken lookup.
+  test('tickets lists a ticket that lives in the sidecar', () => {
+    const backlog = join(stateDir, 'github.com/o/beh', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0001-from-sidecar.md'),
+      '---\nid: 1\ntitle: "From sidecar"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('From sidecar')
+  })
+
+  test('sessions lists a session doc that lives in the sidecar', () => {
+    const dir = join(stateDir, 'github.com/o/beh', 'sessions', '0001-demo')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'session.md'),
+      '---\nid: 1\ntitle: "Sidecar session"\nstatus: active\n---\n\n# demo\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/sessions'))
+
+    expect(out).toContain('Sidecar session')
+  })
+})

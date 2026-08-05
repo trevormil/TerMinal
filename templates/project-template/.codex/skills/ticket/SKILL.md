@@ -48,7 +48,7 @@ Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 SKILL="$HOME/.config/TerMinal/plugin/skills/ticket"
-BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$TERMINAL_BACKLOG_DIR")
+BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "${TERMINAL_BACKLOG_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" backlog)}")
 
 "$SKILL/bin/next-ticket-id"      # atomically allocate next id
 "$SKILL/bin/tickets"             # list all
