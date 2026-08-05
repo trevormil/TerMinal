@@ -1,14 +1,17 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { repoForCwd, repoRootOf } from './repo'
 import { join, resolve, extname, sep } from 'node:path'
-import { existingProjectAreaPaths, projectAreaPathForRead } from './project-layout'
+import { existingProjectAreaPaths } from './project-layout'
 import { resolvedHarnessDir } from './settings'
 
-// Reads code-review/test artifacts from two locations:
-//   in-repo v2 (project-template): <repoRoot>/.TerMinal/reviews/<iid>/<short_sha>.md
-//   in-repo v1 (legacy):           <repoRoot>/.reviews/<iid>/<short_sha>.md
-//   optional harness store:      <harnessDir>/prs/<host>/<owner>/<repo>/<iid>/<short_sha>.md (+ meta.json commit list)
-// In-repo wins when present; the harness store is opt-in (Settings → harnessDir, '' = off).
+// Reads code-review/test artifacts from two stores:
+//   the project sidecar:    <sidecar>/reviews/<iid>/<short_sha>.md — where new
+//     artifacts are written, plus any older in-repo copies not migrated yet
+//     (project-layout.ts merges sidecar → .TerMinal/reviews → .reviews)
+//   optional harness store: <harnessDir>/prs/<host>/<owner>/<repo>/<iid>/<short_sha>.md
+//     (+ meta.json commit list)
+// The project store wins when present; the harness store is opt-in
+// (Settings → harnessDir, '' = off).
 
 export type Review = {
   number: number
@@ -127,9 +130,6 @@ const harnessPrDir = (host: string, repoPath: string, iid: number | string) => {
   const h = resolvedHarnessDir()
   return h ? join(h, 'prs', host, ...repoPath.split('/'), String(iid)) : ''
 }
-const inRepoReviewDir = (repoRoot: string, iid: number | string) =>
-  join(projectAreaPathForRead(repoRoot, 'reviews'), String(iid))
-
 function hasArtifacts(dir: string): boolean {
   if (!existsSync(dir)) return false
   return (
