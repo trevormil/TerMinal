@@ -20,6 +20,12 @@ const LITERAL = new RegExp(`\\.TerMinal/(${AREAS.join('|')})`)
 // So match the SHAPE — a slash immediately before the var — not a prefix name.
 const DOUBLED = /\/\$\{?TERMINAL_[A-Z]+_DIR/
 
+// Reading the OLD location is legitimate — the migration is gradual, so
+// allocators and listers must still see state that has not moved yet. Such a
+// line opts out explicitly with a marker, so the exception is visible in the
+// diff and cannot be acquired by accident.
+const ALLOW = 'state-path-ok'
+
 function* walk(dir: string): Generator<string> {
   if (!existsSync(dir)) return
   for (const e of readdirSync(dir)) {
@@ -44,6 +50,7 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
         readFileSync(file, 'utf8')
           .split('\n')
           .forEach((line, i) => {
+            if (line.includes(ALLOW)) return
             if (LITERAL.test(line) || DOUBLED.test(line))
               offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
           })
@@ -62,6 +69,7 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
       readFileSync(join(ROOT, rel), 'utf8')
         .split('\n')
         .forEach((line, i) => {
+          if (line.includes(ALLOW)) return
           if (LITERAL.test(line) || DOUBLED.test(line)) offenders.push(`${rel}:${i + 1}`)
         })
     }
@@ -86,5 +94,7 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     expect(DOUBLED.test('reports_dir="$TERMINAL_REPORTS_DIR"')).toBe(false)
     expect(DOUBLED.test('ls "$TERMINAL_BACKLOG_DIR"/[0-9]*.md')).toBe(false)
     expect(DOUBLED.test('git -C "$TERMINAL_REPO" log')).toBe(false)
+    // The opt-out must be explicit, not implied by looking like a read.
+    expect(LITERAL.test('scan "$ROOT/.TerMinal/backlog" # state-path-ok: legacy read')).toBe(true)
   })
 })

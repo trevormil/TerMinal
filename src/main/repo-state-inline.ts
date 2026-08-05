@@ -72,4 +72,24 @@ function areaWritePath(root, area, candidates, isV2) {
   if (existing.length) return existing[0]
   return join(root, isV2 ? candidates[0] : candidates[candidates.length - 1])
 }
+// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
+// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
+// producing two tickets with the same id and shadowing the originals.
+function maxAreaId(dirs) {
+  let max = 0
+  for (const dir of dirs) {
+    if (!dir) continue
+    let entries = []
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const f of entries) {
+      const m = /^(\\d{4})-/.exec(f)
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+  }
+  return max
+}
 // --- END repo-state ---`

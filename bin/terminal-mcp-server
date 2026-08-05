@@ -257,6 +257,26 @@ function areaWritePath(root, area, candidates, isV2) {
   if (existing.length) return existing[0]
   return join(root, isV2 ? candidates[0] : candidates[candidates.length - 1])
 }
+// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
+// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
+// producing two tickets with the same id and shadowing the originals.
+function maxAreaId(dirs) {
+  let max = 0
+  for (const dir of dirs) {
+    if (!dir) continue
+    let entries = []
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const f of entries) {
+      const m = /^(\d{4})-/.exec(f)
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+  }
+  return max
+}
 // --- END repo-state ---
 
 function areaCandidates(area) {
@@ -871,11 +891,12 @@ function fileTicket(args) {
     try {
       nextId = parseInt(readFileSync(nextIdFile, 'utf8').trim(), 10) || 1
     } catch {}
-  } else {
-    // Fall back to highest existing + 1
-    const files = readdirSync(backlogDir).filter((f) => /^\d{4}-.*\.md$/.test(f))
-    nextId = files.reduce((m, f) => Math.max(m, parseInt(f.slice(0, 4), 10)), 0) + 1
   }
+  // Never below the highest id that already exists ANYWHERE this repo reads
+  // from: a fresh sidecar has no counter, and its neighbouring repo may still
+  // hold 0001-0042 — allocating 0001 again would duplicate and shadow them.
+  const highest = maxAreaId(backlogReadDirs(repoRoot).concat(backlogDir))
+  nextId = Math.max(nextId, highest + 1)
   const id = String(nextId).padStart(4, '0')
   const slug = `${id}-${slugify(title)}`
   const today = todayStr()

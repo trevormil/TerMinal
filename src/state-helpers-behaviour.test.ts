@@ -159,3 +159,34 @@ describe('lister helpers see sidecar state in a plain shell', () => {
     expect(out).toContain('Sidecar session')
   })
 })
+
+describe('ids never collide with state still in the repo', () => {
+  // The write dir is the sidecar, but a repo mid-migration still holds
+  // 0001-00NN. Allocating from the (empty) sidecar alone restarts at 0001 and
+  // produces two tickets with the same id, shadowing the originals.
+  const seedRepoTickets = () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    for (const id of ['0001', '0002', '0042'])
+      writeFileSync(join(backlog, `${id}-legacy.md`), `---\nid: ${Number(id)}\n---\n`)
+  }
+
+  test('the shell allocator continues past in-repo ids', () => {
+    seedRepoTickets()
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/next-ticket-id'))
+    expect(Number(out)).toBe(43)
+  })
+
+  test('a fresh repo with no history still starts at 1', () => {
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/next-ticket-id'))
+    expect(Number(out)).toBe(1)
+  })
+
+  test('the session allocator continues past in-repo session ids', () => {
+    const sessions = join(repo, '.TerMinal', 'sessions')
+    mkdirSync(join(sessions, '0007-old'), { recursive: true })
+    writeFileSync(join(sessions, '0007-old', 'session.md'), '---\nid: 7\n---\n')
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/next-session-id'))
+    expect(Number(out)).toBe(8)
+  })
+})
