@@ -36,9 +36,19 @@ Coverage without a global install:
   no `.claude/settings.json` Stop hook, the session will still respond to the
   first task (the agent posts on its own) but won't re-arm the listener.
 
-For full cross-repo coverage, register the hook **globally**, once, by hand.
+For full cross-repo coverage the hook must be registered **globally**. The tm
+plugin does that for you — nothing below is needed if you run the app.
 
 ## Enable globally (one time, per machine)
+
+**If you use TerMinal, this is already done.** The app installs the tm plugin on
+launch and its `hooks/hooks.json` registers `remote-check.sh` as a `Stop` hook in
+every session, in every repo. Check Settings → Updates → tm plugin, or
+`claude plugin details tm`. The manual steps below are only for a machine
+running Claude Code without the app.
+
+<details>
+<summary>Manual registration (no TerMinal app)</summary>
 
 1. Make sure the hook script is somewhere stable. Either point at a checkout, or
    copy it out:
@@ -68,9 +78,12 @@ For full cross-repo coverage, register the hook **globally**, once, by hand.
    `timeout` is in **seconds**. 3600 keeps heartbeats to ~1/hour while idle;
    raise it to make them rarer (no documented maximum; the default is 600).
 
-3. It is safe to have **both** the repo-level and the global registration. The
-   hook takes a PID lock keyed on the session id, so only one instance parks;
-   the duplicate returns immediately.
+3. It is safe to have **several** registrations at once — the plugin's, a
+   repo-level one, and a hand-made global one. The hook takes a PID lock keyed
+   on the session id, so only one instance parks; the duplicates return
+   immediately.
+
+</details>
 
 ## Verify
 
