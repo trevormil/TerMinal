@@ -14,18 +14,18 @@
 // `value !== current && save(...)` guard means blurring an untouched field
 // writes nothing — only a real edit saves, and a real edit is never the mask.
 // ---------------------------------------------------------------------------
+import { expandSecretPaths } from './secret-paths'
 
 /** What the renderer sees instead of a secret. Never a valid credential. */
 export const SECRET_MASK = '••••••••'
 
-/** Dotted paths of every value `settings.ts` seals on disk (SECRET_PATHS). */
-export const MASKED_PATHS = [
-  'telegram.botToken',
-  'telegram.chatId',
-  'alerts.webhook.url',
-  'openrouterApiKey',
-  'openaiCompatApiKey',
-] as const
+/** Dotted paths of every value `settings.ts` seals on disk, resolved against
+ *  THIS object — webhooks are a list, so which paths exist depends on how many
+ *  are configured. Shared with the sealing side (secret-paths.ts) so the two
+ *  can't drift into masking a different set than they encrypt. */
+function maskedPaths(settings: unknown): string[] {
+  return expandSecretPaths(settings).map((p) => p.join('.'))
+}
 
 export type MaskedSettings<T> = T & { secretsSet: Record<string, boolean> }
 
@@ -37,14 +37,16 @@ function readPath(obj: unknown, path: string): unknown {
 }
 
 /** Deep-ish clone along the masked paths only — the rest is shared by reference,
- *  which is fine because the result is immediately serialised over IPC. */
+ *  which is fine because the result is immediately serialised over IPC.
+ *  Arrays are copied AS arrays: spreading `alerts.webhooks` into an object turns
+ *  the list into `{0:…,1:…}` and the renderer stops seeing any webhooks. */
 function writePath(obj: Record<string, unknown>, path: string, value: string): void {
   const keys = path.split('.')
   let node: Record<string, unknown> = obj
   for (const key of keys.slice(0, -1)) {
     const next = node[key]
     if (!next || typeof next !== 'object') return
-    node[key] = { ...(next as Record<string, unknown>) }
+    node[key] = Array.isArray(next) ? [...next] : { ...(next as Record<string, unknown>) }
     node = node[key] as Record<string, unknown>
   }
   node[keys[keys.length - 1]] = value
@@ -58,7 +60,7 @@ function writePath(obj: Record<string, unknown>, path: string, value: string): v
 export function maskSettingsSecrets<T extends object>(settings: T): MaskedSettings<T> {
   const out = { ...(settings as Record<string, unknown>) }
   const secretsSet: Record<string, boolean> = {}
-  for (const path of MASKED_PATHS) {
+  for (const path of maskedPaths(settings)) {
     const value = readPath(settings, path)
     const set = typeof value === 'string' && value !== ''
     secretsSet[path] = set
@@ -75,7 +77,7 @@ export function maskSettingsSecrets<T extends object>(settings: T): MaskedSettin
  */
 export function stripMaskedSecrets<T extends object>(patch: T): T {
   let out: Record<string, unknown> | null = null
-  for (const path of MASKED_PATHS) {
+  for (const path of maskedPaths(patch)) {
     if (readPath(patch, path) !== SECRET_MASK) continue
     out = out || structuredClone(patch as Record<string, unknown>)
     const keys = path.split('.')

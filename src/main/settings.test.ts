@@ -314,50 +314,188 @@ describe('alert channels (alerts)', () => {
         .replace(/^sealed:/, ''),
   }
 
-  test('defaults: desktop on (matches historical behavior), webhook off', () => {
-    expect(defaultSettings().alerts).toEqual({
-      desktop: { enabled: true },
-      webhook: { enabled: false, url: '' },
-    })
+  test('defaults: desktop on (matches historical behavior), no webhooks', () => {
+    expect(defaultSettings().alerts).toEqual({ desktop: { enabled: true }, webhooks: [] })
     expect(migrate({}).alerts).toEqual(defaultSettings().alerts)
   })
 
   test('migrate round-trips a configured alerts block', () => {
     const s = migrate({
-      alerts: { desktop: { enabled: false }, webhook: { enabled: true, url: 'https://x/h' } },
+      alerts: {
+        desktop: { enabled: false },
+        webhooks: [{ id: 'a', name: 'Slack', url: 'https://x/h', enabled: true }],
+      },
     })
     expect(s.alerts).toEqual({
       desktop: { enabled: false },
-      webhook: { enabled: true, url: 'https://x/h' },
+      webhooks: [{ id: 'a', name: 'Slack', url: 'https://x/h', enabled: true }],
     })
   })
 
   test('wrong-typed alerts fields are ignored, not coerced', () => {
-    const s = migrate({ alerts: { desktop: { enabled: 'yes' }, webhook: { url: 42 } } })
+    const s = migrate({ alerts: { desktop: { enabled: 'yes' }, webhooks: 'nope' } })
     expect(s.alerts).toEqual(defaultSettings().alerts)
   })
 
-  test('webhook url is sealed on disk like other secrets and opens back', () => {
+  test('a url-less entry survives — it is a row the user just added', () => {
+    // Dropping it would delete the row the moment the name field blurs, before
+    // the URL is pasted in.
+    const s = migrate({ alerts: { webhooks: [{ id: 'a', name: 'New', url: '' }] } })
+    expect(s.alerts.webhooks).toEqual([{ id: 'a', name: 'New', url: '', enabled: false }])
+  })
+
+  test('clearing a url is an explicit empty string, not a restore', () => {
+    // The Clear button saves ''. If that were treated like "absent", clearing a
+    // webhook URL would silently put the old credential back.
+    const cur = migrate({
+      alerts: { webhooks: [{ id: 'a', name: 'Slack', url: 'https://x/h', enabled: true }] },
+    })
+    const next = mergeSettingsPatch(cur, {
+      alerts: { webhooks: [{ id: 'a', name: 'Slack', url: '', enabled: true }] },
+    })
+    expect(next.alerts.webhooks[0].url).toBe('')
+  })
+
+  test('a junk entry is dropped, the good ones around it survive', () => {
+    const s = migrate({
+      alerts: {
+        webhooks: [
+          null,
+          { id: 'a', name: 'Slack', url: 'https://x/h', enabled: true },
+          { url: 42 },
+          'nope',
+        ],
+      },
+    })
+    expect(s.alerts.webhooks.map((w) => w.id)).toEqual(['a'])
+  })
+
+  test('an entry with no id gets a stable one, so migrate is idempotent', () => {
+    // Ids key the secret paths and the patch merge; a fresh id on every read
+    // would orphan the sealed URL.
+    const once = migrate({ alerts: { webhooks: [{ name: 'X', url: 'https://x/h' }] } })
+    const twice = migrate(once)
+    expect(once.alerts.webhooks[0].id).toBe(twice.alerts.webhooks[0].id)
+    expect(once.alerts.webhooks[0].id).toBeTruthy()
+  })
+
+  test('unknown categories and non-boolean values are dropped from routing', () => {
+    const s = migrate({
+      alerts: {
+        webhooks: [
+          {
+            id: 'a',
+            name: 'X',
+            url: 'https://x/h',
+            enabled: true,
+            categories: { tickets: true, 'not-a-category': true, errors: 'yes' },
+          },
+        ],
+      },
+    })
+    expect(s.alerts.webhooks[0].categories).toEqual({ tickets: true })
+  })
+
+  // The pre-multi-webhook shape, still on every existing install's disk.
+  describe('legacy single webhook', () => {
+    test('a configured one becomes the first entry in the list', () => {
+      const s = migrate({ alerts: { webhook: { enabled: true, url: 'https://x/h' } } })
+      expect(s.alerts.webhooks).toEqual([
+        { id: 'default', name: 'Webhook', url: 'https://x/h', enabled: true },
+      ])
+    })
+
+    test('a disabled-but-configured one is carried over, still disabled', () => {
+      // Otherwise turning it back on means re-pasting a URL the user already saved.
+      const s = migrate({ alerts: { webhook: { enabled: false, url: 'https://x/h' } } })
+      expect(s.alerts.webhooks).toEqual([
+        { id: 'default', name: 'Webhook', url: 'https://x/h', enabled: false },
+      ])
+    })
+
+    test('an empty one migrates to no webhooks at all', () => {
+      expect(migrate({ alerts: { webhook: { enabled: false, url: '' } } }).alerts.webhooks).toEqual(
+        [],
+      )
+    })
+
+    test('the new key wins when both are present', () => {
+      const s = migrate({
+        alerts: {
+          webhook: { enabled: true, url: 'https://legacy/h' },
+          webhooks: [{ id: 'a', name: 'New', url: 'https://new/h', enabled: true }],
+        },
+      })
+      expect(s.alerts.webhooks.map((w) => w.url)).toEqual(['https://new/h'])
+    })
+  })
+
+  test('every webhook url is sealed on disk and opens back', () => {
     const settings = migrate({
-      alerts: { webhook: { enabled: true, url: 'https://hooks.slack.com/services/SECRET' } },
+      alerts: {
+        webhooks: [
+          { id: 'a', name: 'Slack', url: 'https://hooks.slack.com/services/SECRET', enabled: true },
+          {
+            id: 'b',
+            name: 'Discord',
+            url: 'https://discord.com/api/webhooks/OTHER',
+            enabled: true,
+          },
+        ],
+      },
     })
     const sealed = sealSettingsForDisk(settings, adapter)
     expect(JSON.stringify(sealed)).not.toContain('hooks.slack.com')
+    expect(JSON.stringify(sealed)).not.toContain('discord.com')
     const opened = migrate(openSettingsFromDisk(sealed, adapter))
-    expect(opened.alerts.webhook.url).toBe('https://hooks.slack.com/services/SECRET')
+    expect(opened.alerts.webhooks.map((w) => w.url)).toEqual([
+      'https://hooks.slack.com/services/SECRET',
+      'https://discord.com/api/webhooks/OTHER',
+    ])
   })
 
-  test('partial alerts patches preserve sibling channels and fields', () => {
+  test('partial alerts patches preserve sibling channels', () => {
     const cur = migrate({
-      alerts: { desktop: { enabled: false }, webhook: { enabled: true, url: 'https://x/h' } },
+      alerts: {
+        desktop: { enabled: false },
+        webhooks: [{ id: 'a', name: 'Slack', url: 'https://x/h', enabled: true }],
+      },
     })
-    const next = mergeSettingsPatch(cur, { alerts: { webhook: { enabled: false } } })
-    expect(next.alerts).toEqual({
-      desktop: { enabled: false },
-      webhook: { enabled: false, url: 'https://x/h' },
+    const next = mergeSettingsPatch(cur, { alerts: { desktop: { enabled: true } } })
+    expect(next.alerts.desktop.enabled).toBe(true)
+    expect(next.alerts.webhooks).toEqual(cur.alerts.webhooks)
+  })
+
+  test('a patched entry that omits its url keeps the saved one', () => {
+    // The Settings UI is handed masked secrets, and stripMaskedSecrets removes
+    // the mask before saving — so an untouched entry arrives with NO url. A
+    // wholesale array replace would wipe a working webhook on every unrelated
+    // edit (renaming another one, toggling a category).
+    const cur = migrate({
+      alerts: { webhooks: [{ id: 'a', name: 'Slack', url: 'https://x/h', enabled: true }] },
     })
-    const next2 = mergeSettingsPatch(next, { alerts: { desktop: { enabled: true } } })
-    expect(next2.alerts.webhook.url).toBe('https://x/h')
+    const next = mergeSettingsPatch(cur, {
+      alerts: { webhooks: [{ id: 'a', name: 'Renamed', enabled: false }] },
+    })
+    expect(next.alerts.webhooks).toEqual([
+      { id: 'a', name: 'Renamed', url: 'https://x/h', enabled: false },
+    ])
+  })
+
+  test('the webhook list is replaced wholesale, so deletes stick', () => {
+    const cur = migrate({
+      alerts: {
+        webhooks: [
+          { id: 'a', name: 'Slack', url: 'https://a/h', enabled: true },
+          { id: 'b', name: 'Discord', url: 'https://b/h', enabled: true },
+        ],
+      },
+    })
+    const next = mergeSettingsPatch(cur, {
+      alerts: { webhooks: [{ id: 'b', name: 'Discord', enabled: true }] },
+    })
+    expect(next.alerts.webhooks.map((w) => w.id)).toEqual(['b'])
+    expect(next.alerts.webhooks[0].url).toBe('https://b/h')
   })
 })
 

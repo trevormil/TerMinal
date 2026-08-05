@@ -6,8 +6,14 @@ import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } f
 import { configPath } from './config-dir'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
-import { NOTIFY_CATEGORIES, NOTIFY_CHANNELS, type NotifyMatrix } from '../shared/notifications'
+import {
+  NOTIFY_CATEGORIES,
+  NOTIFY_CHANNELS,
+  type NotifyCategory,
+  type NotifyMatrix,
+} from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
+import { expandSecretPaths } from './secret-paths'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -68,9 +74,25 @@ export type InboxCfg = {
 // Outbound alert channels (notify-channels.ts). Telegram keeps its own block
 // above (telegram.notify is that channel's enable knob — inbound control lives
 // there too); this covers the rest of the fan-out.
+/**
+ * One outbound webhook destination. Several can be configured at once — a Slack
+ * URL, a Discord URL, your own endpoint — because they rarely want the same
+ * traffic. `categories` overrides the notification matrix's `webhook` row for
+ * THIS destination only; omitted means "whatever the row says".
+ *
+ * `id` is stable and load-bearing: it keys the sealed-secret path and matches a
+ * patched entry back to its saved URL (the renderer only ever sees a mask).
+ */
+export type WebhookCfg = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  categories?: Partial<Record<NotifyCategory, boolean>>
+}
 export type AlertsCfg = {
   desktop: { enabled: boolean } // Electron Notification; on by default (historical behavior)
-  webhook: { enabled: boolean; url: string } // POST JSON; covers Slack/Discord incoming webhooks
+  webhooks: WebhookCfg[] // POST JSON; covers Slack/Discord incoming webhooks
 }
 export type AppearanceMode = 'dark' | 'light' | 'system'
 export type AppearanceTabLayout = 'horizontal' | 'sidebar'
@@ -157,7 +179,8 @@ export type SettingsPatch = Partial<
   telegram?: Partial<TelegramCfg>
   alerts?: {
     desktop?: Partial<AlertsCfg['desktop']>
-    webhook?: Partial<AlertsCfg['webhook']>
+    /** The whole list, always — see mergeWebhooks. Entries may omit `url`. */
+    webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
   bridge?: Partial<BridgeCfg>
@@ -175,13 +198,6 @@ const DEFAULT_BROWSER = 'Brave Browser'
 // a clone of this repo resolves to that subdir (see pickTemplateSource).
 export const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/TerMinal'
 const SECRET_MARKER = 'terminal-secret:v1'
-const SECRET_PATHS = [
-  ['telegram', 'botToken'],
-  ['telegram', 'chatId'],
-  ['alerts', 'webhook', 'url'], // Slack/Discord webhook URLs embed a secret token
-  ['openrouterApiKey'],
-  ['openaiCompatApiKey'],
-] as const
 
 export type SettingsSecretStorage = {
   seal(value: string): string
@@ -217,7 +233,7 @@ export function defaultSettings(): Settings {
     defaultEngine: daemon.defaultEngine, // codex is the default agent-run engine; claude stays selectable
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
-    alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
+    alerts: { desktop: { enabled: true }, webhooks: [] },
     inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'urgent' },
     notifications: { matrix: {} }, // {} = ship defaults (shared/notifications DEFAULT_MATRIX)
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
@@ -326,6 +342,68 @@ function noteFolders(raw: unknown): NoteFolder[] {
     .filter((f) => f.path)
 }
 
+/**
+ * Coerce a raw webhook list into shape, dropping entries that aren't objects
+ * and fields that aren't the right type — a hand-edited settings.json shouldn't
+ * take out the whole alerts block. Ids are positional when absent so that
+ * migrating the same file twice yields the same ids; without that, the sealed
+ * URL and its entry would come apart on the next read.
+ */
+function normalizeWebhooks(raw: unknown[]): WebhookCfg[] {
+  const out: WebhookCfg[] = []
+  raw.forEach((entry, i) => {
+    if (!entry || typeof entry !== 'object') return
+    const w = entry as Record<string, unknown>
+    // An EMPTY url is kept: that's a destination the user just added and hasn't
+    // pasted a URL into yet. It stays inert (createWebhookChannels requires a
+    // valid http(s) url), but dropping it would delete the row mid-edit.
+    if (typeof w.url !== 'string') return
+    const cfg: WebhookCfg = {
+      id: typeof w.id === 'string' && w.id ? w.id : `wh-${i}`,
+      name: typeof w.name === 'string' && w.name.trim() ? w.name.trim() : 'Webhook',
+      url: w.url,
+      enabled: w.enabled === true,
+    }
+    const categories = normalizeCategories(w.categories)
+    if (categories) cfg.categories = categories
+    out.push(cfg)
+  })
+  return out
+}
+
+/** Only known categories with boolean values survive; `undefined` means "no
+ *  overrides", which routes off the notification matrix's `webhook` row. */
+function normalizeCategories(raw: unknown): Partial<Record<NotifyCategory, boolean>> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const src = raw as Record<string, unknown>
+  const out: Partial<Record<NotifyCategory, boolean>> = {}
+  for (const cat of NOTIFY_CATEGORIES) {
+    if (typeof src[cat] === 'boolean') out[cat] = src[cat] as boolean
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/**
+ * Merge a patched webhook list over the saved one. The list is REPLACED (so a
+ * delete sticks), but an entry arriving without a `url` keeps the saved one
+ * matched by id — the renderer is handed masks, and stripMaskedSecrets removes
+ * them before the patch lands, so every untouched entry arrives url-less.
+ */
+function mergeWebhooks(current: WebhookCfg[], patch: unknown): WebhookCfg[] {
+  if (!Array.isArray(patch)) return current
+  const saved = new Map(current.map((w) => [w.id, w.url]))
+  const filled = patch.map((entry) => {
+    if (!entry || typeof entry !== 'object') return entry
+    const w = entry as Record<string, unknown>
+    // ABSENT means "untouched, keep what's saved"; an empty STRING is an
+    // explicit Clear. Collapsing the two would make the Clear button a no-op.
+    if (typeof w.url === 'string') return w
+    const url = saved.get(String(w.id))
+    return url === undefined ? w : { ...w, url }
+  })
+  return normalizeWebhooks(filled)
+}
+
 /** Coerce any on-disk shape (incl. the legacy flat booleans) into Settings. */
 export function migrate(raw: unknown): Settings {
   const s = defaultSettings()
@@ -345,9 +423,19 @@ export function migrate(raw: unknown): Settings {
   if (r.alerts && typeof r.alerts === 'object') {
     if (typeof r.alerts.desktop?.enabled === 'boolean')
       s.alerts.desktop.enabled = r.alerts.desktop.enabled
-    if (typeof r.alerts.webhook?.enabled === 'boolean')
-      s.alerts.webhook.enabled = r.alerts.webhook.enabled
-    if (typeof r.alerts.webhook?.url === 'string') s.alerts.webhook.url = r.alerts.webhook.url
+    if (Array.isArray(r.alerts.webhooks)) s.alerts.webhooks = normalizeWebhooks(r.alerts.webhooks)
+    // The pre-multi-webhook shape, still on every existing install's disk. The
+    // saved URL is carried over even when disabled — otherwise turning the
+    // channel back on means re-pasting a credential the user already gave us.
+    else if (typeof r.alerts.webhook?.url === 'string' && r.alerts.webhook.url)
+      s.alerts.webhooks = [
+        {
+          id: 'default',
+          name: 'Webhook',
+          url: r.alerts.webhook.url,
+          enabled: r.alerts.webhook.enabled === true,
+        },
+      ]
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
@@ -470,7 +558,7 @@ function clonePlain<T>(value: T): T {
 function transformSecretPaths(raw: unknown, visit: (value: unknown) => unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   const out = clonePlain(raw)
-  for (const path of SECRET_PATHS) {
+  for (const path of expandSecretPaths(out)) {
     let parent: any = out
     for (let i = 0; i < path.length - 1; i++) {
       parent = parent?.[path[i]]
@@ -582,7 +670,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     telegram: { ...cur.telegram, ...(telegram || {}) },
     alerts: {
       desktop: { ...cur.alerts.desktop, ...(alerts?.desktop || {}) },
-      webhook: { ...cur.alerts.webhook, ...(alerts?.webhook || {}) },
+      webhooks: mergeWebhooks(cur.alerts.webhooks, alerts?.webhooks),
     },
     inbox: { ...cur.inbox, ...(inbox || {}) },
     bridge: { ...cur.bridge, ...bridgePatch },

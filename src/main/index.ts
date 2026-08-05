@@ -888,12 +888,21 @@ ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
-ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') => {
-  if (channel === 'telegram') return testTelegram()
-  if (channel === 'desktop') return testDesktopAlert()
-  if (channel === 'webhook') return testWebhook(readSettings().alerts.webhook.url)
-  return { ok: false, error: `unknown alert channel: ${channel}` }
-})
+// `webhookId` picks one destination out of the list; the renderer only holds a
+// mask of the URL, so it names the entry instead of sending the value back.
+ipcMain.handle(
+  'alerts:test',
+  (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
+    if (channel === 'telegram') return testTelegram()
+    if (channel === 'desktop') return testDesktopAlert()
+    if (channel === 'webhook') {
+      const hook = readSettings().alerts.webhooks.find((w) => w.id === webhookId)
+      if (!hook) return { ok: false, error: 'Save the webhook before testing it.' }
+      return testWebhook(hook.url)
+    }
+    return { ok: false, error: `unknown alert channel: ${channel}` }
+  },
+)
 // Secrets are sealed on disk; handing the renderer the decrypted values on
 // every read undoes that. It gets masks plus a `secretsSet` map instead — see
 // settings-mask.ts. Writes still work: only an actual edit is saved.

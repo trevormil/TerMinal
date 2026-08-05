@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import type { NotifyMatrix } from '../../../shared/notifications'
+import type { NotifyCategory, NotifyMatrix } from '../../../shared/notifications'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
@@ -538,9 +538,18 @@ export type SessionEngine = import('../../../shared/engines').SessionEngineId
 export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
+/** One outbound webhook destination. `categories` overrides the notification
+ *  matrix's `webhook` row for this destination only. */
+export type WebhookCfg = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  categories?: Partial<Record<NotifyCategory, boolean>>
+}
 export type AlertsCfg = {
   desktop: { enabled: boolean }
-  webhook: { enabled: boolean; url: string }
+  webhooks: WebhookCfg[]
 }
 export type AlertChannelId = 'telegram' | 'desktop' | 'webhook'
 export type InboxCfg = {
@@ -703,7 +712,9 @@ export type SettingsPatch = Partial<
   telegram?: Partial<TelegramCfg>
   alerts?: {
     desktop?: Partial<AlertsCfg['desktop']>
-    webhook?: Partial<AlertsCfg['webhook']>
+    /** The whole list, always — main replaces it wholesale so deletes stick,
+     *  and restores each entry's saved url when the patch omits it. */
+    webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
   bridge?: Partial<BridgeCfg>
@@ -1852,7 +1863,12 @@ export type GtApi = {
     // `note` = succeeded WITH a caveat. macOS delivers notifications only for
     // signed apps since Electron 42, and this build is unsigned (ticket 93), so
     // the desktop channel can report ok while showing nothing.
-    test: (channel: AlertChannelId) => Promise<{ ok: boolean; error?: string; note?: string }>
+    /** `webhookId` names which destination to ping — required for 'webhook',
+     *  since the renderer only holds a mask of the URL. */
+    test: (
+      channel: AlertChannelId,
+      webhookId?: string,
+    ) => Promise<{ ok: boolean; error?: string; note?: string }>
   }
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]

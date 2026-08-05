@@ -8,7 +8,7 @@ import {
   testWebhook,
   createTelegramChannel,
   createDesktopChannel,
-  createWebhookChannel,
+  createWebhookChannels,
   createPushChannel,
   type NotifyChannel,
   type NotifyKind,
@@ -20,15 +20,23 @@ function settingsWith(patch: {
   telegram?: Partial<Settings['telegram']>
   alerts?: {
     desktop?: Partial<Settings['alerts']['desktop']>
-    webhook?: Partial<Settings['alerts']['webhook']>
+    webhooks?: Settings['alerts']['webhooks']
   }
 }): Settings {
   const s = defaultSettings()
   Object.assign(s.telegram, patch.telegram || {})
   Object.assign(s.alerts.desktop, patch.alerts?.desktop || {})
-  Object.assign(s.alerts.webhook, patch.alerts?.webhook || {})
+  s.alerts.webhooks = patch.alerts?.webhooks || []
   return s
 }
+
+const hook = (over: Partial<Settings['alerts']['webhooks'][number]> = {}) => ({
+  id: 'a',
+  name: 'Slack',
+  url: 'https://x.test/hook',
+  enabled: true,
+  ...over,
+})
 
 function recordingChannel(id: NotifyChannel['id'], enabled = true) {
   const calls: { kind: NotifyKind; title: string; detail?: string; refs: NotifyRefs }[] = []
@@ -125,6 +133,26 @@ describe('dispatchAlert', () => {
       { push: { 'code-review': true } },
     )
     expect(push.calls).toHaveLength(1)
+  })
+
+  test("a channel's own wants() overrides the matrix row for that instance", () => {
+    // Two webhooks, same channel id, different routing. Without the per-instance
+    // hook they would both be gated on the single `webhook` matrix row.
+    const ticket = { kind: 'ticket-filed', title: 'Filed #20' }
+    const wantsTickets = recordingChannel('webhook')
+    wantsTickets.ch.wants = (c) => c === 'tickets'
+    const wantsNothing = recordingChannel('webhook')
+    wantsNothing.ch.wants = () => false
+    dispatchAlert([wantsTickets.ch, wantsNothing.ch], ticket)
+    expect(wantsTickets.calls).toHaveLength(1)
+    expect(wantsNothing.calls).toHaveLength(0)
+  })
+
+  test('wants() wins over a matrix override too', () => {
+    const ch = recordingChannel('webhook')
+    ch.ch.wants = () => false
+    dispatchAlert([ch.ch], { kind: 'ticket-filed', title: 'x' }, { webhook: { tickets: true } })
+    expect(ch.calls).toHaveLength(0)
   })
 
   test('a channel throwing synchronously does not block the others', () => {
@@ -245,34 +273,108 @@ describe('isWebhookUrl', () => {
   })
 })
 
-describe('createWebhookChannel', () => {
-  test('disabled unless armed AND the url is valid', () => {
-    const off = createWebhookChannel(() => settingsWith({}))
-    expect(off.enabled()).toBe(false)
-    const badUrl = createWebhookChannel(() =>
-      settingsWith({ alerts: { webhook: { enabled: true, url: 'nope' } } }),
-    )
-    expect(badUrl.enabled()).toBe(false)
-    const on = createWebhookChannel(() =>
-      settingsWith({ alerts: { webhook: { enabled: true, url: 'https://x.test/hook' } } }),
-    )
-    expect(on.enabled()).toBe(true)
+describe('createWebhookChannels', () => {
+  test('no configured webhooks means no channels', () => {
+    expect(createWebhookChannels(() => settingsWith({}))).toEqual([])
   })
 
-  test('send POSTs the JSON payload to the configured url', async () => {
+  test('one channel per configured destination', () => {
+    const chans = createWebhookChannels(() =>
+      settingsWith({
+        alerts: { webhooks: [hook(), hook({ id: 'b', url: 'https://y.test/hook' })] },
+      }),
+    )
+    expect(chans).toHaveLength(2)
+    expect(chans.every((c) => c.id === 'webhook')).toBe(true)
+  })
+
+  test('disabled unless armed AND the url is valid', () => {
+    const chans = createWebhookChannels(() =>
+      settingsWith({
+        alerts: {
+          webhooks: [
+            hook({ id: 'off', enabled: false }),
+            hook({ id: 'bad', url: 'nope' }),
+            hook({ id: 'good' }),
+          ],
+        },
+      }),
+    )
+    expect(chans.map((c) => c.enabled())).toEqual([false, false, true])
+  })
+
+  test('each channel POSTs to ITS OWN url, not the first one', () => {
+    // The bug this pins: closing over `settings.alerts.webhooks[0]` for every
+    // channel sends every alert to one destination and silently drops the rest.
     const fetchFn = mock(() => Promise.resolve(new Response('ok')))
-    const ch = createWebhookChannel(
-      () => settingsWith({ alerts: { webhook: { enabled: true, url: 'https://x.test/hook' } } }),
+    const chans = createWebhookChannels(
+      () =>
+        settingsWith({
+          alerts: { webhooks: [hook(), hook({ id: 'b', url: 'https://y.test/hook' })] },
+        }),
       fetchFn as unknown as typeof fetch,
     )
-    await ch.send('done', 'Tests green', 'suite passed', { pr: 87 })
-    expect(fetchFn).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('https://x.test/hook')
-    expect(init.method).toBe('POST')
-    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json')
-    const body = JSON.parse(init.body as string)
-    expect(body).toMatchObject({ kind: 'done', title: 'Tests green', refs: { pr: 87 } })
+    return Promise.all(
+      chans.map((c) => c.send('done', 'Tests green', 'suite passed', { pr: 87 })),
+    ).then(() => {
+      const urls = fetchFn.mock.calls.map((c) => (c as unknown as [string])[0])
+      expect(urls).toEqual(['https://x.test/hook', 'https://y.test/hook'])
+      const body = JSON.parse(
+        (fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+      )
+      expect(body).toMatchObject({ kind: 'done', title: 'Tests green', refs: { pr: 87 } })
+    })
+  })
+
+  test('a destination re-reads settings, so an edited url takes effect', () => {
+    // The channel list is rebuilt per dispatch, but the closure must not cache
+    // the entry either — otherwise editing a URL needs an app restart.
+    let url = 'https://old.test/hook'
+    const fetchFn = mock(() => Promise.resolve(new Response('ok')))
+    const [ch] = createWebhookChannels(
+      () => settingsWith({ alerts: { webhooks: [hook({ url })] } }),
+      fetchFn as unknown as typeof fetch,
+    )
+    url = 'https://new.test/hook'
+    return Promise.resolve(ch.send('info', 'ping', undefined, {})).then(() => {
+      expect((fetchFn.mock.calls[0] as unknown as [string])[0]).toBe('https://new.test/hook')
+    })
+  })
+
+  test('a deleted destination goes inert rather than posting to a stale url', () => {
+    let webhooks = [hook()]
+    const fetchFn = mock(() => Promise.resolve(new Response('ok')))
+    const [ch] = createWebhookChannels(
+      () => settingsWith({ alerts: { webhooks } }),
+      fetchFn as unknown as typeof fetch,
+    )
+    webhooks = []
+    expect(ch.enabled()).toBe(false)
+  })
+
+  describe('per-destination routing', () => {
+    test('no overrides falls back to the matrix row', () => {
+      const [ch] = createWebhookChannels(() => settingsWith({ alerts: { webhooks: [hook()] } }))
+      expect(ch.wants!('needs-you')).toBe(true)
+      expect(ch.wants!('tickets')).toBe(false)
+    })
+
+    test('each destination routes independently', () => {
+      const chans = createWebhookChannels(() =>
+        settingsWith({
+          alerts: {
+            webhooks: [
+              hook({ categories: { tickets: true } }),
+              hook({ id: 'b', categories: { 'needs-you': false } }),
+            ],
+          },
+        }),
+      )
+      expect(chans[0].wants!('tickets')).toBe(true)
+      expect(chans[1].wants!('tickets')).toBe(false)
+      expect(chans[0].wants!('needs-you')).toBe(true)
+      expect(chans[1].wants!('needs-you')).toBe(false)
+    })
   })
 })
 
