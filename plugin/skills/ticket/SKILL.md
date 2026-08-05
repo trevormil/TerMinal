@@ -41,7 +41,7 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 
 ## Where tickets live
 
-`<repo-root>/$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` in v2 repos. Schema:
+`$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` (outside the repo). Schema:
 [`EXAMPLE.md`](./EXAMPLE.md). Counter at `$TERMINAL_BACKLOG_DIR/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 

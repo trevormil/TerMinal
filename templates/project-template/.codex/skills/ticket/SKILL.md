@@ -39,7 +39,7 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 
 ## Where tickets live
 
-`<repo-root>/$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` in v2 repos. Schema:
+`$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` (outside the repo). Schema:
 [`EXAMPLE.md`](./EXAMPLE.md). Counter at `$TERMINAL_BACKLOG_DIR/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
@@ -48,7 +48,7 @@ Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 SKILL="$HOME/.config/TerMinal/plugin/skills/ticket"
-BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$ROOT/$TERMINAL_BACKLOG_DIR")
+BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$TERMINAL_BACKLOG_DIR")
 
 "$SKILL/bin/next-ticket-id"      # atomically allocate next id
 "$SKILL/bin/tickets"             # list all

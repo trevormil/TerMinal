@@ -12,11 +12,13 @@ const ROOT = join(import.meta.dir, '..')
 const AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
 const LITERAL = new RegExp(`\\.TerMinal/(${AREAS.join('|')})`)
 
-// The sidecar vars are ABSOLUTE. Prefixing one with the repo root yields
-// `<repo>/Users/...`, which silently writes inside the repo — the exact bug the
-// migration exists to prevent, and one that shipped once already because the
-// literal-path sweep rewrote paths that were already rooted at $TERMINAL_REPO.
-const DOUBLED = /\$\{?TERMINAL_REPO\}?"?\/+"?\$\{?TERMINAL_[A-Z]+_DIR/
+// The sidecar vars are ABSOLUTE. Prefixing one with ANY path yields
+// `<prefix>/Users/...`, which silently writes inside the repo — the exact bug
+// the migration exists to prevent. This shipped twice: once via $TERMINAL_REPO
+// in agent scripts, then again via a differently-named $ROOT in plugin
+// helpers, because the first version of this guard only knew the former name.
+// So match the SHAPE — a slash immediately before the var — not a prefix name.
+const DOUBLED = /\/\$\{?TERMINAL_[A-Z]+_DIR/
 
 function* walk(dir: string): Generator<string> {
   if (!existsSync(dir)) return
@@ -77,7 +79,12 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     // The doubled form: an absolute sidecar var pasted after the repo root.
     expect(DOUBLED.test('reports_dir="$TERMINAL_REPO/$TERMINAL_REPORTS_DIR"')).toBe(true)
     expect(DOUBLED.test('grep title "$TERMINAL_REPO"/$TERMINAL_BACKLOG_DIR/*.md')).toBe(true)
+    // Any prefix name, not just the one we thought of first:
+    expect(DOUBLED.test('echo "$ROOT/$TERMINAL_BACKLOG_DIR"')).toBe(true)
+    expect(DOUBLED.test('`<repo-root>/$TERMINAL_BACKLOG_DIR/NNNN.md`')).toBe(true)
+    // The var used bare, or with a suffix, is correct.
     expect(DOUBLED.test('reports_dir="$TERMINAL_REPORTS_DIR"')).toBe(false)
+    expect(DOUBLED.test('ls "$TERMINAL_BACKLOG_DIR"/[0-9]*.md')).toBe(false)
     expect(DOUBLED.test('git -C "$TERMINAL_REPO" log')).toBe(false)
   })
 })

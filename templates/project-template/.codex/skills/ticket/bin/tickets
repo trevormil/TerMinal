@@ -46,7 +46,7 @@ printf '%-6s %-12s %-9s %-7s %-5s %-12s %-18s %s\n' "----" "------" "--------" "
 shopt -s nullglob 2>/dev/null || true
 found=""
 # newest first
-for f in $(ls -1 "$ROOT/$TERMINAL_BACKLOG_DIR"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -r); do
+for f in $(ls -1 "$TERMINAL_BACKLOG_DIR"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -r); do
   [ -e "$f" ] || continue
   found=1
   status="$(field "$f" status)"

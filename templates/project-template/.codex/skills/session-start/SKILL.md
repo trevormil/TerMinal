@@ -40,7 +40,7 @@ for the session — every later skill (and `/session-end`) reads and updates it.
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "$ROOT/$TERMINAL_SESSIONS_DIR")
+SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "$TERMINAL_SESSIONS_DIR")
 id=$("$HOME/.config/TerMinal/plugin/skills/session-start/bin/next-session-id")   # e.g. 0007
 ```
 

@@ -37,5 +37,5 @@ fi
 if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
   printf '%s\n' "$ROOT/backlog"
 else
-  printf '%s\n' "$ROOT/$TERMINAL_BACKLOG_DIR"
+  printf '%s\n' "${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"
 fi
