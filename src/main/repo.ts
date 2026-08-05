@@ -14,17 +14,56 @@ export function parseRemote(url: string): RepoId | null {
   return null
 }
 
-/** owner/repo + host for the git repo containing cwd (via origin remote). */
-export function repoForCwd(cwd: string): RepoId | null {
-  if (!cwd) return null
+function gitLine(cwd: string, args: string[]): string {
   try {
-    const url = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], {
+    return execFileSync('git', ['-C', cwd, ...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    return parseRemote(url)
   } catch {
-    return null
+    return ''
+  }
+}
+
+/**
+ * owner/repo + host for the git repo containing cwd (via origin remote).
+ *
+ * `git remote get-url` applies `url.<base>.insteadOf`, which routinely rewrites
+ * a real forge URL into something that names no forge — an ssh host alias
+ * (`git@github-personal:owner/repo`, the multi-account pattern) or a local
+ * mirror path. That hid the forge and left the PRs tab empty, so the raw
+ * configured URL is the better identity whenever it parses; the rewritten form
+ * stays as the fallback for the opposite setup, where origin is a short alias
+ * (`gh:owner/repo`) that only names a repo once insteadOf expands it.
+ */
+export function repoForCwd(cwd: string): RepoId | null {
+  if (!cwd) return null
+  for (const args of [
+    ['config', '--get', 'remote.origin.url'],
+    ['remote', 'get-url', 'origin'],
+  ]) {
+    const repo = parseRemote(gitLine(cwd, args))
+    if (repo) return repo
+  }
+  return null
+}
+
+/**
+ * Environment for a `gh` invocation in cwd (undefined = inherit unchanged).
+ *
+ * `gh` resolves the repo from the git remote itself, applying the same
+ * insteadOf rewrite, and then refuses with "none of the git remotes ... point to
+ * a known GitHub host". Pinning GH_REPO to the repo we resolved canonically
+ * keeps every gh call working under insteadOf. An explicit GH_REPO already in
+ * the environment wins.
+ */
+export function ghEnvFor(cwd: string): NodeJS.ProcessEnv | undefined {
+  if (process.env.GH_REPO) return undefined
+  const repo = repoForCwd(cwd)
+  if (!repo) return undefined
+  return {
+    ...process.env,
+    GH_REPO: /(^|\.)github\.com$/i.test(repo.host) ? repo.path : `${repo.host}/${repo.path}`,
   }
 }
 

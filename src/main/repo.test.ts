@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   parseRemote,
+  repoForCwd,
   getWorkingDiff,
   getStatusPorcelain,
   getFileAtHead,
@@ -50,6 +51,53 @@ describe('parseRemote', () => {
   test('garbage → null', () => {
     expect(parseRemote('not a url')).toBeNull()
     expect(parseRemote('')).toBeNull()
+  })
+})
+
+describe('repoForCwd under url.<base>.insteadOf', () => {
+  let dir = ''
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', dir, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'repoid-'))
+    git('init', '-b', 'main')
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  test('no rewrite → the configured origin', () => {
+    git('remote', 'add', 'origin', 'git@github.com:owner/repo.git')
+    expect(repoForCwd(dir)).toEqual({ host: 'github.com', path: 'owner/repo' })
+  })
+
+  test('an ssh host alias rewrite still resolves to the real forge host', () => {
+    // The multi-account pattern: ~/.ssh/config maps github-personal → github.com.
+    // `git remote get-url` applies the rewrite, so the forge disappears behind
+    // an alias that names no host we (or gh) know.
+    git('remote', 'add', 'origin', 'git@github.com:owner/repo.git')
+    git('config', 'url.git@github-personal:.insteadOf', 'git@github.com:')
+    expect(repoForCwd(dir)).toEqual({ host: 'github.com', path: 'owner/repo' })
+  })
+
+  test('a local mirror rewrite still resolves to the real forge host', () => {
+    git('remote', 'add', 'origin', 'https://github.com/owner/repo.git')
+    git('config', 'url./Users/t/mirrors/.insteadOf', 'https://github.com/')
+    expect(repoForCwd(dir)).toEqual({ host: 'github.com', path: 'owner/repo' })
+  })
+
+  test('an unparseable alias origin falls back to its rewritten URL', () => {
+    // The other direction: origin is stored as a short alias that only means
+    // something once insteadOf expands it.
+    git('remote', 'add', 'origin', 'gh:owner/repo.git')
+    git('config', 'url.https://github.com/.insteadOf', 'gh:')
+    expect(repoForCwd(dir)).toEqual({ host: 'github.com', path: 'owner/repo' })
+  })
+
+  test('no origin remote → null', () => {
+    expect(repoForCwd(dir)).toBeNull()
   })
 })
 

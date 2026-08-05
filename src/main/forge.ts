@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { repoForCwd } from './repo'
+import { repoForCwd, ghEnvFor } from './repo'
 import { readSettings, type ForgePref } from './settings'
 
 // The single seam between the app and the user's code-forge CLI. GitHub repos
@@ -162,6 +162,7 @@ export function run(
       args,
       {
         cwd,
+        env: cli === 'gh' ? ghEnvFor(cwd) : undefined,
         timeout: opts?.timeout ?? 12_000,
         maxBuffer: opts?.maxBuffer ?? 4 * 1024 * 1024,
         encoding: 'utf8',
