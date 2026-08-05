@@ -4,6 +4,10 @@ import type { NotifyMatrix } from '../../../shared/notifications'
 
 // Mirror of the preload `gt` bridge. Kept hand-written so plugins have a clean
 // typed surface without reaching across tsconfig roots into the preload build.
+
+/** One prompt the human typed, as extracted from the transcript. */
+export type UserPrompt = { text: string; ts: number }
+
 export type TranscriptStats = {
   ok: boolean
   sessionId: string
@@ -22,6 +26,8 @@ export type TranscriptStats = {
   aiTitle: string
   permissionMode: string
   lastPrompt: string
+  /** The last few prompts the human typed, oldest first. */
+  recentPrompts: UserPrompt[]
   toolCounts: Record<string, number>
   mtime: number
   ts: number
