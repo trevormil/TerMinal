@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { repoStateAreaPath } from './repo-state'
 import {
   createTicket,
   getTicket,
@@ -76,7 +77,7 @@ describe('listTickets', () => {
     }
   })
 
-  test('creates new tickets in v2 layout when marker exists', () => {
+  test('creates new tickets in the sidecar, never inside the repo', () => {
     const v2 = mkdtempSync(join(tmpdir(), 'gt-backlog-v2-write-'))
     try {
       mkdirSync(join(v2, '.TerMinal'), { recursive: true })
@@ -88,8 +89,34 @@ describe('listTickets', () => {
         status: 'open',
         body: '',
       })
-      expect(existsSync(join(v2, '.TerMinal', 'backlog', `${t.slug}.md`))).toBe(true)
+      // The point of the sidecar: a repo shared with collaborators never
+      // receives personal workflow state, in either layout's directory.
+      expect(existsSync(join(v2, '.TerMinal', 'backlog', `${t.slug}.md`))).toBe(false)
       expect(existsSync(join(v2, 'backlog', `${t.slug}.md`))).toBe(false)
+      expect(existsSync(join(repoStateAreaPath(v2, 'backlog'), `${t.slug}.md`))).toBe(true)
+      // ...and it is immediately readable through the normal API.
+      expect(listTickets(v2).map((x) => x.slug)).toContain(t.slug)
+    } finally {
+      rmSync(v2, { recursive: true, force: true })
+    }
+  })
+
+  test('pre-existing in-repo tickets stay readable alongside sidecar ones', () => {
+    const v2 = mkdtempSync(join(tmpdir(), 'gt-backlog-merge-'))
+    try {
+      mkdirSync(join(v2, '.TerMinal', 'backlog'), { recursive: true })
+      writeFileSync(join(v2, '.TerMinal', 'template.json'), '{"version":2}\n')
+      writeFileSync(join(v2, '.TerMinal', 'backlog', '0007-legacy.md'), ticketMd(7, 'Legacy'))
+      const t = createTicket(v2, {
+        title: 'Fresh',
+        type: 'feature',
+        priority: 'medium',
+        status: 'open',
+        body: '',
+      })
+      const ids = listTickets(v2).map((x) => x.id)
+      expect(ids).toContain(7) // committed history still visible — no migration needed
+      expect(ids).toContain(t.id)
     } finally {
       rmSync(v2, { recursive: true, force: true })
     }
@@ -174,7 +201,7 @@ describe('listTickets', () => {
       mkdirSync(join(v2, '.TerMinal'), { recursive: true })
       writeFileSync(join(v2, '.TerMinal', 'template.json'), '{"version":2}\n')
       const read = (slug: string) =>
-        readFileSync(join(v2, '.TerMinal', 'backlog', `${slug}.md`), 'utf8')
+        readFileSync(join(repoStateAreaPath(v2, 'backlog'), `${slug}.md`), 'utf8')
       const base = { type: 'feature', priority: 'medium', status: 'open', body: '' }
 
       // Back-compat: callers that omit the tier still get today's exact value.
@@ -213,7 +240,7 @@ describe('listTickets', () => {
       // Legacy ticket with NO model_tier line: reads as auto, and setting the
       // tier inserts the line rather than failing.
       writeFileSync(
-        join(v2, '.TerMinal', 'backlog', '0900-legacy.md'),
+        join(repoStateAreaPath(v2, 'backlog'), '0900-legacy.md'),
         '---\nid: 900\ntitle: "Legacy"\nstatus: open\npriority: medium\ntype: feature\n---\n\nbody\n',
       )
       expect(listTickets(v2).find((x) => x.slug === '0900-legacy')?.modelTier).toBe('auto')
@@ -449,8 +476,8 @@ describe('ticket comments', () => {
   test('commenting bumps `updated` but leaves other frontmatter alone', () => {
     const t = createTicket(root, { ...New, priority: 'high' })
     writeFileSync(
-      join(root, 'backlog', `${t.slug}.md`),
-      readFileSync(join(root, 'backlog', `${t.slug}.md`), 'utf8').replace(
+      join(repoStateAreaPath(root, 'backlog'), `${t.slug}.md`),
+      readFileSync(join(repoStateAreaPath(root, 'backlog'), `${t.slug}.md`), 'utf8').replace(
         /^updated: .*$/m,
         'updated: 2020-01-01',
       ),
