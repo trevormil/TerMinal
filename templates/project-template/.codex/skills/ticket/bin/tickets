@@ -47,7 +47,7 @@ shopt -s nullglob 2>/dev/null || true
 found=""
 # newest first
 BACKLOG_DIR="${TERMINAL_BACKLOG_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" backlog 2>/dev/null || true)}"
-for f in $(ls -1 "$BACKLOG_DIR"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -r); do
+for f in $(ls -1 "$BACKLOG_DIR"/[0-9]*.md "$ROOT/.TerMinal/backlog"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -r); do  # state-path-ok: also lists pre-migration state still in the repo
   [ -e "$f" ] || continue
   found=1
   status="$(field "$f" status)"

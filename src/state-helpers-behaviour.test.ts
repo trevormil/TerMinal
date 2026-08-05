@@ -190,3 +190,55 @@ describe('ids never collide with state still in the repo', () => {
     expect(Number(out)).toBe(8)
   })
 })
+
+describe('listers show state that has not migrated yet', () => {
+  // The listers previously scanned the sidecar and the v1 dir but skipped the
+  // v2 in-repo dir, so a repo mid-migration looked empty — indistinguishable
+  // from having no tickets at all. The earlier lister tests seeded only the
+  // sidecar, which is why they could not see this.
+  test('tickets lists a ticket still committed in the repo', () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0007-not-yet-moved.md'),
+      '---\nid: 7\ntitle: "Not yet moved"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('Not yet moved')
+  })
+
+  test('sessions lists a session doc still committed in the repo', () => {
+    const dir = join(repo, '.TerMinal', 'sessions', '0007-old')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'session.md'),
+      '---\nid: 7\ntitle: "Older session"\nstatus: active\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/session-start/bin/sessions'))
+
+    expect(out).toContain('Older session')
+  })
+
+  test('both stores are visible at once during migration', () => {
+    const backlog = join(repo, '.TerMinal', 'backlog')
+    mkdirSync(backlog, { recursive: true })
+    writeFileSync(
+      join(backlog, '0007-in-repo.md'),
+      '---\nid: 7\ntitle: "In repo"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+    const side = join(stateDir, 'github.com/o/beh', 'backlog')
+    mkdirSync(side, { recursive: true })
+    writeFileSync(
+      join(side, '0008-in-sidecar.md'),
+      '---\nid: 8\ntitle: "In sidecar"\nstatus: open\npriority: medium\ntype: feature\n---\n',
+    )
+
+    const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/tickets'))
+
+    expect(out).toContain('In repo')
+    expect(out).toContain('In sidecar')
+  })
+})
