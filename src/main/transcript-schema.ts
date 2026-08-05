@@ -151,6 +151,35 @@ export function toolFailed(block: unknown, toolUseResult: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// User prompts
+// ---------------------------------------------------------------------------
+
+export type UserPrompt = { text: string; ts: number }
+
+/** Reminders are injected INTO a real prompt, so they're stripped, not filtered. */
+const SYSTEM_REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g
+
+/** One runaway paste shouldn't pin megabytes in every cockpit poll. */
+const MAX_PROMPT_CHARS = 2000
+
+/**
+ * The text the human actually typed, or `undefined` for the many OTHER things
+ * that also carry `role: 'user'` — tool results, subagent (sidechain) turns,
+ * meta lines Claude injects, and the `<command-name>` / `<local-command-stdout>`
+ * / `<task-notification>` envelopes. Treating any of those as a prompt turns a
+ * "recent prompts" view into a wall of plumbing.
+ */
+export function userPromptOf(line: unknown): UserPrompt | undefined {
+  if (!isRecord(line) || line.isMeta === true || line.isSidechain === true) return undefined
+  const msg = messageOf(line)
+  if (msg?.role !== 'user') return undefined
+  if (contentBlocks(msg.content).some(isToolResultBlock)) return undefined
+  const text = textOf(msg.content).replace(SYSTEM_REMINDER, '').trim()
+  if (!text || text.startsWith('<')) return undefined
+  return { text: text.slice(0, MAX_PROMPT_CHARS), ts: timestampMs(line.timestamp) }
+}
+
+// ---------------------------------------------------------------------------
 // TerMinal's own sidecar lines
 // ---------------------------------------------------------------------------
 //

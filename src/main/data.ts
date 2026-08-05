@@ -18,6 +18,8 @@ import {
   textOf as schemaTextOf,
   toolFailed,
   usageTotals,
+  userPromptOf,
+  type UserPrompt,
 } from './transcript-schema'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -95,6 +97,8 @@ export type TranscriptStats = {
   aiTitle: string
   permissionMode: string
   lastPrompt: string
+  /** The last few prompts the human typed, oldest first. See RECENT_PROMPTS_MAX. */
+  recentPrompts: UserPrompt[]
   toolCounts: Record<string, number>
   mtime: number
   ts: number
@@ -611,6 +615,17 @@ export function lastAssistantText(file: string): string {
   return ''
 }
 
+/** The widget renders a short tail; keeping more would ship a whole session's
+ *  prompts over IPC on every poll. */
+const RECENT_PROMPTS_MAX = 10
+
+/** Append, dropping the oldest past the cap. Mutates in place — both parse
+ *  paths hold a long-lived array. */
+function pushPrompt(list: UserPrompt[], prompt: UserPrompt): void {
+  list.push(prompt)
+  if (list.length > RECENT_PROMPTS_MAX) list.splice(0, list.length - RECENT_PROMPTS_MAX)
+}
+
 function emptyStats(sessionId = ''): TranscriptStats {
   return {
     ok: false,
@@ -630,6 +645,7 @@ function emptyStats(sessionId = ''): TranscriptStats {
     aiTitle: '',
     permissionMode: '',
     lastPrompt: '',
+    recentPrompts: [],
     toolCounts: {},
     mtime: 0,
     ts: Date.now(),
@@ -660,6 +676,7 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
   let aiTitle = ''
   let permissionMode = ''
   let lastPrompt = ''
+  const recentPrompts: UserPrompt[] = []
   const toolCounts: Record<string, number> = {}
   const seenUsage = new Set<string>()
   const seenToolUses = new Set<string>()
@@ -675,6 +692,9 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     if (sidecar?.type === 'ai-title') aiTitle = sidecar.aiTitle
     else if (sidecar?.type === 'permission-mode') permissionMode = sidecar.permissionMode
     else if (sidecar?.type === 'last-prompt') lastPrompt = sidecar.lastPrompt
+
+    const prompt = userPromptOf(obj)
+    if (prompt) pushPrompt(recentPrompts, prompt)
 
     const msg = messageOf(obj)
     if (!msg) continue
@@ -738,6 +758,7 @@ export function parseTranscriptFile(file: string, sessionId: string): Transcript
     aiTitle,
     permissionMode,
     lastPrompt,
+    recentPrompts,
     toolCounts,
     mtime,
     ts: Date.now(),
@@ -759,6 +780,7 @@ export type TranscriptStatsAccumulator = {
   aiTitle: string
   permissionMode: string
   lastPrompt: string
+  recentPrompts: UserPrompt[]
   toolCounts: Record<string, number>
   seenUsage: Set<string>
   seenToolUses: Set<string>
@@ -792,6 +814,7 @@ export function createTranscriptStatsAccumulator(sessionId = ''): TranscriptStat
     aiTitle: '',
     permissionMode: '',
     lastPrompt: '',
+    recentPrompts: [],
     toolCounts: {},
     seenUsage: new Set<string>(),
     seenToolUses: new Set<string>(),
@@ -816,6 +839,9 @@ export function foldTranscriptStatsLines(
     else if (sidecar?.type === 'permission-mode')
       accumulator.permissionMode = sidecar.permissionMode
     else if (sidecar?.type === 'last-prompt') accumulator.lastPrompt = sidecar.lastPrompt
+
+    const prompt = userPromptOf(obj)
+    if (prompt) pushPrompt(accumulator.recentPrompts, prompt)
 
     const msg = messageOf(obj)
     if (!msg) continue
@@ -891,6 +917,7 @@ export function transcriptStatsFromAccumulator(
     aiTitle: accumulator.aiTitle,
     permissionMode: accumulator.permissionMode,
     lastPrompt: accumulator.lastPrompt,
+    recentPrompts: accumulator.recentPrompts,
     toolCounts: accumulator.toolCounts,
     mtime,
     ts: Date.now(),
