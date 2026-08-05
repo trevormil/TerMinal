@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -168,20 +168,45 @@ describe('every spawn path receives the sidecar env', () => {
   // that builds a child env with TERMINAL_REPO must also inject repoStateEnv,
   // or a script told to write to $TERMINAL_REPORTS_DIR resolves an empty path.
   const ROOT = join(import.meta.dir, '..', '..')
+
+  // The previous version of this guard claimed to discover spawn sites but
+  // filtered a hand-written CANDIDATES list — so it could only ever find the
+  // sites we already knew about. It missed loops.ts and digest-run.ts, both of
+  // which spawn a model against a repo. Walk the tree instead.
+  function* sources(dir: string): Generator<string> {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+      const abs = join(dir, e.name)
+      if (e.isDirectory()) yield* sources(abs)
+      else if (/\.(ts|cjs)$/.test(e.name) || !e.name.includes('.')) yield abs
+    }
+  }
+
   const CANDIDATES = [
-    'src/main/session-registry.ts',
-    'src/main/agents.ts',
-    'bin/terminal-cron',
-    'bin/terminal-cli',
-    'bin/terminal-mcp-server',
-    'src/main/remote-host-script.cjs',
+    ...sources(join(ROOT, 'src', 'main')),
+    ...sources(join(ROOT, 'bin')),
   ]
+    .map((abs) => abs.slice(ROOT.length + 1))
+    .filter((rel) => !rel.includes('.test.'))
+    .sort()
+
+  // Comments are prose, not behaviour: index.ts merely MENTIONS `codex exec`
+  // while describing a bug, and a guard that fires on that gets suppressed.
+  const stripComments = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+  // Two shapes count as running a model against a repo. Both have shipped a
+  // leak: the first missed loops.ts and bg-tasks.ts, the second digest-run.ts,
+  // which spawns `codex exec` with the repo as cwd and a bare process.env.
+  // `TERMINAL_REPO: ''` is deliberately excluded — terminal-monitor files a
+  // repo-less Inbox item, so there is no sidecar to resolve.
+  const NAMES_REPO_IN_CHILD_ENV = /TERMINAL_REPO:\s*(?!['"]{2})\S/
+  const RUNS_ENGINE_IN_REPO = (s: string) =>
+    /cwd:\s*repoRoot\b/.test(s) && /codex exec|cursor-agent|claude -p/.test(s)
 
   const spawnSites = CANDIDATES.filter((rel) => {
-    const src = readFileSync(join(ROOT, rel), 'utf8')
-    // Builds a child environment for an agent/session, rather than merely
-    // reading its own env.
-    return /TERMINAL_REPO:\s/.test(src)
+    const src = stripComments(readFileSync(join(ROOT, rel), 'utf8'))
+    return NAMES_REPO_IN_CHILD_ENV.test(src) || RUNS_ENGINE_IN_REPO(src)
   })
 
   test('the scan finds the known spawn sites (a guard matching nothing is not a guard)', () => {

@@ -44,6 +44,113 @@ function exists(p) {
     return false
   }
 }
+// Scope shims for the generated repo-state block below, which is written
+// against the names the other standalone scripts already use.
+const { createHash } = require('crypto')
+const { join, basename } = path
+const { existsSync, readdirSync } = fs
+const { execFileSync } = cp
+const CFG =
+  (process.env.TERMINAL_CONFIG_DIR || '').trim() ||
+  path.join(process.env.HOME || require('os').homedir(), '.config', 'TerMinal')
+// --- BEGIN repo-state (canonical: src/main/repo-state-inline.ts — do not edit by hand) ---
+/* eslint-disable @typescript-eslint/no-unused-vars -- one shared block; not every
+   script uses every helper, and the copies must stay byte-identical. */
+const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+const repoStateKeyCache = new Map()
+function repoStateDir() {
+  return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
+}
+function gitOut(root, args) {
+  try {
+    return execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+function repoStateKey(root) {
+  if (!root) return ''
+  const hit = repoStateKeyCache.get(root)
+  if (hit !== undefined) return hit
+  let key = ''
+  const url = gitOut(root, ['remote', 'get-url', 'origin']).replace(/\.git$/, '')
+  if (url) {
+    let m = url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
+    if (!m) m = url.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/)
+    if (m) key = m[1] + '/' + m[2]
+  }
+  if (!key) {
+    const canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
+    const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
+    key = 'local/' + basename(canonical) + '-' + hash
+  }
+  repoStateKeyCache.set(root, key)
+  return key
+}
+function sidecarAreaPath(root, area) {
+  if (!root || !SIDECAR_AREAS.includes(area)) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, area) : ''
+}
+// Reads merge sidecar + in-repo so state already committed stays visible;
+// writes always go to the sidecar so a shared repo stops accreting state.
+function areaPathsFor(root, area, candidates) {
+  const out = []
+  const sidecar = sidecarAreaPath(root, area)
+  if (sidecar && existsSync(sidecar)) out.push(sidecar)
+  for (const rel of candidates) {
+    const p = join(root, rel)
+    if (existsSync(p)) out.push(p)
+  }
+  return out
+}
+function areaWritePath(root, area, candidates, isV2) {
+  const sidecar = sidecarAreaPath(root, area)
+  if (sidecar) return sidecar
+  const existing = areaPathsFor(root, area, candidates)
+  if (existing.length) return existing[0]
+  return join(root, isV2 ? candidates[0] : candidates[candidates.length - 1])
+}
+// IDs must be unique across EVERY dir an area reads from. A fresh sidecar
+// beside a repo that still holds 0001-0042 would otherwise restart at 0001,
+// producing two tickets with the same id and shadowing the originals.
+function maxAreaId(dirs) {
+  let max = 0
+  for (const dir of dirs) {
+    if (!dir) continue
+    let entries = []
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const f of entries) {
+      const m = /^(\d{4})-/.exec(f)
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+  }
+  return max
+}
+// Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
+// the app injects, so a scheduled run resolves state identically to an
+// interactive one. Scripts reference these instead of literal paths.
+function repoStateEnv(root) {
+  const out = {}
+  if (!root) return out
+  const key = repoStateKey(root)
+  if (!key) return out
+  const base = join(repoStateDir(), key)
+  out.TERMINAL_STATE_DIR = base
+  for (const area of SIDECAR_AREAS) {
+    out['TERMINAL_' + area.toUpperCase() + '_DIR'] = join(base, area)
+  }
+  return out
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
+// --- END repo-state ---
 function stat(p) {
   try {
     return fs.statSync(p)
@@ -258,23 +365,15 @@ function hasV2(root) {
     )
   )
 }
+// Reads merge sidecar + in-repo, so a ticket filed before the migration is
+// still visible here. Writes go to the sidecar, so a scheduled agent on this
+// host never files new state into a repo someone else pulls — the same
+// asymmetry the app applies locally.
 function areaPaths(root, area) {
-  return areaCandidates(area)
-    .map((rel) => path.join(root, rel))
-    .filter(exists)
+  return areaPathsFor(root, area, areaCandidates(area))
 }
 function areaPath(root, area) {
-  const existing = areaPaths(root, area)[0]
-  if (existing) return existing
-  const rels = areaCandidates(area)
-  return path.join(root, hasV2(root) ? rels[0] : rels[rels.length - 1])
-}
-function areaRel(root, area) {
-  const p = areaPath(root, area)
-  for (const rel of areaCandidates(area)) {
-    if (p === path.join(root, rel)) return rel
-  }
-  return areaCandidates(area)[0]
+  return areaWritePath(root, area, areaCandidates(area), hasV2(root))
 }
 function ensureArea(root, area) {
   const dir = areaPath(root, area)
@@ -287,7 +386,12 @@ function listTickets(root) {
     for (const f of fs.readdirSync(dir)) {
       if (!/^\d/.test(f) || !f.endsWith('.md')) continue
       try {
-        out.push(ticket(f.replace(/\.md$/, ''), fs.readFileSync(path.join(dir, f), 'utf8')))
+        const t = ticket(f.replace(/\.md$/, ''), fs.readFileSync(path.join(dir, f), 'utf8'))
+        // Reads merge several directories, so the only honest path is the one
+        // this file was actually read from — a rel path guessed from the area
+        // points at the wrong copy as soon as more than one root has content.
+        t.path = path.join(dir, f)
+        out.push(t)
       } catch {}
     }
   }
@@ -1020,12 +1124,11 @@ function pickTemplate(marker) {
 }
 function bootstrapStatus() {
   const root = repoRoot() || cwdInput
+  // Kept in lockstep with BOOTSTRAP_MARKERS in src/main/bootstrap.ts —
+  // remote-host-parity.test.ts pins the two together.
   const markers = [
     { label: '.agents', anyOf: ['.agents'] },
-    { label: 'backlog', anyOf: ['.TerMinal/backlog', 'backlog'] },
     { label: 'docs', anyOf: ['docs'] },
-    { label: 'sessions', anyOf: ['.TerMinal/sessions', 'sessions'] },
-    { label: '.codex/skills', anyOf: ['.codex/skills'] },
   ]
   const missing = []
   let present = 0
@@ -1709,7 +1812,7 @@ try {
             title: '#' + t.id + ' ' + t.title,
             subtitle: t.status + ' - ' + t.priority + ' - ' + t.type,
             detail: t.body.slice(0, 260),
-            path: areaRel(root, 'backlog') + '/' + t.slug + '.md',
+            path: t.path,
             payload: { slug: t.slug },
           })
       }

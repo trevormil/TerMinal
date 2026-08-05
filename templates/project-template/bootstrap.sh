@@ -3,12 +3,14 @@
 #
 #   ./bootstrap.sh /path/to/target-repo
 #
-# Seeds repo data + the Codex mirror (.codex skills/hooks, .agents contracts,
-# CI, docs skeleton, and TerMinal project state scaffolds) into the target.
-# Claude Code skills/hooks/bin are NOT copied — they ship globally via the tm
-# plugin (installed by the TerMinal app at ~/.config/TerMinal/plugin, linked as
-# ~/.claude/skills/tm); this script also removes machinery that OLDER bootstraps
-# copied into the repo. Workflow files are overwritten (they ARE the workflow);
+# Seeds repo DATA only: .agents contracts, CI, docs skeleton, the Codex stop
+# hook, and TerMinal project state scaffolds.
+#
+# NO skills are copied, for either harness — they ship globally via the tm
+# plugin (installed by the TerMinal app at ~/.config/TerMinal/plugin, exposed as
+# ~/.claude/skills/tm for Claude and ~/.codex/skills/tm-* for Codex). This
+# script also removes the per-repo skill copies that OLDER bootstraps installed,
+# for both harnesses. Workflow files are overwritten (they ARE the workflow);
 # your data and existing docs are never clobbered. Anything that would clobber
 # an existing file is written alongside as `<name>.workflow` to merge by hand.
 #
@@ -38,55 +40,68 @@ else
 fi
 say "project-template layout: $LAYOUT"
 
-# --- workflow machinery (overwrite — this is the workflow) -------------------
-# Claude-side machinery is global (tm plugin); only the Codex mirror + agent
-# contracts + CI are still per-repo.
-echo "[workflow] .codex/ + .agents/ + CI"
+# --- workflow data (overwrite — this is the workflow) ------------------------
+# Skills for BOTH harnesses are global (tm plugin). What stays per-repo is what
+# is genuinely repo-specific: the agent contracts, CI, and the Codex stop hook
+# (Codex resolves hooks from the project dir, so that one has no global home).
+echo "[workflow] .agents/ + CI + Codex stop hook"
 mkdir -p "$DST/.claude" "$DST/.codex" "$DST/.agents" "$DST/.github/workflows"
-cp -R "$SRC/.codex/skills" "$DST/.codex/"
 cp -R "$SRC/.codex/hooks"   "$DST/.codex/"
 cp "$SRC/.codex/hooks.json" "$DST/.codex/hooks.workflow.json"
 cp "$SRC"/.agents/*.md "$DST/.agents/"
 cp "$SRC/.github/workflows/ci.yml" "$DST/.github/workflows/ci.yml"
-chmod +x "$DST/.codex/skills/ticket/bin/"* \
-         "$DST/.codex/skills/session-start/bin/"* \
-         "$DST/.codex/hooks/"*.sh 2>/dev/null || true
-say ".codex/skills, .codex/hooks, .codex/hooks.workflow.json, .agents, .github/workflows/ci.yml installed"
+chmod +x "$DST/.codex/hooks/"*.sh 2>/dev/null || true
+say ".codex/hooks, .codex/hooks.workflow.json, .agents, .github/workflows/ci.yml installed"
+
+# The global Codex skills are synced by the app, not by this script. Warn when
+# they are absent, otherwise a Codex agent in this repo silently has no skills
+# — the failure mode is a missing capability, which reads as the model being
+# unhelpful rather than as a setup problem.
+if [ ! -d "$HOME/.codex/skills" ] || ! ls -d "$HOME"/.codex/skills/tm-* >/dev/null 2>&1; then
+  say "NOTE: no ~/.codex/skills/tm-* found — launch TerMinal once (Settings → Updates → Sync) to install the global skills for Codex"
+fi
 
 # --- migrate: remove Claude machinery older bootstraps copied in -------------
 # Name-scoped, and MOVED to a backup rather than deleted — a repo-authored
 # skill that happens to share a name (e.g. its own `document`) is recoverable.
 # `notify` is intentionally NOT in the list: it is personal machinery excluded
 # from the plugin, so an existing per-repo copy keeps working.
-echo "[migrate] per-repo Claude machinery → tm plugin"
+echo "[migrate] per-repo skills (Claude + Codex) → tm plugin"
 migrated=0
 BACKUP="$DST/.claude/pre-tm-backup"
-migrate() { # <path relative to .claude/>
-  local src="$DST/.claude/$1"
+migrate() { # <harness-root-relative path>, e.g. .claude/skills/ticket
+  local src="$DST/$1"
   [ -e "$src" ] || return 0
   mkdir -p "$BACKUP/$(dirname "$1")"
   rm -rf "${BACKUP:?}/$1"
   mv "$src" "$BACKUP/$1"
   migrated=1
 }
-for s in check code-review digest document document-audit emergency-fix \
-         enqueue-request factory knowledge knowledge-rag listener-inbox \
-         loop-driver loop-evaluator loop-implementer loop-planner merge-sync \
-         migrate-agents new-agent new-inbox-source new-knowledge \
-         new-persistent-agent new-schedule new-snippet pr-creation \
-         remote-terminal revert-main security-scan session-end session-start \
-         stacked-mr terminal-widget test-suite ticket unblock-ci vibe; do
-  migrate "skills/$s"
+# The skill set the plugin now owns. `notify` is intentionally absent: it is
+# personal machinery excluded from the plugin, so a per-repo copy keeps working.
+TM_SKILLS="check code-review digest document document-audit emergency-fix
+           enqueue-request factory knowledge knowledge-rag listener-inbox
+           loop-driver loop-evaluator loop-implementer loop-planner merge-sync
+           migrate-agents new-agent new-inbox-source new-knowledge
+           new-persistent-agent new-schedule new-snippet pr-creation
+           remote-terminal revert-main security-scan session-end session-start
+           stacked-mr terminal-widget test-suite ticket unblock-ci vibe"
+for s in $TM_SKILLS; do
+  migrate ".claude/skills/$s"
+  # Same skills, Codex mirror — retired now that the app syncs them globally
+  # as ~/.codex/skills/tm-*.
+  migrate ".codex/skills/$s"
 done
 for b in activity chunk-diff code-review-preflight compute-verdict \
          findings-merge forge hitl list-agents merge-digest merge-sync \
          request-agent-artifact status; do
-  migrate "bin/$b"
+  migrate ".claude/bin/$b"
 done
 for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
-  migrate "hooks/$h"
+  migrate ".claude/hooks/$h"
 done
-rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" 2>/dev/null || true
+rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" \
+      "$DST/.codex/skills" 2>/dev/null || true
 # Drop settings.json hook entries that point at the removed scripts. If this
 # can't run (no python3 / unparseable settings.json), warn — otherwise every
 # tool call in the repo exits 127 on the missing hook until fixed by hand.
@@ -124,8 +139,8 @@ PY
     say "WARNING: python3 not found — remove settings.json hook entries pointing at .claude/hooks/*.sh by hand"
   fi
 fi
-[ "$migrated" = 1 ] && say "moved old per-repo Claude skills/bin/hooks to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
-                   || say "no legacy Claude machinery found"
+[ "$migrated" = 1 ] && say "moved old per-repo skills/bin/hooks (.claude + .codex) to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
+                   || say "no legacy per-repo skill copies found"
 
 # forge selector — don't clobber an existing choice
 [ -f "$DST/.claude/forge" ] || cp "$SRC/.claude/forge" "$DST/.claude/forge"

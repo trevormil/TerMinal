@@ -140,19 +140,20 @@ describe('no private machine references', () => {
   }
 })
 
-describe('template codex mirror + agent specs have no double-path bugs', () => {
+describe('template agent specs have no double-path bugs', () => {
   const TEMPLATE = join(import.meta.dir, '..', 'templates', 'project-template')
 
-  for (const dir of ['.codex/skills', '.agents']) {
-    test(dir, () => {
-      const hits: string[] = []
-      for (const file of walkFiles(join(TEMPLATE, dir))) {
-        for (const l of readFileSync(file, 'utf8').split('\n'))
-          if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
-      }
-      expect(hits).toEqual([])
-    })
-  }
+  // `.codex/skills` used to be checked here too. The mirror is retired: Codex
+  // now loads the same skills globally from ~/.codex/skills/tm-*, synced from
+  // this plugin, so `plugin/skills` above is the only copy left to guard.
+  test('.agents', () => {
+    const hits: string[] = []
+    for (const file of walkFiles(join(TEMPLATE, '.agents'))) {
+      for (const l of readFileSync(file, 'utf8').split('\n'))
+        if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
+    }
+    expect(hits).toEqual([])
+  })
 })
 
 describe('merge gate keeps the FORCE override', () => {

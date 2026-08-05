@@ -17,25 +17,30 @@ describe('classifyBootstrapStatus', () => {
   })
 
   test('partial lists missing markers', () => {
-    const present = new Set(['.agents', 'backlog'])
+    const present = new Set(['.agents'])
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
     expect(status.state).toBe('partial')
     expect(status.bootstrapped).toBe(false)
-    expect(status.missing).toEqual(['docs', 'sessions', '.codex/skills'])
+    expect(status.missing).toEqual(['docs'])
     expect(status.message).toContain('partially bootstrapped')
   })
 
-  test('v2 state directories satisfy v1-compatible markers', () => {
-    const present = new Set([
-      '.agents',
-      '.TerMinal/backlog',
-      'docs',
-      '.TerMinal/sessions',
-      '.codex/skills',
-    ])
+  // The markers must describe what bootstrap LEAVES in a repo. Workflow state
+  // moved to the per-project sidecar and skills moved to the global plugin, so
+  // a repo that is fully bootstrapped AND fully migrated has neither backlog/
+  // nor sessions/ nor any skills dir — requiring them reported exactly the
+  // repos that had done everything right as "partially bootstrapped".
+  test('a fully migrated repo with no in-repo state or skills reads as full', () => {
+    const present = new Set(['.agents', 'docs'])
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
     expect(status.state).toBe('full')
     expect(status.bootstrapped).toBe(true)
+  })
+
+  test('in-repo state and skill dirs neither help nor hurt', () => {
+    const legacy = new Set(['backlog', 'sessions', '.codex/skills', '.claude/skills'])
+    const status = classifyBootstrapStatus('/repo', (rel) => legacy.has(rel))
+    expect(status.state).toBe('none')
   })
 
   test('unreadable marker checks are treated as missing', () => {
@@ -44,7 +49,7 @@ describe('classifyBootstrapStatus', () => {
       throw new Error('EACCES')
     })
     expect(status.state).toBe('partial')
-    expect(status.missing).toContain('backlog')
+    expect(status.missing).toContain('docs')
   })
 
   test('missing repo input returns none', () => {

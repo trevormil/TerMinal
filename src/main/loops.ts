@@ -19,6 +19,7 @@ import {
   readdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
+import { repoStateEnv } from './repo-state'
 import { readFileTail } from './fs-tail'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
@@ -465,6 +466,10 @@ export function spawnRoleTurn(rec: LoopRecord, role: LoopRole): { error?: string
       stdio: ['ignore', out, out] as const,
       env: {
         ...process.env,
+        // Loop roles write session docs and contract state through the
+        // injected vars; keyed off the source repo so every role in the loop
+        // resolves the same sidecar regardless of which worktree it runs in.
+        ...repoStateEnv(rec.repoRoot),
         TERMINAL_REPO: rec.repoRoot,
         TERMINAL_AGENT_ID: `loop-${role}`,
         TERMINAL_RUN_ID: runId,
