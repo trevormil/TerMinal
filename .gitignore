@@ -7,10 +7,17 @@ dist
 # Anchored to the root: templates/project-template/.TerMinal is real template
 # content and must stay tracked.
 /.TerMinal/
-backlog/.next-id.lock
-sessions/.next-id.lock
 .status.md
-.TerMinal/notes.md
+
+# Workflow state — tickets, sessions, reviews, checks, reports — lives in this
+# project's sidecar outside the repo (ADR-0020), never here. These entries stop
+# an older checkout or a stray helper re-committing any of it. Anchored to the
+# root so templates/project-template/ content stays tracked.
+/backlog/
+/sessions/
+/reports/
+/.reviews/
+/.checks/
 
 # CodeGraph local index — per-repo, user-managed; never committed (keeps builds
 # from stamping -dirty). Indexing is the operator's decision (see CLAUDE.md).

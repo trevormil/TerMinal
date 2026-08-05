@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -47,27 +47,24 @@ describe('listSkills', () => {
     expect(skill?.platforms).toEqual(['claude', 'codex', 'cursor'])
   })
 
-  test('sees this repo workflow skills as Codex-only (Claude side is the tm plugin)', () => {
-    const skills = listSkills(process.cwd()).filter((s) => s.scope === 'project')
-    const ticket = skills.find((s) => s.name === 'ticket')
-    const newAgent = skills.find((s) => s.name === 'new-agent')
-    const newSchedule = skills.find((s) => s.name === 'new-schedule')
-
-    expect(ticket?.platforms).toEqual(['codex'])
-    expect(newAgent?.platforms).toEqual(['codex'])
-    expect(newSchedule?.platforms).toEqual(['codex'])
+  // TerMinal used to carry its workflow skills twice — once in plugin/skills,
+  // again as a hand-synced .codex/skills mirror. Both harnesses now load them
+  // globally from the plugin, so the repo carries no copy at all. This repo has
+  // to hold itself to that before asking any other repo to.
+  test('this repo carries no per-repo workflow skill copies', () => {
+    const projectSkills = listSkills(process.cwd()).filter((s) => s.scope === 'project')
+    for (const name of ['ticket', 'new-agent', 'new-schedule', 'code-review', 'session-start'])
+      expect(projectSkills.find((s) => s.name === name)).toBeUndefined()
   })
 
-  test('every repo Codex mirror skill exists in the tm plugin (except personal notify)', () => {
-    const skillNames = (dir: string) =>
-      readdirSync(join(process.cwd(), dir), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-
-    const pluginSkills = new Set(skillNames('plugin/skills'))
-    const codexOnly = skillNames('.codex/skills').filter(
-      (n) => n !== 'notify' && !pluginSkills.has(n),
-    )
-    expect(codexOnly).toEqual([])
+  test('the skills it ships live in exactly one place', () => {
+    const pluginSkills = readdirSync(join(process.cwd(), 'plugin', 'skills'), {
+      withFileTypes: true,
+    })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+    expect(pluginSkills).toContain('ticket')
+    expect(existsSync(join(process.cwd(), '.codex', 'skills'))).toBe(false)
+    expect(existsSync(join(process.cwd(), '.claude', 'skills'))).toBe(false)
   })
 })
