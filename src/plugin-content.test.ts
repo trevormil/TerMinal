@@ -236,3 +236,36 @@ describe('plugin content never links outside the plugin', () => {
     expect(/\]\(\.\.\/\.\.\/\.\.\//.test('"$(dirname "$0")/../../../bin/tm-state-dir"')).toBe(false)
   })
 })
+
+// Contracts moved out of every repo into plugin/agents/, but kept referring to
+// each other as `.agents/testing.md` — a path that exists only in a repo that
+// overrides that contract, which most repos do not. A model told to consult a
+// sibling contract has to be able to find it, so cross-references resolve
+// through tm-agent-spec like every other call site.
+describe('agent contracts do not reference each other by in-repo path', () => {
+  const CONTRACTS = readdirSync(join(ROOT, 'agents')).filter((f) => f.endsWith('.md'))
+  const IN_REPO_REF = /\.agents\/[a-z0-9-]+\.md/
+
+  test('the set of contracts is non-empty', () => {
+    expect(CONTRACTS.length).toBeGreaterThan(10)
+  })
+
+  test('none names another contract by its .agents path', () => {
+    const offenders: string[] = []
+    for (const f of CONTRACTS) {
+      readFileSync(join(ROOT, 'agents', f), 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          // Explaining the OVERRIDE mechanism legitimately names the path.
+          if (/override|resolve|layer|tm-agent-spec/i.test(line)) return
+          if (IN_REPO_REF.test(line)) offenders.push(`agents/${f}:${i + 1}`)
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test('the guard matches the shape it is meant to catch', () => {
+    expect(IN_REPO_REF.test('- Test runner detection per `.agents/testing.md`.')).toBe(true)
+    expect(IN_REPO_REF.test('per the testing contract (`tm-agent-spec testing`)')).toBe(false)
+  })
+})

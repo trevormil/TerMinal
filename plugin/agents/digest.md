@@ -153,5 +153,5 @@ through this combined digest instead of opening N MRs.
 
 In factory/stacked-MR mode the digest patch is emitted by the same Codex
 `/code-review` session that reviewed the joint MR; `merge-digest` then assembles
-`chunks.json`. See `.agents/code-review.md` → "Joint MR digest" and the
+`chunks.json`. See the code-review contract (`tm-agent-spec code-review`) → "Joint MR digest" and the
 `/stacked-mr` skill.

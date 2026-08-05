@@ -308,7 +308,7 @@ to cache.** Losing it doesn't break correctness, but it does mean the human gets
 re-asked about things they already rejected — which is the specific failure this
 convention exists to prevent. Don't clear it as part of routine maintenance.
 
-Reference implementation: `.agents/ticket-ideas.sh` + `.agents/ticket-ideas.md`.
+Reference implementation: the repo's `.agents/ticket-ideas.sh` plus its contract (`tm-agent-spec ticket-ideas`).
 
 ## Schedule integration
 

@@ -13,7 +13,7 @@ modified (tests-only PRs).
 
 ## Inputs
 
-- Test runner detection per `.agents/testing.md`.
+- Test runner detection per the testing contract (`tm-agent-spec testing`).
 - Coverage report from the runner (`--coverage`, `c8`, `nyc`, `pytest-cov`, etc.).
 - `.agents/coverage/baseline.json` — last week's coverage numbers per file.
 - CI run history (last N runs) for flake detection — via `gh run list` / `glab
@@ -32,7 +32,7 @@ If `HEAD == lastScannedSha` AND no new CI runs since `lastRunAt` → exit 0.
 ## Process
 
 1. **Worktree**: `git worktree add "${WORKTREES_DIR:-$HOME/.worktrees}/<repo>/coverage-<short_sha>" main`.
-2. **Run the test suite with coverage** (per `.agents/testing.md`). If tests
+2. **Run the test suite with coverage** (per `tm-agent-spec testing`). If tests
    don't pass, exit early with `status: blocked` (don't add tests to a broken suite).
 3. **Identify gaps**:
    - Files with coverage drop since baseline (regression).
