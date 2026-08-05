@@ -12,6 +12,12 @@ const ROOT = join(import.meta.dir, '..')
 const AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
 const LITERAL = new RegExp(`\\.TerMinal/(${AREAS.join('|')})`)
 
+// The sidecar vars are ABSOLUTE. Prefixing one with the repo root yields
+// `<repo>/Users/...`, which silently writes inside the repo — the exact bug the
+// migration exists to prevent, and one that shipped once already because the
+// literal-path sweep rewrote paths that were already rooted at $TERMINAL_REPO.
+const DOUBLED = /\$\{?TERMINAL_REPO\}?"?\/+"?\$\{?TERMINAL_[A-Z]+_DIR/
+
 function* walk(dir: string): Generator<string> {
   if (!existsSync(dir)) return
   for (const e of readdirSync(dir)) {
@@ -36,7 +42,8 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
         readFileSync(file, 'utf8')
           .split('\n')
           .forEach((line, i) => {
-            if (LITERAL.test(line)) offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
+            if (LITERAL.test(line) || DOUBLED.test(line))
+              offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
           })
       }
       expect(offenders).toEqual([])
@@ -53,7 +60,7 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
       readFileSync(join(ROOT, rel), 'utf8')
         .split('\n')
         .forEach((line, i) => {
-          if (LITERAL.test(line)) offenders.push(`${rel}:${i + 1}`)
+          if (LITERAL.test(line) || DOUBLED.test(line)) offenders.push(`${rel}:${i + 1}`)
         })
     }
     expect(offenders).toEqual([])
@@ -66,5 +73,11 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     // `.TerMinal/` itself is still legitimate for repo config (template.json,
     // tickets.json, widgets.json) — only the state AREAS moved.
     expect(LITERAL.test('read .TerMinal/tickets.json for the provider')).toBe(false)
+
+    // The doubled form: an absolute sidecar var pasted after the repo root.
+    expect(DOUBLED.test('reports_dir="$TERMINAL_REPO/$TERMINAL_REPORTS_DIR"')).toBe(true)
+    expect(DOUBLED.test('grep title "$TERMINAL_REPO"/$TERMINAL_BACKLOG_DIR/*.md')).toBe(true)
+    expect(DOUBLED.test('reports_dir="$TERMINAL_REPORTS_DIR"')).toBe(false)
+    expect(DOUBLED.test('git -C "$TERMINAL_REPO" log')).toBe(false)
   })
 })

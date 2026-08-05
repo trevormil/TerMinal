@@ -1,3 +1,4 @@
+import { repoStateEnv } from './repo-state'
 import { spawn, execFileSync } from 'node:child_process'
 import { readFileSync, existsSync, unlinkSync } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -904,6 +905,12 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       // Inject TerMinal's bin dir so scripts can call `terminal-cli ...`.
       PATH: `${TERMINAL_BIN_DIR()}:${process.env.PATH || ''}`,
       TERMINAL_REPO: repoRoot,
+      // Workflow state lives in a per-project sidecar, and agent prompts/scripts
+      // reference these instead of literal `.TerMinal/<area>` paths. Without
+      // them an agent told to "write to $TERMINAL_REPORTS_DIR" resolves an empty
+      // string and writes somewhere arbitrary. NOTE: these are ABSOLUTE paths —
+      // never prefix them with $TERMINAL_REPO.
+      ...repoStateEnv(repoRoot),
       TERMINAL_RUN_ID: run.id,
       TERMINAL_AGENT_ID: spec.id,
       TERMINAL_BRANCH: branch,

@@ -1,12 +1,13 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   repoStateRoot,
   repoStateKey,
   repoStateAreaPath,
+  repoStateEnv,
   clearRepoStateCache,
   SIDECAR_AREAS,
 } from './repo-state'
@@ -140,4 +141,36 @@ describe('repoStateAreaPath', () => {
     expect(SIDECAR_AREAS).not.toContain('agents')
     expect(repoStateAreaPath(repo, 'agents')).toBe('')
   })
+})
+
+describe('repoStateEnv', () => {
+  test('exports an absolute dir per area plus the root', () => {
+    const repo = makeRepo('envrepo', 'https://github.com/o/env.git')
+    const env = repoStateEnv(repo)
+    expect(env.TERMINAL_STATE_DIR).toBe(repoStateRoot(repo))
+    for (const area of SIDECAR_AREAS) {
+      const v = env[`TERMINAL_${area.toUpperCase()}_DIR`]
+      expect(v).toBe(join(repoStateRoot(repo), area))
+      // Absolute — callers must never prefix these with the repo root.
+      expect(v.startsWith('/')).toBe(true)
+    }
+  })
+
+  test('is empty for a non-repo so callers fall back rather than write to /', () => {
+    expect(repoStateEnv('')).toEqual({})
+  })
+})
+
+describe('spawned processes receive the sidecar env', () => {
+  // Agent runs (agents.ts) and interactive sessions (session-registry.ts) both
+  // build their own env. A prompt that says "write to $TERMINAL_REPORTS_DIR"
+  // resolves to an empty string in any spawn that forgets these — which is
+  // exactly how the first cut of this shipped.
+  const sources = ['agents.ts', 'session-registry.ts']
+  for (const file of sources) {
+    test(`${file} injects repoStateEnv`, () => {
+      const src = readFileSync(join(import.meta.dir, file), 'utf8')
+      expect(src).toContain('repoStateEnv(')
+    })
+  }
 })

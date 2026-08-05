@@ -79,7 +79,7 @@ short=$(git -C "$TERMINAL_REPO" rev-parse --short "$head")
 if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
   reports_dir="$TERMINAL_REPO/reports"
 else
-  reports_dir="$TERMINAL_REPO/$TERMINAL_REPORTS_DIR"
+  reports_dir="$TERMINAL_REPORTS_DIR"
 fi
 mkdir -p "$reports_dir/drift"
 report="$reports_dir/drift/${short}.md"

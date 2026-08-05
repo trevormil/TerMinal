@@ -61,7 +61,7 @@ fi
 if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
   reports_dir="$TERMINAL_REPO/reports"
 else
-  reports_dir="$TERMINAL_REPO/$TERMINAL_REPORTS_DIR"
+  reports_dir="$TERMINAL_REPORTS_DIR"
 fi
 mkdir -p "$reports_dir/coverage"
 report="$reports_dir/coverage/${short}.md"
