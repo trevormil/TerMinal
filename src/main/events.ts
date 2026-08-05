@@ -39,7 +39,7 @@ export const activityLogFile = (): string => configPath('activity.jsonl')
 const MAX_KEEP = 2000 // cap the on-disk log
 
 // Canonical activity kinds — workflow checkpoints emitted by the app AND by the
-// skills (project-template/.claude/bin/activity + bin/gt-notify emit these by
+// skills (the tm plugin's bin/activity + bin/gt-notify emit these by
 // name). Keep in sync with src/renderer/src/lib/types.ts and the tab's ICON/tone
 // maps. Unknown kinds still render (Info icon + mute tone fallbacks).
 export type ActivityKind =

@@ -84,7 +84,15 @@ and support for bundled agents, hooks, and arbitrary files referenced via
   (`~/.config/TerMinal/allow-direct-main`, one absolute repo path per line)
   for repos that are legitimately direct-to-main (global §8's carve-out) —
   machine-specific paths never ship inside the public plugin.
-- **TerMinal's own** `.claude/bin` + `.claude/hooks` copies remain for
-  contributors who don't run the app (its settings.json still wires them);
-  the plugin's global hooks double-fire harmlessly on machines with the app.
-  Bootstrapped repos, by contrast, have theirs migrated to the backup.
+- **TerMinal's own `.claude/hooks` copy remains** for contributors who don't
+  run the app (its settings.json wires them); the plugin's global hooks
+  double-fire harmlessly on machines with the app. Bootstrapped repos, by
+  contrast, have theirs migrated to the backup. The copy is pinned
+  byte-identical to `plugin/hooks/` by a test — when it was merely "a copy" it
+  drifted two revisions behind, so the repo that authored the merge gate was
+  running an older gate than every repo it shipped to.
+- **`.claude/bin` is gone from this repo too.** Six helpers were duplicated
+  there; four had already drifted from `plugin/bin`. Nothing invoked them once
+  `.agents/` moved to the plugin paths, so the duplicate is deleted rather than
+  synced. A repo that exempts itself from its own rule is how the rule rots —
+  `src/own-repo-hygiene.test.ts` now enforces it here.
