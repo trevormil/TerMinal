@@ -12,7 +12,7 @@ reachable; the digest only decides what's expanded vs. collapsed and where your
 eyes land. The contract + schema live in
 [`.agents/digest.md`](../../../.agents/digest.md).
 
-Output: one **in-repo** artifact `.TerMinal/reviews/<pr>/<short>.chunks.json`
+Output: one **in-repo** artifact `$TERMINAL_REVIEWS_DIR/<pr>/<short>.chunks.json`
 (v2) or `.reviews/<pr>/<short>.chunks.json` (legacy v1), next to the review `.md`.
 
 ## Token contract (non-negotiable)
@@ -37,7 +37,7 @@ contract".
 PR=<number>; HEAD=$(git rev-parse HEAD); SHORT=${HEAD:0:7}
 BASE=<target branch>            # glab/gh: the MR target; default main
 REPO=$(basename "$PWD")
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo .TerMinal/reviews)
+REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
 DIR="$REVIEW_ROOT/$PR"; mkdir -p "$DIR"
 ```
 

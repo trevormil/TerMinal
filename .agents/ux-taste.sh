@@ -18,7 +18,7 @@ bun run build >/dev/null || { echo "ux-taste: build failed — nothing to screen
 bun scripts/ux-taste.ts --engine="$ENGINE"
 
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-REPORT=".TerMinal/reports/ux-taste/${SHA}.md"
+REPORT="$TERMINAL_REPORTS_DIR/ux-taste/${SHA}.md"
 if [ -f "$REPORT" ]; then
   echo "ux-taste: wrote $REPORT"
   command -v terminal-cli >/dev/null 2>&1 && \

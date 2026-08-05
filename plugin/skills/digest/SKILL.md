@@ -5,6 +5,8 @@ description: "Human-review digest for a PR/MR — chunks the diff into a noise-f
 
 # /digest — human-review digest (noise-filtered, code-first)
 
+> **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_REVIEWS_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir reviews`.
+
 `/code-review` is the automated merge **gate**; `/digest` is the **human** read
 surface. It does not decide merge-readiness. It makes a technical reviewer read
 a diff in seconds by ranking it, never by hiding code — every line stays
@@ -12,7 +14,7 @@ reachable; the digest only decides what's expanded vs. collapsed and where your
 eyes land. The contract + schema live in
 [`.agents/digest.md`](../../../.agents/digest.md).
 
-Output: one **in-repo** artifact `.TerMinal/reviews/<pr>/<short>.chunks.json`
+Output: one **in-repo** artifact `$TERMINAL_REVIEWS_DIR/<pr>/<short>.chunks.json`
 (v2) or `.reviews/<pr>/<short>.chunks.json` (legacy v1), next to the review `.md`.
 
 ## Token contract (non-negotiable)
@@ -37,7 +39,7 @@ contract".
 PR=<number>; HEAD=$(git rev-parse HEAD); SHORT=${HEAD:0:7}
 BASE=<target branch>            # glab/gh: the MR target; default main
 REPO=$(basename "$PWD")
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo .TerMinal/reviews)
+REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
 DIR="$REVIEW_ROOT/$PR"; mkdir -p "$DIR"
 ```
 

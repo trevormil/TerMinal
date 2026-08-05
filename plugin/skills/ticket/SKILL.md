@@ -1,13 +1,15 @@
 ---
 name: ticket
-description: "Create and manage in-repo backlog tickets (.TerMinal/backlog/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
+description: "Create and manage backlog tickets in the per-project sidecar ($TERMINAL_BACKLOG_DIR/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
 ---
 
-# /ticket — In-repo backlog tickets
+# /ticket — Backlog tickets
 
-In-repo markdown tickets at `.TerMinal/backlog/NNNN-slug.md` in v2 repos
-(legacy v1: `backlog/NNNN-slug.md`) — versioned with the code, no external
-service.
+> **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_BACKLOG_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir backlog`.
+
+Markdown tickets at `$TERMINAL_BACKLOG_DIR/NNNN-slug.md`, kept in this
+project's sidecar rather than the repo (legacy in-repo tickets at
+`backlog/NNNN-slug.md` are still read) — plain files, no external service.
 
 ## Fast path: TerMinal MCP tools (skip the rest if available)
 
@@ -39,8 +41,8 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 
 ## Where tickets live
 
-`<repo-root>/.TerMinal/backlog/NNNN-kebab-slug.md` in v2 repos. Schema:
-[`EXAMPLE.md`](./EXAMPLE.md). Counter at `.TerMinal/backlog/.next-id`.
+`<repo-root>/$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` in v2 repos. Schema:
+[`EXAMPLE.md`](./EXAMPLE.md). Counter at `$TERMINAL_BACKLOG_DIR/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
 **Obsidian-provider repos** (`.TerMinal/tickets.json` → `provider: obsidian`, or
@@ -196,7 +198,7 @@ Edit the file directly:
 ## Porting to a new repo
 
 Nothing to copy — this skill ships globally with the tm plugin. Per repo,
-just add `.TerMinal/backlog/.next-id.lock` (or legacy `backlog/.next-id.lock`)
+just add `$TERMINAL_BACKLOG_DIR/.next-id.lock` (or legacy `backlog/.next-id.lock`)
 to `.gitignore`.
 
 First call bootstraps the backlog directory + `.next-id`. Commit the backlog

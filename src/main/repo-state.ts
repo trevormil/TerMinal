@@ -83,3 +83,18 @@ export function repoStateAreaPath(repoRoot: string, area: ProjectArea): string {
   const root = repoStateRoot(repoRoot)
   return root ? join(root, area) : ''
 }
+
+/**
+ * Resolved paths to hand to a spawned session or agent. Skills and prompts
+ * reference these instead of literal `.TerMinal/...` paths, so an artifact an
+ * agent writes by hand lands in the sidecar rather than the shared repo.
+ */
+export function repoStateEnv(repoRoot: string): Record<string, string> {
+  const root = repoStateRoot(repoRoot)
+  if (!root) return {}
+  const env: Record<string, string> = { TERMINAL_STATE_DIR: root }
+  for (const area of SIDECAR_AREAS) {
+    env[`TERMINAL_${area.toUpperCase()}_DIR`] = join(root, area)
+  }
+  return env
+}

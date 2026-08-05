@@ -105,10 +105,10 @@ if [ -z "$backlog_titles" ]; then
   # to reading the backlog directory directly rather than proposing blind —
   # proposing without knowing the backlog is exactly the failure mode this
   # agent exists to avoid.
-  if [ -d "$TERMINAL_REPO/.TerMinal/backlog" ]; then
-    backlog_titles=$(grep -h '^title:' "$TERMINAL_REPO"/.TerMinal/backlog/*.md 2>/dev/null | head -200)
+  if [ -d "$TERMINAL_REPO/$TERMINAL_BACKLOG_DIR" ]; then
+    backlog_titles=$(grep -h '^title:' "$TERMINAL_REPO"/$TERMINAL_BACKLOG_DIR/*.md 2>/dev/null | head -200)
   else
-    echo "ticket-ideas: cannot read the backlog (no MCP, no .TerMinal/backlog) — skipping."
+    echo "ticket-ideas: cannot read the backlog (no MCP, no $TERMINAL_BACKLOG_DIR) — skipping."
     exit 0
   fi
 fi
@@ -121,15 +121,15 @@ docs_index=$(cd "$TERMINAL_REPO" && find docs -name '*.md' 2>/dev/null | sort | 
 if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
   reports_dir="$TERMINAL_REPO/reports"
 else
-  reports_dir="$TERMINAL_REPO/.TerMinal/reports"
+  reports_dir="$TERMINAL_REPO/$TERMINAL_REPORTS_DIR"
 fi
 mkdir -p "$reports_dir/ticket-ideas"
 report="$reports_dir/ticket-ideas/${short}.md"
 
 # Where tickets actually land, so we can observe what the engine filed rather
 # than trusting it to tell us (see step 5 below).
-if [ -d "$TERMINAL_REPO/.TerMinal/backlog" ]; then
-  backlog_dir="$TERMINAL_REPO/.TerMinal/backlog"
+if [ -d "$TERMINAL_REPO/$TERMINAL_BACKLOG_DIR" ]; then
+  backlog_dir="$TERMINAL_REPO/$TERMINAL_BACKLOG_DIR"
 else
   backlog_dir="$TERMINAL_REPO/backlog"
 fi

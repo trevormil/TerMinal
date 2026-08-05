@@ -29,6 +29,7 @@ import {
 import { processSpawnCwd } from './spawn-cwd'
 import { statuslineSettingsArg } from './statusline'
 import { obsidianRepoVault } from './ticket-provider'
+import { repoStateEnv } from './repo-state'
 import { createLocalWorkspaceDaemon, createSshWorkspaceDaemon } from './workspace-daemon'
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { statSync } from 'node:fs'
@@ -291,6 +292,11 @@ export function startSession(key: string, opts: StartOpts) {
       env.OBSIDIAN_VAULT_PATH = ov.vaultPath
       env.OBSIDIAN_TICKETS_DIR = ov.ticketsDir
     }
+    // Workflow state lives in a per-project sidecar, not the repo. Agents write
+    // some artifacts by hand (a review .md, a report), so they need the resolved
+    // paths — a prompt or skill that hardcodes `.TerMinal/reviews/` would put the
+    // artifact back into a repo shared with collaborators.
+    Object.assign(env, repoStateEnv(repoRoot))
   }
   // OpenRouter (either harness) and Hermes bill through OpenRouter — inject the
   // sealed key so the interactive session authenticates (mirrors the agent runner).

@@ -49,7 +49,7 @@ record one line in the journal and move on.
 ### 2. Intake — GitHub issues → tickets
 
 `gh issue list --state open` (and recent comments on them). For each issue
-that represents a real, worthwhile user need not already in `.TerMinal/backlog/`:
+that represents a real, worthwhile user need not already in `$TERMINAL_BACKLOG_DIR/`:
 file a ticket via the `/ticket` convention (frontmatter + agent owner),
 linking the issue URL in `refs`. Skip duplicates, vague wishes, and anything
 already covered. Do not comment on or close issues — read-only on the forge

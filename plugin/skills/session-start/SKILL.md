@@ -5,6 +5,8 @@ description: "Open a work session: allocate an id, seed a live session doc by sc
 
 # /session-start — Open a session and seed its live doc
 
+> **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_SESSIONS_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir sessions`.
+
 ## Fast path: TerMinal MCP tools
 
 When the `terminal-harness` MCP server is registered, use these for the
@@ -29,7 +31,7 @@ all the context needed to work well. Invoked as:
 ```
 
 The argument is the session **goal** (verbatim → `goal:` in frontmatter). The
-session doc lives at `.TerMinal/sessions/<id>-<slug>/session.md` in v2 repos
+session doc lives at `$TERMINAL_SESSIONS_DIR/<id>-<slug>/session.md` in v2 repos
 (legacy v1: `sessions/<id>-<slug>/session.md`) and follows the strict schema in
 [`SESSION_EXAMPLE.md`](./SESSION_EXAMPLE.md). It is the single source of truth
 for the session — every later skill (and `/session-end`) reads and updates it.
@@ -40,7 +42,7 @@ for the session — every later skill (and `/session-end`) reads and updates it.
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "$ROOT/.TerMinal/sessions")
+SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "$ROOT/$TERMINAL_SESSIONS_DIR")
 id=$("${CLAUDE_PLUGIN_ROOT}/skills/session-start/bin/next-session-id")   # e.g. 0007
 ```
 

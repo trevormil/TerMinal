@@ -7,7 +7,7 @@
 #   2. .TerMinal/tickets.json with provider "obsidian" — parse the vault path
 #      (works outside a TerMinal session too).
 #   3. Legacy v1 `backlog/` when present without the v2 marker.
-#   4. Default v2 `.TerMinal/backlog`.
+#   4. Default v2 `$TERMINAL_BACKLOG_DIR`.
 #
 # Keeping this in one place means every ticket op (allocate id, write, list)
 # targets the same store, so an Obsidian repo never scatters tickets into git.
@@ -37,5 +37,5 @@ fi
 if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
   printf '%s\n' "$ROOT/backlog"
 else
-  printf '%s\n' "$ROOT/.TerMinal/backlog"
+  printf '%s\n' "$ROOT/$TERMINAL_BACKLOG_DIR"
 fi

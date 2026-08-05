@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# tm-state-dir <area> — print where a repo's workflow state lives.
+#
+#   backlog | sessions | reviews | checks | reports
+#
+# Workflow state lives in a per-project SIDECAR outside the repo, so a repo
+# shared with collaborators never receives personal tickets/reviews. TerMinal
+# exports the resolved paths into every session it spawns; this script is the
+# fallback for a shell that was not spawned by the app (a plain terminal, CI,
+# a remote host), and it is the ONE place a skill should ask.
+#
+#   dir="$(tm-state-dir reviews)"
+#
+# Obsidian-provider repos keep tickets in a vault: OBSIDIAN_TICKETS_DIR wins
+# for `backlog`, matching the app and terminal-cli.
+set -euo pipefail
+
+area="${1:-}"
+case "$area" in
+  backlog | sessions | reviews | checks | reports) ;;
+  *)
+    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports>" >&2
+    exit 2
+    ;;
+esac
+
+# 1. Already resolved by the spawning app.
+env_var="TERMINAL_$(printf '%s' "$area" | tr '[:lower:]' '[:upper:]')_DIR"
+resolved="${!env_var:-}"
+if [ -n "$resolved" ]; then
+  printf '%s\n' "$resolved"
+  exit 0
+fi
+
+# 2. Obsidian vault owns tickets when configured.
+if [ "$area" = backlog ] && [ -n "${OBSIDIAN_TICKETS_DIR:-}" ]; then
+  printf '%s\n' "$OBSIDIAN_TICKETS_DIR"
+  exit 0
+fi
+
+# 3. Derive it — same rule as src/main/repo-state.ts: key off the origin
+#    remote so the answer is stable across machines and worktrees, else hash
+#    the canonical repo root.
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$root" ] || { echo "tm-state-dir: not inside a git repo" >&2; exit 1; }
+
+state_root="${TERMINAL_REPO_STATE_DIR:-${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/repos}"
+url="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
+url="${url%.git}"
+key=""
+if [ -n "$url" ]; then
+  case "$url" in
+    http://* | https://*) key="$(printf '%s' "$url" | sed -E 's#^https?://([^@/]+@)?##')" ;;
+    *) key="$(printf '%s' "$url" | sed -E 's#^(ssh://)?[A-Za-z0-9._-]+@##; s#:#/#')" ;;
+  esac
+fi
+if [ -z "$key" ]; then
+  hash="$(printf '%s' "$root" | shasum -a 256 | cut -c1-12)"
+  key="local/$(basename "$root")-$hash"
+fi
+
+printf '%s\n' "$state_root/$key/$area"

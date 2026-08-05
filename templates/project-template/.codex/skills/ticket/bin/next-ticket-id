@@ -8,14 +8,14 @@
 #   id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
 #   echo "$BACKLOG_REL/${id}-my-slug.md"
 #
-# v2 repos use .TerMinal/backlog/.next-id; legacy v1 repos use backlog/.next-id.
+# v2 repos use $TERMINAL_BACKLOG_DIR/.next-id; legacy v1 repos use backlog/.next-id.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
   BACKLOG_REL="backlog"
 else
-  BACKLOG_REL=".TerMinal/backlog"
+  BACKLOG_REL="$TERMINAL_BACKLOG_DIR"
 fi
 BACKLOG="$ROOT/$BACKLOG_REL"
 COUNTER="$BACKLOG/.next-id"

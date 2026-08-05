@@ -24,9 +24,9 @@ agent_run_status: ""
 ---
 
 Canonical schema reference for in-repo tickets. This file is **not** a real
-ticket (the `bin/tickets` lister only matches `.TerMinal/backlog/NNNN-*.md`
+ticket (the `bin/tickets` lister only matches `$TERMINAL_BACKLOG_DIR/NNNN-*.md`
 or legacy `backlog/NNNN-*.md`, and a `0` id makes it inert). Real tickets live
-at `.TerMinal/backlog/NNNN-kebab-slug.md`.
+at `$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md`.
 
 ## Frontmatter fields
 
@@ -97,8 +97,8 @@ tickets and link them with `depends_on`.
 
 ## Filename convention
 
-`.TerMinal/backlog/NNNN-kebab-case-title.md`, e.g.
-`.TerMinal/backlog/0042-rate-limit-join.md`.
+`$TERMINAL_BACKLOG_DIR/NNNN-kebab-case-title.md`, e.g.
+`$TERMINAL_BACKLOG_DIR/0042-rate-limit-join.md`.
 Allocate the next id atomically with `${CLAUDE_PLUGIN_ROOT}/skills/ticket/bin/next-ticket-id`.
 
 ## Body

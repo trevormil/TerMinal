@@ -1,11 +1,11 @@
 ---
 name: ticket
-description: "Create and manage in-repo backlog tickets (.TerMinal/backlog/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
+description: "Create and manage in-repo backlog tickets ($TERMINAL_BACKLOG_DIR/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
 ---
 
 # /ticket — In-repo backlog tickets
 
-In-repo markdown tickets at `.TerMinal/backlog/NNNN-slug.md` in v2 repos
+In-repo markdown tickets at `$TERMINAL_BACKLOG_DIR/NNNN-slug.md` in v2 repos
 (legacy v1: `backlog/NNNN-slug.md`) — versioned with the code, no external
 service.
 
@@ -39,8 +39,8 @@ you. Shell-helper path below is the fallback when MCP isn't installed; use
 
 ## Where tickets live
 
-`<repo-root>/.TerMinal/backlog/NNNN-kebab-slug.md` in v2 repos. Schema:
-[`EXAMPLE.md`](./EXAMPLE.md). Counter at `.TerMinal/backlog/.next-id`.
+`<repo-root>/$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md` in v2 repos. Schema:
+[`EXAMPLE.md`](./EXAMPLE.md). Counter at `$TERMINAL_BACKLOG_DIR/.next-id`.
 Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 
 ## Helper scripts (carried by this skill)
@@ -48,7 +48,7 @@ Legacy v1 repos that already have `backlog/` continue to use `backlog/.next-id`.
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 SKILL="$HOME/.config/TerMinal/plugin/skills/ticket"
-BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$ROOT/.TerMinal/backlog")
+BACKLOG_DIR=$([ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/backlog" || echo "$ROOT/$TERMINAL_BACKLOG_DIR")
 
 "$SKILL/bin/next-ticket-id"      # atomically allocate next id
 "$SKILL/bin/tickets"             # list all
@@ -189,7 +189,7 @@ Edit the file directly:
 ## Porting to a new repo
 
 Nothing to copy — the skill ships globally with the tm plugin. Per repo, just
-add `.TerMinal/backlog/.next-id.lock` (or legacy `backlog/.next-id.lock`) to `.gitignore`.
+add `$TERMINAL_BACKLOG_DIR/.next-id.lock` (or legacy `backlog/.next-id.lock`) to `.gitignore`.
 
 First call bootstraps the backlog directory + `.next-id`. Commit the backlog
 directory so the tracker travels with the code.

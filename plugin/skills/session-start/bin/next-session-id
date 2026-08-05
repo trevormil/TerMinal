@@ -8,14 +8,14 @@
 #   id=$("${CLAUDE_PLUGIN_ROOT}/skills/session-start/bin/next-session-id")
 #   mkdir -p "$SESSIONS_REL/${id}-my-slug"
 #
-# v2 repos use .TerMinal/sessions/.next-id; legacy v1 repos use sessions/.next-id.
+# v2 repos use $TERMINAL_SESSIONS_DIR/.next-id; legacy v1 repos use sessions/.next-id.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
   SESSIONS_REL="sessions"
 else
-  SESSIONS_REL=".TerMinal/sessions"
+  SESSIONS_REL="$TERMINAL_SESSIONS_DIR"
 fi
 SESSIONS="$ROOT/$SESSIONS_REL"
 COUNTER="$SESSIONS/.next-id"

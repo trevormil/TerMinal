@@ -11,11 +11,11 @@
 # Each arg is classified automatically as a status, priority, horizon, or the
 # `hitl` flag by matching the known value sets below.
 # Portable (macOS + Linux). Reads the resolved ticket store (Obsidian vault when
-# configured, else v2 .TerMinal/backlog or legacy backlog).
+# configured, else v2 $TERMINAL_BACKLOG_DIR or legacy backlog).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-TICKET_DIR="$("$(dirname "$0")/ticket-dir" 2>/dev/null || echo "$ROOT/.TerMinal/backlog")"
+TICKET_DIR="$("$(dirname "$0")/ticket-dir" 2>/dev/null || echo "$ROOT/$TERMINAL_BACKLOG_DIR")"
 
 want_status=""
 want_priority=""
@@ -48,7 +48,7 @@ printf '%-6s %-12s %-9s %-7s %-5s %-12s %-18s %s\n' "----" "------" "--------" "
 shopt -s nullglob 2>/dev/null || true
 found=""
 # newest first
-for f in $(ls -1 "$TICKET_DIR"/[0-9]*.md "$ROOT/.TerMinal/backlog"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -ru); do
+for f in $(ls -1 "$TICKET_DIR"/[0-9]*.md "$ROOT/$TERMINAL_BACKLOG_DIR"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -ru); do
   [ -e "$f" ] || continue
   found=1
   status="$(field "$f" status)"

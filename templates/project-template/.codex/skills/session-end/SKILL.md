@@ -40,7 +40,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 
 Open its `sessions/<id>-<slug>/session.md`. If none is active, ask the user
 which session to close. If more than one is active, surface them and ask.
-In v2 repos the path is `.TerMinal/sessions/<id>-<slug>/session.md`; legacy v1
+In v2 repos the path is `$TERMINAL_SESSIONS_DIR/<id>-<slug>/session.md`; legacy v1
 repos may still use `sessions/<id>-<slug>/session.md`.
 
 ### 2. Reconcile what happened → update the doc

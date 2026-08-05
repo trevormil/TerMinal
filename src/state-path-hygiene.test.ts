@@ -1,0 +1,70 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+// Workflow state lives in a per-project sidecar. Anything MODEL-FACING that
+// still names a literal `.TerMinal/<area>` path is a silent regression: the
+// agent writes its ticket or review straight back into the repo, and a
+// collaborator gets it in their next pull. Tools resolve correctly on their
+// own; it's hand-written paths in prompts and skills that leak.
+
+const ROOT = join(import.meta.dir, '..')
+const AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+const LITERAL = new RegExp(`\\.TerMinal/(${AREAS.join('|')})`)
+
+function* walk(dir: string): Generator<string> {
+  if (!existsSync(dir)) return
+  for (const e of readdirSync(dir)) {
+    const p = join(dir, e)
+    if (statSync(p).isDirectory()) yield* walk(p)
+    else yield p
+  }
+}
+
+const MODEL_FACING_TREES = [
+  'plugin/skills',
+  '.agents',
+  'templates/project-template/.agents',
+  'templates/project-template/.codex/skills',
+]
+
+describe('model-facing content resolves state instead of hardcoding it', () => {
+  for (const tree of MODEL_FACING_TREES) {
+    test(tree, () => {
+      const offenders: string[] = []
+      for (const file of walk(join(ROOT, tree))) {
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            if (LITERAL.test(line)) offenders.push(`${file.slice(ROOT.length + 1)}:${i + 1}`)
+          })
+      }
+      expect(offenders).toEqual([])
+    })
+  }
+
+  test('app-side agent prompts use the injected vars', () => {
+    const offenders: string[] = []
+    for (const rel of [
+      'src/main/agent-catalog.ts',
+      'src/main/agents.ts',
+      'src/renderer/src/lib/agentPrompts.ts',
+    ]) {
+      readFileSync(join(ROOT, rel), 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (LITERAL.test(line)) offenders.push(`${rel}:${i + 1}`)
+        })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test('the guard matches the real bug shape', () => {
+    // A guard that cannot fail is not a guard.
+    expect(LITERAL.test('write the artifact to .TerMinal/reviews/<pr>/<sha>.md')).toBe(true)
+    expect(LITERAL.test('write the artifact to $TERMINAL_REVIEWS_DIR/<pr>/<sha>.md')).toBe(false)
+    // `.TerMinal/` itself is still legitimate for repo config (template.json,
+    // tickets.json, widgets.json) — only the state AREAS moved.
+    expect(LITERAL.test('read .TerMinal/tickets.json for the provider')).toBe(false)
+  })
+})

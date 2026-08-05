@@ -85,7 +85,7 @@ If no executable script exists for the kind, delegate the run to Codex from the
 repo root:
 
 ```bash
-codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following .agents/<kind>.md in this repo exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to .TerMinal/reports/<kind>/<short-sha>.md in v2 repos (legacy v1: reports/<kind>/<short-sha>.md) per the contract. Never push directly to main."
+codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following .agents/<kind>.md in this repo exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to $TERMINAL_REPORTS_DIR/<kind>/<short-sha>.md in v2 repos (legacy v1: reports/<kind>/<short-sha>.md) per the contract. Never push directly to main."
 ```
 
 `-s danger-full-access` is required for the worktree + push steps.
@@ -143,7 +143,7 @@ Per the spec's decision rules, choose for each finding:
 
 ### 5. Write the artifact
 
-`.TerMinal/reports/<kind>/<short_sha>.md` per the kind's frontmatter schema
+`$TERMINAL_REPORTS_DIR/<kind>/<short_sha>.md` per the kind's frontmatter schema
 (legacy v1: `reports/<kind>/<short_sha>.md`). Always
 write the artifact, even on `status: ok` with no findings — the artifact is
 the run record.

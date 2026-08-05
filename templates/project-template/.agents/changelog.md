@@ -67,7 +67,7 @@ commits, no MRs to log).
 
 ## Output artifact
 
-`.TerMinal/reports/changelog/<short_sha>.md` — frontmatter + body summarizing what the
+`$TERMINAL_REPORTS_DIR/changelog/<short_sha>.md` — frontmatter + body summarizing what the
 run found (entries added, merges skipped, time taken). Newest-first by
 frontmatter `generated`.
 

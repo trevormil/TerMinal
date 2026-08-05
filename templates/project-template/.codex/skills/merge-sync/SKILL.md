@@ -9,7 +9,7 @@ The merge is human-only (global §8), so after the human merges, ticket state is
 stale: tickets still say `in-progress` and still list the now-merged PR/MR in
 `prs:`. This skill closes the loop. It **never merges** — it only reads PR/MR
 state from the forge and updates the active ticket directory
-(`.TerMinal/backlog/` in v2, `backlog/` in legacy v1).
+(`$TERMINAL_BACKLOG_DIR/` in v2, `backlog/` in legacy v1).
 
 ## Process
 

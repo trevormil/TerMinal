@@ -71,7 +71,7 @@ Unlike the other agents there are **two** gates, and the second matters more:
    outcome.**
 7. **File** each surviving idea as `horizon: future`, `priority: low`.
 8. **Append to the ledger** — key + ticket id + timestamp.
-9. **Write artifact** to `.TerMinal/reports/ticket-ideas/<short_sha>.md`.
+9. **Write artifact** to `$TERMINAL_REPORTS_DIR/ticket-ideas/<short_sha>.md`.
 10. **Activity + run outcome** — `terminal-cli activity check` and
     `terminal-cli mcp set_run_outcome runId=$TERMINAL_RUN_ID outcome=<...>`,
     using the existing four-value enum (`pr-opened` | `ticket-filed` |
@@ -97,7 +97,7 @@ alone. The key is a cheap exact-match guard; the LLM pass is the fuzzy one.
 
 ## Output artifact
 
-`.TerMinal/reports/ticket-ideas/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/ticket-ideas/<short_sha>.md`:
 
 ```yaml
 ---
@@ -108,7 +108,7 @@ last_scanned: 9b3de89
 candidates_generated: 7
 suppressed_by_ledger: 4
 suppressed_by_backlog: 1
-tickets_filed: [.TerMinal/backlog/0130-cache-invalidation-test.md]
+tickets_filed: [$TERMINAL_BACKLOG_DIR/0130-cache-invalidation-test.md]
 status: ok
 ---
 ```

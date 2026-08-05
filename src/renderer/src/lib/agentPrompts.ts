@@ -22,7 +22,7 @@ export function ticketImplementationPrompt(
       ? 'Ticket provider: GitHub Issues. Use the gh CLI in this repository to update issue status/labels. Do not create or edit local backlog markdown for this ticket.'
       : provider === 'linear'
         ? 'Ticket provider: Linear. Use the configured Linear MCP/CLI to update issue status/priority. Do not create or edit local backlog markdown for this ticket.'
-        : "Ticket provider: local backlog. Update this repo's .TerMinal/backlog markdown ticket, including status and prs: when a PR is opened."
+        : "Ticket provider: local backlog. Update this repo's $TERMINAL_BACKLOG_DIR markdown ticket, including status and prs: when a PR is opened."
   // A ticket's log is what earlier runs learned. Replaying it is the only thing
   // that stops each run from rediscovering the same dead ends.
   const log = ticket.comments?.length
@@ -61,7 +61,7 @@ export function fileTicketPrompt(
       ? 'File exactly ONE new GitHub Issue for the request below using the gh CLI in this repository. Set useful labels for type/priority/status when labels exist or can be safely created. Do NOT implement anything or open a PR.'
       : provider === 'linear'
         ? 'File exactly ONE new Linear issue for the request below using the configured Linear MCP/CLI. Use the repo/provider conventions for team, status, and priority. Do NOT implement anything or open a PR.'
-        : "File exactly ONE new backlog ticket for the request below, using this project's ticket conventions. Allocate the next id, write .TerMinal/backlog/NNNN-slug.md with valid YAML frontmatter matching the ticket example (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR."
+        : "File exactly ONE new backlog ticket for the request below, using this project's ticket conventions. Allocate the next id, write $TERMINAL_BACKLOG_DIR/NNNN-slug.md with valid YAML frontmatter matching the ticket example (legacy v1 repos may use backlog/), put detail in the body after the closing ---, and commit it. Do NOT implement anything or open a PR."
   return withLaunchContext(
     `${instruction}
 
