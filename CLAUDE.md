@@ -118,6 +118,7 @@ CLAUDE.md §14). This is also where the persona/lanes machinery
 | Agent runtime | `src/main/agents.ts` is the heart; `runSpec` is the spawn entry |
 | Schedules | `src/main/schedules.ts` + `bin/terminal-cron` — keep state shapes in sync |
 | Per-(repo, agent) state | `.agents/scripts.md` in `project-template` — the canonical convention doc |
+| Where tickets/reviews/sessions live | `src/main/repo-state.ts` (sidecar resolution) + [ADR-0020](./docs/decisions/0020-workflow-state-in-a-per-project-sidecar.md). State is NOT in the repo; resolve via `$TERMINAL_<AREA>_DIR` or `tm-state-dir <area>`, never a literal `.TerMinal/<area>` path |
 | A ticket's comment log | `src/main/ticket-comments.ts` (the only parser) + [ADR-0012](./docs/decisions/0012-ticket-log-in-markdown.md); every writer appends, never parses |
 | Run records | `src/main/cron-runs.ts` (cron) + `agents.ts` (in-process) — `UnifiedRun` type bridges both for the Runs tab |
 | Anything user-visible in the UI | [`docs/ux-testing.md`](./docs/ux-testing.md) — the two-tier UX suite. Tab pills carry `data-tab-id`/`aria-current` and the active pane carries `data-tab-pane`; keep them when restyling |

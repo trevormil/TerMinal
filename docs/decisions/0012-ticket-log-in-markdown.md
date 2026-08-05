@@ -1,7 +1,7 @@
 # 12. The ticket comment log lives in the ticket markdown
 
 Date: 2026-07-27
-Status: accepted
+Status: accepted (amended by [ADR-0020](0020-workflow-state-in-a-per-project-sidecar.md): the log stays in the ticket markdown, but the ticket file now lives in a per-project sidecar rather than the repo)
 
 ## Context
 

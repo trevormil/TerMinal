@@ -2,7 +2,7 @@
 
 Date: 2026-07-31
 
-Status: accepted
+Status: accepted (extended by [ADR-0020](0020-workflow-state-in-a-per-project-sidecar.md), which moves live state out of the repo entirely — the read-merge/write-one rule below is what makes that migration free)
 
 ## Context
 

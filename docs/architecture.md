@@ -174,6 +174,13 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   `git check-ignore` marking for the dimmed tree.
 - `scaffold.ts` — new-repo scaffolding from the embedded template (or a
   clone fallback in the packaged app).
+- `repo-state.ts` / `repo-state-migrate.ts` — the per-project **sidecar**:
+  tickets, sessions, reviews, checks and reports resolve to
+  `<config>/repos/<host>/<owner>/<repo>/` instead of the repo, so a shared
+  checkout never receives personal workflow state. Reads merge the sidecar with
+  anything still in-repo; writes go to the sidecar only. The sidecar is a git
+  repo, and the migration moves existing state into it
+  ([ADR-0020](decisions/0020-workflow-state-in-a-per-project-sidecar.md)).
 - `plugin-install.ts` — installs the global **tm plugin** on launch: copies the
   bundled `plugin/` (workflow skills/hooks/bin) to `~/.config/TerMinal/plugin`
   and links `~/.claude/skills/tm`, so every repo gets `/tm:*` skills with no
