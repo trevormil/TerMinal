@@ -3,8 +3,10 @@
 // every enabled NotifyChannel, with per-channel failure isolation (one channel
 // throwing/rejecting never blocks the others or the caller). Concrete channels:
 // Telegram (the pre-existing path, unchanged), macOS desktop notification, and
-// a generic outbound webhook (covers Slack/Discord incoming webhooks — payload
-// shape documented in docs/alert-channels.md). Inbound replies (AFK control)
+// any number of generic outbound webhooks (covers Slack/Discord incoming
+// webhooks — payload shape documented in docs/alert-channels.md; each
+// destination is its own channel instance with its own category routing).
+// Inbound replies (AFK control)
 // remain Telegram-only in telegram.ts. No electron imports here — the desktop
 // channel takes an injected `show` so this module stays unit-testable.
 import { spawn } from 'node:child_process'
@@ -12,7 +14,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings } from './settings'
-import { categoryFor, channelWants, type NotifyMatrix } from '../shared/notifications'
+import {
+  categoryFor,
+  channelWants,
+  webhookWants,
+  type NotifyCategory,
+  type NotifyMatrix,
+} from '../shared/notifications'
 import { guardedFetch, guardedSpawn } from './effect-guard'
 import { sendUrl } from './telegram-api'
 
@@ -30,6 +38,12 @@ export type NotifyRefs = {
 export type NotifyChannelId = 'telegram' | 'desktop' | 'webhook' | 'push'
 export type NotifyChannel = {
   id: NotifyChannelId
+  /** Human label for logs, when one id has several instances. */
+  label?: string
+  /** Per-INSTANCE routing, overriding the matrix row for `id`. Webhooks are the
+   *  reason it exists: several destinations share the id `webhook` and each
+   *  wants different traffic, so the row alone cannot gate them apart. */
+  wants?(category: NotifyCategory): boolean
   enabled(): boolean
   send(
     kind: NotifyKind,
@@ -151,10 +165,15 @@ export function dispatchAlert(
   for (const ch of channels) {
     if (ch.id === 'telegram' && ev.suppressTelegram) continue
     // Per-channel routing: a channel only fires for categories it opted into.
-    if (!channelWants(ch.id as NotifyChannelId, category, matrix)) continue
+    // An instance's own `wants` wins — that's how two webhooks with the same id
+    // route differently.
+    const wants = ch.wants
+      ? ch.wants(category)
+      : channelWants(ch.id as NotifyChannelId, category, matrix)
+    if (!wants) continue
     const failed = (e: unknown) => {
       const error = (e as Error).message || String(e)
-      console.error(`[gt] alert channel ${ch.id} failed:`, error)
+      console.error(`[gt] alert channel ${ch.label || ch.id} failed:`, error)
       deliveryRecorder({ channel: ch.id, ok: false, title: ev.title, error })
     }
     try {
@@ -331,25 +350,39 @@ export function webhookPayload(
   }
 }
 
-export function createWebhookChannel(
+/**
+ * One NotifyChannel per configured destination. Rebuilt on each dispatch (see
+ * events.ts) so adding, editing, or deleting a webhook takes effect without a
+ * restart — and each instance re-reads its entry BY ID rather than closing over
+ * it, so a URL edited between build and send still goes to the right place.
+ */
+export function createWebhookChannels(
   getSettings: () => Settings,
   fetchFn: typeof fetch = guardedFetch('webhook'),
-): NotifyChannel {
-  return {
-    id: 'webhook',
-    enabled: () => {
-      const w = getSettings().alerts.webhook
-      return w.enabled && isWebhookUrl(w.url)
-    },
-    send(kind, title, detail, refs) {
-      return fetchFn(getSettings().alerts.webhook.url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(webhookPayload(kind, title, detail, refs)),
-        signal: AbortSignal.timeout(8000),
-      }).then(assertDelivered)
-    },
-  }
+): NotifyChannel[] {
+  return getSettings().alerts.webhooks.map((w) => {
+    const current = () => getSettings().alerts.webhooks.find((x) => x.id === w.id)
+    return {
+      id: 'webhook' as const,
+      label: `webhook:${w.name}`,
+      wants: (category: NotifyCategory) =>
+        webhookWants(category, current()?.categories, getSettings().notifications.matrix),
+      enabled: () => {
+        const cfg = current()
+        return !!cfg && cfg.enabled && isWebhookUrl(cfg.url)
+      },
+      send(kind, title, detail, refs) {
+        const url = current()?.url
+        if (!url) return
+        return fetchFn(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(webhookPayload(kind, title, detail, refs)),
+          signal: AbortSignal.timeout(8000),
+        }).then(assertDelivered)
+      },
+    }
+  })
 }
 
 /** Settings "Test" button for the webhook channel: one POST, errors surfaced. */

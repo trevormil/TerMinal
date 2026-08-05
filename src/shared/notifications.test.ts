@@ -5,6 +5,7 @@ import {
   channelWants,
   DEFAULT_MATRIX,
   NOTIFY_CATEGORIES,
+  webhookWants,
 } from './notifications'
 
 describe('categoryFor', () => {
@@ -73,4 +74,44 @@ test('DEFAULT_MATRIX covers every channel × category (no holes)', () => {
       expect(typeof DEFAULT_MATRIX[ch][cat]).toBe('boolean')
     }
   }
+})
+
+// Multiple webhooks each route independently. The matrix's `webhook` row is the
+// DEFAULT for a destination that hasn't customized anything, so an existing
+// single-webhook setup keeps behaving identically.
+describe('webhookWants (per-destination routing)', () => {
+  test('no override falls back to the matrix row', () => {
+    expect(webhookWants('needs-you', undefined)).toBe(true)
+    expect(webhookWants('tickets', undefined)).toBe(false)
+  })
+
+  test('an override wins in both directions', () => {
+    expect(webhookWants('tickets', { tickets: true })).toBe(true)
+    expect(webhookWants('needs-you', { 'needs-you': false })).toBe(false)
+  })
+
+  test('an override for ONE category leaves the others on the default', () => {
+    const own = { tickets: true }
+    expect(webhookWants('tickets', own)).toBe(true)
+    expect(webhookWants('needs-you', own)).toBe(true)
+    expect(webhookWants('sessions', own)).toBe(false)
+  })
+
+  test('a user matrix override moves the fallback', () => {
+    expect(webhookWants('tickets', undefined, { webhook: { tickets: true } })).toBe(true)
+  })
+})
+
+describe('anyChannelWants accounts for per-webhook opt-ins', () => {
+  test('a webhook that opted into a category nobody else wants still fires', () => {
+    // Without this the emit gate drops the event before dispatch ever runs, and
+    // the webhook silently never receives the category it asked for.
+    expect(anyChannelWants('sessions')).toBe(false)
+    expect(anyChannelWants('sessions', undefined, [{ sessions: true }])).toBe(true)
+  })
+
+  test('webhooks with no overrides change nothing', () => {
+    expect(anyChannelWants('sessions', undefined, [undefined, {}])).toBe(false)
+    expect(anyChannelWants('needs-you', undefined, [undefined])).toBe(true)
+  })
 })

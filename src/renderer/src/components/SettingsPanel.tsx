@@ -43,6 +43,7 @@ import type {
   DeliveryRecord,
   Settings,
   SettingsPatch,
+  WebhookCfg,
   DaemonCfg,
   EnvDetect,
   Engine,
@@ -82,6 +83,7 @@ import {
   CATEGORY_META,
   CHANNEL_META,
   channelWants,
+  webhookWants,
   NOTIFY_CATEGORIES,
   NOTIFY_CHANNELS,
   type NotifyCategory,
@@ -137,6 +139,170 @@ function SecretInput({
           Clear
         </button>
       )}
+    </div>
+  )
+}
+
+// Any number of outbound webhook destinations. They exist as a LIST rather than
+// one URL because a Slack channel, a Discord channel and a homegrown endpoint
+// rarely want the same traffic — hence the per-destination category chips,
+// which override the `webhook` row of the notification matrix below.
+//
+// Every edit saves the WHOLE list (main replaces it wholesale so deletes stick,
+// and restores each entry's saved URL when the patch omits it — the renderer
+// only ever holds a mask).
+function WebhookList({
+  webhooks,
+  secretsSet,
+  matrix,
+  save,
+  test,
+  results,
+}: {
+  webhooks: WebhookCfg[]
+  secretsSet?: Record<string, boolean>
+  matrix: NotifyMatrix
+  save: (webhooks: (Partial<WebhookCfg> & { id: string })[]) => void
+  test: (channel: AlertChannelId, webhookId?: string) => void
+  results: Record<string, { busy?: boolean; ok?: boolean; error?: string } | undefined>
+}) {
+  // Patches drop `url` for every untouched entry, so main restores it by id.
+  const stripped = () => webhooks.map(({ url: _url, ...rest }) => rest)
+  const patch = (id: string, fields: Partial<WebhookCfg>) =>
+    save(stripped().map((w) => (w.id === id ? { ...w, ...fields } : w)))
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold text-zinc-200">Outbound webhooks</div>
+          <div className="text-[10.5px] text-zinc-600">
+            POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own
+            endpoint.
+          </div>
+        </div>
+        <button
+          onClick={() =>
+            save([
+              ...stripped(),
+              { id: crypto.randomUUID(), name: 'Webhook', url: '', enabled: false },
+            ])
+          }
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-[var(--gt-accent)]/60 hover:text-zinc-100"
+        >
+          <Plus size={12} strokeWidth={2.25} />
+          Add
+        </button>
+      </div>
+
+      {webhooks.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[var(--gt-border)] px-3 py-2 text-[11px] text-zinc-600">
+          No webhooks configured.
+        </div>
+      ) : (
+        webhooks.map((w) => {
+          const result = results[`webhook:${w.id}`]
+          return (
+            <div
+              key={w.id}
+              className="space-y-2 rounded-md border border-[var(--gt-border)] bg-black/20 p-2.5"
+            >
+              <div className="flex items-center gap-2">
+                {/* A compact switch, not <Toggle> — that one is a full-width
+                    labelled row and would swallow the rest of this line. */}
+                <button
+                  onClick={() => patch(w.id, { enabled: !w.enabled })}
+                  title={w.enabled ? 'Disable this webhook' : 'Enable this webhook'}
+                  aria-pressed={w.enabled}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    w.enabled ? 'bg-[var(--gt-accent)]' : 'bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      w.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+                <input
+                  defaultValue={w.name}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim() || 'Webhook'
+                    if (name !== w.name) patch(w.id, { name })
+                  }}
+                  placeholder="Name"
+                  className={`${inp} h-8 flex-1`}
+                />
+                <button
+                  onClick={() => test('webhook', w.id)}
+                  disabled={result?.busy}
+                  title="Send a test alert to this endpoint"
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-[var(--gt-border)] bg-black/25 px-2.5 text-[11.5px] text-zinc-200 transition-colors hover:border-[var(--gt-accent)]/60 disabled:opacity-50"
+                >
+                  {result?.busy ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Send size={12} strokeWidth={2} />
+                  )}
+                  Test
+                </button>
+                <button
+                  onClick={() => save(stripped().filter((x) => x.id !== w.id))}
+                  title="Remove this webhook"
+                  className="shrink-0 rounded-md p-1.5 text-zinc-600 transition-colors hover:text-amber-400"
+                >
+                  <Trash2 size={13} strokeWidth={2} />
+                </button>
+              </div>
+
+              <SecretInput
+                set={!!secretsSet?.[`alerts.webhooks.${webhooks.indexOf(w)}.url`]}
+                onSave={(url) => patch(w.id, { url })}
+                placeholder="https://hooks.slack.com/services/…"
+              />
+
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                  Sends
+                </span>
+                {NOTIFY_CATEGORIES.map((cat) => {
+                  const on = webhookWants(cat, w.categories, matrix)
+                  return (
+                    <button
+                      key={cat}
+                      title={CATEGORY_META[cat].desc}
+                      onClick={() =>
+                        patch(w.id, { categories: { ...(w.categories || {}), [cat]: !on } })
+                      }
+                      className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                        on
+                          ? 'border-[var(--gt-accent)]/50 bg-[var(--gt-accent)]/20 text-zinc-100'
+                          : 'border-[var(--gt-border)] text-zinc-600 hover:text-zinc-400'
+                      }`}
+                    >
+                      {CATEGORY_META[cat].label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {result && !result.busy && (
+                <div
+                  className={`text-[11px] ${result.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                >
+                  {result.ok ? '✓ Sent — check the receiver.' : result.error}
+                </div>
+              )}
+            </div>
+          )
+        })
+      )}
+
+      <div className="text-[10.5px] text-zinc-600">
+        Payload: {'{'} source, kind (done|blocked|question|info), title, detail, refs, ts, text,
+        content {'}'} — <span className="font-mono">text</span> renders in Slack,{' '}
+        <span className="font-mono">content</span> in Discord.
+      </div>
     </div>
   )
 }
@@ -1940,13 +2106,16 @@ export function SettingsPanel({
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
   }
+  // Keyed by channel, except webhooks — there can be several, so each
+  // destination gets its own `webhook:<id>` slot and its own result line.
   const [alertTest, setAlertTest] = useState<
-    Partial<Record<AlertChannelId, { busy?: boolean; ok?: boolean; error?: string; note?: string }>>
+    Record<string, { busy?: boolean; ok?: boolean; error?: string; note?: string } | undefined>
   >({})
-  const testAlert = async (channel: AlertChannelId) => {
-    setAlertTest((p) => ({ ...p, [channel]: { busy: true } }))
-    const r = await window.gt.alerts.test(channel)
-    setAlertTest((p) => ({ ...p, [channel]: r }))
+  const testAlert = async (channel: AlertChannelId, webhookId?: string) => {
+    const key = webhookId ? `webhook:${webhookId}` : channel
+    setAlertTest((p) => ({ ...p, [key]: { busy: true } }))
+    const r = await window.gt.alerts.test(channel, webhookId)
+    setAlertTest((p) => ({ ...p, [key]: r }))
   }
   const installNotify = async () => {
     setNotify({ busy: true })
@@ -3342,54 +3511,14 @@ export function SettingsPanel({
                         </div>
                       )}
                     </div>
-                    <div className="space-y-2">
-                      <Toggle
-                        on={s.alerts.webhook.enabled}
-                        onToggle={() =>
-                          save({ alerts: { webhook: { enabled: !s.alerts.webhook.enabled } } })
-                        }
-                        label="Outbound webhook"
-                        hint="POST each alert as JSON — paste a Slack or Discord incoming-webhook URL, or your own endpoint"
-                      />
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                        <label className="block min-w-0 space-y-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                            Webhook URL
-                          </span>
-                          <SecretInput
-                            set={!!s.secretsSet?.['alerts.webhook.url']}
-                            onSave={(v) => save({ alerts: { webhook: { url: v } } })}
-                            placeholder="https://hooks.slack.com/services/…"
-                          />
-                        </label>
-                        <button
-                          onClick={() => testAlert('webhook')}
-                          disabled={alertTest.webhook?.busy}
-                          className={actionButton}
-                        >
-                          {alertTest.webhook?.busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Send size={13} strokeWidth={2} />
-                          )}
-                          Test
-                        </button>
-                      </div>
-                      {alertTest.webhook && !alertTest.webhook.busy && (
-                        <div
-                          className={`text-[11px] ${alertTest.webhook.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
-                        >
-                          {alertTest.webhook.ok
-                            ? '✓ Sent — check the receiver.'
-                            : alertTest.webhook.error}
-                        </div>
-                      )}
-                      <div className="text-[10.5px] text-zinc-600">
-                        Payload: {'{'} source, kind (done|blocked|question|info), title, detail,
-                        refs, ts, text, content {'}'} — <span className="font-mono">text</span>{' '}
-                        renders in Slack, <span className="font-mono">content</span> in Discord.
-                      </div>
-                    </div>
+                    <WebhookList
+                      webhooks={s.alerts.webhooks}
+                      secretsSet={s.secretsSet}
+                      matrix={s.notifications.matrix}
+                      save={(webhooks) => save({ alerts: { webhooks } })}
+                      test={testAlert}
+                      results={alertTest}
+                    />
                     <div className="space-y-2">
                       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                         <Toggle
