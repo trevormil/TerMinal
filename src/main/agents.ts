@@ -1094,7 +1094,7 @@ export function runDesignerSpawn(
     scope === 'global'
       ? "TerMinal's GLOBAL script registry (~/.config/TerMinal/scripts/)"
       : `this repo's .agents/ directory`
-  const prompt = `You are designing a new TerMinal agent as an EXECUTABLE BASH SCRIPT plus a small sidecar metadata JSON, per the scripts unification (see .agents/scripts.md).
+  const prompt = `You are designing a new TerMinal agent as an EXECUTABLE BASH SCRIPT plus a small sidecar metadata JSON, per the scripts unification (see the contract printed by: tm-agent-spec scripts).
 
 Target: ${scopeLabel}
 Two files to write (mkdir -p the parent dir if needed):
