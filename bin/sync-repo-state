@@ -1,0 +1,50 @@
+#!/usr/bin/env bun
+// Writes the canonical sidecar-state block (src/main/repo-state-inline.js) into
+// every standalone script that carries a copy. Run after editing the canonical
+// block; src/main/repo-state-parity.test.ts fails if a copy drifts.
+//
+//   bun run sync:repo-state          # rewrite the copies
+//   bun run sync:repo-state --check  # exit 1 if any copy is stale (CI-friendly)
+
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { REPO_STATE_BLOCK } from '../src/main/repo-state-inline'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+export const TARGETS = ['bin/terminal-cli', 'bin/terminal-cron', 'bin/terminal-mcp-server']
+
+const BEGIN = '// --- BEGIN repo-state'
+const END = '// --- END repo-state ---'
+
+/** Replace the marked block, or report that the file has no marker yet. */
+export function withBlock(source) {
+  const start = source.indexOf(BEGIN)
+  const end = source.indexOf(END)
+  if (start === -1 || end === -1) return null
+  return source.slice(0, start) + REPO_STATE_BLOCK + source.slice(end + END.length)
+}
+
+const check = process.argv.includes('--check')
+let stale = 0
+for (const rel of TARGETS) {
+  const path = join(ROOT, rel)
+  const src = readFileSync(path, 'utf8')
+  const next = withBlock(src)
+  if (next === null) {
+    console.error(`${rel}: missing ${BEGIN} … ${END} markers`)
+    process.exit(1)
+  }
+  if (next === src) continue
+  stale++
+  if (check) console.error(`${rel}: repo-state block is stale`)
+  else {
+    writeFileSync(path, next)
+    console.log(`${rel}: updated`)
+  }
+}
+if (check && stale) {
+  console.error('Run: bun run sync:repo-state')
+  process.exit(1)
+}
+if (!stale) console.log('all copies already current')

@@ -36,7 +36,8 @@
     "format:check": "prettier --check .",
     "rebuild": "electron-rebuild -f -o node-pty,better-sqlite3",
     "postinstall": "electron-rebuild -f -o node-pty,better-sqlite3",
-    "shots": "bun scripts/capture-readme-shots.ts"
+    "shots": "bun scripts/capture-readme-shots.ts",
+    "sync:repo-state": "bun bin/sync-repo-state"
   },
   "dependencies": {
     "@codemirror/language": "6.12.3",

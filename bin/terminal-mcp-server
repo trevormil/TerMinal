@@ -21,9 +21,9 @@ import {
   unlinkSync,
 } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { homedir } from 'node:os'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 
 // Single resolution point for the config dir, honouring TERMINAL_CONFIG_DIR the
 // same way src/main/config-dir.ts does. These are SEPARATE PROCESSES writing the
@@ -198,6 +198,67 @@ function configuredHarnessDir() {
   return typeof s.harnessDir === 'string' ? s.harnessDir : ''
 }
 
+// --- BEGIN repo-state (canonical: src/main/repo-state-inline.js — do not edit by hand) ---
+const SIDECAR_AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+const repoStateKeyCache = new Map()
+function repoStateDir() {
+  return process.env.TERMINAL_REPO_STATE_DIR?.trim() || join(CFG, 'repos')
+}
+function gitOut(root, args) {
+  try {
+    return execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+function repoStateKey(root) {
+  if (!root) return ''
+  const hit = repoStateKeyCache.get(root)
+  if (hit !== undefined) return hit
+  let key = ''
+  const url = gitOut(root, ['remote', 'get-url', 'origin']).replace(/\.git$/, '')
+  if (url) {
+    let m = url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
+    if (!m) m = url.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/)
+    if (m) key = m[1] + '/' + m[2]
+  }
+  if (!key) {
+    const canonical = gitOut(root, ['rev-parse', '--show-toplevel']) || root
+    const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 12)
+    key = 'local/' + basename(canonical) + '-' + hash
+  }
+  repoStateKeyCache.set(root, key)
+  return key
+}
+function sidecarAreaPath(root, area) {
+  if (!root || !SIDECAR_AREAS.includes(area)) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, area) : ''
+}
+// Reads merge sidecar + in-repo so state already committed stays visible;
+// writes always go to the sidecar so a shared repo stops accreting state.
+function areaPathsFor(root, area, candidates) {
+  const out = []
+  const sidecar = sidecarAreaPath(root, area)
+  if (sidecar && existsSync(sidecar)) out.push(sidecar)
+  for (const rel of candidates) {
+    const p = join(root, rel)
+    if (existsSync(p)) out.push(p)
+  }
+  return out
+}
+function areaWritePath(root, area, candidates, isV2) {
+  const sidecar = sidecarAreaPath(root, area)
+  if (sidecar) return sidecar
+  const existing = areaPathsFor(root, area, candidates)
+  if (existing.length) return existing[0]
+  return join(root, isV2 ? candidates[0] : candidates[candidates.length - 1])
+}
+// --- END repo-state ---
+
 function areaCandidates(area) {
   return (
     {
@@ -220,16 +281,11 @@ function hasV2Layout(root) {
 }
 
 function areaPaths(root, area) {
-  return areaCandidates(area)
-    .map((rel) => join(root, rel))
-    .filter((p) => existsSync(p))
+  return areaPathsFor(root, area, areaCandidates(area))
 }
 
 function areaPath(root, area) {
-  const existing = areaPaths(root, area)[0]
-  if (existing) return existing
-  const rels = areaCandidates(area)
-  return join(root, hasV2Layout(root) ? rels[0] : rels[rels.length - 1])
+  return areaWritePath(root, area, areaCandidates(area), hasV2Layout(root))
 }
 
 // Ticket-provider config (.TerMinal/tickets.json). Obsidian repos store tickets
