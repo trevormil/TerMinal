@@ -33,9 +33,13 @@ per-repo `.agents/<id>.sh` wins over the global one):
 1. `<repo>/.agents/<kind>.md` — this project's contract, when it has one
 2. `<plugin>/agents/<kind>.md` — the shipped default
 
-- Resolved by `agentContract()` (`src/main/agent-contracts.ts`) in the app and
-  `tm-agent-spec <kind>` in a shell, which is linked onto PATH beside
-  `tm-state-dir`. Nothing hardcodes `.agents/<kind>.md` any more.
+- Resolved by **one** implementation: `tm-agent-spec <kind>`, linked onto PATH
+  beside `tm-state-dir`. Nothing hardcodes `.agents/<kind>.md` any more.
+  Deliberately not mirrored in TypeScript: contracts are model-facing prose and
+  the app never reads them (it discovers agents from `.sh` + `agents.json`), so
+  a second copy would be unreachable code that could only drift — the precise
+  failure this stack exists to remove. If the app ever needs to resolve one, it
+  shells out to the same script.
 - `bootstrap.sh` no longer copies contracts. For existing repos it removes only
   those **byte-identical to the shipped default** and reports how many it kept:
   a customized contract is the repo's decision and must survive. Comparison is
