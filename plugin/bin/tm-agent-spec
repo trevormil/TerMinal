@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# tm-agent-spec <kind> — print the contract a cadence agent should follow.
+#
+#   spec="$(tm-agent-spec drift)"
+#   codex exec ... "Follow $spec exactly."
+#
+# Contracts layer, the same way agent scripts already do:
+#
+#   1. <repo>/.agents/<kind>.md   — this project's own contract, if it has one
+#   2. <plugin>/agents/<kind>.md  — the shipped default
+#
+# Every repo used to carry all 17 defaults byte-identical, because bootstrap
+# copied them and nothing ever refreshed them. A repo that customizes a
+# contract still writes one and still wins; a repo that never did now carries
+# none. Mirrors src/main/agent-contracts.ts.
+#
+# Exits 1 with a message on stderr when neither layer has the kind, so a caller
+# that forgets to check does not silently run against an empty prompt.
+set -euo pipefail
+
+kind="${1:-}"
+case "$kind" in
+  '' | *[/\\]* | .*)
+    echo "usage: tm-agent-spec <kind>   (no path separators)" >&2
+    exit 2
+    ;;
+esac
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$root" ] && [ -f "$root/.agents/$kind.md" ]; then
+  printf '%s\n' "$root/.agents/$kind.md"
+  exit 0
+fi
+
+# The plugin dir this script lives in — not a hardcoded ~/.config path, so a
+# TERMINAL_CONFIG_DIR override (and the test suite) resolves correctly.
+plugin="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$plugin/agents/$kind.md" ]; then
+  printf '%s\n' "$plugin/agents/$kind.md"
+  exit 0
+fi
+
+echo "tm-agent-spec: no contract for '$kind' in $root/.agents or $plugin/agents" >&2
+exit 1

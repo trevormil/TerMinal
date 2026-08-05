@@ -132,7 +132,7 @@ describe('no stale per-repo machinery paths', () => {
 describe('no private machine references', () => {
   // Public plugin content must not name the local-only harness repo (its
   // exemption lives in the machine-local allow-direct-main file instead).
-  for (const dir of ['skills', 'bin', 'hooks']) {
+  for (const dir of ['skills', 'bin', 'hooks', 'agents']) {
     test(dir, () => {
       for (const file of walkFiles(join(ROOT, dir)))
         expect(readFileSync(file, 'utf8')).not.toContain('autopilot-harness')
@@ -208,7 +208,7 @@ describe('bin', () => {
 // exist. Files in the TARGET repo must be named as plain repo-relative paths,
 // which the model resolves against its working directory.
 describe('plugin content never links outside the plugin', () => {
-  for (const dir of ['skills', 'bin', 'hooks']) {
+  for (const dir of ['skills', 'bin', 'hooks', 'agents']) {
     test(dir, () => {
       const offenders: string[] = []
       for (const file of walkFiles(join(ROOT, dir))) {
