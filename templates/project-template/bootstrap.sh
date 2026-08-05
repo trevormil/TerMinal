@@ -154,30 +154,18 @@ else
   say "settings.json installed"
 fi
 
-# --- data scaffolds (seed only if absent — never clobber your data) ----------
-echo "[data] project state ($LAYOUT)"
+# --- data scaffolds -----------------------------------------------------------
+# Workflow state (tickets, sessions, reviews, checks, reports) does NOT live in
+# the repo any more: it goes to a per-project sidecar outside it, so a repo you
+# share with collaborators never receives your tickets and reviews. Only the
+# layout marker and repo-level config are seeded here. Existing in-repo state is
+# left exactly where it is — Settings → Updates offers the one-time move, and
+# reads still merge it until then.
+echo "[data] project config ($LAYOUT)"
 mkdir -p "$DST/.TerMinal"
-if [ "$LAYOUT" = "v1" ]; then
-  mkdir -p "$DST/backlog" "$DST/sessions" "$DST/.reviews" "$DST/.checks" "$DST/reports"
-  [ -f "$DST/backlog/.next-id" ]   || cp "$SRC/.TerMinal/backlog/.next-id"   "$DST/backlog/.next-id"
-  [ -f "$DST/sessions/.next-id" ]  || cp "$SRC/.TerMinal/sessions/.next-id"  "$DST/sessions/.next-id"
-  [ -f "$DST/sessions/README.md" ] || cp "$SRC/.TerMinal/sessions/README.md" "$DST/sessions/README.md"
-  [ -f "$DST/.reviews/README.md" ] || cp "$SRC/.TerMinal/reviews/README.md" "$DST/.reviews/README.md"
-  [ -f "$DST/.checks/README.md" ]  || cp "$SRC/.TerMinal/checks/README.md"  "$DST/.checks/README.md"
-  [ -f "$DST/reports/README.md" ]  || cp "$SRC/.TerMinal/reports/README.md" "$DST/reports/README.md"
-  say "legacy backlog/, sessions/, .reviews/, .checks/, reports/ repaired (existing data untouched)"
-else
-  [ -f "$DST/.TerMinal/template.json" ] || \
-    cp "$SRC/.TerMinal/template.json" "$DST/.TerMinal/template.json"
-  mkdir -p "$DST/.TerMinal/backlog" "$DST/.TerMinal/sessions" "$DST/.TerMinal/reviews" "$DST/.TerMinal/checks" "$DST/.TerMinal/reports"
-  [ -f "$DST/.TerMinal/backlog/.next-id" ]   || cp "$SRC/.TerMinal/backlog/.next-id"   "$DST/.TerMinal/backlog/.next-id"
-  [ -f "$DST/.TerMinal/sessions/.next-id" ]  || cp "$SRC/.TerMinal/sessions/.next-id"  "$DST/.TerMinal/sessions/.next-id"
-  [ -f "$DST/.TerMinal/sessions/README.md" ] || cp "$SRC/.TerMinal/sessions/README.md" "$DST/.TerMinal/sessions/README.md"
-  [ -f "$DST/.TerMinal/reviews/README.md" ]  || cp "$SRC/.TerMinal/reviews/README.md"  "$DST/.TerMinal/reviews/README.md"
-  [ -f "$DST/.TerMinal/checks/README.md" ]   || cp "$SRC/.TerMinal/checks/README.md"   "$DST/.TerMinal/checks/README.md"
-  [ -f "$DST/.TerMinal/reports/README.md" ]  || cp "$SRC/.TerMinal/reports/README.md"  "$DST/.TerMinal/reports/README.md"
-  say ".TerMinal/{backlog,sessions,reviews,checks,reports} seeded (existing data untouched)"
-fi
+[ -f "$DST/.TerMinal/template.json" ] || \
+  cp "$SRC/.TerMinal/template.json" "$DST/.TerMinal/template.json"
+say "state lives in the sidecar (see Settings → Updates → Project state)"
 [ -f "$DST/.TerMinal/widgets.json" ] || \
   cp "$SRC/.TerMinal/widgets.json" "$DST/.TerMinal/widgets.json"
 [ -f "$DST/.TerMinal/snippets.json" ] || \
@@ -208,15 +196,19 @@ fi
 # --- .gitignore — append our entries if missing ------------------------------
 echo "[gitignore] appending workflow entries if missing"
 touch "$DST/.gitignore"
-if [ "$LAYOUT" = "v1" ]; then
-  lock_lines=("backlog/.next-id.lock" "sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
-else
-  lock_lines=(".TerMinal/backlog/.next-id.lock" ".TerMinal/sessions/.next-id.lock" ".status.md" ".claude/pre-tm-backup/")
-fi
-for line in "${lock_lines[@]}"; do
+# Personal workflow state lives in the per-project sidecar now. Ignore the
+# in-repo dirs too, so a repo that still carries state (or acquires it from an
+# older tool) can never commit tickets/reviews into a shared checkout.
+state_lines=(
+  ".TerMinal/backlog/" ".TerMinal/sessions/" ".TerMinal/reviews/"
+  ".TerMinal/checks/" ".TerMinal/reports/" ".TerMinal/notes.md"
+  "/backlog/" "/sessions/" "/.reviews/" "/.checks/" "/reports/"
+)
+ignore_lines=("${state_lines[@]}" ".status.md" ".claude/pre-tm-backup/")
+for line in "${ignore_lines[@]}"; do
   grep -qxF "$line" "$DST/.gitignore" || printf '%s\n' "$line" >> "$DST/.gitignore"
 done
-say ".gitignore lock-dir entries ensured"
+say ".gitignore state + workflow entries ensured"
 
 cat <<EOF
 

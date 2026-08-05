@@ -1746,6 +1746,16 @@ export type TddInfo = {
 // Global tm plugin install state (src/main/plugin-install.ts): the canonical
 // copy at ~/.config/TerMinal/plugin, the ~/.claude/skills/tm link, and the
 // count of synced ~/.codex/skills/tm-* dirs.
+// Per-project sidecar (src/main/repo-state.ts): workflow state lives outside
+// the repo so a shared checkout never receives personal tickets/reviews.
+// `pending` counts files still in the repo awaiting the one-time move.
+export type RepoStateStatus = {
+  isRepo: boolean
+  commits: number
+  path: string
+  pending: number
+}
+
 export type TmPluginStatus = {
   installed: boolean
   linked: boolean
@@ -2245,6 +2255,10 @@ export type GtApi = {
   plugin: {
     status: () => Promise<TmPluginStatus>
     sync: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
+  }
+  repoState: {
+    status: (repoRoot?: string) => Promise<RepoStateStatus>
+    migrate: (repoRoot?: string) => Promise<{ moved: number; skipped: string[]; error?: string }>
   }
   observability: {
     summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{

@@ -235,6 +235,7 @@ import {
 } from './agents'
 import { readSchedules } from './schedules'
 import { installTmPlugin, tmPluginStatus } from './plugin-install'
+import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
 import {
   installRunner,
   installCli,
@@ -1884,6 +1885,16 @@ ipcMain.handle('update:check', () => runUpdateCheck())
 // Global tm plugin status/sync for the Settings panel. Sync re-copies the
 // bundled plugin and repairs the ~/.claude/skills/tm symlink.
 ipcMain.handle('plugin:status', () => tmPluginStatus())
+
+// Per-project sidecar: where this repo's tickets/reviews/sessions live, how
+// many files are still sitting in the repo, and the one-time move.
+ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
+  const root = repoRoot || cur().cwd
+  return { ...sidecarGitStatus(root), pending: pendingMigration(root) }
+})
+ipcMain.handle('repoState:migrate', (_e, repoRoot: string) =>
+  migrateRepoState(repoRoot || cur().cwd),
+)
 ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to

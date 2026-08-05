@@ -450,6 +450,10 @@ const gt = {
     status: () => ipcRenderer.invoke('plugin:status'),
     sync: () => ipcRenderer.invoke('plugin:sync'),
   },
+  repoState: {
+    status: (repoRoot?: string) => ipcRenderer.invoke('repoState:status', repoRoot || ''),
+    migrate: (repoRoot?: string) => ipcRenderer.invoke('repoState:migrate', repoRoot || ''),
+  },
   update: {
     check: () => ipcRenderer.invoke('update:check'),
     onStatus: (cb: (r: unknown) => void) => {
