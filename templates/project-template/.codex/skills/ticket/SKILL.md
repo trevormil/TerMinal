@@ -1,11 +1,12 @@
 ---
 name: ticket
-description: "Create and manage in-repo backlog tickets ($TERMINAL_BACKLOG_DIR/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
+description: "Create and manage backlog tickets in the per-project sidecar ($TERMINAL_BACKLOG_DIR/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
 ---
 
-# /ticket — In-repo backlog tickets
+# /ticket — Backlog tickets
 
-In-repo markdown tickets at `$TERMINAL_BACKLOG_DIR/NNNN-slug.md` in v2 repos
+Markdown tickets at `$TERMINAL_BACKLOG_DIR/NNNN-slug.md`, kept in this
+project's sidecar rather than the repo, in v2 repos
 (legacy v1: `backlog/NNNN-slug.md`) — versioned with the code, no external
 service.
 
