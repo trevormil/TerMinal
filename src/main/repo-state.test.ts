@@ -182,10 +182,7 @@ describe('every spawn path receives the sidecar env', () => {
     }
   }
 
-  const CANDIDATES = [
-    ...sources(join(ROOT, 'src', 'main')),
-    ...sources(join(ROOT, 'bin')),
-  ]
+  const CANDIDATES = [...sources(join(ROOT, 'src', 'main')), ...sources(join(ROOT, 'bin'))]
     .map((abs) => abs.slice(ROOT.length + 1))
     .filter((rel) => !rel.includes('.test.'))
     .sort()

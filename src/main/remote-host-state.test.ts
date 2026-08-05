@@ -85,10 +85,11 @@ describe('remote host script resolves workflow state through the sidecar', () =>
 
   test('the created ticket reports the path it actually lives at', () => {
     const found = run({ op: 'workspace.search', q: 'remote host', kinds: ['ticket'] }) as
-      | { results?: { kind: string; path: string }[] }
-      | { kind: string; path: string }[]
+      { results?: { kind: string; path: string }[] } | { kind: string; path: string }[]
     const results = Array.isArray(found) ? found : found.results || []
-    const hit = results.find((r) => r.kind === 'ticket' && /filed-from-the-remote-host/.test(r.path))
+    const hit = results.find(
+      (r) => r.kind === 'ticket' && /filed-from-the-remote-host/.test(r.path),
+    )
     expect(hit).toBeDefined()
     expect(hit!.path.startsWith(stateDir)).toBe(true)
   })
