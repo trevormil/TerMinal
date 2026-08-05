@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# Resolve the absolute directory where this repo's tickets live, then print it.
+# Resolve the absolute directory NEW tickets are written to, then print it.
 #
 # Order of resolution:
 #   1. $OBSIDIAN_TICKETS_DIR — set by TerMinal in a session whose repo uses the
 #      Obsidian ticket provider (tickets live in an external vault, not the repo).
 #   2. .TerMinal/tickets.json with provider "obsidian" — parse the vault path
 #      (works outside a TerMinal session too).
-#   3. Legacy v1 `backlog/` when present without the v2 marker.
-#   4. Default v2 `$TERMINAL_BACKLOG_DIR`.
+#   3. The per-project sidecar, via $TERMINAL_BACKLOG_DIR / tm-state-dir.
+#
+# There is deliberately NO "legacy v1 repo" branch. One used to sit at step 3:
+# if the repo had a `backlog/` and no v2 marker, tickets were written back into
+# the checkout. EVERY repo predating the sidecar matches that condition, so on
+# the most-used repos the migration was a no-op — the shell kept filing into
+# git while the app filed the same tickets into the sidecar, from two separate
+# id counters. Pre-migration tickets stay READABLE via tm-state-dirs; they are
+# simply never written to again.
 #
 # Keeping this in one place means every ticket op (allocate id, write, list)
 # targets the same store, so an Obsidian repo never scatters tickets into git.
@@ -33,9 +40,5 @@ if [ -f "$CFG" ] && grep -q '"provider"[[:space:]]*:[[:space:]]*"obsidian"' "$CF
   fi
 fi
 
-# 3/4. Repo-local backlog (legacy v1 vs v2).
-if [ -d "$ROOT/backlog" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
-  printf '%s\n' "$ROOT/backlog"
-else
-  printf '%s\n' "${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"
-fi
+# 3. The sidecar. Unconditional — see the header.
+printf '%s\n' "${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"

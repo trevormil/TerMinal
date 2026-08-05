@@ -118,21 +118,16 @@ commit_excerpt=$(git -C "$TERMINAL_REPO" log --oneline --decorate=no "$range" 2>
 changed_excerpt=$(git -C "$TERMINAL_REPO" diff --name-only "$range" 2>/dev/null | sed '/^$/d' | head -120)
 docs_index=$(cd "$TERMINAL_REPO" && find docs -name '*.md' 2>/dev/null | sort | head -30)
 
-if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
-  reports_dir="$TERMINAL_REPO/reports"
-else
-  reports_dir="$TERMINAL_REPORTS_DIR"
-fi
+# Always the sidecar. A branch that preferred an in-repo reports/ when one
+# existed put every artifact back in the checkout on exactly the repos that
+# predate the sidecar — which is all of them.
+reports_dir="${TERMINAL_REPORTS_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" reports)}"
 mkdir -p "$reports_dir/ticket-ideas"
 report="$reports_dir/ticket-ideas/${short}.md"
 
 # Where tickets actually land, so we can observe what the engine filed rather
 # than trusting it to tell us (see step 5 below).
-if [ -d "$TERMINAL_BACKLOG_DIR" ]; then
-  backlog_dir="$TERMINAL_BACKLOG_DIR"
-else
-  backlog_dir="$TERMINAL_REPO/backlog"
-fi
+backlog_dir="${TERMINAL_BACKLOG_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" backlog)}"
 before_tickets=$(mktemp)
 after_tickets=$(mktemp)
 trap 'rm -f "$prompt_file" "$before_tickets" "$after_tickets"' EXIT

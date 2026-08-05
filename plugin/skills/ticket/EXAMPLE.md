@@ -25,7 +25,7 @@ agent_run_status: ""
 
 Canonical schema reference for in-repo tickets. This file is **not** a real
 ticket (the `bin/tickets` lister only matches `$TERMINAL_BACKLOG_DIR/NNNN-*.md`
-or legacy `backlog/NNNN-*.md`, and a `0` id makes it inert). Real tickets live
+and a `0` id makes it inert). Real tickets live
 at `$TERMINAL_BACKLOG_DIR/NNNN-kebab-slug.md`.
 
 ## Frontmatter fields

@@ -11,7 +11,7 @@ The reader is a technical developer who wants the ins and outs of the code.
 Never summarize code away. Surface it, ranked.
 
 Artifacts are **in-repo**, next to the review: `$TERMINAL_REVIEWS_DIR/<pr>/<short>.chunks.json`
-(v2) or `.reviews/<pr>/<short>.chunks.json` (legacy v1). TerMinal renders them.
+. TerMinal renders them.
 
 ## Token contract (the whole point)
 

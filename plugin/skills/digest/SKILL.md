@@ -15,7 +15,7 @@ eyes land. The contract + schema live in
 [`.agents/digest.md`](../../../.agents/digest.md).
 
 Output: one **in-repo** artifact `$TERMINAL_REVIEWS_DIR/<pr>/<short>.chunks.json`
-(v2) or `.reviews/<pr>/<short>.chunks.json` (legacy v1), next to the review `.md`.
+, next to the review `.md`.
 
 ## Token contract (non-negotiable)
 

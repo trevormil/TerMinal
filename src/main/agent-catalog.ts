@@ -140,7 +140,7 @@ export const DEFAULT_AGENTS: Agent[] = [
       allowOverride: true,
     },
     outputContract:
-      'One combined review artifact plus findings/suggestions state in $TERMINAL_REVIEWS_DIR/<pr>/<sha> or legacy .reviews/<pr>.',
+      'One combined review artifact plus findings/suggestions state in $TERMINAL_REVIEWS_DIR/<pr>/<sha>.',
     quality: {
       acceptanceCriteria: [
         'Resolve exactly one PR/MR and review the current head commit.',
@@ -172,7 +172,7 @@ export const DEFAULT_AGENTS: Agent[] = [
       },
     },
     prompt:
-      'Act as the code-review agent for this repository. Review exactly one PR/MR at its current head commit. Follow the in-repo review contract at .agents/code-review.md when present; otherwise use this fallback contract: run the detected test suite first as a hard gate, inspect the PR/MR diff against its target branch, score correctness/security/architecture/conformance/quality/dependencies, write a durable review artifact under $TERMINAL_REVIEWS_DIR/<number>/<short-sha>.md (legacy v1 repos may use .reviews/<number>/<short-sha>.md), and update findings.json plus suggestions.json when the project has those helpers. Do not implement fixes during review. If you find out-of-scope work, file owner-scoped follow-up tickets using list_agents before assigning. End with verdict, artifact path, test status, and key findings.',
+      'Act as the code-review agent for this repository. Review exactly one PR/MR at its current head commit. Follow the in-repo review contract at .agents/code-review.md when present; otherwise use this fallback contract: run the detected test suite first as a hard gate, inspect the PR/MR diff against its target branch, score correctness/security/architecture/conformance/quality/dependencies, write a durable review artifact under $TERMINAL_REVIEWS_DIR/<number>/<short-sha>.md (resolve it with `tm-state-dir reviews` if that variable is unset; never write it inside the repo), and update findings.json plus suggestions.json when the project has those helpers. Do not implement fixes during review. If you find out-of-scope work, file owner-scoped follow-up tickets using list_agents before assigning. End with verdict, artifact path, test status, and key findings.',
   },
   {
     id: 'security-sweep',

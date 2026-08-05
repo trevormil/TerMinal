@@ -11,9 +11,9 @@ This file is the design — the runtime change ships in a follow-up.
 
 ## Why
 
-Today every schedule fire = one full LLM run. For the health agent, that
-means an Opus run every 5 minutes just to find "everything's green." The
-right shape is:
+Today every schedule fire can become one full LLM run. For the health agent,
+that means spending model context every few minutes just to find "everything's
+green." The right shape is:
 
 1. **Run a deterministic check** (a shell script). If it exits 0, we're done
    — no tokens spent.

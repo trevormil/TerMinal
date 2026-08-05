@@ -6,7 +6,7 @@
 #   bin/sessions closed     # only status: closed
 #
 # Sessions live at $TERMINAL_SESSIONS_DIR/NNNN-slug/session.md in v2 and
-# sessions/NNNN-slug/session.md in legacy v1. Portable (macOS+Linux).
+# any pre-migration copies still in the repo. Portable (macOS+Linux).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -27,9 +27,16 @@ printf '%-6s %-9s %-12s %s\n' "----" "------" "-------" "-----"
 
 shopt -s nullglob 2>/dev/null || true
 found=""
-# newest first
-SESSIONS_DIR="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions 2>/dev/null || true)}"
-for d in $(ls -1d "$SESSIONS_DIR"/[0-9]*/ "$ROOT/.TerMinal/sessions"/[0-9]*/ "$ROOT/sessions"/[0-9]*/ 2>/dev/null | sort -r); do  # state-path-ok: also lists pre-migration state still in the repo
+# Every root this repo reads from — the sidecar plus anything not migrated yet
+# — resolved in one place rather than hardcoded here. Newest first.
+read_dirs=()
+while IFS= read -r d; do
+  [ -n "$d" ] && read_dirs+=("$d/[0-9]*/")
+done < <("$(dirname "$0")/../../../bin/tm-state-dirs" sessions 2>/dev/null || true)
+[ ${#read_dirs[@]} -gt 0 ] || read_dirs=("/nonexistent/[0-9]*/")
+# Deliberately unquoted: these entries are globs, and quoting them stops the
+# shell expanding them — which silently lists nothing at all.
+for d in $(ls -1d ${read_dirs[@]} 2>/dev/null | sort -r); do
   f="$d/session.md"
   [ -e "$f" ] || continue
   found=1

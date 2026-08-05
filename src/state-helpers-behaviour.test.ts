@@ -121,11 +121,39 @@ describe('skill helpers resolve into the sidecar, never into the repo', () => {
     expect(out.startsWith(repo)).toBe(false)
   })
 
-  test('a legacy in-repo layout still resolves in-repo (migration-free reads)', () => {
+  // This test used to assert the opposite — that a repo carrying a v1
+  // `backlog/` resolved back into the repo — and that is exactly the bug. Every
+  // repo predating the sidecar matches that shape, so the migration was a no-op
+  // on the repos anyone actually used: the shell filed tickets into git while
+  // the app filed them into the sidecar, from two independent id counters.
+  // Migration-free READS are preserved by tm-state-dirs (see below); the WRITE
+  // target is unconditional.
+  test('a legacy in-repo backlog does not capture the write target', () => {
     rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
     mkdirSync(join(repo, 'backlog'), { recursive: true })
     const out = run(join(import.meta.dir, '..', 'plugin/skills/ticket/bin/ticket-dir'))
-    expect(out).toBe(join(repo, 'backlog'))
+    expect(out).toBe(join(stateDir, 'github.com/o/beh', 'backlog'))
+    expect(out.startsWith(repo)).toBe(false)
+  })
+
+  test('but that legacy backlog is still READ, so nothing disappears', () => {
+    rmSync(join(repo, '.TerMinal'), { recursive: true, force: true })
+    mkdirSync(join(repo, 'backlog'), { recursive: true })
+    const sidecar = join(stateDir, 'github.com/o/beh', 'backlog')
+    const dirs = () =>
+      run(join(import.meta.dir, '..', 'plugin/bin/tm-state-dirs'), ['backlog'])
+        .split('\n')
+        .filter(Boolean)
+
+    // Before anything is migrated the sidecar does not exist yet, so the only
+    // readable root is the one in the repo. Listing a directory that isn't
+    // there would make every caller handle a phantom path.
+    expect(dirs()).toEqual([join(repo, 'backlog')])
+
+    // Once it exists it leads, because that is where writes go — while the
+    // repo copy stays visible, which is what makes the migration free.
+    mkdirSync(sidecar, { recursive: true })
+    expect(dirs()).toEqual([sidecar, join(repo, 'backlog')])
   })
 })
 

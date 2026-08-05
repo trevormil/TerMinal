@@ -2,9 +2,10 @@
 
 Reviews a single PR at a specific commit and emits **one combined artifact**
 containing both the test-run summary and the structured findings. Artifacts
-live **in this repo** under `$TERMINAL_REVIEWS_DIR/<pr-number>/` in v2 repos
-(legacy v1: `.reviews/<pr-number>/`) — versioned with the code, no external
-dashboard or central harness.
+live under `$TERMINAL_REVIEWS_DIR/<pr-number>/` — the per-project sidecar
+outside the repo, so a collaborator pulling the branch never receives them.
+No external dashboard or central harness. Resolve the directory with
+`tm-state-dir reviews` in a shell TerMinal did not spawn.
 
 Aim: a Greptile-style review — broad in coverage, conservative in confidence,
 explicit about what *evidence* led to each finding, and **scored on six axes**
@@ -80,8 +81,8 @@ review, then one pass reviews every PR in the stack. The batch is **N independen
 single-PR reviews run concurrently**, not a new combined format:
 
 - **One artifact set per PR, unchanged.** Each PR still gets its own
-  `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` + `findings.json` + `suggestions.json`
-  (legacy v1: `.reviews/<pr>/<sha>.md`), keyed by that PR's number and head SHA.
+  `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` + `findings.json` + `suggestions.json`,
+  keyed by that PR's number and head SHA.
   There is no combined batch artifact.
 - **Attribution = the PR's own incremental slice.** Each review resolves its base
   from the PR's forge target branch (the parent PR's branch in a stack), so it
@@ -422,8 +423,7 @@ to this repo's `/ticket` system:
 ROOT="$(git rev-parse --show-toplevel)"
 "$HOME/.config/TerMinal/plugin/skills/ticket/bin/tickets" open      # check for duplicates first
 id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
-# write $TERMINAL_BACKLOG_DIR/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md
-# (legacy v1 repos may use backlog/<id>-<slug>.md):
+# write $TERMINAL_BACKLOG_DIR/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md:
 #   status: open, source: code-review, an appropriate type + priority,
 #   and at least one concrete, testable acceptance criterion.
 ```

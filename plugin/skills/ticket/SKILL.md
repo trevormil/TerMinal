@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: "Create and manage backlog tickets in the per-project sidecar ($TERMINAL_BACKLOG_DIR/NNNN-slug.md in v2, backlog/NNNN-slug.md in legacy v1); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
+description: "Create and manage backlog tickets in the per-project sidecar ($TERMINAL_BACKLOG_DIR/NNNN-slug.md); atomic ids, list/update/close. Portable. Use on /ticket, 'file/list/close a ticket', or describing work to track."
 ---
 
 # /ticket — Backlog tickets
@@ -8,8 +8,9 @@ description: "Create and manage backlog tickets in the per-project sidecar ($TER
 > **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_BACKLOG_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir backlog`.
 
 Markdown tickets at `$TERMINAL_BACKLOG_DIR/NNNN-slug.md`, kept in this
-project's sidecar rather than the repo (legacy in-repo tickets at
-`backlog/NNNN-slug.md` are still read) — plain files, no external service.
+project's sidecar rather than the repo — plain files, no external service.
+Tickets filed before the move are still listed; they are simply never written
+to again.
 
 ## Fast path: TerMinal MCP tools (skip the rest if available)
 

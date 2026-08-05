@@ -24,7 +24,7 @@ Per probe (each runs independently; one failure doesn't abort the others):
 - **CI on main** — `gh run list --branch main --limit 5 --json status,conclusion`
   (or `glab ci status`)
 - **Open PRs** — `gh pr list --state open --json number,checks` for at-a-glance count + CI state.
-- **Backlog** — count `backlog/*.md` by `status:` field (`open`, `in-progress`, `stuck`, `closed`).
+- **Backlog** — count `$TERMINAL_BACKLOG_DIR/*.md` by `status:` field (`open`, `in-progress`, `stuck`, `closed`).
 - **Dep audit summary** — `bun audit --json` → severity counts (doesn't act, just counts).
 - **Doc links** — every relative link in `docs/**/*.md`, `README.md`, `CLAUDE.md` resolves
   to a real file in the tree.
@@ -54,15 +54,15 @@ published). Reasonable cadence: skip only if `<5 min` since `lastRunAt` AND
    - **`degraded`** — any of: lint fails, doc links broken, a probe times out,
      dep audit shows High CVEs, last commit > 30 days.
    - **`healthy`** — none of the above.
-4. **Write artifact** — `reports/health/<short_sha>.md` with the breakdown.
-5. **HITL if unhealthy** — `.claude/bin/hitl "Repo health: unhealthy" "<list of failing probes>"`.
+4. **Write artifact** — `$TERMINAL_REPORTS_DIR/health/<short_sha>.md` with the breakdown.
+5. **HITL if unhealthy** — `$HOME/.config/TerMinal/plugin/bin/hitl "Repo health: unhealthy" "<list of failing probes>"`.
    Skip HITL on `degraded` (just emit Activity) to avoid alert fatigue.
 6. **Update state** — `lastScannedSha`, `lastRunAt`, `lastStatus`.
-7. **Activity** — `.claude/bin/activity check "Health · <status> · <N>/N probes ok" "@ <short_sha>"`.
+7. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Health · <status> · <N>/N probes ok" "@ <short_sha>"`.
 
 ## Output artifact
 
-`reports/health/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/health/<short_sha>.md`:
 
 ```yaml
 ---

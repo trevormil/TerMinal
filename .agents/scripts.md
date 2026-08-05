@@ -4,15 +4,16 @@
 
 Today TerMinal has three abstractions for "run something":
 
-- **Agent**: a `prompt` string wrapped at run-time as `claude -p $prompt` or
-  `codex exec ... $prompt`.
+- **Agent**: a `prompt` string wrapped at run-time as `claude -p $prompt`,
+  `codex exec ... $prompt`, or `cursor-agent -p ... $prompt`.
 - **Schedule**: launchd wrapping an agent on a cadence.
 - **Pipeline** (proposed): a YAML graph of script + llm steps with conditionals.
 
 The pivot: collapse all three into **one** concept — an **executable file**
 (typically bash) that the runner just runs. The script chooses internally
-whether to use `claude -p`, `codex exec`, deterministic shell commands, or
-some mix. The "pipeline" is just a script with a few `if` blocks.
+whether to use `claude -p`, `codex exec`, `cursor-agent -p`, deterministic
+shell commands, or some mix. The "pipeline" is just a script with a few `if`
+blocks.
 
 This eliminates the agents-vs-pipelines distinction, gives operators the full
 power of bash + their existing toolchain, lets schedules avoid paying for an
@@ -38,18 +39,20 @@ not required — the sidecar JSON is authoritative.
 {
   "id": "health-then-fix",
   "title": "Health check + LLM fix",
-  "description": "Cheap precheck, escalate to claude only on failure.",
+  "description": "Cheap precheck, escalate to an agent engine only on failure.",
   "icon": "Activity",
   "opensPr": true,
   "inPlace": false,
   "engineHint": "claude",
-  "modelHint": "sonnet"
+  "modelHint": "haiku"
 }
 ```
 
 `engineHint` + `modelHint` are *suggestions* the script body honors via
 `$TERMINAL_ENGINE` / `$TERMINAL_MODEL` env vars; the schedule or one-off
-launch can override them.
+launch can override them. Recurring report/precheck agents should default to
+cheap/fast models (`haiku`, `composer-2.5-fast`, or a small Codex model such as
+`gpt-5-mini`) and reserve stronger defaults for implementation-heavy agents.
 
 ## The script body
 
@@ -58,7 +61,7 @@ A minimal "old-style" agent translates 1:1:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-exec claude -p 'Act as the documentation agent ...' --dangerously-skip-permissions --permission-mode auto
+exec claude -p 'Act as the documentation agent ...' --permission-mode auto
 ```
 
 A pipeline-style script with a conditional escalation:
@@ -77,10 +80,15 @@ fi
 
 # Failed precheck — escalate
 claude -p "The health check failed. Diagnose and either apply a safe fix and open a PR, or file a HITL with the failure context." \
-  --dangerously-skip-permissions \
   --permission-mode auto \
-  --model "${TERMINAL_MODEL:-sonnet}"
+  --model "${TERMINAL_MODEL:-haiku}"
 ```
+
+Before interpolating command output into an LLM prompt, cap it. Good defaults:
+`tail -200 "$log"`, `head -100` for file lists, and
+`rg -n -C2 "$query" ... | head -160` for snippets. Prefer passing paths and
+letting the engine open one specific file over pasting whole files into the
+prompt.
 
 ## Runner environment
 
@@ -105,10 +113,21 @@ PATH is augmented to include the TerMinal CLI helpers:
 ~/.config/TerMinal/bin/terminal-cli hitl "<title>" "<action>"
 ~/.config/TerMinal/bin/terminal-cli activity "<kind>" "<title>" "<detail>"
 ~/.config/TerMinal/bin/terminal-cli notify "<message>"
+~/.config/TerMinal/bin/terminal-cli listener enqueue '<json-envelope>'
 ~/.config/TerMinal/bin/terminal-cli state {get-sha,mark-main,get,set,set-sha}
 ```
 
 So a script can file a HITL with `terminal-cli hitl "Auth keys missing" "rotate in 1password"` — no need to hardcode the JSON file location.
+Treat this API as append-only from agent code: it writes Inbox, emits activity,
+and pings Telegram; only the human/operator resolves the item. To wait, query
+HITL status or periodically re-check the original blocker.
+
+Use `terminal-cli listener enqueue` when a script should request follow-up work
+without running it inline. It writes a durable JSON event to
+`~/.config/TerMinal/automation-inbox/new/`; TerMinal's Schedules tab shows the
+request moving through `processing/`, `done/`, `failed`, or `dead-letter` and
+links listener-triggered runs. See the `listener-inbox` skill for the envelope
+schema and allowed actions.
 
 ## Per-(repo, agent) state
 
@@ -309,7 +328,7 @@ script -q /dev/null env \
   "$script"
 ```
 
-PTY wrapping (`script -q /dev/null`) stays so claude/codex inside still
+PTY wrapping (`script -q /dev/null`) stays so agent CLIs inside still
 stream output to the run log.
 
 ## Compatibility & migration
@@ -317,12 +336,12 @@ stream output to the run log.
 Phase 1 (now):
 - The current `.agents/agents.json` + `prompt` model continues to work.
 - New: the runner checks for `.agents/<id>.sh` first; if found, executes it
-  with the env above; if not, falls back to building `claude -p $prompt`.
+  with the env above; if not, falls back to building the configured engine prompt command.
 
 Phase 2:
 - A `/migrate-agents` skill converts every entry in `.agents/agents.json`
   into a matching `.agents/<id>.sh` + `.agents/<id>.json` sidecar.
-- The body of each `.sh` is just the single `claude -p` / `codex exec`
+- The body of each `.sh` is just the single `claude -p` / `codex exec` / `cursor-agent -p`
   line built from the prompt + engine + model. After migration the json
   blob is just metadata.
 
@@ -333,7 +352,7 @@ Phase 3:
 ## Designer UX
 
 The designer modal stays the same: user describes what they want in natural
-language; claude/codex authors the script. The new bit is the *output*:
+language; the selected engine authors the script. The new bit is the *output*:
 
 - The designer writes both files: `<id>.sh` (executable, chmod 755) +
   `<id>.json` (metadata).
@@ -368,9 +387,8 @@ underlying file just changed shape.
   convention for scheduled cadence inspections; the scripts that implement
   each kind move to `.agents/<kind>.sh` under this proposal but the
   contract (sole-writer, reports/, etc.) stays.
-- **Not** a sandbox — `--dangerously-skip-permissions` is still in play
-  for claude calls inside scripts; codex still uses `-s danger-full-access`.
-  Trust boundary is unchanged.
+- **Not** a sandbox — Claude calls run in auto permission mode; Codex still
+  uses `-s danger-full-access`. Trust boundary is unchanged.
 
 ## Phase plan
 

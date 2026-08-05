@@ -47,8 +47,16 @@ printf '%-6s %-12s %-9s %-7s %-5s %-12s %-18s %s\n' "----" "------" "--------" "
 
 shopt -s nullglob 2>/dev/null || true
 found=""
-# newest first
-for f in $(ls -1 "$TICKET_DIR"/[0-9]*.md "$ROOT/.TerMinal/backlog"/[0-9]*.md "$ROOT/backlog"/[0-9]*.md 2>/dev/null | sort -ru); do  # state-path-ok: also lists pre-migration state still in the repo
+# Every root this repo reads from — the sidecar plus whatever has not migrated
+# yet — resolved in ONE place instead of hardcoded here, so an Obsidian vault
+# correctly owns tickets outright rather than being merged with a stale
+# in-repo backlog. Newest id first.
+read_dirs=()
+while IFS= read -r d; do
+  [ -n "$d" ] && read_dirs+=("$d/[0-9]*.md")
+done < <("$(dirname "$0")/../../../bin/tm-state-dirs" backlog 2>/dev/null || true)
+[ ${#read_dirs[@]} -gt 0 ] || read_dirs=("$TICKET_DIR/[0-9]*.md")
+for f in $(ls -1 ${read_dirs[@]} 2>/dev/null | sort -ru); do
   [ -e "$f" ] || continue
   found=1
   status="$(field "$f" status)"

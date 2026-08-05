@@ -48,13 +48,13 @@ If the repo has **no benchmark script**, write a single artifact
      commit, the benchmark diff, and a one-line hypothesis.
    - Regression with a clear-fix pattern (e.g., a known anti-pattern reverted
      to inefficient form) → opt-in fix-attempt PR. Default off.
-6. **Write artifact** to `reports/perf/<short_sha>.md`.
+6. **Write artifact** to `$TERMINAL_REPORTS_DIR/perf/<short_sha>.md`.
 7. **Update state** + (if improvement and stable) baseline.
-8. **Activity** — `.claude/bin/activity check "Perf · <regressions> regressions · <improvements> wins" "@ <short_sha>"`.
+8. **Activity** — `$HOME/.config/TerMinal/plugin/bin/activity check "Perf · <regressions> regressions · <improvements> wins" "@ <short_sha>"`.
 
 ## Output artifact
 
-`reports/perf/<short_sha>.md`:
+`$TERMINAL_REPORTS_DIR/perf/<short_sha>.md`:
 
 ```yaml
 ---
@@ -68,7 +68,7 @@ regressions:
     delta_pct: -18.4
     suspect: "abc1234 — feat: refactor recursion to iterative"
 improvements: 2
-tickets_filed: [backlog/0127-perf-fibonacci.md]
+tickets_filed: [$TERMINAL_BACKLOG_DIR/0127-perf-fibonacci.md]
 status: ok
 ---
 ```

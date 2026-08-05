@@ -27,7 +27,14 @@ const V2_LITERAL = new RegExp(`\\.TerMinal/(${AREAS.join('|')})`)
 const V1_LITERAL = new RegExp(
   String.raw`(^|[\s"'\`(=])\.?(${AREAS.join('|')})/([0-9<*{$]|NNNN|README)`,
 )
-const LITERAL = (line: string) => V2_LITERAL.test(line) || V1_LITERAL.test(line)
+// The same v1 dirs reached through the repo root instead — `"$ROOT/backlog"`,
+// `${REPO}/.reviews`. This shape has no trailing placeholder to key on, so the
+// repo-root variable is the tell.
+const V1_UNDER_ROOT = new RegExp(
+  String.raw`\$\{?(ROOT|REPO|REPO_ROOT|PWD|TERMINAL_REPO|CLAUDE_PROJECT_DIR)\}?/\.?(${AREAS.join('|')})\b`,
+)
+const LITERAL = (line: string) =>
+  V2_LITERAL.test(line) || V1_LITERAL.test(line) || V1_UNDER_ROOT.test(line)
 
 // The sidecar vars are ABSOLUTE. Prefixing one with ANY path yields
 // `<prefix>/Users/...`, which silently writes inside the repo — the exact bug
@@ -118,6 +125,8 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     expect(LITERAL('legacy v1: reports/<kind>/<short-sha>.md')).toBe(true)
     expect(LITERAL('save frames under `.reviews/<pr-number>/screenshots/`')).toBe(true)
     expect(LITERAL('echo "$ROOT/backlog"')).toBe(true)
+    expect(LITERAL('BACKLOG="${REPO}/.reviews"')).toBe(true)
+    expect(LITERAL('cd "$CLAUDE_PROJECT_DIR/sessions"')).toBe(true)
 
     // ...without swallowing ordinary prose and unrelated source paths, or the
     // guard gets suppressed wholesale and stops guarding anything.

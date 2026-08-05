@@ -27,6 +27,7 @@
 // Prints {verdict, overall, merge_ready, risk_tier, by_severity} to stdout.
 
 import { existsSync, readFileSync } from 'node:fs'
+import { stateDir } from './state-dir.mjs'
 
 const [pr, scorecardPath, ...rest] = process.argv.slice(2)
 if (!pr || !scorecardPath) {
@@ -51,8 +52,7 @@ const axes = ['correctness', 'security', 'architecture', 'conformance', 'quality
 const values = axes.map((a) => Number(scorecard[a] ?? 0)).filter((n) => Number.isFinite(n))
 const overall = values.length ? Math.min(...values) : 0
 
-const reviewRoot =
-  existsSync('.reviews') && !existsSync('.TerMinal/template.json') ? '.reviews' : '.TerMinal/reviews'
+const reviewRoot = stateDir('reviews')
 const findingsPath = `${reviewRoot}/${pr}/findings.json`
 let findings = []
 try {

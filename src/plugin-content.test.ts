@@ -182,9 +182,20 @@ describe('hooks', () => {
 })
 
 describe('bin', () => {
+  // Scripts here are invoked by name and carry no extension; a `.mjs` file is
+  // a module the scripts import, so it is deliberately not executable.
+  const scripts = () => readdirSync(join(ROOT, 'bin')).filter((f) => !f.includes('.'))
+
   test('every bin script is executable', () => {
-    for (const f of readdirSync(join(ROOT, 'bin'))) {
-      expect(statSync(join(ROOT, 'bin', f)).mode & 0o111).toBeGreaterThan(0)
-    }
+    const notExecutable = scripts().filter(
+      (f) => (statSync(join(ROOT, 'bin', f)).mode & 0o111) === 0,
+    )
+    expect(notExecutable).toEqual([])
+  })
+
+  test('the scan covers the real scripts (a guard matching nothing is not a guard)', () => {
+    expect(scripts()).toContain('tm-state-dir')
+    expect(scripts()).toContain('tm-state-dirs')
+    expect(scripts().length).toBeGreaterThan(8)
   })
 })

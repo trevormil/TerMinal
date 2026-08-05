@@ -2,8 +2,10 @@
 
 Reviews a single PR at a specific commit and emits **one combined artifact**
 containing both the test-run summary and the structured findings. Artifacts
-live **in this repo** under `.reviews/<pr-number>/` — versioned with the code,
-no external dashboard or central harness.
+live under `$TERMINAL_REVIEWS_DIR/<pr-number>/` — the per-project sidecar
+outside the repo, so a collaborator pulling the branch never receives them.
+No external dashboard or central harness. Resolve the directory with
+`tm-state-dir reviews` in a shell TerMinal did not spawn.
 
 Aim: a Greptile-style review — broad in coverage, conservative in confidence,
 explicit about what *evidence* led to each finding, and **scored on six axes**
@@ -12,12 +14,31 @@ so reviewers (human or agent) can see at a glance which dimension is weak.
 Treat every PR as if it ships to production at scale, even small ones.
 Security and architecture are first-class scoring axes alongside correctness.
 
+## Token-efficient reading order
+
+This contract is ~400 lines. To minimize context, read only what your current
+task needs:
+
+| If you're … | Read these sections only |
+|---|---|
+| **Scoring axes** | "Score the six axes" + the relevant axis subsection |
+| **Writing the artifact** | "Output location" + "Artifact frontmatter (required)" + "Artifact body" |
+| **Computing findings** | "Per-finding state" — but the harness helper `$HOME/.config/TerMinal/plugin/bin/findings-merge` handles state mgmt; you just emit fresh findings in a fenced ```findings-new ... ``` block at the end of the artifact body |
+| **Deciding verdict** | DO NOT — the helper `$HOME/.config/TerMinal/plugin/bin/compute-verdict` derives it deterministically from scorecard + findings + test_status. Your job is the scoring + findings; verdict is rule-driven |
+| **Stacked-MR batch** | "Batch stacked-MR review" |
+| **Severity rules** | "Severity-based body rules" |
+
+The preflight script `$HOME/.config/TerMinal/plugin/bin/code-review-preflight` has already done all
+the recon (PR metadata, file list, language histogram, surface flags, prior
+findings count, diff, test results). Read the packet path passed by the skill;
+don't redo this work.
+
 ## Output location
 
 ```
-.reviews/<pr-number>/<short_sha>.md     # one file per commit reviewed
-.reviews/<pr-number>/findings.json      # canonical per-finding state
-.reviews/<pr-number>/suggestions.json   # canonical per-suggestion state
+$TERMINAL_REVIEWS_DIR/<pr-number>/<short_sha>.md     # one file per commit reviewed
+$TERMINAL_REVIEWS_DIR/<pr-number>/findings.json      # canonical per-finding state
+$TERMINAL_REVIEWS_DIR/<pr-number>/suggestions.json   # canonical per-suggestion state
 ```
 
 `<short_sha>` is the first 7 hex chars of the head commit. `<pr-number>` is the
@@ -60,8 +81,9 @@ review, then one pass reviews every PR in the stack. The batch is **N independen
 single-PR reviews run concurrently**, not a new combined format:
 
 - **One artifact set per PR, unchanged.** Each PR still gets its own
-  `.reviews/<pr>/<sha>.md` + `findings.json` + `suggestions.json`, keyed by that
-  PR's number and head SHA. There is no combined batch artifact.
+  `$TERMINAL_REVIEWS_DIR/<pr>/<sha>.md` + `findings.json` + `suggestions.json`,
+  keyed by that PR's number and head SHA.
+  There is no combined batch artifact.
 - **Attribution = the PR's own incremental slice.** Each review resolves its base
   from the PR's forge target branch (the parent PR's branch in a stack), so it
   sees only that PR's delta and attributes findings to the owning PR. This is the
@@ -154,8 +176,8 @@ visual regression, or a before/after worth seeing. For non-visual changes, omit
 this file entirely (no empty manifest).
 
 When warranted: drive the running UI (the design-review skill or the
-browse tooling), save frames under `.reviews/<pr-number>/screenshots/`, and write
-`.reviews/<pr-number>/screenshots.json`:
+browse tooling), save frames under `$TERMINAL_REVIEWS_DIR/<pr-number>/screenshots/`,
+and write `$TERMINAL_REVIEWS_DIR/<pr-number>/screenshots.json`:
 
 ```json
 {
@@ -306,7 +328,7 @@ is `null` and excluded from the min.
 
 **Run the deterministic floor first.** On the green-tests path, run `/security-scan`
 in diff mode (dependency CVE audit; optional gitleaks secret scan + semgrep SAST —
-see the /tm:security-scan skill). Take the **lower** of its recommended Security
+see the security-scan skill). Take the **lower** of its recommended Security
 score and your manual read below; any leaked secret is an automatic critical →
 `blocked`. Then apply the checklist:
 
@@ -401,7 +423,7 @@ to this repo's `/ticket` system:
 ROOT="$(git rev-parse --show-toplevel)"
 "$HOME/.config/TerMinal/plugin/skills/ticket/bin/tickets" open      # check for duplicates first
 id=$("$HOME/.config/TerMinal/plugin/skills/ticket/bin/next-ticket-id")
-# write backlog/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md:
+# write $TERMINAL_BACKLOG_DIR/<id>-<slug>.md per the tm plugin's skills/ticket/EXAMPLE.md:
 #   status: open, source: code-review, an appropriate type + priority,
 #   and at least one concrete, testable acceptance criterion.
 ```

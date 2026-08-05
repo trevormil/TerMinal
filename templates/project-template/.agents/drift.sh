@@ -76,11 +76,10 @@ case "$engine" in
   *) model=${TERMINAL_MODEL:-haiku} ;;
 esac
 short=$(git -C "$TERMINAL_REPO" rev-parse --short "$head")
-if [ -d "$TERMINAL_REPO/reports" ] && [ ! -f "$TERMINAL_REPO/.TerMinal/template.json" ]; then
-  reports_dir="$TERMINAL_REPO/reports"
-else
-  reports_dir="$TERMINAL_REPORTS_DIR"
-fi
+# Always the sidecar. A branch that preferred an in-repo reports/ when one
+# existed put every artifact back in the checkout on exactly the repos that
+# predate the sidecar — which is all of them.
+reports_dir="${TERMINAL_REPORTS_DIR:-$("$HOME/.config/TerMinal/plugin/bin/tm-state-dir" reports)}"
 mkdir -p "$reports_dir/drift"
 report="$reports_dir/drift/${short}.md"
 

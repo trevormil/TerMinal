@@ -31,8 +31,8 @@ all the context needed to work well. Invoked as:
 ```
 
 The argument is the session **goal** (verbatim → `goal:` in frontmatter). The
-session doc lives at `$TERMINAL_SESSIONS_DIR/<id>-<slug>/session.md` in v2 repos
-(legacy v1: `sessions/<id>-<slug>/session.md`) and follows the strict schema in
+session doc lives at `$TERMINAL_SESSIONS_DIR/<id>-<slug>/session.md` and follows
+the strict schema in
 [`SESSION_EXAMPLE.md`](./SESSION_EXAMPLE.md). It is the single source of truth
 for the session — every later skill (and `/session-end`) reads and updates it.
 
@@ -41,8 +41,7 @@ for the session — every later skill (and `/session-end`) reads and updates it.
 ### 1. Allocate the session id
 
 ```bash
-ROOT="$(git rev-parse --show-toplevel)"
-SESSIONS_DIR=$([ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ] && echo "$ROOT/sessions" || echo "${TERMINAL_SESSIONS_DIR:-$(tm-state-dir sessions)}")
+SESSIONS_DIR="${TERMINAL_SESSIONS_DIR:-$(tm-state-dir sessions)}"
 id=$("${CLAUDE_PLUGIN_ROOT}/skills/session-start/bin/next-session-id")   # e.g. 0007
 ```
 

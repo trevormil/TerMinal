@@ -8,17 +8,16 @@
 #   id=$("${CLAUDE_PLUGIN_ROOT}/skills/session-start/bin/next-session-id")
 #   mkdir -p "$SESSIONS_REL/${id}-my-slug"
 #
-# v2 repos use $TERMINAL_SESSIONS_DIR/.next-id; legacy v1 repos use sessions/.next-id.
+# The counter lives with the sessions it numbers: $TERMINAL_SESSIONS_DIR/.next-id
+# in the sidecar. It is seeded from every pre-migration location below, so ids
+# continue past sessions that have not moved yet instead of restarting at 1.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-# The sidecar path is ABSOLUTE; only the legacy in-repo dir is relative to
-# $ROOT. Joining them would put the sidecar under the repo.
-if [ -d "$ROOT/sessions" ] && [ ! -f "$ROOT/.TerMinal/template.json" ]; then
-  SESSIONS="$ROOT/sessions"
-else
-  SESSIONS="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions)}"
-fi
+# Always the sidecar. A branch here that preferred an in-repo `sessions/` when
+# one existed meant every pre-sidecar repo kept writing session docs into the
+# checkout — see the header of skills/ticket/bin/ticket-dir for the full story.
+SESSIONS="${TERMINAL_SESSIONS_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" sessions)}"
 COUNTER="$SESSIONS/.next-id"
 LOCK="$SESSIONS/.next-id.lock"
 
