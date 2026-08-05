@@ -224,3 +224,52 @@ describe('tmPluginStatus', () => {
     expect(st.codexSkills).toBe(1)
   })
 })
+
+// Skills instruct the MODEL to run `tm-state-dir reviews` when the injected
+// vars are absent — bare, as a command. That only resolves if the plugin's
+// resolvers are on PATH. They were not, anywhere: the app prepends
+// <config>/bin (terminal-cli and friends), while the resolvers lived only in
+// <config>/plugin/bin. So the documented fallback was "command not found", and
+// an agent following it wrote to whatever the shell resolved instead.
+describe('the state resolvers are reachable as commands', () => {
+  const resolvers = ['tm-state-dir', 'tm-state-dirs']
+
+  beforeEach(() => {
+    mkdirSync(join(src, 'bin'), { recursive: true })
+    for (const r of resolvers) writeFileSync(join(src, 'bin', r), '#!/usr/bin/env bash\necho ok\n')
+  })
+
+  test('installing links them into the bin dir the app puts on PATH', () => {
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+    expect(res.ok).toBe(true)
+    for (const r of resolvers) {
+      const linked = join(cfg, 'bin', r)
+      expect(existsSync(linked)).toBe(true)
+      // Resolves to the installed plugin, so a plugin update is picked up
+      // without relinking.
+      expect(readlinkSync(linked)).toBe(join(cfg, 'plugin', 'bin', r))
+    }
+  })
+
+  test('re-installing repoints a stale link instead of failing', () => {
+    mkdirSync(join(cfg, 'bin'), { recursive: true })
+    symlinkSync(join(tmp, 'somewhere-else'), join(cfg, 'bin', 'tm-state-dir'))
+
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+
+    expect(res.ok).toBe(true)
+    expect(readlinkSync(join(cfg, 'bin', 'tm-state-dir'))).toBe(
+      join(cfg, 'plugin', 'bin', 'tm-state-dir'),
+    )
+  })
+
+  test("a real file of the user's is never clobbered", () => {
+    mkdirSync(join(cfg, 'bin'), { recursive: true })
+    writeFileSync(join(cfg, 'bin', 'tm-state-dir'), '#!/bin/sh\n# mine\n')
+
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+
+    expect(res.ok).toBe(true)
+    expect(readFileSync(join(cfg, 'bin', 'tm-state-dir'), 'utf8')).toContain('# mine')
+  })
+})

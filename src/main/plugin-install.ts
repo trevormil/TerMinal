@@ -176,7 +176,46 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
     /* best effort */
   }
 
+  linkStateResolvers(dest, join(configDir, 'bin'))
+
   return { ok: true, version }
+}
+
+// Skills tell the model to fall back to `tm-state-dir <area>` when the injected
+// TERMINAL_<AREA>_DIR vars are absent — written bare, as a command. That only
+// resolves if it is on PATH, and it was not: the app prepends <config>/bin
+// (where terminal-cli and friends live) while the resolvers shipped only inside
+// <config>/plugin/bin. So the one documented fallback was "command not found",
+// and an agent following it wrote wherever the shell landed instead.
+//
+// Only the two `tm-`prefixed resolvers are linked. The rest of plugin/bin
+// (`status`, `activity`, `forge`, `hitl`) carries generic names that would
+// shadow real commands on a PATH, and skills address those by absolute path.
+export function linkStateResolvers(pluginDir: string, binDir: string): void {
+  try {
+    mkdirSync(binDir, { recursive: true })
+    for (const name of ['tm-state-dir', 'tm-state-dirs']) {
+      const target = join(pluginDir, 'bin', name)
+      if (!existsSync(target)) continue
+      const link = join(binDir, name)
+      let st
+      try {
+        st = lstatSync(link)
+      } catch {
+        st = null
+      }
+      // A real file here is the user's own — never overwrite it. A symlink is
+      // install wiring, so a stale one gets repointed rather than left behind.
+      if (st && !st.isSymbolicLink()) continue
+      if (st) {
+        if (readlinkSync(link) === target) continue
+        rmSync(link)
+      }
+      symlinkSync(target, link)
+    }
+  } catch {
+    /* best effort — injected vars already cover every session the app spawns */
+  }
 }
 
 // Copy plugin skills into a Codex global skills dir as tm-<name>, rewriting
