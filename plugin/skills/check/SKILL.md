@@ -61,7 +61,7 @@ Available kinds = every contract resolvable for this repo — the plugin's
 defaults plus anything in `.agents/` that overrides or adds to them:
 
 ```bash
-ls "$(dirname "$(tm-agent-spec drift)")" .agents/*.md 2>/dev/null | xargs -n1 basename | sort -u
+tm-agent-spec --list
 ```
 
 That list excludes the per-PR contracts `code-review.md` and `testing.md` and
