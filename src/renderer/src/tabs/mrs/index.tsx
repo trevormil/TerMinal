@@ -68,11 +68,21 @@ const testColor = (s: string) =>
   s === 'pass' ? 'var(--gt-green)' : s === 'fail' ? 'var(--gt-red)' : '#a1a1aa'
 
 // The two numbers a reviewer scans for, as prominent tiles.
+// Word values (an unscored risk tier renders "medium", not "3/5") drop to a
+// small label so they stay inside the tile instead of running into the actions.
 function Stat({ value, label, color }: { value: string; label: string; color: string }) {
+  const compact = value.length > 3
   return (
-    <div className="w-12 shrink-0 text-center">
-      <div className="text-[18px] font-semibold leading-none tabular-nums" style={{ color }}>
-        {value}
+    <div className="w-12 shrink-0 overflow-hidden text-center">
+      <div className="flex h-[18px] items-center justify-center">
+        <span
+          className={`font-semibold leading-none tabular-nums ${
+            compact ? 'text-[10px] uppercase tracking-wide' : 'text-[18px]'
+          }`}
+          style={{ color }}
+        >
+          {value}
+        </span>
       </div>
       <div className="mt-1 text-[9px] uppercase tracking-wider text-zinc-600">{label}</div>
     </div>
