@@ -683,6 +683,57 @@ export type WorkingDiff = {
   branch: string
   error?: string
 }
+// Git views (Files tab history/branches/stashes/tags) — mirrors src/main/git-views.ts.
+export type GitCommit = {
+  sha: string
+  shortSha: string
+  parents: string[]
+  author: string
+  date: number
+  subject: string
+  refs: string[]
+}
+export type GitLogResult = { ok: true; commits: GitCommit[] } | { ok: false; error: string }
+export type GitCommitFile = {
+  path: string
+  insertions: number
+  deletions: number
+  binary: boolean
+}
+export type GitCommitDetail =
+  | {
+      ok: true
+      sha: string
+      shortSha: string
+      author: string
+      email: string
+      date: number
+      subject: string
+      body: string
+      refs: string[]
+      files: GitCommitFile[]
+      patch: string
+      patchTruncated: boolean
+    }
+  | { ok: false; error: string }
+export type GitBranch = {
+  name: string
+  current: boolean
+  remote: boolean
+  sha: string
+  subject: string
+  date: number
+  upstream: string
+  ahead: number
+  behind: number
+}
+export type GitBranchesResult = { ok: true; branches: GitBranch[] } | { ok: false; error: string }
+export type GitStash = { ref: string; branch: string; subject: string; date: number }
+export type GitStashesResult = { ok: true; stashes: GitStash[] } | { ok: false; error: string }
+export type GitTag = { name: string; sha: string; subject: string; date: number }
+export type GitTagsResult = { ok: true; tags: GitTag[] } | { ok: false; error: string }
+export type GitOpResult = { ok: true } | { ok: false; error: string }
+export type GitPatchResult = { ok: true; patch: string } | { ok: false; error: string }
 export type Settings = {
   onboarded: boolean
   projectsDir: string
@@ -2219,6 +2270,17 @@ export type GtApi = {
   getFileAtHeadBinary: (rel: string) => Promise<{ ok: boolean; base64: string; reason?: string }>
   /** Raw `git status --porcelain`, for per-file tree decorations. */
   getStatusPorcelain: () => Promise<string>
+  /** Git views for the Files tab — history / branches / stashes / tags.
+   *  Shapes mirror src/main/git-views.ts. */
+  gitLog: (opts?: { limit?: number; skip?: number; ref?: string }) => Promise<GitLogResult>
+  gitShow: (ref: string) => Promise<GitCommitDetail>
+  gitBranches: () => Promise<GitBranchesResult>
+  gitCheckout: (branch: string) => Promise<GitOpResult>
+  gitCreateBranch: (name: string, from?: string) => Promise<GitOpResult>
+  gitStashes: () => Promise<GitStashesResult>
+  gitTags: () => Promise<GitTagsResult>
+  gitWorkingFilePatch: (rel: string) => Promise<GitPatchResult>
+  gitCompareFilesPatch: (a: string, b: string) => Promise<GitPatchResult>
   /** Per-turn workspace snapshots, in a shadow git repo (never the user's). */
   checkpoints: {
     list: () => Promise<{ sha: string; at: number; label: string }[]>
