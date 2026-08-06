@@ -72,7 +72,7 @@ export function HistoryPane({
   const load = useCallback(
     (skip: number) => {
       setLoading(true)
-      window.gt
+      void window.gt
         .gitLog({ limit: PAGE, skip, ref: refName || undefined })
         .then((r) => {
           if (!r.ok) {
@@ -231,7 +231,7 @@ export function BranchesPane({
 
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([window.gt.gitBranches(), window.gt.gitStashes(), window.gt.gitTags()])
+    void Promise.all([window.gt.gitBranches(), window.gt.gitStashes(), window.gt.gitTags()])
       .then(([b, s, t]) => {
         if (!b.ok) {
           setError(b.error)
@@ -468,7 +468,7 @@ export function CommitDetailView({ refName }: { refName: string }) {
   useEffect(() => {
     setDetail(null)
     let alive = true
-    window.gt.gitShow(refName).then((d) => {
+    void window.gt.gitShow(refName).then((d) => {
       if (alive) setDetail(d)
     })
     return () => {
