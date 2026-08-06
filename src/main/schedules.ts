@@ -20,6 +20,7 @@ export type Schedule = {
   agentTitle: string
   engine: Engine
   model?: string // optional per-engine model alias (claude: haiku/sonnet/opus; codex: model name). Cron runner passes as --model <name>.
+  effort?: string // optional reasoning-effort level; cron runner passes the engine's native flag (claude --effort / codex -c model_reasoning_effort / pi --thinking / or-agent --effort)
   prompt: string // snapshot of the agent prompt at save time (runner uses this)
   spec: ScheduleSpec
   enabled: boolean

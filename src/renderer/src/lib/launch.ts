@@ -37,6 +37,7 @@ export function openPromptInTerminal(input: {
   name: string
   prompt: string
   model?: string
+  effort?: string
   ticketSlug?: string
   remote?: RemoteSession
   openrouterHarness?: 'codex' | 'hermes'
@@ -47,6 +48,7 @@ export function openPromptInTerminal(input: {
     name: input.name,
     initialInput: input.prompt,
     model: input.model,
+    effort: input.effort,
     ticketSlug: input.ticketSlug,
     remote: input.remote,
     openrouterHarness: input.openrouterHarness,

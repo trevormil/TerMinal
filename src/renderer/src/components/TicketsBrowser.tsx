@@ -902,6 +902,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                     lanes,
                     _harness,
                     extraContext,
+                    effort,
                   ) => {
                     setPickImpl(false)
                     if (launchMode === 'terminal') {
@@ -917,6 +918,8 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                         engine: e,
                         cwd: ctx.repoRoot,
                         name: `Implement ${selected.externalKey || `#${selected.id}`}`,
+                        model,
+                        effort,
                         ticketSlug: selected.slug,
                         prompt: extraContext
                           ? `${prompt}\n\n--- Additional context for THIS run ---\n${extraContext}`
@@ -934,6 +937,7 @@ export function TicketsBrowser({ ctx, hitlOnly = false }: { ctx: TabContext; hit
                       remoteForTabContext(ctx),
                       lanes,
                       extraContext,
+                      effort,
                     )
                     if (!('error' in r)) {
                       setStarted(true)

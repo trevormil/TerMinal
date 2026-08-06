@@ -541,7 +541,12 @@ export type DocsTree = {
 // From the shared registry — was a third copy of the same union.
 export type Engine = import('../../../shared/engines').EngineId
 export type SessionEngine = import('../../../shared/engines').SessionEngineId
-export type EngineCfg = { path: string; defaultModel: string; baseUrl: string }
+export type EngineCfg = {
+  path: string
+  defaultModel: string
+  defaultEffort: string
+  baseUrl: string
+}
 export type ForgePref = 'auto' | 'github' | 'gitlab'
 export type TelegramCfg = { notify: boolean; control: boolean; botToken: string; chatId: string }
 /** One outbound webhook destination. `categories` overrides the notification
@@ -854,6 +859,8 @@ export type Agent = {
   engine?: Engine
   model?: string
   modelPolicy?: AgentModelPolicy
+  /** Reasoning-effort level for the agent's engine. undefined → engine default. */
+  effort?: string
   quality?: AgentQuality
   outputContract?: string
   acceptanceCriteria?: string[]
@@ -1033,6 +1040,8 @@ export type AgentRun = {
   agentTitle: string
   engine: Engine
   model?: string
+  /** The RESOLVED reasoning-effort level the run launched with. */
+  effort?: string
   persona?: string
   pipeline?: string
   status: AgentRunStatus
@@ -1063,6 +1072,7 @@ export type Schedule = {
   agentTitle: string
   engine: Engine
   model?: string
+  effort?: string
   prompt: string
   spec: ScheduleSpec
   enabled: boolean
@@ -1949,6 +1959,7 @@ export type GtApi = {
       remote?: RemoteSession,
       openrouterHarness?: 'codex' | 'hermes',
       extraContext?: string,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runTicket: (
       slug: string,
@@ -1959,6 +1970,7 @@ export type GtApi = {
       remote?: RemoteSession,
       lanes?: number,
       extraContext?: string,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -1968,6 +1980,7 @@ export type GtApi = {
       pipeline?: string,
       model?: string,
       remote?: RemoteSession,
+      effort?: string,
     ) => Promise<AgentRun | { error: string }>
     runs: () => Promise<AgentRun[]>
     rerun: (runId: string) => Promise<AgentRun | { error: string }>
@@ -2029,6 +2042,7 @@ export type GtApi = {
       agentId: string
       engine: Engine
       model?: string
+      effort?: string
       spec: ScheduleSpec
       enabled?: boolean
       env?: ScheduleEnv

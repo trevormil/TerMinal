@@ -26,6 +26,7 @@ export { ENGINE_IDS, type EngineId }
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
+  defaultEffort: string // '' = engine default; validated against the registry level set
   baseUrl: string // openai-compat only: the self-hosted /v1 endpoint ('' elsewhere)
 }
 
@@ -33,7 +34,7 @@ export type EngineCfg = {
  *  per-engine blocks that had to be edited (in three places) per new engine. */
 export function emptyEngineCfgs(): Record<EngineId, EngineCfg> {
   return Object.fromEntries(
-    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }]),
   ) as Record<EngineId, EngineCfg>
 }
 
@@ -263,11 +264,12 @@ export function defaultSettings(): Settings {
 }
 
 function engineCfg(raw: unknown): EngineCfg {
-  const out: EngineCfg = { path: '', defaultModel: '', baseUrl: '' }
+  const out: EngineCfg = { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }
   if (!raw || typeof raw !== 'object') return out
   const r = raw as Record<string, unknown>
   if (typeof r.path === 'string') out.path = r.path
   if (typeof r.defaultModel === 'string') out.defaultModel = r.defaultModel
+  if (typeof r.defaultEffort === 'string') out.defaultEffort = r.defaultEffort
   if (typeof r.baseUrl === 'string') out.baseUrl = r.baseUrl.trim()
   return out
 }
@@ -948,6 +950,18 @@ export function resolveEngineModel(engine: EngineId, model?: string, daemon?: Da
   const explicit = model?.trim()
   if (explicit) return explicit
   return daemon ? daemon.engines[engine]?.defaultModel || '' : engineDefaultModel(engine)
+}
+
+/** Per-engine reasoning-effort fallback ('' = let the engine pick). Stored raw;
+ *  launch sites validate against the registry level set via coerceEffort. */
+export function engineDefaultEffort(engine: EngineId): string {
+  return readSettings().engines[engine]?.defaultEffort || ''
+}
+
+export function resolveEngineEffort(engine: EngineId, effort?: string, daemon?: DaemonCfg): string {
+  const explicit = effort?.trim()
+  if (explicit) return explicit
+  return daemon ? daemon.engines[engine]?.defaultEffort || '' : engineDefaultEffort(engine)
 }
 
 export const telegramNotifyEnabled = () => readSettings().telegram.notify

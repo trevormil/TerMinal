@@ -1,10 +1,54 @@
 import type { Engine } from '../lib/types'
-import { ENGINE_MODELS, engineAllowsCustomModel } from '../lib/engines'
+import { ENGINE_MODELS, engineAllowsCustomModel, engineEffortsOf } from '../lib/engines'
 
 // A full model-selection surface (its own step/screen), not a cramped dropdown.
 // Renders a "default" card plus each of the engine's models as selectable cards.
 // For engines that take an arbitrary slug (OpenRouter) it also shows a free-text
 // field so you can run any model. `model === undefined` means the engine default.
+/** Compact segmented reasoning-effort row (Default + the engine's own level
+ *  tokens). Renders nothing for engines without an effort control, so callers
+ *  can always include it. `effort === undefined` means the engine default. */
+export function EffortSelect({
+  engine,
+  effort,
+  onChange,
+}: {
+  engine: Engine
+  effort: string | undefined
+  onChange: (effort: string | undefined) => void
+}) {
+  const levels = engineEffortsOf(engine)
+  if (!levels.length) return null
+  const seg = (selected: boolean) =>
+    `rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+      selected
+        ? 'border-[var(--gt-accent)]/70 bg-[var(--gt-accent)]/10 text-zinc-100'
+        : 'border-[var(--gt-border)] bg-black/20 text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200'
+    }`
+  return (
+    <div>
+      <span className="mb-1 block text-[10.5px] uppercase tracking-wide text-zinc-500">
+        Reasoning effort
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className={seg(!effort)}
+          title="Uses the effort configured for this engine in Settings (or the CLI's own default if none is set)."
+        >
+          Default
+        </button>
+        {levels.map((l) => (
+          <button key={l} type="button" onClick={() => onChange(l)} className={seg(effort === l)}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ModelSelect({
   engine,
   model,

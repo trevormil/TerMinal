@@ -37,6 +37,7 @@ export function normalizeAgentEntry(
     engine: agent.engine,
     model: agent.model?.trim() || undefined,
     modelPolicy: agent.modelPolicy,
+    effort: agent.effort?.trim() || undefined,
     quality: agent.quality,
     outputContract: agent.outputContract?.trim() || undefined,
     acceptanceCriteria: agent.acceptanceCriteria,

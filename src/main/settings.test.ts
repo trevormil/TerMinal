@@ -144,7 +144,12 @@ describe('migrate', () => {
           forge: 'gitlab',
           engines: {
             ...defaultDaemonSettings().engines,
-            claude: { path: '~/.local/bin/claude', defaultModel: 'sonnet', baseUrl: '' },
+            claude: {
+              path: '~/.local/bin/claude',
+              defaultModel: 'sonnet',
+              defaultEffort: '',
+              baseUrl: '',
+            },
           },
         },
       },
@@ -257,7 +262,12 @@ describe('settings secrets', () => {
     expect(s.engines['openai-compat'].defaultModel).toBe('qwen3')
     // Absent on old settings files → defaults, no crash.
     const legacy = migrate({ engines: { codex: { path: '/bin/codex' } } })
-    expect(legacy.engines['openai-compat']).toEqual({ path: '', defaultModel: '', baseUrl: '' })
+    expect(legacy.engines['openai-compat']).toEqual({
+      path: '',
+      defaultModel: '',
+      defaultEffort: '',
+      baseUrl: '',
+    })
   })
 
   test('legacy plaintext and empty secrets pass through', () => {
