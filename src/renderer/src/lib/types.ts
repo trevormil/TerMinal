@@ -386,6 +386,23 @@ export type RepoTrustStatus = {
   commands: string[]
 }
 
+/** Linear's own schema on Linear-provider tickets — mirrors src/main/backlog.ts. */
+export type LinearMeta = {
+  identifier: string
+  stateName: string
+  stateType: string
+  stateColor?: string
+  priority: number
+  priorityLabel: string
+  assignee?: string
+  labels: { name: string; color?: string }[]
+  project?: string
+  cycle?: string
+  team?: string
+  estimate?: number
+  dueDate?: string
+}
+
 export type Ticket = {
   slug: string
   id: number
@@ -420,6 +437,8 @@ export type Ticket = {
   comments?: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
+  /** Linear-native fields — set only when provider === 'linear'. */
+  linear?: LinearMeta
   externalId?: string
   externalKey?: string
   url?: string
@@ -505,6 +524,8 @@ export type TicketProviderConfig = {
     team?: string
     teamKey?: string
     listArgs?: Record<string, unknown>
+    /** linear.app workspace URL for the auto-synthesized embedded view. */
+    workspace?: string
   }
   obsidian?: ObsidianTicketConfig
   webview?: WebviewTicketConfig

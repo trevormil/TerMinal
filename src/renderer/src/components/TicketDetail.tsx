@@ -13,6 +13,13 @@ import {
   type TicketDetailSelection,
 } from '../lib/detailTabs'
 import { statusTone, priorityTone, typeTone, horizonTone } from '../lib/badges'
+import {
+  LinearAssignee,
+  LinearLabelChips,
+  LinearPriorityChip,
+  LinearStateChip,
+} from './LinearBadges'
+import { navigateTo } from '../lib/nav'
 import type { BadgeTone } from './ui'
 import type { Ticket, TicketAgentRecommendation, TicketComment, Mr, Persona } from '../lib/types'
 
@@ -403,27 +410,63 @@ export function TicketDetail({
       <div className="shrink-0 px-5 pb-3 pt-5">
         <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-600">
           <span className="font-mono">{selected.externalKey || `#${selected.id}`}</span>
-          <FieldSelect
-            value={selected.status}
-            options={STATUSES}
-            tone={statusTone(selected.status)}
-            onChange={async (v) => {
-              await window.gt.tickets.update(selected.slug, { status: v })
-              onChanged()
-            }}
-          />
-          <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
-          <FieldSelect
-            value={selected.priority}
-            options={PRIORITIES}
-            tone={priorityTone(selected.priority)}
-            onChange={async (v) => {
-              await window.gt.tickets.update(selected.slug, { priority: v })
-              onChanged()
-            }}
-          />
-          {selected.horizon !== 'now' && (
-            <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+          {selected.linear ? (
+            // Linear-native identity row: exact state (name + color), Linear's
+            // own priority scale, assignee/project/cycle/estimate/due, labels.
+            // The md-ticket vocabulary (type, horizon, coerced priority) is
+            // deliberately absent — Linear's schema IS the schema here. The
+            // status select stays because it is the write path (mapped to
+            // Linear states through the provider's save_issue call).
+            <>
+              <LinearStateChip meta={selected.linear} />
+              <FieldSelect
+                value={selected.status}
+                options={STATUSES}
+                tone={statusTone(selected.status)}
+                onChange={async (v) => {
+                  await window.gt.tickets.update(selected.slug, { status: v })
+                  onChanged()
+                }}
+              />
+              <LinearPriorityChip meta={selected.linear} showNone />
+              {selected.linear.assignee && <LinearAssignee name={selected.linear.assignee} />}
+              <LinearLabelChips labels={selected.linear.labels} max={6} />
+            </>
+          ) : (
+            <>
+              <FieldSelect
+                value={selected.status}
+                options={STATUSES}
+                tone={statusTone(selected.status)}
+                onChange={async (v) => {
+                  await window.gt.tickets.update(selected.slug, { status: v })
+                  onChanged()
+                }}
+              />
+              <Badge tone={typeTone(selected.type)}>{selected.type}</Badge>
+              <FieldSelect
+                value={selected.priority}
+                options={PRIORITIES}
+                tone={priorityTone(selected.priority)}
+                onChange={async (v) => {
+                  await window.gt.tickets.update(selected.slug, { priority: v })
+                  onChanged()
+                }}
+              />
+              {selected.horizon !== 'now' && (
+                <Badge tone={horizonTone(selected.horizon)}>{selected.horizon}</Badge>
+              )}
+            </>
+          )}
+          {selected.provider === 'linear' && selected.url && (
+            <button
+              onClick={() => navigateTo('tickets', { viewUrl: selected.url })}
+              title="Open this issue in the embedded Linear view"
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-1.5 py-0.5 text-[10.5px] text-zinc-400 hover:border-[var(--gt-accent)]/60 hover:text-zinc-200"
+            >
+              <ArrowUpRight size={11} strokeWidth={2} />
+              Linear
+            </button>
           )}
           {selected.provider === 'obsidian' && (
             <button
@@ -468,6 +511,11 @@ export function TicketDetail({
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-600">
           {selected.created && <span>created {selected.created}</span>}
           {selected.updated && <span>updated {selected.updated}</span>}
+          {selected.linear?.team && <span>team {selected.linear.team}</span>}
+          {selected.linear?.project && <span>project {selected.linear.project}</span>}
+          {selected.linear?.cycle && <span>cycle {selected.linear.cycle}</span>}
+          {selected.linear?.estimate != null && <span>estimate {selected.linear.estimate}</span>}
+          {selected.linear?.dueDate && <span>due {selected.linear.dueDate}</span>}
         </div>
       </div>
 

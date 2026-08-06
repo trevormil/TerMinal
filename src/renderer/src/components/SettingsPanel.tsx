@@ -1528,6 +1528,27 @@ function TicketProviderPanel() {
               Teams
             </button>
           </div>
+          <label className="block space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              Workspace URL
+            </span>
+            <input
+              value={draft.linear?.workspace || ''}
+              onChange={(e) =>
+                setDraft({
+                  provider: 'linear',
+                  linear: {
+                    ...defaultLinearConfig(),
+                    ...(draft.linear || {}),
+                    workspace: e.target.value,
+                  },
+                })
+              }
+              placeholder="https://linear.app/your-workspace — start page for the embedded Linear view"
+              spellCheck={false}
+              className="h-[33px] w-full rounded-md border border-[var(--gt-border)] bg-black/30 px-2 py-1 font-mono text-[12px] text-zinc-200 outline-none"
+            />
+          </label>
           <details>
             <summary className="cursor-pointer text-[10.5px] text-zinc-600 hover:text-zinc-400">
               Advanced MCP command
