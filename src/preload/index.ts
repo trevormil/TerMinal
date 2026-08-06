@@ -406,6 +406,18 @@ const gt = {
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
   getFileAtHeadBinary: (rel: string) => ipcRenderer.invoke('git:file-at-head-binary', rel),
   getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
+  gitLog: (opts?: { limit?: number; skip?: number; ref?: string }) =>
+    ipcRenderer.invoke('git:log', opts),
+  gitShow: (ref: string) => ipcRenderer.invoke('git:show', ref),
+  gitBranches: () => ipcRenderer.invoke('git:branches'),
+  gitCheckout: (branch: string) => ipcRenderer.invoke('git:checkout', branch),
+  gitCreateBranch: (name: string, from?: string) =>
+    ipcRenderer.invoke('git:create-branch', name, from),
+  gitStashes: () => ipcRenderer.invoke('git:stashes'),
+  gitTags: () => ipcRenderer.invoke('git:tags'),
+  gitWorkingFilePatch: (rel: string) => ipcRenderer.invoke('git:working-file-patch', rel),
+  gitCompareFilesPatch: (a: string, b: string) =>
+    ipcRenderer.invoke('git:compare-files-patch', a, b),
   checkpoints: {
     list: () => ipcRenderer.invoke('checkpoints:list'),
     create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),

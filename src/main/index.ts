@@ -1700,6 +1700,34 @@ ipcMain.handle('git:file-at-head-binary', (_e, rel: string) => {
 ipcMain.handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
 })
+// Git views for the Files tab (history / branches / stashes / tags).
+ipcMain.handle('git:log', (_e, opts?: { limit?: number; skip?: number; ref?: string }) => {
+  return activeDaemon().gitLog(opts)
+})
+ipcMain.handle('git:show', (_e, ref: string) => {
+  return activeDaemon().gitShow(ref)
+})
+ipcMain.handle('git:branches', () => {
+  return activeDaemon().gitBranches()
+})
+ipcMain.handle('git:checkout', (_e, branch: string) => {
+  return activeDaemon().gitCheckout(branch)
+})
+ipcMain.handle('git:create-branch', (_e, name: string, from?: string) => {
+  return activeDaemon().gitCreateBranch(name, from)
+})
+ipcMain.handle('git:stashes', () => {
+  return activeDaemon().gitStashes()
+})
+ipcMain.handle('git:tags', () => {
+  return activeDaemon().gitTags()
+})
+ipcMain.handle('git:working-file-patch', (_e, rel: string) => {
+  return activeDaemon().gitWorkingFilePatch(rel)
+})
+ipcMain.handle('git:compare-files-patch', (_e, a: string, b: string) => {
+  return activeDaemon().gitCompareFilesPatch(a, b)
+})
 ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
 ipcMain.handle('checkpoints:create', (_e, label: string) =>
   createCheckpoint(activeDaemon().repoRoot(), label || 'manual checkpoint'),
