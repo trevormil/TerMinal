@@ -15,6 +15,33 @@ import { localDay } from './local-day'
 // Per-repo backlog. v2 repos store tickets in .TerMinal/backlog; v1 repos
 // store them in backlog/. Reads check both layouts so old repos keep working.
 
+/** Linear's OWN schema, carried verbatim on Linear-provider tickets. The
+ *  coerced Ticket fields (status/priority buckets, horizon, type) exist so
+ *  provider-agnostic machinery keeps working; anything user-visible should
+ *  prefer these native fields when present. Every field is optional-by-forgiveness:
+ *  issues that don't match TerMinal's conventions must still render. */
+export type LinearMeta = {
+  /** e.g. "ENG-123". */
+  identifier: string
+  /** Exact workflow-state name, e.g. "In Review". */
+  stateName: string
+  /** Linear state category: triage | backlog | unstarted | started | completed | canceled. */
+  stateType: string
+  /** Linear's hex color for the state, when the API provides it. */
+  stateColor?: string
+  /** 0 none · 1 urgent · 2 high · 3 medium · 4 low. */
+  priority: number
+  /** "Urgent" | "High" | "Medium" | "Low" | "No priority". */
+  priorityLabel: string
+  assignee?: string
+  labels: { name: string; color?: string }[]
+  project?: string
+  cycle?: string
+  team?: string
+  estimate?: number
+  dueDate?: string
+}
+
 export type Ticket = {
   slug: string
   id: number
@@ -50,6 +77,8 @@ export type Ticket = {
   comments: TicketComment[]
   provider?: 'local' | 'github' | 'linear' | 'obsidian'
   providerLabel?: string
+  /** Linear-native fields — set only when provider === 'linear'. */
+  linear?: LinearMeta
   externalId?: string
   externalKey?: string
   url?: string

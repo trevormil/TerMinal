@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Ticket as TicketIcon, ExternalLink } from 'lucide-react'
 import { TicketsBrowser } from '../../components/TicketsBrowser'
 import { useWebSurface, BrowserToolbar } from '../browser/webSurface'
+import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, TicketView } from '../../lib/types'
 
 // The Tickets tab has one source per configured surface: the repo's real backlog
@@ -47,6 +48,34 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
   // 0 = the primary slot (backlog, or the webview provider's own page);
   // 1..n = configured `views[]`.
   const [active, setActive] = useState(0)
+  // A ticket's "open in Linear view" navigates here with a specific issue URL —
+  // it overrides the active view's start URL for that visit only.
+  const [viewUrlOverride, setViewUrlOverride] = useState<string | null>(null)
+
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'tickets') return
+        const url = typeof ev.payload?.viewUrl === 'string' ? ev.payload.viewUrl : ''
+        if (!url) return
+        setViewUrlOverride(url)
+        // Land on the first view that shares the URL's host (the synthesized
+        // Linear view for linear.app issues); fall back to the first view.
+        setViews((vs) => {
+          const host = (() => {
+            try {
+              return new URL(url).host
+            } catch {
+              return ''
+            }
+          })()
+          const i = vs.findIndex((v) => host && v.url.includes(host))
+          setActive((i >= 0 ? i : 0) + 1)
+          return vs
+        })
+      }),
+    [],
+  )
 
   useEffect(() => {
     let live = true
@@ -90,7 +119,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
           {[primary, ...views].map((v, i) => (
             <button
               key={`${v.label}:${i}`}
-              onClick={() => setActive(i)}
+              onClick={() => {
+                setViewUrlOverride(null) // a manual switch drops any deep-link
+                setActive(i)
+              }}
               className={`rounded px-1.5 py-0.5 ${
                 i === active
                   ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
@@ -104,7 +136,8 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       )}
       {view ? (
         // Keyed by url so switching views (or repos) remounts a clean surface.
-        <TicketWebView key={view.url} url={view.url} />
+        // An override (ticket → "open in Linear view") deep-links this visit.
+        <TicketWebView key={viewUrlOverride || view.url} url={viewUrlOverride || view.url} />
       ) : (
         <TicketsBrowser ctx={ctx} />
       )}
