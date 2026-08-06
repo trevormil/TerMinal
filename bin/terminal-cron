@@ -419,6 +419,46 @@ function engineDefaultModel(engine) {
   }
 }
 
+// Per-engine reasoning-effort support — mirrors src/shared/engines.ts (keep in
+// sync by hand, like OR_PREAMBLE). Level set validated here so a stale/foreign
+// value in schedules.json or settings.json is dropped, never passed to a CLI
+// that would reject it.
+const ENGINE_EFFORTS = {
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  opencode: ['minimal', 'low', 'medium', 'high', 'max'],
+  openrouter: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  'openai-compat': ['minimal', 'low', 'medium', 'high', 'xhigh'],
+}
+
+function engineDefaultEffort(engine) {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_FILE, 'utf8'))
+    return (s?.engines?.[engine]?.defaultEffort || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+/** The resolved, validated effort level for a schedule ('' = none). */
+function resolveEffort(sched) {
+  const level = (sched.effort || '').trim() || engineDefaultEffort(sched.engine)
+  return (ENGINE_EFFORTS[sched.engine] || []).includes(level) ? level : ''
+}
+
+/** The engine-native effort args as a shell fragment ('' when none apply). */
+function effortFlag(sched) {
+  const level = resolveEffort(sched)
+  if (!level) return ''
+  if (sched.engine === 'claude') return ` --effort ${level}`
+  if (sched.engine === 'pi') return ` --thinking ${level}`
+  if (sched.engine === 'opencode') return ` --variant ${level}`
+  if (sched.engine === 'openrouter' || sched.engine === 'openai-compat')
+    return ` --effort ${level}` // or-agent passthrough → codex model_reasoning_effort
+  return ` -c model_reasoning_effort=${level}` // codex (TUI and exec take -c)
+}
+
 // The openai-compat base URL is a PLAIN settings value (unlike the sealed API
 // key, which this out-of-process runner cannot decrypt — the key comes from
 // the login shell's OPENAI_API_KEY or a per-schedule env override, else the
@@ -1161,19 +1201,20 @@ async function runSchedule(id) {
   // openai-compat = or-agent retargeted by OPENAI_BASE_URL (injected into the
   // child env below from settings.json); guard here so an unset base URL fails
   // loudly instead of or-agent silently falling back to OpenRouter.
+  const effFlag = effortFlag(sched)
   const cmd = scriptPath
     ? shq(scriptPath)
     : sched.engine === 'claude'
-      ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}`
+      ? `claude -p ${shq(sched.prompt)} --permission-mode auto${modelFlag}${effFlag}`
       : sched.engine === 'cursor'
         ? `cursor-agent -p --force --trust --output-format text --workspace ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
         : sched.engine === 'openrouter'
-          ? `or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+          ? `or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
           : sched.engine === 'openai-compat'
-            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
+            ? `[ -n "$OPENAI_BASE_URL" ] || { echo "openai-compat: no base URL configured (TerMinal Settings → Engines → Self-hosted)"; exit 2; }; or-agent --dir ${shq(worktree)}${modelFlag}${effFlag} ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}`
             : sched.engine === 'hermes'
               ? `hermes -z ${shq(`${OR_PREAMBLE}\n\n${sched.prompt}`)}${hermesModel} --usage-file ${shq(hermesUsage)} --yolo --accept-hooks`
-              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(sched.prompt)}`
+              : `codex exec -s danger-full-access -C ${shq(worktree)}${modelFlag}${effFlag} ${shq(sched.prompt)}`
   // zsh is macOS's default but usually absent on Linux hosts — fall back to bash there.
   const isMac = process.platform === 'darwin'
   const shell = process.env.SHELL || (isMac ? '/bin/zsh' : '/bin/bash')
@@ -1202,6 +1243,7 @@ async function runSchedule(id) {
     ...(sched.model || engineDefaultModel(sched.engine)
       ? { TERMINAL_MODEL: sched.model || engineDefaultModel(sched.engine) }
       : {}),
+    ...(resolveEffort(sched) ? { TERMINAL_EFFORT: resolveEffort(sched) } : {}),
     ...(sched.engine === 'openai-compat'
       ? {
           ...(openAICompatBaseUrl() ? { OPENAI_BASE_URL: openAICompatBaseUrl() } : {}),

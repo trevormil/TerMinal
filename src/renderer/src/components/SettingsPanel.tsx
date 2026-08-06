@@ -74,6 +74,7 @@ import {
   ENGINE_MODELS,
   ENGINE_VENDOR,
   engineAllowsCustomModel,
+  engineEffortsOf,
   ENGINE_IDS,
 } from '../lib/engines'
 import { DEFAULT_HIDDEN_TABS, loadHiddenTabs } from '../lib/tabVisibility'
@@ -327,7 +328,7 @@ const emptyDaemon = (): DaemonCfg => ({
   // Derived from the registry — this was the third hand-written copy of the
   // per-engine defaults (main had two more).
   engines: Object.fromEntries(
-    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }]),
   ) as DaemonCfg['engines'],
   defaultEngine: 'claude',
   forge: 'auto',
@@ -2324,6 +2325,25 @@ export function SettingsPanel({
               </select>
             )}
           </label>
+          {engineEffortsOf(e).length > 0 && (
+            <label className="flex items-center gap-2 text-[10.5px] text-zinc-500">
+              Default effort
+              <select
+                value={selectedDaemon.engines[e].defaultEffort || ''}
+                onChange={(ev) =>
+                  saveDaemon({ engines: { [e]: { defaultEffort: ev.target.value } } })
+                }
+                className="rounded-md border border-[var(--gt-border)] bg-black/30 px-1.5 py-0.5 text-[11px] text-zinc-200 outline-none"
+              >
+                <option value="">(engine default)</option>
+                {engineEffortsOf(e).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         {e === 'openai-compat' && (
           <label className="mt-2 block text-[10.5px] text-zinc-500">

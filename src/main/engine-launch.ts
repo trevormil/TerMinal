@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { modelArgs, resumeArgs } from '../shared/engines'
+import { coerceEffort, effortArgs, modelArgs, resumeArgs } from '../shared/engines'
 import type { Engine } from './agent-types'
 
 // The per-engine launch ladder (ticket 91): session-id policy + argv per
@@ -20,6 +20,10 @@ export type EngineLaunchInput = {
   name?: string
   /** Already-resolved model (per-session pick or the engine default). */
   model?: string
+  /** Already-resolved reasoning-effort level (per-session pick or the engine
+   *  default). Dropped when the engine has no effort control or the level
+   *  isn't in its set. */
+  effort?: string
   openrouterHarness?: 'codex' | 'hermes'
   /** Required for openai-compat; the builder throws without it. */
   openAICompatBaseUrl?: string
@@ -70,11 +74,16 @@ export function buildEngineLaunch(input: EngineLaunchInput): {
     // spawn binary is resolved from the harness by the caller.
     sessionId = input.sessionId || mint()
     if ((input.openrouterHarness || 'codex') === 'hermes') {
+      // Hermes has no effort control — a selected level is dropped here.
       args.push('--tui', '--provider', 'openrouter')
       if (defaultModel) args.push('-m', defaultModel)
     } else {
       args.push('-c', 'model_provider=openrouter', '-s', 'danger-full-access', '-a', 'never')
       if (defaultModel) args.push('-m', defaultModel)
+      // The spawn binary is the codex TUI, so effort takes codex's config-key
+      // form — not the or-agent --effort the registry declares for one-shots.
+      if (coerceEffort('openrouter', input.effort))
+        args.push('-c', `model_reasoning_effort=${input.effort}`)
     }
   } else if (engine === 'openai-compat') {
     // Interactive self-hosted endpoint: the Codex TUI with an inline
@@ -101,6 +110,9 @@ export function buildEngineLaunch(input: EngineLaunchInput): {
       'never',
     )
     if (defaultModel) args.push('-m', defaultModel)
+    // Codex TUI spawn — config-key form, same as the openrouter codex harness.
+    if (coerceEffort('openai-compat', input.effort))
+      args.push('-c', `model_reasoning_effort=${input.effort}`)
   } else if (engine === 'opencode') {
     // opencode starts its TUI by default; `-s <id>` continues a session. Model
     // (`-m provider/model`) and the launch seed (`--prompt`) come from the
@@ -131,5 +143,11 @@ export function buildEngineLaunch(input: EngineLaunchInput): {
     engine !== 'openai-compat'
   )
     args.push(...modelArgs(engine, defaultModel))
+  // Effort comes from the registry (--effort / --thinking / --variant / -c),
+  // which returns [] for engines without a control or off-list levels.
+  // openrouter/openai-compat pushed their codex-config form above — the
+  // registry's or-agent --effort shape is for one-shot runs, not the TUI.
+  if (input.effort && engine !== 'local' && engine !== 'openrouter' && engine !== 'openai-compat')
+    args.push(...effortArgs(engine, input.effort))
   return { sessionId, args }
 }

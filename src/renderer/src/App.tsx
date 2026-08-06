@@ -662,6 +662,7 @@ export default function App() {
           const autoSubmit = payload.autoSubmit === true
           const ticketSlug = typeof payload.ticketSlug === 'string' ? payload.ticketSlug : undefined
           const model = typeof payload.model === 'string' ? payload.model : undefined
+          const effort = typeof payload.effort === 'string' ? payload.effort : undefined
           const openrouterHarness =
             payload.openrouterHarness === 'hermes' || payload.openrouterHarness === 'codex'
               ? payload.openrouterHarness
@@ -681,6 +682,7 @@ export default function App() {
                 ticketSlug,
                 remote,
                 model,
+                effort,
                 openrouterHarness,
               },
               info: { sessionId: '', cwd },

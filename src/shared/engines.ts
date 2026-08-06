@@ -25,6 +25,20 @@ export type SeedStyle =
   | 'flag:--prompt' // opencode
   | 'none' // cannot be seeded (a bare shell)
 
+/** How an engine takes a reasoning-effort level, or null when it has none.
+ *  Verified per-CLI from each tool's own --help (like SeedStyle):
+ *    flag:--effort   claude (and or-agent's passthrough)
+ *    flag:--thinking pi
+ *    flag:--variant  opencode
+ *    codex-config    codex: `-c model_reasoning_effort=<v>` (TUI and exec) */
+export type EffortStyle = 'flag:--effort' | 'flag:--thinking' | 'flag:--variant' | 'codex-config'
+
+export type EffortSpec = {
+  style: EffortStyle
+  /** The exact level tokens the CLI accepts, in ascending order. */
+  levels: readonly string[]
+} | null
+
 /** How an engine resumes an existing session. */
 export type ResumeStyle =
   | 'flag:--resume' // cursor, hermes, claude
@@ -48,6 +62,8 @@ export type EngineDescriptor = {
   modelFlag: ModelFlag
   seed: SeedStyle
   resume: ResumeStyle
+  /** Reasoning-effort control for the registry binary, or null when none. */
+  effort: EffortSpec
   /** Static flags every interactive launch gets. */
   baseArgs: readonly string[]
   caps: {
@@ -82,6 +98,8 @@ export const ENGINES = {
     modelFlag: '--model',
     seed: 'positional',
     resume: 'flag:--resume',
+    // `claude --effort <level>` — same flag interactive and -p (verified 2.1.223).
+    effort: { style: 'flag:--effort', levels: ['low', 'medium', 'high', 'xhigh', 'max'] },
     baseArgs: ['--permission-mode', 'auto'],
     caps: { resumable: true, remote: true, orAgentHarness: false },
   },
@@ -104,6 +122,9 @@ export const ENGINES = {
     modelFlag: '--model',
     seed: 'positional',
     resume: 'sub:resume',
+    // No dedicated flag — `-c model_reasoning_effort=<v>` works for both the
+    // TUI and `codex exec` (config overrides apply everywhere; verified 0.145).
+    effort: { style: 'codex-config', levels: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
     baseArgs: ['-s', 'danger-full-access', '-a', 'never'],
     caps: { resumable: true, remote: true, orAgentHarness: false },
   },
@@ -120,6 +141,9 @@ export const ENGINES = {
     modelFlag: '--model',
     seed: 'positional',
     resume: 'flag:--resume',
+    // cursor-agent has no effort control — thinking is a model variant
+    // (e.g. sonnet-4-thinking), not a level.
+    effort: null,
     baseArgs: [],
     caps: { resumable: true, remote: true, orAgentHarness: false },
   },
@@ -139,6 +163,10 @@ export const ENGINES = {
     modelFlag: '-m',
     seed: 'flag:--prompt',
     resume: 'flag:-s',
+    // `--variant` = "model variant (provider-specific reasoning effort)". The
+    // level set is provider-dependent; these are the tokens its help names plus
+    // the common middle tiers.
+    effort: { style: 'flag:--variant', levels: ['minimal', 'low', 'medium', 'high', 'max'] },
     baseArgs: [],
     caps: { resumable: true, remote: true, orAgentHarness: false },
   },
@@ -169,6 +197,11 @@ export const ENGINES = {
     // one that resumes a KNOWN id non-interactively. Verified against
     // `pi --help` (0.83.0), not the docs, which omit --session-id entirely.
     resume: 'flag:--session',
+    // `pi --thinking <level>` (verified 0.83.0 --help).
+    effort: {
+      style: 'flag:--thinking',
+      levels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    },
     // Pi has no sandbox/approval flag to disable: read/write/edit/bash are on by
     // default. `-a` trusts PROJECT-LOCAL extensions/skills/themes, which is what
     // a repo-scoped agent session wants and is off by default.
@@ -185,6 +218,8 @@ export const ENGINES = {
     modelFlag: '-m',
     seed: 'flag:-z',
     resume: 'flag:--resume',
+    // hermes(1) exposes no reasoning-effort control.
+    effort: null,
     baseArgs: ['--tui'],
     caps: { resumable: true, remote: false, orAgentHarness: false },
   },
@@ -203,6 +238,9 @@ export const ENGINES = {
     // seed/resume shape follows the chosen harness, resolved at launch.
     seed: 'positional',
     resume: 'none',
+    // or-agent --effort → codex model_reasoning_effort (codex harness only;
+    // callers skip effort when the hermes harness is selected).
+    effort: { style: 'flag:--effort', levels: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
     baseArgs: [],
     caps: { resumable: false, remote: false, orAgentHarness: true },
   },
@@ -219,6 +257,8 @@ export const ENGINES = {
     modelFlag: '-m',
     seed: 'positional',
     resume: 'none',
+    // Same or-agent binary as openrouter → same --effort passthrough to codex.
+    effort: { style: 'flag:--effort', levels: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
     baseArgs: [],
     caps: { resumable: false, remote: false, orAgentHarness: true },
   },
@@ -312,4 +352,37 @@ export function modelArgs(id: string, model: string): string[] {
   if (!model || !isEngineId(id)) return []
   const flag = ENGINES[id].modelFlag
   return flag ? [flag, model] : []
+}
+
+/** The level tokens an engine's CLI accepts, ascending; [] when unsupported. */
+export function engineEffortsOf(id: string): readonly string[] {
+  return isEngineId(id) ? (ENGINES[id].effort?.levels ?? []) : []
+}
+
+export const engineSupportsEffort = (id: string): boolean => engineEffortsOf(id).length > 0
+
+/** Validate an untyped effort value against the engine's level set — the
+ *  settings/agent-config values are free strings and engines reject (or worse,
+ *  silently ignore) tokens they don't know, so anything off-list is dropped. */
+export function coerceEffort(id: string, effort: unknown): string | undefined {
+  return typeof effort === 'string' && engineEffortsOf(id).includes(effort) ? effort : undefined
+}
+
+/** The args that select a reasoning-effort level for the REGISTRY binary, or
+ *  [] when the engine has none / the level isn't in its set. Codex takes the
+ *  config-key form, which both the TUI and `codex exec` accept. */
+export function effortArgs(id: string, effort: string): string[] {
+  if (!isEngineId(id) || !coerceEffort(id, effort)) return []
+  switch (ENGINES[id].effort?.style) {
+    case 'flag:--effort':
+      return ['--effort', effort]
+    case 'flag:--thinking':
+      return ['--thinking', effort]
+    case 'flag:--variant':
+      return ['--variant', effort]
+    case 'codex-config':
+      return ['-c', `model_reasoning_effort=${effort}`]
+    default:
+      return []
+  }
 }

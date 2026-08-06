@@ -12,6 +12,7 @@ type StartOpts = {
   mode: 'new' | 'resume'
   engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
   model?: string
+  effort?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -137,6 +138,7 @@ const gt = {
       remote?: unknown,
       openrouterHarness?: 'codex' | 'hermes',
       extraContext?: string,
+      effort?: string,
     ) =>
       ipcRenderer.invoke(
         'agents:run',
@@ -148,6 +150,7 @@ const gt = {
         remote,
         openrouterHarness,
         extraContext,
+        effort,
       ),
     runTicket: (
       slug: string,
@@ -158,6 +161,7 @@ const gt = {
       remote?: unknown,
       lanes?: number,
       extraContext?: string,
+      effort?: string,
     ) =>
       ipcRenderer.invoke(
         'agents:run-ticket',
@@ -169,6 +173,7 @@ const gt = {
         remote,
         lanes,
         extraContext,
+        effort,
       ),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -178,7 +183,19 @@ const gt = {
       pipeline?: string,
       model?: string,
       remote?: unknown,
-    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model, remote),
+      effort?: string,
+    ) =>
+      ipcRenderer.invoke(
+        'agents:run-pr',
+        pr,
+        kind,
+        engine,
+        persona,
+        pipeline,
+        model,
+        remote,
+        effort,
+      ),
     runs: () => ipcRenderer.invoke('agents:runs'),
     rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
