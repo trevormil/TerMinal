@@ -549,6 +549,7 @@ export default function App() {
       navigateTo('terminal:new', {
         cwd: typeof payload.cwd === 'string' ? payload.cwd : '',
         engine: typeof payload.engine === 'string' ? payload.engine : undefined,
+        effort: typeof payload.effort === 'string' ? payload.effort : undefined,
         initialInput: typeof payload.initialInput === 'string' ? payload.initialInput : '',
         // No one is at the Mac — submit the prompt for it, or it just sits.
         autoSubmit: true,

@@ -14,6 +14,8 @@ struct NewSessionSheet: View {
     // The Mac's list order carries its default; codex only if the list is empty
     // (the repo-wide safe default — never assume claude).
     @State private var engine = WsEngine.fallback.first?.id ?? "codex"
+    /// nil = the engine/Settings default. Levels come from the Mac per engine.
+    @State private var effort: String? = nil
     @State private var task = ""
     @State private var busy = false
     @State private var error: String?
@@ -41,7 +43,10 @@ struct NewSessionSheet: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(engines) { e in
-                                Button { engine = e.id } label: {
+                                Button {
+                                    if engine != e.id { effort = nil }  // levels are engine-specific
+                                    engine = e.id
+                                } label: {
                                     HStack(spacing: 5) {
                                         EngineLogo(engine: e.id, size: 13)
                                         Text(e.label).font(GT.sans(13, .medium))
@@ -60,6 +65,21 @@ struct NewSessionSheet: View {
                             }
                         }
                         .padding(.horizontal, 1)
+                    }
+
+                    if let levels = engines.first(where: { $0.id == engine })?.efforts,
+                        !levels.isEmpty
+                    {
+                        Text("REASONING EFFORT")
+                            .font(GT.sans(10, .semibold)).tracking(0.8)
+                            .foregroundStyle(GT.textFaint)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                effortChip(nil, label: "Default")
+                                ForEach(levels, id: \.self) { l in effortChip(l, label: l) }
+                            }
+                            .padding(.horizontal, 1)
+                        }
                     }
 
                     Text("TASK (OPTIONAL)")
@@ -125,11 +145,28 @@ struct NewSessionSheet: View {
         .preferredColorScheme(.dark)
     }
 
+    /// One effort chip; nil = "Default" (the engine/Settings default level).
+    private func effortChip(_ value: String?, label: String) -> some View {
+        let selected = effort == value
+        return Button { effort = value } label: {
+            Text(label)
+                .font(GT.sans(12, .medium))
+                .foregroundStyle(selected ? GT.text : GT.textMuted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(selected ? GT.accent.opacity(0.22) : GT.panel2)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(selected ? GT.accent : GT.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func start() async {
         busy = true
         defer { busy = false }
         do {
-            let id = try await client.spawn(cwd: repo.path, engine: engine, task: task)
+            let id = try await client.spawn(
+                cwd: repo.path, engine: engine, effort: effort, task: task)
             // The Mac registers the session before the agent boots, so we can
             // open it right away from what we already know — the thread view
             // polls by id and fills in as the agent starts. No race on the list.
