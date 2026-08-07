@@ -13,6 +13,7 @@ import {
   resolveEngineModel,
   resolveTelegramCreds,
   telegramSidecarPayload,
+  slackSidecarPayload,
 } from './settings'
 
 describe('migrate', () => {
@@ -660,5 +661,76 @@ describe('resolveEngineModel', () => {
     daemon.engines.claude.defaultModel = 'sonnet'
     expect(resolveEngineModel('claude', undefined, daemon)).toBe('sonnet')
     expect(resolveEngineModel('cursor', undefined, daemon)).toBe('')
+  })
+})
+
+describe('slack inbox destination', () => {
+  test('defaults: destination inbox, slack cfg blank token with sensible channels', () => {
+    const s = defaultSettings()
+    expect(s.inbox.destination).toBe('inbox')
+    expect(s.slack).toEqual({
+      botToken: '',
+      defaultChannel: '#terminal-inbox',
+      channelPrefix: 'inbox',
+      autoCreateChannels: true,
+    })
+  })
+
+  test('migrate keeps a valid destination and rejects junk', () => {
+    expect(migrate({ inbox: { destination: 'slack' } }).inbox.destination).toBe('slack')
+    expect(migrate({ inbox: { destination: 'both' } }).inbox.destination).toBe('both')
+    expect(migrate({ inbox: { destination: 'SLACK' } }).inbox.destination).toBe('inbox')
+    expect(migrate({}).inbox.destination).toBe('inbox')
+  })
+
+  test('migrate carries slack cfg fields and drops wrong types', () => {
+    const s = migrate({
+      slack: { botToken: 'xoxb-1', defaultChannel: '#ops', channelPrefix: '', autoCreateChannels: false },
+    })
+    expect(s.slack).toEqual({
+      botToken: 'xoxb-1',
+      defaultChannel: '#ops',
+      channelPrefix: '',
+      autoCreateChannels: false,
+    })
+    expect(migrate({ slack: { botToken: 42 } }).slack.botToken).toBe('')
+  })
+
+  test('mergeSettingsPatch merges slack per-key and normalizes destination', () => {
+    const cur = defaultSettings()
+    const next = mergeSettingsPatch(cur, {
+      inbox: { destination: 'both' },
+      slack: { botToken: 'xoxb-2' },
+    })
+    expect(next.inbox.destination).toBe('both')
+    expect(next.slack.botToken).toBe('xoxb-2')
+    expect(next.slack.defaultChannel).toBe('#terminal-inbox') // sibling kept
+    const junk = mergeSettingsPatch(next, { inbox: { destination: 'nope' as never } })
+    expect(junk.inbox.destination).toBe('inbox')
+  })
+
+  test('slack botToken is sealed for disk like other secrets', () => {
+    const storage = {
+      seal: (v: string) => `sealed:${v}`,
+      open: (v: string) => v.replace(/^sealed:/, ''),
+      canEncrypt: () => true,
+    }
+    const s = defaultSettings()
+    s.slack.botToken = 'xoxb-secret'
+    const onDisk = sealSettingsForDisk(s, storage) as { slack: { botToken: unknown } }
+    expect(typeof onDisk.slack.botToken).toBe('object')
+    const back = openSettingsFromDisk(onDisk, storage) as { slack: { botToken: string } }
+    expect(back.slack.botToken).toBe('xoxb-secret')
+  })
+
+  test('sidecar payload: null unless token present AND destination posts to slack', () => {
+    const s = defaultSettings()
+    expect(slackSidecarPayload(s)).toBeNull() // no token, destination inbox
+    s.slack.botToken = 'xoxb-3'
+    expect(slackSidecarPayload(s)).toBeNull() // destination still inbox
+    s.inbox.destination = 'both'
+    expect(slackSidecarPayload(s)).toEqual({ ...s.slack, destination: 'both' })
+    s.slack.botToken = ''
+    expect(slackSidecarPayload(s)).toBeNull() // token cleared
   })
 })

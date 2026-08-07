@@ -10,6 +10,7 @@ import {
   shouldShowSidebar,
   visibleCategories,
 } from '../../../../shared/inbox-categories'
+import { slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
 import {
   ArrowLeft,
   Check,
@@ -186,6 +187,18 @@ export function InboxDrawer({
   }
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [showSnoozed, setShowSnoozed] = useState(false)
+  // When Slack mirroring is on (and a token is configured), each sidebar row
+  // shows the #channel its category posts to — the mapping, where you file.
+  const [slackHints, setSlackHints] = useState<SlackChannelCfg | null>(null)
+  useEffect(() => {
+    window.gt.settings
+      .get()
+      .then((s) => {
+        const on = s.inbox.destination !== 'inbox' && !!s.secretsSet?.['slack.botToken']
+        setSlackHints(on ? s.slack : null)
+      })
+      .catch(() => {})
+  }, [])
   // Repo-widget trust approvals surface here too — same cadence as the list, so
   // switching sessions updates the card without reopening the drawer.
   const trustPrompt = useRepoTrustPrompt(15_000)
@@ -641,7 +654,14 @@ export function InboxDrawer({
                     // depth line up with their siblings that have children.
                     <span className="shrink-0 pl-2.5" aria-hidden />
                   )}
-                  <span className="min-w-0 flex-1 truncate">{categoryLeaf(c.name)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{categoryLeaf(c.name)}</span>
+                    {slackHints && c.name !== ALL && (
+                      <span className="block truncate font-mono text-[9px] leading-tight text-zinc-600">
+                        #{slackChannelName(c.name, slackHints)}
+                      </span>
+                    )}
+                  </span>
                   <span className="shrink-0 tabular-nums text-zinc-600">{c.count}</span>
                 </button>
               )
@@ -800,10 +820,14 @@ const tab: Tab = {
   // Snoozed items are off your plate, so they must not keep the badge lit —
   // otherwise "ask me tomorrow" still nags you today.
   badge: async (gt) => {
-    const [items, snoozes] = await Promise.all([
+    const [items, snoozes, settings] = await Promise.all([
       gt.hitl.list(),
       gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),
+      gt.settings.get().catch(() => null),
     ])
+    // Slack-only mode: Slack is the nag surface. The drawer stays browsable,
+    // but the badge (and the notify fan-out, gated in main) goes quiet.
+    if (settings?.inbox.destination === 'slack') return 0
     const now = Date.now()
     return items.filter((h) => h.status === 'open' && !h.readAt && !((snoozes[h.id] || 0) > now))
       .length

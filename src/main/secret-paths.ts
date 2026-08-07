@@ -11,6 +11,7 @@
 export const SECRET_PATTERNS: readonly (readonly string[])[] = [
   ['telegram', 'botToken'],
   ['telegram', 'chatId'],
+  ['slack', 'botToken'],
   ['alerts', 'webhooks', '*', 'url'], // Slack/Discord webhook URLs embed a secret token
   ['openrouterApiKey'],
   ['openaiCompatApiKey'],

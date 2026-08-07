@@ -589,6 +589,17 @@ export type InboxCfg = {
   agentContextPreamble: boolean
   /** Minimum severity that fires a notification; below it, items are inbox-only. */
   notifyThreshold: 'urgent' | 'normal' | 'low'
+  /** Where filings surface: in-app Inbox, Slack, or both (shared/slack.ts).
+   *  'slack' still persists items — it only quiets the desktop/Telegram nag. */
+  destination: import('../../../shared/slack').InboxDestination
+}
+/** Slack as an inbox destination — bot token (sealed), not a webhook, so
+ *  per-category channels can be created/routed at post time. */
+export type SlackCfg = {
+  botToken: string
+  defaultChannel: string
+  channelPrefix: string
+  autoCreateChannels: boolean
 }
 // Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
 // settings.json — see src/main/bridge/identity.ts.
@@ -765,6 +776,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  slack: SlackCfg
   notifications: { matrix: NotifyMatrix }
   bridge: BridgeCfg
   appearance: AppearanceCfg
@@ -792,7 +804,15 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    | 'telegram'
+    | 'alerts'
+    | 'inbox'
+    | 'slack'
+    | 'bridge'
+    | 'appearance'
+    | 'engines'
+    | 'apps'
+    | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -803,6 +823,7 @@ export type SettingsPatch = Partial<
     webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
+  slack?: Partial<SlackCfg>
   bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>

@@ -37,6 +37,79 @@ const SETTINGS_FILE = join(CFG, 'settings.json')
 const TG_SIDECAR = join(CFG, 'telegram.local.json')
 const LEGACY_TG_SCRIPT = join(homedir(), '.claude', 'bin', 'telegram-notify.sh')
 
+// ── slack inbox destination ──────────────────────────────────────────────
+// Canonical impl + tests: src/shared/slack.ts + src/main/slack-mirror.ts —
+// keep in sync (inlined: standalone script, no sibling modules). The app
+// mirrors the decrypted bot token + channel config to a 0600 sidecar
+// (slack.local.json) whenever inbox.destination posts to Slack; no sidecar
+// means Slack is off and everything below is a no-op.
+const SLACK_SIDECAR = join(CFG, 'slack.local.json')
+function slackCfg() {
+  try {
+    const c = JSON.parse(readFileSync(SLACK_SIDECAR, 'utf8'))
+    return typeof c?.botToken === 'string' && c.botToken ? c : null
+  } catch {
+    return null
+  }
+}
+// In 'slack' mode Slack is the sole nag surface — the Telegram ping goes quiet.
+function slackQuietsTelegram() {
+  return slackCfg()?.destination === 'slack'
+}
+function slackSlug(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[/\s]+/g, '-')
+    .replace(/[^a-z0-9_-]+/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+function slackChannelFor(category, cfg) {
+  const fallback = slackSlug(cfg.defaultChannel).slice(0, 80) || 'terminal-inbox'
+  const slug = category && category !== 'Uncategorized' ? slackSlug(category) : ''
+  if (!slug) return fallback
+  const prefix = slackSlug(cfg.channelPrefix)
+  return (prefix ? `${prefix}-${slug}` : slug).slice(0, 80)
+}
+function slackApi(token, method, body) {
+  return fetch(`https://slack.com/api/${method}`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  }).then((r) => r.json())
+}
+// Post a filing to its category's channel (create-on-miss, default-channel
+// fallback), then stamp the message ref back onto the stored item so the app
+// can thread recurrences + react on resolve. Best-effort, never blocks filing.
+function mirrorHitlToSlack(item, hitlFile) {
+  const cfg = slackCfg()
+  if (!cfg) return
+  ;(async () => {
+    const channel = slackChannelFor(item.category, cfg)
+    const fallback = slackChannelFor(undefined, cfg)
+    const marker = item.source === 'completion-hook' ? '✅' : '⛔'
+    const text = `${marker} ${item.title}${item.action ? ` — ${item.action}` : ''}`
+    const post = (to) => slackApi(cfg.botToken, 'chat.postMessage', { channel: to, text })
+    let res = await post(`#${channel}`)
+    if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
+      const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
+      if (created?.ok && created.channel?.id) res = await post(created.channel.id)
+    }
+    if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
+    if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {
+      updateJsonListShared(hitlFile, (list) =>
+        list.map((h) =>
+          h.id === item.id ? { ...h, slackChannel: res.channel, slackTs: res.ts } : h,
+        ),
+      )
+    }
+  })().catch(() => {})
+}
+
 // --- crash-safe shared-state writes (ticket 0068) ----------------------------
 //
 // Canonical implementation + tests: src/main/atomic-write.ts. This is inlined
@@ -1041,6 +1114,7 @@ function fileHitlTool(args) {
   // and take the same advisory lock. Writing through them is what manufactures
   // the torn read that makes THEM quarantine the inbox and refuse (ticket 110).
   updateJsonListShared(hitlFile, (cur) => [item, ...cur])
+  mirrorHitlToSlack(item, hitlFile)
   emitActivityRaw({
     kind: 'blocked',
     title: `HITL · ${title}`,
@@ -1052,7 +1126,8 @@ function fileHitlTool(args) {
   })
   const row = [{ text: '✅ Resolve', callback_data: `hitl:resolve:${item.id}` }]
   if (runId) row.push({ text: '🪵 Tail run', callback_data: `run:tail:${runId}` })
-  pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
+  if (!slackQuietsTelegram())
+    pingTelegram(`⛔ HITL · ${title}${action ? ` — ${action}` : ''}`, [row])
   return { id: item.id }
 }
 

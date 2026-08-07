@@ -180,6 +180,7 @@ import {
   patchSettings,
   setSettingsSecretStorage,
   syncTelegramSidecar,
+  syncSlackSidecar,
   telegramControlEnabled,
   resolvedProjectsDir,
   resolvedWorktreesDir,
@@ -348,6 +349,7 @@ setSettingsSecretStorage({
 // filers (cron/CLI/MCP) can deliver HITL pings even for already-configured users
 // who won't re-save settings. Subsequent saves refresh it via patchSettings.
 syncTelegramSidecar()
+syncSlackSidecar()
 
 let win: BrowserWindow | null = null
 

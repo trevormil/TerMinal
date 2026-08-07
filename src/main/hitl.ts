@@ -18,6 +18,13 @@ import {
   hitlTelegramKeyboard,
   hitlTelegramText,
 } from './hitl-telegram'
+import { inboxIsLoud } from '../shared/slack'
+import {
+  deliverSlackPost,
+  reactSlackResolved,
+  slackDelivery,
+  threadSlackRecurrence,
+} from './slack-mirror'
 
 // GLOBAL human-in-the-loop inbox — one cross-repo queue of TRUE human-needs
 // (decisions, destructive/cost approvals, creds, a failed cron job, anything an
@@ -85,6 +92,10 @@ export type HitlItem = {
   // host, so the Inbox can show + badge them alongside local ones (ADR-0002 #14).
   hostId?: string
   hostLabel?: string
+  // Slack mirror (inbox.destination 'both'|'slack'): where the original message
+  // landed, so recurrences thread under it and a resolve stamps ✅ on it.
+  slackChannel?: string
+  slackTs?: string
 }
 
 export function readHitl(): HitlItem[] {
@@ -237,9 +248,16 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     return next
   })
 
+  // Destination gate: in 'slack' mode the item still persists (above) and the
+  // activity event still fires, but the desktop/Telegram nag goes quiet — Slack
+  // is the triage surface.
+  const quiet = !inboxIsLoud(readSettings().inbox.destination)
+  const slack = slackDelivery()
+
   const duplicate = out.dup
   if (duplicate) {
-    const loud = out.loud
+    if (slack) void threadSlackRecurrence(slack, duplicate)
+    const loud = out.loud && !quiet
     emitActivity(
       {
         kind: hitlActivityKind(input.source),
@@ -259,10 +277,16 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
     return duplicate
   }
   const item = fresh
+  // Fire-and-forget: the post's channel+ts come back later and are stamped onto
+  // the stored item (if it still exists) so recurrence/resolve can find it.
+  if (slack)
+    void deliverSlackPost(slack, item).then((ref) => {
+      if (ref) stampSlackRef(item.id, ref)
+    })
   // Severity + the configurable threshold are the alert gate. At or above the
   // threshold notifies (macOS/Telegram/phone); below it, the item just waits in
   // the inbox for your next sweep. Default threshold 'urgent' → only urgent pings.
-  const loud = shouldNotify(itemSeverity(item), readSettings().inbox.notifyThreshold)
+  const loud = shouldNotify(itemSeverity(item), readSettings().inbox.notifyThreshold) && !quiet
   emitActivity(
     {
       kind: hitlActivityKind(item.source),
@@ -289,10 +313,30 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
 // The inbox is one axis now — read vs unread, no separate archive. Legacy
 // "resolve" (Telegram button, MCP resolve_hitl, agent-side) maps to mark-read;
 // "reopen" maps to mark-unread. Items stay in the one list, just read.
+/** Attach the Slack message ref once the async post lands. The item may have
+ *  been removed in the meantime — then there is nothing to stamp. */
+function stampSlackRef(id: string, ref: { channelId: string; ts: string }): void {
+  try {
+    mutate((list) => {
+      const i = list.findIndex((h) => h.id === id)
+      if (i < 0) return undefined
+      const next = [...list]
+      next[i] = { ...next[i], slackChannel: ref.channelId, slackTs: ref.ts }
+      return next
+    })
+  } catch {
+    /* best effort — a lost stamp only costs threading, never the item */
+  }
+}
+
 export function resolveHitl(id: string, resolved = true): boolean {
   const item = readHitl().find((h) => h.id === id)
   if (!item) return false
   const changed = markHitlRead([id], resolved) > 0
+  if (changed && resolved) {
+    const slack = slackDelivery()
+    if (slack) void reactSlackResolved(slack, item)
+  }
   if (changed && !resolved)
     // A reopen puts it back in your face; a read never re-notifies.
     emitActivity(
