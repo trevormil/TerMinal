@@ -27,6 +27,7 @@ import {
   RefreshCw,
   RotateCcw,
   Rows3,
+  ShieldCheck,
   Send,
   Server,
   Settings as SettingsIcon,
@@ -824,6 +825,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'telegram', title: 'Telegram', icon: MessageCircle },
   { id: 'integrations', title: 'Setup', icon: PlugZap },
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
+  { id: 'security', title: 'Security', icon: ShieldCheck },
   { id: 'presets', title: 'Presets', icon: Eye },
   { id: 'status', title: 'Status', icon: Activity },
   { id: 'updates', title: 'Updates', icon: ArrowUpCircle },
@@ -3826,6 +3828,20 @@ export function SettingsPanel({
                   desc="Hide tabs you don't use. They stay registered (so cross-tab nav still works); they just don't render in the tab bar."
                 >
                   <TabsVisibilityPanel />
+                </Section>
+
+                <Section
+                  id="security"
+                  icon={ShieldCheck}
+                  title="Security"
+                  desc="What third-party repos are allowed to bring into the app."
+                >
+                  <Toggle
+                    on={s.allowRepoExtensions}
+                    onToggle={() => save({ allowRepoExtensions: !s.allowRepoExtensions })}
+                    label="Allow repo-provided widgets and tabs"
+                    hint="Off (default): .TerMinal/widgets.json and tabs.json from repos are ignored entirely — no commands, no embeds, no approval prompts. On: they go through the per-repo trust approval flow before anything runs. Your own global widgets/tabs (~/.config/TerMinal) are always allowed."
+                  />
                 </Section>
 
                 <Section

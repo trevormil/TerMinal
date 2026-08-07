@@ -23,6 +23,15 @@ describe('migrate', () => {
     expect(migrate(42)).toEqual(defaultSettings())
   })
 
+  test('repo extensions are OFF by default and survive migration when opted in', () => {
+    // Fail-closed default: a settings file that predates the flag (or garbage)
+    // must NOT grant repo widgets/tabs code execution.
+    expect(defaultSettings().allowRepoExtensions).toBe(false)
+    expect(migrate({}).allowRepoExtensions).toBe(false)
+    expect(migrate({ allowRepoExtensions: 'yes' }).allowRepoExtensions).toBe(false)
+    expect(migrate({ allowRepoExtensions: true }).allowRepoExtensions).toBe(true)
+  })
+
   test('legacy flat booleans → nested telegram', () => {
     const s = migrate({ telegram: true, telegramControl: true })
     expect(s.telegram.notify).toBe(true)

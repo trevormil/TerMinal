@@ -168,6 +168,11 @@ export type Settings = {
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
   openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env
+  /** Allow repo-provided executable surfaces (.TerMinal/widgets.json +
+   *  tabs.json). OFF by default: even with the per-repo trust/approval flow, a
+   *  cloned repo getting command execution + in-app embeds is a real risk, so
+   *  the surfaces don't exist at all unless the operator opts in globally. */
+  allowRepoExtensions: boolean
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
@@ -260,6 +265,7 @@ export function defaultSettings(): Settings {
     pinnedPanels: [],
     openrouterApiKey: '',
     openaiCompatApiKey: '',
+    allowRepoExtensions: false,
   }
 }
 
@@ -487,6 +493,7 @@ export function migrate(raw: unknown): Settings {
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
+  if (typeof r.allowRepoExtensions === 'boolean') s.allowRepoExtensions = r.allowRepoExtensions
   if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
     s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
