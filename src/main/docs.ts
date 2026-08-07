@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join, relative, basename, sep } from 'node:path'
-import { existingProjectAreaPaths } from './project-layout'
+import { existingProjectAreaPaths, type ProjectArea } from './project-layout'
 
 // GitBook-style docs surface for a repo. Lists every markdown file under
 // docs/ + reports/checks + a root CHANGELOG.md, grouped by category for the
@@ -122,25 +122,41 @@ export function listDocs(repoRoot: string): DocsTree {
     categories: CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABEL[id], items: [] })),
   }
   if (!repoRoot || !existsSync(repoRoot)) return empty
-  const paths: string[] = []
+  // rel = the CANONICAL path shown/categorized/fetched; abs = where it lives.
+  // Area dirs can resolve to the sidecar (outside the repo), where a
+  // repo-relative path would be `../../…` — matching no category and failing
+  // readDoc's traversal guard. So area files are keyed area-relative
+  // (`reports/<kind>/x.md`) regardless of which root they came from, and
+  // readDoc resolves those aliases through the same area candidates.
+  const paths: { rel: string; abs: string }[] = []
+  const collect = (base: string, alias: string) => {
+    if (!existsSync(base) || !statSync(base).isDirectory()) return
+    const rels: string[] = []
+    walk(base, base, rels)
+    for (const r of rels) {
+      const norm = r.split(sep).join('/')
+      paths.push({ rel: alias ? `${alias}/${norm}` : norm, abs: join(base, r) })
+    }
+  }
   const docsDir = join(repoRoot, 'docs')
-  if (existsSync(docsDir) && statSync(docsDir).isDirectory()) walk(repoRoot, docsDir, paths)
-  for (const reportsDir of existingProjectAreaPaths(repoRoot, 'reports')) {
-    if (existsSync(reportsDir) && statSync(reportsDir).isDirectory())
-      walk(repoRoot, reportsDir, paths)
-  }
-  for (const checksDir of existingProjectAreaPaths(repoRoot, 'checks')) {
-    if (existsSync(checksDir) && statSync(checksDir).isDirectory()) walk(repoRoot, checksDir, paths)
-  }
+  collect(docsDir, 'docs')
+  for (const reportsDir of existingProjectAreaPaths(repoRoot, 'reports'))
+    collect(reportsDir, 'reports')
+  for (const checksDir of existingProjectAreaPaths(repoRoot, 'checks')) collect(checksDir, 'checks')
   const changelog = join(repoRoot, 'CHANGELOG.md')
-  if (existsSync(changelog)) paths.push('CHANGELOG.md')
+  if (existsSync(changelog)) paths.push({ rel: 'CHANGELOG.md', abs: changelog })
 
   const entries: DocEntry[] = []
-  for (const rel of paths) {
-    const norm = rel.split(sep).join('/')
+  const seen = new Set<string>()
+  for (const { rel, abs } of paths) {
+    const norm = rel
+    // Areas merge several roots (sidecar + legacy); first root wins per rel so
+    // the Docs list never shows the same report twice.
+    if (seen.has(norm)) continue
+    seen.add(norm)
     let content = ''
     try {
-      content = readFileSync(join(repoRoot, rel), 'utf8')
+      content = readFileSync(abs, 'utf8')
     } catch {
       /* skip */
     }
@@ -172,10 +188,26 @@ export function listDocs(repoRoot: string): DocsTree {
   }
 }
 
-// Path-guarded read: only files inside repoRoot, only markdown.
+// Path-guarded read: markdown only, and only inside repoRoot — or, for the
+// `reports/` and `checks/` aliases listDocs emits, inside one of that area's
+// resolved roots (which may be the sidecar, outside the repo).
 export function readDoc(repoRoot: string, relPath: string): string {
   if (!repoRoot || !relPath) return ''
   if (!MARKDOWN_RE.test(relPath)) return ''
+  const parts = relPath.split('/')
+  if (parts[0] === 'reports' || parts[0] === 'checks') {
+    const rest = parts.slice(1).join(sep)
+    for (const base of existingProjectAreaPaths(repoRoot, parts[0] as ProjectArea)) {
+      const full = join(base, rest)
+      if (!full.startsWith(base + sep)) return '' // traversal inside the alias
+      try {
+        return readFileSync(full, 'utf8')
+      } catch {
+        /* not in this root — try the next */
+      }
+    }
+    return ''
+  }
   const norm = relPath.split('/').join(sep)
   const full = join(repoRoot, norm)
   // prevent path traversal

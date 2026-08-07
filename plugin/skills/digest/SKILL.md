@@ -39,7 +39,7 @@ contract".
 PR=<number>; HEAD=$(git rev-parse HEAD); SHORT=${HEAD:0:7}
 BASE=<target branch>            # glab/gh: the MR target; default main
 REPO=$(basename "$PWD")
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
+REVIEW_ROOT="${TERMINAL_REVIEWS_DIR:-$(tm-state-dir reviews)}"
 DIR="$REVIEW_ROOT/$PR"; mkdir -p "$DIR"
 ```
 

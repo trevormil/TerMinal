@@ -91,8 +91,8 @@ a ticket if worth it).
 
 ### 5. Code-quality / refactor pass
 
-Scan this session's diff for quality issues (the anti-slop checklist in
-`.agents/code-review.md`): speculative flexibility, over-abstraction, vague
+Scan this session's diff for quality issues (the anti-slop checklist in the
+code-review contract — `tm-agent-spec code-review`): speculative flexibility, over-abstraction, vague
 names, WHAT-comments, unnecessary error handling. Fix small/local ones now;
 for anything larger than a quick cleanup, file a refactor `/ticket` rather than
 expanding scope at session end. If open PRs from this session haven't been

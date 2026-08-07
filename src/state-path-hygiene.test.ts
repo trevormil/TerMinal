@@ -22,6 +22,7 @@ const AREAS = [
   'notes\\.md',
   'knowledge\\.json',
   'snippets\\.json',
+  'meta\\.json',
   'loops',
   'agent-requests',
   'knowledge-rag',
@@ -49,8 +50,20 @@ const V1_LITERAL = new RegExp(
 const V1_UNDER_ROOT = new RegExp(
   String.raw`\$\{?(ROOT|REPO|REPO_ROOT|PWD|TERMINAL_REPO|CLAUDE_PROJECT_DIR)\}?/\.?(${AREAS.join('|')})\b`,
 )
+// The "legacy layout escape hatch" — `[ -d .reviews ] && … echo .reviews`
+// style conditionals that pick the in-repo dir when it exists. This shipped
+// once already (skills carried an explicit v1 branch and every pre-v2 repo
+// matched it), and the bare-word form evades all three path regexes above, so
+// it gets its own: a `-d`/`-e` test or `echo` of a bare legacy dir is a write
+// route in the making, whatever prose surrounds it.
+const ESCAPE_HATCH =
+  /(\[+ -[de] |echo )\.?\.(reviews|checks)\b|(\[+ -[de] |echo )(backlog|sessions|reports)\//
+
 const LITERAL = (line: string) =>
-  V2_LITERAL.test(line) || V1_LITERAL.test(line) || V1_UNDER_ROOT.test(line)
+  V2_LITERAL.test(line) ||
+  V1_LITERAL.test(line) ||
+  V1_UNDER_ROOT.test(line) ||
+  ESCAPE_HATCH.test(line)
 
 // The sidecar vars are ABSOLUTE. Prefixing one with ANY path yields
 // `<prefix>/Users/...`, which silently writes inside the repo — the exact bug
@@ -114,6 +127,9 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     for (const rel of [
       'src/main/agent-catalog.ts',
       'src/main/agents.ts',
+      // Composes ticketProviderInstructions — model-facing text that once told
+      // agents to write tickets into the in-repo backlog and escaped this scan.
+      'src/main/ticket-provider.ts',
       'src/renderer/src/lib/agentPrompts.ts',
       ...MODEL_FACING_FILES,
     ]) {
@@ -135,6 +151,14 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     // same regression as naming an area. Repo-owned config stays legitimate.
     expect(LITERAL('read .TerMinal/tickets.json for the provider')).toBe(true)
     expect(LITERAL('append to .TerMinal/loops/<id>/events.jsonl')).toBe(true)
+    // The escape-hatch shape that shipped in the code-review skill: a bare-word
+    // legacy dir picked by a conditional, invisible to the path regexes.
+    expect(
+      LITERAL(
+        'R=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)',
+      ),
+    ).toBe(true)
+    expect(LITERAL('mkdir -p "$([ -d .checks ] && echo .checks)"')).toBe(true)
     expect(LITERAL('the repo layout marker is .TerMinal/template.json')).toBe(false)
     expect(LITERAL('repo widgets come from .TerMinal/widgets.json')).toBe(false)
 

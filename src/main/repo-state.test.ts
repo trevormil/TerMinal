@@ -73,6 +73,42 @@ describe('repoStateKey', () => {
     expect(repoStateKey(a)).not.toBe(repoStateKey(b))
   })
 
+  test('a PORT in an ssh origin does not fork the key (GitHub ssh-over-443)', () => {
+    // The two clone forms of the SAME repo must share one sidecar.
+    const plain = makeRepo('port-a', 'git@ssh.github.com:trevormil/TerMinal.git')
+    const port = makeRepo('port-b', 'ssh://git@ssh.github.com:443/trevormil/TerMinal.git')
+    expect(repoStateKey(port)).toBe(repoStateKey(plain))
+    expect(repoStateKey(port)).toBe('ssh.github.com/trevormil/TerMinal')
+  })
+
+  test('a crafted traversal origin cannot escape the state root', () => {
+    const evil = makeRepo('evil', 'https://host.example/a/../../../../tmp/x.git')
+    const key = repoStateKey(evil)
+    // Rejected to the hashed fallback — never a path with dot segments.
+    expect(key).toStartWith('local/')
+    expect(repoStateRoot(evil).startsWith(stateDir)).toBe(true)
+  })
+
+  test('worktrees of a NO-ORIGIN repo share the main checkout sidecar', () => {
+    const main = makeRepo('local-main')
+    writeFileSync(join(main, 'f'), 'x')
+    execFileSync('git', ['-C', main, 'add', '-A'], { stdio: 'ignore' })
+    execFileSync(
+      'git',
+      ['-C', main, '-c', 'user.email=t@e', '-c', 'user.name=t', 'commit', '-qm', 'c'],
+      { stdio: 'ignore' },
+    )
+    const wt = join(tmp, 'local-wt')
+    execFileSync('git', ['-C', main, 'worktree', 'add', wt, '-b', 'w'], { stdio: 'ignore' })
+    clearRepoStateCache()
+    expect(repoStateKey(wt)).toBe(repoStateKey(main))
+  })
+
+  test('a local-path origin (unparseable URL) falls back to the hash, like the app', () => {
+    const repo = makeRepo('pathy', '/Users/somebody/other-repo')
+    expect(repoStateKey(repo)).toStartWith('local/')
+  })
+
   test('a worktree resolves to the same key as its main checkout', () => {
     const repo = makeRepo('main-checkout', 'https://github.com/trevormil/TerMinal.git')
     execFileSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {
@@ -201,18 +237,27 @@ describe('every spawn path receives the sidecar env', () => {
   // `TERMINAL_REPO: ''` is deliberately excluded — terminal-monitor files a
   // repo-less Inbox item, so there is no sidecar to resolve.
   const NAMES_REPO_IN_CHILD_ENV = /TERMINAL_REPO:\s*(?!['"]{2})\S/
+  // The remote runner builds a SHELL SCRIPT instead of a child-env object —
+  // 'export TERMINAL_REPO=' + sq(root). That shape escaped the first two
+  // regexes, and the file defined repoStateEnv without ever calling it.
+  const EXPORTS_REPO_IN_SHELL = /export TERMINAL_REPO=/
   const RUNS_ENGINE_IN_REPO = (s: string) =>
     /cwd:\s*repoRoot\b/.test(s) && /codex exec|cursor-agent|claude -p/.test(s)
 
   const spawnSites = CANDIDATES.filter((rel) => {
     const src = stripComments(readFileSync(join(ROOT, rel), 'utf8'))
-    return NAMES_REPO_IN_CHILD_ENV.test(src) || RUNS_ENGINE_IN_REPO(src)
+    return (
+      NAMES_REPO_IN_CHILD_ENV.test(src) ||
+      EXPORTS_REPO_IN_SHELL.test(src) ||
+      RUNS_ENGINE_IN_REPO(src)
+    )
   })
 
   test('the scan finds the known spawn sites (a guard matching nothing is not a guard)', () => {
     expect(spawnSites).toContain('src/main/agents.ts')
     expect(spawnSites).toContain('bin/terminal-cron')
-    expect(spawnSites.length).toBeGreaterThanOrEqual(2)
+    expect(spawnSites).toContain('src/main/remote-host-script.cjs')
+    expect(spawnSites.length).toBeGreaterThanOrEqual(3)
   })
 
   for (const rel of ['src/main/session-registry.ts', ...spawnSites]) {

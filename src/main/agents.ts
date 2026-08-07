@@ -1149,16 +1149,16 @@ The script body MUST follow this shape:
 THE BODY MUST FOLLOW THE PROJECT'S WORKFLOW:
   - The ticket + MR workflow uniformly. The MERGE TO MAIN IS HUMAN-ONLY — never \`gh pr merge\` / \`--auto\` / \`--merge\`.
   - File backlog tickets via \`terminal-cli ticket\` for findings the script cannot fix in-pass.
-  - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, apply the \`auto-mergeable\` label per .agents/forge.md.
+  - Open a PR only when there are concrete changes. If the diff is ONLY docs/markdown/tickets/reports, apply the \`auto-mergeable\` label per the forge contract (\`tm-agent-spec forge\`).
   - Explicit success criteria (what makes the run "done"). \`exit 0\` on success; non-zero on failure.
   - HITL only for true blockers (decisions, credentials, hard blockers) via \`terminal-cli hitl\`.
 
 CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   1. CLAUDE.md (root) — project conventions and global rules.
-  2. .agents/scripts.md — the design + helper reference.
-  3. .agents/forge.md — auto-mergeable label + forge command mapping.
-  4. Existing example: .agents/health.sh — the cheap-precheck-then-LLM pattern.
-  5. backlog/EXAMPLE.md or ~/.config/TerMinal/plugin/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
+  2. \`tm-agent-spec scripts\` — the design + helper reference (repo .agents/scripts.md overrides the plugin default).
+  3. \`tm-agent-spec forge\` — auto-mergeable label + forge command mapping.
+  4. Existing example: .agents/health.sh when the repo has one (bootstrapped repos carry it) — the cheap-precheck-then-LLM pattern; the health CONTRACT is \`tm-agent-spec health\`.
+  5. ~/.config/TerMinal/plugin/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
   6. Existing scripts in the target dir — don't duplicate ids; pick a distinct kebab-case id.
 
 User's description:
@@ -1545,7 +1545,7 @@ export function runPrAgent(
     kind === 'review'
       ? {
           label: `review ${f.sym}${pr.iid}`,
-          prompt: `Review ${tag} using the selected code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by the agent definition or in-repo .agents/code-review.md contract. Post or summarize the verdict for the ${f.label} when the repo workflow expects it (${noteCmd}). Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`,
+          prompt: `Review ${tag} using the selected code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by the agent definition or the code-review contract (\`tm-agent-spec code-review\` — repo override or plugin default). Post or summarize the verdict for the ${f.label} when the repo workflow expects it (${noteCmd}). Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`,
         }
       : {
           label: `iterate ${f.sym}${pr.iid}`,

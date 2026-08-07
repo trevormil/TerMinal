@@ -30,7 +30,8 @@ esac
 here="$(cd "$(dirname "$0")" && pwd)"
 emit() { [ -d "$1" ] && printf '%s\n' "$1" || true; }
 
-# The sidecar — the only write target, so it leads.
+# The write target leads (the sidecar — or the Obsidian vault for backlog,
+# which tm-state-dir answers with before anything else).
 sidecar="$("$here/tm-state-dir" "$area" 2>/dev/null || true)"
 [ -n "$sidecar" ] && emit "$sidecar"
 

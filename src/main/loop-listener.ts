@@ -12,7 +12,7 @@
 import { join } from 'node:path'
 import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { getLoop, singleEnterEvaluate, singleDecide } from './loops'
-import { repoStatePathForRead } from './repo-state'
+import { repoStatePathSticky } from './repo-state'
 
 type Role = 'driver' | 'worker'
 
@@ -73,8 +73,8 @@ function activeLoopIds(): Set<string> {
 function eventsPath(loopId: string): string | null {
   const rec = getLoop(loopId)
   if (!rec) return null
-  // Same per-loop sidecar/legacy resolution as loops.ts's loopDir.
-  return join(repoStatePathForRead(rec.repoRoot, join('loops', loopId)), 'events.jsonl')
+  // Same per-loop STICKY resolution as loops.ts's loopDir.
+  return join(repoStatePathSticky(rec.repoRoot, join('loops', loopId)), 'events.jsonl')
 }
 
 // One line, no control chars, bounded — a PTY submit must not smuggle newlines

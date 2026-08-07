@@ -313,7 +313,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
         const iterateCtx = `${reviewCtx} After committing, push back to the ${forgeLabel} with \`git push origin HEAD:${pr.sourceBranch}\`.`
         const base =
           kind === 'review'
-            ? `Review ${tag} using the repository's code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by .agents/code-review.md when present. Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`
+            ? `Review ${tag} using the repository's code-review agent contract. ${reviewCtx} Resolve the target branch and current head commit, inspect the diff and relevant history, run the project test gate, and write the review artifacts required by the code-review contract (resolve it with \`tm-agent-spec code-review\` — the repo's .agents/code-review.md when present, else the plugin default). Do not implement fixes during review; file owner-scoped follow-up tickets for out-of-scope work. End with verdict, artifact path, test status, and key findings.`
             : `Iterate on ${tag} until it is merge-ready. ${iterateCtx} Address open review findings and TODOs, make the test suite and build pass, and tighten edge cases — keep changes surgical. Commit and push your work. End with the final status and a short summary of what changed.`
         const { steps } = deps.remoteSteps(
           { label: `${kind} ${forgeSym}${pr.iid}`, prompt: base },

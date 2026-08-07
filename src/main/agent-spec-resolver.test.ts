@@ -72,4 +72,29 @@ describe('tm-agent-spec', () => {
     expect(kinds).not.toContain('owned')
     expect(kinds).not.toContain('drift.sh')
   })
+
+  // The app symlinks the script into ~/.config/TerMinal/bin (linkStateResolvers)
+  // and every caller invokes it bare off PATH. `dirname $0` of the SYMLINK is
+  // that bin dir, so without physical $0 resolution the plugin dir resolved to
+  // ~/.config/TerMinal — no agents/ — and every shipped default vanished.
+  test('resolves plugin defaults when invoked THROUGH the installed symlink', () => {
+    const linkDir = join(base, 'installed-bin')
+    mkdirSync(linkDir, { recursive: true })
+    const link = join(linkDir, 'tm-agent-spec')
+    execFileSync('ln', ['-sf', pluginBin, link])
+    const viaLink = (args: string[]) =>
+      execFileSync(link, args, { cwd: repo, encoding: 'utf8' }).trim()
+    expect(viaLink(['health'])).toBe(join(base, 'plugin', 'agents', 'health.md'))
+    expect(viaLink(['--list']).split('\n')).toContain('health')
+  })
+
+  // Under `set -euo pipefail` the group's last pipeline used to fail whenever
+  // the repo had no .agents/ — correct listing on stdout, exit code 1, and any
+  // strict-mode caller treated the listing as a failure.
+  test('--list exits 0 outside a repo / without a repo .agents dir', () => {
+    const bare = join(base, 'no-agents')
+    mkdirSync(bare, { recursive: true })
+    const out = execFileSync(pluginBin, ['--list'], { cwd: bare, encoding: 'utf8' }).trim()
+    expect(out.split('\n')).toContain('health')
+  })
 })

@@ -72,6 +72,17 @@ export function listRepoArtifacts(repoRoot: string): RunArtifact[] {
         slug,
         reportPath,
       )
+      // artifact.json records primaryPath as an ABSOLUTE path; a sidecar
+      // migration moves the whole dir and strands it. The winner-dir path is
+      // where the report actually lives — prefer it whenever the recorded
+      // path no longer exists.
+      if (a && a.reportPath !== reportPath) {
+        try {
+          statSync(a.reportPath)
+        } catch {
+          a.reportPath = reportPath
+        }
+      }
     } catch {
       /* no artifact.json — still surface the report if it exists */
       try {

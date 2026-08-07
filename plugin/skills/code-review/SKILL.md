@@ -62,7 +62,7 @@ you what to do:
 Sample (for `tests_red`):
 
 ```bash
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
+REVIEW_ROOT="${TERMINAL_REVIEWS_DIR:-$(tm-state-dir reviews)}"
 mkdir -p "$REVIEW_ROOT/$PR"
 
 if [ "$EXIT" -eq 2 ]; then
@@ -101,7 +101,7 @@ codex exec -s danger-full-access -C "$PWD" "$(cat /tmp/cr-prompt-$$.txt)"
 The prompt instructs codex to:
 - Read the packet for recon (no shell turns to rediscover PR metadata)
 - Pull the diff with `git diff origin/<base>...<head>`
-- Score six axes per `.agents/code-review.md`
+- Score six axes per the code-review contract (`tm-agent-spec code-review`)
 - Run the `/tm:security-scan` skill in diff mode for the Security axis floor
 - Emit FRESH scan findings in a fenced ` ```findings-new ` JSON block at the
   end of the artifact body (NOT the merged state — the helper handles that)
@@ -115,7 +115,7 @@ useful work. When the completion notification arrives, run stage 3.
 **Stage 3 — finalize (deterministic):**
 
 ```bash
-REVIEW_ROOT=$([ -d .reviews ] && [ ! -f .TerMinal/template.json ] && echo .reviews || echo $TERMINAL_REVIEWS_DIR)
+REVIEW_ROOT="${TERMINAL_REVIEWS_DIR:-$(tm-state-dir reviews)}"
 
 # Extract the ```findings-new ... ``` block codex emitted in the artifact body
 awk '/```findings-new/{f=1;next} /```/{f=0} f' "$REVIEW_ROOT/$PR/$SHORT.md" > /tmp/findings-new-$$.json

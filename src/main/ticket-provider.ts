@@ -320,7 +320,7 @@ function sanitizeViews(raw: unknown): TicketView[] {
 // Provider config (+ custom/saved views) is PERSONAL state — which provider
 // you read a repo's tickets through, your Linear team pick, your view lenses —
 // so it lives in the sidecar like the rest. Reads fall back to a legacy
-// in-repo `.TerMinal/tickets.json`; writes go sidecar-only.
+// in-repo copy (state-path-ok: read-only fallback); writes go sidecar-only.
 function configPath(repoRoot: string): string {
   return repoStatePathForRead(repoRoot, 'tickets.json')
 }
@@ -388,6 +388,7 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
             },
             ...(cfg.linear?.team ? { team: cfg.linear.team } : {}),
             ...(cfg.linear?.teamKey ? { teamKey: cfg.linear.teamKey } : {}),
+            ...(cfg.linear?.listArgs ? { listArgs: cfg.linear.listArgs } : {}),
           },
         }
       : {}),
@@ -737,7 +738,8 @@ async function callMcpTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const command = linear.mcp?.command
-  if (!command) throw new Error('Linear MCP command missing in .TerMinal/tickets.json')
+  if (!command)
+    throw new Error('Linear MCP command missing in the ticket provider config (tickets.json)')
   const child = spawn(command, linear.mcp?.args || [], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, ...(linear.mcp?.env || {}) },
@@ -749,8 +751,8 @@ async function callMcpTool(
   let stdoutBuffer = ''
   // A misconfigured MCP command (a path that doesn't exist) emits 'error', not
   // 'exit'. An unhandled 'error' on a ChildProcess is thrown, and in the main
-  // process that means the whole app dies — a typo in .TerMinal/tickets.json
-  // could crash TerMinal. Handle it and fail the pending calls instead.
+  // process that means the whole app dies — a typo in the ticket provider
+  // config could crash TerMinal. Handle it and fail the pending calls instead.
   let spawnError: Error | null = null
   const failAll = (err: Error) => {
     spawnError = err
@@ -881,7 +883,7 @@ async function getLinearTicket(linear: LinearTicketConfig, slug: string): Promis
 async function createLinearTicket(linear: LinearTicketConfig, input: NewTicket): Promise<Ticket> {
   const tool = linear.tools?.create || 'save_issue'
   const team = linear.team || linear.teamKey
-  if (!team) throw new Error('Linear team missing in .TerMinal/tickets.json')
+  if (!team) throw new Error('Linear team missing in the ticket provider config (tickets.json)')
   const raw = await callMcpTool(linear, tool, {
     team,
     title: input.title,
@@ -1096,7 +1098,7 @@ export function ticketProviderInstructions(provider: RepoTicketProvider): string
   if (provider.kind === 'obsidian') {
     return "Ticket provider: Obsidian. Tickets are NNNN-slug.md markdown files in this repo's configured Obsidian vault (NOT in the repo). Prefer the TerMinal ticket tools / terminal-cli ticket commands, which read/write the vault automatically. For raw browsing, the vault is at $OBSIDIAN_VAULT_PATH and its tickets at $OBSIDIAN_TICKETS_DIR — use your native file tools there, never inside the repo working tree."
   }
-  return "Ticket provider: local backlog. Use this repo's .TerMinal/backlog markdown tickets (legacy repos may use backlog/)."
+  return 'Ticket provider: local backlog. Tickets are NNNN-slug.md markdown files in the per-project sidecar at $TERMINAL_BACKLOG_DIR (resolve with `tm-state-dir backlog` when the env is unset) — NOT inside the repo working tree. Legacy tickets still committed in the repo remain readable, but never write new ones there.'
 }
 
 export async function listLinearTeams(

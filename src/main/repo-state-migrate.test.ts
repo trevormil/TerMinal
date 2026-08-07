@@ -181,6 +181,13 @@ describe('sidecar git history', () => {
     expect(readFileSync(join(repo, '.TerMinal', 'notes.md'), 'utf8')).toBe('repo copy')
   })
 
+  test('knowledge-rag stores are NEVER moved — their config.yaml embeds absolute paths', () => {
+    seed('.TerMinal/knowledge-rag/docs/config.yaml', 'documents_dir: /abs/path')
+    const r = migrateRepoState(repo)
+    expect(r.moved).toBe(0)
+    expect(existsSync(join(repo, '.TerMinal', 'knowledge-rag', 'docs', 'config.yaml'))).toBe(true)
+  })
+
   test('template.json and widgets.json stay in the repo — they are repo-owned', () => {
     seed('.TerMinal/template.json', '{}')
     seed('.TerMinal/widgets.json', '[]')

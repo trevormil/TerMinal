@@ -56,13 +56,16 @@ const slug = (input: string) =>
     .replace(/^-+|-+$/g, '') || 'rag'
 
 function defaultRootDir(scope: KnowledgeScope, repoRoot: string, item: KnowledgeItem): string {
-  // Repo-scoped RAG stores are personal state → the sidecar, read-preferring an
-  // existing legacy in-repo store so already-ingested indexes keep working.
-  const ragBase =
-    scope === 'repo' && repoRoot
-      ? repoStatePathForRead(repoRoot, 'knowledge-rag')
-      : join(terminalConfigDir(), 'knowledge-rag')
-  return join(ragBase, slug(item.rag?.category || item.title || item.categoryId || item.id))
+  const storeSlug = slug(item.rag?.category || item.title || item.categoryId || item.id)
+  // Repo-scoped RAG stores are personal state → the sidecar. Resolved PER
+  // STORE (not at the knowledge-rag/ dir level): an existing legacy in-repo
+  // store keeps working where its config.yaml's absolute paths point, while a
+  // NEW store must land in the sidecar even when legacy stores exist — the
+  // dir-level read would route new stores back into the shared repo.
+  if (scope === 'repo' && repoRoot) {
+    return repoStatePathForRead(repoRoot, join('knowledge-rag', storeSlug))
+  }
+  return join(terminalConfigDir(), 'knowledge-rag', storeSlug)
 }
 
 function ragCommand(item: KnowledgeItem): { command: string; args: string[] } {

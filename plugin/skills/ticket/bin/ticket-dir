@@ -43,5 +43,9 @@ if [ -f "$CFG" ] && grep -q '"provider"[[:space:]]*:[[:space:]]*"obsidian"' "$CF
   fi
 fi
 
-# 3. The sidecar. Unconditional — see the header.
-printf '%s\n' "${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog)}"
+# 3. The sidecar. Unconditional — see the header. A resolver failure (not
+# inside a git repo, resolver missing) must NOT print an empty line with exit
+# 0 — a caller doing `dir=$(ticket-dir)` would then write to "/" or cwd.
+dir="${TERMINAL_BACKLOG_DIR:-$("$(dirname "$0")/../../../bin/tm-state-dir" backlog 2>/dev/null || true)}"
+[ -n "$dir" ] || { echo "ticket-dir: could not resolve the backlog dir (not in a git repo?)" >&2; exit 1; }
+printf '%s\n' "$dir"
