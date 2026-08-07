@@ -484,14 +484,6 @@ const gt = {
     },
   },
   harnessStatus: () => ipcRenderer.invoke('harness:status'),
-  budgets: {
-    get: () => ipcRenderer.invoke('budgets:get'),
-    setDaily: (usd: number) => ipcRenderer.invoke('budgets:setDaily', usd),
-    setAgent: (agentId: string, usd: number) =>
-      ipcRenderer.invoke('budgets:setAgent', agentId, usd),
-    override: (durationMs: number) => ipcRenderer.invoke('budgets:override', durationMs),
-    gate: (agentId?: string) => ipcRenderer.invoke('budgets:gate', agentId),
-  },
   bg: {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),
