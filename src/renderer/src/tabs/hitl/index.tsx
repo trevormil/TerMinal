@@ -10,7 +10,7 @@ import {
   shouldShowSidebar,
   visibleCategories,
 } from '../../../../shared/inbox-categories'
-import { slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
+import { inboxQuiet, slackChannelName, type SlackChannelCfg } from '../../../../shared/slack'
 import {
   ArrowLeft,
   Check,
@@ -197,9 +197,11 @@ export function InboxDrawer({
     window.gt.settings
       .get()
       .then((s) => {
-        const on = s.inbox.destination !== 'inbox' && !!s.secretsSet?.['slack.botToken']
-        setSlackHints(on ? s.slack : null)
-        setSlackOnly(s.inbox.destination === 'slack')
+        const configured = !!s.secretsSet?.['slack.botToken']
+        setSlackHints(s.inbox.destination !== 'inbox' && configured ? s.slack : null)
+        // The chip only claims "mirroring" when Slack can actually deliver —
+        // destination without a token stays loud (and un-chipped).
+        setSlackOnly(inboxQuiet(s.inbox.destination, configured))
       })
       .catch(() => {})
   }, [])
@@ -837,9 +839,14 @@ const tab: Tab = {
       gt.inbox.snoozes().catch(() => ({}) as Record<string, number>),
       gt.settings.get().catch(() => null),
     ])
-    // Slack-only mode: Slack is the nag surface. The drawer stays browsable,
-    // but the badge (and the notify fan-out, gated in main) goes quiet.
-    if (settings?.inbox.destination === 'slack') return 0
+    // Slack-only mode WITH a token: Slack is the nag surface, so the badge goes
+    // quiet. Without a token nothing posts to Slack, so the badge stays live —
+    // mirrors main's inboxQuiet gate (review ebe04f5b).
+    if (
+      settings &&
+      inboxQuiet(settings.inbox.destination, !!settings.secretsSet?.['slack.botToken'])
+    )
+      return 0
     const now = Date.now()
     return items.filter((h) => h.status === 'open' && !h.readAt && !((snoozes[h.id] || 0) > now))
       .length

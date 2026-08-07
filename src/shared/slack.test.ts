@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   inboxIsLoud,
+  inboxQuiet,
   mirrorsToSlack,
   normalizeDestination,
   slackChannelName,
@@ -33,6 +34,14 @@ describe('destination gates', () => {
     expect(inboxIsLoud('inbox')).toBe(true)
     expect(inboxIsLoud('both')).toBe(true)
     expect(inboxIsLoud('slack')).toBe(false)
+  })
+  test('inboxQuiet — quiet ONLY when slack-only AND slack can deliver', () => {
+    expect(inboxQuiet('slack', true)).toBe(true)
+    // Regression (review ebe04f5b): slack-only with no token must stay LOUD —
+    // otherwise an urgent item is persisted with no Slack post, badge, or ping.
+    expect(inboxQuiet('slack', false)).toBe(false)
+    expect(inboxQuiet('both', true)).toBe(false)
+    expect(inboxQuiet('inbox', true)).toBe(false)
   })
 })
 

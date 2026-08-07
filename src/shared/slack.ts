@@ -30,6 +30,17 @@ export const mirrorsToSlack = (d: InboxDestination): boolean => d !== 'inbox'
 /** Does the in-app inbox still nag (badge + macOS/Telegram/push)? */
 export const inboxIsLoud = (d: InboxDestination): boolean => d !== 'slack'
 
+/**
+ * Should the in-app nag actually go quiet? Only when Slack is BOTH the chosen
+ * destination AND able to deliver (token configured). Destination alone must
+ * not silence anything: 'slack' with no token would mean no Slack post, no
+ * badge, no ping — an urgent item persisted invisibly. Misconfiguration
+ * degrades to loud, never to silent.
+ */
+export function inboxQuiet(destination: InboxDestination, slackConfigured: boolean): boolean {
+  return destination === 'slack' && slackConfigured
+}
+
 export type SlackChannelCfg = {
   /** Channel for Uncategorized + fallback, '#' optional. '' → terminal-inbox. */
   defaultChannel: string

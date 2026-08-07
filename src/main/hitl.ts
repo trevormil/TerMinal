@@ -18,7 +18,7 @@ import {
   hitlTelegramKeyboard,
   hitlTelegramText,
 } from './hitl-telegram'
-import { inboxIsLoud } from '../shared/slack'
+import { inboxQuiet } from '../shared/slack'
 import {
   deliverSlackPost,
   reactSlackResolved,
@@ -250,9 +250,12 @@ export function fileHitl(input: Omit<HitlItem, 'id' | 'status' | 'createdAt'>): 
 
   // Destination gate: in 'slack' mode the item still persists (above) and the
   // activity event still fires, but the desktop/Telegram nag goes quiet — Slack
-  // is the triage surface.
-  const quiet = !inboxIsLoud(readSettings().inbox.destination)
+  // is the triage surface. Quiet requires Slack to actually be able to deliver
+  // (token configured → slackDelivery() non-null): destination alone must not
+  // silence anything, or a token-less 'slack' mode files urgent items invisibly
+  // (review ebe04f5b). Misconfiguration degrades to loud, never to silent.
   const slack = slackDelivery()
+  const quiet = inboxQuiet(readSettings().inbox.destination, !!slack)
 
   const duplicate = out.dup
   if (duplicate) {
