@@ -155,3 +155,68 @@ export function slackDelivery(): SlackCfg | null {
   if (!mirrorsToSlack(s.inbox.destination) || !s.slack.botToken) return null
   return s.slack
 }
+
+/** Slack's error slugs, mapped to what the operator should actually do. */
+function friendlySlackError(error: string | undefined): string {
+  switch (error) {
+    case 'invalid_auth':
+    case 'account_inactive':
+    case 'token_revoked':
+      return `Token rejected (${error}) — paste a valid xoxb- bot token.`
+    case 'missing_scope':
+      return 'Token is missing a scope — the app needs chat:write (+ channels:manage and channels:join for auto-create, reactions:write for resolves).'
+    case 'channel_not_found':
+      return 'Channel not found — create the default channel in Slack (and invite the bot), or enable auto-create.'
+    case 'not_in_channel':
+      return 'The bot is not in that channel — /invite it, or enable auto-create.'
+    default:
+      return `Slack API error: ${error || 'no response'}`
+  }
+}
+
+/** The Test button's core: post to the default channel through the same
+ *  create-on-miss ladder a real filing uses, and say WHY it failed. */
+export async function testSlackDelivery(
+  cfg: SlackCfg,
+  api: SlackApi = slackApi,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const channel = slackChannelName(undefined, cfg)
+    const post = async (to: string): Promise<ApiResult> =>
+      asResult(
+        await api({
+          token: cfg.botToken,
+          method: 'chat.postMessage',
+          body: {
+            channel: to,
+            text: 'TerMinal connected — inbox posts land here and in per-category channels.',
+          },
+        }),
+      )
+    let res = await post(`#${channel}`)
+    if (!res.ok && res.error === 'channel_not_found' && cfg.autoCreateChannels) {
+      const created = asResult(
+        await api({
+          token: cfg.botToken,
+          method: 'conversations.create',
+          body: { name: channel },
+        }),
+      )
+      const id = (created.channel as { id?: string } | undefined)?.id
+      if (created.ok && id) res = await post(id)
+    }
+    return res.ok ? { ok: true } : { ok: false, error: friendlySlackError(res.error) }
+  } catch (e) {
+    return { ok: false, error: `Slack unreachable: ${e instanceof Error ? e.message : e}` }
+  }
+}
+
+/** Settings → Slack "Test": works regardless of inbox.destination, so the
+ *  token can be verified BEFORE flipping the destination over. */
+export async function testSlack(): Promise<{ ok: boolean; error?: string }> {
+  if (blockEffect('notify', 'slack-test'))
+    return { ok: false, error: 'Notifications are blocked while running under test.' }
+  const s = readSettings()
+  if (!s.slack.botToken) return { ok: false, error: 'Set the bot token first.' }
+  return testSlackDelivery(s.slack)
+}

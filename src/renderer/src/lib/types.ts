@@ -1971,6 +1971,9 @@ export type GtApi = {
   telegram: {
     test: () => Promise<{ ok: boolean; error?: string }>
   }
+  slack: {
+    test: () => Promise<{ ok: boolean; error?: string }>
+  }
   alerts: {
     // `note` = succeeded WITH a caveat. macOS delivers notifications only for
     // signed apps since Electron 42, and this build is unsigned (ticket 93), so

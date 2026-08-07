@@ -181,6 +181,9 @@ import {
   setSettingsSecretStorage,
   syncTelegramSidecar,
   syncSlackSidecar,
+} from './settings'
+import { testSlack } from './slack-mirror'
+import {
   telegramControlEnabled,
   resolvedProjectsDir,
   resolvedWorktreesDir,
@@ -881,6 +884,7 @@ ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
+ipcMain.handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
 // `webhookId` picks one destination out of the list; the renderer only holds a
 // mask of the URL, so it names the entry instead of sending the value back.

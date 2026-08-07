@@ -84,6 +84,9 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
+  slack: {
+    test: () => ipcRenderer.invoke('slack:test'),
+  },
   alerts: {
     test: (channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) =>
       ipcRenderer.invoke('alerts:test', channel, webhookId),

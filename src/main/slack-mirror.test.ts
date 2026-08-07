@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   deliverSlackPost,
+  testSlackDelivery,
   threadSlackRecurrence,
   reactSlackResolved,
   type SlackApiCall,
@@ -120,6 +121,48 @@ describe('threadSlackRecurrence', () => {
     const { calls, api } = fakeApi({})
     await threadSlackRecurrence(cfg, { ...item, occurrenceCount: 2 }, api)
     expect(calls.length).toBe(0)
+  })
+})
+
+describe('testSlackDelivery', () => {
+  test('posts to the default channel and reports ok', async () => {
+    const { calls, api } = fakeApi({
+      'chat.postMessage': [{ ok: true, channel: 'C0', ts: '1.0' }],
+    })
+    expect(await testSlackDelivery(cfg, api)).toEqual({ ok: true })
+    expect(calls[0].body.channel).toBe('#terminal-inbox')
+  })
+
+  test('maps invalid_auth to actionable guidance', async () => {
+    const { api } = fakeApi({ 'chat.postMessage': [{ ok: false, error: 'invalid_auth' }] })
+    const res = await testSlackDelivery(cfg, api)
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('xoxb-')
+  })
+
+  test('maps missing_scope to the scope list', async () => {
+    const { api } = fakeApi({ 'chat.postMessage': [{ ok: false, error: 'missing_scope' }] })
+    expect((await testSlackDelivery(cfg, api)).error).toContain('chat:write')
+  })
+
+  test('creates the default channel when missing and auto-create is on', async () => {
+    const { calls, api } = fakeApi({
+      'chat.postMessage': [
+        { ok: false, error: 'channel_not_found' },
+        { ok: true, channel: 'C1' },
+      ],
+      'conversations.create': [{ ok: true, channel: { id: 'C1' } }],
+    })
+    expect(await testSlackDelivery(cfg, api)).toEqual({ ok: true })
+    expect(calls[1].method).toBe('conversations.create')
+  })
+
+  test('network failure reports unreachable, never throws', async () => {
+    const res = await testSlackDelivery(cfg, async () => {
+      throw new Error('offline')
+    })
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('offline')
   })
 })
 

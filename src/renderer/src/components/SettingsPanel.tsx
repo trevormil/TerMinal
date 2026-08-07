@@ -1959,6 +1959,7 @@ export function SettingsPanel({
   > | null>(null)
   const [storageBusy, setStorageBusy] = useState<'scan' | 'reclaim' | 'scratch' | null>(null)
   const [tg, setTg] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
+  const [sl, setSl] = useState<{ busy?: boolean; ok?: boolean; error?: string } | null>(null)
   const [notify, setNotify] = useState<{
     busy?: boolean
     ok?: boolean
@@ -2132,6 +2133,10 @@ export function SettingsPanel({
   const testTelegram = async () => {
     setTg({ busy: true })
     setTg(await window.gt.telegram.test())
+  }
+  const testSlack = async () => {
+    setSl({ busy: true })
+    setSl(await window.gt.slack.test())
   }
   // Keyed by channel, except webhooks — there can be several, so each
   // destination gets its own `webhook:<id>` slot and its own result line.
@@ -3766,6 +3771,12 @@ export function SettingsPanel({
                           </button>
                         ))}
                       </div>
+                      {s.inbox.destination !== 'inbox' && !s.secretsSet?.['slack.botToken'] && (
+                        <div className="mt-1.5 text-[11px] text-amber-400">
+                          Slack posting is off until a bot token is set — filings currently reach
+                          only the in-app Inbox.
+                        </div>
+                      )}
                     </div>
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -3817,6 +3828,23 @@ export function SettingsPanel({
                       label="Auto-create channels"
                       hint="Create + join a missing public channel on first post; off, unroutable posts fall back to the default channel."
                     />
+                    <div className="flex items-center gap-2">
+                      <button onClick={testSlack} disabled={sl?.busy} className={actionButton}>
+                        {sl?.busy ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Send size={13} strokeWidth={2} />
+                        )}
+                        Test
+                      </button>
+                      {sl && !sl.busy && (
+                        <span
+                          className={`text-[11px] ${sl.ok ? 'text-[var(--gt-green)]' : 'text-amber-400'}`}
+                        >
+                          {sl.ok ? '✓ Posted — check the default channel.' : sl.error}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[10.5px] text-zinc-600">
                       Categories map to channels by slug — e.g. Monitoring/Certs →{' '}
                       <span className="font-mono text-zinc-500">

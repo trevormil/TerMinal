@@ -190,12 +190,16 @@ export function InboxDrawer({
   // When Slack mirroring is on (and a token is configured), each sidebar row
   // shows the #channel its category posts to — the mapping, where you file.
   const [slackHints, setSlackHints] = useState<SlackChannelCfg | null>(null)
+  // Slack-only mode: the drawer stays browsable but the nag is Slack's job —
+  // say so in the header, or the silent badge reads as a broken inbox.
+  const [slackOnly, setSlackOnly] = useState(false)
   useEffect(() => {
     window.gt.settings
       .get()
       .then((s) => {
         const on = s.inbox.destination !== 'inbox' && !!s.secretsSet?.['slack.botToken']
         setSlackHints(on ? s.slack : null)
+        setSlackOnly(s.inbox.destination === 'slack')
       })
       .catch(() => {})
   }, [])
@@ -529,6 +533,14 @@ export function InboxDrawer({
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--gt-border)] px-4 py-2">
         <Mail size={14} strokeWidth={2} className="text-[var(--gt-accent)]" />
         <span className="text-[12px] font-semibold text-zinc-200">Inbox</span>
+        {slackOnly && (
+          <span
+            title="Inbox destination is Slack only — items mirror to Slack; the badge and pings here are quiet"
+            className="rounded-full border border-[var(--gt-border)] bg-black/20 px-1.5 py-px text-[9.5px] font-semibold text-zinc-500"
+          >
+            quiet — mirroring to Slack
+          </span>
+        )}
         <div className="flex-1" />
         {selectedIds.length > 0 && (
           <>
