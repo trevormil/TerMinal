@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { projectAreaCandidates, type ProjectArea } from './project-layout'
-import { repoStateRoot, SIDECAR_AREAS } from './repo-state'
+import { legacyStatePath, repoStateRoot, SIDECAR_AREAS, SIDECAR_STATE_RELS } from './repo-state'
 
 // One-time move of a repo's existing workflow state into its sidecar.
 //
@@ -50,6 +50,24 @@ function* filesUnder(dir: string, prefix = ''): Generator<string> {
   }
 }
 
+/** Depth-first removal of now-empty subdirectories (then the dir itself).
+ *  A move leaves the tree of dirs behind; rmdir refuses non-empty ones, which
+ *  is exactly the guard we want — anything skipped stays visible. */
+function pruneEmptyDeep(dir: string): void {
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const e of entries) if (e.isDirectory()) pruneEmptyDeep(join(dir, e.name))
+  try {
+    rmdirSync(dir)
+  } catch {
+    /* not empty — the no-clobber skips live here */
+  }
+}
+
 /** Remove now-empty directories, bottom-up. Never removes a non-empty one. */
 function pruneEmpty(dir: string, stopAt: string): void {
   let cur = dir
@@ -86,7 +104,39 @@ export function migrateRepoState(repoRoot: string): MigrateResult {
           renameSync(src, dest)
           moved++
         }
-        pruneEmpty(from, repoRoot)
+        pruneEmptyDeep(from)
+        pruneEmpty(join(from, '..'), repoRoot)
+      }
+    }
+    // Personal state files/dirs that lived directly under .TerMinal/ (tickets
+    // config+views, notes, knowledge, snippets, stamp, loop + artifact runtime
+    // state). Same rules: move, never overwrite, leave the repo copy on refusal.
+    for (const rel of SIDECAR_STATE_RELS) {
+      const from = legacyStatePath(repoRoot, rel)
+      if (!existsSync(from)) continue
+      if (statSync(from).isDirectory()) {
+        for (const file of filesUnder(from)) {
+          const src = join(from, file)
+          const dest = join(root, rel, file)
+          if (existsSync(dest)) {
+            skipped.push(join(rel, file))
+            continue
+          }
+          mkdirSync(join(dest, '..'), { recursive: true })
+          renameSync(src, dest)
+          moved++
+        }
+        pruneEmptyDeep(from)
+        pruneEmpty(join(from, '..'), repoRoot)
+      } else {
+        const dest = join(root, rel)
+        if (existsSync(dest)) {
+          skipped.push(rel)
+          continue
+        }
+        mkdirSync(root, { recursive: true })
+        renameSync(from, dest)
+        moved++
       }
     }
   } catch (e) {
@@ -134,6 +184,15 @@ export function pendingMigration(repoRoot: string): number {
       const dir = join(repoRoot, rel)
       if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
       for (const _ of filesUnder(dir)) n++
+    }
+  }
+  for (const rel of SIDECAR_STATE_RELS) {
+    const p = legacyStatePath(repoRoot, rel)
+    if (!existsSync(p)) continue
+    if (statSync(p).isDirectory()) {
+      for (const _ of filesUnder(p)) n++
+    } else {
+      n++
     }
   }
   return n

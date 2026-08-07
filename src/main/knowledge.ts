@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { configPath } from './config-dir'
+import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
 
 export type KnowledgeScope = 'repo' | 'global'
 export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
@@ -54,7 +55,11 @@ export type KnowledgeBase = {
 }
 
 const GLOBAL = (): string => configPath('knowledge.json')
-const repoKnowledgePath = (repoRoot: string) => join(repoRoot, '.TerMinal', 'knowledge.json')
+// Personal state — sidecar-resolved (legacy in-repo copies stay readable).
+const repoKnowledgePathForRead = (repoRoot: string) =>
+  repoStatePathForRead(repoRoot, 'knowledge.json')
+const repoKnowledgePathForWrite = (repoRoot: string) =>
+  repoStatePathForWrite(repoRoot, 'knowledge.json')
 
 const now = () => Date.now()
 const slug = (input: string) =>
@@ -79,8 +84,10 @@ const defaultBase = (): KnowledgeBase => ({
   items: [],
 })
 
-function pathFor(scope: KnowledgeScope, repoRoot: string): string {
-  return scope === 'global' ? GLOBAL() : repoRoot ? repoKnowledgePath(repoRoot) : ''
+function pathFor(scope: KnowledgeScope, repoRoot: string, mode: 'read' | 'write'): string {
+  if (scope === 'global') return GLOBAL()
+  if (!repoRoot) return ''
+  return mode === 'read' ? repoKnowledgePathForRead(repoRoot) : repoKnowledgePathForWrite(repoRoot)
 }
 
 function uniqueId(base: string, seen: Set<string>): string {
@@ -179,7 +186,7 @@ function normalizeRagConfig(raw: unknown): KnowledgeRagConfig | undefined {
 }
 
 export function readKnowledge(scope: KnowledgeScope, repoRoot: string): KnowledgeBase {
-  const p = pathFor(scope, repoRoot)
+  const p = pathFor(scope, repoRoot, 'read')
   if (!p || !existsSync(p)) return defaultBase()
   try {
     return migrateKnowledge(JSON.parse(readFileSync(p, 'utf8')))
@@ -193,7 +200,7 @@ export function writeKnowledge(
   repoRoot: string,
   kb: KnowledgeBase,
 ): boolean {
-  const p = pathFor(scope, repoRoot)
+  const p = pathFor(scope, repoRoot, 'write')
   if (!p) return false
   try {
     mkdirSync(dirname(p), { recursive: true })

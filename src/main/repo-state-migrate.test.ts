@@ -71,9 +71,10 @@ describe('migrateRepoState', () => {
 
     migrateRepoState(repo)
 
+    // tickets.json is deliberately ABSENT here: provider config + views are
+    // personal state now, moved by the personal-state pass (tested below).
     for (const rel of [
       '.TerMinal/template.json',
-      '.TerMinal/tickets.json',
       '.TerMinal/widgets.json',
       '.agents/code-review.md',
       'docs/architecture.md',
@@ -143,5 +144,49 @@ describe('sidecar git history', () => {
 
     expect(second.isRepo).toBe(true)
     expect(second.commits).toBeGreaterThan(first.commits)
+  })
+
+  test('personal state files + runtime dirs move too (tickets/notes/knowledge/snippets/meta/loops/artifacts)', () => {
+    seed('.TerMinal/tickets.json', '{"provider":"linear"}')
+    seed('.TerMinal/notes.md', 'scratch')
+    seed('.TerMinal/knowledge.json', '{}')
+    seed('.TerMinal/snippets.json', '[]')
+    seed('.TerMinal/meta.json', '{"lastBootstrapVersion":{}}')
+    seed('.TerMinal/loops/abc/contract.md', 'c')
+    seed('.TerMinal/agent-requests/run-1/report.md', 'r')
+
+    const r = migrateRepoState(repo)
+    expect(r.error).toBeUndefined()
+    expect(r.moved).toBe(7)
+
+    const root = repoStateRoot(repo)
+    expect(readFileSync(join(root, 'tickets.json'), 'utf8')).toContain('linear')
+    expect(readFileSync(join(root, 'notes.md'), 'utf8')).toBe('scratch')
+    expect(existsSync(join(root, 'loops', 'abc', 'contract.md'))).toBe(true)
+    expect(existsSync(join(root, 'agent-requests', 'run-1', 'report.md'))).toBe(true)
+    // moved, not copied — and empty dirs pruned
+    expect(existsSync(join(repo, '.TerMinal', 'tickets.json'))).toBe(false)
+    expect(existsSync(join(repo, '.TerMinal', 'loops'))).toBe(false)
+  })
+
+  test('a sidecar copy of a personal file is never clobbered — the repo copy is skipped', () => {
+    const root = repoStateRoot(repo)
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'notes.md'), 'sidecar wins')
+    seed('.TerMinal/notes.md', 'repo copy')
+
+    const r = migrateRepoState(repo)
+    expect(r.skipped).toContain('notes.md')
+    expect(readFileSync(join(root, 'notes.md'), 'utf8')).toBe('sidecar wins')
+    expect(readFileSync(join(repo, '.TerMinal', 'notes.md'), 'utf8')).toBe('repo copy')
+  })
+
+  test('template.json and widgets.json stay in the repo — they are repo-owned', () => {
+    seed('.TerMinal/template.json', '{}')
+    seed('.TerMinal/widgets.json', '[]')
+    const r = migrateRepoState(repo)
+    expect(r.moved).toBe(0)
+    expect(existsSync(join(repo, '.TerMinal', 'template.json'))).toBe(true)
+    expect(existsSync(join(repo, '.TerMinal', 'widgets.json'))).toBe(true)
   })
 })

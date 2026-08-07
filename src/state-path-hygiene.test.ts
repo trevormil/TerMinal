@@ -9,7 +9,23 @@ import { join } from 'node:path'
 // own; it's hand-written paths in prompts and skills that leak.
 
 const ROOT = join(import.meta.dir, '..')
-const AREAS = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+const AREAS = [
+  'backlog',
+  'sessions',
+  'reviews',
+  'checks',
+  'reports',
+  // Personal state files/dirs that moved to the sidecar ROOT (this refactor's
+  // second wave). Naming `.TerMinal/<one of these>` as a write target is the
+  // same regression as naming an area.
+  'tickets\\.json',
+  'notes\\.md',
+  'knowledge\\.json',
+  'snippets\\.json',
+  'loops',
+  'agent-requests',
+  'knowledge-rag',
+]
 
 // Two literal shapes leak, and the first version of this guard only knew one.
 //
@@ -115,9 +131,12 @@ describe('model-facing content resolves state instead of hardcoding it', () => {
     // A guard that cannot fail is not a guard.
     expect(LITERAL('write the artifact to .TerMinal/reviews/<pr>/<sha>.md')).toBe(true)
     expect(LITERAL('write the artifact to $TERMINAL_REVIEWS_DIR/<pr>/<sha>.md')).toBe(false)
-    // `.TerMinal/` itself is still legitimate for repo config (template.json,
-    // tickets.json, widgets.json) — only the state AREAS moved.
-    expect(LITERAL('read .TerMinal/tickets.json for the provider')).toBe(false)
+    // Personal state FILES moved in the second wave — naming them is now the
+    // same regression as naming an area. Repo-owned config stays legitimate.
+    expect(LITERAL('read .TerMinal/tickets.json for the provider')).toBe(true)
+    expect(LITERAL('append to .TerMinal/loops/<id>/events.jsonl')).toBe(true)
+    expect(LITERAL('the repo layout marker is .TerMinal/template.json')).toBe(false)
+    expect(LITERAL('repo widgets come from .TerMinal/widgets.json')).toBe(false)
 
     // The v1 shape — what actually shipped, and what the first guard missed.
     // Every one of these is a line that existed in a skill and wrote into the

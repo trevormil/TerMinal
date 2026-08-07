@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -8,8 +8,11 @@ import {
   repoStateKey,
   repoStateAreaPath,
   repoStateEnv,
+  repoStatePathForRead,
+  repoStatePathForWrite,
   clearRepoStateCache,
   SIDECAR_AREAS,
+  SIDECAR_STATE_RELS,
 } from './repo-state'
 
 // The sidecar keeps personal workflow state (tickets, reviews, sessions) out of
@@ -224,4 +227,62 @@ describe('every spawn path receives the sidecar env', () => {
       expect(src).toContain('repoStateEnv(')
     })
   }
+})
+
+describe('personal state files (SIDECAR_STATE_RELS)', () => {
+  test('writes always target the sidecar, even when a legacy in-repo copy exists', () => {
+    const repo = makeRepo('files', 'git@github.com:acme/files.git')
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'tickets.json'), '{"provider":"linear"}')
+    const write = repoStatePathForWrite(repo, 'tickets.json')
+    expect(write).toBe(join(stateDir, 'github.com/acme/files', 'tickets.json'))
+  })
+
+  test('reads prefer the sidecar, fall back to the legacy in-repo copy, else point at the sidecar', () => {
+    const repo = makeRepo('reads', 'git@github.com:acme/reads.git')
+    const sidecar = join(stateDir, 'github.com/acme/reads')
+    // nothing anywhere → the (missing) sidecar path, where a write would land
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+    // legacy only → legacy (committed state stays visible, no migration needed)
+    mkdirSync(join(repo, '.TerMinal'), { recursive: true })
+    writeFileSync(join(repo, '.TerMinal', 'notes.md'), 'old')
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(repo, '.TerMinal', 'notes.md'))
+    // both → sidecar wins (writes went there; it is the live copy)
+    mkdirSync(sidecar, { recursive: true })
+    writeFileSync(join(sidecar, 'notes.md'), 'new')
+    expect(repoStatePathForRead(repo, 'notes.md')).toBe(join(sidecar, 'notes.md'))
+  })
+
+  test('dir rels resolve the same way as file rels', () => {
+    const repo = makeRepo('dirs', 'git@github.com:acme/dirs.git')
+    mkdirSync(join(repo, '.TerMinal', 'loops', 'abc'), { recursive: true })
+    expect(repoStatePathForRead(repo, 'loops')).toBe(join(repo, '.TerMinal', 'loops'))
+    const sidecarLoops = join(stateDir, 'github.com/acme/dirs', 'loops')
+    mkdirSync(sidecarLoops, { recursive: true })
+    expect(repoStatePathForRead(repo, 'loops')).toBe(sidecarLoops)
+    expect(repoStatePathForWrite(repo, 'loops')).toBe(sidecarLoops)
+  })
+
+  test('no repo → empty write path (callers guard)', () => {
+    expect(repoStatePathForWrite('', 'tickets.json')).toBe('')
+  })
+
+  test('the catalog covers exactly the personal rels — repo-owned files stay out', () => {
+    expect([...SIDECAR_STATE_RELS].sort() as string[]).toEqual(
+      [
+        'agent-requests',
+        'knowledge-rag',
+        'knowledge.json',
+        'loops',
+        'meta.json',
+        'notes.md',
+        'snippets.json',
+        'tickets.json',
+      ].sort(),
+    )
+    // Deliberate exclusions — the repo owns these on purpose.
+    for (const repoOwned of ['template.json', 'widgets.json', 'tabs.json']) {
+      expect(SIDECAR_STATE_RELS as readonly string[]).not.toContain(repoOwned)
+    }
+  })
 })

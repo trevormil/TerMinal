@@ -211,11 +211,11 @@ mkdir -p "$DST/.TerMinal"
 [ -f "$DST/.TerMinal/template.json" ] || \
   cp "$SRC/.TerMinal/template.json" "$DST/.TerMinal/template.json"
 say "state lives in the sidecar (see Settings → Updates → Project state)"
-[ -f "$DST/.TerMinal/widgets.json" ] || \
-  cp "$SRC/.TerMinal/widgets.json" "$DST/.TerMinal/widgets.json"
-[ -f "$DST/.TerMinal/snippets.json" ] || \
-  cp "$SRC/.TerMinal/snippets.json" "$DST/.TerMinal/snippets.json"
-say "terminal widgets/snippets seeded (existing left untouched)"
+# Widgets and snippets are deliberately NOT seeded any more. Personal snippets
+# live in the sidecar / global config; repo widgets are an opt-in surface a
+# project ships on purpose (and are disabled by default in Settings → Security)
+# — seeding boilerplate copies into every repo served neither. Existing copies
+# in already-bootstrapped repos are left alone.
 
 # --- docs skeleton (seed only if absent) -------------------------------------
 echo "[docs] docs/{decisions,runbooks,learnings} + architecture.md"

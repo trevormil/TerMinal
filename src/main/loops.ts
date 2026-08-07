@@ -19,7 +19,7 @@ import {
   readdirSync,
 } from 'node:fs'
 import { join, basename } from 'node:path'
-import { repoStateEnv } from './repo-state'
+import { repoStateEnv, repoStatePathForRead } from './repo-state'
 import { readFileTail } from './fs-tail'
 import { randomUUID } from 'node:crypto'
 import { spawn as cpSpawn, execFileSync } from 'node:child_process'
@@ -108,8 +108,11 @@ function saveLoop(rec: LoopRecord): void {
   )
 }
 
+// Loop runtime state is personal → the sidecar. Resolved PER LOOP so a loop
+// already running out of a legacy in-repo dir finishes there, while new loops
+// start (and stay) in the sidecar.
 function loopDir(rec: LoopRecord): string {
-  return join(rec.repoRoot, '.TerMinal', 'loops', rec.id)
+  return repoStatePathForRead(rec.repoRoot, join('loops', rec.id))
 }
 
 function slugify(s: string): string {

@@ -94,6 +94,21 @@ function maxAreaId(dirs) {
   }
   return max
 }
+// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
+// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
+// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
+function statePathForWrite(root, rel) {
+  if (!root) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, rel) : ''
+}
+function statePathForRead(root, rel) {
+  const sidecar = statePathForWrite(root, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
 // the app injects, so a scheduled run resolves state identically to an
 // interactive one. Scripts reference these instead of literal paths.

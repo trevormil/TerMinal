@@ -268,6 +268,21 @@ function maxAreaId(dirs) {
   }
   return max
 }
+// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
+// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
+// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
+function statePathForWrite(root, rel) {
+  if (!root) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, rel) : ''
+}
+function statePathForRead(root, rel) {
+  const sidecar = statePathForWrite(root, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
 // the app injects, so a scheduled run resolves state identically to an
 // interactive one. Scripts reference these instead of literal paths.
@@ -1200,7 +1215,8 @@ function commentOnTicket(slug, body) {
 
 function readTicketConfig() {
   try {
-    const p = join(repo, '.TerMinal', 'tickets.json')
+    // Personal config — sidecar first, legacy in-repo copy as fallback.
+    const p = statePathForRead(repo, 'tickets.json')
     if (!existsSync(p)) return {}
     const parsed = JSON.parse(readFileSync(p, 'utf8'))
     return parsed && typeof parsed === 'object' ? parsed : {}
@@ -1459,10 +1475,14 @@ function listenerCommand(sub, args) {
 
 // loop — the roles' durable transport (protocol.md option 2) + a read surface.
 // Reads/writes the loop's on-disk state; the heavy lifting (create/step/spawn)
-// stays in the app. Loop state lives in the cwd repo: .TerMinal/loops/<id>/.
+// stays in the app. Loop state lives in the repo's SIDECAR (loops/<id>/),
+// resolved per loop so one already running out of a legacy in-repo
+// .TerMinal/loops dir keeps working.
 function loopCommand(sub, rest) {
   const LOOPS_FILE = join(CFG, 'loops.json')
-  const loopDir = (id) => join(process.cwd(), '.TerMinal', 'loops', id)
+  const loopRoot =
+    gitOut(process.cwd(), ['rev-parse', '--show-toplevel']) || process.cwd()
+  const loopDir = (id) => statePathForRead(loopRoot, join('loops', id))
   const usage = () => {
     console.error(
       'usage: terminal-cli loop <list | event <id> <role> <kind> [summary] [detail] | log <id> <line> | state <id>>',

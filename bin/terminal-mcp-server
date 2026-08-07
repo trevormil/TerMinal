@@ -279,6 +279,21 @@ function maxAreaId(dirs) {
   }
   return max
 }
+// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
+// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
+// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
+function statePathForWrite(root, rel) {
+  if (!root) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, rel) : ''
+}
+function statePathForRead(root, rel) {
+  const sidecar = statePathForWrite(root, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
 // the app injects, so a scheduled run resolves state identically to an
 // interactive one. Scripts reference these instead of literal paths.
@@ -331,7 +346,8 @@ function areaPath(root, area) {
 // list/get/file/update all hit the vault, not the repo's local backlog.
 function readTicketConfig(root) {
   try {
-    const p = join(root, '.TerMinal', 'tickets.json')
+    // Personal config — sidecar first, legacy in-repo copy as fallback.
+    const p = statePathForRead(root, 'tickets.json')
     if (!existsSync(p)) return {}
     const parsed = JSON.parse(readFileSync(p, 'utf8'))
     return parsed && typeof parsed === 'object' ? parsed : {}
@@ -1664,7 +1680,8 @@ function requestAgentArtifactTool(args) {
   const timeoutMs = Math.max(30_000, Math.min(Number(args.timeoutMs || 180_000), 600_000))
   const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : ''
   const runSlug = `${new Date().toISOString().replace(/[:.]/g, '-')}-${slugify(title)}`
-  const dir = join(root, '.TerMinal', 'agent-requests', runSlug)
+  // Delegated-artifact runtime state is personal → the sidecar, never the repo.
+  const dir = join(statePathForWrite(root, 'agent-requests') || join(root, '.TerMinal', 'agent-requests'), runSlug)
   mkdirSync(dir, { recursive: true })
   const promptPath = join(dir, 'prompt.md')
   const reportPath = join(dir, 'report.md')

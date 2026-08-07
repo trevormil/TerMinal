@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { legacyStatePath, repoStatePathForWrite } from './repo-state'
 
 // Surfaces the artifacts a run produced (#8 GH-parity — the "Artifacts" tab).
 // Agent-request artifacts are written under <repoRoot>/.TerMinal/agent-requests/
@@ -41,20 +42,28 @@ export function parseArtifactMeta(
   }
 }
 
-// List a repo's agent-request artifacts, newest first. Best-effort; [] on any error.
+// List a repo's agent-request artifacts, newest first. Best-effort; [] on any
+// error. Reads MERGE the sidecar with the legacy in-repo dir (sidecar wins per
+// slug) — writers moved to the sidecar, but artifacts already delivered into
+// the repo stay visible.
 export function listRepoArtifacts(repoRoot: string): RunArtifact[] {
   if (!repoRoot) return []
-  const dir = join(repoRoot, '.TerMinal', 'agent-requests')
-  let slugs: string[] = []
-  try {
-    slugs = readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-  } catch {
-    return []
+  const legacy = legacyStatePath(repoRoot, 'agent-requests')
+  const sidecar = repoStatePathForWrite(repoRoot, 'agent-requests')
+  const dirBySlug = new Map<string, string>()
+  for (const dir of [legacy, sidecar]) {
+    if (!dir) continue
+    try {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) dirBySlug.set(e.name, dir)
+      }
+    } catch {
+      /* missing dir — fine */
+    }
   }
+  if (dirBySlug.size === 0) return []
   const out: RunArtifact[] = []
-  for (const slug of slugs) {
+  for (const [slug, dir] of dirBySlug) {
     const reportPath = join(dir, slug, 'report.md')
     let a: RunArtifact | null = null
     try {

@@ -27,11 +27,13 @@ describe('the project template ships no workflow state', () => {
     expect(offenders).toEqual([])
   })
 
-  test('.TerMinal carries repo CONFIG only', () => {
-    // Config is shared with the team and belongs in the repo; state is personal
-    // and does not. Anything new here is a deliberate choice, not a default.
+  test('.TerMinal carries the layout marker only', () => {
+    // Config that is shared with the team belongs in the repo; everything
+    // personal (snippets, widgets boilerplate, state) does not. widgets.json
+    // and snippets.json stopped being seeded — snippets are sidecar/global
+    // state, and repo widgets are an opt-in surface a project adds on purpose.
     const entries = readdirSync(join(TEMPLATE, '.TerMinal')).sort()
-    expect(entries).toEqual(['snippets.json', 'template.json', 'widgets.json'])
+    expect(entries).toEqual(['template.json'])
   })
 
   test('no per-repo skill copies for either harness', () => {

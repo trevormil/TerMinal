@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { configPath } from './config-dir'
 import { repoForCwd, repoRootOf } from './repo'
@@ -26,6 +27,54 @@ export const SIDECAR_AREAS: readonly ProjectArea[] = [
 
 export function isSidecarArea(area: ProjectArea): boolean {
   return SIDECAR_AREAS.includes(area)
+}
+
+/**
+ * Personal per-repo state that lived at `<repo>/.TerMinal/<rel>` and now lives
+ * at the sidecar ROOT under the same relative name. Unlike SIDECAR_AREAS these
+ * never had a v1 layout — the one legacy location is always `.TerMinal/<rel>`.
+ *
+ * Deliberately NOT here: `template.json` (the layout marker is ABOUT the repo),
+ * and `widgets.json`/`tabs.json` (repo-provided extension surfaces a project
+ * ships on purpose, gated by Settings → Security).
+ */
+export const SIDECAR_STATE_RELS = [
+  'tickets.json', // ticket provider config + custom/saved views
+  'notes.md', // repo notes
+  'knowledge.json', // knowledge base entries
+  'snippets.json', // repo prompt snippets
+  'meta.json', // bootstrap stamp
+  'loops', // loop-driver runtime state
+  'agent-requests', // delegated-artifact runtime state
+  'knowledge-rag', // knowledge-RAG stores
+] as const
+
+/** The legacy in-repo location of a sidecar state rel. */
+export function legacyStatePath(repoRoot: string, rel: string): string {
+  return join(repoRoot, '.TerMinal', rel)
+}
+
+/**
+ * Where NEW content for a personal state file/dir goes: always the sidecar
+ * (same write-one rule as areas). '' only when there is no repo at all.
+ */
+export function repoStatePathForWrite(repoRoot: string, rel: string): string {
+  const root = repoStateRoot(repoRoot)
+  return root ? join(root, rel) : ''
+}
+
+/**
+ * Where to READ a personal state file/dir: the sidecar copy when it exists,
+ * else the legacy in-repo copy when THAT exists (state already committed stays
+ * visible with no migration), else the sidecar path (i.e. "missing", and where
+ * a subsequent write will land). Mirrors projectAreaPathForRead's asymmetry.
+ */
+export function repoStatePathForRead(repoRoot: string, rel: string): string {
+  const sidecar = repoStatePathForWrite(repoRoot, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = legacyStatePath(repoRoot, rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
 }
 
 /** Root holding every project's sidecar. Env-overridable like terminalConfigDir(). */

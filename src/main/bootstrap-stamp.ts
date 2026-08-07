@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname } from 'node:path'
+import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
 
 // Template-provenance stamp (ticket 0045). Every path that copies
 // project-template files into a repo (initial scaffold + bootstrap.sh repair)
@@ -42,16 +43,19 @@ export function resolveTemplateSha(templateDir: string, fallback: string): strin
  *  keys and a malformed existing file are handled without crashing. */
 export function writeBootstrapStamp(repoRoot: string, stamp: BootstrapStamp): void {
   if (!repoRoot) throw new Error('writeBootstrapStamp: repoRoot required')
-  const dir = join(repoRoot, '.TerMinal')
-  const file = join(dir, 'meta.json')
+  // The stamp is machine-local bookkeeping ("what did I last bootstrap here"),
+  // not a repo fact — sidecar. Any existing keys (from either location) are
+  // carried over so unrelated meta survives the move.
+  const file = repoStatePathForWrite(repoRoot, 'meta.json')
+  if (!file) throw new Error('writeBootstrapStamp: could not resolve sidecar')
   let meta: Record<string, unknown> = {}
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8'))
+    const parsed = JSON.parse(readFileSync(repoStatePathForRead(repoRoot, 'meta.json'), 'utf8'))
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) meta = parsed
   } catch {
     /* missing or malformed — start fresh */
   }
   meta.lastBootstrapVersion = stamp
-  mkdirSync(dir, { recursive: true })
+  mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, JSON.stringify(meta, null, 2) + '\n')
 }

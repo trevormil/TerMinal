@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
 import {
   appendTicketComment as appendLocalComment,
   createTicket as createLocalTicket,
@@ -316,8 +317,12 @@ function sanitizeViews(raw: unknown): TicketView[] {
   return out
 }
 
+// Provider config (+ custom/saved views) is PERSONAL state — which provider
+// you read a repo's tickets through, your Linear team pick, your view lenses —
+// so it lives in the sidecar like the rest. Reads fall back to a legacy
+// in-repo `.TerMinal/tickets.json`; writes go sidecar-only.
 function configPath(repoRoot: string): string {
-  return join(repoRoot, '.TerMinal', 'tickets.json')
+  return repoStatePathForRead(repoRoot, 'tickets.json')
 }
 
 function readConfig(repoRoot: string): RepoTicketsConfig {
@@ -410,8 +415,10 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
       return next.length ? { savedViews: next } : {}
     })(),
   }
-  mkdirSync(join(repoRoot, '.TerMinal'), { recursive: true })
-  writeFileSync(configPath(repoRoot), JSON.stringify(next, null, 2) + '\n')
+  const dest = repoStatePathForWrite(repoRoot, 'tickets.json')
+  if (!dest) throw new Error('not a git repo')
+  mkdirSync(dirname(dest), { recursive: true })
+  writeFileSync(dest, JSON.stringify(next, null, 2) + '\n')
   return next
 }
 

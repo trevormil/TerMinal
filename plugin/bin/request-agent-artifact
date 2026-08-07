@@ -5,7 +5,8 @@
 #   request-agent-artifact --agent security-sweep --title "Auth risk scan" -- "Review auth changes for risks"
 #   printf '%s\n' "Question..." | request-agent-artifact --agent docs
 #
-# Writes .TerMinal/agent-requests/<run>/report.md and prints the path. Prefer
+# Writes <sidecar>/agent-requests/<run>/report.md (tm-state-dir agent-requests)
+# and prints the path. Prefer
 # terminal-cli/MCP when available; otherwise run a short-lived Claude subprocess.
 set -uo pipefail
 
@@ -52,7 +53,11 @@ fi
 slug="$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-|-$//g' | cut -c1-60)"
 [ -n "$slug" ] || slug="agent-request"
 run="$(date -u +%Y-%m-%dT%H-%M-%SZ)-$slug"
-dir="$ROOT/.TerMinal/agent-requests/$run"
+# Runtime state → the sidecar (tm-state-dir resolves it); legacy in-repo path
+# only if the resolver is somehow unavailable.
+base="$("$(dirname "$0")/tm-state-dir" agent-requests 2>/dev/null || true)"
+[ -n "$base" ] || base="$ROOT/.TerMinal/agent-requests" # state-path-ok: resolver-missing fallback only
+dir="$base/$run"
 mkdir -p "$dir"
 prompt_path="$dir/prompt.md"
 report_path="$dir/report.md"

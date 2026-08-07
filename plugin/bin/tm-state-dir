@@ -18,15 +18,27 @@ set -euo pipefail
 area="${1:-}"
 case "$area" in
   backlog | sessions | reviews | checks | reports) ;;
+  # Personal state files/dirs formerly at .TerMinal/<name> — resolved at the
+  # sidecar ROOT (same key), printed as "<sidecar>/<name>". A file rel prints
+  # where the file LIVES (or would live); callers read/write it directly.
+  tickets.json | notes.md | knowledge.json | snippets.json | meta.json | loops | agent-requests | knowledge-rag) ;;
   *)
-    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports>" >&2
+    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports|tickets.json|notes.md|knowledge.json|snippets.json|meta.json|loops|agent-requests|knowledge-rag>" >&2
     exit 2
     ;;
 esac
 
-# 1. Already resolved by the spawning app.
-env_var="TERMINAL_$(printf '%s' "$area" | tr '[:lower:]' '[:upper:]')_DIR"
-resolved="${!env_var:-}"
+# 1. Already resolved by the spawning app. Area dirs each carry their own env
+#    var; the personal rels hang off TERMINAL_STATE_DIR.
+case "$area" in
+  backlog | sessions | reviews | checks | reports)
+    env_var="TERMINAL_$(printf '%s' "$area" | tr '[:lower:]' '[:upper:]')_DIR"
+    resolved="${!env_var:-}"
+    ;;
+  *)
+    resolved="${TERMINAL_STATE_DIR:+$TERMINAL_STATE_DIR/$area}"
+    ;;
+esac
 if [ -n "$resolved" ]; then
   printf '%s\n' "$resolved"
   exit 0

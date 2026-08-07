@@ -134,6 +134,21 @@ function maxAreaId(dirs) {
   }
   return max
 }
+// Personal state files/dirs formerly at <repo>/.TerMinal/<rel>, now at the
+// sidecar ROOT. Reads prefer the sidecar, fall back to the legacy in-repo
+// copy; writes always target the sidecar. Mirrors repoStatePathForRead/Write.
+function statePathForWrite(root, rel) {
+  if (!root) return ''
+  const key = repoStateKey(root)
+  return key ? join(repoStateDir(), key, rel) : ''
+}
+function statePathForRead(root, rel) {
+  const sidecar = statePathForWrite(root, rel)
+  if (sidecar && existsSync(sidecar)) return sidecar
+  const legacy = join(root, '.TerMinal', rel)
+  if (existsSync(legacy)) return legacy
+  return sidecar || legacy
+}
 // Env handed to a spawned agent/script: the same TERMINAL_<AREA>_DIR values
 // the app injects, so a scheduled run resolves state identically to an
 // interactive one. Scripts reference these instead of literal paths.
@@ -1016,33 +1031,25 @@ function sessionGet(root, slug) {
   }
   return null
 }
-function notesPath(root, scope) {
-  return scope === 'global'
-    ? path.join(cfg(), 'notes.md')
-    : path.join(root, '.TerMinal', 'notes.md')
+// Repo notes are personal state → the host's sidecar (mirrors src/main/notes.ts:
+// reads fall back to a legacy in-repo copy; writes go sidecar-only).
+function notesPath(root, scope, mode) {
+  if (scope === 'global') return path.join(cfg(), 'notes.md')
+  return mode === 'read'
+    ? statePathForRead(root, 'notes.md')
+    : statePathForWrite(root, 'notes.md') || path.join(root, '.TerMinal', 'notes.md')
 }
 function notesRead(root, scope) {
   try {
-    return fs.readFileSync(notesPath(root, scope), 'utf8')
+    return fs.readFileSync(notesPath(root, scope, 'read'), 'utf8')
   } catch {
     return ''
   }
 }
 function notesWrite(root, scope, content) {
-  const p = notesPath(root, scope)
+  const p = notesPath(root, scope, 'write')
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, String(content || ''))
-  if (scope === 'repo') {
-    try {
-      const gi = path.join(root, '.gitignore'),
-        entry = '.TerMinal/notes.md'
-      let c = exists(gi) ? fs.readFileSync(gi, 'utf8') : ''
-      if (!c.split('\n').some((l) => l.trim() === entry)) {
-        if (c && !c.endsWith('\n')) c += '\n'
-        fs.writeFileSync(gi, c + entry + '\n')
-      }
-    } catch {}
-  }
   return true
 }
 function expandPath(p) {

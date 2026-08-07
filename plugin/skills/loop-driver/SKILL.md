@@ -24,7 +24,7 @@ Do **not** loop a one-shot task, a task with no verification, or anything whose
 
 ## Three execution modes (same loop, same disk state)
 
-A loop is one state directory (`.TerMinal/loops/<loop-id>/`) driven one of three
+A loop is one state directory (`$(tm-state-dir loops)/<loop-id>/`) driven one of three
 ways. The roles, contract, and taste rubric are identical every way — only
 *who runs the turns* differs.
 
@@ -81,7 +81,7 @@ as separate sessions (live-paired) or as separate headless invocations
 ## Setup
 
 1. Pick a `loop-id`: `<repo-name>-<short-slug>` (e.g. `bestie-onboarding-polish`).
-2. Create the loop directory `.TerMinal/loops/<loop-id>/` and initialize state per
+2. Create the loop directory `$(tm-state-dir loops)/<loop-id>/` and initialize state per
    [references/state.md](references/state.md): `contract.md`, `feature_list.json`,
    `progress.md`, append-only `log.md`, `events.jsonl`, `scores/`.
 3. Create an isolated worktree for the generator so a restart is a clean delete:

@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { hiddenPresetIds } from './presets'
 import { terminalConfigDir } from './config-dir'
+import { repoStatePathForWrite } from './repo-state'
 
 export type PromptSnippet = {
   id: string
@@ -434,12 +435,15 @@ export function savePromptSnippet(input: {
   if (!prompt) return { error: 'prompt is required' }
   const id = slug(String(input.snippet.id || title))
   if (!id) return { error: 'id is required' }
+  // Repo snippets are personal state → the sidecar (writes never touch the repo).
   const path =
-    input.scope === 'global' ? GLOBAL_FILE() : input.repoRoot ? join(input.repoRoot, REPO_FILE) : ''
+    input.scope === 'global'
+      ? GLOBAL_FILE()
+      : input.repoRoot
+        ? repoStatePathForWrite(input.repoRoot, 'snippets.json')
+        : ''
   if (!path) return { error: 'repo root is required' }
-  mkdirSync(input.scope === 'global' ? CFG() : join(input.repoRoot!, '.TerMinal'), {
-    recursive: true,
-  })
+  mkdirSync(dirname(path), { recursive: true })
   const file = snippetFile(path)
   const snippets = readSnippetFile(path).filter((s) => s.id !== id)
   const snippet: PromptSnippet = {
@@ -466,6 +470,10 @@ export function listPromptSnippets(repoRoot: string): {
   repoPath: string
 } {
   ensureGlobalFile()
+  // Read-merge, lowest priority first: legacy .terminal → legacy .TerMinal →
+  // sidecar. Later writers win per id, so a sidecar copy shadows the in-repo
+  // one it was migrated from.
+  const sidecarPath = repoRoot ? repoStatePathForWrite(repoRoot, 'snippets.json') : ''
   const repoPath = repoRoot ? join(repoRoot, REPO_FILE) : ''
   const legacyRepoPath = repoRoot ? join(repoRoot, LEGACY_REPO_FILE) : ''
   const byId = new Map<string, PromptSnippet>()
@@ -477,5 +485,11 @@ export function listPromptSnippets(repoRoot: string): {
     byId.set(s.id, { ...s, source: 'repo' })
   for (const s of repoPath ? readSnippetFile(repoPath) : [])
     byId.set(s.id, { ...s, source: 'repo' })
-  return { snippets: [...byId.values()], globalPath: GLOBAL_FILE(), repoPath }
+  for (const s of sidecarPath ? readSnippetFile(sidecarPath) : [])
+    byId.set(s.id, { ...s, source: 'repo' })
+  return {
+    snippets: [...byId.values()],
+    globalPath: GLOBAL_FILE(),
+    repoPath: sidecarPath || repoPath,
+  }
 }

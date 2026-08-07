@@ -1,38 +1,29 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, resolve, sep } from 'node:path'
 import { configPath } from './config-dir'
+import { repoStatePathForRead, repoStatePathForWrite } from './repo-state'
 
 // Notes:
 //   global → ~/.config/TerMinal/notes.md  (unbound, spans all repos)
-//   repo   → <repoRoot>/.TerMinal/notes.md (bound to the repo, gitignored)
+//   repo   → the repo's SIDECAR notes.md (personal state, never in the repo);
+//            a legacy in-repo .TerMinal/notes.md stays readable until migrated.
 // Both persist on disk, so they survive across sessions.
 
 export type NotesScope = 'repo' | 'global'
 export type NoteFolderEntry = { name: string; path: string; dir: boolean }
 
 const GLOBAL = (): string => configPath('notes.md')
-const repoNotesPath = (repoRoot: string) => join(repoRoot, '.TerMinal', 'notes.md')
 
-// keep notes.md out of git without touching the committed widgets.json
-function ensureGitignored(repoRoot: string) {
-  const gi = join(repoRoot, '.gitignore')
-  const entry = '.TerMinal/notes.md'
-  try {
-    let content = existsSync(gi) ? readFileSync(gi, 'utf8') : ''
-    if (content.split('\n').some((l) => l.trim() === entry)) return
-    if (content && !content.endsWith('\n')) content += '\n'
-    writeFileSync(gi, content + entry + '\n')
-  } catch {
-    /* best effort — note still works, just not auto-ignored */
-  }
-}
-
-function pathFor(scope: NotesScope, repoRoot: string): string {
-  return scope === 'global' ? GLOBAL() : repoRoot ? repoNotesPath(repoRoot) : ''
+function pathFor(scope: NotesScope, repoRoot: string, mode: 'read' | 'write'): string {
+  if (scope === 'global') return GLOBAL()
+  if (!repoRoot) return ''
+  return mode === 'read'
+    ? repoStatePathForRead(repoRoot, 'notes.md')
+    : repoStatePathForWrite(repoRoot, 'notes.md')
 }
 
 export function readNotes(scope: NotesScope, repoRoot: string): string {
-  const p = pathFor(scope, repoRoot)
+  const p = pathFor(scope, repoRoot, 'read')
   if (!p || !existsSync(p)) return ''
   try {
     return readFileSync(p, 'utf8')
@@ -42,9 +33,8 @@ export function readNotes(scope: NotesScope, repoRoot: string): string {
 }
 
 export function writeNotes(scope: NotesScope, content: string, repoRoot: string): boolean {
-  const p = pathFor(scope, repoRoot)
+  const p = pathFor(scope, repoRoot, 'write')
   if (!p) return false
-  if (scope === 'repo') ensureGitignored(repoRoot)
   try {
     mkdirSync(dirname(p), { recursive: true })
     writeFileSync(p, content)

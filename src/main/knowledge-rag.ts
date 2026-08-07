@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import type { KnowledgeItem, KnowledgeScope } from './knowledge'
 import { terminalConfigDir } from './config-dir'
+import { repoStatePathForRead } from './repo-state'
 
 export type KnowledgeRagStatus = {
   ok: boolean
@@ -55,12 +56,13 @@ const slug = (input: string) =>
     .replace(/^-+|-+$/g, '') || 'rag'
 
 function defaultRootDir(scope: KnowledgeScope, repoRoot: string, item: KnowledgeItem): string {
-  const base = scope === 'repo' && repoRoot ? join(repoRoot, '.TerMinal') : terminalConfigDir()
-  return join(
-    base,
-    'knowledge-rag',
-    slug(item.rag?.category || item.title || item.categoryId || item.id),
-  )
+  // Repo-scoped RAG stores are personal state → the sidecar, read-preferring an
+  // existing legacy in-repo store so already-ingested indexes keep working.
+  const ragBase =
+    scope === 'repo' && repoRoot
+      ? repoStatePathForRead(repoRoot, 'knowledge-rag')
+      : join(terminalConfigDir(), 'knowledge-rag')
+  return join(ragBase, slug(item.rag?.category || item.title || item.categoryId || item.id))
 }
 
 function ragCommand(item: KnowledgeItem): { command: string; args: string[] } {
