@@ -777,6 +777,9 @@ export type Settings = {
   pinnedPanels: PinnedPanel[]
   openrouterApiKey: string
   openaiCompatApiKey: string
+  /** Allow repo-provided widgets/tabs (.TerMinal/widgets.json + tabs.json).
+   *  Off by default — repo code execution is opt-in, above the trust flow. */
+  allowRepoExtensions: boolean
   /**
    * Which sealed secrets are set. `settings:get` masks the VALUES (see
    * src/main/settings-mask.ts), so this is the only way the UI can tell

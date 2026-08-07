@@ -1398,8 +1398,13 @@ ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 //     repo-trust.ts. GLOBAL entries (~/.config/TerMinal) are the user's own
 //     files and behave exactly as before.
 function repoTrustContext(cwd: string) {
-  const widgets = listCommandWidgets(cwd)
-  const tabs = listCustomTabs(cwd)
+  // Global kill switch ABOVE the per-repo trust flow: with repo extensions
+  // disabled (the default), repo-sourced widgets/tabs are never listed, never
+  // runnable, and never even prompt for approval — the surface doesn't exist.
+  // Global entries (~/.config/TerMinal) are the user's own files and unaffected.
+  const allowRepo = readSettings().allowRepoExtensions
+  const widgets = listCommandWidgets(cwd).filter((w) => allowRepo || w.source !== 'repo')
+  const tabs = listCustomTabs(cwd).filter((t) => allowRepo || t.source !== 'repo')
   const root = cwd ? widgetRepoRoot(cwd) : ''
   const commands = [
     ...widgets.filter((w) => w.source === 'repo').map((w) => `widget: ${w.command}`),
