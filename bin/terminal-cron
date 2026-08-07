@@ -322,90 +322,6 @@ function writeAIRun(opts) {
   }
 }
 
-// ABSENT vs PRESENT-BUT-UNREADABLE — the distinction ticket 111 is about.
-//
-// `dailyTotalUsd: 0` is a REAL configuration meaning "no cap", so a reader that
-// swallows a parse failure and falls through to the defaults makes a torn
-// budgets.json indistinguishable from an account the operator deliberately left
-// uncapped. This gate then spawns unbounded, and the refusal HITL never fires
-// because from here there was never a cap. Every other guard in this runner
-// fails closed; this one used to be the exception, and it is the only one where
-// guessing wrong costs money directly.
-//
-// Returns { value: object }  — caps to apply
-//         { value: null }    — no file: no cap was ever configured, proceed
-//         { refused: string }— unreadable: refuse, do not guess
-function readBudgetsOrRefuse() {
-  const budgetsFile = join(CFG, 'budgets.json')
-  if (!existsSync(budgetsFile)) return { value: null }
-  let raw
-  try {
-    raw = readFileSync(budgetsFile, 'utf8')
-  } catch (e) {
-    return { refused: `budgets.json unreadable (${e && e.message}) — refusing rather than assuming no cap` }
-  }
-  // An empty file is what a truncating writer leaves behind mid-crash, but it is
-  // also what `touch` leaves. Treat it as absent rather than wedging every run.
-  if (raw.trim() === '') return { value: null }
-  let parsed
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return { refused: 'budgets.json is corrupt — refusing rather than assuming no cap' }
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { refused: 'budgets.json is not a budgets object — refusing rather than assuming no cap' }
-  }
-  return { value: parsed }
-}
-
-// Budget gate — cron-side mirror of src/main/budgets.gateSpawn. Reads the
-// budgets.json + sums today's ai-runs to decide. Returns true to allow,
-// or { refused } to refuse. Refused fires emit a HITL via fileHitl so the
-// operator sees the skipped run.
-function budgetAllowsSpawn(agentId) {
-  const budgets = readBudgetsOrRefuse()
-  if (budgets.refused) return budgets
-  if (budgets.value === null) return true // no cap ever configured
-  try {
-    const b = budgets.value
-    // Override window bypasses entirely
-    if (b.overrideUntil && b.overrideUntil > Date.now()) return true
-    const cap = b.dailyTotalUsd || 0
-    const agentCap = (b.perAgent && b.perAgent[agentId]) || 0
-    if (cap <= 0 && agentCap <= 0) return true
-    // Sum today's spend from ai-runs/
-    if (!existsSync(AI_RUNS_DIR)) return true
-    const dayStart = (() => {
-      const d = new Date()
-      d.setHours(0, 0, 0, 0)
-      return d.getTime()
-    })()
-    let total = 0
-    let agentTotal = 0
-    for (const f of readdirSync(AI_RUNS_DIR)) {
-      if (!f.endsWith('.json')) continue
-      try {
-        const r = JSON.parse(readFileSync(join(AI_RUNS_DIR, f), 'utf8'))
-        if ((r.startedAt || 0) < dayStart) continue
-        total += r.costUsd || 0
-        if (agentId && r.agentId === agentId) agentTotal += r.costUsd || 0
-      } catch {}
-    }
-    if (agentCap > 0 && agentTotal >= agentCap) {
-      return {
-        refused: `per-agent cap $${agentCap.toFixed(2)} reached ($${agentTotal.toFixed(2)} spent)`,
-      }
-    }
-    if (cap > 0 && total >= cap) {
-      return { refused: `daily cap $${cap.toFixed(2)} reached ($${total.toFixed(2)} spent)` }
-    }
-    return true
-  } catch {
-    return true // never block on observability glitches
-  }
-}
-
 // Resolve the per-engine default model from settings — same fallback the
 // in-process runner (src/main/agents.ts) applies, so cron runs respect the
 // user's "always use sonnet" preference when the schedule itself has no
@@ -1043,22 +959,6 @@ async function runSchedule(id) {
   }
   if (readDisabled().has(id)) {
     log(`run: schedule ${id} kill-switched (agents/disabled.json) — skipping`)
-    return 0
-  }
-
-  // Budget spawn-gate — refuse if today's spend hit the daily cap or this
-  // agent's per-agent cap. Mirrors src/main/budgets.gateSpawn so cron-fired
-  // runs respect the same boundary as in-process /bg spawns.
-  const budget = budgetAllowsSpawn(sched.agentId)
-  if (budget !== true && budget.refused) {
-    log(`run: schedule ${id} refused by budget gate — ${budget.refused}`)
-    fileHitl({
-      title: `Cron run refused · ${sched.agentTitle}`,
-      action: `Budget cap reached: ${budget.refused}. /budget override <Nh> to bypass.`,
-      detail: `schedule ${id} · agent ${sched.agentId}`,
-      repo: sched.repoLabel,
-      repoRoot: sched.repoRoot,
-    })
     return 0
   }
 

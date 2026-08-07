@@ -3399,7 +3399,7 @@ export function SettingsPanel({
                   id="inbox"
                   icon={Inbox}
                   title="Inbox"
-                  desc="Global human-needed queue. Manual blockers, cron failures, and budget alerts always go here; completion hooks are configurable."
+                  desc="Global human-needed queue. Manual blockers and cron failures always go here; completion hooks are configurable."
                 >
                   <div className="space-y-2">
                     <Toggle
@@ -3708,7 +3708,7 @@ export function SettingsPanel({
                           <span>/reset-state &lt;agent&gt;</span>
                           <span>/bg [@repo] &lt;prompt&gt;</span>
                           <span>/bg list · /bg cancel &lt;n&gt;</span>
-                          <span>/budget [set &lt;usd&gt;]</span>
+                          <span>/spend</span>
                           <span>/status · /harness · /activity</span>
                           <span>/install &lt;agent&gt;</span>
                           <span>/rebuild</span>

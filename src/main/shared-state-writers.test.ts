@@ -21,7 +21,7 @@ import { join, relative, resolve } from 'node:path'
 const ROOT = resolve(import.meta.dir, '../..')
 
 /** State files that more than one PROCESS read-modify-writes. */
-const SHARED_STATE = ['hitl.json', 'monitors.json', 'schedules.json', 'budgets.json'] as const
+const SHARED_STATE = ['hitl.json', 'monitors.json', 'schedules.json'] as const
 type SharedFile = (typeof SHARED_STATE)[number]
 
 function sourceFiles(): string[] {
@@ -77,10 +77,6 @@ const EXPECTED: Record<
     'src/main/remote-host-script.cjs': 'updateJsonListShared',
     'bin/terminal-cron': 'updateJsonListShared',
     'bin/terminal-mcp-server': 'read-only',
-  },
-  'budgets.json': {
-    'src/main/budgets.ts': 'updateJsonState',
-    'bin/terminal-cron': 'read-only',
   },
 }
 

@@ -45,7 +45,7 @@ export const COMMAND_SPECS: TgCommandSpec[] = [
   { cmds: ['/about', '/whoami'] },
   { cmds: ['/install'] },
   { cmds: ['/bg'], nl: ['/bg [@repo] [claude|codex|cursor] [haiku|sonnet|opus] <prompt>'] },
-  { cmds: ['/budget'], nl: ['/budget', '/budget set <usd>'] },
+  { cmds: ['/spend'], nl: ['/spend'] },
 ]
 
 /** Every token (primary + alias) → its spec. */
@@ -90,9 +90,8 @@ export const HELP_TEXT = [
   '/bg [@repo] [claude|codex|cursor] [model] <prompt>',
   '/bg list · /bg cancel <n|id>',
   '',
-  'BUDGETS',
-  '/budget · /budget set <usd> · /budget set <agent> <usd>',
-  '/budget override <Nh|Nm|clear>',
+  'SPEND',
+  '/spend   today’s AI spend (observability only — no caps)',
   '',
   'INFRASTRUCTURE',
   '/sessions · /tail <id|n> · /rebuild · /about',

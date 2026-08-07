@@ -284,14 +284,6 @@ import {
   startListenerInboxWatcher,
 } from './listeners'
 import {
-  readBudgets,
-  setDailyCap,
-  setAgentCap,
-  setOverride,
-  gateSpawn,
-  startBudgetWatcher,
-} from './budgets'
-import {
   spawnBgTask,
   listBgTasks,
   getBgTask,
@@ -2068,33 +2060,6 @@ ipcMain.handle(
   },
 )
 
-// Budget IPCs (#0002).
-ipcMain.handle('budgets:get', () => readBudgets())
-ipcMain.handle('budgets:setDaily', (_e, usd: number) => {
-  const r = setDailyCap(usd)
-  emitActivity({ kind: 'info', title: 'Daily budget updated', detail: `$${usd.toFixed(2)}` })
-  return r
-})
-ipcMain.handle('budgets:setAgent', (_e, agentId: string, usd: number) => {
-  const r = setAgentCap(agentId, usd)
-  emitActivity({
-    kind: 'info',
-    title: `Agent budget updated · ${agentId}`,
-    detail: `$${usd.toFixed(2)}`,
-  })
-  return r
-})
-ipcMain.handle('budgets:override', (_e, durationMs: number) => {
-  const r = setOverride(durationMs)
-  emitActivity({
-    kind: 'info',
-    title: 'Budget override set',
-    detail: `${Math.round(durationMs / 60000)} minutes`,
-  })
-  return r
-})
-ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
-
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
 
@@ -2390,8 +2355,6 @@ app
     startLoopWatcher()
     // Paired-loop listener — always-on channel between a loop's two live sessions.
     startLoopListener(loopListenerDeps)
-    // Budget watcher — fires HITL pings at warnAt thresholds.
-    startBudgetWatcher()
     // Local automation listener inbox — processes JSON files dropped into
     // ~/.config/TerMinal/automation-inbox/new while the app is running.
     startListenerInboxWatcher()
