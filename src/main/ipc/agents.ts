@@ -184,6 +184,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
           agentTitle: agent.title,
           engine: resolvedEngine,
           model: deps.remoteEngineModel(remote, resolvedEngine, model ?? agent.model),
+          effort: effort ?? agent.effort,
           steps,
           inPlace: agent.inPlace,
         })
@@ -232,6 +233,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
             agentTitle: `Implement #${t.id}`,
             engine,
             model: deps.remoteEngineModel(remote, engine, model),
+            effort,
             steps,
           })
           if ('error' in run) return run
@@ -339,6 +341,7 @@ export function registerAgentsIpc(deps: AgentsIpcDeps): void {
           agentTitle: `${kind === 'review' ? 'Review' : 'Iterate'} ${forgeSym}${pr.iid}`,
           engine,
           model: deps.remoteEngineModel(remote, engine, model),
+          effort,
           steps,
           prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
         })

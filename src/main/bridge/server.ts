@@ -268,6 +268,9 @@ export type SpawnInput = {
   /** Absolute repo path, chosen from `repos()`. */
   cwd: string
   engine?: string
+  /** Reasoning-effort level for the engine; the desktop validates it against
+   *  the engine's set and drops anything off-list. */
+  effort?: string
   /** What the new agent should do first. Optional — omit for a bare session. */
   task?: string
 }
@@ -677,6 +680,7 @@ export function createBridgeHandler(
             input = {
               cwd: parsed.cwd,
               engine: typeof parsed.engine === 'string' ? parsed.engine : undefined,
+              effort: typeof parsed.effort === 'string' ? parsed.effort : undefined,
               task: typeof parsed.task === 'string' ? parsed.task.trim() || undefined : undefined,
             }
           } catch (e) {

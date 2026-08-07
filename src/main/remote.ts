@@ -32,6 +32,9 @@ export type RemoteRunStartInput = {
   agentTitle: string
   engine: Engine
   model?: string
+  /** Reasoning-effort level; the remote runner validates it against the
+   *  engine's set and drops anything off-list. */
+  effort?: string
   steps: { label: string; prompt: string }[]
   inPlace?: boolean
   prRef?: { iid: number; sourceBranch: string }
@@ -269,6 +272,9 @@ export const remoteRuns = {
         ...run,
         worktreesDir: run.worktreesDir ?? remote.daemon?.worktreesDir,
         enginePath: run.enginePath ?? remote.daemon?.engines?.[run.engine]?.path,
+        // Same fallback ladder as models: explicit pick → the host's own
+        // per-engine default effort configured in Settings → Remote hosts.
+        effort: run.effort ?? remote.daemon?.engines?.[run.engine]?.defaultEffort ?? undefined,
         contextPreamble: run.contextPreamble ?? readSettings().inbox.agentContextPreamble,
       },
     }),
