@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Ticket as TicketIcon, ExternalLink } from 'lucide-react'
 import { TicketsBrowser } from '../../components/TicketsBrowser'
 import { useWebSurface, BrowserToolbar } from '../browser/webSurface'
@@ -51,6 +51,8 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
   // A ticket's "open in Linear view" navigates here with a specific issue URL —
   // it overrides the active view's start URL for that visit only.
   const [viewUrlOverride, setViewUrlOverride] = useState<string | null>(null)
+  // Mirrors providerWebview for the nav handler (state would be stale there).
+  const providerWebviewRef = useRef<TicketView | null>(null)
 
   useEffect(
     () =>
@@ -59,8 +61,12 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
         const url = typeof ev.payload?.viewUrl === 'string' ? ev.payload.viewUrl : ''
         if (!url) return
         setViewUrlOverride(url)
-        // Land on the first view that shares the URL's host (the synthesized
-        // Linear view for linear.app issues); fall back to the first view.
+        // Linear mode: the provider webview IS the primary slot — deep-link it.
+        if (providerWebviewRef.current) {
+          setActive(0)
+          return
+        }
+        // Otherwise land on the first view sharing the URL's host.
         setViews((vs) => {
           const host = (() => {
             try {
@@ -87,17 +93,28 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
         if ('error' in cfg) {
           setViews([])
           setProviderWebview(null)
+          providerWebviewRef.current = null
           return
         }
         const vs = cfg.views || []
-        setViews(vs)
-        setProviderWebview(
-          cfg.provider === 'webview' && cfg.webview?.url
-            ? { label: cfg.webview.label || 'Tickets', url: cfg.webview.url }
-            : null,
-        )
+        // Linear mode is webview-first: Linear's own UI takes the primary slot
+        // (no local md-style browser at all — same feel as a webview provider).
+        // The provider-get call always synthesizes a linear.app view for linear
+        // repos, so one is guaranteed to exist.
+        const linearIdx =
+          cfg.provider === 'linear' ? vs.findIndex((v) => v.url.includes('linear.app')) : -1
+        const primaryView =
+          linearIdx >= 0
+            ? { label: vs[linearIdx].label || 'Linear', url: vs[linearIdx].url }
+            : cfg.provider === 'webview' && cfg.webview?.url
+              ? { label: cfg.webview.label || 'Tickets', url: cfg.webview.url }
+              : null
+        const rest = linearIdx >= 0 ? vs.filter((_, i) => i !== linearIdx) : vs
+        setViews(rest)
+        setProviderWebview(primaryView)
+        providerWebviewRef.current = primaryView
         // A view flagged `default` opens first; index+1 since 0 is the primary slot.
-        const di = vs.findIndex((v) => v.default)
+        const di = rest.findIndex((v) => v.default)
         if (di >= 0) setActive(di + 1)
       })
       .catch(() => {})
