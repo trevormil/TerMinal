@@ -260,8 +260,8 @@ function fileInbox(title, action, severity) {
 }
 
 // ---- human, email-like notification copy -----------------------------------
-// "meridian.trevormil.com is down — the uptime check returned HTTP 503" reads
-// like mail; "Monitor fail · meridian / HTTP 503" reads like a log line. The
+// "status.example.com is down — the uptime check returned HTTP 503" reads
+// like mail; "Monitor fail · status / HTTP 503" reads like a log line. The
 // inbox is where you triage from your phone, so it gets the friendly version.
 const KIND = {
   http: 'uptime check',

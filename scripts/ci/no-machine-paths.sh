@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Tracked files must not carry a personal machine path or an internal program
-# name — this repo is public, and a fixture with someone's real home directory
+# Tracked files must not carry a personal machine path, an internal program
+# name, a personal domain, or an Apple team id — this repo is public, and a
+# fixture with someone's real home directory, private host, or signing identity
 # in it leaks and dates instantly. Placeholder homes (/Users/you, /Users/x,
-# /Users/example) are fine and used deliberately in tests.
+# /Users/example) and example.com hosts are fine and used deliberately in tests.
 #
 # The [b]racket in each pattern is what keeps this file from matching itself;
 # it is a no-op to the regex engine. vendor/ is a third-party checkout we do
 # not control.
 set -uo pipefail
 
-PATTERN='g[a]untlet|/Users/[t]revormiller'
+PATTERN='g[a]untlet|/Users/[t]revormiller|trevormil\.[c]om|8UWQ[4]86J94'
 
 # -i matters more than it looks: the Capitalized org name is the spelling that
 # appears in prose (READMEs, ADR context, comments), which is exactly where the
