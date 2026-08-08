@@ -347,13 +347,16 @@ function areaCandidates(area) {
   )
 }
 
+// v2 by default: v1 only on positive evidence of root-level v1 state dirs
+// (mirrors src/main/project-layout.ts detectProjectLayout).
 function hasV2Layout(root) {
-  return (
-    existsSync(join(root, '.TerMinal', 'template.json')) ||
-    ['backlog', 'sessions', 'reviews', 'checks', 'reports'].some((area) =>
-      existsSync(join(root, areaCandidates(area)[0])),
-    )
-  )
+  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+  if (existsSync(join(root, '.TerMinal', 'template.json'))) return true
+  if (areas.some((area) => existsSync(join(root, areaCandidates(area)[0])))) return true
+  return !areas.some((area) => {
+    const rels = areaCandidates(area)
+    return rels.length > 1 && existsSync(join(root, rels[1]))
+  })
 }
 
 function areaPath(root, area) {
@@ -1661,55 +1664,6 @@ function loopCommand(sub, rest) {
   usage()
 }
 
-// ---- capability modules: seed scaffolding into a repo (copy engine + template.json
-// record). Schedules are seeded by the TerMinal app (Admin tab), not the CLI.
-function templateModulesDir() {
-  // terminal-cli lives at <TerMinal>/bin/terminal-cli → ../templates/project-template/modules
-  return join(import.meta.dir, '..', 'templates', 'project-template', 'modules')
-}
-function recordSeededModules(repo, ids, profile) {
-  const p = join(repo, '.TerMinal', 'template.json')
-  let j = { schema: 'terminal.project-template', version: 2 }
-  try {
-    j = JSON.parse(readFileSync(p, 'utf8'))
-  } catch {}
-  if (profile) j.profile = profile
-  j.modules = j.modules || {}
-  for (const id of ids) j.modules[id] = { seeded: true, enabled: j.modules[id]?.enabled ?? false }
-  mkdirSync(join(repo, '.TerMinal'), { recursive: true })
-  writeJsonAtomicShared(p, j)
-}
-function seedModuleCli(repo, id) {
-  if (!repo || !id) {
-    console.error('usage: terminal-cli seed-module <repo> <module-id>')
-    process.exit(2)
-  }
-  const script = join(templateModulesDir(), 'seed-module.sh')
-  if (!existsSync(script)) {
-    console.error('seed engine not found: ' + script)
-    process.exit(1)
-  }
-  execFileSync('bash', [script, repo, id], { stdio: 'inherit' })
-  recordSeededModules(repo, [id])
-}
-function applyProfileCli(repo, profile) {
-  if (!repo || !profile) {
-    console.error('usage: terminal-cli apply-profile <repo> <web-service|library|cli|worker>')
-    process.exit(2)
-  }
-  const dir = templateModulesDir()
-  const reg = JSON.parse(readFileSync(join(dir, 'modules.json'), 'utf8'))
-  const ids = (reg.profiles || {})[profile]
-  if (!ids) {
-    console.error('unknown profile: ' + profile)
-    process.exit(2)
-  }
-  for (const id of ids)
-    execFileSync('bash', [join(dir, 'seed-module.sh'), repo, id], { stdio: 'inherit' })
-  recordSeededModules(repo, ids, profile)
-  console.log('seeded [' + profile + ']: ' + ids.join(', '))
-}
-
 // ---- remote sessions (the phone) -------------------------------------------
 // Self-contained on purpose: this file is a standalone Bun script the runner
 // injects into agent scripts, so it cannot import from src/main.
@@ -2096,12 +2050,6 @@ function remoteCommand(sub, rest) {
 
 const [, , cmd, ...args] = process.argv
 switch (cmd) {
-  case 'seed-module':
-    seedModuleCli(args[0], args[1])
-    break
-  case 'apply-profile':
-    applyProfileCli(args[0], args[1])
-    break
   case 'loop':
     loopCommand(args[0], args.slice(1))
     break

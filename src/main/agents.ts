@@ -1194,7 +1194,7 @@ CONVENTIONS TO READ BEFORE WRITING THE SCRIPT:
   1. CLAUDE.md (root) — project conventions and global rules.
   2. \`tm-agent-spec scripts\` — the design + helper reference (repo .agents/scripts.md overrides the plugin default).
   3. \`tm-agent-spec forge\` — auto-mergeable label + forge command mapping.
-  4. Existing example: .agents/health.sh when the repo has one (bootstrapped repos carry it) — the cheap-precheck-then-LLM pattern; the health CONTRACT is \`tm-agent-spec health\`.
+  4. Existing example: ~/.config/TerMinal/scripts/health.sh (global default; a repo may override at .agents/health.sh) — the cheap-precheck-then-LLM pattern; the health CONTRACT is \`tm-agent-spec health\`.
   5. ~/.config/TerMinal/plugin/skills/ticket/EXAMPLE.md — ticket schema (incl. depends_on).
   6. Existing scripts in the target dir — don't duplicate ids; pick a distinct kebab-case id.
 

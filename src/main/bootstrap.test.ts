@@ -16,39 +16,30 @@ describe('classifyBootstrapStatus', () => {
     expect(status.missing).toEqual([...BOOTSTRAP_MARKER_LABELS])
   })
 
-  test('partial lists missing markers', () => {
-    const present = new Set(['.agents'])
-    const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
-    expect(status.state).toBe('partial')
-    expect(status.bootstrapped).toBe(false)
-    expect(status.missing).toEqual(['docs'])
-    expect(status.message).toContain('partially bootstrapped')
-  })
-
   // The markers must describe what bootstrap LEAVES in a repo. Workflow state
-  // moved to the per-project sidecar and skills moved to the global plugin, so
-  // a repo that is fully bootstrapped AND fully migrated has neither backlog/
-  // nor sessions/ nor any skills dir — requiring them reported exactly the
-  // repos that had done everything right as "partially bootstrapped".
-  test('a fully migrated repo with no in-repo state or skills reads as full', () => {
-    const present = new Set(['.agents', 'docs'])
+  // moved to the per-project sidecar, skills moved to the global plugin, and
+  // the default script agents moved to the global scripts dir — so a fully
+  // bootstrapped repo carries only the docs skeleton (plus repo-owned config
+  // files that make poor markers: CI and CLAUDE.md predate TerMinal in many
+  // repos).
+  test('a fully migrated repo with only docs reads as full', () => {
+    const present = new Set(['docs'])
     const status = classifyBootstrapStatus('/repo', (rel) => present.has(rel))
     expect(status.state).toBe('full')
     expect(status.bootstrapped).toBe(true)
   })
 
-  test('in-repo state and skill dirs neither help nor hurt', () => {
-    const legacy = new Set(['backlog', 'sessions', '.codex/skills', '.claude/skills'])
+  test('legacy .agents and in-repo state neither help nor hurt', () => {
+    const legacy = new Set(['.agents', 'backlog', 'sessions', '.codex/skills', '.claude/skills'])
     const status = classifyBootstrapStatus('/repo', (rel) => legacy.has(rel))
     expect(status.state).toBe('none')
   })
 
   test('unreadable marker checks are treated as missing', () => {
-    const status = classifyBootstrapStatus('/repo', (rel) => {
-      if (rel === '.agents') return true
+    const status = classifyBootstrapStatus('/repo', () => {
       throw new Error('EACCES')
     })
-    expect(status.state).toBe('partial')
+    expect(status.state).toBe('none')
     expect(status.missing).toContain('docs')
   })
 

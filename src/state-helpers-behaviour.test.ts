@@ -29,17 +29,26 @@ let stateDir: string
 
 const PLUGIN_BIN = join(import.meta.dir, '..', 'plugin', 'bin')
 
+// Deliberately NOT setting TERMINAL_*_DIR: this is the plain-shell case,
+// where a helper must resolve the sidecar itself. That also means the
+// TERMINAL_* vars a TerMinal-hosted dev shell carries (the app injects the
+// active repo's sidecar env into every session) must be STRIPPED — inherited,
+// they win the helpers' env fast-path and every assertion here resolves to the
+// developer's real sidecar instead of the fixture's.
+const cleanEnv = () =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(([k]) => !/^TERMINAL_/.test(k) && !/^OBSIDIAN_/.test(k)),
+  )
+
 const run = (script: string, args: string[] = []) =>
   execFileSync('bash', [script, ...args], {
     cwd: repo,
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...cleanEnv(),
       HOME: join(tmp, 'home'),
       TERMINAL_REPO_STATE_DIR: stateDir,
       PATH: `${PLUGIN_BIN}:${process.env.PATH}`,
-      // Deliberately NOT setting TERMINAL_*_DIR: this is the plain-shell case,
-      // where a helper must resolve the sidecar itself.
     },
   }).trim()
 

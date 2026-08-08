@@ -1083,10 +1083,14 @@ function RepoStatePanel() {
     try {
       const r = await window.gt.repoState.migrate()
       if (r.error) setNote(r.error)
-      else if (r.moved === 0) setNote('Nothing to move — this repo is already clean.')
+      else if (r.moved === 0 && !r.sweptCopies)
+        setNote('Nothing to move — this repo is already clean.')
       else
         setNote(
           `Moved ${r.moved} file(s) into the sidecar.` +
+            (r.sweptCopies
+              ? ` Banked ${r.sweptCopies} plugin-served skill/hook copies in .claude/pre-tm-backup.`
+              : '') +
             (r.skipped.length
               ? ` ${r.skipped.length} left in the repo (already present in the sidecar) — reconcile by hand.`
               : ' Commit the deletions in the repo to finish.'),
@@ -1107,11 +1111,20 @@ function RepoStatePanel() {
           <div className="truncate font-mono text-[10.5px] text-zinc-500">
             {status?.path || 'no repo selected'}
           </div>
-          <div className={`text-[10.5px] ${status?.pending ? 'text-amber-400' : 'text-zinc-500'}`}>
+          <div
+            className={`text-[10.5px] ${status?.pending || status?.legacyCopies ? 'text-amber-400' : 'text-zinc-500'}`}
+          >
             {!status
               ? 'Checking…'
-              : status.pending
-                ? `${status.pending} file(s) still in the repo — move them out so collaborators don't get them`
+              : status.pending || status.legacyCopies
+                ? [
+                    status.pending ? `${status.pending} state file(s) still in the repo` : '',
+                    status.legacyCopies
+                      ? `${status.legacyCopies} plugin-served skill/hook copies`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' + ') + ' — move them out so collaborators don’t get them'
                 : status.isRepo
                   ? `versioned · ${status.commits} commit${status.commits === 1 ? '' : 's'}`
                   : 'nothing in the repo to move'}
@@ -1119,7 +1132,7 @@ function RepoStatePanel() {
         </div>
         <button
           onClick={migrate}
-          disabled={busy || !status?.pending}
+          disabled={busy || !(status?.pending || status?.legacyCopies)}
           className="flex items-center gap-1.5 rounded-lg border border-[var(--gt-border)] bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-[var(--gt-accent)]/40 disabled:opacity-50"
         >
           {busy ? (

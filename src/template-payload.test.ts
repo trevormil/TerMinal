@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 // What the template CONTAINS is what a new repo gets: `scaffoldProject` copies
@@ -27,23 +27,23 @@ describe('the project template ships no workflow state', () => {
     expect(offenders).toEqual([])
   })
 
-  test('.TerMinal carries the layout marker only', () => {
-    // Config that is shared with the team belongs in the repo; everything
-    // personal (snippets, widgets boilerplate, state) does not. widgets.json
-    // and snippets.json stopped being seeded — snippets are sidecar/global
-    // state, and repo widgets are an opt-in surface a project adds on purpose.
-    const entries = readdirSync(join(TEMPLATE, '.TerMinal')).sort()
-    expect(entries).toEqual(['template.json'])
+  test('no .TerMinal at all — v2 is the default layout, no marker needed', () => {
+    expect(existsSync(join(TEMPLATE, '.TerMinal'))).toBe(false)
   })
 
-  test('no per-repo skill copies for either harness', () => {
-    expect(existsSync(join(TEMPLATE, '.claude', 'skills'))).toBe(false)
-    expect(existsSync(join(TEMPLATE, '.codex', 'skills'))).toBe(false)
+  test('no per-repo harness or agent boilerplate — all global now', () => {
+    // Skills/hooks/bin ship with the tm plugin; default script agents are
+    // seeded once into ~/.config/TerMinal/scripts by the plugin install; the
+    // forge selector is auto-detected (sidecar override); the Codex stop hook
+    // is plugin-served. A new repo gets NONE of these directories.
+    expect(existsSync(join(TEMPLATE, '.claude'))).toBe(false)
+    expect(existsSync(join(TEMPLATE, '.codex'))).toBe(false)
+    expect(existsSync(join(TEMPLATE, '.agents'))).toBe(false)
   })
 
-  test('what it DOES ship is the shared contracts (a guard matching nothing is not a guard)', () => {
-    expect(statSync(join(TEMPLATE, '.agents')).isDirectory()).toBe(true)
+  test('what it DOES ship is repo-owned content (a guard matching nothing is not a guard)', () => {
     expect(statSync(join(TEMPLATE, 'docs')).isDirectory()).toBe(true)
+    expect(statSync(join(TEMPLATE, '.github')).isDirectory()).toBe(true)
     expect(existsSync(join(TEMPLATE, 'CLAUDE.md'))).toBe(true)
   })
 })
