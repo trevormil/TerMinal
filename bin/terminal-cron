@@ -450,13 +450,16 @@ function areaCandidates(area) {
   )
 }
 
+// v2 by default: v1 only on positive evidence of root-level v1 state dirs
+// (mirrors src/main/project-layout.ts detectProjectLayout).
 function hasV2Layout(root) {
-  return (
-    existsSync(join(root, '.TerMinal', 'template.json')) ||
-    ['backlog', 'sessions', 'reviews', 'checks', 'reports'].some((area) =>
-      existsSync(join(root, areaCandidates(area)[0])),
-    )
-  )
+  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+  if (existsSync(join(root, '.TerMinal', 'template.json'))) return true
+  if (areas.some((area) => existsSync(join(root, areaCandidates(area)[0])))) return true
+  return !areas.some((area) => {
+    const rels = areaCandidates(area)
+    return rels.length > 1 && existsSync(join(root, rels[1]))
+  })
 }
 
 function areaPath(root, area) {

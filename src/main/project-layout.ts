@@ -37,13 +37,20 @@ export function projectAreaCandidates(area: ProjectArea): string[] {
   return rels.filter((rel, index) => rels.indexOf(rel) === index)
 }
 
+// v2 is the DEFAULT: a clean repo (no marker, no state dirs at all) is v2, so
+// the template no longer needs to seed a .TerMinal/template.json marker and a
+// collaborator's fresh clone of a fully-migrated repo resolves identically.
+// v1 is detected only by the positive evidence of root-level v1 state dirs.
 export function detectProjectLayout(repoRoot: string): ProjectLayoutVersion {
-  if (!repoRoot) return 'v1'
+  if (!repoRoot) return 'v2'
   if (existsSync(join(repoRoot, PROJECT_LAYOUT_MARKER))) return 'v2'
   for (const area of ['backlog', 'sessions', 'reviews', 'checks', 'reports'] as ProjectArea[]) {
     if (existsSync(join(repoRoot, V2_REL[area]))) return 'v2'
   }
-  return 'v1'
+  for (const area of ['backlog', 'sessions', 'reviews', 'checks', 'reports'] as ProjectArea[]) {
+    if (existsSync(join(repoRoot, V1_REL[area]))) return 'v1'
+  }
+  return 'v2'
 }
 
 export function projectAreaPath(repoRoot: string, area: ProjectArea): string {

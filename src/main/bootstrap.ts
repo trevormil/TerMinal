@@ -13,10 +13,11 @@ export type BootstrapStatus = {
 // and sessions — workflow state lives in the per-project sidecar now, so a
 // CORRECTLY migrated repo has neither directory, and marking them required
 // would report every migrated repo as "partial" forever.
-export const BOOTSTRAP_MARKERS = [
-  { label: '.agents', anyOf: ['.agents'] },
-  { label: 'docs', anyOf: ['docs'] },
-] as const
+// `.agents` used to be a marker too. It is no longer seeded (default script
+// agents ship with the plugin and land in the global scripts dir), so its
+// absence says nothing — a fully bootstrapped repo carries only docs + the
+// repo-owned config files.
+export const BOOTSTRAP_MARKERS = [{ label: 'docs', anyOf: ['docs'] }] as const
 
 export const BOOTSTRAP_MARKER_LABELS = BOOTSTRAP_MARKERS.map((m) => m.label)
 

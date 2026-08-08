@@ -74,10 +74,10 @@ function isEditableNonTerminalTarget(target: EventTarget | null): boolean {
 
 export type Info = { sessionId: string; cwd: string }
 
-// Banner shown at the top of a session when the repo lacks .agents/ — gives
-// a one-click way to run project-template/bootstrap.sh against it. Dismissed
-// state is per-repo + persisted; the banner doesn't come back for a repo the
-// user explicitly dismissed.
+// Banner shown at the top of a session when the repo lacks the docs skeleton —
+// gives a one-click way to run project-template/bootstrap.sh against it.
+// Dismissed state is per-repo + persisted; the banner doesn't come back for a
+// repo the user explicitly dismissed.
 function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boolean }) {
   const [state, setState] = useState<'unknown' | 'needed' | 'ok' | 'running' | 'done' | 'error'>(
     'unknown',
@@ -97,7 +97,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   useEffect(() => {
     if (!active || !repoRoot || dismissed) return
     let cancelled = false
-    window.gt.workspace.isBootstrapped(repoRoot).then((r) => {
+    void window.gt.workspace.isBootstrapped(repoRoot).then((r) => {
       if (cancelled) return
       setMessage(r.message || '')
       setState(r.bootstrapped ? 'ok' : 'needed')
@@ -126,7 +126,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
         {state === 'done' ? (
           <span className="flex-1">
             Bootstrapped{templateSha ? ` (template ${templateSha.slice(0, 7)})` : ''} — reload tabs
-            to pick up .agents/ + skills.
+            to pick up the new files.
           </span>
         ) : state === 'running' ? (
           <span className="flex-1">Running bootstrap.sh…</span>
@@ -135,7 +135,7 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
         ) : (
           <span className="flex-1">
             {message ||
-              "This repo isn't bootstrapped with project-template — agents, skills, .TerMinal state, or docs are missing."}
+              "This repo isn't bootstrapped with project-template — the docs skeleton is missing."}
           </span>
         )}
         <div className="flex items-center gap-1">
@@ -175,9 +175,11 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
           >
             <div className="mb-2 text-[13px] font-semibold text-zinc-100">Bootstrap this repo?</div>
             <p className="mb-3 text-[12px] leading-5 text-zinc-400">
-              This runs project-template/bootstrap.sh against this repo. It seeds TerMinal workflow
-              files for agents, skills, hooks, inbox notifications, tickets, sessions, reviews,
-              checks, docs, CI, snippets, widgets, PR/MR templates, and gitignore entries.
+              This runs project-template/bootstrap.sh against this repo. It seeds repo-owned content
+              only — CI, the docs skeleton, CLAUDE.md, PR/MR templates, .editorconfig, and gitignore
+              entries — and banks retired per-repo seeds (old skill copies, hooks, the forge
+              selector) in .claude/pre-tm-backup. Skills, hooks, state, and default agents are all
+              global now.
             </p>
             <div className="mb-3 rounded-md border border-[var(--gt-border)] bg-black/25 p-2 text-[11px] leading-5 text-zinc-500">
               Existing project data and docs are left in place. Workflow-owned files may be updated;
@@ -205,6 +207,103 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
         </div>
       )}
     </>
+  )
+}
+
+// Banner shown when a repo still carries pre-sidecar workflow leftovers:
+// state files (tickets/reviews/sessions) that belong in the per-project
+// sidecar, and per-repo skill/bin/hook copies the global tm plugin now
+// serves. One click runs the same one-time move as Settings → Updates →
+// Project state. Dismissed state is per-repo + persisted.
+function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean }) {
+  const [state, setState] = useState<'unknown' | 'needed' | 'ok' | 'running' | 'done' | 'error'>(
+    'unknown',
+  )
+  const [detail, setDetail] = useState('')
+  const dismissedKey = `gt.migrateDismissed.${repoRoot}`
+  const dismissed = (() => {
+    try {
+      return localStorage.getItem(dismissedKey) === '1'
+    } catch {
+      return false
+    }
+  })()
+  useEffect(() => {
+    if (!active || !repoRoot || dismissed) return
+    let cancelled = false
+    void window.gt.repoState.status(repoRoot).then((r) => {
+      if (cancelled) return
+      const parts: string[] = []
+      if (r.pending) parts.push(`${r.pending} workflow state file(s)`)
+      if (r.legacyCopies) parts.push(`${r.legacyCopies} plugin-served skill/hook copies`)
+      if (!parts.length) {
+        setState('ok')
+        return
+      }
+      setDetail(parts.join(' + '))
+      setState('needed')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [active, repoRoot, dismissed])
+  if (dismissed || state === 'unknown' || state === 'ok') return null
+  const run = async () => {
+    setState('running')
+    const r = await window.gt.repoState.migrate(repoRoot)
+    if (r.error) {
+      setDetail(r.error)
+      setState('error')
+    } else {
+      setDetail(
+        `Moved ${r.moved} state file(s) to the sidecar` +
+          (r.sweptCopies ? `, banked ${r.sweptCopies} old copies in .claude/pre-tm-backup` : '') +
+          (r.skipped.length ? `; ${r.skipped.length} left in place (already in the sidecar)` : '') +
+          '. Commit the deletions to finish.',
+      )
+      setState('done')
+    }
+  }
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] text-zinc-200">
+      <Wrench size={13} strokeWidth={2} className="shrink-0" />
+      {state === 'done' ? (
+        <span className="flex-1">{detail}</span>
+      ) : state === 'running' ? (
+        <span className="flex-1">Moving workflow state out of the repo…</span>
+      ) : state === 'error' ? (
+        <span className="flex-1 text-[var(--gt-red)]">Migration failed: {detail}</span>
+      ) : (
+        <span className="flex-1">
+          Old TerMinal files in this repo ({detail}) — workflow state lives in the per-project
+          sidecar now.
+        </span>
+      )}
+      <div className="flex items-center gap-1">
+        {state === 'needed' && (
+          <button
+            onClick={() => void run()}
+            className="rounded-md border border-amber-500/60 bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-zinc-100 hover:bg-amber-500/30"
+          >
+            Migrate
+          </button>
+        )}
+        <button
+          onClick={() => {
+            try {
+              localStorage.setItem(dismissedKey, '1')
+            } catch {
+              /* ignore */
+            }
+            setState('ok')
+          }}
+          title="Don't show this again for this repo"
+          className="rounded-md p-0.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+        >
+          <X size={11} strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -471,7 +570,7 @@ export function SessionView({
     let alive = true
     const raf = requestAnimationFrame(() => {
       if (!isRemote) {
-        window.gt.transcript().then((t) => {
+        void window.gt.transcript().then((t) => {
           if (alive && t.gitBranch) setBranch(t.gitBranch)
         })
         window.gt
@@ -886,6 +985,7 @@ export function SessionView({
     <div className="flex h-full flex-col">
       <div className={terminalTile ? 'hidden' : undefined}>
         <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
+        <MigrateBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
       </div>
       {repoOrient && ctx && active && !terminalTile && (
         <RepoOrientation ctx={ctx} onClose={closeRepoOrient} />

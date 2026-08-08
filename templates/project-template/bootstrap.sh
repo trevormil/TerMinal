@@ -3,15 +3,21 @@
 #
 #   ./bootstrap.sh /path/to/target-repo
 #
-# Seeds repo DATA only: agent config/scripts, CI, docs skeleton, the Codex stop
-# hook, and TerMinal project state scaffolds.
+# Seeds only what is genuinely REPO-OWNED: CI, the docs skeleton, CLAUDE.md,
+# PR/MR templates, .editorconfig, and .gitignore entries.
 #
-# NO skills are copied, for either harness — they ship globally via the tm
-# plugin (installed by the TerMinal app at ~/.config/TerMinal/plugin, exposed as
-# ~/.claude/skills/tm for Claude and ~/.codex/skills/tm-* for Codex). This
-# script also removes the per-repo skill copies that OLDER bootstraps installed,
-# for both harnesses. Workflow files are overwritten (they ARE the workflow);
-# your data and existing docs are never clobbered. Anything that would clobber
+# Everything else is global now and is NOT copied:
+#   - skills/hooks/bin  → the tm plugin (~/.config/TerMinal/plugin, installed
+#     by the TerMinal app; ~/.claude/skills/tm for Claude, ~/.codex/skills/tm-*
+#     for Codex)
+#   - default script agents (health, drift, coverage, …) → seeded once into
+#     ~/.config/TerMinal/scripts by the plugin install
+#   - workflow state (tickets, sessions, reviews) → the per-project sidecar
+#   - forge selection → auto-detected from origin (override via $FORGE or the
+#     sidecar `forge` file)
+#
+# This script also REMOVES the per-repo copies that OLDER bootstraps installed.
+# Your data and existing docs are never clobbered; anything that would clobber
 # an existing file is written alongside as `<name>.workflow` to merge by hand.
 #
 # For a brand-new repo, prefer `gh repo create --template <this-template>`
@@ -31,33 +37,11 @@ say() { printf '  %s\n' "$1"; }
 
 echo "Bootstrapping workflow into: $DST"
 
-if [ -f "$DST/.TerMinal/template.json" ]; then
-  LAYOUT="v2"
-elif [ -d "$DST/backlog" ] || [ -d "$DST/sessions" ] || [ -d "$DST/.reviews" ] || [ -d "$DST/.checks" ] || [ -d "$DST/reports" ]; then
-  LAYOUT="v1"
-else
-  LAYOUT="v2"
-fi
-say "project-template layout: $LAYOUT"
-
 # --- workflow data (overwrite — this is the workflow) ------------------------
-# Skills for BOTH harnesses are global (tm plugin). What stays per-repo is what
-# is genuinely repo-specific: the agent contracts, CI, and the Codex stop hook
-# (Codex resolves hooks from the project dir, so that one has no global home).
-echo "[workflow] .agents/ + CI + Codex stop hook"
-mkdir -p "$DST/.claude" "$DST/.codex" "$DST/.agents" "$DST/.github/workflows"
-cp -R "$SRC/.codex/hooks"   "$DST/.codex/"
-cp "$SRC/.codex/hooks.json" "$DST/.codex/hooks.workflow.json"
-# Agent CONTRACTS (.md) are NOT copied: they ship with the plugin and resolve
-# repo-first, so a repo carries one only when it actually overrides it. What is
-# still per-repo is the agent config, the executable bodies, and ownership.
-for f in "$SRC"/.agents/*.json "$SRC"/.agents/*.sh "$SRC"/.agents/owned.yml; do
-  [ -e "$f" ] && cp "$f" "$DST/.agents/"
-done
-chmod +x "$DST"/.agents/*.sh 2>/dev/null || true
+echo "[workflow] CI"
+mkdir -p "$DST/.github/workflows"
 cp "$SRC/.github/workflows/ci.yml" "$DST/.github/workflows/ci.yml"
-chmod +x "$DST/.codex/hooks/"*.sh 2>/dev/null || true
-say ".codex/hooks, .codex/hooks.workflow.json, .agents (config+scripts), .github/workflows/ci.yml installed"
+say ".github/workflows/ci.yml installed"
 
 # The global Codex skills are synced by the app, not by this script. Warn when
 # they are absent, otherwise a Codex agent in this repo silently has no skills
@@ -115,8 +99,14 @@ done
 for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
   migrate ".claude/hooks/$h"
 done
+# Codex stop hook: retired as a per-repo seed (the hook body ships with the
+# plugin). hooks.workflow.json was only ever a merge-by-hand seed artifact.
+migrate ".codex/hooks/stop-notify.sh"
+migrate ".codex/hooks.workflow.json"
+# Forge selector: origin autodetect covers it now ($FORGE / sidecar override).
+migrate ".claude/forge"
 rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" \
-      "$DST/.codex/skills" 2>/dev/null || true
+      "$DST/.codex/skills" "$DST/.codex/hooks" "$DST/.codex" 2>/dev/null || true
 # Drop settings.json hook entries that point at the removed scripts. If this
 # can't run (no python3 / unparseable settings.json), warn — otherwise every
 # tool call in the repo exits 127 on the missing hook until fixed by hand.
@@ -178,12 +168,27 @@ if [ -d "$PLUGIN_AGENTS" ] && [ -d "$DST/.agents" ]; then
   [ "$dropped" = 0 ] && [ "$kept" = 0 ] && say "no per-repo agent contracts to reconcile"
 fi
 
+# --- migrate: drop seeded script agents identical to the plugin default ------
+# Same rule as contracts: the default bodies (health.sh, drift.sh, …) are
+# global now (seeded once into ~/.config/TerMinal/scripts). An untouched
+# per-repo copy is duplication; a customized one is this repo's own agent.
+PLUGIN_SCRIPTS="${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/plugin/scripts"
+if [ -d "$PLUGIN_SCRIPTS" ] && [ -d "$DST/.agents" ]; then
+  sdropped=0
+  for f in "$DST"/.agents/*.sh "$DST"/.agents/*.json; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    if [ -f "$PLUGIN_SCRIPTS/$base" ] && cmp -s "$f" "$PLUGIN_SCRIPTS/$base"; then
+      rm "$f"
+      sdropped=$((sdropped + 1))
+    fi
+  done
+  [ "$sdropped" -gt 0 ] && say "removed $sdropped unmodified default script agent file(s) — global now"
+  rmdir "$DST/.agents" 2>/dev/null || true
+fi
+
 [ "$migrated" = 1 ] && say "moved old per-repo skills/bin/hooks (.claude + .codex) to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
                    || say "no legacy per-repo skill copies found"
-
-# forge selector — don't clobber an existing choice
-[ -f "$DST/.claude/forge" ] || cp "$SRC/.claude/forge" "$DST/.claude/forge"
-say "forge selector: $(cat "$DST/.claude/forge") (edit .claude/forge to switch github/gitlab)"
 
 # editor config + PR/MR templates — don't clobber existing project ones
 [ -f "$DST/.editorconfig" ] || cp "$SRC/.editorconfig" "$DST/.editorconfig"
@@ -194,37 +199,12 @@ mkdir -p "$DST/.github" "$DST/.gitlab/merge_request_templates"
   cp "$SRC/.gitlab/merge_request_templates/Default.md" "$DST/.gitlab/merge_request_templates/Default.md"
 say ".editorconfig + PR/MR templates seeded (existing left untouched)"
 
-# settings.json — don't clobber an existing one (and don't churn a
-# .workflow copy when the existing file already matches the template)
-if [ -f "$DST/.claude/settings.json" ]; then
-  if cmp -s "$SRC/.claude/settings.json" "$DST/.claude/settings.json"; then
-    say "settings.json already matches the template"
-  else
-    cp "$SRC/.claude/settings.json" "$DST/.claude/settings.workflow.json"
-    say "settings.json EXISTS → wrote settings.workflow.json (merge the deny list by hand)"
-  fi
-else
-  cp "$SRC/.claude/settings.json" "$DST/.claude/settings.json"
-  say "settings.json installed"
-fi
-
-# --- data scaffolds -----------------------------------------------------------
-# Workflow state (tickets, sessions, reviews, checks, reports) does NOT live in
-# the repo any more: it goes to a per-project sidecar outside it, so a repo you
-# share with collaborators never receives your tickets and reviews. Only the
-# layout marker and repo-level config are seeded here. Existing in-repo state is
-# left exactly where it is — Settings → Updates offers the one-time move, and
-# reads still merge it until then.
-echo "[data] project config ($LAYOUT)"
-mkdir -p "$DST/.TerMinal"
-[ -f "$DST/.TerMinal/template.json" ] || \
-  cp "$SRC/.TerMinal/template.json" "$DST/.TerMinal/template.json"
-say "state lives in the sidecar (see Settings → Updates → Project state)"
-# Widgets and snippets are deliberately NOT seeded any more. Personal snippets
-# live in the sidecar / global config; repo widgets are an opt-in surface a
-# project ships on purpose (and are disabled by default in Settings → Security)
-# — seeding boilerplate copies into every repo served neither. Existing copies
-# in already-bootstrapped repos are left alone.
+# .claude/settings.json is no longer seeded: the main-merge gate and stop
+# hooks are plugin-served globally, and the deny list belongs in the user's
+# own ~/.claude/settings.json. An existing repo copy is left untouched.
+# Workflow state (tickets, sessions, reviews, checks, reports) lives in the
+# per-project sidecar — nothing to scaffold in the repo, and no layout marker:
+# a clean repo IS the v2 layout (v1 is detected from its root state dirs).
 
 # --- docs skeleton (seed only if absent) -------------------------------------
 echo "[docs] docs/{decisions,runbooks,learnings} + architecture.md"
@@ -276,8 +256,6 @@ cat <<EOF
 Done. Next steps in $DST:
   1. Fill the placeholders in CLAUDE.md (or merge CLAUDE.workflow.md if present).
   2. Adapt .github/workflows/ci.yml scripts to your project.
-  3. If you had a Claude settings.json, merge settings.workflow.json into it.
-  4. Merge .codex/hooks.workflow.json into your active Codex hooks config if you want repo-local Codex completion Inbox items.
-  5. Commit the scaffold on a feature branch (never main — global §8).
-  6. Start working: /tm:session-start "<goal>"  →  /tm:ticket  →  /tm:pr-creation  →  code-review agent
+  3. Commit the scaffold on a feature branch (never main — global §8).
+  4. Start working: /tm:session-start "<goal>"  →  /tm:ticket  →  /tm:pr-creation  →  code-review agent
 EOF

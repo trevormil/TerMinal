@@ -140,17 +140,15 @@ describe('no private machine references', () => {
   }
 })
 
-describe('template agent specs have no double-path bugs', () => {
-  const TEMPLATE = join(import.meta.dir, '..', 'templates', 'project-template')
-
-  // `.codex/skills` used to be checked here too. The mirror is retired: Codex
-  // now loads the same skills globally from ~/.codex/skills/tm-*, synced from
-  // this plugin, so `plugin/skills` above is the only copy left to guard.
-  test('.agents', () => {
+describe('default script agents have no double-path bugs', () => {
+  // These used to live in templates/project-template/.agents (copied into
+  // every repo); they ship with the plugin now and are seeded once into the
+  // global scripts dir.
+  test('plugin/scripts', () => {
     const hits: string[] = []
-    for (const file of walkFiles(join(TEMPLATE, '.agents'))) {
+    for (const file of walkFiles(join(ROOT, 'scripts'))) {
       for (const l of readFileSync(file, 'utf8').split('\n'))
-        if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(TEMPLATE.length + 1)}: ${l.trim()}`)
+        if (DOUBLED_PATH.test(l)) hits.push(`${file.slice(ROOT.length + 1)}: ${l.trim()}`)
     }
     expect(hits).toEqual([])
   })

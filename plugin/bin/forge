@@ -2,10 +2,12 @@
 # Print the active forge for this repo: "github" or "gitlab".
 #
 # Resolution order:
-#   1. .claude/forge file (explicit override — required for self-hosted GitLab)
-#   2. $FORGE env var
-#   3. auto-detect from origin remote (github.com -> github; *gitlab* -> gitlab)
-#   4. default: github
+#   1. .claude/forge file (legacy in-repo override — no longer seeded, still honored)
+#   2. sidecar `forge` file (per-repo override outside the repo — required for
+#      self-hosted GitLab; write with: echo gitlab > "$(tm-state-dir forge)")
+#   3. $FORGE env var
+#   4. auto-detect from origin remote (github.com -> github; *gitlab* -> gitlab)
+#   5. default: github
 #
 #   forge="$(forge)"   # tm plugin bin
 set -euo pipefail
@@ -14,6 +16,14 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 if [ -f "$ROOT/.claude/forge" ]; then
   val="$(tr -d '[:space:]' < "$ROOT/.claude/forge")"
+  case "$val" in github|gitlab) echo "$val"; exit 0 ;; esac
+fi
+
+# Sidecar override: resolve through the sibling tm-state-dir so the path logic
+# stays single-source. Best-effort — a missing resolver just falls through.
+sidecar_forge="$("$(dirname "$0")/tm-state-dir" forge 2>/dev/null || echo "")"
+if [ -n "$sidecar_forge" ] && [ -f "$sidecar_forge" ]; then
+  val="$(tr -d '[:space:]' < "$sidecar_forge")"
   case "$val" in github|gitlab) echo "$val"; exit 0 ;; esac
 fi
 

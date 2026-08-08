@@ -23,11 +23,17 @@ inspectable — you can `cat` an agent definition and read what it does.
 ## File layout
 
 ```
-.agents/<id>.sh                              # per-repo executable
-.agents/<id>.json                            # per-repo metadata (sidecar)
-~/.config/TerMinal/scripts/<id>.sh           # global
+~/.config/TerMinal/scripts/<id>.sh           # global (the default home)
 ~/.config/TerMinal/scripts/<id>.json         # global metadata
+.agents/<id>.sh                              # per-repo OVERRIDE / repo-specific agent
+.agents/<id>.json                            # per-repo metadata (sidecar)
 ```
+
+The default script agents (health, drift, coverage, ticket-ideas,
+ci-watchdog) ship with the tm plugin (`plugin/scripts/`) and are seeded once
+into the global dir by the plugin install — repos are not seeded with copies.
+A repo carries `.agents/<id>.sh` only for a genuinely repo-specific agent or
+a deliberate override of a global one (per-repo wins on id collision).
 
 Sidecar metadata stays as JSON for trivial parsing in main; the script body
 is whatever bash needs to be. Frontmatter inside the script is allowed but

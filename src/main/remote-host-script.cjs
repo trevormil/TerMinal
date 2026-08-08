@@ -411,13 +411,16 @@ function areaCandidates(area) {
   }
   return m[area] || [area]
 }
+// v2 by default: v1 only on positive evidence of root-level v1 state dirs
+// (mirrors src/main/project-layout.ts detectProjectLayout).
 function hasV2(root) {
-  return (
-    exists(path.join(root, '.TerMinal', 'template.json')) ||
-    ['backlog', 'sessions', 'reviews', 'checks', 'reports'].some((a) =>
-      exists(path.join(root, areaCandidates(a)[0])),
-    )
-  )
+  const areas = ['backlog', 'sessions', 'reviews', 'checks', 'reports']
+  if (exists(path.join(root, '.TerMinal', 'template.json'))) return true
+  if (areas.some((a) => exists(path.join(root, areaCandidates(a)[0])))) return true
+  return !areas.some((a) => {
+    const rels = areaCandidates(a)
+    return rels.length > 1 && exists(path.join(root, rels[1]))
+  })
 }
 // Reads merge sidecar + in-repo, so a ticket filed before the migration is
 // still visible here. Writes go to the sidecar, so a scheduled agent on this
@@ -1191,10 +1194,7 @@ function bootstrapStatus() {
   const root = repoRoot() || cwdInput
   // Kept in lockstep with BOOTSTRAP_MARKERS in src/main/bootstrap.ts —
   // remote-host-parity.test.ts pins the two together.
-  const markers = [
-    { label: '.agents', anyOf: ['.agents'] },
-    { label: 'docs', anyOf: ['docs'] },
-  ]
+  const markers = [{ label: 'docs', anyOf: ['docs'] }]
   const missing = []
   let present = 0
   for (const m of markers) {

@@ -14,7 +14,8 @@ repo — nothing to copy per repo), and the same skills sync to
 `~/.codex/skills/tm-*` for Codex. No repo carries a copy for either harness.
 TerMinal agents and schedules can also run through `cursor-agent`.
 **Forge is per-repo** (GitHub `gh`/"PR" or GitLab `glab`/"MR"), resolved by the
-tm plugin's `bin/forge` — switch with `.claude/forge`. Merge to `main` is
+tm plugin's `bin/forge` — auto-detected from origin; switch with
+`echo gitlab > "$(tm-state-dir forge)"`. Merge to `main` is
 **human-only** (global §8).
 
 ## Use it
@@ -23,7 +24,7 @@ tm plugin's `bin/forge` — switch with `.claude/forge`. Merge to `main` is
 ```bash
 gh repo create <name> --private --template <owner>/project-template --clone
 cd <name>
-echo gitlab > .claude/forge     # only if this repo lives on GitLab (default: github)
+echo gitlab > "$(tm-state-dir forge)"  # only for self-hosted GitLab (auto-detected otherwise)
 # fill the placeholders in CLAUDE.md, then:
 /session-start "scaffold the project"
 ```
@@ -68,31 +69,9 @@ native slash skills. So:
 ```
 CLAUDE.md                     project workflow + conventions (fill placeholders)
 bootstrap.sh                  inject the workflow into an existing repo
-.claude/
-  settings.json               deny secrets + acceptEdits (hooks come from the tm plugin)
-  forge                       github | gitlab — the repo's forge selector
-.codex/
-  hooks.json                  Codex hook template to merge/install for this repo
-  hooks/stop-notify.sh        Codex Stop hook for completion Inbox filing
-                              (skills are global: ~/.codex/skills/tm-*)
-.agents/                      agent CONFIG and bodies — contracts ship with the
-                              plugin and are resolved via `tm-agent-spec <kind>`;
-                              add a .md here only to override one
-  <id>.sh                     an agent's executable body (per-repo wins)
-  <id>.json                   its cadence/model metadata
-  owned.yml                   which agent owns which paths
 .github/workflows/ci.yml      format + typecheck + test (+ optional eval gate)
 .github/PULL_REQUEST_TEMPLATE.md  + .gitlab/merge_request_templates/  PR/MR checklist
 .editorconfig                 uniform whitespace across editors
-.TerMinal/
-  template.json          project-template schema/version marker (v2 layout)
-  widgets.json           repo-specific terminal sidebar widgets
-  snippets.json          repo-owned quick prompt snippets (app presets stay app-owned)
-  backlog/.next-id       ticket counter (tickets land here as NNNN-slug.md)
-  sessions/              live session docs (central state), NNNN-slug/
-  reviews/               in-repo code-review artifacts, per PR/MR
-  checks/                in-repo cadence-inspection artifacts, per kind
-  reports/               scheduled-agent run artifacts, per kind
 .status.md                    live human status snapshot (gitignored, generated)
 docs/
   decisions/                  ADRs (append-only; 0001 is the template)
@@ -100,10 +79,25 @@ docs/
   runbooks/  learnings/        ops procedures + non-obvious findings
 ```
 
-Layout note: v2 keeps TerMinal-owned workflow state under `.TerMinal/`.
-Existing v1 repos with top-level `backlog/`, `sessions/`, `.reviews/`,
-`.checks/`, or `reports/` continue to work; bootstrap repairs v1 in place and
-does not move existing data.
+That's it — everything else is global or personal, not repo boilerplate:
+
+- **Skills, hooks, helper bin** — the tm plugin (`~/.config/TerMinal/plugin`),
+  loaded as `/tm:*` for Claude and `~/.codex/skills/tm-*` for Codex.
+- **Agent contracts** — plugin defaults, resolved with `tm-agent-spec <kind>`;
+  create `.agents/<kind>.md` in a repo only to override one. Repo-specific
+  script agents can still live at `.agents/<id>.sh` (+ `<id>.json`).
+- **Default script agents** (health, drift, coverage, ticket-ideas,
+  ci-watchdog) — seeded once into `~/.config/TerMinal/scripts` by the plugin.
+- **Workflow state** (tickets, sessions, reviews, checks, reports, notes) —
+  the per-project sidecar (`tm-state-dir <area>`), never the repo.
+- **Forge selector** — auto-detected from origin; sidecar override for
+  self-hosted GitLab.
+
+Layout note: existing v1 repos with top-level `backlog/`, `sessions/`,
+`.reviews/`, `.checks/`, or `reports/` continue to be read; a clean repo is
+the current layout by default. Bootstrap banks retired per-repo seeds under
+`.claude/pre-tm-backup/` and does not move existing state (the app's
+Settings → Updates → Project state does that).
 
 ## The loop
 
@@ -125,7 +119,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full conventions: the TDD gate, the
   `/test-suite` delegate to it (`-s danger-full-access`).
 - [`cursor-agent`](https://cursor.com) CLI — optional TerMinal engine for
   agents, schedules, and terminal instances.
-- `gh` **or** `glab` (authenticated, matching `.claude/forge`) — PR/MR creation
+- `gh` **or** `glab` (authenticated, matching the resolved forge) — PR/MR creation
   + resolution.
 - `bun` — default toolchain (global §5).
 - `jq` — used by the merge-block hook.

@@ -241,6 +241,12 @@ import { readSchedules } from './schedules'
 import { installTmPlugin, tmPluginStatus } from './plugin-install'
 import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
 import {
+  legacyPluginCopies,
+  legacySeedCandidates,
+  sweepLegacyPluginCopies,
+  sweepLegacySeeds,
+} from './legacy-sweep'
+import {
   installRunner,
   installCli,
   installMcpServer,
@@ -1930,11 +1936,28 @@ ipcMain.handle('plugin:status', () => tmPluginStatus())
 // many files are still sitting in the repo, and the one-time move.
 ipcMain.handle('repoState:status', (_e, repoRoot: string) => {
   const root = repoRoot || cur().cwd
-  return { ...sidecarGitStatus(root), pending: pendingMigration(root) }
+  const pluginDir = join(terminalConfigDir(), 'plugin')
+  return {
+    ...sidecarGitStatus(root),
+    pending: pendingMigration(root),
+    legacyCopies:
+      legacyPluginCopies(root, pluginDir).length + legacySeedCandidates(root, pluginDir).length,
+  }
 })
-ipcMain.handle('repoState:migrate', (_e, repoRoot: string) =>
-  migrateRepoState(repoRoot || cur().cwd),
-)
+// One-time cleanup: state files → sidecar, plus everything older bootstraps
+// seeded per-repo that is global now — plugin-served skill/bin/hook copies,
+// the Codex stop hook, seed artifacts, the layout marker, the forge selector
+// (preserved into the sidecar), and unmodified default script agents. All
+// banked in .claude/pre-tm-backup, never deleted.
+ipcMain.handle('repoState:migrate', (_e, repoRoot: string) => {
+  const root = repoRoot || cur().cwd
+  const pluginDir = join(terminalConfigDir(), 'plugin')
+  const r = migrateRepoState(root)
+  const swept = r.error
+    ? 0
+    : sweepLegacyPluginCopies(root, pluginDir).moved + sweepLegacySeeds(root, pluginDir).moved
+  return { ...r, sweptCopies: swept }
+})
 ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 
 // In-app rebuild. Spawns bin/release fully detached and routes its output to

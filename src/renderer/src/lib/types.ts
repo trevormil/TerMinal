@@ -1879,6 +1879,8 @@ export type RepoStateStatus = {
   commits: number
   path: string
   pending: number
+  /** Per-repo skill/bin/hook copies the global tm plugin now serves. */
+  legacyCopies: number
 }
 
 export type TmPluginStatus = {
@@ -2406,7 +2408,9 @@ export type GtApi = {
   }
   repoState: {
     status: (repoRoot?: string) => Promise<RepoStateStatus>
-    migrate: (repoRoot?: string) => Promise<{ moved: number; skipped: string[]; error?: string }>
+    migrate: (
+      repoRoot?: string,
+    ) => Promise<{ moved: number; skipped: string[]; sweptCopies: number; error?: string }>
   }
   observability: {
     summary: (range?: 'today' | 'week' | 'month' | 'all') => Promise<{

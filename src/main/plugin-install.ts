@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -177,8 +178,36 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
   }
 
   linkStateResolvers(dest, join(configDir, 'bin'))
+  seedGlobalScripts(dest, join(configDir, 'scripts'))
 
   return { ok: true, version }
+}
+
+// Default script agents (health, drift, coverage, …) used to be copied into
+// every repo's .agents/ by bootstrap. They are generic, so they now ship with
+// the plugin and land ONCE in the global scripts dir — which every runtime
+// (agent registry, cron, MCP server, remote host) already reads. Seed-if-absent
+// only: a user's customized copy is never clobbered, and deleting a seeded
+// script is respected until the next fresh install of that name.
+export function seedGlobalScripts(pluginDir: string, scriptsDir: string): void {
+  const src = join(pluginDir, 'scripts')
+  let names: string[]
+  try {
+    names = readdirSync(src)
+  } catch {
+    return
+  }
+  try {
+    mkdirSync(scriptsDir, { recursive: true })
+    for (const name of names) {
+      const dest = join(scriptsDir, name)
+      if (existsSync(dest)) continue
+      cpSync(join(src, name), dest)
+      if (name.endsWith('.sh')) chmodSync(dest, 0o755)
+    }
+  } catch {
+    /* best effort — a failed seed must not fail the install */
+  }
 }
 
 // Skills tell the model to fall back to `tm-state-dir <area>` when the injected

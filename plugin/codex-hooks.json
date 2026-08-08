@@ -1,0 +1,16 @@
+{
+  "//": "Merge this Stop entry into your global Codex hooks config ONCE — it replaces the per-repo .codex/hooks/stop-notify.sh older bootstraps seeded. The script lives at a stable global path, so it works in every repo.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'p=\"$HOME/.config/TerMinal/plugin/hooks/stop-notify-codex.sh\"; [ -x \"$p\" ] && \"$p\" || true'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

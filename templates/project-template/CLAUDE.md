@@ -135,11 +135,12 @@ GitHub-backed, Graphite is unavailable, or the work is a single independent PR/M
 Graphite merge queue or stack merge must not bypass the human-only final merge
 gate.
 
-**Per-repo forge.** `$HOME/.config/TerMinal/plugin/bin/forge` prints `github` or `gitlab` (reads
-`.claude/forge` override, else detects from origin). Use the matching
+**Per-repo forge.** `$HOME/.config/TerMinal/plugin/bin/forge` prints `github` or `gitlab`
+(auto-detected from the origin remote; override via the sidecar —
+`echo gitlab > "$(tm-state-dir forge)"` — or `$FORGE`). Use the matching
 CLI + terminology — `gh`/"PR" or `glab`/"MR". Mapping:
 the forge contract (`tm-agent-spec forge`). Self-hosted GitLab requires the
-`.claude/forge` override.
+sidecar override.
 
 Always work on a feature branch; **never commit/push to `main`** (global
 §8, enforced by the tm plugin's `block-main-merge.sh` hook). Final merge is

@@ -273,3 +273,30 @@ describe('the state resolvers are reachable as commands', () => {
     expect(readFileSync(join(cfg, 'bin', 'tm-state-dir'), 'utf8')).toContain('# mine')
   })
 })
+
+describe('global script agents', () => {
+  test('seeds plugin/scripts into <config>/scripts, executable, without clobbering', () => {
+    mkdirSync(join(src, 'scripts'), { recursive: true })
+    writeFileSync(join(src, 'scripts', 'health.sh'), '#!/bin/sh\necho plugin-health\n')
+    writeFileSync(join(src, 'scripts', 'health.json'), '{"label":"Health"}')
+    // The user already customized drift.sh — install must never clobber it.
+    mkdirSync(join(cfg, 'scripts'), { recursive: true })
+    writeFileSync(join(cfg, 'scripts', 'drift.sh'), '#!/bin/sh\n# customized\n')
+    writeFileSync(join(src, 'scripts', 'drift.sh'), '#!/bin/sh\necho plugin-drift\n')
+
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+
+    expect(res.ok).toBe(true)
+    expect(readFileSync(join(cfg, 'scripts', 'health.sh'), 'utf8')).toContain('plugin-health')
+    expect(readFileSync(join(cfg, 'scripts', 'health.json'), 'utf8')).toContain('Health')
+    expect(readFileSync(join(cfg, 'scripts', 'drift.sh'), 'utf8')).toContain('# customized')
+    // Seeded bodies must be executable or cron/agents refuse to run them.
+    expect(lstatSync(join(cfg, 'scripts', 'health.sh')).mode & 0o100).toBeTruthy()
+  })
+
+  test('no scripts dir in the plugin is fine', () => {
+    const res = installTmPlugin(src, { configDir: cfg, claudeSkillsDir: skills })
+    expect(res.ok).toBe(true)
+    expect(existsSync(join(cfg, 'scripts'))).toBe(false)
+  })
+})

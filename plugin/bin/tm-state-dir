@@ -21,9 +21,9 @@ case "$area" in
   # Personal state files/dirs formerly at .TerMinal/<name> — resolved at the
   # sidecar ROOT (same key), printed as "<sidecar>/<name>". A file rel prints
   # where the file LIVES (or would live); callers read/write it directly.
-  tickets.json | notes.md | knowledge.json | snippets.json | meta.json | loops | agent-requests | knowledge-rag) ;;
+  tickets.json | notes.md | knowledge.json | snippets.json | meta.json | forge | loops | agent-requests | knowledge-rag) ;;
   *)
-    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports|tickets.json|notes.md|knowledge.json|snippets.json|meta.json|loops|agent-requests|knowledge-rag>" >&2
+    echo "usage: tm-state-dir <backlog|sessions|reviews|checks|reports|tickets.json|notes.md|knowledge.json|snippets.json|meta.json|forge|loops|agent-requests|knowledge-rag>" >&2
     exit 2
     ;;
 esac
