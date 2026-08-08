@@ -98,7 +98,9 @@ function areaWritePath(root, area, candidates, isV2) {
   if (sidecar) return sidecar
   const existing = areaPathsFor(root, area, candidates)
   if (existing.length) return existing[0]
-  return join(root, isV2 ? candidates[0] : candidates[candidates.length - 1])
+  // candidates[1] is the canonical v1 rel (e.g. checks has a third, bare
+  // legacy variant that must never become a write target).
+  return join(root, isV2 ? candidates[0] : candidates[1] || candidates[0])
 }
 // IDs must be unique across EVERY dir an area reads from. A fresh sidecar
 // beside a repo that still holds 0001-0042 would otherwise restart at 0001,

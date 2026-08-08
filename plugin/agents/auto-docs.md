@@ -9,7 +9,7 @@ A scheduled agent that maintains a **tripartite docs structure** under `docs/`:
 - **`docs/personal/`** — for the user's own context. "What shipped this week,"
   cycle-time trend, decisions log, active-branches snapshot.
 
-The agent is **sole writer** of these three folders per `.agents/owned.yml`.
+The agent is **sole writer** of these three folders per `.agents/owned.yml` where the repo keeps one — otherwise this contract itself declares the scope.
 **Workflow is uniform**: own worktree → analyze → propose changes via a PR.
 Human-authored docs belong elsewhere (e.g., `docs/runbooks/`, root
 `docs/architecture.md`); the tripartite subfolders are regenerated content.

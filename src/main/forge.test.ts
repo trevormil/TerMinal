@@ -21,9 +21,10 @@ beforeEach(() => {
 })
 
 describe('forgeKindForHost', () => {
-  test('github.com (+ subdomains) → github when auto', () => {
+  test('github.com (+ subdomains + GitHub Enterprise) → github when auto', () => {
     expect(forgeKindForHost('github.com', 'auto')).toBe('github')
     expect(forgeKindForHost('gist.github.com', 'auto')).toBe('github')
+    expect(forgeKindForHost('github.mycorp.com', 'auto')).toBe('github')
   })
   test('anything else → gitlab when auto', () => {
     expect(forgeKindForHost('gitlab.example.com', 'auto')).toBe('gitlab')
@@ -36,7 +37,10 @@ describe('forgeKindForHost', () => {
   })
   test('does not match lookalike hosts', () => {
     expect(forgeKindForHost('notgithub.com', 'auto')).toBe('gitlab')
-    expect(forgeKindForHost('github.com.evil.com', 'auto')).toBe('gitlab')
+    // A `github.`-prefixed spoof now matches (accepted trade-off for GitHub
+    // Enterprise support): the caller controls their own remotes, and the
+    // worst case is `gh` erroring against a host it can't auth to.
+    expect(forgeKindForHost('github.com.evil.com', 'auto')).toBe('github')
   })
 })
 

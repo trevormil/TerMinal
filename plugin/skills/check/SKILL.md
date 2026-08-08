@@ -42,7 +42,9 @@ Two modes, declared in the kind's spec:
   or HITL, but never edits source. Examples: dead-code, drift (when only
   shape changes found), perf, coverage (when only flakes / big-gap tickets).
 - **`writer`** — opens a PR proposing changes within its declared sole-writer
-  paths (per `.agents/owned.yml`). Examples: changelog, auto-docs, drift (for
+  paths (per `.agents/owned.yml` where the repo keeps one — absent in most
+  repos now; the kind's contract then declares its own scope). Examples:
+  changelog, auto-docs, drift (for
   trivial-fix PRs), coverage (for net-new test files), deps-quality (for safe
   bumps + lint fixes).
 
@@ -69,13 +71,18 @@ the forge adapter `forge.md`, which are not cadence agents.
 
 ## Prefer script-first execution
 
-If `.agents/<kind>.sh` exists and is executable, run it directly first. The
-script owns deterministic prechecks, early exits, capped prompts, and any
-engine escalation. This is the cheapest path and should be the default for
-scheduled agents.
+Run the kind's executable body directly first: the repo override
+`.agents/<kind>.sh` when it exists, else the global default
+`~/.config/TerMinal/scripts/<kind>.sh` (seeded by the plugin — health, drift,
+coverage, ticket-ideas ship there). The script owns deterministic prechecks,
+early exits, capped prompts, and any engine escalation. This is the cheapest
+path and should be the default for scheduled agents.
 
 ```bash
 kind="<kind>"
+script=".agents/$kind.sh"
+[ -x "$script" ] || script="$HOME/.config/TerMinal/scripts/$kind.sh"
+[ -x "$script" ] && \
 TERMINAL_REPO="$PWD" \
 TERMINAL_AGENT_ID="$kind" \
 TERMINAL_WORKTREE="$PWD" \
@@ -83,7 +90,7 @@ TERMINAL_BRANCH="$(git branch --show-current 2>/dev/null || echo main)" \
 TERMINAL_ENGINE="${TERMINAL_ENGINE:-claude}" \
 TERMINAL_MODEL="${TERMINAL_MODEL:-haiku}" \
 PATH="$HOME/.config/TerMinal/bin:$PATH" \
-  ".agents/$kind.sh"
+  "$script"
 ```
 
 Do not also paste `.agents/<kind>.md` into an LLM prompt when the script
@@ -137,9 +144,10 @@ cd "$wt"
 
 ### 3. Resolve + run
 
-Read `.agents/<kind>.md` for the spec. Execute the kind's analysis per the
-spec. Honor its declared inputs, decisions table, and sole-writer scope (cross-
-check `.agents/owned.yml`).
+Read the spec via `tm-agent-spec <kind>` (repo `.agents/<kind>.md` override,
+else the plugin default). Execute the kind's analysis per the spec. Honor its
+declared inputs, decisions table, and sole-writer scope (cross-check
+`.agents/owned.yml` where the repo keeps one).
 
 ### 4. Decide
 

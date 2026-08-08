@@ -1075,6 +1075,11 @@ function RepoStatePanel() {
   const refresh = async () => setStatus(await window.gt.repoState.status())
   useEffect(() => {
     void refresh()
+    // The in-session MigrateBanner runs the same one-time move — refresh the
+    // counts here when it does, so the two surfaces never disagree.
+    const onMigrated = () => void refresh()
+    window.addEventListener('gt.repo-state.migrated', onMigrated)
+    return () => window.removeEventListener('gt.repo-state.migrated', onMigrated)
   }, [])
 
   const migrate = async () => {

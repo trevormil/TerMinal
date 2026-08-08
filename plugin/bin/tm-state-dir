@@ -97,4 +97,11 @@ if [ -z "$key" ]; then
   key="local/$(basename "$canonical")-$hash"
 fi
 
+# File rels print where the file LIVES — ensure the parent exists so the
+# documented `echo gitlab > "$(tm-state-dir forge)"` works on a fresh sidecar.
+# Area dirs are created by their writers (next-ticket-id etc.), not here.
+case "$area" in
+  backlog | sessions | reviews | checks | reports | loops | agent-requests | knowledge-rag) ;;
+  *) mkdir -p "$state_root/$key" 2>/dev/null || true ;;
+esac
 printf '%s\n' "$state_root/$key/$area"

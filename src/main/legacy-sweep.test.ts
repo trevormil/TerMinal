@@ -3,7 +3,12 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { legacyPluginCopies, sweepLegacyPluginCopies, sweepLegacySeeds } from './legacy-sweep'
+import {
+  legacyPluginCopies,
+  legacySeedCandidates,
+  sweepLegacyPluginCopies,
+  sweepLegacySeeds,
+} from './legacy-sweep'
 
 // A fake installed plugin: the sweep derives what it owns from THIS tree, so
 // the test never depends on the developer's real ~/.config/TerMinal.
@@ -70,6 +75,18 @@ describe('legacyPluginCopies', () => {
     // Unwire it and the copy becomes sweepable again.
     writeFileSync(join(repo, '.claude', 'settings.json'), '{}')
     expect(legacyPluginCopies(repo, plugin)).toEqual(['.claude/hooks/block-main-merge.sh'])
+  })
+
+  test('hooks wired only in settings.local.json are kept too', () => {
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    mkdirSync(join(repo, '.claude', 'hooks'), { recursive: true })
+    writeFileSync(join(repo, '.claude', 'hooks', 'block-main-merge.sh'), 'hook')
+    writeFileSync(
+      join(repo, '.claude', 'settings.local.json'),
+      '{"hooks":{"PreToolUse":[{"hooks":[{"command":".claude/hooks/block-main-merge.sh"}]}]}}',
+    )
+    expect(legacyPluginCopies(repo, plugin)).toEqual([])
   })
 
   test('empty for a clean repo and for a missing plugin dir', () => {
@@ -192,6 +209,31 @@ describe('sweepLegacySeeds', () => {
     // widgets.json is a repo-provided surface a project ships on purpose.
     expect(existsSync(join(repo, '.TerMinal', 'widgets.json'))).toBe(true)
     expect(existsSync(join(repo, '.TerMinal', 'template.json'))).toBe(false)
+  })
+
+  test('a codex stop hook still wired by the live hooks.json is kept', () => {
+    // The old template's hooks.json points at $PWD/.codex/hooks/stop-notify.sh.
+    // Users who merged it have LIVE wiring — banking the script silently kills
+    // their completion→Inbox channel (same bug class as the settings.json
+    // hooks fix). It becomes sweepable once the hooks.json entry is gone.
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    mkdirSync(join(repo, '.codex', 'hooks'), { recursive: true })
+    writeFileSync(join(repo, '.codex', 'hooks', 'stop-notify.sh'), 'hook')
+    writeFileSync(
+      join(repo, '.codex', 'hooks.json'),
+      '{"hooks":{"Stop":[{"hooks":[{"command":"bash -lc \'p=\\"$PWD/.codex/hooks/stop-notify.sh\\"; [ -x \\"$p\\" ] && \\"$p\\" || true\'"}]}]}}',
+    )
+    expect(sweepLegacySeeds(repo, plugin).moved).toBe(0)
+    expect(existsSync(join(repo, '.codex', 'hooks', 'stop-notify.sh'))).toBe(true)
+  })
+
+  test('a .claude/forge that is not a regular file is neither counted nor swept', () => {
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    mkdirSync(join(repo, '.claude', 'forge'), { recursive: true })
+    expect(legacySeedCandidates(repo, plugin)).toEqual([])
+    expect(sweepLegacySeeds(repo, plugin).moved).toBe(0)
   })
 
   test('banks a vanilla owned.yml, keeps a customized one', () => {

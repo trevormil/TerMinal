@@ -11,13 +11,7 @@ import {
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
-import { telegramControlEnabled, readSettings, resolvedTemplateRepo } from './settings'
-import {
-  cloneTemplateToTmp,
-  pickTemplateSource,
-  templateCandidates,
-  type TemplateSource,
-} from './template'
+import { telegramControlEnabled, readSettings } from './settings'
 import {
   readAgents,
   runAgent,
@@ -85,19 +79,6 @@ function sourceCheckoutRoot(marker: string): string {
     if (existsSync(join(c, marker))) return c
   }
   return ''
-}
-
-function localProjectTemplateSource(): TemplateSource | { error: string } {
-  const configured = resolvedTemplateRepo()
-  return pickTemplateSource({
-    candidates: templateCandidates({
-      configured,
-      sourceRoots: [sourceCheckoutRoot(join('templates', 'project-template', '.agents'))],
-    }),
-    marker: '.agents',
-    templateRepo: configured,
-    cloneToTmp: cloneTemplateToTmp,
-  })
 }
 
 const nativeConfigured = () => {
@@ -904,23 +885,31 @@ function cmdInstall(args: string[]) {
   if (!agentId) return reply('Usage: /install <agent> [@repo]')
   const repo = resolveRepo(args[1])
   if (!repo) return reply('No repo — /repos to list.')
-  // Source: project-template's .agents/<id>.sh + sidecar JSON.
-  const source = localProjectTemplateSource()
-  if ('error' in source) return reply(source.error)
+  // Source: the installed plugin's default scripts (ADR-0023) — the same
+  // bodies the plugin seeds globally. Installing per-repo creates an override.
+  const srcDir = join(terminalConfigDir(), 'plugin', 'scripts')
   try {
-    const srcSh = join(source.dir, '.agents', `${agentId}.sh`)
-    const srcJson = join(source.dir, '.agents', `${agentId}.json`)
-    if (!existsSync(srcSh)) return reply(`No ${agentId}.sh in project-template/.agents.`)
+    const srcSh = join(srcDir, `${agentId}.sh`)
+    const srcJson = join(srcDir, `${agentId}.json`)
+    if (!existsSync(srcSh)) {
+      const available = existsSync(srcDir)
+        ? readdirSync(srcDir)
+            .filter((f) => f.endsWith('.sh'))
+            .map((f) => f.replace(/\.sh$/, ''))
+            .join(', ')
+        : '(plugin not installed — launch TerMinal once)'
+      return reply(`No ${agentId}.sh in the plugin scripts. Available: ${available}`)
+    }
     const dstDir = join(repo.repoRoot, '.agents')
     mkdirSync(dstDir, { recursive: true })
     writeFileSync(join(dstDir, `${agentId}.sh`), readFileSync(srcSh, 'utf8'), { mode: 0o755 })
     if (existsSync(srcJson))
       writeFileSync(join(dstDir, `${agentId}.json`), readFileSync(srcJson, 'utf8'))
-    reply(`📦 Installed ${agentId} into ${repo.label}/.agents/`)
+    reply(
+      `📦 Installed ${agentId} into ${repo.label}/.agents/ (repo override of the global default)`,
+    )
   } catch (e) {
     reply(`⛔ install failed: ${(e as Error).message}`)
-  } finally {
-    source.cleanup?.()
   }
 }
 

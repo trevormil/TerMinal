@@ -11,7 +11,7 @@ import {
   statSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { projectAreaCandidates, type ProjectArea } from './project-layout'
+import { projectAreaCandidates, TERMINAL_DIR, type ProjectArea } from './project-layout'
 import { legacyStatePath, repoStateRoot, SIDECAR_AREAS, MIGRATED_STATE_RELS } from './repo-state'
 
 // One-time move of a repo's existing workflow state into its sidecar.
@@ -97,6 +97,54 @@ function pruneEmptyDeep(dir: string): void {
   }
 }
 
+// Bare v1 dir names (`backlog/`, `sessions/`, `reports/`) are common in repos
+// that have nothing to do with TerMinal — a data-science repo's reports/, an
+// Express app's sessions/. Counting them unconditionally meant one click
+// relocated a repo's real data into the sidecar. A bare v1 dir is treated as
+// workflow state only on POSITIVE evidence of the TerMinal shape; the dotted
+// dirs (.reviews/.checks) and everything under .TerMinal/ stay unconditional.
+const TICKET_FILE = /^\d{4}-[\w.-]+\.md$/
+const SESSION_DIR = /^\d{4}-[\w.-]+$/
+
+function v1DirIsState(repoRoot: string, area: string, dir: string): boolean {
+  try {
+    const entries = readdirSync(dir)
+    if (area === 'backlog')
+      return entries.includes('.next-id') || entries.some((e) => TICKET_FILE.test(e))
+    if (area === 'sessions')
+      return (
+        entries.includes('.next-id') ||
+        entries.some((e) => SESSION_DIR.test(e) && statSync(join(dir, e)).isDirectory())
+      )
+    if (area === 'reports') {
+      // reports/ content has no distinctive shape — trust it only when the
+      // repo shows OTHER TerMinal v1/v2 evidence alongside it.
+      return (
+        existsSync(join(repoRoot, '.reviews')) ||
+        existsSync(join(repoRoot, '.checks')) ||
+        existsSync(join(repoRoot, TERMINAL_DIR)) ||
+        v1DirIsState(repoRoot, 'backlog', join(repoRoot, 'backlog')) ||
+        v1DirIsState(repoRoot, 'sessions', join(repoRoot, 'sessions'))
+      )
+    }
+    return true // .reviews / .checks — dotted, unambiguous
+  } catch {
+    return false
+  }
+}
+
+/** All candidate dirs for an area that actually hold TerMinal state. */
+function stateDirsFor(repoRoot: string, area: ProjectArea): string[] {
+  const out: string[] = []
+  for (const rel of projectAreaCandidates(area)) {
+    const dir = join(repoRoot, rel)
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
+    if (!rel.startsWith(TERMINAL_DIR) && !v1DirIsState(repoRoot, area, dir)) continue
+    out.push(dir)
+  }
+  return out
+}
+
 /** Remove now-empty directories, bottom-up. Never removes a non-empty one. */
 function pruneEmpty(dir: string, stopAt: string): void {
   let cur = dir
@@ -117,10 +165,13 @@ export function migrateRepoState(repoRoot: string): MigrateResult {
   let moved = 0
   const skipped: string[] = []
   try {
-    for (const area of SIDECAR_AREAS) {
-      for (const rel of projectAreaCandidates(area as ProjectArea)) {
-        const from = join(repoRoot, rel)
-        if (!existsSync(from) || !statSync(from).isDirectory()) continue
+    // Resolve every area's dirs BEFORE moving anything: reports/'s evidence
+    // check looks at backlog/ and sessions/, which the move itself empties.
+    const areaDirs = SIDECAR_AREAS.map(
+      (area) => [area, stateDirsFor(repoRoot, area as ProjectArea)] as const,
+    )
+    for (const [area, dirs] of areaDirs) {
+      for (const from of dirs) {
         for (const file of filesUnder(from)) {
           const src = join(from, file)
           const dest = join(root, area, file)
@@ -209,9 +260,7 @@ export function pendingMigration(repoRoot: string): number {
   if (!repoRoot) return 0
   let n = 0
   for (const area of SIDECAR_AREAS) {
-    for (const rel of projectAreaCandidates(area as ProjectArea)) {
-      const dir = join(repoRoot, rel)
-      if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
+    for (const dir of stateDirsFor(repoRoot, area as ProjectArea)) {
       for (const _ of filesUnder(dir)) n++
     }
   }

@@ -283,8 +283,8 @@ export function RepoOrientation({ ctx, onClose }: { ctx: TabContext; onClose: ()
             present={ctx.hasAgents}
             text={
               ctx.hasAgents
-                ? 'Agent roster found (.agents/) — these own tickets and schedules.'
-                : 'No agents yet — Bootstrap above seeds a starter roster.'
+                ? 'Agents available — global defaults (health, drift, coverage, …) plus any repo-specific ones in .agents/.'
+                : 'No agents yet — launch TerMinal once to install the global defaults.'
             }
             onOpen={() => open('agents')}
           />

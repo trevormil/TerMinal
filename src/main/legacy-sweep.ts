@@ -6,6 +6,7 @@ import {
   readdirSync,
   renameSync,
   rmdirSync,
+  statSync,
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -37,11 +38,30 @@ function pluginNames(pluginDir: string, sub: string): Set<string> {
 // own repo carries wired copies on purpose). A hook becomes sweepable once
 // the settings entry is gone.
 function wiredHookNames(repoRoot: string): Set<string> {
+  const names = new Set<string>()
+  // settings.local.json is a supported hooks location too — a hook wired only
+  // there is just as live as one in settings.json.
+  for (const file of ['settings.json', 'settings.local.json']) {
+    try {
+      const settings = readFileSync(join(repoRoot, '.claude', file), 'utf8')
+      for (const m of settings.matchAll(/\.claude\/hooks\/([\w.-]+)/g)) names.add(m[1])
+    } catch {
+      /* absent or unreadable — nothing wired from this file */
+    }
+  }
+  return names
+}
+
+// Same rule for the Codex side: the old template's hooks.json points at
+// $PWD/.codex/hooks/stop-notify.sh — a user who merged it has LIVE wiring,
+// and banking the script would silently kill their completion→Inbox channel.
+function codexStopHookWired(repoRoot: string): boolean {
   try {
-    const settings = readFileSync(join(repoRoot, '.claude', 'settings.json'), 'utf8')
-    return new Set([...settings.matchAll(/\.claude\/hooks\/([\w.-]+)/g)].map((m) => m[1]))
+    return readFileSync(join(repoRoot, '.codex', 'hooks.json'), 'utf8').includes(
+      '.codex/hooks/stop-notify.sh',
+    )
   } catch {
-    return new Set()
+    return false
   }
 }
 
@@ -121,7 +141,10 @@ export function legacySeedCandidates(
   vanillaOwnedShas: ReadonlySet<string> = VANILLA_OWNED_SHA256,
 ): string[] {
   if (!repoRoot) return []
-  const rels: string[] = RETIRED_SEED_RELS.filter((rel) => existsSync(join(repoRoot, rel)))
+  const rels: string[] = RETIRED_SEED_RELS.filter((rel) => {
+    if (rel === '.codex/hooks/stop-notify.sh' && codexStopHookWired(repoRoot)) return false
+    return existsSync(join(repoRoot, rel))
+  })
   if (isVanillaOwnedYml(join(repoRoot, '.agents', 'owned.yml'), vanillaOwnedShas))
     rels.push('.agents/owned.yml')
   const scripts = join(pluginDir, 'scripts')
@@ -141,7 +164,13 @@ export function legacySeedCandidates(
       /* unreadable (e.g. a directory) — leave it */
     }
   }
-  if (existsSync(join(repoRoot, '.claude', 'forge'))) rels.push('.claude/forge')
+  try {
+    // Must be a regular file — anything else can't be a forge selector, and
+    // counting it would leave the banner offering a migrate that can't move it.
+    if (statSync(join(repoRoot, '.claude', 'forge')).isFile()) rels.push('.claude/forge')
+  } catch {
+    /* absent */
+  }
   return rels
 }
 

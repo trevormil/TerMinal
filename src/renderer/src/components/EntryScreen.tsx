@@ -291,9 +291,9 @@ export function EntryScreen({
           },
         })
       } else {
-        // Local: open the newly-scaffolded project. The pending marker makes
-        // the per-repo orientation show on this first open even though the
-        // template seeds .agents/ + a backlog (see shouldAutoShowRepoOrientation).
+        // Local: open the newly-scaffolded project. The pending marker
+        // guarantees the per-repo orientation (provider choice) shows on this
+        // first open (see shouldAutoShowRepoOrientation).
         try {
           localStorage.setItem(repoOrientationPendingKey(r.path), '1')
         } catch {

@@ -23,7 +23,7 @@ If the user explicitly asks for a global agent, write to
 1. Read enough local context before writing:
    - `CLAUDE.md` / `AGENTS.md`
    - the scripts convention at `tm-agent-spec scripts`
-   - `.agents/forge.md` if the agent may open a PR/MR
+   - `tm-agent-spec forge` if the agent may open a PR/MR
    - existing `.agents/*.sh` and `.agents/*.json` to avoid duplicate ids
 2. Pick a short kebab-case `id`, a clear `title`, a one-line `description`, and
    a lucide icon name.

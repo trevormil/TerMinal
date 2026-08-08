@@ -64,9 +64,14 @@ describe('shouldAutoShowRepoOrientation', () => {
     expect(shouldAutoShowRepoOrientation({ ...fresh, remote: true }, none)).toBe(false)
   })
 
-  test('established repos (agents or backlog present) are left alone', () => {
-    expect(shouldAutoShowRepoOrientation({ ...fresh, hasAgents: true }, none)).toBe(false)
+  test('established repos (backlog present) are left alone', () => {
     expect(shouldAutoShowRepoOrientation({ ...fresh, hasBacklog: true }, none)).toBe(false)
+  })
+
+  test('hasAgents alone does not suppress it — global defaults make it true everywhere', () => {
+    // Since default agents went global, hasAgents is true for every local git
+    // repo; gating on it made the provider-choice onboarding unreachable.
+    expect(shouldAutoShowRepoOrientation({ ...fresh, hasAgents: true }, none)).toBe(true)
   })
 
   test('respects the per-repo dismissal', () => {
