@@ -32,10 +32,24 @@ import { repoForCwd, repoRootOf } from '../repo'
 import { readAgents } from '../agent-registry'
 import { runScheduleDesignerSpawn, type Agent, type Engine } from '../agents'
 import {
-  listDisabled,
+  listDisabledDetail,
   setDisabled as setAgentDisabled,
   setAllDisabled as setAllSchedulesDisabled,
 } from '../agents-disabled'
+import { hostBreakerState, setHostDisabled, type HostBreakerSnapshot } from '../host-disabled'
+import {
+  REMOTE_ENABLED_REJECTION,
+  remoteMutation,
+  teardownWarning,
+  type MutationResult,
+} from '../schedule-honesty'
+
+/** Breaker state for the UI: local entries (no host) plus each host's own, and
+ *  the hosts we could not read — never silently "nothing disabled". */
+export type DisabledDetailResult = {
+  entries: { id: string; reason?: string; disabledAt: number; host?: string; hostLabel?: string }[]
+  errors: HostBreakerSnapshot['errors']
+}
 
 export type SchedulesIpcDeps = {
   /** The active tab's pinned session (cwd + sessionId are all this module reads). */
@@ -129,6 +143,11 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
           : undefined
       const remote = deps.curRemote()
       if (remote) {
+        // This path writes a RECORD on the host and installs no trigger (that
+        // needs the remote daemon writer), so `enabled: true` would render a
+        // healthy row that never fires. Refuse it instead of lying; Run Now
+        // still works over SSH. Same honesty as 'pause-all is local-only'.
+        if (input.enabled !== false) return { error: REMOTE_ENABLED_REJECTION }
         return (async () => {
           const probe = await remoteProbe(remote).catch(() => null)
           const agents = await deps.remoteAgentCatalog(remote)
@@ -145,7 +164,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
             effort: input.effort ?? agent.effort,
             prompt: agent.prompt,
             spec: input.spec,
-            enabled: input.enabled ?? true,
+            enabled: false,
             env: sanitizeScheduleEnv(input.env),
             retry,
             timeoutSec,
@@ -160,7 +179,11 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
             repo: sched.repoLabel,
             sessionId: deps.cur().sessionId,
           })
-          return r
+          return {
+            ...r,
+            warning:
+              'saved PAUSED — an attached-remote save installs no recurring timer; use Run Now, or create it from the local control plane with the host selector',
+          }
         })()
       }
       const root = repoRootOf(deps.cur().cwd)
@@ -203,8 +226,23 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
       const prev = input.id ? getSchedule(input.id) : null
       const sched = input.id ? updateSchedule(input.id, base) : addSchedule(base)
       if (!sched) return { error: 'schedule not found' }
+      // A teardown that fails leaves the OLD timer firing forever. It used to be
+      // `.catch(() => {})`; carry the failure out in the save result so the UI
+      // can say which host still holds a live trigger.
+      let warning: string | undefined
       if (prev && (prev.host !== sched.host || prev.runtime !== sched.runtime)) {
-        await routeRemoveSchedule(prev).catch(() => {}) // best-effort teardown of the old trigger + host record
+        const torn = await routeRemoveSchedule(prev).catch((e) => ({
+          ok: false,
+          error: (e as Error)?.message || String(e),
+        }))
+        if (!torn.ok)
+          warning = teardownWarning(
+            prev,
+            prev.host
+              ? readSettings().remoteHosts.find((h) => h.id === prev.host)?.label
+              : undefined,
+            torn.error,
+          )
       }
       const r = await routeSyncSchedule(sched)
       if (!r.ok) return { error: r.error }
@@ -216,7 +254,17 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
         repoRoot: root,
         sessionId: deps.cur().sessionId,
       })
-      return { ok: true, id: sched.id }
+      if (warning) {
+        emitActivity({
+          kind: 'error',
+          title: `Old trigger left behind · ${agent.title}`,
+          detail: warning,
+          repo: sched.repoLabel,
+          repoRoot: root,
+          sessionId: deps.cur().sessionId,
+        })
+      }
+      return warning ? { ok: true, id: sched.id, warning } : { ok: true, id: sched.id }
     },
   )
 
@@ -231,12 +279,30 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     }
     return Object.keys(out).length ? out : undefined
   }
-  ipcMain.handle('schedules:remove', async (_e, id: string) => {
+  ipcMain.handle('schedules:remove', async (_e, id: string): Promise<MutationResult> => {
     const remote = deps.curRemote()
-    if (remote) return remoteSchedules.remove(remote, id).catch(() => false)
+    // Was `.catch(() => false)`: an unreachable host looked exactly like the host
+    // refusing, so a schedule the SSH failure left in place read as removed.
+    if (remote)
+      return remoteMutation(remote.label || remote.sshTarget, () =>
+        remoteSchedules.remove(remote, id),
+      )
     const s = getSchedule(id)
-    if (s) await routeRemoveSchedule(s)
-    else unscheduleJob(id)
+    // Removing the local record while the HOST's timer survives is the same
+    // silent-orphan bug as a failed host switch — carry the failure out.
+    let warning: string | undefined
+    if (s) {
+      const torn = await routeRemoveSchedule(s).catch((e) => ({
+        ok: false,
+        error: (e as Error)?.message || String(e),
+      }))
+      if (!torn.ok)
+        warning = teardownWarning(
+          s,
+          s.host ? readSettings().remoteHosts.find((h) => h.id === s.host)?.label : undefined,
+          torn.error,
+        )
+    } else unscheduleJob(id)
     const ok = removeSchedule(id)
     if (ok) {
       emitActivity({
@@ -248,19 +314,42 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
         sessionId: deps.cur().sessionId,
       })
     }
-    return ok
+    if (warning)
+      emitActivity({
+        kind: 'error',
+        title: `Old trigger left behind · ${s?.agentTitle || id}`,
+        detail: warning,
+        repo: s?.repoLabel,
+        repoRoot: s?.repoRoot,
+        sessionId: deps.cur().sessionId,
+      })
+    if (!ok) return { ok: false, reason: 'refused', error: `no such schedule: ${id}` }
+    return warning ? { ok: true, warning } : { ok: true }
   })
-  ipcMain.handle('schedules:toggle', async (_e, id: string, enabled: boolean) => {
-    const remote = deps.curRemote()
-    if (remote) return remoteSchedules.toggle(remote, id, enabled).catch(() => false)
+  ipcMain.handle(
+    'schedules:toggle',
+    async (_e, id: string, enabled: boolean): Promise<MutationResult> => {
+      const remote = deps.curRemote()
+      if (remote)
+        return remoteMutation(remote.label || remote.sshTarget, () =>
+          remoteSchedules.toggle(remote, id, enabled),
+        )
+      return toggleLocal(id, enabled)
+    },
+  )
+  async function toggleLocal(id: string, enabled: boolean): Promise<MutationResult> {
     const ok = toggleSchedule(id, enabled)
     const s = getSchedule(id)
+    let warning: string | undefined
     if (s) {
-      try {
-        await routeSyncSchedule(s)
-      } catch {
-        /* best effort */
-      }
+      const synced = await routeSyncSchedule(s).catch((e) => ({
+        ok: false,
+        error: (e as Error)?.message || String(e),
+      }))
+      // A failed sync means the record says one thing and the trigger layer
+      // another — most often a host we could not reach. Say so.
+      if (!synced.ok)
+        warning = `${enabled ? 'enabled' : 'paused'} locally, but the trigger did not update: ${synced.error || 'unknown error'}`
       if (ok) {
         emitActivity({
           kind: 'check',
@@ -272,8 +361,9 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
         })
       }
     }
-    return ok
-  })
+    if (!ok) return { ok: false, reason: 'refused', error: `no such schedule: ${id}` }
+    return warning ? { ok: true, warning } : { ok: true }
+  }
   // Fire a schedule's run on a remote — the same mechanism as the Runs-tab
   // re-run (remote-helper `schedules.runNow` over SSH).
   async function remoteRunNow(
@@ -333,18 +423,57 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
     return remote ? remoteSchedules.runs(remote, id).catch(() => []) : readCronRuns(id)
   })
 
-  ipcMain.handle('schedules:disabled-list', () => (deps.curRemote() ? [] : listDisabled()))
-  ipcMain.handle('schedules:disabled-toggle', (_e, id: string, disabled: boolean) => {
-    if (deps.curRemote()) return false
-    const ok = setAgentDisabled(id, disabled)
-    emitActivity({
-      kind: 'check',
-      title: `Scheduled agent ${disabled ? 'paused' : 'resumed'} · ${id}`,
-      detail: 'Manual override',
-      sessionId: deps.cur().sessionId,
-    })
-    return ok
+  // Breaker state INCLUDING each host's own disabled.json. The host's runner
+  // trips the breaker there, so a Mac that reads only its local file renders a
+  // dead schedule as enabled/healthy (host-disabled.ts).
+  ipcMain.handle('schedules:disabled-detail', async (): Promise<DisabledDetailResult> => {
+    const attached = deps.curRemote()
+    if (attached) {
+      const snap = await hostBreakerState([attached])
+      return { entries: snap.entries, errors: snap.errors }
+    }
+    const local = listDisabledDetail().map((e) => ({ ...e, host: undefined, hostLabel: undefined }))
+    const refs = [...new Set(readSchedules().flatMap((s) => (s.host ? [s.host] : [])))].flatMap(
+      (hostId) => {
+        const ref = deps.remoteFromHostId(hostId)
+        return ref ? [ref] : []
+      },
+    )
+    const snap = await hostBreakerState(refs)
+    return { entries: [...local, ...snap.entries], errors: snap.errors }
   })
+  ipcMain.handle(
+    'schedules:disabled-toggle',
+    async (_e, id: string, disabled: boolean): Promise<MutationResult> => {
+      // Route to whichever disabled.json actually gates this schedule: the
+      // attached remote's, its assigned host's, or the local one.
+      const attached = deps.curRemote()
+      const ref = attached || hostRefForSchedule(id)
+      if (ref) {
+        const r = await setHostDisabled(ref, id, disabled)
+        if (r.ok)
+          emitActivity({
+            kind: 'check',
+            title: `Scheduled agent ${disabled ? 'paused' : 'resumed'} on ${ref.label || ref.sshTarget} · ${id}`,
+            detail: 'Manual override (host kill-switch)',
+            sessionId: deps.cur().sessionId,
+          })
+        return r
+      }
+      setAgentDisabled(id, disabled)
+      emitActivity({
+        kind: 'check',
+        title: `Scheduled agent ${disabled ? 'paused' : 'resumed'} · ${id}`,
+        detail: 'Manual override',
+        sessionId: deps.cur().sessionId,
+      })
+      return { ok: true }
+    },
+  )
+  function hostRefForSchedule(id: string): RemoteSessionRef | null {
+    const host = getSchedule(id)?.host
+    return host ? deps.remoteFromHostId(host) : null
+  }
   ipcMain.handle('schedules:disabled-all', (_e, disabled: boolean) => {
     if (deps.curRemote()) return false
     const ids = readSchedules(Date.now()).map((s) => s.id)

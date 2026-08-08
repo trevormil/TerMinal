@@ -1194,6 +1194,25 @@ export type Schedule = {
   // remote lists; false = enabled but dark (won't fire until reconciled).
   loaded?: boolean
 }
+// Result of a schedule mutation that may cross a network. `refused` = the other
+// side answered no (unknown id); `unreachable` = we never got there. Mirrors
+// src/main/schedule-honesty.ts.
+export type ScheduleMutationResult =
+  { ok: true; warning?: string } | { ok: false; reason: 'refused' | 'unreachable'; error: string }
+// Circuit-breaker state per schedule. `host` set → the entry came from THAT
+// host's disabled.json (its runner tripped the breaker, not ours).
+export type ScheduleDisabledEntry = {
+  id: string
+  reason?: string
+  disabledAt: number
+  host?: string
+  hostLabel?: string
+}
+export type ScheduleDisabledDetail = {
+  entries: ScheduleDisabledEntry[]
+  /** Hosts whose breaker file we could not read — never reported as "clean". */
+  errors: { host: string; hostLabel: string; error: string }[]
+}
 export type WindowStats = {
   events: number
   ticketsFiled: number
@@ -2176,9 +2195,13 @@ export type GtApi = {
       timeoutSec?: number
       host?: string // hostId → fire on that host via systemd (ADR-0002); absent → local launchd
       runtime?: 'bare' | 'container' | 'k8s'
-    }) => Promise<{ ok: true; id: string } | { error: string }>
-    remove: (id: string) => Promise<boolean>
-    toggle: (id: string, enabled: boolean) => Promise<boolean>
+      // A remote-attached save installs no recurring timer, so `enabled: true` is
+      // rejected on that path (src/main/schedule-honesty.ts).
+    }) => Promise<{ ok: true; id: string; warning?: string } | { error: string }>
+    // `warning` = it changed here, but a trigger elsewhere was NOT torn down or
+    // updated (usually a host we could not reach).
+    remove: (id: string) => Promise<ScheduleMutationResult>
+    toggle: (id: string, enabled: boolean) => Promise<ScheduleMutationResult>
     runNow: (id: string, hostId?: string) => Promise<{ ok: true } | { error: string }>
     runs: (id?: string) => Promise<CronRun[]>
     runLog: (runId: string) => Promise<string>
@@ -2187,8 +2210,10 @@ export type GtApi = {
       | { ok: false; error: string }
     >
     removeAll: () => Promise<{ removed: number }>
-    disabledList: () => Promise<string[]>
-    disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
+    /** Breaker state with WHY/WHEN, including each assigned host's own
+     *  disabled.json — the host's runner trips the breaker there, not here. */
+    disabledDetail: () => Promise<ScheduleDisabledDetail>
+    disabledToggle: (id: string, disabled: boolean) => Promise<ScheduleMutationResult>
     disabledAll: (disabled: boolean) => Promise<string[]>
     design: (text: string, engine: Engine) => Promise<AgentRun | { error: string }>
   }
