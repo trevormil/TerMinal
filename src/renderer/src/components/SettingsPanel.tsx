@@ -11,6 +11,7 @@ import {
   ClipboardCopy,
   Cpu,
   Eye,
+  FlaskConical,
   FolderOpen,
   FolderTree,
   GitPullRequest,
@@ -41,6 +42,8 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { EXPERIMENT_IDS, EXPERIMENT_META, type ExperimentId } from '../../../shared/experiments'
+import { useExperiment } from '../lib/useExperiment'
 import type {
   DeliveryRecord,
   Settings,
@@ -744,6 +747,51 @@ function PanelsSection({
   )
 }
 
+/**
+ * One experimental flag. Reads its state through `useExperiment` — the same gate
+ * a flagged feature uses elsewhere — rather than off the panel's settings copy,
+ * so this row is also the working example of the helper: `save` dispatches
+ * `gt.settings.changed`, the hook picks it up, and every gated surface in the
+ * window flips at once.
+ */
+function ExperimentRow({ id, save }: { id: ExperimentId; save: (patch: SettingsPatch) => void }) {
+  const on = useExperiment(id)
+  const meta = EXPERIMENT_META[id]
+  return (
+    <div data-experiment-id={id} className="flex flex-col gap-1">
+      <Toggle
+        on={on}
+        onToggle={() => save({ experiments: { [id]: !on } })}
+        label={meta.label}
+        hint={meta.desc}
+      />
+      <div className="flex items-start gap-2 pl-2.5 text-[10.5px] leading-relaxed text-zinc-600">
+        <span className="mt-px shrink-0 rounded border border-[var(--gt-yellow)]/40 bg-[var(--gt-yellow)]/10 px-1 py-px font-medium tracking-wide text-[var(--gt-yellow)] uppercase">
+          Experimental
+        </span>
+        <span className="min-w-0">{meta.reveals}</span>
+      </div>
+    </div>
+  )
+}
+
+function ExperimentsSection({ save }: { save: (patch: SettingsPatch) => void }) {
+  return (
+    <Section
+      id="experiments"
+      icon={FlaskConical}
+      title="Experimental"
+      desc="Features that work but are not finished. They are off by default; turning one on reveals its surfaces in the app. Expect rough edges, and expect the behaviour, layout, and stored shape to change — including in ways that discard what an experiment produced."
+    >
+      <div className="flex flex-col gap-3">
+        {EXPERIMENT_IDS.map((id) => (
+          <ExperimentRow key={id} id={id} save={save} />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
 // Last-N alert deliveries with failure reasons. dispatchAlert isolates channel
 // failures so one dead webhook can't block the others — which also meant a
 // revoked token failed silently forever. This is where that becomes visible.
@@ -832,6 +880,7 @@ const SETTING_NAV: { id: string; title: string; icon: LucideIcon }[] = [
   { id: 'tabs', title: 'Tabs', icon: Rows3 },
   { id: 'security', title: 'Security', icon: ShieldCheck },
   { id: 'presets', title: 'Presets', icon: Eye },
+  { id: 'experiments', title: 'Experimental', icon: FlaskConical },
   { id: 'status', title: 'Status', icon: Activity },
   { id: 'updates', title: 'Updates', icon: ArrowUpCircle },
   { id: 'rebuild', title: 'Rebuild', icon: PackageOpen },
@@ -4162,6 +4211,8 @@ export function SettingsPanel({
                 >
                   <PresetVisibilityPanel />
                 </Section>
+
+                <ExperimentsSection save={save} />
 
                 {/* Harness self-status — meta-observability snapshot. */}
                 <Section
