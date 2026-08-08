@@ -13,6 +13,7 @@ import {
   type NotifyMatrix,
 } from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
+import { normalizeDestination, type InboxDestination } from '../shared/slack'
 import { expandSecretPaths } from './secret-paths'
 
 // Persisted, self-configuring app settings. Every key has a working default —
@@ -71,6 +72,23 @@ export type InboxCfg = {
   // Minimum severity that fires a notification (push/Telegram/desktop). Below it,
   // items are inbox-only — email you sweep once or twice a day. Default 'urgent'.
   notifyThreshold: 'urgent' | 'normal' | 'low'
+  // Where filings surface: the in-app Inbox, Slack, or both (shared/slack.ts).
+  // 'slack' still persists every item to hitl.json — it only moves the nag.
+  destination: InboxDestination
+}
+// Slack as an inbox destination (inbox.destination). A BOT token, not an
+// incoming webhook: webhooks are pinned to one channel each, and the point is
+// per-category channels (Monitoring/Certs → #inbox-monitoring-certs). Scopes:
+// chat:write, channels:manage + channels:join (auto-create), reactions:write.
+export type SlackCfg = {
+  botToken: string // sealed; xoxb- bot token
+  defaultChannel: string // Uncategorized + fallback channel, '#' optional
+  channelPrefix: string // derived-channel prefix; '' → bare category slug
+  autoCreateChannels: boolean // create+join missing public channels on first post
+  // Slack member id (U…) auto-invited to every channel the bot creates. Bot-made
+  // channels don't appear in anyone's sidebar until joined; without this, each
+  // new category means a manual channel-browser hunt. '' → skip.
+  inviteUserId: string
 }
 // Outbound alert channels (notify-channels.ts). Telegram keeps its own block
 // above (telegram.notify is that channel's enable knob — inbound control lives
@@ -151,6 +169,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  slack: SlackCfg
   /** Per-channel × per-category notification routing (see shared/notifications). */
   notifications: NotificationsCfg
   bridge: BridgeCfg
@@ -179,7 +198,15 @@ export type Settings = {
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    | 'telegram'
+    | 'alerts'
+    | 'inbox'
+    | 'slack'
+    | 'bridge'
+    | 'appearance'
+    | 'engines'
+    | 'apps'
+    | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
@@ -189,6 +216,7 @@ export type SettingsPatch = Partial<
     webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
+  slack?: Partial<SlackCfg>
   bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
@@ -240,7 +268,19 @@ export function defaultSettings(): Settings {
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
     alerts: { desktop: { enabled: true }, webhooks: [] },
-    inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'urgent' },
+    inbox: {
+      completionHook: true,
+      agentContextPreamble: true,
+      notifyThreshold: 'urgent',
+      destination: 'inbox',
+    },
+    slack: {
+      botToken: '',
+      defaultChannel: '#terminal-inbox',
+      channelPrefix: 'inbox',
+      autoCreateChannels: true,
+      inviteUserId: '',
+    },
     notifications: { matrix: {} }, // {} = ship defaults (shared/notifications DEFAULT_MATRIX)
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
     appearance: {
@@ -455,6 +495,16 @@ export function migrate(raw: unknown): Settings {
       r.inbox.notifyThreshold === 'low'
     )
       s.inbox.notifyThreshold = r.inbox.notifyThreshold
+    if (r.inbox.destination !== undefined)
+      s.inbox.destination = normalizeDestination(r.inbox.destination)
+  }
+  if (r.slack && typeof r.slack === 'object') {
+    if (typeof r.slack.botToken === 'string') s.slack.botToken = r.slack.botToken
+    if (typeof r.slack.defaultChannel === 'string') s.slack.defaultChannel = r.slack.defaultChannel
+    if (typeof r.slack.channelPrefix === 'string') s.slack.channelPrefix = r.slack.channelPrefix
+    if (typeof r.slack.autoCreateChannels === 'boolean')
+      s.slack.autoCreateChannels = r.slack.autoCreateChannels
+    if (typeof r.slack.inviteUserId === 'string') s.slack.inviteUserId = r.slack.inviteUserId
   }
   if (r.appearance && typeof r.appearance === 'object') {
     if (
@@ -657,6 +707,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     telegram,
     alerts,
     inbox,
+    slack,
     bridge,
     appearance,
     apps,
@@ -681,7 +732,13 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
       desktop: { ...cur.alerts.desktop, ...(alerts?.desktop || {}) },
       webhooks: mergeWebhooks(cur.alerts.webhooks, alerts?.webhooks),
     },
-    inbox: { ...cur.inbox, ...(inbox || {}) },
+    inbox: {
+      ...cur.inbox,
+      ...(inbox || {}),
+      // A patch can arrive from a shell-built CLI call; never persist junk.
+      destination: normalizeDestination(inbox?.destination ?? cur.inbox.destination),
+    },
+    slack: { ...cur.slack, ...(slack || {}) },
     bridge: { ...cur.bridge, ...bridgePatch },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },
@@ -721,6 +778,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
     return merged
   })
   syncTelegramSidecar(next)
+  syncSlackSidecar(next)
   return next
 }
 
@@ -783,6 +841,44 @@ export function syncTelegramSidecar(s: Settings = readSettings()): void {
     }
   } catch {
     /* best effort — telegram is a non-critical side channel */
+  }
+}
+
+// --- slack sidecar (out-of-process delivery) ---------------------------------
+//
+// Same shape as the telegram sidecar and for the same reason: the bin filers
+// can't call safeStorage to decrypt the sealed bot token, so the app mirrors
+// the decrypted token — plus the non-secret channel config they need to route
+// with — to a 0600 sidecar. One file, so the read side is one JSON.parse.
+const slackSidecarFile = (): string => configPath('slack.local.json')
+
+export type SlackSidecar = SlackCfg & { destination: InboxDestination }
+
+/** The config worth mirroring (token present + a destination that posts), or
+ *  null to clear. Removing the sidecar when Slack is off keeps a revoked or
+ *  stale token from lingering on disk. */
+export function slackSidecarPayload(s: Settings): SlackSidecar | null {
+  if (!s.slack.botToken || s.inbox.destination === 'inbox') return null
+  return { ...s.slack, destination: s.inbox.destination }
+}
+
+/** Mirror decrypted slack config to the 0600 sidecar, or remove it when off. */
+export function syncSlackSidecar(s: Settings = readSettings()): void {
+  const file = slackSidecarFile()
+  try {
+    const payload = slackSidecarPayload(s)
+    if (payload) {
+      writeFileAtomic(file, JSON.stringify(payload), { mode: 0o600 })
+      try {
+        chmodSync(file, 0o600)
+      } catch {
+        /* best effort */
+      }
+    } else if (existsSync(file)) {
+      unlinkSync(file)
+    }
+  } catch {
+    /* best effort — slack is a non-critical side channel */
   }
 }
 

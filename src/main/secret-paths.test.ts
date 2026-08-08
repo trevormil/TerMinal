@@ -70,6 +70,7 @@ describe('expandSecretPaths', () => {
     expect(paths.map((p) => p.join('.'))).toEqual([
       'telegram.botToken',
       'telegram.chatId',
+      'slack.botToken',
       'alerts.webhooks.0.url',
       'alerts.webhooks.1.url',
       'openrouterApiKey',
@@ -78,6 +79,6 @@ describe('expandSecretPaths', () => {
   })
 
   test('the pattern list still names every secret', () => {
-    expect(SECRET_PATTERNS.length).toBe(5)
+    expect(SECRET_PATTERNS.length).toBe(6)
   })
 })
