@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Ticket as TicketIcon, ExternalLink } from 'lucide-react'
 import { TicketsBrowser } from '../../components/TicketsBrowser'
 import { useWebSurface, BrowserToolbar } from '../browser/webSurface'
+import { onNavigate } from '../../lib/nav'
 import type { Tab, TabContext, TicketView } from '../../lib/types'
 
 // The Tickets tab has one source per configured surface: the repo's real backlog
@@ -47,6 +48,40 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
   // 0 = the primary slot (backlog, or the webview provider's own page);
   // 1..n = configured `views[]`.
   const [active, setActive] = useState(0)
+  // A ticket's "open in Linear view" navigates here with a specific issue URL —
+  // it overrides the active view's start URL for that visit only.
+  const [viewUrlOverride, setViewUrlOverride] = useState<string | null>(null)
+  // Mirrors providerWebview for the nav handler (state would be stale there).
+  const providerWebviewRef = useRef<TicketView | null>(null)
+
+  useEffect(
+    () =>
+      onNavigate((ev) => {
+        if (ev.tabId !== 'tickets') return
+        const url = typeof ev.payload?.viewUrl === 'string' ? ev.payload.viewUrl : ''
+        if (!url) return
+        setViewUrlOverride(url)
+        // Linear mode: the provider webview IS the primary slot — deep-link it.
+        if (providerWebviewRef.current) {
+          setActive(0)
+          return
+        }
+        // Otherwise land on the first view sharing the URL's host.
+        setViews((vs) => {
+          const host = (() => {
+            try {
+              return new URL(url).host
+            } catch {
+              return ''
+            }
+          })()
+          const i = vs.findIndex((v) => host && v.url.includes(host))
+          setActive((i >= 0 ? i : 0) + 1)
+          return vs
+        })
+      }),
+    [],
+  )
 
   useEffect(() => {
     let live = true
@@ -58,17 +93,28 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
         if ('error' in cfg) {
           setViews([])
           setProviderWebview(null)
+          providerWebviewRef.current = null
           return
         }
         const vs = cfg.views || []
-        setViews(vs)
-        setProviderWebview(
-          cfg.provider === 'webview' && cfg.webview?.url
-            ? { label: cfg.webview.label || 'Tickets', url: cfg.webview.url }
-            : null,
-        )
+        // Linear mode is webview-first: Linear's own UI takes the primary slot
+        // (no local md-style browser at all — same feel as a webview provider).
+        // The provider-get call always synthesizes a linear.app view for linear
+        // repos, so one is guaranteed to exist.
+        const linearIdx =
+          cfg.provider === 'linear' ? vs.findIndex((v) => v.url.includes('linear.app')) : -1
+        const primaryView =
+          linearIdx >= 0
+            ? { label: vs[linearIdx].label || 'Linear', url: vs[linearIdx].url }
+            : cfg.provider === 'webview' && cfg.webview?.url
+              ? { label: cfg.webview.label || 'Tickets', url: cfg.webview.url }
+              : null
+        const rest = linearIdx >= 0 ? vs.filter((_, i) => i !== linearIdx) : vs
+        setViews(rest)
+        setProviderWebview(primaryView)
+        providerWebviewRef.current = primaryView
         // A view flagged `default` opens first; index+1 since 0 is the primary slot.
-        const di = vs.findIndex((v) => v.default)
+        const di = rest.findIndex((v) => v.default)
         if (di >= 0) setActive(di + 1)
       })
       .catch(() => {})
@@ -90,7 +136,10 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
           {[primary, ...views].map((v, i) => (
             <button
               key={`${v.label}:${i}`}
-              onClick={() => setActive(i)}
+              onClick={() => {
+                setViewUrlOverride(null) // a manual switch drops any deep-link
+                setActive(i)
+              }}
               className={`rounded px-1.5 py-0.5 ${
                 i === active
                   ? 'bg-[var(--gt-accent)]/20 text-[var(--gt-accent-light)]'
@@ -104,7 +153,8 @@ function TicketsTab({ ctx }: { ctx: TabContext }) {
       )}
       {view ? (
         // Keyed by url so switching views (or repos) remounts a clean surface.
-        <TicketWebView key={view.url} url={view.url} />
+        // An override (ticket → "open in Linear view") deep-links this visit.
+        <TicketWebView key={viewUrlOverride || view.url} url={viewUrlOverride || view.url} />
       ) : (
         <TicketsBrowser ctx={ctx} />
       )}

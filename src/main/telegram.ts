@@ -56,7 +56,6 @@ import { readActivity } from './events'
 // resolves relative to the emitted bundle and `require('./bg-tasks')` throws
 // MODULE_NOT_FOUND (see the ESM-main note in CLAUDE.md).
 import { spawnBgTask, listBgTasks, cancelBgTask } from './bg-tasks'
-import { readBudgets, setDailyCap, setAgentCap, setOverride } from './budgets'
 import { summaryFor } from './ai-runs'
 import { configPath, terminalConfigDir } from './config-dir'
 
@@ -925,60 +924,14 @@ function cmdInstall(args: string[]) {
   }
 }
 
-// --- /budget cap + override ------------------------------------------------
+// --- /spend — today's ledger, observability only ---------------------------
 
-function cmdBudget(args: string[]) {
-  const sub = args[0]?.toLowerCase()
-  if (!sub) {
-    const b = readBudgets()
-    const s = summaryFor('today')
-    const lines = [
-      `💰 Budget`,
-      `today: $${s.totalUsd.toFixed(2)}${b.dailyTotalUsd > 0 ? ` / $${b.dailyTotalUsd.toFixed(2)} (${Math.round((s.totalUsd / b.dailyTotalUsd) * 100)}%)` : ' (no cap)'}`,
-    ]
-    if (Object.keys(b.perAgent).length) {
-      lines.push('per-agent caps:')
-      for (const [a, c] of Object.entries(b.perAgent)) {
-        const spent = s.byAgent[a]?.usd || 0
-        lines.push(`  ${a}: $${spent.toFixed(2)} / $${c.toFixed(2)}`)
-      }
-    }
-    if (b.overrideUntil && b.overrideUntil > Date.now()) {
-      const mins = Math.round((b.overrideUntil - Date.now()) / 60_000)
-      lines.push(`override active for ${mins}m`)
-    }
-    return reply(lines.join('\n'))
-  }
-  if (sub === 'set') {
-    const t1 = args[1]
-    const t2 = args[2]
-    // /budget set 25         — daily cap
-    // /budget set docs 5     — per-agent cap
-    const usd = parseFloat(t2 || t1 || '')
-    if (!Number.isFinite(usd))
-      return reply('Usage: /budget set <usd>  ·  /budget set <agent> <usd>')
-    if (t2) {
-      setAgentCap(t1, usd)
-      return reply(`✓ ${t1} cap set to $${usd.toFixed(2)}/day`)
-    }
-    setDailyCap(usd)
-    return reply(`✓ daily cap set to $${usd.toFixed(2)}`)
-  }
-  if (sub === 'override') {
-    // /budget override 2h  or  /budget override clear
-    const dur = args[1] || '1h'
-    if (dur === 'clear' || dur === '0') {
-      setOverride(0)
-      return reply('✓ override cleared')
-    }
-    const m = dur.match(/^(\d+)([hm])?$/)
-    if (!m) return reply('Usage: /budget override <Nh|Nm|clear>')
-    const n = parseInt(m[1], 10)
-    const ms = m[2] === 'm' ? n * 60_000 : n * 3_600_000
-    setOverride(ms)
-    return reply(`✓ override active for ${dur}`)
-  }
-  reply('Usage: /budget · /budget set <usd> · /budget set <agent> <usd> · /budget override <Nh>')
+function cmdSpend() {
+  const s = summaryFor('today')
+  const lines = [`💰 Spend today: $${s.totalUsd.toFixed(2)}`]
+  const agents = Object.entries(s.byAgent).sort((a, b) => (b[1].usd || 0) - (a[1].usd || 0))
+  for (const [a, v] of agents.slice(0, 8)) lines.push(`  ${a}: $${(v.usd || 0).toFixed(2)}`)
+  reply(lines.join('\n'))
 }
 
 // --- /bg fire and forget ---------------------------------------------------
@@ -1184,7 +1137,7 @@ Examples:
   "show me what's blocked" → /hitl
   "kill run 3" → /cancel 3
   "what's running" → /runs
-  "how much have I spent today" → /budget
+  "how much have I spent today" → /spend
 
 Reply with ONE LINE — either the command or NONE. No preamble, no explanation.`
   try {
@@ -1268,7 +1221,7 @@ const HANDLERS: Record<string, (args: string[]) => unknown> = {
   '/about': () => cmdAbout(),
   '/install': (a) => cmdInstall(a),
   '/bg': (a) => cmdBg(a),
-  '/budget': (a) => cmdBudget(a),
+  '/spend': () => cmdSpend(),
 }
 
 // Inline-button callback dispatcher. Callback data is small (max 64 bytes per

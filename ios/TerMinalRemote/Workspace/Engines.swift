@@ -6,6 +6,10 @@ import SwiftUI
 struct WsEngine: Codable, Identifiable, Hashable {
     let id: String
     let label: String
+    /// Reasoning-effort levels the engine's CLI accepts, served by the Mac
+    /// (`/v1/engines`). nil/empty = no effort control (or a Mac too old to
+    /// send it — the picker then simply doesn't render).
+    var efforts: [String]? = nil
 }
 
 extension WsEngine {

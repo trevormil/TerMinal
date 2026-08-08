@@ -269,6 +269,94 @@ describe('linearIssueToTicket', () => {
   })
 })
 
+describe('linear-native meta', () => {
+  test("carries Linear's own schema alongside the coerced fields", () => {
+    const ticket = linearIssueToTicket({
+      id: 'uuid-1',
+      identifier: 'ENG-42',
+      title: 'Ship it',
+      description: 'body',
+      priority: 1,
+      state: { name: 'In Review', type: 'started', color: '#f2c94c' },
+      assignee: { name: 'Trevor Miller' },
+      labels: { nodes: [{ name: 'Bug', color: '#eb5757' }, { name: 'iOS' }] },
+      project: { name: 'Mobile' },
+      cycle: { name: 'Cycle 12' },
+      team: { name: 'Engineering', key: 'ENG' },
+      estimate: 3,
+      dueDate: '2026-08-15T00:00:00.000Z',
+      url: 'https://linear.app/acme/issue/ENG-42/ship-it',
+    })
+    expect(ticket.linear).toMatchObject({
+      identifier: 'ENG-42',
+      stateName: 'In Review',
+      stateType: 'started',
+      stateColor: '#f2c94c',
+      priority: 1,
+      priorityLabel: 'Urgent',
+      assignee: 'Trevor Miller',
+      project: 'Mobile',
+      cycle: 'Cycle 12',
+      team: 'Engineering',
+      estimate: 3,
+      dueDate: '2026-08-15',
+    })
+    expect(ticket.linear?.labels).toEqual([{ name: 'Bug', color: '#eb5757' }, { name: 'iOS' }])
+    // stateType beats name-sniffing for the coerced bucket.
+    expect(ticket.status).toBe('in-progress')
+  })
+
+  test('an issue matching none of our conventions still comes through renderable', () => {
+    const ticket = linearIssueToTicket({ id: 'weird', title: 'Bare minimum' })
+    expect(ticket.title).toBe('Bare minimum')
+    expect(ticket.linear).toMatchObject({
+      identifier: 'weird',
+      stateName: 'Unknown',
+      priority: 0,
+      priorityLabel: 'No priority',
+      labels: [],
+    })
+    // Custom state names that fit no bucket coerce without throwing.
+    const custom = linearIssueToTicket({
+      id: 'x',
+      identifier: 'OPS-9',
+      title: 'Custom state',
+      state: { name: 'Shipping it', type: 'completed' },
+    })
+    expect(custom.status).toBe('closed')
+  })
+
+  test('a numeric priority alone maps to its Linear label', () => {
+    const t = linearIssueToTicket({ id: 'p', identifier: 'A-1', title: 't', priority: 4 })
+    expect(t.linear?.priorityLabel).toBe('Low')
+    expect(t.priority).toBe('low')
+  })
+
+  test('linear provider synthesizes an embedded Linear view when none is configured', () => {
+    const bare = repoWithTicketConfig({ provider: 'linear' })
+    expect(readRepoTicketConfig(bare).views).toEqual([
+      { label: 'Linear', url: 'https://linear.app' },
+    ])
+    const workspace = repoWithTicketConfig({
+      provider: 'linear',
+      linear: { workspace: 'https://linear.app/acme' },
+    })
+    expect(readRepoTicketConfig(workspace).views).toEqual([
+      { label: 'Linear', url: 'https://linear.app/acme' },
+    ])
+    // An explicitly configured linear.app view suppresses the synthesized one.
+    const explicit = repoWithTicketConfig({
+      provider: 'linear',
+      views: [{ label: 'Board', url: 'https://linear.app/acme/team/ENG/board' }],
+    })
+    expect(readRepoTicketConfig(explicit).views).toEqual([
+      { label: 'Board', url: 'https://linear.app/acme/team/ENG/board' },
+    ])
+    // Non-linear providers are untouched.
+    expect(readRepoTicketConfig(repoWithTicketConfig({ provider: 'local' })).views).toBeUndefined()
+  })
+})
+
 describe('repo ticket views', () => {
   test('views persist alongside — and independently of — the provider', () => {
     const repo = repoWithTicketConfig({ provider: 'local' })

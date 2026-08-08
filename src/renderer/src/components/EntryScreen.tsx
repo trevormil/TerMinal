@@ -26,7 +26,7 @@ import type {
 } from '../lib/types'
 import { engineLabel, sessionEngineLabel, ENGINE_MODELS, ENGINE_IDS } from '../lib/engines'
 import { EngineLogo } from './EngineLogo'
-import { ModelSelect } from './ModelSelect'
+import { EffortSelect, ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
 import { filterSessionMetas } from '../lib/sessionSearch'
 import { repoOrientationPendingKey } from '../lib/orientation'
@@ -37,6 +37,8 @@ export type Choice = {
   engine: SessionEngine
   /** Model to launch the engine with (--model). Undefined = engine/global default. */
   model?: string
+  /** Reasoning-effort level for the engine. Undefined = engine/global default. */
+  effort?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -222,6 +224,7 @@ export function EntryScreen({
   const [engine, setEngine] = useState<SessionEngine>(recentEngine ?? 'local')
   const [scratchEngine, setScratchEngine] = useState<SessionEngine>('claude')
   const [model, setModel] = useState<string | undefined>(undefined) // '' semantics: undefined = engine default
+  const [effort, setEffort] = useState<string | undefined>(undefined) // undefined = engine default
   const [openrouterHarness, setOpenrouterHarness] = useState<'codex' | 'hermes'>('codex')
   const [location, setLocation] = useState<'local' | 'remote'>(lockedRemote ? 'remote' : 'local')
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([])
@@ -357,6 +360,7 @@ export function EntryScreen({
       /* ignore */
     }
     setModel(undefined) // model is engine-specific — reset to the new engine's default
+    setEffort(undefined) // effort levels are engine-specific too
     setVisibleSessionCount(SESSION_PAGE_SIZE)
     if (isAiEngine(next)) loadEngineSessions(next)
   }
@@ -488,6 +492,10 @@ export function EntryScreen({
       mode: 'new' as const,
       engine,
       model: isAiEngine(engine) ? model : undefined,
+      effort:
+        isAiEngine(engine) && !(engine === 'openrouter' && openrouterHarness === 'hermes')
+          ? effort
+          : undefined,
       cwd: location === 'remote' ? remoteCwd : cwd.trim() || undefined,
       name: name.trim() || undefined,
       openrouterHarness: engine === 'openrouter' ? openrouterHarness : undefined,
@@ -968,8 +976,11 @@ export function EntryScreen({
                     <div className="mb-1.5 text-[10.5px] uppercase tracking-wide text-zinc-500">
                       Model
                     </div>
-                    <div className="max-h-[240px] overflow-y-auto pr-0.5">
+                    <div className="max-h-[240px] space-y-3 overflow-y-auto pr-0.5">
                       <ModelSelect engine={engine} model={model} onChange={setModel} />
+                      {!(engine === 'openrouter' && openrouterHarness === 'hermes') && (
+                        <EffortSelect engine={engine} effort={effort} onChange={setEffort} />
+                      )}
                     </div>
                   </div>
                 )}

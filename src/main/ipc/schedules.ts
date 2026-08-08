@@ -104,6 +104,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
         agentId: string
         engine: Engine
         model?: string
+        effort?: string
         spec: ScheduleSpec
         enabled?: boolean
         env?: Record<string, string>
@@ -141,6 +142,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
             agentTitle: agent.title,
             engine: input.engine || agent.engine || remote.daemon?.defaultEngine || 'codex',
             model: input.model ?? agent.model,
+            effort: input.effort ?? agent.effort,
             prompt: agent.prompt,
             spec: input.spec,
             enabled: input.enabled ?? true,
@@ -183,6 +185,7 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
         agentTitle: agent.title,
         engine: input.engine || agent.engine || 'codex',
         model: input.model ?? agent.model,
+        effort: input.effort ?? agent.effort,
         prompt: agent.prompt, // snapshot — runner uses this offline
         spec: input.spec,
         enabled: input.enabled ?? true,

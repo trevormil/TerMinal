@@ -24,7 +24,7 @@ import {
   createDesktopChannel,
   createPushChannel,
   createTelegramChannel,
-  createWebhookChannel,
+  createWebhookChannels,
   dispatchAlert,
   type NotifyChannel,
 } from './notify-channels'
@@ -107,10 +107,13 @@ function showDesktopNotification(title: string, body: string): void {
     /* notifications unavailable */
   }
 }
-const alertChannels: NotifyChannel[] = [
+// Rebuilt per dispatch rather than once at startup: the webhook list is
+// user-editable, so a fixed array would leave a newly-added destination silent
+// until the app restarted.
+const alertChannels = (): NotifyChannel[] => [
   createTelegramChannel(readSettings),
   createDesktopChannel(readSettings, showDesktopNotification),
-  createWebhookChannel(readSettings),
+  ...createWebhookChannels(readSettings),
   // A paired iPhone is just another channel — same alerts Telegram gets.
   // Silently inert until an APNs key is dropped in and a device registers.
   createPushChannel(
@@ -122,9 +125,21 @@ const alertChannels: NotifyChannel[] = [
   ),
 ]
 
+/** The gate on notifying at all — includes each webhook's own category
+ *  overrides, or a destination that opted into extra traffic would be dropped
+ *  here, before dispatch ever ran. */
+function wantedByAnyChannel(ev: ActivityEvent): boolean {
+  const s = readSettings()
+  return anyChannelWants(
+    categoryFor(ev),
+    s.notifications.matrix,
+    s.alerts.webhooks.map((w) => w.categories),
+  )
+}
+
 // Fan one event out to every enabled alert channel that opted into its category.
 function fireNotification(ev: ActivityEvent): void {
-  dispatchAlert(alertChannels, ev, readSettings().notifications.matrix)
+  dispatchAlert(alertChannels(), ev, readSettings().notifications.matrix)
 }
 
 /**
@@ -206,8 +221,7 @@ export function emitActivity(
     /* best effort */
   }
   rememberEmitted(ev.id)
-  if (opts?.notify ?? anyChannelWants(categoryFor(ev), readSettings().notifications.matrix))
-    fireNotification(ev)
+  if (opts?.notify ?? wantedByAnyChannel(ev)) fireNotification(ev)
   // NOTE: don't broadcast here — the file tail (below) picks up this append and
   // broadcasts it, so terminal-written and skill-written events flow through one
   // path (no double feed entries). The tail also NOTIFIES external (skill/cron)
@@ -264,11 +278,7 @@ function drainTail() {
         // Notify for EXTERNAL high-signal events (skills, cron, gt-notify) that the
         // app didn't emit in-process — so skill-raised HITL/blocked/errors actually
         // ping. Deduped against emittedIds so app emits don't double-notify.
-        if (
-          !emittedIds.has(ev.id) &&
-          anyChannelWants(categoryFor(ev), readSettings().notifications.matrix)
-        )
-          fireNotification(ev)
+        if (!emittedIds.has(ev.id) && wantedByAnyChannel(ev)) fireNotification(ev)
       } catch {
         /* partial/garbled line — skip */
       }

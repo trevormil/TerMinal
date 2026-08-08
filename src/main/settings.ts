@@ -6,8 +6,15 @@ import { quarantineCorruptFile, readJsonState, withFileLock, writeFileAtomic } f
 import { configPath } from './config-dir'
 import { firstInstalledEditor, firstInstalledBrowser } from './apps'
 import { DEFAULT_BRIDGE_PORT } from './bridge/identity'
-import { NOTIFY_CATEGORIES, NOTIFY_CHANNELS, type NotifyMatrix } from '../shared/notifications'
+import {
+  NOTIFY_CATEGORIES,
+  NOTIFY_CHANNELS,
+  type NotifyCategory,
+  type NotifyMatrix,
+} from '../shared/notifications'
 import { ENGINE_IDS, engineOf, type EngineId } from '../shared/engines'
+import { normalizeDestination, type InboxDestination } from '../shared/slack'
+import { expandSecretPaths } from './secret-paths'
 
 // Persisted, self-configuring app settings. Every key has a working default —
 // a fresh install (no file) runs fine, and an empty string means "resolve at
@@ -20,6 +27,7 @@ export { ENGINE_IDS, type EngineId }
 export type EngineCfg = {
   path: string // '' = use the bare binary name on PATH
   defaultModel: string // '' = let the engine pick its own default
+  defaultEffort: string // '' = engine default; validated against the registry level set
   baseUrl: string // openai-compat only: the self-hosted /v1 endpoint ('' elsewhere)
 }
 
@@ -27,7 +35,7 @@ export type EngineCfg = {
  *  per-engine blocks that had to be edited (in three places) per new engine. */
 export function emptyEngineCfgs(): Record<EngineId, EngineCfg> {
   return Object.fromEntries(
-    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', baseUrl: '' }]),
+    ENGINE_IDS.map((id) => [id, { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }]),
   ) as Record<EngineId, EngineCfg>
 }
 
@@ -64,13 +72,46 @@ export type InboxCfg = {
   // Minimum severity that fires a notification (push/Telegram/desktop). Below it,
   // items are inbox-only — email you sweep once or twice a day. Default 'urgent'.
   notifyThreshold: 'urgent' | 'normal' | 'low'
+  // Where filings surface: the in-app Inbox, Slack, or both (shared/slack.ts).
+  // 'slack' still persists every item to hitl.json — it only moves the nag.
+  destination: InboxDestination
+}
+// Slack as an inbox destination (inbox.destination). A BOT token, not an
+// incoming webhook: webhooks are pinned to one channel each, and the point is
+// per-category channels (Monitoring/Certs → #inbox-monitoring-certs). Scopes:
+// chat:write, channels:manage + channels:join (auto-create), reactions:write.
+export type SlackCfg = {
+  botToken: string // sealed; xoxb- bot token
+  defaultChannel: string // Uncategorized + fallback channel, '#' optional
+  channelPrefix: string // derived-channel prefix; '' → bare category slug
+  autoCreateChannels: boolean // create+join missing public channels on first post
+  // Slack member id (U…) auto-invited to every channel the bot creates. Bot-made
+  // channels don't appear in anyone's sidebar until joined; without this, each
+  // new category means a manual channel-browser hunt. '' → skip.
+  inviteUserId: string
 }
 // Outbound alert channels (notify-channels.ts). Telegram keeps its own block
 // above (telegram.notify is that channel's enable knob — inbound control lives
 // there too); this covers the rest of the fan-out.
+/**
+ * One outbound webhook destination. Several can be configured at once — a Slack
+ * URL, a Discord URL, your own endpoint — because they rarely want the same
+ * traffic. `categories` overrides the notification matrix's `webhook` row for
+ * THIS destination only; omitted means "whatever the row says".
+ *
+ * `id` is stable and load-bearing: it keys the sealed-secret path and matches a
+ * patched entry back to its saved URL (the renderer only ever sees a mask).
+ */
+export type WebhookCfg = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  categories?: Partial<Record<NotifyCategory, boolean>>
+}
 export type AlertsCfg = {
   desktop: { enabled: boolean } // Electron Notification; on by default (historical behavior)
-  webhook: { enabled: boolean; url: string } // POST JSON; covers Slack/Discord incoming webhooks
+  webhooks: WebhookCfg[] // POST JSON; covers Slack/Discord incoming webhooks
 }
 export type AppearanceMode = 'dark' | 'light' | 'system'
 export type AppearanceTabLayout = 'horizontal' | 'sidebar'
@@ -128,6 +169,7 @@ export type Settings = {
   telegram: TelegramCfg
   alerts: AlertsCfg
   inbox: InboxCfg
+  slack: SlackCfg
   /** Per-channel × per-category notification routing (see shared/notifications). */
   notifications: NotificationsCfg
   bridge: BridgeCfg
@@ -145,21 +187,36 @@ export type Settings = {
   pinnedPanels: PinnedPanel[] // web dashboards pinned as the Panels tab; [] → tab hidden (personal)
   openrouterApiKey: string // sealed; injected as OPENROUTER_API_KEY for OpenRouter (or-agent) runs. '' → fall back to process env
   openaiCompatApiKey: string // sealed; injected as OPENAI_API_KEY for openai-compat (or-agent) runs. '' → fall back to process env
+  /** Allow repo-provided executable surfaces (.TerMinal/widgets.json +
+   *  tabs.json). OFF by default: even with the per-repo trust/approval flow, a
+   *  cloned repo getting command execution + in-app embeds is a real risk, so
+   *  the surfaces don't exist at all unless the operator opts in globally. */
+  allowRepoExtensions: boolean
 }
 
 // A patch may carry partial nested telegram/engines/apps without losing siblings.
 export type SettingsPatch = Partial<
   Omit<
     Settings,
-    'telegram' | 'alerts' | 'inbox' | 'bridge' | 'appearance' | 'engines' | 'apps' | 'suggestions'
+    | 'telegram'
+    | 'alerts'
+    | 'inbox'
+    | 'slack'
+    | 'bridge'
+    | 'appearance'
+    | 'engines'
+    | 'apps'
+    | 'suggestions'
   >
 > & {
   telegram?: Partial<TelegramCfg>
   alerts?: {
     desktop?: Partial<AlertsCfg['desktop']>
-    webhook?: Partial<AlertsCfg['webhook']>
+    /** The whole list, always — see mergeWebhooks. Entries may omit `url`. */
+    webhooks?: (Partial<WebhookCfg> & { id: string })[]
   }
   inbox?: Partial<InboxCfg>
+  slack?: Partial<SlackCfg>
   bridge?: Partial<BridgeCfg>
   appearance?: Partial<AppearanceCfg>
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
@@ -175,13 +232,6 @@ const DEFAULT_BROWSER = 'Brave Browser'
 // a clone of this repo resolves to that subdir (see pickTemplateSource).
 export const DEFAULT_TEMPLATE_REPO = 'https://github.com/trevormil/TerMinal'
 const SECRET_MARKER = 'terminal-secret:v1'
-const SECRET_PATHS = [
-  ['telegram', 'botToken'],
-  ['telegram', 'chatId'],
-  ['alerts', 'webhook', 'url'], // Slack/Discord webhook URLs embed a secret token
-  ['openrouterApiKey'],
-  ['openaiCompatApiKey'],
-] as const
 
 export type SettingsSecretStorage = {
   seal(value: string): string
@@ -217,8 +267,20 @@ export function defaultSettings(): Settings {
     defaultEngine: daemon.defaultEngine, // codex is the default agent-run engine; claude stays selectable
     forge: daemon.forge,
     telegram: { notify: false, control: false, botToken: '', chatId: '' },
-    alerts: { desktop: { enabled: true }, webhook: { enabled: false, url: '' } },
-    inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'urgent' },
+    alerts: { desktop: { enabled: true }, webhooks: [] },
+    inbox: {
+      completionHook: true,
+      agentContextPreamble: true,
+      notifyThreshold: 'urgent',
+      destination: 'inbox',
+    },
+    slack: {
+      botToken: '',
+      defaultChannel: '#terminal-inbox',
+      channelPrefix: 'inbox',
+      autoCreateChannels: true,
+      inviteUserId: '',
+    },
     notifications: { matrix: {} }, // {} = ship defaults (shared/notifications DEFAULT_MATRIX)
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
     appearance: {
@@ -243,15 +305,17 @@ export function defaultSettings(): Settings {
     pinnedPanels: [],
     openrouterApiKey: '',
     openaiCompatApiKey: '',
+    allowRepoExtensions: false,
   }
 }
 
 function engineCfg(raw: unknown): EngineCfg {
-  const out: EngineCfg = { path: '', defaultModel: '', baseUrl: '' }
+  const out: EngineCfg = { path: '', defaultModel: '', defaultEffort: '', baseUrl: '' }
   if (!raw || typeof raw !== 'object') return out
   const r = raw as Record<string, unknown>
   if (typeof r.path === 'string') out.path = r.path
   if (typeof r.defaultModel === 'string') out.defaultModel = r.defaultModel
+  if (typeof r.defaultEffort === 'string') out.defaultEffort = r.defaultEffort
   if (typeof r.baseUrl === 'string') out.baseUrl = r.baseUrl.trim()
   return out
 }
@@ -326,6 +390,68 @@ function noteFolders(raw: unknown): NoteFolder[] {
     .filter((f) => f.path)
 }
 
+/**
+ * Coerce a raw webhook list into shape, dropping entries that aren't objects
+ * and fields that aren't the right type — a hand-edited settings.json shouldn't
+ * take out the whole alerts block. Ids are positional when absent so that
+ * migrating the same file twice yields the same ids; without that, the sealed
+ * URL and its entry would come apart on the next read.
+ */
+function normalizeWebhooks(raw: unknown[]): WebhookCfg[] {
+  const out: WebhookCfg[] = []
+  raw.forEach((entry, i) => {
+    if (!entry || typeof entry !== 'object') return
+    const w = entry as Record<string, unknown>
+    // An EMPTY url is kept: that's a destination the user just added and hasn't
+    // pasted a URL into yet. It stays inert (createWebhookChannels requires a
+    // valid http(s) url), but dropping it would delete the row mid-edit.
+    if (typeof w.url !== 'string') return
+    const cfg: WebhookCfg = {
+      id: typeof w.id === 'string' && w.id ? w.id : `wh-${i}`,
+      name: typeof w.name === 'string' && w.name.trim() ? w.name.trim() : 'Webhook',
+      url: w.url,
+      enabled: w.enabled === true,
+    }
+    const categories = normalizeCategories(w.categories)
+    if (categories) cfg.categories = categories
+    out.push(cfg)
+  })
+  return out
+}
+
+/** Only known categories with boolean values survive; `undefined` means "no
+ *  overrides", which routes off the notification matrix's `webhook` row. */
+function normalizeCategories(raw: unknown): Partial<Record<NotifyCategory, boolean>> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const src = raw as Record<string, unknown>
+  const out: Partial<Record<NotifyCategory, boolean>> = {}
+  for (const cat of NOTIFY_CATEGORIES) {
+    if (typeof src[cat] === 'boolean') out[cat] = src[cat] as boolean
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/**
+ * Merge a patched webhook list over the saved one. The list is REPLACED (so a
+ * delete sticks), but an entry arriving without a `url` keeps the saved one
+ * matched by id — the renderer is handed masks, and stripMaskedSecrets removes
+ * them before the patch lands, so every untouched entry arrives url-less.
+ */
+function mergeWebhooks(current: WebhookCfg[], patch: unknown): WebhookCfg[] {
+  if (!Array.isArray(patch)) return current
+  const saved = new Map(current.map((w) => [w.id, w.url]))
+  const filled = patch.map((entry) => {
+    if (!entry || typeof entry !== 'object') return entry
+    const w = entry as Record<string, unknown>
+    // ABSENT means "untouched, keep what's saved"; an empty STRING is an
+    // explicit Clear. Collapsing the two would make the Clear button a no-op.
+    if (typeof w.url === 'string') return w
+    const url = saved.get(String(w.id))
+    return url === undefined ? w : { ...w, url }
+  })
+  return normalizeWebhooks(filled)
+}
+
 /** Coerce any on-disk shape (incl. the legacy flat booleans) into Settings. */
 export function migrate(raw: unknown): Settings {
   const s = defaultSettings()
@@ -345,9 +471,19 @@ export function migrate(raw: unknown): Settings {
   if (r.alerts && typeof r.alerts === 'object') {
     if (typeof r.alerts.desktop?.enabled === 'boolean')
       s.alerts.desktop.enabled = r.alerts.desktop.enabled
-    if (typeof r.alerts.webhook?.enabled === 'boolean')
-      s.alerts.webhook.enabled = r.alerts.webhook.enabled
-    if (typeof r.alerts.webhook?.url === 'string') s.alerts.webhook.url = r.alerts.webhook.url
+    if (Array.isArray(r.alerts.webhooks)) s.alerts.webhooks = normalizeWebhooks(r.alerts.webhooks)
+    // The pre-multi-webhook shape, still on every existing install's disk. The
+    // saved URL is carried over even when disabled — otherwise turning the
+    // channel back on means re-pasting a credential the user already gave us.
+    else if (typeof r.alerts.webhook?.url === 'string' && r.alerts.webhook.url)
+      s.alerts.webhooks = [
+        {
+          id: 'default',
+          name: 'Webhook',
+          url: r.alerts.webhook.url,
+          enabled: r.alerts.webhook.enabled === true,
+        },
+      ]
   }
   if (r.inbox && typeof r.inbox === 'object') {
     if (typeof r.inbox.completionHook === 'boolean') s.inbox.completionHook = r.inbox.completionHook
@@ -359,6 +495,16 @@ export function migrate(raw: unknown): Settings {
       r.inbox.notifyThreshold === 'low'
     )
       s.inbox.notifyThreshold = r.inbox.notifyThreshold
+    if (r.inbox.destination !== undefined)
+      s.inbox.destination = normalizeDestination(r.inbox.destination)
+  }
+  if (r.slack && typeof r.slack === 'object') {
+    if (typeof r.slack.botToken === 'string') s.slack.botToken = r.slack.botToken
+    if (typeof r.slack.defaultChannel === 'string') s.slack.defaultChannel = r.slack.defaultChannel
+    if (typeof r.slack.channelPrefix === 'string') s.slack.channelPrefix = r.slack.channelPrefix
+    if (typeof r.slack.autoCreateChannels === 'boolean')
+      s.slack.autoCreateChannels = r.slack.autoCreateChannels
+    if (typeof r.slack.inviteUserId === 'string') s.slack.inviteUserId = r.slack.inviteUserId
   }
   if (r.appearance && typeof r.appearance === 'object') {
     if (
@@ -397,6 +543,7 @@ export function migrate(raw: unknown): Settings {
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
+  if (typeof r.allowRepoExtensions === 'boolean') s.allowRepoExtensions = r.allowRepoExtensions
   if (ENGINE_IDS.includes(r.defaultEngine as EngineId))
     s.defaultEngine = r.defaultEngine as EngineId
   if (r.forge === 'auto' || r.forge === 'github' || r.forge === 'gitlab') s.forge = r.forge
@@ -470,7 +617,7 @@ function clonePlain<T>(value: T): T {
 function transformSecretPaths(raw: unknown, visit: (value: unknown) => unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   const out = clonePlain(raw)
-  for (const path of SECRET_PATHS) {
+  for (const path of expandSecretPaths(out)) {
     let parent: any = out
     for (let i = 0; i < path.length - 1; i++) {
       parent = parent?.[path[i]]
@@ -560,6 +707,7 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     telegram,
     alerts,
     inbox,
+    slack,
     bridge,
     appearance,
     apps,
@@ -582,9 +730,15 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     telegram: { ...cur.telegram, ...(telegram || {}) },
     alerts: {
       desktop: { ...cur.alerts.desktop, ...(alerts?.desktop || {}) },
-      webhook: { ...cur.alerts.webhook, ...(alerts?.webhook || {}) },
+      webhooks: mergeWebhooks(cur.alerts.webhooks, alerts?.webhooks),
     },
-    inbox: { ...cur.inbox, ...(inbox || {}) },
+    inbox: {
+      ...cur.inbox,
+      ...(inbox || {}),
+      // A patch can arrive from a shell-built CLI call; never persist junk.
+      destination: normalizeDestination(inbox?.destination ?? cur.inbox.destination),
+    },
+    slack: { ...cur.slack, ...(slack || {}) },
     bridge: { ...cur.bridge, ...bridgePatch },
     appearance: { ...cur.appearance, ...(appearance || {}) },
     apps: { ...cur.apps, ...(apps || {}) },
@@ -624,6 +778,7 @@ export function patchSettings(patch: SettingsPatch): Settings {
     return merged
   })
   syncTelegramSidecar(next)
+  syncSlackSidecar(next)
   return next
 }
 
@@ -686,6 +841,44 @@ export function syncTelegramSidecar(s: Settings = readSettings()): void {
     }
   } catch {
     /* best effort — telegram is a non-critical side channel */
+  }
+}
+
+// --- slack sidecar (out-of-process delivery) ---------------------------------
+//
+// Same shape as the telegram sidecar and for the same reason: the bin filers
+// can't call safeStorage to decrypt the sealed bot token, so the app mirrors
+// the decrypted token — plus the non-secret channel config they need to route
+// with — to a 0600 sidecar. One file, so the read side is one JSON.parse.
+const slackSidecarFile = (): string => configPath('slack.local.json')
+
+export type SlackSidecar = SlackCfg & { destination: InboxDestination }
+
+/** The config worth mirroring (token present + a destination that posts), or
+ *  null to clear. Removing the sidecar when Slack is off keeps a revoked or
+ *  stale token from lingering on disk. */
+export function slackSidecarPayload(s: Settings): SlackSidecar | null {
+  if (!s.slack.botToken || s.inbox.destination === 'inbox') return null
+  return { ...s.slack, destination: s.inbox.destination }
+}
+
+/** Mirror decrypted slack config to the 0600 sidecar, or remove it when off. */
+export function syncSlackSidecar(s: Settings = readSettings()): void {
+  const file = slackSidecarFile()
+  try {
+    const payload = slackSidecarPayload(s)
+    if (payload) {
+      writeFileAtomic(file, JSON.stringify(payload), { mode: 0o600 })
+      try {
+        chmodSync(file, 0o600)
+      } catch {
+        /* best effort */
+      }
+    } else if (existsSync(file)) {
+      unlinkSync(file)
+    }
+  } catch {
+    /* best effort — slack is a non-critical side channel */
   }
 }
 
@@ -860,6 +1053,18 @@ export function resolveEngineModel(engine: EngineId, model?: string, daemon?: Da
   const explicit = model?.trim()
   if (explicit) return explicit
   return daemon ? daemon.engines[engine]?.defaultModel || '' : engineDefaultModel(engine)
+}
+
+/** Per-engine reasoning-effort fallback ('' = let the engine pick). Stored raw;
+ *  launch sites validate against the registry level set via coerceEffort. */
+export function engineDefaultEffort(engine: EngineId): string {
+  return readSettings().engines[engine]?.defaultEffort || ''
+}
+
+export function resolveEngineEffort(engine: EngineId, effort?: string, daemon?: DaemonCfg): string {
+  const explicit = effort?.trim()
+  if (explicit) return explicit
+  return daemon ? daemon.engines[engine]?.defaultEffort || '' : engineDefaultEffort(engine)
 }
 
 export const telegramNotifyEnabled = () => readSettings().telegram.notify

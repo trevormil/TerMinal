@@ -54,16 +54,21 @@ function stat(p) {
 function repoRoot() {
   return run('git', ['rev-parse', '--show-toplevel'])
 }
+// This script is copied to the host standalone, so it cannot import src/main/repo.ts —
+// repoRemote/parseRemote are a deliberate mirror of repoForCwd/parseRemote there.
+// Keep the two in step.
 function repoRemote(root) {
-  return run('git', ['-C', root, 'remote', 'get-url', 'origin'])
+  const raw = run('git', ['-C', root, 'config', '--get', 'remote.origin.url'])
+  return parseRemote(raw) ? raw : run('git', ['-C', root, 'remote', 'get-url', 'origin'])
 }
 function parseRemote(url) {
   url = String(url || '')
     .trim()
+    .replace(/\/+$/, '')
     .replace(/\.git$/, '')
-  let m = url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
-  if (m) return { host: m[1], path: m[2] }
-  m = url.match(/^(?:ssh:\/\/)?[\w.-]+@([^:/]+)[:/](.+)$/)
+  const m =
+    url.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
+    url.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
   return m ? { host: m[1], path: m[2] } : null
 }
 function forge(root) {
@@ -1191,20 +1196,39 @@ function runStart(root, input) {
   const engine = String(input.engine || 'claude'),
     bin = shellBin(engine, input.enginePath),
     model = String(input.model || '')
+  // Reasoning effort — mirrors src/shared/engines.ts for the engines this
+  // runner supports (keep in sync by hand). Off-list levels are dropped, never
+  // passed to a CLI that would reject them; cursor has no effort control.
+  const ENGINE_EFFORTS = {
+    claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+    codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  }
+  const effortRaw = String(input.effort || '')
+  const effort = (ENGINE_EFFORTS[engine] || []).includes(effortRaw) ? effortRaw : ''
+  const effortFlag = !effort
+    ? ''
+    : engine === 'claude'
+      ? ' --effort ' + effort
+      : ' -c model_reasoning_effort=' + effort
   const labels = steps.map((s) => String((s && s.label) || 'run'))
   const modelFlag = model ? ' --model ' + sq(model) : ''
   const displayModelFlag = model ? ' --model ' + model : ''
   const displayCommand = scriptFirst
     ? scriptAgent
     : engine === 'claude'
-      ? bin + ' -p <prompt> --permission-mode auto' + displayModelFlag
+      ? bin + ' -p <prompt> --permission-mode auto' + displayModelFlag + effortFlag
       : engine === 'cursor'
         ? bin +
           ' -p --force --trust --output-format text --workspace ' +
           worktree +
           displayModelFlag +
           ' <prompt>'
-        : bin + ' exec -s danger-full-access -C ' + worktree + displayModelFlag + ' <prompt>'
+        : bin +
+          ' exec -s danger-full-access -C ' +
+          worktree +
+          displayModelFlag +
+          effortFlag +
+          ' <prompt>'
   const stepBlocks = promptFiles
     .map((pf, i) =>
       [
@@ -1213,7 +1237,7 @@ function runStart(root, input) {
         'if [ -x ' + sq(scriptAgent) + ' ]; then',
         '  ' + sq(scriptAgent),
         'elif [ ' + sq(engine) + ' = "claude" ]; then',
-        '  ' + shPath(bin) + ' -p "$PROMPT" --permission-mode auto' + modelFlag,
+        '  ' + shPath(bin) + ' -p "$PROMPT" --permission-mode auto' + modelFlag + effortFlag,
         'elif [ ' + sq(engine) + ' = "cursor" ]; then',
         '  ' +
           shPath(bin) +
@@ -1227,6 +1251,7 @@ function runStart(root, input) {
           ' exec -s danger-full-access -C ' +
           sq(worktree) +
           modelFlag +
+          effortFlag +
           ' "$PROMPT"',
         'fi',
         'code=$?',
@@ -1247,6 +1272,7 @@ function runStart(root, input) {
     'export TERMINAL_WORKTREE=' + sq(worktree),
     'export TERMINAL_ENGINE=' + sq(engine),
     model ? 'export TERMINAL_MODEL=' + sq(model) : '',
+    effort ? 'export TERMINAL_EFFORT=' + sq(effort) : '',
     'finish() {',
     '  code="$1"',
     '  status=done',
@@ -1266,7 +1292,8 @@ function runStart(root, input) {
           String(input.agentTitle || input.agentId || 'Agent') +
           ' · ' +
           engine +
-          (model ? '/' + model : ''),
+          (model ? '/' + model : '') +
+          (effort ? ' · effort ' + effort : ''),
       ),
     'echo ' + sq('▸ branch ' + branch),
     'echo ' + sq('▸ worktree ' + worktree),
@@ -1654,6 +1681,7 @@ try {
           agentTitle: s.agentTitle,
           engine: s.engine,
           model: s.model,
+          effort: s.effort,
           steps: [{ label: s.agentTitle || s.agentId, prompt: s.prompt }],
           inPlace: false,
           worktreesDir: input.worktreesDir,

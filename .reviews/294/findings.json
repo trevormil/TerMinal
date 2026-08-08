@@ -1,0 +1,19 @@
+[
+  {
+    "title": "MCP resolve does not update Slack thread state",
+    "file": "bin/terminal-mcp-server",
+    "line": 1145,
+    "severity": "medium",
+    "axis": "correctness",
+    "category": "bug",
+    "confidence": 8,
+    "description": "The MCP resolve_hitl write path updates hitl.json directly and emits Activity, but unlike src/main/hitl.ts resolveHitl it never calls Slack reactions.add for items with stored slackChannel/slackTs.",
+    "fix_prompt": "Update bin/terminal-mcp-server so resolveHitlTool best-effort reads slack.local.json and calls reactions.add with white_check_mark when a resolved open item has slackChannel/slackTs. Keep the resolve non-blocking on Slack failure and add script-level regression coverage.",
+    "id": "3eef7bc0ab",
+    "status": "open",
+    "first_seen_sha": "dde96e9da70ece9df4aa54c35d4b6be0a64d424f",
+    "last_seen_sha": "dde96e9da70ece9df4aa54c35d4b6be0a64d424f",
+    "first_seen_at": 1786148101470,
+    "last_seen_at": 1786148101470
+  }
+]

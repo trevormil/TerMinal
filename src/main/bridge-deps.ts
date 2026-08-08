@@ -4,6 +4,7 @@
 // module knows how to serve the bridge, not how sessions are stored.
 
 import { sanitizeLog } from '../shared/run-log/sanitize'
+import { coerceEffort, engineEffortsOf } from '../shared/engines'
 import { ensureIdentity, pairingPayload } from './bridge/identity'
 import { registerDevice } from './bridge/push'
 import { runLogAuthorized } from './bridge/run-auth'
@@ -53,6 +54,7 @@ export type BridgeDepsCtx = {
   openSessionInRenderer(payload: {
     cwd: string
     engine: string
+    effort?: string
     remoteId: string
     initialInput?: string
   }): boolean
@@ -346,6 +348,9 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     // them — the phone should never render a bare lowercase "codex". The Mac's
     // configured default leads because the phone preselects the first entry.
     engines: () => {
+      // `efforts` carries each engine's reasoning-effort level set (from the
+      // shared registry) so the phone's picker offers exactly what the CLI
+      // accepts; [] = no effort control. Additive — old phones ignore it.
       const all = [
         { id: 'claude', label: 'Claude' },
         { id: 'codex', label: 'Codex' },
@@ -354,7 +359,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
         { id: 'hermes', label: 'Hermes' },
         { id: 'openai-compat', label: 'Self-hosted' },
         { id: 'local', label: 'Local' },
-      ]
+      ].map((e) => ({ ...e, efforts: [...engineEffortsOf(e.id)] }))
       const def = readSettings().defaultEngine
       return all.sort((a, b) => Number(b.id === def) - Number(a.id === def))
     },
@@ -578,7 +583,7 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
     // the phone can open it immediately, then the RENDERER is asked to open the
     // terminal — spawning the pty from main directly would leave an orphan with
     // no tab on the desktop, and would skip initialInput delivery entirely.
-    spawn: ({ cwd, engine, task }) => {
+    spawn: ({ cwd, engine, effort, task }) => {
       if (!ctx.hasWindow()) return { error: 'TerMinal is not running' }
       // The scratch workspace is app-owned and may not exist yet on a fresh
       // machine — create it on demand, exactly like the scratch:dir handler.
@@ -605,6 +610,9 @@ export function createBridgeDeps(ctx: BridgeDepsCtx): BridgeDeps {
       ctx.openSessionInRenderer({
         cwd,
         engine: engine || readSettings().defaultEngine,
+        // Validated here (not just downstream) so a stale phone can never make
+        // the launch builder see a level the engine would reject.
+        effort: coerceEffort(engine || readSettings().defaultEngine, effort),
         remoteId: session.id,
         initialInput: spawnPrompt(session.id, task),
       })

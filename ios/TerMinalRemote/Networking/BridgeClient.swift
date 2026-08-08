@@ -312,10 +312,13 @@ actor BridgeClient {
 
     /// Start a session on the Mac. Returns the remote thread id, which exists
     /// before the agent finishes booting, so the phone can open it at once.
-    func spawn(cwd: String, engine: String?, task: String?) async throws -> String {
+    func spawn(cwd: String, engine: String?, effort: String? = nil, task: String?) async throws
+        -> String
+    {
         struct Started: Decodable { let id: String }
         var body: [String: String] = ["cwd": cwd]
         if let engine { body["engine"] = engine }
+        if let effort, !effort.isEmpty { body["effort"] = effort }
         if let task, !task.isEmpty { body["task"] = task }
         let data = try await post("v1/remote/new", body: body)
         return try JSONDecoder().decode(Started.self, from: data).id

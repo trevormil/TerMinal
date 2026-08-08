@@ -10,6 +10,7 @@ import {
   timestampMs,
   toolFailed,
   usageTotals,
+  userPromptOf,
 } from './transcript-schema'
 
 // Ticket 91. These guards replace 47 `any` casts in data.ts. The reason that
@@ -174,5 +175,117 @@ describe('timestamps come in both forms (ticket 91)', () => {
     expect(timestampMs('not a date', 7)).toBe(7)
     expect(timestampMs(undefined, 7)).toBe(7)
     expect(timestampMs(NaN, 7)).toBe(7)
+  })
+})
+
+// The transcript's `user` role is overloaded: it carries real typed prompts,
+// but also tool results, subagent turns, slash-command envelopes, and meta
+// lines Claude injects. A widget that shows "your recent prompts" is only
+// useful if every one of those non-prompts is excluded, so each exclusion gets
+// its own test.
+describe('userPromptOf', () => {
+  const at = '2026-08-04T12:00:00.000Z'
+  const ms = Date.parse(at)
+
+  test('a typed prompt, with its timestamp', () => {
+    expect(
+      userPromptOf({ timestamp: at, message: { role: 'user', content: 'run the tests' } }),
+    ).toEqual({ text: 'run the tests', ts: ms })
+  })
+
+  test('text blocks are joined', () => {
+    expect(
+      userPromptOf({
+        timestamp: at,
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'first' },
+            { type: 'text', text: ' second' },
+          ],
+        },
+      })?.text,
+    ).toBe('first second')
+  })
+
+  test('an assistant turn is not a prompt', () => {
+    expect(userPromptOf({ message: { role: 'assistant', content: 'hi' } })).toBeUndefined()
+  })
+
+  test('a tool result is not a prompt', () => {
+    // The single largest source of user-role lines. Without this the widget is
+    // a wall of tool output.
+    expect(
+      userPromptOf({
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }],
+        },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('a subagent turn is not YOUR prompt', () => {
+    // isSidechain marks Task-tool subagent conversations — the user never typed
+    // these, and they would otherwise dominate a long session.
+    expect(
+      userPromptOf({ isSidechain: true, message: { role: 'user', content: 'find the bug' } }),
+    ).toBeUndefined()
+  })
+
+  test('a meta line is not a prompt', () => {
+    expect(
+      userPromptOf({
+        isMeta: true,
+        message: { role: 'user', content: 'Continue from where you left off.' },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('command envelopes and notifications are not prompts', () => {
+    for (const noise of [
+      '<command-name>/model</command-name><command-message>model</command-message>',
+      '<local-command-stdout>Set model to Fable 5</local-command-stdout>',
+      '<task-notification><task-id>abc</task-id></task-notification>',
+      '<local-command-caveat>Caveat: the messages below</local-command-caveat>',
+    ]) {
+      expect(userPromptOf({ message: { role: 'user', content: noise } })).toBeUndefined()
+    }
+  })
+
+  test('an injected system-reminder is stripped, not shown', () => {
+    // Reminders ride along INSIDE a real prompt, so dropping the whole line
+    // would lose the prompt and keeping it verbatim would show plumbing.
+    expect(
+      userPromptOf({
+        message: {
+          role: 'user',
+          content: 'ship it<system-reminder>do not mention this</system-reminder>',
+        },
+      })?.text,
+    ).toBe('ship it')
+  })
+
+  test('a line that is ONLY a system-reminder is not a prompt', () => {
+    expect(
+      userPromptOf({
+        message: { role: 'user', content: '<system-reminder>context</system-reminder>' },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('whitespace-only content is not a prompt', () => {
+    expect(userPromptOf({ message: { role: 'user', content: '   \n  ' } })).toBeUndefined()
+  })
+
+  test('a runaway paste is capped', () => {
+    const huge = 'x'.repeat(5000)
+    const got = userPromptOf({ message: { role: 'user', content: huge } })
+    expect(got?.text.length).toBeLessThanOrEqual(2000)
+  })
+
+  test('a missing timestamp is 0, not NaN', () => {
+    // NaN would serialize to null over IPC and break relative-time rendering.
+    expect(userPromptOf({ message: { role: 'user', content: 'go' } })?.ts).toBe(0)
   })
 })

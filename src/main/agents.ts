@@ -12,6 +12,7 @@ import { getPersona } from './personas'
 import {
   enginePath,
   engineDefaultModel,
+  engineDefaultEffort,
   readSettings,
   resolvedWorktreesDir,
   resolvedOpenRouterKey,
@@ -20,6 +21,7 @@ import {
 } from './settings'
 import { recordRunnerInvocation } from './ai-collectors'
 import { resolveModel } from './resolve-model'
+import { coerceEffort, effortArgs } from '../shared/engines'
 // The run store moved to agent-run-store.ts (ticket 91); re-exported so the
 // existing importers via './agents' keep working unchanged.
 export {
@@ -257,11 +259,18 @@ export function buildCmd(
   prompt: string,
   model?: string,
   harness?: 'codex' | 'hermes',
+  effort?: string,
 ): string {
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${shq(model)}` : ''
+  // Registry-shaped effort args (--effort / --thinking / -c …), '' when the
+  // engine has no control or the level is off-list. No shq needed: the tokens
+  // are registry constants and the level is validated against the registry set
+  // (all plain words) before any args are emitted.
+  const effortFlag = effort ? effortArgs(engine, effort).join(' ') : ''
+  const effortSp = effortFlag ? ` ${effortFlag}` : ''
   if (engine === 'claude') {
-    return `${shq(bin)} -p ${shq(prompt)} --output-format stream-json --permission-mode auto${modelFlag}`
+    return `${shq(bin)} -p ${shq(prompt)} --output-format stream-json --permission-mode auto${modelFlag}${effortSp}`
   }
   if (engine === 'cursor') {
     return `${shq(bin)} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${shq(worktree)}${modelFlag} ${shq(prompt)}`
@@ -271,28 +280,29 @@ export function buildCmd(
     // already sets `cwd: worktree`. `--mode json` gives the JSONL event stream
     // agent-stream.ts decodes; `--no-session` keeps one-shot agent runs out of
     // the interactive session store the Sessions tab lists.
-    return `${shq(bin)} -p --mode json --no-session -a${modelFlag} ${shq(prompt)}`
+    return `${shq(bin)} -p --mode json --no-session -a${modelFlag}${effortSp} ${shq(prompt)}`
   }
   if (engine === 'hermes') {
     return hermesOneShot(bin, worktree, prompt, model)
   }
   if (engine === 'openrouter') {
-    // Hermes harness: `hermes -z --provider openrouter -m <slug>`.
+    // Hermes harness: `hermes -z --provider openrouter -m <slug>`. Hermes has
+    // no effort control — a selected level is dropped.
     if (harness === 'hermes')
       return hermesOneShot(enginePath('hermes'), worktree, prompt, model, 'openrouter')
     // Codex harness (default): or-agent = Codex driven by an OpenRouter model.
     // --model is the OR slug (falls back to the registry agentic default when
     // omitted). Reads OPENROUTER_API_KEY from the spawn env. The blunt
     // non-interactive preamble keeps weaker OR models from stopping to ask.
-    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
+    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag}${effortSp} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
   }
   if (engine === 'openai-compat') {
     // Self-hosted endpoint: same or-agent harness as openrouter, retargeted by
     // OPENAI_BASE_URL (+ OPENAI_API_KEY), which the runner injects into the
     // spawn env from Settings. --model is required by or-agent in this mode.
-    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
+    return `${shq(bin)} --dir ${shq(worktree)}${modelFlag}${effortSp} ${shq(`${OR_AUTONOMY_PREAMBLE}\n\n${prompt}`)}`
   }
-  return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag} ${shq(prompt)}`
+  return `${shq(bin)} exec -s danger-full-access -C ${shq(worktree)}${modelFlag}${effortSp} ${shq(prompt)}`
 }
 
 function displayCmd(
@@ -301,18 +311,21 @@ function displayCmd(
   model?: string,
   scriptPath?: string | null,
   harness?: 'codex' | 'hermes',
+  effort?: string,
 ): string {
   if (scriptPath) return `${scriptPath} # script-first agent`
   const bin = enginePath(engine)
   const modelFlag = model ? ` --model ${model}` : ''
+  const effortJoined = effort ? effortArgs(engine, effort).join(' ') : ''
+  const effortSp = effortJoined ? ` ${effortJoined}` : ''
   if (engine === 'claude') {
-    return `${bin} -p <prompt> --output-format stream-json --permission-mode auto${modelFlag}`
+    return `${bin} -p <prompt> --output-format stream-json --permission-mode auto${modelFlag}${effortSp}`
   }
   if (engine === 'cursor') {
     return `${bin} -p --force --trust --output-format stream-json --stream-partial-output --workspace ${worktree}${modelFlag} <prompt>`
   }
   if (engine === 'pi') {
-    return `${bin} -p --mode json --no-session -a${modelFlag} <prompt>`
+    return `${bin} -p --mode json --no-session -a${modelFlag}${effortSp} <prompt>`
   }
   if (engine === 'hermes') {
     return `${bin} -z <prompt>${model ? ` -m ${model}` : ''} --usage-file … --yolo --accept-hooks`
@@ -321,12 +334,12 @@ function displayCmd(
     if (harness === 'hermes') {
       return `${enginePath('hermes')} -z <prompt> --provider openrouter${model ? ` -m ${model}` : ''} --usage-file … --yolo`
     }
-    return `${bin} --dir ${worktree}${modelFlag} <prompt>`
+    return `${bin} --dir ${worktree}${modelFlag}${effortSp} <prompt>`
   }
   if (engine === 'openai-compat') {
-    return `OPENAI_BASE_URL=${openAICompatBaseUrl() || '<unset>'} ${bin} --dir ${worktree}${modelFlag} <prompt>`
+    return `OPENAI_BASE_URL=${openAICompatBaseUrl() || '<unset>'} ${bin} --dir ${worktree}${modelFlag}${effortSp} <prompt>`
   }
-  return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag} <prompt>`
+  return `${bin} exec -s danger-full-access -C ${worktree}${modelFlag}${effortSp} <prompt>`
 }
 
 function classicAgentContextPrompt(agent: Agent): string {
@@ -622,6 +635,10 @@ type RunSpec = {
   /** The engine the policy's model slugs target (the agent's own engine) —
    *  resolveModel drops the policy when the run engine differs. */
   modelPolicyEngine?: string
+  /** Explicit per-run reasoning-effort pick (run dialog / rerun). */
+  effort?: string
+  /** The agent's plain configured effort — the fallback below the run pick. */
+  agentEffort?: string
   /** The driving ticket's model_tier (auto | top | cheap-agentic | cheap-raw). */
   modelTier?: string
   /** For engine 'openrouter': which harness runs the slug (default 'codex'). */
@@ -756,14 +773,25 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     engine: spec.engine,
     policyEngine: spec.modelPolicyEngine,
   })
+  // Effort ladder mirrors the model's: run pick > agent config > Settings
+  // default — each rung validated against the engine's level set, so a claude
+  // level configured on an agent that runs on codex falls through instead of
+  // producing a flag the CLI rejects. Hermes-harnessed OpenRouter has no
+  // effort control at all.
+  const viaHermesHarness = spec.engine === 'openrouter' && spec.openrouterHarness === 'hermes'
+  const launchEffort = viaHermesHarness
+    ? undefined
+    : coerceEffort(spec.engine, spec.effort) ||
+      coerceEffort(spec.engine, spec.agentEffort) ||
+      coerceEffort(spec.engine, engineDefaultEffort(spec.engine))
   const baseLine = spec.prRef
     ? `▸ on ${forgeFor(repoRoot).label} ${forgeFor(repoRoot).sym}${spec.prRef.iid} · branch ${branch}`
     : `▸ branch ${branch} (off ${defaultBase(repoRoot)})`
   const forceLine = spec.force ? '▸ ⚠ FORCE MODE — TERMINAL_FORCE_MAIN=1 (main-push allowed)\n' : ''
   const header =
     `▸ ${spec.title} · ${spec.engine}${spec.persona ? ` · as ${spec.persona}` : ''}` +
-    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n` +
-    `▸ command ${displayCmd(spec.engine, worktree, launchModel || undefined, launchScriptPath, spec.openrouterHarness)}\n${forceLine}\n`
+    `${spec.pipeline ? ` · ${spec.pipeline}` : ''}${launchEffort ? ` · effort ${launchEffort}` : ''}\n${baseLine}\n▸ worktree ${worktree}\n` +
+    `▸ command ${displayCmd(spec.engine, worktree, launchModel || undefined, launchScriptPath, spec.openrouterHarness, launchEffort)}\n${forceLine}\n`
   const run: AgentRun = {
     id: randomUUID(),
     agentId: spec.id,
@@ -772,6 +800,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
     // Record the RESOLVED model (not just the raw override) so the Runs tab and
     // the rerun fallback reflect what actually launched.
     model: launchModel || undefined,
+    effort: launchEffort,
     persona: spec.persona,
     pipeline: spec.pipeline,
     rerun: spec.rerun,
@@ -910,6 +939,9 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
       TERMINAL_WORKTREE: worktree,
       TERMINAL_ENGINE: spec.engine,
       ...(effectiveModel ? { TERMINAL_MODEL: effectiveModel } : {}),
+      // Resolved reasoning-effort level, for script-first agents' own
+      // `--effort "$TERMINAL_EFFORT"`-style plumbing. Unset when none applies.
+      ...(launchEffort ? { TERMINAL_EFFORT: launchEffort } : {}),
       // OpenRouter (or-agent) reads this; sealed Setting first, else inherited env.
       ...(resolvedOpenRouterKey() ? { OPENROUTER_API_KEY: resolvedOpenRouterKey() } : {}),
       // Self-hosted endpoint: retarget or-agent via OPENAI_BASE_URL. Keyless
@@ -949,6 +981,7 @@ function runSpec(repoRoot: string, spec: RunSpec): AgentRun | { error: string } 
           promptForStep,
           effectiveModel || undefined,
           spec.openrouterHarness,
+          launchEffort,
         )
     // Wrap the spawn in `script` so engines think they're on a TTY and stream
     // output as it's generated. Without this, `claude -p` buffers everything
@@ -1020,6 +1053,7 @@ export function runAgent(
   model?: string,
   openrouterHarness?: 'codex' | 'hermes',
   extraContext?: string,
+  effort?: string,
 ): AgentRun | { error: string } {
   const agent = readAgents(repoRoot).find((a) => a.id === agentId)
   if (!agent) return { error: 'unknown agent' }
@@ -1051,6 +1085,8 @@ export function runAgent(
     agentModel: agent.model,
     modelPolicy: agent.modelPolicy ? modelPolicyFrom(agent.model, agent.modelPolicy) : undefined,
     modelPolicyEngine: agent.engine,
+    effort,
+    agentEffort: agent.effort,
     openrouterHarness,
     quality: agent.quality || {
       acceptanceCriteria: agent.acceptanceCriteria,
@@ -1065,6 +1101,7 @@ export function runAgent(
       // Record only the explicit override — a rerun re-resolves the rest from
       // the agent's current policy/config.
       model,
+      effort,
     },
   })
 }
@@ -1361,6 +1398,7 @@ export function runTicketAgent(
   model?: string,
   lane?: { group: string; index: number; total: number },
   extraContext?: string,
+  effort?: string,
 ): AgentRun | { error: string } {
   const provider = repoTicketProvider(repoRoot)
   const ref = ticket.externalKey || `#${ticket.id}`
@@ -1404,6 +1442,7 @@ export function runTicketAgent(
     modelPolicy: ownerPolicy.policy,
     modelPolicyEngine: ownerPolicy.engine,
     modelTier: ticket.modelTier,
+    effort,
     quality: ownerQuality,
     trace: { ticketSlug: ticket.slug, ticketId: ticket.id, ticketRef: ref, lane },
     // Lanes aren't individually rerunnable as the ticket (that would relaunch
@@ -1417,6 +1456,7 @@ export function runTicketAgent(
             personaId: resolvedPersonaId,
             pipelineId,
             model,
+            effort,
           }
         : undefined,
   })
@@ -1435,6 +1475,7 @@ export function runTicketLanes(
   model?: string,
   lanes?: number,
   extraContext?: string,
+  effort?: string,
 ): LaneFanout | { error: string } {
   const n = Math.max(1, Math.min(MAX_LANES, Math.floor(lanes || 1)))
   if (n <= 1) {
@@ -1447,6 +1488,7 @@ export function runTicketLanes(
       model,
       undefined,
       extraContext,
+      effort,
     )
     return 'error' in r ? r : { group: null, runs: [r] }
   }
@@ -1463,6 +1505,7 @@ export function runTicketLanes(
       model,
       { group, index: k, total: n },
       extraContext,
+      effort,
     )
     if ('error' in r) errors.push(`lane ${k}: ${r.error}`)
     else runs.push(r)
@@ -1524,6 +1567,7 @@ export function runPrAgent(
   personaId?: string,
   pipelineId?: string,
   model?: string,
+  effort?: string,
 ): AgentRun | { error: string } {
   if (!pr?.sourceBranch) return { error: 'PR/MR has no source branch' }
   const f = forgeFor(repoRoot)
@@ -1554,6 +1598,7 @@ export function runPrAgent(
     pipeline,
     prRef: { iid: pr.iid, sourceBranch: pr.sourceBranch },
     model,
+    effort,
     quality:
       kind === 'review'
         ? readAgents(repoRoot).find((a) => a.id === 'code-review')?.quality
@@ -1567,6 +1612,7 @@ export function runPrAgent(
       personaId: resolvedPersonaId,
       pipelineId,
       model,
+      effort,
     },
   })
 }
@@ -1596,6 +1642,9 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
       spec.personaId,
       spec.pipelineId,
       spec.model,
+      undefined,
+      undefined,
+      spec.effort,
     )
   if (spec.kind === 'ticket') {
     const t = await getRepoTicket(run.repoRoot, spec.slug)
@@ -1617,6 +1666,9 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
           spec.personaId,
           spec.pipelineId,
           spec.model,
+          undefined,
+          undefined,
+          spec.effort,
         )
       : { error: 'ticket not found' }
   }
@@ -1629,6 +1681,7 @@ export async function rerunAgentRun(runId: string): Promise<AgentRun | { error: 
       spec.personaId,
       spec.pipelineId,
       spec.model,
+      spec.effort,
     )
   if (spec.kind === 'ticket-spawn')
     return runTicketSpawn(run.repoRoot, spec.text, spec.engine, spec.model)
