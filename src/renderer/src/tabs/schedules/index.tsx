@@ -100,6 +100,7 @@ function ScheduleForm({
     timeoutSec?: number,
     host?: string,
     runtime?: 'bare' | 'container' | 'k8s',
+    effort?: string,
   ) => Promise<void>
   onCustomSpawned: () => void
 }) {
@@ -112,6 +113,7 @@ function ScheduleForm({
   const [agentId, setAgentId] = useState(agents[0]?.id || '')
   const [engine, setEngine] = useState<Engine>('codex')
   const [model, setModel] = useState('')
+  const [effort, setEffort] = useState('')
   const [customLaunchMode, setCustomLaunchMode] = useState<LaunchMode>('terminal')
   // Where this schedule fires (ADR-0002). '' = local (launchd). A hostId → that
   // always-on host via systemd. Only offered in the local control-plane context
@@ -144,6 +146,7 @@ function ScheduleForm({
   useEffect(() => {
     const a = agents.find((x) => x.id === agentId)
     setModel(a?.model || '')
+    setEffort(a?.effort || '')
   }, [agentId, agents])
   const [kind, setKind] = useState<'calendar' | 'cron'>('calendar')
   const [time, setTime] = useState('09:00')
@@ -223,6 +226,7 @@ function ScheduleForm({
         buildTimeoutSec(),
         host || undefined,
         host ? runtime : undefined,
+        effort.trim() || undefined,
       )
     } catch (e) {
       setErr((e as Error).message)
@@ -305,6 +309,8 @@ function ScheduleForm({
               <EngineModelPicker
                 engine={engine}
                 model={model || undefined}
+                effort={effort || undefined}
+                onEffortChange={(l) => setEffort(l || '')}
                 onChange={(e, m) => {
                   setEngine(e)
                   setModel(m || '')
@@ -364,6 +370,8 @@ function ScheduleForm({
             <EngineModelPicker
               engine={engine}
               model={model || undefined}
+              effort={effort || undefined}
+              onEffortChange={(l) => setEffort(l || '')}
               onChange={(e, m) => {
                 setEngine(e)
                 setModel(m || '')
@@ -683,12 +691,14 @@ function SchedulesTab({ ctx }: { ctx: TabContext }) {
     timeoutSec?: number,
     host?: string,
     runtime?: 'bare' | 'container' | 'k8s',
+    effort?: string,
   ) => {
     const r = await window.gt.schedules.save({
       agentId,
       engine,
       spec,
       model,
+      effort,
       env,
       retry,
       timeoutSec,

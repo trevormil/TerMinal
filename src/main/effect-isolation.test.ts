@@ -63,7 +63,7 @@ async function armEverything(): Promise<void> {
       telegram: { notify: true, control: false, botToken: '123:REAL-LOOKING', chatId: '4242' },
       alerts: {
         desktop: { enabled: true },
-        webhook: { enabled: true, url: 'https://x.test/hook' },
+        webhooks: [{ id: 'a', name: 'Canary', enabled: true, url: 'https://x.test/hook' }],
       },
       inbox: { completionHook: true, agentContextPreamble: true, notifyThreshold: 'low' },
     }),
@@ -73,6 +73,7 @@ async function armEverything(): Promise<void> {
   // Fail loudly if the arming ever stops arming — an unarmed gate makes every
   // assertion below vacuous.
   expect(readSettings().telegram.botToken).toBe('123:REAL-LOOKING')
+  expect(readSettings().alerts.webhooks[0].url).toBe('https://x.test/hook')
 }
 
 describe('the activity feed is never the real one under test', () => {
@@ -169,13 +170,16 @@ describe('the other outbound channels', () => {
   })
 
   test('channels built without injected transports cannot reach the network', async () => {
-    const { createTelegramChannel, createWebhookChannel, dispatchAlert } =
+    const { createTelegramChannel, createWebhookChannels, dispatchAlert } =
       await import('./notify-channels')
     const { readSettings } = await import('./settings')
     await armEverything()
 
     // Built exactly the way events.ts builds them — no deps injected.
-    dispatchAlert([createTelegramChannel(readSettings), createWebhookChannel(readSettings)], {
+    const channels = [createTelegramChannel(readSettings), ...createWebhookChannels(readSettings)]
+    // A vacuous assertion otherwise: no webhook channel, nothing to block.
+    expect(channels).toHaveLength(2)
+    dispatchAlert(channels, {
       kind: 'blocked',
       title: 'canary-dispatch',
       hitlId: 'h1',

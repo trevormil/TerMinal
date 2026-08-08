@@ -4,7 +4,7 @@
 //
 // Usage:
 //   or-agent "Fix the bug in add.ts so 'bun test' passes"
-//   or-agent --model deepseek/deepseek-chat --dir ./pkg "…task…"
+//   or-agent --model deepseek/deepseek-chat --dir ./pkg --effort high "…task…"
 //
 // - Selects the OpenRouter provider inline (leaves Codex's global default alone).
 // - OPENAI_BASE_URL set → drives Codex against that OpenAI-compatible endpoint
@@ -28,7 +28,13 @@ const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
 const model = flag("--model")
 const dir = flag("--dir") ?? process.cwd()
-const task = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--model" && args[i - 1] !== "--dir").at(-1)
+// Reasoning effort → codex model_reasoning_effort. Validated so a foreign
+// level (e.g. a claude-only "max") is dropped instead of erroring the run.
+const EFFORTS = ["minimal", "low", "medium", "high", "xhigh"]
+const effortRaw = flag("--effort")
+const effort = effortRaw && EFFORTS.includes(effortRaw) ? effortRaw : undefined
+if (effortRaw && !effort) console.error(`or-agent: ignoring unknown --effort ${effortRaw} (valid: ${EFFORTS.join(", ")})`)
+const task = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--model" && args[i - 1] !== "--dir" && args[i - 1] !== "--effort").at(-1)
 const session = process.env.OR_SESSION ?? null
 
 const { baseUrl, custom, key } = resolveEndpoint(process.env)
@@ -72,7 +78,9 @@ const providerArgs = custom
   : ["-c", "model_provider=openrouter"]
 
 const proc = Bun.spawn(
-  ["codex", "exec", ...providerArgs, "-m", slug, "-C", dir,
+  ["codex", "exec", ...providerArgs,
+   ...(effort ? ["-c", `model_reasoning_effort=${effort}`] : []),
+   "-m", slug, "-C", dir,
    "--skip-git-repo-check", "-s", "workspace-write", task],
   { env: { ...process.env, ...(custom ? { OPENAI_API_KEY: key } : {}) }, stdout: "pipe", stderr: "pipe" },
 )

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpRight, X } from 'lucide-react'
 import { TicketDetail } from '../../components/TicketDetail'
+import { useWebSurface } from '../../tabs/browser/webSurface'
 import { navigateTo } from '../../lib/nav'
 import type { Mr, Persona, TabContext, Ticket } from '../../lib/types'
 
@@ -10,6 +11,21 @@ import type { Mr, Persona, TabContext, Ticket } from '../../lib/types'
 const openInTicketsTab = (slug: string) => {
   navigateTo('tickets', { slug })
   setTimeout(() => navigateTo('tickets', { slug }), 50)
+}
+
+// Linear tickets deep-link the tab's embedded Linear view instead — in linear
+// mode the tab is webview-first and a slug has nothing to select.
+const openInTicketsTabView = (url: string) => {
+  navigateTo('tickets', { viewUrl: url })
+  setTimeout(() => navigateTo('tickets', { viewUrl: url }), 50)
+}
+
+/** Linear's own issue page, embedded. Shares the `persist:browser` session with
+ *  the Browser tab and the Tickets tab's Linear view, so the sign-in carries
+ *  over instead of being asked for per modal. */
+function LinearIssueSurface({ url }: { url: string }) {
+  const surface = useWebSurface({ initialUrl: url, partition: 'persist:browser' })
+  return <div ref={surface.hostRef} className="min-h-0 min-w-0 flex-1" />
 }
 
 /**
@@ -64,23 +80,31 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Linear tickets get Linear's own UI, near-fullscreen — no custom md-style
+  // view. Everything else keeps the shared TicketDetail modal.
+  const linearUrl = ticket?.provider === 'linear' ? ticket.url || '' : ''
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[86vh] w-[760px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-bg)]"
+        className={`flex flex-col overflow-hidden rounded-2xl border border-[var(--gt-border)] bg-[var(--gt-bg)] ${
+          linearUrl ? 'h-[94vh] w-[96vw]' : 'max-h-[86vh] w-[760px] max-w-[92vw]'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--gt-border)] px-4 py-2">
           <span className="font-mono text-[11px] text-zinc-500">
             {ticket ? ticket.externalKey || `#${ticket.id}` : curSlug}
+            {ticket?.linear ? ` · ${ticket.linear.stateName}` : ''}
           </span>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
-                openInTicketsTab(curSlug)
+                if (linearUrl) openInTicketsTabView(linearUrl)
+                else openInTicketsTab(curSlug)
                 onClose()
               }}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--gt-border)] px-2 py-1 text-[11px] text-zinc-400 hover:border-[var(--gt-accent)]/50 hover:text-zinc-200"
@@ -104,6 +128,8 @@ export function TicketModal({ slug, onClose }: { slug: string; onClose: () => vo
             <div className="p-6 text-[12px] text-zinc-600">Loading…</div>
           ) : ticket === null ? (
             <div className="p-6 text-[12px] text-zinc-600">Ticket not found.</div>
+          ) : linearUrl ? (
+            <LinearIssueSurface url={linearUrl} />
           ) : (
             <TicketDetail
               ticket={ticket}

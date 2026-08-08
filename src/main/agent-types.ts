@@ -96,6 +96,7 @@ export type AgentDefinition = {
     engine?: Engine
     model?: string
     modelPolicy?: AgentModelPolicy
+    effort?: string
     mode: 'prompt' | 'script' | 'persistent'
     scriptPath?: string
     memoryDir?: string
@@ -135,6 +136,10 @@ export type Agent = {
   // lightweight agents (health, deps audit) avoid burning the biggest model.
   model?: string
   modelPolicy?: AgentModelPolicy
+  // Per-engine reasoning-effort level (claude: low…max; codex: minimal…xhigh;
+  // pi: off…max). undefined → engine default. Validated against the registry
+  // level set at launch, so a stale/foreign level is dropped, not passed.
+  effort?: string
   quality?: AgentQuality
   outputContract?: string
   acceptanceCriteria?: string[]
@@ -169,6 +174,8 @@ export type AgentRun = {
   agentTitle: string
   engine: Engine
   model?: string
+  /** The RESOLVED reasoning-effort level the run launched with. */
+  effort?: string
   persona?: string
   pipeline?: string // display label when this run chained multiple stages
   rerun?: RerunSpec
@@ -197,6 +204,7 @@ export type RerunSpec =
       personaId?: string
       pipelineId?: string
       model?: string
+      effort?: string
     }
   | {
       kind: 'ticket'
@@ -205,6 +213,7 @@ export type RerunSpec =
       personaId?: string
       pipelineId?: string
       model?: string
+      effort?: string
     }
   | {
       kind: 'pr'
@@ -214,6 +223,7 @@ export type RerunSpec =
       personaId?: string
       pipelineId?: string
       model?: string
+      effort?: string
     }
   | { kind: 'ticket-spawn'; text: string; engine: Engine; model?: string }
   | { kind: 'factory'; engine: Engine }

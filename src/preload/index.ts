@@ -12,6 +12,7 @@ type StartOpts = {
   mode: 'new' | 'resume'
   engine?: 'claude' | 'codex' | 'cursor' | 'openrouter' | 'hermes' | 'local'
   model?: string
+  effort?: string
   sessionId?: string
   cwd?: string
   name?: string
@@ -83,9 +84,12 @@ const gt = {
   telegram: {
     test: () => ipcRenderer.invoke('telegram:test'),
   },
+  slack: {
+    test: () => ipcRenderer.invoke('slack:test'),
+  },
   alerts: {
-    test: (channel: 'telegram' | 'desktop' | 'webhook') =>
-      ipcRenderer.invoke('alerts:test', channel),
+    test: (channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) =>
+      ipcRenderer.invoke('alerts:test', channel, webhookId),
   },
   cheapLlm: (opts: {
     messages: { role: string; content: string }[]
@@ -137,6 +141,7 @@ const gt = {
       remote?: unknown,
       openrouterHarness?: 'codex' | 'hermes',
       extraContext?: string,
+      effort?: string,
     ) =>
       ipcRenderer.invoke(
         'agents:run',
@@ -148,6 +153,7 @@ const gt = {
         remote,
         openrouterHarness,
         extraContext,
+        effort,
       ),
     runTicket: (
       slug: string,
@@ -158,6 +164,7 @@ const gt = {
       remote?: unknown,
       lanes?: number,
       extraContext?: string,
+      effort?: string,
     ) =>
       ipcRenderer.invoke(
         'agents:run-ticket',
@@ -169,6 +176,7 @@ const gt = {
         remote,
         lanes,
         extraContext,
+        effort,
       ),
     runPr: (
       pr: { iid: number; sourceBranch: string; title?: string; webUrl?: string },
@@ -178,7 +186,19 @@ const gt = {
       pipeline?: string,
       model?: string,
       remote?: unknown,
-    ) => ipcRenderer.invoke('agents:run-pr', pr, kind, engine, persona, pipeline, model, remote),
+      effort?: string,
+    ) =>
+      ipcRenderer.invoke(
+        'agents:run-pr',
+        pr,
+        kind,
+        engine,
+        persona,
+        pipeline,
+        model,
+        remote,
+        effort,
+      ),
     runs: () => ipcRenderer.invoke('agents:runs'),
     rerun: (runId: string) => ipcRenderer.invoke('agents:rerun', runId),
     cancel: (runId: string) => ipcRenderer.invoke('agents:cancel', runId),
@@ -406,6 +426,18 @@ const gt = {
   getFileAtHead: (rel: string) => ipcRenderer.invoke('git:file-at-head', rel),
   getFileAtHeadBinary: (rel: string) => ipcRenderer.invoke('git:file-at-head-binary', rel),
   getStatusPorcelain: () => ipcRenderer.invoke('git:status-porcelain'),
+  gitLog: (opts?: { limit?: number; skip?: number; ref?: string }) =>
+    ipcRenderer.invoke('git:log', opts),
+  gitShow: (ref: string) => ipcRenderer.invoke('git:show', ref),
+  gitBranches: () => ipcRenderer.invoke('git:branches'),
+  gitCheckout: (branch: string) => ipcRenderer.invoke('git:checkout', branch),
+  gitCreateBranch: (name: string, from?: string) =>
+    ipcRenderer.invoke('git:create-branch', name, from),
+  gitStashes: () => ipcRenderer.invoke('git:stashes'),
+  gitTags: () => ipcRenderer.invoke('git:tags'),
+  gitWorkingFilePatch: (rel: string) => ipcRenderer.invoke('git:working-file-patch', rel),
+  gitCompareFilesPatch: (a: string, b: string) =>
+    ipcRenderer.invoke('git:compare-files-patch', a, b),
   checkpoints: {
     list: () => ipcRenderer.invoke('checkpoints:list'),
     create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
@@ -463,14 +495,6 @@ const gt = {
     },
   },
   harnessStatus: () => ipcRenderer.invoke('harness:status'),
-  budgets: {
-    get: () => ipcRenderer.invoke('budgets:get'),
-    setDaily: (usd: number) => ipcRenderer.invoke('budgets:setDaily', usd),
-    setAgent: (agentId: string, usd: number) =>
-      ipcRenderer.invoke('budgets:setAgent', agentId, usd),
-    override: (durationMs: number) => ipcRenderer.invoke('budgets:override', durationMs),
-    gate: (agentId?: string) => ipcRenderer.invoke('budgets:gate', agentId),
-  },
   bg: {
     list: () => ipcRenderer.invoke('bg:list'),
     get: (id: string) => ipcRenderer.invoke('bg:get', id),

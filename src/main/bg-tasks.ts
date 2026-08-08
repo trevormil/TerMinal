@@ -16,10 +16,6 @@ import { linkTicketPr, updateTicket } from './backlog'
 import { repoStateEnv } from './repo-state'
 import { blockEffect } from './effect-guard'
 import { emitActivity } from './events'
-// Static, not lazy `require` — see the note in telegram.ts. Under the ESM
-// bundle the old `require('./budgets')` threw and was swallowed by its own
-// catch, so the daily budget cap never actually gated a background task.
-import { gateSpawn } from './budgets'
 import {
   enginePath,
   readSettings,
@@ -138,15 +134,6 @@ export type SpawnBgInput = {
 export function spawnBgTask(input: SpawnBgInput): BgTask | { error: string } {
   if (!input.repoRoot || !existsSync(input.repoRoot)) return { error: 'invalid repoRoot' }
   if (!input.prompt?.trim()) return { error: 'empty prompt' }
-  // Budget gate — refuse new spawns when daily cap is reached. Mid-turn
-  // runs continue normally; only NEW background tasks are gated.
-  const gate = gateSpawn('bg-task')
-  if (gate.decision === 'refuse') {
-    return {
-      error: `budget gate refused: ${gate.reason}. Set /budget override or raise the cap.`,
-    }
-  }
-
   ensure()
   const id = randomUUID()
   const engine = input.engine || 'claude'

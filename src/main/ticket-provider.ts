@@ -8,6 +8,7 @@ import {
   getTicket as getLocalTicket,
   listTickets as listLocalTickets,
   updateTicket as updateLocalTicket,
+  type LinearMeta,
   type NewTicket,
   type Ticket,
   type TicketAgent,
@@ -53,6 +54,10 @@ export type LinearTicketConfig = {
   team?: string
   teamKey?: string
   listArgs?: Record<string, unknown>
+  /** linear.app workspace URL (e.g. https://linear.app/acme) — used for the
+   *  auto-synthesized embedded Linear view. Falls back to https://linear.app,
+   *  which redirects to the logged-in workspace. */
+  workspace?: string
 }
 
 // Obsidian: a per-repo dedicated vault (a filesystem folder). Tickets are the
@@ -334,13 +339,22 @@ function readConfig(repoRoot: string): RepoTicketsConfig {
 
 export function readRepoTicketConfig(repoRoot: string): RepoTicketsConfig {
   const cfg = readConfig(repoRoot)
+  const provider = normProvider(cfg.provider)
+  const views = sanitizeViews(cfg.views)
+  // Linear mode always carries its own embedded web UI as a view: Linear's UX
+  // is the point of the integration, so the tab offers it without requiring a
+  // hand-written views[] entry. Synthesized at read time, never written back;
+  // an explicitly configured Linear view (any linear.app URL) suppresses it.
+  if (provider === 'linear' && !views.some((v) => v.url.includes('linear.app'))) {
+    views.unshift({ label: 'Linear', url: cfg.linear?.workspace || 'https://linear.app' })
+  }
   return {
-    provider: normProvider(cfg.provider),
+    provider,
     ...(cfg.github ? { github: cfg.github } : {}),
     ...(cfg.linear ? { linear: cfg.linear } : {}),
     ...(cfg.obsidian ? { obsidian: cfg.obsidian } : {}),
     ...(cfg.webview ? { webview: cfg.webview } : {}),
-    ...(cfg.views?.length ? { views: sanitizeViews(cfg.views) } : {}),
+    ...(views.length ? { views } : {}),
     ...(cfg.savedViews?.length ? { savedViews: sanitizeSavedViews(cfg.savedViews) } : {}),
   }
 }
@@ -383,6 +397,7 @@ export function saveRepoTicketConfig(repoRoot: string, cfg: RepoTicketsConfig): 
             },
             ...(cfg.linear?.team ? { team: cfg.linear.team } : {}),
             ...(cfg.linear?.teamKey ? { teamKey: cfg.linear.teamKey } : {}),
+            ...(cfg.linear?.workspace?.trim() ? { workspace: cfg.linear.workspace.trim() } : {}),
           },
         }
       : {}),
@@ -668,6 +683,70 @@ function linearIssueKey(slugOrId: string): string {
     .replace(/_/g, '-')
 }
 
+// Linear priorities are 0-4 with fixed labels; the label wins when the API
+// sends one, the number maps otherwise.
+const LINEAR_PRIORITY_LABELS = ['No priority', 'Urgent', 'High', 'Medium', 'Low']
+
+/** A string-or-{name}-or-nothing field, as MCP payload shapes vary by tool
+ *  version. Forgiveness-first: any shape degrades to ''. */
+function nameOf(v: unknown): string {
+  if (typeof v === 'string') return v
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    for (const k of ['name', 'title', 'displayName', 'key']) {
+      if (typeof o[k] === 'string' && o[k]) return o[k] as string
+    }
+  }
+  return ''
+}
+
+/** Linear's own schema, extracted defensively — an issue that matches none of
+ *  TerMinal's conventions must still come through renderable. */
+export function linearMetaFromIssue(issue: any, key: string): LinearMeta {
+  const stateObj = issue.state && typeof issue.state === 'object' ? issue.state : null
+  const priorityNum =
+    typeof issue.priority === 'number'
+      ? issue.priority
+      : typeof issue.priority?.value === 'number'
+        ? issue.priority.value
+        : Number.isFinite(Number(issue.priorityValue))
+          ? Number(issue.priorityValue)
+          : 0
+  const priorityLabel =
+    (typeof issue.priorityLabel === 'string' && issue.priorityLabel) ||
+    nameOf(typeof issue.priority === 'object' ? issue.priority : undefined) ||
+    LINEAR_PRIORITY_LABELS[priorityNum] ||
+    'No priority'
+  const rawLabels = Array.isArray(issue.labels)
+    ? issue.labels
+    : Array.isArray(issue.labels?.nodes)
+      ? issue.labels.nodes
+      : []
+  const labels = rawLabels
+    .map((l: unknown) => ({
+      name: nameOf(l),
+      ...(typeof (l as any)?.color === 'string' ? { color: (l as any).color } : {}),
+    }))
+    .filter((l: { name: string }) => l.name)
+  return {
+    identifier: key,
+    stateName: nameOf(issue.state) || nameOf(issue.status) || 'Unknown',
+    stateType: String(stateObj?.type || issue.stateType || issue.statusType || ''),
+    ...(typeof stateObj?.color === 'string' ? { stateColor: stateObj.color } : {}),
+    priority: priorityNum,
+    priorityLabel,
+    ...(nameOf(issue.assignee) ? { assignee: nameOf(issue.assignee) } : {}),
+    labels,
+    ...(nameOf(issue.project) ? { project: nameOf(issue.project) } : {}),
+    ...(nameOf(issue.cycle) ? { cycle: nameOf(issue.cycle) } : {}),
+    ...(nameOf(issue.team) ? { team: nameOf(issue.team) } : {}),
+    ...(typeof issue.estimate === 'number' ? { estimate: issue.estimate } : {}),
+    ...(typeof issue.dueDate === 'string' && issue.dueDate
+      ? { dueDate: issue.dueDate.slice(0, 10) }
+      : {}),
+  }
+}
+
 export function linearIssueToTicket(issue: any): Ticket {
   const key = String(issue.identifier || issue.key || issue.externalKey || issue.id || '')
   const numeric = Number((key.match(/(\d+)$/) || [])[1]) || Number(issue.number) || 0
@@ -676,12 +755,27 @@ export function linearIssueToTicket(issue: any): Ticket {
   const priority =
     typeof issue.priority === 'string'
       ? issue.priority
-      : issue.priority?.name || issue.priorityLabel || 'medium'
+      : issue.priority?.name ||
+        issue.priorityLabel ||
+        (typeof issue.priority === 'number' ? LINEAR_PRIORITY_LABELS[issue.priority] : '') ||
+        'medium'
+  const meta = linearMetaFromIssue(issue, key)
+  // Linear's state CATEGORY (stateType) beats name-sniffing when present — a
+  // custom state named "Shipping it" still buckets correctly.
+  const statusFromType: Record<string, string> = {
+    completed: 'closed',
+    canceled: 'closed',
+    started: 'in-progress',
+    backlog: 'icebox',
+    triage: 'open',
+    unstarted: 'open',
+  }
   return {
+    linear: meta,
     slug: `linear-${key.replace(/[^A-Za-z0-9-]/g, '-') || numeric || 'issue'}`,
     id: numeric,
     title: issue.title || issue.name || key || 'Linear issue',
-    status: normalizeStatus(state),
+    status: statusFromType[meta.stateType] || normalizeStatus(state),
     priority: normalizePriority(priority),
     horizon: 'now',
     hitl: false,

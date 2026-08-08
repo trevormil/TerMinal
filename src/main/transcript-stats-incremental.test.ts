@@ -187,3 +187,64 @@ describe('incremental transcript stats parsing', () => {
     expect(ranges.at(-1)).toEqual([0, raw.length])
   })
 })
+
+// The cockpit's Recent Prompts widget reads stats.recentPrompts. It polls the
+// LIVE (incremental) path, so an accumulator that diverges from the full parse
+// shows a different history than reopening the session would.
+describe('recentPrompts', () => {
+  test('collects typed prompts, newest last, and skips the noise', () => {
+    const raw = jsonl(
+      userLine('first prompt'),
+      assistantLine('a', { input: 1, output: 1 }, 'Bash'),
+      JSON.stringify({
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }],
+        },
+      }),
+      JSON.stringify({ isSidechain: true, message: { role: 'user', content: 'subagent turn' } }),
+      userLine('<task-notification>done</task-notification>'),
+      userLine('second prompt'),
+    )
+    expect(fullStats(raw, 1).recentPrompts.map((p) => p.text)).toEqual([
+      'first prompt',
+      'second prompt',
+    ])
+  })
+
+  test('keeps only the last 10, dropping the oldest', () => {
+    // Unbounded growth would ship an entire session's prompts over IPC every
+    // poll — the widget only ever renders the tail.
+    const raw = jsonl(...Array.from({ length: 14 }, (_, i) => userLine(`prompt ${i}`)))
+    const texts = fullStats(raw, 1).recentPrompts.map((p) => p.text)
+    expect(texts).toHaveLength(10)
+    expect(texts[0]).toBe('prompt 4')
+    expect(texts.at(-1)).toBe('prompt 13')
+  })
+
+  test('the incremental path matches the full parse across appends', () => {
+    let raw = jsonl(userLine('one'), assistantLine('a', { input: 1, output: 1 }))
+    const readRange = (_f: string, start: number, end: number) => raw.slice(start, end)
+
+    let state: TranscriptStatsFileParseState | null = parseTranscriptFileIncremental(
+      'session.jsonl',
+      'session-1',
+      null,
+      raw.length,
+      1,
+      readRange,
+    )
+    raw += jsonl(userLine('two'), userLine('three'))
+    state = parseTranscriptFileIncremental(
+      'session.jsonl',
+      'session-1',
+      state,
+      raw.length,
+      2,
+      readRange,
+    )
+
+    expect(state.stats.recentPrompts).toEqual(fullStats(raw, 2).recentPrompts)
+    expect(state.stats.recentPrompts.map((p) => p.text)).toEqual(['one', 'two', 'three'])
+  })
+})

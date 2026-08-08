@@ -794,6 +794,7 @@ function AgentEditor({
   const [description, setDescription] = useState(a?.description || '')
   const [engine, setEngine] = useState<Engine>(a?.engine || 'codex')
   const [model, setModel] = useState(a?.model || '')
+  const [effort, setEffort] = useState(a?.effort || '')
   const [opensPr, setOpensPr] = useState(!!a?.opensPr)
   const [prompt, setPrompt] = useState(a?.prompt || '')
   const [outputContract, setOutputContract] = useState(a?.outputContract || '')
@@ -849,6 +850,7 @@ function AgentEditor({
       description: description.trim(),
       engine,
       model: model.trim() || undefined,
+      effort: effort.trim() || undefined,
       modelPolicy,
       quality,
       outputContract: outputContract.trim() || undefined,
@@ -919,6 +921,8 @@ function AgentEditor({
             <EngineModelPicker
               engine={engine}
               model={model || undefined}
+              effort={effort || undefined}
+              onEffortChange={(l) => setEffort(l || '')}
               onChange={(e, m) => {
                 setEngine(e)
                 setModel(m || '')

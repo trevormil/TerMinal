@@ -182,6 +182,10 @@ import {
   patchSettings,
   setSettingsSecretStorage,
   syncTelegramSidecar,
+  syncSlackSidecar,
+} from './settings'
+import { testSlack } from './slack-mirror'
+import {
   telegramControlEnabled,
   resolvedProjectsDir,
   resolvedWorktreesDir,
@@ -288,14 +292,6 @@ import {
   startListenerInboxWatcher,
 } from './listeners'
 import {
-  readBudgets,
-  setDailyCap,
-  setAgentCap,
-  setOverride,
-  gateSpawn,
-  startBudgetWatcher,
-} from './budgets'
-import {
   spawnBgTask,
   listBgTasks,
   getBgTask,
@@ -360,6 +356,7 @@ setSettingsSecretStorage({
 // filers (cron/CLI/MCP) can deliver HITL pings even for already-configured users
 // who won't re-save settings. Subsequent saves refresh it via patchSettings.
 syncTelegramSidecar()
+syncSlackSidecar()
 
 let win: BrowserWindow | null = null
 
@@ -895,13 +892,23 @@ ipcMain.handle('activity:clear', () => clearActivity())
 ipcMain.handle('env:detect', () => detectEnv())
 ipcMain.handle('env:install-gt-notify', () => installGtNotify())
 ipcMain.handle('telegram:test', () => testTelegram())
+ipcMain.handle('slack:test', () => testSlack())
 // One "send test alert" entry point per outbound channel (Settings → Alerts).
-ipcMain.handle('alerts:test', (_e, channel: 'telegram' | 'desktop' | 'webhook') => {
-  if (channel === 'telegram') return testTelegram()
-  if (channel === 'desktop') return testDesktopAlert()
-  if (channel === 'webhook') return testWebhook(readSettings().alerts.webhook.url)
-  return { ok: false, error: `unknown alert channel: ${channel}` }
-})
+// `webhookId` picks one destination out of the list; the renderer only holds a
+// mask of the URL, so it names the entry instead of sending the value back.
+ipcMain.handle(
+  'alerts:test',
+  (_e, channel: 'telegram' | 'desktop' | 'webhook', webhookId?: string) => {
+    if (channel === 'telegram') return testTelegram()
+    if (channel === 'desktop') return testDesktopAlert()
+    if (channel === 'webhook') {
+      const hook = readSettings().alerts.webhooks.find((w) => w.id === webhookId)
+      if (!hook) return { ok: false, error: 'Save the webhook before testing it.' }
+      return testWebhook(hook.url)
+    }
+    return { ok: false, error: `unknown alert channel: ${channel}` }
+  },
+)
 // Secrets are sealed on disk; handing the renderer the decrypted values on
 // every read undoes that. It gets masks plus a `secretsSet` map instead — see
 // settings-mask.ts. Writes still work: only an actual edit is saved.
@@ -1405,8 +1412,13 @@ ipcMain.handle('data:meta', () => ({ ...cur(), claude: enginePath('claude') }))
 //     repo-trust.ts. GLOBAL entries (~/.config/TerMinal) are the user's own
 //     files and behave exactly as before.
 function repoTrustContext(cwd: string) {
-  const widgets = listCommandWidgets(cwd)
-  const tabs = listCustomTabs(cwd)
+  // Global kill switch ABOVE the per-repo trust flow: with repo extensions
+  // disabled (the default), repo-sourced widgets/tabs are never listed, never
+  // runnable, and never even prompt for approval — the surface doesn't exist.
+  // Global entries (~/.config/TerMinal) are the user's own files and unaffected.
+  const allowRepo = readSettings().allowRepoExtensions
+  const widgets = listCommandWidgets(cwd).filter((w) => allowRepo || w.source !== 'repo')
+  const tabs = listCustomTabs(cwd).filter((t) => allowRepo || t.source !== 'repo')
   const root = cwd ? widgetRepoRoot(cwd) : ''
   const commands = [
     ...widgets.filter((w) => w.source === 'repo').map((w) => `widget: ${w.command}`),
@@ -1698,6 +1710,34 @@ ipcMain.handle('git:file-at-head-binary', (_e, rel: string) => {
 })
 ipcMain.handle('git:status-porcelain', () => {
   return activeDaemon().statusPorcelain()
+})
+// Git views for the Files tab (history / branches / stashes / tags).
+ipcMain.handle('git:log', (_e, opts?: { limit?: number; skip?: number; ref?: string }) => {
+  return activeDaemon().gitLog(opts)
+})
+ipcMain.handle('git:show', (_e, ref: string) => {
+  return activeDaemon().gitShow(ref)
+})
+ipcMain.handle('git:branches', () => {
+  return activeDaemon().gitBranches()
+})
+ipcMain.handle('git:checkout', (_e, branch: string) => {
+  return activeDaemon().gitCheckout(branch)
+})
+ipcMain.handle('git:create-branch', (_e, name: string, from?: string) => {
+  return activeDaemon().gitCreateBranch(name, from)
+})
+ipcMain.handle('git:stashes', () => {
+  return activeDaemon().gitStashes()
+})
+ipcMain.handle('git:tags', () => {
+  return activeDaemon().gitTags()
+})
+ipcMain.handle('git:working-file-patch', (_e, rel: string) => {
+  return activeDaemon().gitWorkingFilePatch(rel)
+})
+ipcMain.handle('git:compare-files-patch', (_e, a: string, b: string) => {
+  return activeDaemon().gitCompareFilesPatch(a, b)
 })
 ipcMain.handle('checkpoints:list', () => listCheckpoints(activeDaemon().repoRoot()))
 ipcMain.handle('checkpoints:create', (_e, label: string) =>
@@ -2055,33 +2095,6 @@ ipcMain.handle(
   },
 )
 
-// Budget IPCs (#0002).
-ipcMain.handle('budgets:get', () => readBudgets())
-ipcMain.handle('budgets:setDaily', (_e, usd: number) => {
-  const r = setDailyCap(usd)
-  emitActivity({ kind: 'info', title: 'Daily budget updated', detail: `$${usd.toFixed(2)}` })
-  return r
-})
-ipcMain.handle('budgets:setAgent', (_e, agentId: string, usd: number) => {
-  const r = setAgentCap(agentId, usd)
-  emitActivity({
-    kind: 'info',
-    title: `Agent budget updated · ${agentId}`,
-    detail: `$${usd.toFixed(2)}`,
-  })
-  return r
-})
-ipcMain.handle('budgets:override', (_e, durationMs: number) => {
-  const r = setOverride(durationMs)
-  emitActivity({
-    kind: 'info',
-    title: 'Budget override set',
-    detail: `${Math.round(durationMs / 60000)} minutes`,
-  })
-  return r
-})
-ipcMain.handle('budgets:gate', (_e, agentId?: string) => gateSpawn(agentId))
-
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
 
@@ -2377,8 +2390,6 @@ app
     startLoopWatcher()
     // Paired-loop listener — always-on channel between a loop's two live sessions.
     startLoopListener(loopListenerDeps)
-    // Budget watcher — fires HITL pings at warnAt thresholds.
-    startBudgetWatcher()
     // Local automation listener inbox — processes JSON files dropped into
     // ~/.config/TerMinal/automation-inbox/new while the app is running.
     startListenerInboxWatcher()

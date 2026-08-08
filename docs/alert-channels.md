@@ -19,11 +19,20 @@ A channel implements:
 
 ```ts
 type NotifyChannel = {
-  id: 'telegram' | 'desktop' | 'webhook'
+  id: 'telegram' | 'desktop' | 'webhook' | 'push'
+  label?: string // for logs, when one id has several instances
+  wants?(category): boolean // per-INSTANCE routing; overrides the matrix row
   enabled(): boolean // reads Settings; cheap, called per alert
   send(kind, title, detail, refs): void | Promise<void>
 }
 ```
+
+Routing is normally the notification matrix (`src/shared/notifications.ts`):
+each channel id opts into event *categories*. Webhooks are the exception — there
+can be several, sharing one id, each wanting different traffic — so a webhook
+channel carries its own `wants`, and the matrix's `webhook` row (shown in
+Settings as **Webhook default**) is the fallback for destinations that haven't
+customized anything.
 
 `dispatchAlert` guarantees **per-channel failure isolation**: a channel that
 throws (sync) or rejects (async) is logged to stderr and never blocks the other
@@ -40,10 +49,28 @@ this layer is outbound alerts.
 | --- | --- | --- | --- |
 | Telegram | `telegram.notify` | bot token + chat id (Settings → Telegram, sealed) | off |
 | Desktop | `alerts.desktop.enabled` | — (Electron `Notification`) | **on** |
-| Webhook | `alerts.webhook.enabled` | `alerts.webhook.url` (sealed) | off |
+| Webhook | per-entry `enabled` | `alerts.webhooks[]` — `{ id, name, url (sealed), enabled, categories? }` | none configured |
+| Phone | `bridge.enabled` + a registered device | APNs key (see the bridge docs) | off |
 
-Settings → **Alert channels** has the toggles, the webhook URL field, and a
-"Test" button per channel (`alerts:test` IPC).
+Settings → **Alert channels** has the toggles, the webhook list (add / name /
+URL / delete, per-destination category chips, and a "Test" button per
+destination — `alerts:test` takes a `webhookId`).
+
+### Several webhooks
+
+`alerts.webhooks` is a list, so a Slack channel, a Discord channel and your own
+endpoint can each take different traffic. `createWebhookChannels` builds one
+`NotifyChannel` per entry, and `events.ts` rebuilds that list on every dispatch
+so adding or editing a destination takes effect without a restart.
+
+Each entry's `categories` overrides the matrix row **for that destination
+only**; omit it to follow the row. The emit gate (`anyChannelWants`) is passed
+every entry's overrides, so a destination that opts into a category no other
+channel wants still gets the event.
+
+**Migration.** The pre-list shape (`alerts.webhook = { enabled, url }`) is read
+on first load and becomes a single `id: 'default'` entry, keeping its URL even
+when disabled. Nothing to do by hand.
 
 ## Webhook payload
 
@@ -70,8 +97,13 @@ URL (8s timeout, `content-type: application/json`):
   ignore the display strings.
 
 Empty `refs` keys are omitted-as-`undefined`; `detail` is `""` when absent.
-The URL is stored sealed (OS keychain encryption) like the other secrets in
+Every URL is stored sealed (OS keychain encryption) like the other secrets in
 `settings.json`, because Slack/Discord webhook URLs embed a capability token.
+The sealed paths are wildcards over the list (`alerts.webhooks.*.url`) — see
+`src/main/secret-paths.ts`, the one list that both sealing and renderer-masking
+walk. The renderer only ever receives a mask, which is why a settings patch
+identifies an entry by `id` and main restores the saved URL for any entry whose
+`url` is absent (an empty string is an explicit Clear).
 
 ## Follow-ups (not in this layer yet)
 
@@ -79,4 +111,6 @@ The URL is stored sealed (OS keychain encryption) like the other secrets in
 - Native Slack API / email (SMTP) channels, if the webhook path proves too thin.
 - Out-of-process emitters (`bin/terminal-cron`, `bin/terminal-cli`) still ping
   Telegram directly via the creds sidecar; routing them through the fan-out
-  would need the webhook URL mirrored like `telegram.local.json`.
+  would need the webhook URLs mirrored like `telegram.local.json`.
+- Per-destination payload shaping (Slack Block Kit, custom templates) — every
+  webhook gets the same JSON body today.
