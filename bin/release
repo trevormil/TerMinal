@@ -10,15 +10,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-# electron-builder emits the .app under dist/mac-arm64 (Apple Silicon),
-# dist/mac (Intel), or dist/mac-universal — no arch is pinned. Glob for
-# whichever the build actually produced (newest first) instead of guessing by
-# host arch, which is wrong under Rosetta and misses universal builds.
-APP="$(ls -dt dist/mac*/TerMinal.app 2>/dev/null | head -n1 || true)"
-if [[ -z "$APP" ]]; then
-  echo "release: no built app under dist/mac*/TerMinal.app — run the build first" >&2
-  exit 1
-fi
 DEST="${TERMINAL_APP_DEST:-/Applications/TerMinal.app}"
 
 sync_latest() {
@@ -130,6 +121,18 @@ if [[ "${TERMINAL_SELF_UPDATE:-}" == "1" ]]; then
 fi
 
 bun run dist
+
+# electron-builder emits the .app under dist/mac-arm64 (Apple Silicon),
+# dist/mac (Intel), or dist/mac-universal — no arch is pinned. Glob for
+# whichever the build actually produced (newest first) instead of guessing by
+# host arch, which is wrong under Rosetta and misses universal builds.
+# Resolved AFTER the build on purpose: a fresh checkout/worktree has no dist/
+# yet, and the old pre-build glob made release error out exactly there.
+APP="$(ls -dt dist/mac*/TerMinal.app 2>/dev/null | head -n1 || true)"
+if [[ -z "$APP" ]]; then
+  echo "release: build produced no app under dist/mac*/TerMinal.app" >&2
+  exit 1
+fi
 
 # Emit SHA-256 checksums for the distributable(s) so a download can be verified
 # before the Gatekeeper bypass (the build is unsigned). See docs/setup.md.
