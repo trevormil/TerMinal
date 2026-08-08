@@ -259,6 +259,13 @@ Tickets tab uses the same run id to embed the linked log and evaluation.
 
 ## Loop engine (headless / paired / single)
 
+**Experimental** — the `loops` flag in Settings → Experimental. With the flag off
+there is no loop mode on the New workspace screen, and `loops:create` refuses in
+main (`experimentGate(readSettings(), 'loops')`); hiding the UI is not a gate.
+Only *creation* is gated: `loops:list` / `get` / `state` are reads and
+`loops:stop` only winds a loop down, so gating those would strand a loop started
+while the flag was on with no way to see or stop it after a flip off.
+
 A goal-convergence loop that lets the model drive: a **planner** drafts a
 gradable contract, a **generator** implements against it (and may not grade
 itself), and an **evaluator** adversarially scores pass/fail with evidence,
@@ -270,11 +277,29 @@ cycling `negotiate → generate → evaluate → decide` until the contract is m
 state under `<repoRoot>/.TerMinal/loops/<id>/` — `contract.md`,
 `feature_list.json`, `progress.md`, `log.md`, and an append-only `events.jsonl`.
 `readLoopState(id)` derives a bounded read-model (phase, iteration, last score,
-assertion tallies, log tail) for the cockpit widget.
+assertion tallies, log tail).
+
+**Where a running loop is visible** — `SessionView`'s `LoopStrip`, and nowhere
+else. There is no loops tab and no cockpit widget. Any session carrying a
+`loopId` gets a one-line strip above the terminal showing phase, iteration, last
+taste score, and contract-assertion tallies, polled from `gt.loops.state` every
+5 s **while that tile is on screen** (`visible`, not `active` — tiled layouts keep
+every session mounted), plus a confirm-gated **Stop loop** button on
+`gt.loops.stop`. It renders outside the `terminalTile`-hidden chrome on purpose:
+paired loops open in split layout, where the session header is hidden, which is
+exactly when the stop control matters. `gt.loops.list` has no UI consumer — a
+loop is reached through its sessions, so a list view would be a tab with nothing
+to say.
 
 **Three modes over the same loop state** (`LoopMode = 'headless' | 'paired' | 'single'`):
 
-- **Headless** — the engine spawns one agent turn per phase itself.
+- **Headless** — implemented, with **no UI that can create it**. `loops:create`
+  accepts `mode: 'headless'` (and it is `createLoop`'s default), but the only
+  callers in the renderer pass `'single'` or `'paired'`, so reaching it means
+  calling `gt.loops.create({ mode: 'headless', … })` programmatically. Kept
+  because it is the one mode that runs unattended and the engine below is the
+  substrate the other two reuse. The engine spawns one agent turn per phase
+  itself.
   `stepLoop(id)` builds the per-role command (`buildTurnCommand`) and spawns the
   chosen engine detached (generator runs in the worktree, other roles in the
   repo root; `--model` threaded when set), writing to `turns/<iter>-<role>.log`.

@@ -24,7 +24,10 @@ export const EXPERIMENT_META: Record<ExperimentId, ExperimentMeta> = {
   loops: {
     label: 'Convergence loops',
     desc: 'Run a prompt repeatedly until it converges; managed loop sessions.',
-    reveals: 'Adds loop controls for starting, watching, and stopping a converging run.',
+    reveals:
+      'Adds a Paired loop mode to the New workspace screen (paired or single topology). ' +
+      'Loop sessions then carry a status strip — phase, iteration, taste score, contract ' +
+      'assertions — with a Stop loop control.',
   },
   lanes: {
     label: 'Ticket lanes',
@@ -50,6 +53,24 @@ export function experimentEnabled(
   id: ExperimentId,
 ): boolean {
   return settings?.experiments?.[id] === true
+}
+
+/**
+ * The server-side refusal for a flagged IPC handler: `null` to proceed, or an
+ * `{ error }` result to return as-is. Hiding UI is not a gate — the preload
+ * bridge stays reachable — so every handler behind a flag starts with this.
+ *
+ * The message names Settings → Experimental on purpose: a refusal the operator
+ * cannot act on is a dead end.
+ */
+export function experimentGate(
+  settings: { experiments?: ExperimentsCfg } | null | undefined,
+  id: ExperimentId,
+): { error: string } | null {
+  if (experimentEnabled(settings, id)) return null
+  return {
+    error: `${EXPERIMENT_META[id].label} is experimental — turn it on in Settings → Experimental.`,
+  }
 }
 
 /** Coerce a raw on-disk/patched value into shape: known ids, booleans only. */

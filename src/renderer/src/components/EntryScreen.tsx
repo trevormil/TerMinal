@@ -25,6 +25,7 @@ import type {
   SessionMeta,
 } from '../lib/types'
 import { engineLabel, sessionEngineLabel, ENGINE_MODELS, ENGINE_IDS } from '../lib/engines'
+import { useExperiment } from '../lib/useExperiment'
 import { EngineLogo } from './EngineLogo'
 import { EffortSelect, ModelSelect } from './ModelSelect'
 import logo from '../assets/logo.png'
@@ -195,9 +196,17 @@ export function EntryScreen({
   /** Launches a live-paired loop; resolves to an error string on failure. */
   onStartLoop?: (cfg: PairedLoopConfig) => Promise<{ ok: boolean; error?: string }>
 }) {
+  // Loops are experimental: with the flag off there is no loop mode at all, and
+  // `loops:create` refuses in main regardless of what this screen renders.
+  const loopsOn = useExperiment('loops')
   // 'single' → one session (default). 'loop' → two linked role agents.
   const [mode, setMode] = useState<'single' | 'loop'>(initialMode)
   useEffect(() => setMode(initialMode), [initialMode])
+  // Flipping the flag off while the screen sits in loop mode must not leave a
+  // loop form on screen with a launch button main would reject.
+  useEffect(() => {
+    if (!loopsOn) setMode('single')
+  }, [loopsOn])
   // Live-paired loop fields (mode === 'loop').
   const [goal, setGoal] = useState('')
   // Loop topology: 'paired' (two live sessions) vs 'single' (one live generator
@@ -388,7 +397,7 @@ export function EntryScreen({
   const loopRepoRoot = (lockedCwd || cwd).trim()
   const launchLoop = async () => {
     const g = goal.trim()
-    if (!g || !loopRepoRoot || loopBusy || !onStartLoop) return
+    if (!g || !loopRepoRoot || loopBusy || !onStartLoop || !loopsOn) return
     setLoopBusy(true)
     setLoopErr('')
     const res = await onStartLoop({
@@ -723,8 +732,12 @@ export function EntryScreen({
           </div>
 
           <div className="space-y-4 p-4">
-            <div className="flex gap-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-1">
-              {(['single', 'loop'] as const).map((m) => (
+            <div
+              className={`gap-1 rounded-xl border border-[var(--gt-border)] bg-black/20 p-1 ${
+                loopsOn ? 'flex' : 'hidden'
+              }`}
+            >
+              {(loopsOn ? (['single', 'loop'] as const) : (['single'] as const)).map((m) => (
                 <button
                   key={m}
                   onClick={() => switchMode(m)}
@@ -743,7 +756,7 @@ export function EntryScreen({
                 </button>
               ))}
             </div>
-            {mode === 'loop' && (
+            {loopsOn && mode === 'loop' && (
               <div className="text-[10.5px] leading-relaxed text-zinc-600">
                 Two linked agents in one worktree — a <span className="text-zinc-400">worker</span>{' '}
                 writes code, a <span className="text-zinc-400">driver</span> negotiates the contract
@@ -884,7 +897,7 @@ export function EntryScreen({
               </div>
             )}
 
-            {mode === 'loop' && (
+            {loopsOn && mode === 'loop' && (
               <>
                 <div>
                   <div className={`${sectionTitle} mb-2`}>1 · Goal</div>

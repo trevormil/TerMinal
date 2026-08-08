@@ -1861,6 +1861,7 @@ export default function App() {
                     onRenameSession={renameSession}
                     onReorderSession={reorderSession}
                     terminalTile={multiTerminal}
+                    visible={visible}
                     terminalLayout={terminalLayout}
                     tabLayout={appearance.tabLayout}
                     onTerminalLayoutChange={switchLayout}

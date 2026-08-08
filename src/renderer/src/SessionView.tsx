@@ -32,7 +32,7 @@ import { useCustomTabs } from './components/CustomTabView'
 import { commandWidgetsToPlugins } from './lib/commandWidget'
 import { applyVisibleOrder, mergeWidgetOrder } from './lib/widgetOrder'
 import { createTickCoalescer } from './lib/tickCoalescer'
-import type { AppearanceTabLayout, Plugin, SessionEngine, TabContext } from './lib/types'
+import type { AppearanceTabLayout, LoopState, Plugin, SessionEngine, TabContext } from './lib/types'
 import { navigateTo, onNavigate } from './lib/nav'
 import { loadHiddenTabs } from './lib/tabVisibility'
 import { readCollapsed, writeCollapsed } from './lib/panelCollapse'
@@ -210,6 +210,149 @@ function BootstrapBanner({ repoRoot, active }: { repoRoot: string; active: boole
   )
 }
 
+// The only place in the app a running loop is observable and stoppable.
+//
+// Deliberately a strip, not a tab: a loop has exactly two or three sessions and
+// they are already on screen, so the honest amount of chrome is one line of
+// phase/iteration/score next to the role chip plus the control that winds it
+// down. `gt.loops.stop` was unreachable from the UI before this — a loop could
+// be started and never stopped.
+//
+// Rendered outside the `terminalTile ? hidden` chrome on purpose: paired loops
+// open in split layout, where the session header is hidden, and that is exactly
+// when you most want the stop control.
+function LoopStrip({
+  loopId,
+  role,
+  visible,
+}: {
+  loopId: string
+  role?: 'driver' | 'worker'
+  visible: boolean
+}) {
+  const [state, setState] = useState<LoopState | null>(null)
+  const [error, setError] = useState('')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopped, setStopped] = useState(false)
+  // Poll only while this session is on screen — a hidden loop session must not
+  // keep reading progress.md every few seconds for nobody.
+  useEffect(() => {
+    if (!visible) return
+    let alive = true
+    const run = () => {
+      window.gt.loops
+        .state(loopId)
+        .then((s) => {
+          if (!alive || !s) return
+          if ('error' in s) setState(null)
+          else setState(s)
+        })
+        .catch(() => {})
+    }
+    run()
+    const id = setInterval(run, 5000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [loopId, visible])
+  const stop = async () => {
+    setConfirmOpen(false)
+    setStopping(true)
+    setError('')
+    const r = await window.gt.loops.stop(loopId)
+    setStopping(false)
+    if (!r || 'error' in r) setError((r as { error?: string })?.error || 'Could not stop the loop.')
+    else setStopped(true)
+  }
+  const phase = stopped ? 'stopped' : state?.phase || '…'
+  const a = state?.assertions
+  return (
+    <>
+      <div
+        data-loop-strip={loopId}
+        className="flex h-6 shrink-0 items-center gap-2 border-b border-[var(--gt-accent)]/30 bg-[var(--gt-accent)]/10 px-2 text-[10.5px] text-zinc-400"
+      >
+        <span
+          title={`Loop ${loopId}`}
+          className="flex shrink-0 items-center gap-1 font-medium text-[var(--gt-accent-light)]"
+        >
+          <Repeat size={10} strokeWidth={2.5} />
+          loop {loopId.slice(-4)}
+          {role ? ` · ${role}` : ''}
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          phase <span className="text-zinc-300">{phase}</span>
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          iter <span className="text-zinc-300">{state ? state.iteration : '–'}</span>
+        </span>
+        <span className="shrink-0 text-zinc-500">
+          score <span className="text-zinc-300">{state?.lastScore || '–'}</span>
+        </span>
+        {a && a.total > 0 && (
+          <span title="Contract assertions" className="shrink-0 text-zinc-500">
+            <span className="text-[var(--gt-green)]">{a.pass}</span>/
+            <span className="text-[var(--gt-red)]">{a.fail}</span>/{a.total}
+          </span>
+        )}
+        {error && <span className="truncate text-[var(--gt-red)]">{error}</span>}
+        <div className="flex-1" />
+        {!stopped && (
+          <button
+            style={noDrag}
+            data-loop-stop={loopId}
+            aria-label="Stop loop"
+            disabled={stopping}
+            onClick={() => setConfirmOpen(true)}
+            title="Stop this loop — its worktree and state are left in place"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--gt-red)]/50 bg-[var(--gt-red)]/10 px-1.5 py-px font-medium text-zinc-200 hover:bg-[var(--gt-red)]/20 disabled:opacity-50"
+          >
+            <XCircle size={10} strokeWidth={2.4} />
+            {stopping ? 'Stopping…' : 'Stop loop'}
+          </button>
+        )}
+      </div>
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            className="w-[460px] max-w-full rounded-lg border border-[var(--gt-border)] bg-[var(--gt-panel)] p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-[13px] font-semibold text-zinc-100">Stop this loop?</div>
+            <p className="mb-3 text-[12px] leading-5 text-zinc-400">
+              The loop stops advancing — no further planner/generator/evaluator turns are scheduled.
+              Its worktree, branch, and state directory are left in place, and the sessions already
+              open stay open.
+            </p>
+            <div className="mb-4 truncate rounded-md bg-black/30 px-2 py-1.5 font-mono text-[11px] text-zinc-500">
+              {loopId}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-md border border-[var(--gt-border)] bg-black/20 px-3 py-1.5 text-[12px] font-medium text-zinc-300 hover:bg-white/5 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void stop()}
+                className="rounded-md border border-[var(--gt-red)]/60 bg-[var(--gt-red)]/20 px-3 py-1.5 text-[12px] font-semibold text-zinc-100 hover:bg-[var(--gt-red)]/20"
+              >
+                Stop loop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // Banner shown when a repo still carries pre-sidecar workflow leftovers:
 // state files (tickets/reviews/sessions) that belong in the per-project
 // sidecar, and per-repo skill/bin/hook copies the global tm plugin now
@@ -326,6 +469,7 @@ export function SessionView({
   onRenameSession,
   onReorderSession,
   terminalTile = false,
+  visible = true,
   terminalLayout = 'single',
   tabLayout = 'horizontal',
   onTerminalLayoutChange,
@@ -343,6 +487,10 @@ export function SessionView({
   onStarted: (info: Info) => void
   /** Split/grid layouts are terminal-focused; hide workspace chrome and the work column. */
   terminalTile?: boolean
+  /** Is this session's tile actually on screen? All sessions stay mounted so
+   *  their ptys survive, so `active` alone can't gate polling in tiled layouts
+   *  (every visible tile but one is inactive). */
+  visible?: boolean
   /** Every session in THIS workspace, in stable order. Rendered as a thin
    *  sub-bar above the terminal pane so the user can swap pty instances
    *  without leaving the Terminal tab. */
@@ -987,6 +1135,9 @@ export function SessionView({
         <BootstrapBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
         <MigrateBanner repoRoot={info.cwd || choice.cwd || ''} active={active && !isRemote} />
       </div>
+      {choice.loopId && (
+        <LoopStrip loopId={choice.loopId} role={choice.loopRole} visible={visible} />
+      )}
       {repoOrient && ctx && active && !terminalTile && (
         <RepoOrientation ctx={ctx} onClose={closeRepoOrient} />
       )}
