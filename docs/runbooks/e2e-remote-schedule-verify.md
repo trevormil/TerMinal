@@ -34,9 +34,15 @@ alias); `<hostId>` = the host's `id` in `settings.remoteHosts[]` (visible in
    ssh -o BatchMode=yes <host> true && echo SSH-OK
    ```
 3. **Host provisioned** — bun, linger, runner, cli installed
-   (`src/main/host-provision.ts`). There is **no Settings button** for this;
-   it was done for `tm` during PRs #46–51. Verify readiness (same probe the
-   `hosts:provision` IPC runs):
+   (`src/main/host-provision.ts`). Do it from the UI: **Settings → SSH hosts →
+   the host's card → Provision**. The button runs the same `hosts:provision`
+   IPC, shows a running state while it installs over SSH (a couple of minutes),
+   then renders the structured readiness report as chips — `bun ok <version>`,
+   `linger ok`, `runner ok`, `cli ok`, plus per-engine `found/absent` — with a
+   `not ready — missing …` summary, the SSH error inline when it fails, and the
+   full provision log behind a disclosure. It is idempotent: re-run any time.
+
+   To verify by hand instead (same probe the IPC runs):
    ```bash
    ssh <host> 'bash -lc "
      export PATH=\"$HOME/.bun/bin:$PATH\"
@@ -48,8 +54,8 @@ alias); `<hostId>` = the host's `id` in `settings.remoteHosts[]` (visible in
    "'
    ```
    Expect `LINGER=yes`, `RUNNER=ok`, and paths for `node`, `script`, `git`.
-   To (re)provision: run `await window.gt.provisionHost('<hostId>')` from the
-   app's devtools console (⌥⌘I), or follow `buildProvisionScript()` by hand.
+   (The old devtools ritual — `await window.gt.provisionHost('<hostId>')` — still
+   works, but the Provision button is the supported path.)
 4. **`node` on the host login PATH.** The Mac read-back (runs list, log
    fetch, remote HITL) executes `node -e <script>` over SSH
    (`src/main/remote.ts` `remoteJson`) — bun alone is NOT enough. Covered by
@@ -279,11 +285,13 @@ Let one fire happen (lid open or closed), then check:
   strip instead of silently dropping runs, and the Schedules form's host
   selector shows ○ + a classified hint (timeout/auth/dns/refused).
 
-**Circuit-breaker warning:** 3 consecutive failures of one schedule trip the
-breaker ON THE HOST (`~/.config/TerMinal/agents/disabled.json` there) and
-auto-disable it. Don't let the failure schedule fire 3+ times; if it trips,
-clear the id from that file on the host — the Mac Schedules tab's pause list
-reads only the LOCAL disabled.json.
+**Circuit-breaker:** 3 consecutive failures of one schedule trip the breaker ON
+THE HOST (`~/.config/TerMinal/agents/disabled.json` there) and auto-disable it.
+The Mac now reads the host's copy over the same SSH plumbing
+(`src/main/host-disabled.ts`, cached ~15s), so the Schedules row shows an
+`auto-disabled on <host> · re-enable` chip plus the runner's own reason; the
+chip's click writes the HOST's file back. A host whose breaker file can't be
+read is reported as unknown, never as clean.
 
 ## [7] Cleanup
 

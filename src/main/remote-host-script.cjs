@@ -1612,6 +1612,57 @@ function scheduleToggle(id, enabled) {
   })
   return found
 }
+// --- host-side kill-switch / circuit-breaker ---------------------------------
+// The host's OWN terminal-cron trips this after N consecutive failures, and the
+// Mac UI has to read the HOST's copy (not its own) or a dark schedule renders
+// healthy. Shape mirrors src/main/agents-disabled.ts: scheduleIds is the source
+// of truth (terminal-cron's plain reader depends on that key), reasons is a
+// side-car so a dark agent can explain itself.
+function disabledFileHost() {
+  return path.join(cfg(), 'agents', 'disabled.json')
+}
+function disabledNormalize(a) {
+  const rawIds = Array.isArray(a) ? a : a && Array.isArray(a.scheduleIds) ? a.scheduleIds : []
+  const ids = rawIds.filter((x) => typeof x === 'string')
+  const rawReasons =
+    a && !Array.isArray(a) && a.reasons && typeof a.reasons === 'object' ? a.reasons : {}
+  const reasons = {}
+  for (const id of ids) {
+    const r = rawReasons[id]
+    if (r && typeof r === 'object')
+      reasons[id] = {
+        reason: typeof r.reason === 'string' && r.reason.trim() ? r.reason.trim() : undefined,
+        at: typeof r.at === 'number' ? r.at : 0,
+      }
+  }
+  return { scheduleIds: ids, reasons }
+}
+function disabledRead() {
+  return disabledNormalize(readJson(disabledFileHost(), null))
+}
+// Read-modify-write under the SAME advisory lock terminal-cron takes on this
+// file: both sides toggle the kill-switch, and an unlocked write from a stale
+// snapshot silently re-enables an agent the other side just disabled.
+function disabledSet(id, disabled, reason) {
+  const f = disabledFileHost()
+  withFileLockShared(f, () => {
+    const s = disabledNormalize(readJson(f, null))
+    if (disabled) {
+      if (!s.scheduleIds.includes(id)) s.scheduleIds.push(id)
+      // Preserve the ORIGINAL reason — why it broke must survive a later toggle.
+      if (!s.reasons[id])
+        s.reasons[id] = {
+          reason: reason && reason.trim() ? reason.trim() : undefined,
+          at: Date.now(),
+        }
+    } else {
+      s.scheduleIds = s.scheduleIds.filter((x) => x !== id)
+      delete s.reasons[id]
+    }
+    writeJsonAtomicShared(f, s)
+  })
+  return true
+}
 function out(v) {
   process.stdout.write(JSON.stringify(v))
 }
@@ -1838,6 +1889,9 @@ try {
   else if (op === 'schedules.save') out(schedulesSave(input.schedule))
   else if (op === 'schedules.remove') out(scheduleRemove(input.id))
   else if (op === 'schedules.toggle') out(scheduleToggle(input.id, input.enabled))
+  else if (op === 'schedules.disabled') out(disabledRead())
+  else if (op === 'schedules.setDisabled')
+    out(disabledSet(input.id, !!input.disabled, input.reason))
   else if (op === 'schedules.runNow') {
     const s = schedules().find((x) => x.id === input.id)
     if (!s) out({ error: 'schedule not found' })

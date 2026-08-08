@@ -244,6 +244,16 @@ export const remoteSchedules = {
     remoteJson<CronRun[]>(remote, { op: 'schedules.runs', id }),
   runLog: (remote: RemoteSessionRef, runId: string) =>
     remoteJson<string>(remote, { op: 'schedules.runLog', runId }),
+  // The HOST's kill-switch / circuit-breaker file. The host's own runner trips it
+  // after N consecutive failures, so the Mac has to read the host's copy to know
+  // a schedule went dark (src/main/host-disabled.ts).
+  disabled: (remote: RemoteSessionRef) =>
+    remoteJson<{ scheduleIds: string[]; reasons: Record<string, { reason?: string; at: number }> }>(
+      remote,
+      { op: 'schedules.disabled' },
+    ),
+  setDisabled: (remote: RemoteSessionRef, id: string, disabled: boolean, reason?: string) =>
+    remoteJson<boolean>(remote, { op: 'schedules.setDisabled', id, disabled, reason }),
 }
 export const remoteHitl = {
   list: (remote: RemoteSessionRef) => remoteJson<HitlItem[]>(remote, { op: 'hitl.list' }),
