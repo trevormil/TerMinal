@@ -17,7 +17,7 @@ import {
   type NewSchedule,
 } from '../schedules'
 import { describeSpec, nextRun, type ScheduleSpec } from '../cron'
-import { removeAllJobs, runScheduleNow, scheduleLoadedState, unscheduleJob } from '../launchd'
+import { runScheduleNow, scheduleLoadedState, unscheduleJob } from '../launchd'
 import {
   routeSyncSchedule,
   routeRemoveSchedule,
@@ -366,17 +366,4 @@ export function registerSchedulesIpc(deps: SchedulesIpcDeps): void {
       ? { ok: false, error: 'remote schedule reconcile needs the remote daemon runner' }
       : routeReconcile(readSchedules()),
   )
-
-  ipcMain.handle('schedules:remove-all', () => {
-    if (deps.curRemote()) return { removed: 0 }
-    const n = removeAllJobs()
-    for (const s of readSchedules()) removeSchedule(s.id)
-    emitActivity({
-      kind: 'check',
-      title: 'All launchd schedules removed',
-      detail: `${n} job${n === 1 ? '' : 's'} removed`,
-      sessionId: deps.cur().sessionId,
-    })
-    return { removed: n }
-  })
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { SCORECARD_WINDOW, scoreAgentRuns, scoreAllAgents } from './agent-scorecard'
+import { SCORECARD_WINDOW, scoreAgentRuns } from './agent-scorecard'
 import type { ScorecardRun } from './agent-scorecard'
 
 const run = (over: Partial<ScorecardRun> & { id: string }): ScorecardRun => ({
@@ -122,22 +122,5 @@ describe('scoreAgentRuns', () => {
     expect(s.total).toBe(0)
     expect(s.successRate).toBeNull()
     expect(s.failingChecks).toEqual([])
-  })
-})
-
-describe('scoreAllAgents', () => {
-  test('groups by agentId and sorts by run volume', () => {
-    const cards = scoreAllAgents([
-      run({ id: '1', agentId: 'quiet', agentTitle: 'Quiet' }),
-      run({ id: '2', agentId: 'busy', agentTitle: 'Busy' }),
-      run({ id: '3', agentId: 'busy', agentTitle: 'Busy' }),
-    ])
-    expect(cards.map((c) => c.agentId)).toEqual(['busy', 'quiet'])
-    expect(cards[0].total).toBe(2)
-    expect(cards[0].agentTitle).toBe('Busy')
-  })
-
-  test('skips runs with no agentId', () => {
-    expect(scoreAllAgents([run({ id: '1', agentId: '' })])).toEqual([])
   })
 })

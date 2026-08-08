@@ -218,38 +218,6 @@ export function agentROI(range: Range): AgentROI[] {
   return [...map.values()].sort((a, b) => b.usd - a.usd)
 }
 
-/** Per-day cost rollup for charting (last N days). Newest day first. */
-export type DailyPoint = {
-  date: string
-  usd: number
-  runs: number
-  byModel: Record<string, number>
-}
-
-export function dailySpend(days = 7): DailyPoint[] {
-  const runs = listAIRuns(5000)
-  const out: DailyPoint[] = []
-  const todayMs = todayStart()
-  for (let i = 0; i < days; i++) {
-    const start = todayMs - i * 86_400_000
-    const end = start + 86_400_000
-    const dayRuns = runs.filter((r) => r.startedAt >= start && r.startedAt < end)
-    const byModel: Record<string, number> = {}
-    let usd = 0
-    for (const r of dayRuns) {
-      usd += r.costUsd
-      byModel[r.model] = (byModel[r.model] || 0) + r.costUsd
-    }
-    out.push({
-      date: new Date(start).toISOString().slice(0, 10),
-      usd,
-      runs: dayRuns.length,
-      byModel,
-    })
-  }
-  return out
-}
-
 /** Helper: convert an AIRun source + model + tokens into a fresh AIRun shape.
  *  Used by parsers in callers. */
 export function makeAIRun(opts: {

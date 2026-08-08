@@ -115,17 +115,3 @@ export function scoreAgentRuns(runs: ScorecardRun[], window = SCORECARD_WINDOW):
     lastStatus: newest?.status,
   }
 }
-
-/** One scorecard per agent, busiest first. */
-export function scoreAllAgents(runs: ScorecardRun[], window = SCORECARD_WINDOW): AgentScorecard[] {
-  const byAgent = new Map<string, ScorecardRun[]>()
-  for (const r of runs) {
-    if (!r.agentId) continue
-    const list = byAgent.get(r.agentId)
-    if (list) list.push(r)
-    else byAgent.set(r.agentId, [r])
-  }
-  return [...byAgent.entries()]
-    .map(([agentId, list]) => ({ ...scoreAgentRuns(list, window), agentId }))
-    .sort((a, b) => b.total - a.total || a.agentId.localeCompare(b.agentId))
-}
