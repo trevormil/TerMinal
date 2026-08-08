@@ -75,7 +75,13 @@ bun run release
 
 ## Release Notes
 
-The current public build path is source-first and unsigned. Local contributors
-can build a DMG with `bun run dist`; `bun run release` ad-hoc signs and installs
-the app locally. Signed/notarized distribution can be added later without
-changing the dev workflow.
+Published releases are signed with an Apple Developer ID and notarized by
+`.github/workflows/release.yml`; the pipeline degrades to an unsigned build when
+a fork lacks the signing secrets.
+
+You do not need any of that to contribute. `bun run dist` builds a DMG, and
+`bun run release` builds + installs to `/Applications` — signing and notarizing
+if you happen to have a Developer ID, otherwise ad-hoc signing (force it with
+`TERMINAL_UNSIGNED=1`). An ad-hoc build is fully usable; macOS just won't deliver
+its notifications (Electron 42+). See
+[`docs/setup.md`](docs/setup.md#verifying-a-download).

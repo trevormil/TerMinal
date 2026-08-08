@@ -8,6 +8,15 @@ Amends the release story in
 [ADR-0004](0004-versioned-releases.md) (which stands otherwise). Ships as
 [#180](https://github.com/trevormil/TerMinal/pull/180).
 
+> **Status update (2026-08).** The *decision* stands — one-click update is still
+> a rebuild-from-source — but its premise has since changed: releases ARE signed
+> with a Developer ID and notarized now (`bin/release` +
+> `.github/workflows/release.yml`, ticket 93). The blocker described in Context
+> below is therefore historical. `electron-updater` is no longer *blocked*, it is
+> simply not what we chose; revisit as a new ADR if the rebuild path stops
+> fitting. The unsigned build remains a supported fallback
+> (`TERMINAL_UNSIGNED=1`, or a fork without the signing secrets).
+
 ## Context
 
 ADR-0004 made published artifacts versioned and verifiable, but left the
