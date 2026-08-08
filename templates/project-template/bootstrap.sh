@@ -199,6 +199,20 @@ mkdir -p "$DST/.github" "$DST/.gitlab/merge_request_templates"
   cp "$SRC/.gitlab/merge_request_templates/Default.md" "$DST/.gitlab/merge_request_templates/Default.md"
 say ".editorconfig + PR/MR templates seeded (existing left untouched)"
 
+# --- LICENSE placeholders ----------------------------------------------------
+# No LICENSE is ever SEEDED — picking a licence is the repo's own decision. But a
+# repo created from this template with `gh repo create --template` carries the
+# template's placeholder LICENSE, so fill it with this machine's git identity
+# rather than leave a literal {{AUTHOR}} in a real licence file.
+if [ -f "$DST/LICENSE" ] && grep -q '{{AUTHOR}}' "$DST/LICENSE"; then
+  author="$(git config --get user.name || true)"
+  [ -n "$author" ] || author="the copyright holders"
+  tmp="$DST/LICENSE.tmp.$$"
+  sed -e "s/{{YEAR}}/$(date +%Y)/g" -e "s|{{AUTHOR}}|$author|g" "$DST/LICENSE" > "$tmp" \
+    && mv "$tmp" "$DST/LICENSE"
+  say "LICENSE placeholders filled ($author)"
+fi
+
 # .claude/settings.json is no longer seeded: the main-merge gate and stop
 # hooks are plugin-served globally, and the deny list belongs in the user's
 # own ~/.claude/settings.json. An existing repo copy is left untouched.
