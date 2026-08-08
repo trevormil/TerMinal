@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -42,6 +43,33 @@ describe('legacyPluginCopies', () => {
       '.claude/skills/ticket',
       '.codex/skills/session-start',
     ])
+  })
+
+  test('keeps hooks that .claude/settings.json still wires', () => {
+    // TerMinal's own repo (and any repo whose settings.json wires the hooks
+    // by project path) deliberately carries hook copies — banking them leaves
+    // every tool call pointing at a dead path and turns the merge gate off.
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    mkdirSync(join(repo, '.claude', 'hooks'), { recursive: true })
+    writeFileSync(join(repo, '.claude', 'hooks', 'block-main-merge.sh'), 'hook')
+    writeFileSync(
+      join(repo, '.claude', 'settings.json'),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [{ command: '$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-merge.sh' }],
+            },
+          ],
+        },
+      }),
+    )
+    expect(legacyPluginCopies(repo, plugin)).toEqual([])
+    // Unwire it and the copy becomes sweepable again.
+    writeFileSync(join(repo, '.claude', 'settings.json'), '{}')
+    expect(legacyPluginCopies(repo, plugin)).toEqual(['.claude/hooks/block-main-merge.sh'])
   })
 
   test('empty for a clean repo and for a missing plugin dir', () => {
@@ -164,6 +192,25 @@ describe('sweepLegacySeeds', () => {
     // widgets.json is a repo-provided surface a project ships on purpose.
     expect(existsSync(join(repo, '.TerMinal', 'widgets.json'))).toBe(true)
     expect(existsSync(join(repo, '.TerMinal', 'template.json'))).toBe(false)
+  })
+
+  test('banks a vanilla owned.yml, keeps a customized one', () => {
+    const plugin = makePlugin()
+    const repo = makeRepo()
+    const vanilla = 'agents:\n  changelog: docs/CHANGELOG.md\n'
+    const sha = createHash('sha256').update(vanilla).digest('hex')
+    mkdirSync(join(repo, '.agents'), { recursive: true })
+    writeFileSync(join(repo, '.agents', 'owned.yml'), vanilla)
+
+    const r = sweepLegacySeeds(repo, plugin, undefined, new Set([sha]))
+    expect(r.backedUp).toEqual(['.agents/owned.yml'])
+    expect(existsSync(join(repo, '.agents'))).toBe(false)
+
+    // A customized registry is the repo's own decision.
+    mkdirSync(join(repo, '.agents'), { recursive: true })
+    writeFileSync(join(repo, '.agents', 'owned.yml'), vanilla + '  extra: apps/web\n')
+    expect(sweepLegacySeeds(repo, plugin, undefined, new Set([sha])).moved).toBe(0)
+    expect(existsSync(join(repo, '.agents', 'owned.yml'))).toBe(true)
   })
 
   test('moves .claude/forge into the sidecar override', () => {

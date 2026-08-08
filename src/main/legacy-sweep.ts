@@ -7,6 +7,7 @@ import {
   renameSync,
   rmdirSync,
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { repoStatePathForWrite } from './repo-state'
 
@@ -30,10 +31,25 @@ function pluginNames(pluginDir: string, sub: string): Set<string> {
   }
 }
 
+// Hook copies that .claude/settings.json still wires by project path must
+// stay: banking them leaves every tool call in that repo pointing at a dead
+// script and silently disables the merge gate for plain checkouts (TerMinal's
+// own repo carries wired copies on purpose). A hook becomes sweepable once
+// the settings entry is gone.
+function wiredHookNames(repoRoot: string): Set<string> {
+  try {
+    const settings = readFileSync(join(repoRoot, '.claude', 'settings.json'), 'utf8')
+    return new Set([...settings.matchAll(/\.claude\/hooks\/([\w.-]+)/g)].map((m) => m[1]))
+  } catch {
+    return new Set()
+  }
+}
+
 function candidateRels(repoRoot: string, pluginDir: string): string[] {
   const skills = pluginNames(pluginDir, 'skills')
   const bins = pluginNames(pluginDir, 'bin')
   const hooks = pluginNames(pluginDir, 'hooks')
+  for (const name of wiredHookNames(repoRoot)) hooks.delete(name)
   const rels: string[] = []
   const collect = (repoSub: string, owned: Set<string>) => {
     for (const name of owned) {
@@ -80,10 +96,34 @@ const RETIRED_SEED_RELS = [
   '.TerMinal/template.json',
 ]
 
+// The ownership registry the old template seeded verbatim into every repo.
+// It no longer ships anywhere, so "is this the vanilla seed?" can only be
+// answered by content: these are the sha256 of every version the template
+// ever carried. A hash miss means the repo customized it — that copy is the
+// repo's own decision and survives.
+export const VANILLA_OWNED_SHA256: ReadonlySet<string> = new Set([
+  '5a2f085200da443f6840d6db414bd3ee74860fc79861c97e4d12f2af5e7fa988',
+  'de3d4b7d4235335b784f7d2de4dfdef1ff3b250340a62e2f032ae48eeea8e3ec',
+])
+
+function isVanillaOwnedYml(p: string, vanillaShas: ReadonlySet<string>): boolean {
+  try {
+    return vanillaShas.has(createHash('sha256').update(readFileSync(p)).digest('hex'))
+  } catch {
+    return false
+  }
+}
+
 /** Detection only — everything sweepLegacySeeds would move, forge included. */
-export function legacySeedCandidates(repoRoot: string, pluginDir: string): string[] {
+export function legacySeedCandidates(
+  repoRoot: string,
+  pluginDir: string,
+  vanillaOwnedShas: ReadonlySet<string> = VANILLA_OWNED_SHA256,
+): string[] {
   if (!repoRoot) return []
   const rels: string[] = RETIRED_SEED_RELS.filter((rel) => existsSync(join(repoRoot, rel)))
+  if (isVanillaOwnedYml(join(repoRoot, '.agents', 'owned.yml'), vanillaOwnedShas))
+    rels.push('.agents/owned.yml')
   const scripts = join(pluginDir, 'scripts')
   let defaults: string[] = []
   try {
@@ -109,9 +149,10 @@ export function sweepLegacySeeds(
   repoRoot: string,
   pluginDir: string,
   sidecarPathFor: (rel: string) => string = (rel) => repoStatePathForWrite(repoRoot, rel),
+  vanillaOwnedShas: ReadonlySet<string> = VANILLA_OWNED_SHA256,
 ): SweepResult {
   if (!repoRoot) return { moved: 0, backedUp: [] }
-  const rels = legacySeedCandidates(repoRoot, pluginDir)
+  const rels = legacySeedCandidates(repoRoot, pluginDir, vanillaOwnedShas)
   // Forge selector: preserve the choice in the sidecar before banking the file.
   const forgeIdx = rels.indexOf('.claude/forge')
   if (forgeIdx !== -1) {
