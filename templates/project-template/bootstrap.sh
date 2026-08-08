@@ -3,7 +3,7 @@
 #
 #   ./bootstrap.sh /path/to/target-repo
 #
-# Seeds repo DATA only: .agents contracts, CI, docs skeleton, the Codex stop
+# Seeds repo DATA only: agent config/scripts, CI, docs skeleton, the Codex stop
 # hook, and TerMinal project state scaffolds.
 #
 # NO skills are copied, for either harness — they ship globally via the tm
@@ -48,10 +48,16 @@ echo "[workflow] .agents/ + CI + Codex stop hook"
 mkdir -p "$DST/.claude" "$DST/.codex" "$DST/.agents" "$DST/.github/workflows"
 cp -R "$SRC/.codex/hooks"   "$DST/.codex/"
 cp "$SRC/.codex/hooks.json" "$DST/.codex/hooks.workflow.json"
-cp "$SRC"/.agents/*.md "$DST/.agents/"
+# Agent CONTRACTS (.md) are NOT copied: they ship with the plugin and resolve
+# repo-first, so a repo carries one only when it actually overrides it. What is
+# still per-repo is the agent config, the executable bodies, and ownership.
+for f in "$SRC"/.agents/*.json "$SRC"/.agents/*.sh "$SRC"/.agents/owned.yml; do
+  [ -e "$f" ] && cp "$f" "$DST/.agents/"
+done
+chmod +x "$DST"/.agents/*.sh 2>/dev/null || true
 cp "$SRC/.github/workflows/ci.yml" "$DST/.github/workflows/ci.yml"
 chmod +x "$DST/.codex/hooks/"*.sh 2>/dev/null || true
-say ".codex/hooks, .codex/hooks.workflow.json, .agents, .github/workflows/ci.yml installed"
+say ".codex/hooks, .codex/hooks.workflow.json, .agents (config+scripts), .github/workflows/ci.yml installed"
 
 # The global Codex skills are synced by the app, not by this script. Warn when
 # they are absent, otherwise a Codex agent in this repo silently has no skills
@@ -139,6 +145,30 @@ PY
     say "WARNING: python3 not found — remove settings.json hook entries pointing at .claude/hooks/*.sh by hand"
   fi
 fi
+# --- migrate: drop agent contracts identical to the shipped default ---------
+# Contracts resolve repo-first against the plugin now, so an untouched copy is
+# pure duplication that will silently go stale. A CUSTOMIZED contract is this
+# repo's own decision and must survive, so compare content and remove only
+# exact matches — never a heuristic, never a timestamp.
+PLUGIN_AGENTS="${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/plugin/agents"
+if [ -d "$PLUGIN_AGENTS" ] && [ -d "$DST/.agents" ]; then
+  dropped=0
+  kept=0
+  for f in "$DST"/.agents/*.md; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    if [ -f "$PLUGIN_AGENTS/$base" ] && cmp -s "$f" "$PLUGIN_AGENTS/$base"; then
+      rm "$f"
+      dropped=$((dropped + 1))
+    elif [ -f "$PLUGIN_AGENTS/$base" ]; then
+      kept=$((kept + 1))
+    fi
+  done
+  [ "$dropped" -gt 0 ] && say "removed $dropped unmodified agent contract(s) — now served by the plugin"
+  [ "$kept" -gt 0 ] && say "kept $kept customized agent contract(s) — these override the plugin default"
+  [ "$dropped" = 0 ] && [ "$kept" = 0 ] && say "no per-repo agent contracts to reconcile"
+fi
+
 [ "$migrated" = 1 ] && say "moved old per-repo skills/bin/hooks (.claude + .codex) to .claude/pre-tm-backup/ (now served by the tm plugin; delete the backup once confirmed)" \
                    || say "no legacy per-repo skill copies found"
 

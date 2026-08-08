@@ -232,7 +232,7 @@ describe('tmPluginStatus', () => {
 // <config>/plugin/bin. So the documented fallback was "command not found", and
 // an agent following it wrote to whatever the shell resolved instead.
 describe('the state resolvers are reachable as commands', () => {
-  const resolvers = ['tm-state-dir', 'tm-state-dirs']
+  const resolvers = ['tm-state-dir', 'tm-state-dirs', 'tm-agent-spec']
 
   beforeEach(() => {
     mkdirSync(join(src, 'bin'), { recursive: true })

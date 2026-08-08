@@ -14,7 +14,7 @@ launches the same reviewer contract.
 Produces **one combined artifact** at `$TERMINAL_REVIEWS_DIR/<pr-number>/<short_sha>.md`
 in the per-project sidecar (resolve with `tm-state-dir reviews` when the variable is unset).
 The schema, scoring rubric, severity rules, and verdict logic live in
-`.agents/code-review.md` in the repo you are working in.
+the contract `tm-agent-spec code-review` resolves to — this repo's own if it has one, otherwise the shipped default.
 
 Forge: **GitHub or GitLab**, auto-detected (`${CLAUDE_PLUGIN_ROOT}/bin/forge`). Artifacts
 are **in-repo** — no central dashboard.

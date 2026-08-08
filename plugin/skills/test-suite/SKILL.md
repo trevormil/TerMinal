@@ -5,7 +5,7 @@ description: "Delegate an ad-hoc test run to Codex and report results in chat (n
 
 # /test-suite — Run tests, report in chat
 
-Ad-hoc test runs. Detects the runner per `.agents/testing.md` in the repo you are working in,
+Ad-hoc test runs. Detects the runner per the contract `tm-agent-spec testing` resolves to,
 runs the suite once, and reports results in chat. **Writes no artifact.**
 
 This is the **cheap inner-loop step**: run it between commits while iterating to

@@ -18,7 +18,7 @@ unhealthy) file HITL. Never opens a PR.
 Per probe (each runs independently; one failure doesn't abort the others):
 
 - **Build** — `bun run build` (or ecosystem equivalent: `cargo build`, etc.)
-- **Tests** — `bun test` (or per `.agents/testing.md`)
+- **Tests** — `bun test` (or per `tm-agent-spec testing`)
 - **Types** — `bunx tsc --noEmit -p tsconfig.json`
 - **Lint** — `bunx prettier --check .`, `bunx eslint`, `cargo clippy`
 - **CI on main** — `gh run list --branch main --limit 5 --json status,conclusion`

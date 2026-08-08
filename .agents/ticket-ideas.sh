@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ticket-ideas — proposes at most 3 new `horizon: future` tickets per day.
-# Full contract: .agents/ticket-ideas.md. Ledger convention: .agents/scripts.md.
+# Full contract: tm-agent-spec ticket-ideas. Ledger convention: tm-agent-spec scripts.
 #
 # Two deterministic gates run before a single token is spent:
 #

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# tm-agent-spec <kind> — print the contract a cadence agent should follow.
+#
+#   spec="$(tm-agent-spec drift)"
+#   codex exec ... "Follow $spec exactly."
+#
+#   tm-agent-spec --list        # every kind resolvable here, one per line
+#
+# Contracts layer, the same way agent scripts already do:
+#
+#   1. <repo>/.agents/<kind>.md   — this project's own contract, if it has one
+#   2. <plugin>/agents/<kind>.md  — the shipped default
+#
+# Every repo used to carry all 17 defaults byte-identical, because bootstrap
+# copied them and nothing ever refreshed them. A repo that customizes a
+# contract still writes one and still wins; a repo that never did now carries
+# none. This is the ONLY implementation of the rule — deliberately not mirrored
+# in the app, which never reads contracts (it discovers agents from .sh +
+# agents.json), so a second copy could only drift.
+#
+# Exits 1 with a message on stderr when neither layer has the kind, so a caller
+# that forgets to check does not silently run against an empty prompt.
+set -euo pipefail
+
+kind="${1:-}"
+
+# The plugin dir this script lives in — not a hardcoded ~/.config path, so a
+# TERMINAL_CONFIG_DIR override (and the test suite) resolves correctly.
+plugin="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+# --list: the union of both layers. Deriving this by taking `dirname` of some
+# arbitrary kind does not work — if that kind happens to be overridden, the
+# dirname is the repo's .agents and every plugin default is missed.
+if [ "$kind" = "--list" ]; then
+  {
+    [ -d "$plugin/agents" ] && ls -1 "$plugin/agents" 2>/dev/null | grep '\.md$'
+    [ -n "$root" ] && [ -d "$root/.agents" ] && ls -1 "$root/.agents" 2>/dev/null | grep '\.md$'
+  } | sed 's/\.md$//' | sort -u
+  exit 0
+fi
+
+case "$kind" in
+  '' | *[/\\]* | .*)
+    echo "usage: tm-agent-spec <kind>   (no path separators)" >&2
+    exit 2
+    ;;
+esac
+
+if [ -n "$root" ] && [ -f "$root/.agents/$kind.md" ]; then
+  printf '%s\n' "$root/.agents/$kind.md"
+  exit 0
+fi
+
+if [ -f "$plugin/agents/$kind.md" ]; then
+  printf '%s\n' "$plugin/agents/$kind.md"
+  exit 0
+fi
+
+echo "tm-agent-spec: no contract for '$kind' in $root/.agents or $plugin/agents" >&2
+exit 1

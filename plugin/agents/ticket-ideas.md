@@ -22,7 +22,7 @@ and the same three obvious gaps ("add integration tests for the auth flow",
 unchanged code and filed again, every single day. Within a week the backlog is
 unusable.
 
-So this agent carries a **dedup ledger** (see `.agents/scripts.md` →
+So this agent carries a **dedup ledger** (see `tm-agent-spec scripts` →
 "Dedup ledger"). Every idea it has ever proposed, and every idea the human has
 ever dismissed, is remembered by a stable key. Before proposing anything it
 subtracts both sets.

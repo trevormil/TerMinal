@@ -66,6 +66,10 @@ const MODEL_FACING_TREES = [
   'plugin/skills',
   'plugin/bin',
   'plugin/hooks',
+  // The agent contracts moved here from every repo's .agents/; they are the
+  // longest model-facing prose we ship and the likeliest place for a literal
+  // path to survive.
+  'plugin/agents',
   '.agents',
   'templates/project-template/.agents',
 ]

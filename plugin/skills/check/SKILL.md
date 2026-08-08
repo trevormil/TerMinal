@@ -1,11 +1,13 @@
 ---
 name: check
-description: "Run a scheduled cadence agent from an .agents/<kind>.md spec — isolated worktree, SHA-gated no-op on re-runs, then reports findings or proposes a ticket+MR. Use on /check <kind>, a scheduled-agent run, or wiring a launchd schedule."
+description: "Run a scheduled cadence agent from its contract (tm-agent-spec <kind>) — isolated worktree, SHA-gated no-op on re-runs, then reports findings or proposes a ticket+MR. Use on /check <kind>, a scheduled-agent run, or wiring a launchd schedule."
 ---
 
 # /check — Scheduled cadence agents
 
 > **Where this lives.** Workflow state is kept in a per-project sidecar outside the repo, so a repo shared with collaborators never receives it. TerMinal exports `$TERMINAL_REPORTS_DIR` into every session it spawns; in a shell it did not spawn, resolve it with `tm-state-dir reports`.
+>
+> **Where the contract lives.** Agent contracts layer: this repo's `.agents/<kind>.md` if it has one, otherwise the default shipped with the plugin. Never assume a path — resolve it with `tm-agent-spec <kind>`, which prints the one to follow. Most repos override nothing and carry no contracts at all.
 
 ## Fast path: TerMinal MCP tools for state + activity
 
@@ -52,12 +54,18 @@ Two modes, declared in the kind's spec:
 
 ```
 /check <kind>           # run one cadence agent
-/check                  # list available kinds (the .agents/*.md cadence specs)
+/check                  # list available kinds
 ```
 
-Available kinds = the `.agents/*.md` specs that describe cadence agents (i.e.
-everything except the per-PR contracts `code-review.md`, `testing.md`, and the
-forge adapter `forge.md`).
+Available kinds = every contract resolvable for this repo — the plugin's
+defaults plus anything in `.agents/` that overrides or adds to them:
+
+```bash
+tm-agent-spec --list
+```
+
+That list excludes the per-PR contracts `code-review.md` and `testing.md` and
+the forge adapter `forge.md`, which are not cadence agents.
 
 ## Prefer script-first execution
 
@@ -87,7 +95,7 @@ If no executable script exists for the kind, delegate the run to Codex from the
 repo root:
 
 ```bash
-codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following .agents/<kind>.md in this repo exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to $TERMINAL_REPORTS_DIR/<kind>/<short-sha>.md per the contract (resolve with tm-state-dir reports if unset). Never push directly to main."
+codex exec -s danger-full-access -C "$PWD" "Run the <kind> cadence agent following $(tm-agent-spec <kind>) exactly. Honor the spec's mode (report or writer), early-exit fast path, sole-writer scope, ticket+MR workflow, and worktree isolation. Write the artifact to $TERMINAL_REPORTS_DIR/<kind>/<short-sha>.md per the contract (resolve with tm-state-dir reports if unset). Never push directly to main."
 ```
 
 `-s danger-full-access` is required for the worktree + push steps.

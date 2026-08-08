@@ -188,13 +188,15 @@ export function installTmPlugin(srcDir: string, opts?: PluginPaths): PluginInsta
 // <config>/plugin/bin. So the one documented fallback was "command not found",
 // and an agent following it wrote wherever the shell landed instead.
 //
-// Only the two `tm-`prefixed resolvers are linked. The rest of plugin/bin
+// Only the `tm-`prefixed resolvers are linked. The rest of plugin/bin
 // (`status`, `activity`, `forge`, `hitl`) carries generic names that would
 // shadow real commands on a PATH, and skills address those by absolute path.
+export const LINKED_RESOLVERS = ['tm-state-dir', 'tm-state-dirs', 'tm-agent-spec'] as const
+
 export function linkStateResolvers(pluginDir: string, binDir: string): void {
   try {
     mkdirSync(binDir, { recursive: true })
-    for (const name of ['tm-state-dir', 'tm-state-dirs']) {
+    for (const name of LINKED_RESOLVERS) {
       const target = join(pluginDir, 'bin', name)
       if (!existsSync(target)) continue
       const link = join(binDir, name)

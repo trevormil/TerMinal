@@ -96,5 +96,5 @@ status: ok
 The agent inserts/preserves this at the top of the file:
 
 ```markdown
-<!-- managed by: changelog · do not edit by hand · see .agents/changelog.md -->
+<!-- managed by: changelog · do not edit by hand · see: tm-agent-spec changelog -->
 ```

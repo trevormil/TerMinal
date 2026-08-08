@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # drift-auditor — compares what the docs claim against what the code does
 # since the last successful scan. Demonstrates the canonical state pattern
-# documented in .agents/scripts.md:
+# documented in the scripts contract (tm-agent-spec scripts):
 #
 #   last=$(terminal-cli state get-sha)        # "" on first run
 #   range="${last:-cold-window}..origin/main"

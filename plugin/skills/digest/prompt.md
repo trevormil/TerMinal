@@ -1,5 +1,5 @@
 You are producing a **human-review digest patch** for MR !{{PR}} at {{SHORT}}.
-Follow `.agents/digest.md` exactly. This is NOT a code review — do not score, do
+Follow the contract at $(tm-agent-spec digest) exactly. This is NOT a code review — do not score, do
 not decide merge-readiness. Your only job: help a technical developer read this
 diff fast, without hiding any code.
 
