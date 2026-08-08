@@ -135,11 +135,6 @@ export type SuggestionsCfg = {
   autoEngine: EngineId
   autoModel: string
 }
-export type NoteFolder = {
-  id: string
-  title: string
-  path: string
-}
 // Mobile bridge (the TerMinal Remote iOS app). Off by default; nothing binds a
 // port until it is on. The bearer token and TLS cert deliberately live OUTSIDE
 // settings.json — see src/main/bridge/identity.ts for why.
@@ -176,7 +171,6 @@ export type Settings = {
   appearance: AppearanceCfg
   apps: AppsCfg
   suggestions: SuggestionsCfg
-  noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string // optional cross-repo review-artifact store
   // Max agent runs loaded into memory at startup (the Runs-tab working set). Run
@@ -222,7 +216,6 @@ export type SettingsPatch = Partial<
   engines?: Partial<Record<EngineId, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   suggestions?: Partial<SuggestionsCfg>
-  noteFolders?: NoteFolder[]
 }
 
 const DEFAULT_EDITOR = 'Cursor'
@@ -297,7 +290,6 @@ export function defaultSettings(): Settings {
       autoEngine: 'claude',
       autoModel: 'sonnet',
     },
-    noteFolders: [],
     remoteHosts: [],
     harnessDir: daemon.harnessDir,
     runMemoryCap: 1000,
@@ -367,27 +359,6 @@ function remoteHosts(raw: unknown): RemoteHost[] {
         (h) => h.id && h.sshTarget && !h.sshTarget.startsWith('-') && !/[\0\r\n]/.test(h.sshTarget),
       )
   )
-}
-
-function noteFolders(raw: unknown): NoteFolder[] {
-  if (!Array.isArray(raw)) return []
-  const seen = new Set<string>()
-  return raw
-    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-    .map((x) => {
-      const path = typeof x.path === 'string' ? x.path.trim() : ''
-      const title =
-        typeof x.title === 'string' && x.title.trim()
-          ? x.title.trim()
-          : path.split('/').filter(Boolean).pop() || 'Notes'
-      const rawId = typeof x.id === 'string' ? x.id.trim() : title
-      let id = rawId.replace(/[^\w.-]/g, '-').replace(/^-+|-+$/g, '') || 'notes'
-      let i = 2
-      while (seen.has(id)) id = `${id}-${i++}`
-      seen.add(id)
-      return { id, title, path }
-    })
-    .filter((f) => f.path)
 }
 
 /**
@@ -538,8 +509,6 @@ export function migrate(raw: unknown): Settings {
     s.pinnedPanels = r.pinnedPanels
       .filter((p: unknown): p is PinnedPanel => !!p && isHttpUrl((p as PinnedPanel).url))
       .map((p: PinnedPanel) => ({ label: String(p.label ?? p.url), url: String(p.url) }))
-  } else if (typeof r.fleetAdminUrl === 'string' && isHttpUrl(r.fleetAdminUrl.trim())) {
-    s.pinnedPanels = [{ label: 'Fleet', url: r.fleetAdminUrl.trim() }] // migrate legacy single-URL setting
   }
   if (typeof r.openrouterApiKey === 'string') s.openrouterApiKey = r.openrouterApiKey
   if (typeof r.openaiCompatApiKey === 'string') s.openaiCompatApiKey = r.openaiCompatApiKey
@@ -592,7 +561,6 @@ export function migrate(raw: unknown): Settings {
     const port = Number(r.bridge.port)
     if (Number.isInteger(port) && port >= 1024 && port <= 65535) s.bridge.port = port
   }
-  s.noteFolders = noteFolders(r.noteFolders)
   s.remoteHosts = remoteHosts(r.remoteHosts)
   if (typeof r.runMemoryCap === 'number' && r.runMemoryCap >= 0)
     s.runMemoryCap = Math.floor(r.runMemoryCap)
@@ -713,7 +681,6 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps,
     engines,
     suggestions,
-    noteFolders: patchNoteFolders,
     ...scalarPatch
   } = legacyPatch
   delete (scalarPatch as Record<string, unknown>)['open' + 'router']
@@ -744,7 +711,6 @@ export function mergeSettingsPatch(cur: Settings, patch: SettingsPatch): Setting
     apps: { ...cur.apps, ...(apps || {}) },
     engines: mergeEngineCfgs(cur.engines, engines),
     suggestions: { ...cur.suggestions, ...(suggestions || {}) },
-    noteFolders: patchNoteFolders ? noteFolders(patchNoteFolders) : cur.noteFolders,
   }
 }
 

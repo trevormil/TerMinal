@@ -6,7 +6,7 @@
 
 import { ipcMain } from 'electron'
 import { emitActivity } from '../events'
-import { clearSnooze, isSnoozedAt, readSnoozes, setSnooze, snoozePresets } from '../hitl-snooze'
+import { clearSnooze, isSnoozedAt, readSnoozes, setSnooze } from '../hitl-snooze'
 import {
   appendDeliveryRecord,
   readDeliveryLog,
@@ -45,7 +45,6 @@ export function registerInboxIpc(): void {
   })
 
   ipcMain.handle('inbox:snoozes', () => snoozes())
-  ipcMain.handle('inbox:snooze-presets', () => snoozePresets())
   ipcMain.handle('inbox:snooze', (_e, id: string, until: number) => {
     snoozeCache = setSnooze(SNOOZE_FILE(), id, until)
     return snoozeCache

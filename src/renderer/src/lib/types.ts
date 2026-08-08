@@ -631,7 +631,6 @@ export type SuggestionsCfg = {
   autoEngine: Engine
   autoModel: string
 }
-export type NoteFolder = { id: string; title: string; path: string }
 export type KnowledgeScope = 'repo' | 'global'
 export type KnowledgeItemKind = 'markdown' | 'link' | 'image' | 'video' | 'file' | 'rag'
 export type KnowledgeCategory = {
@@ -784,7 +783,6 @@ export type Settings = {
   appearance: AppearanceCfg
   apps: AppsCfg
   suggestions: SuggestionsCfg
-  noteFolders: NoteFolder[]
   remoteHosts: RemoteHost[]
   harnessDir: string
   templateRepo: string
@@ -831,7 +829,6 @@ export type SettingsPatch = Partial<
   engines?: Partial<Record<Engine, Partial<EngineCfg>>>
   apps?: Partial<AppsCfg>
   suggestions?: Partial<SuggestionsCfg>
-  noteFolders?: NoteFolder[]
 }
 
 export type StorageEntry = {
@@ -1194,34 +1191,6 @@ export type Schedule = {
   // remote lists; false = enabled but dark (won't fire until reconciled).
   loaded?: boolean
 }
-export type WindowStats = {
-  events: number
-  ticketsFiled: number
-  ticketsClosed: number
-  prsOpened: number
-  prsMerged: number
-  reviews: number
-  testsPass: number
-  testsFail: number
-  agentRuns: number
-  checks: number
-  docs: number
-  blocked: number
-}
-export type RunStats = {
-  total: number
-  done: number
-  failed: number
-  running: number
-  successRate: number
-}
-export type CycleStats = {
-  merged: number
-  medianHours: number | null
-  fileToOpenHours: number | null
-  openToMergeHours: number | null
-}
-export type Funnel = { filed: number; opened: number; merged: number }
 /** A kill-switched schedule, with why + when it went dark. */
 export type DisabledEntry = {
   id: string
@@ -1251,28 +1220,6 @@ export type AgentScorecard = {
   lastRunAt?: number
   lastStatus?: string
 }
-export type CompactionResult = {
-  compacted: boolean
-  reason?: string
-  archivePath?: string
-  bytesBefore?: number
-  bytesAfter?: number
-}
-export type FactoryHealth = {
-  generatedAt: number
-  window24h: WindowStats
-  window7d: WindowStats
-  agents: RunStats
-  cron: RunStats & { recentFailures: number }
-  hitlOpen: number
-  disabled: DisabledEntry[]
-  disabledCount: number
-  cycle: CycleStats
-  funnel: Funnel
-  recentFailures: { title: string; ts: number; repo: string; kind: string }[]
-  daily: { day: string; count: number }[]
-  byRepo: { repo: string; events: number }[]
-}
 export type HitlSource =
   | 'manual'
   | 'cron-fail'
@@ -1283,14 +1230,6 @@ export type HitlSource =
   | 'completion-hook'
   | 'review-pattern'
   | 'monitor'
-/** A session currently mirrored to the phone (registered + not ended). */
-export type RemoteActiveSession = {
-  id: string
-  title: string
-  agentSessionId?: string
-  cwd: string
-  status: string
-}
 /** Native CI — mirror of src/main/ci.ts. Forge-agnostic run/job/log views. */
 export type CiRunStatus =
   'queued' | 'in_progress' | 'success' | 'failed' | 'canceled' | 'skipped' | 'pending'
@@ -1920,7 +1859,6 @@ export type GtApi = {
   stopSession: (key: string) => Promise<void>
   fleet: () => Promise<FleetSession[]>
   pickDir: () => Promise<string | null>
-  projectDirs: () => Promise<{ name: string; path: string }[]>
   detectEnv: () => Promise<EnvDetect>
   installGtNotify: () => Promise<{ ok: boolean; path?: string; error?: string }>
   scaffoldProject: (
@@ -2022,21 +1960,6 @@ export type GtApi = {
     temperature?: number
     timeoutMs?: number
   }) => Promise<{ ok: boolean; text?: string; model?: string; route?: string; error?: string }>
-  classify: {
-    ci: (rawLog: string) => Promise<{
-      class: string
-      confidence: string
-      evidence: string[]
-      isCheapClass: boolean
-      source: string
-    }>
-    risk: (input: { files: string[]; diffLines?: number; title?: string }) => Promise<{
-      tier: 'low' | 'medium' | 'high'
-      confidence: string
-      evidence: string[]
-      source: string
-    }>
-  }
   agents: {
     allRuns: () => Promise<UnifiedRun[]>
     /** Count of running non-session runs — badge polling without the 400-row payload. */
@@ -2186,7 +2109,6 @@ export type GtApi = {
       | { loaded: number; removed: number; failed: { id: string; error: string }[] }
       | { ok: false; error: string }
     >
-    removeAll: () => Promise<{ removed: number }>
     disabledList: () => Promise<string[]>
     disabledToggle: (id: string, disabled: boolean) => Promise<string[]>
     disabledAll: (disabled: boolean) => Promise<string[]>
@@ -2202,17 +2124,7 @@ export type GtApi = {
   }
   listeners: {
     status: () => Promise<ListenerStatus>
-    process: () => Promise<{
-      processed: number
-      failed: number
-      skipped: number
-      status: ListenerStatus
-    }>
     toggle: (enabled: boolean) => Promise<ListenerStatus>
-    openDir: () => Promise<string>
-  }
-  remote: {
-    active: () => Promise<RemoteActiveSession[]>
   }
   monitors: {
     list: () => Promise<MonitorWithState[]>
@@ -2233,22 +2145,15 @@ export type GtApi = {
       items: HitlItem[]
       errors: { hostId: string; label: string; error: string }[]
     }>
-    file: (item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) => Promise<HitlItem>
     resolve: (id: string, resolved?: boolean, hostId?: string) => Promise<boolean>
     remove: (id: string, hostId?: string) => Promise<boolean>
     markRead: (ids: string[], hostId?: string, read?: boolean) => Promise<number>
     markAllRead: () => Promise<number>
   }
-  factory: {
-    health: () => Promise<FactoryHealth>
-    start: (engine: Engine) => Promise<AgentRun | { error: string }>
-  }
   agentInsights: {
     scorecard: (agentId: string) => Promise<AgentScorecard | null>
-    scorecards: () => Promise<AgentScorecard[]>
     disabledDetail: () => Promise<DisabledEntry[]>
     setDisabled: (id: string, disabled: boolean, reason?: string) => Promise<DisabledEntry[]>
-    compactMemory: (id: string) => Promise<CompactionResult>
   }
   activity: {
     list: () => Promise<ActivityEvent[]>
@@ -2362,7 +2267,6 @@ export type GtApi = {
     create: (label: string) => Promise<{ ok: boolean; sha: string }>
     restore: (sha: string) => Promise<{ ok: boolean; error?: string; backup?: string }>
     /** A file's content at a checkpoint ('' where it didn't exist). */
-    file: (sha: string, rel: string) => Promise<{ ok: boolean; content: string }>
     /** Line ranges a checkpoint touched per file — the AI-attribution source. */
     ranges: (sha: string) => Promise<Record<string, { from: number; to: number }[]>>
     /** The checkpoint baseline Review mode should diff `buffer` against. */
@@ -2471,7 +2375,6 @@ export type GtApi = {
   }
   inbox: {
     snoozes: () => Promise<Record<string, number>>
-    snoozePresets: () => Promise<{ id: string; label: string; until: number }[]>
     snooze: (id: string, until: number) => Promise<Record<string, number>>
     unsnooze: (id: string) => Promise<Record<string, number>>
     deliveryLog: (channel?: string, limit?: number) => Promise<DeliveryRecord[]>
@@ -2530,12 +2433,6 @@ export type GtApi = {
   notes: {
     read: (scope: 'repo' | 'global') => Promise<string>
     write: (scope: 'repo' | 'global', content: string) => Promise<boolean>
-    folderList: (id: string, rel: string) => Promise<FileEntry[]>
-    folderRead: (
-      id: string,
-      rel: string,
-    ) => Promise<{ ok: boolean; content: string; reason?: string }>
-    folderWrite: (id: string, rel: string, content: string) => Promise<boolean>
   }
   knowledge: {
     read: (scope: KnowledgeScope) => Promise<KnowledgeBase>

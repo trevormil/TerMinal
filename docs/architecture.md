@@ -196,7 +196,7 @@ Both are "just a folder" discovered with Vite `import.meta.glob`:
   Completed in-process runs also write deterministic evaluation metadata
   (configured checks, status summary, judge-not-run state) and optional lineage
   back to a ticket or PR.
-- `events.ts`, `hitl.ts`, `factory-health.ts`, `cycle.ts`, `schedules.ts` +
+- `events.ts`, `hitl.ts`, `cycle.ts`, `schedules.ts` +
   `cron*.ts` + `launchd.ts`, `telegram*.ts` — the software-factory layer, below.
 
 ## Software factory & observability
@@ -244,9 +244,10 @@ timer. Interval `nextRun` is anchored to `max(lastRun, jobLoadedAt)` (plist
 mtime), matching launchd's actual "fires N seconds after load" semantics. A
 failed (not cancelled) run auto-files a HITL item.
 
-**Aggregation** (`factory-health.ts`): a read-only roll-up over those stores —
-throughput windows, agent/cron success rates, recent failures, a daily
-sparkline, top repos. **Cycle time** (`cycle.ts`, pure + unit-tested) joins a
+**Aggregation**: the cross-repo factory-health roll-up (throughput windows,
+agent/cron success rates, recent failures, a daily sparkline, top repos) lives
+only in the MCP tool `factory_health` (`bin/terminal-mcp-server`) — there is no
+in-app health tab or IPC for it. **Cycle time** (`cycle.ts`, pure + unit-tested) joins a
 ticket's events by `ref` (`ticket-filed{ticket}` → `pr-opened{ticket,pr}` →
 `pr-merged{pr}`) into median time-to-merge, the two stage splits, and a 7-day
 funnel.

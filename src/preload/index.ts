@@ -43,7 +43,6 @@ const gt = {
   stopSession: (key: string) => ipcRenderer.invoke('session:stop', key),
   fleet: () => ipcRenderer.invoke('fleet:list'),
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
-  projectDirs: () => ipcRenderer.invoke('dirs:projects'),
   detectEnv: () => ipcRenderer.invoke('env:detect'),
   installGtNotify: () => ipcRenderer.invoke('env:install-gt-notify'),
   scaffoldProject: (name: string, parentDir?: string, ticketProvider?: unknown) =>
@@ -101,11 +100,6 @@ const gt = {
     temperature?: number
     timeoutMs?: number
   }) => ipcRenderer.invoke('llm:cheap', opts),
-  classify: {
-    ci: (rawLog: string) => ipcRenderer.invoke('classify:ci', rawLog),
-    risk: (input: { files: string[]; diffLines?: number; title?: string }) =>
-      ipcRenderer.invoke('classify:risk', input),
-  },
   // on-demand codex/claude/cursor agents
   agents: {
     allRuns: () => ipcRenderer.invoke('runs:all'),
@@ -258,7 +252,6 @@ const gt = {
     runs: (id?: string) => ipcRenderer.invoke('schedules:runs', id),
     runLog: (runId: string) => ipcRenderer.invoke('schedules:run-log', runId),
     reconcile: () => ipcRenderer.invoke('schedules:reconcile'),
-    removeAll: () => ipcRenderer.invoke('schedules:remove-all'),
     disabledList: () => ipcRenderer.invoke('schedules:disabled-list'),
     disabledToggle: (id: string, disabled: boolean) =>
       ipcRenderer.invoke('schedules:disabled-toggle', id, disabled),
@@ -282,12 +275,7 @@ const gt = {
   },
   listeners: {
     status: () => ipcRenderer.invoke('listeners:status'),
-    process: () => ipcRenderer.invoke('listeners:process'),
     toggle: (enabled: boolean) => ipcRenderer.invoke('listeners:toggle', enabled),
-    openDir: () => ipcRenderer.invoke('listeners:open-dir'),
-  },
-  remote: {
-    active: () => ipcRenderer.invoke('remote:active'),
   },
   monitors: {
     list: () => ipcRenderer.invoke('monitors:list'),
@@ -302,7 +290,6 @@ const gt = {
   hitl: {
     list: () => ipcRenderer.invoke('hitl:list'),
     remoteAll: () => ipcRenderer.invoke('hitl:remote-all'),
-    file: (item: unknown) => ipcRenderer.invoke('hitl:file', item),
     resolve: (id: string, resolved?: boolean, hostId?: string) =>
       ipcRenderer.invoke('hitl:resolve', id, resolved, hostId),
     remove: (id: string, hostId?: string) => ipcRenderer.invoke('hitl:remove', id, hostId),
@@ -310,19 +297,13 @@ const gt = {
       ipcRenderer.invoke('hitl:mark-read', ids, hostId, read),
     markAllRead: () => ipcRenderer.invoke('hitl:mark-all-read'),
   },
-  factory: {
-    health: () => ipcRenderer.invoke('factory:health'),
-    start: (engine: string) => ipcRenderer.invoke('factory:start', engine),
-  },
   // Agent reliability: scorecards computed from the existing run stores, the
   // disabled roster with its reasons, and persistent-agent memory compaction.
   agentInsights: {
     scorecard: (agentId: string) => ipcRenderer.invoke('agents:scorecard', agentId),
-    scorecards: () => ipcRenderer.invoke('agents:scorecards'),
     disabledDetail: () => ipcRenderer.invoke('agents:disabled-detail'),
     setDisabled: (id: string, disabled: boolean, reason?: string) =>
       ipcRenderer.invoke('agents:set-disabled', id, disabled, reason),
-    compactMemory: (id: string) => ipcRenderer.invoke('persistent-agents:compact', id),
   },
 
   // activity feed + notifications
@@ -442,7 +423,6 @@ const gt = {
     list: () => ipcRenderer.invoke('checkpoints:list'),
     create: (label: string) => ipcRenderer.invoke('checkpoints:create', label),
     restore: (sha: string) => ipcRenderer.invoke('checkpoints:restore', sha),
-    file: (sha: string, rel: string) => ipcRenderer.invoke('checkpoints:file', sha, rel),
     ranges: (sha: string) => ipcRenderer.invoke('checkpoints:ranges', sha),
     reviewBase: (rel: string, buffer: string) =>
       ipcRenderer.invoke('checkpoints:review-base', rel, buffer),
@@ -524,11 +504,8 @@ const gt = {
     stop: (id: string) => ipcRenderer.invoke('loops:stop', id),
   },
   observability: {
-    summary: (range: string = 'today') => ipcRenderer.invoke('observability:summary', range),
     byAgent: (range: string = 'week') => ipcRenderer.invoke('observability:byAgent', range),
-    daily: (days: number = 7) => ipcRenderer.invoke('observability:daily', days),
     runs: (limit: number = 100) => ipcRenderer.invoke('observability:runs', limit),
-    models: () => ipcRenderer.invoke('observability:models'),
     indexStatus: () => ipcRenderer.invoke('observability:index-status'),
     rebuildIndex: (limit: number = 240) => ipcRenderer.invoke('observability:index-rebuild', limit),
     indexQuery: (query: string, arg?: string, filter?: unknown) =>
@@ -543,7 +520,6 @@ const gt = {
   },
   inbox: {
     snoozes: () => ipcRenderer.invoke('inbox:snoozes'),
-    snoozePresets: () => ipcRenderer.invoke('inbox:snooze-presets'),
     snooze: (id: string, until: number) => ipcRenderer.invoke('inbox:snooze', id, until),
     unsnooze: (id: string) => ipcRenderer.invoke('inbox:unsnooze', id),
     deliveryLog: (channel?: string, limit?: number) =>
@@ -576,10 +552,6 @@ const gt = {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('notes:read', scope),
     write: (scope: 'repo' | 'global', content: string) =>
       ipcRenderer.invoke('notes:write', scope, content),
-    folderList: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-list', id, rel),
-    folderRead: (id: string, rel: string) => ipcRenderer.invoke('notes:folder-read', id, rel),
-    folderWrite: (id: string, rel: string, content: string) =>
-      ipcRenderer.invoke('notes:folder-write', id, rel, content),
   },
   knowledge: {
     read: (scope: 'repo' | 'global') => ipcRenderer.invoke('knowledge:read', scope),

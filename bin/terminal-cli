@@ -1085,8 +1085,8 @@ function classifyCommand(kind, args) {
       console.error(`terminal-cli classify ci: ${e.message}`)
       process.exit(1)
     }
-    // Heuristic catalog mirrors src/main/ci-failure-classifier.ts. Skip the
-    // LLM fallback here — for shell scripts the deterministic answer is
+    // Heuristic catalog — this is now the only CI-failure classifier in the
+    // tree. Skip the LLM fallback here: for shell scripts the deterministic answer is
     // what's useful; scripts can call `terminal-cli mcp classify_ci` for the
     // full version (TODO: wire that MCP tool later).
     const PATTERNS = [

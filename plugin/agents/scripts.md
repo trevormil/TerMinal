@@ -29,8 +29,8 @@ inspectable — you can `cat` an agent definition and read what it does.
 .agents/<id>.json                            # per-repo metadata (sidecar)
 ```
 
-The default script agents (health, drift, coverage, ticket-ideas,
-ci-watchdog) ship with the tm plugin (`plugin/scripts/`) and are seeded once
+The default script agents (health, drift, coverage, ticket-ideas)
+ship with the tm plugin (`plugin/scripts/`) and are seeded once
 into the global dir by the plugin install — repos are not seeded with copies.
 A repo carries `.agents/<id>.sh` only for a genuinely repo-specific agent or
 a deliberate override of a global one (per-repo wins on id collision).

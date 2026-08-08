@@ -151,7 +151,7 @@ import {
 } from './ticket-provider'
 import { difftOnPath } from './forge'
 import { onDigestEvent } from './digest-run'
-import { listNoteFolder, readNoteFolderFile, writeNoteFolderFile, type NotesScope } from './notes'
+import { type NotesScope } from './notes'
 import {
   fetchKnowledgePreview,
   readKnowledge,
@@ -227,7 +227,6 @@ import {
   DEFAULT_AGENTS,
   readAgentRunContexts,
   runTicketSpawn,
-  runFactorySpawn,
   listRuns,
   readAgentRunLog,
   agentRunLogPath,
@@ -277,7 +276,6 @@ import { bridgeStatus, startBridge, stopBridge } from './bridge/server'
 import { bridgeHosts, ensureIdentity, pairingPayload, rotateToken } from './bridge/identity'
 import { tailscaleSelf } from './bridge/tailscale'
 import { apnsPaths, pushStatus } from './bridge/push'
-import { listRemoteSessions } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl, isObsidianDeepLink } from '../shared/url-safety'
@@ -291,12 +289,7 @@ const openExternalSafe = (url: unknown): void => {
   else console.error('[gt] refused openExternal for non-web URL:', String(url).slice(0, 80))
 }
 import { startAICollectionLoop } from './ai-collectors'
-import {
-  processListenerInbox,
-  readListenerStatus,
-  setListenerEnabled,
-  startListenerInboxWatcher,
-} from './listeners'
+import { readListenerStatus, setListenerEnabled, startListenerInboxWatcher } from './listeners'
 import {
   spawnBgTask,
   listBgTasks,
@@ -318,16 +311,7 @@ import {
   type CreateLoopInput,
 } from './loops'
 import { startLoopListener, noteLoopTurnComplete, noteSingleLoopTurn } from './loop-listener'
-import {
-  readHitl,
-  fileHitl,
-  resolveHitl,
-  removeHitl,
-  markHitlRead,
-  markAllHitlRead,
-  type HitlItem,
-} from './hitl'
-import { factoryHealth } from './factory-health'
+import { readHitl, resolveHitl, removeHitl, markHitlRead, markAllHitlRead } from './hitl'
 import { composeSteps, pipelineLabel } from './pipelines'
 import {
   remoteAgents,
@@ -343,7 +327,6 @@ import { readFileTail } from './fs-tail'
 import {
   checkpointChangedRanges,
   createCheckpoint,
-  fileAtCheckpoint,
   listCheckpoints,
   restoreCheckpoint,
   reviewBaseFor,
@@ -809,24 +792,6 @@ ipcMain.handle('bridge:rotate-token', () => {
   })
   return pairingPayload({ port: cfg.port, identity })
 })
-ipcMain.handle('dirs:projects', () => {
-  const base = resolvedProjectsDir()
-  try {
-    return readdirSync(base)
-      .filter((n) => !n.startsWith('.'))
-      .map((n) => ({ name: n, path: join(base, n) }))
-      .filter((d) => {
-        try {
-          return statSync(d.path).isDirectory()
-        } catch {
-          return false
-        }
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
-  } catch {
-    return []
-  }
-})
 ipcMain.handle('dialog:pickDir', async () => {
   const r = await dialog.showOpenDialog(win!, {
     properties: ['openDirectory', 'createDirectory'],
@@ -1266,31 +1231,11 @@ ipcMain.handle('hosts:health', async (_e, hostId: string) => {
   return checkHostHealth(host.sshTarget)
 })
 ipcMain.handle('listeners:status', () => readListenerStatus())
-ipcMain.handle('listeners:process', () => {
-  const r = processListenerInbox()
-  return { ...r, status: readListenerStatus() }
-})
 ipcMain.handle('listeners:toggle', (_e, enabled: boolean) => {
   setListenerEnabled(enabled)
   return readListenerStatus()
 })
-ipcMain.handle('listeners:open-dir', () => shell.openPath(readListenerStatus().inboxDir))
 // Global HITL inbox (cross-repo). Filing fires a blocked notification (TG + macOS).
-// Which sessions are currently mirrored to the phone (registered + not ended),
-// so the desktop can show a live "on phone" indicator for the active session.
-// agentSessionId is the engine session id — the same value as the desktop's
-// info.sessionId — with cwd as a fallback correlation.
-ipcMain.handle('remote:active', () =>
-  listRemoteSessions()
-    .filter((s) => s.status !== 'ended')
-    .map((s) => ({
-      id: s.id,
-      title: s.title,
-      agentSessionId: s.agentSessionId,
-      cwd: s.cwd,
-      status: s.status,
-    })),
-)
 ipcMain.handle('hitl:list', () => readHitl())
 // Monitoring: read-only list for the tab; writes go through monitors.json (the
 // tab edits it directly via these handlers), and a check triggers the daemon.
@@ -1337,9 +1282,6 @@ ipcMain.handle('hitl:remote-all', () => {
     return ref ? remoteHitl.list(ref) : []
   })
 })
-ipcMain.handle('hitl:file', (_e, item: Omit<HitlItem, 'id' | 'status' | 'createdAt'>) =>
-  fileHitl(item),
-)
 // Resolve/remove route to the item's host when it came from the remote fan-out
 // (#14) — resolving a host block on the Mac must write on the host that owns it,
 // not locally. No hostId → local, as before.
@@ -1368,21 +1310,6 @@ ipcMain.handle('hitl:mark-read', (_e, ids: string[], hostId?: string, read = tru
   return markHitlRead(ids, read)
 })
 ipcMain.handle('hitl:mark-all-read', () => markAllHitlRead())
-// Factory: read-only cross-repo health roll-up + start the orchestrator in-place.
-ipcMain.handle('factory:health', () => factoryHealth())
-ipcMain.handle('factory:start', (_e, engine: Engine) => {
-  const remote = curRemote()
-  if (!remote) return runFactorySpawn(repoRootOf(cur().cwd), engine || 'codex')
-  const prompt = `Run the /factory orchestrator for THIS repository, following the project's /factory skill exactly. This is a no-handoff loop: continuously turn the backlog into REVIEWED, merge-ready PRs by reconciling with /merge-sync, running /stacked-mr passes, compacting/migrating context at phase boundaries, then continuing with any runnable independent lane. NEVER stop with "tell me when you're ready" language. Stop only if the user explicitly stops you, the goal is actually complete, or every remaining lane is blocked on human-only action. NEVER merge to main/master — the human merges. Park any TRUE human-need to the global HITL inbox, then continue other work. Emit an activity event at each checkpoint.`
-  return remoteRuns.start(remote, {
-    agentId: 'factory',
-    agentTitle: 'Factory',
-    engine: engine || remote.daemon?.defaultEngine || 'claude',
-    model: remoteEngineModel(remote, engine || remote.daemon?.defaultEngine || 'claude'),
-    steps: [{ label: 'factory loop', prompt }],
-    inPlace: true,
-  })
-})
 // ---- PTY IPC (routed by session key) ----
 ipcMain.on('pty:input', (_e, key: string, data: string) => {
   sessions.get(key)?.pty.write(data)
@@ -1752,9 +1679,6 @@ ipcMain.handle('checkpoints:create', (_e, label: string) =>
 ipcMain.handle('checkpoints:restore', (_e, sha: string) =>
   restoreCheckpoint(activeDaemon().repoRoot(), sha),
 )
-ipcMain.handle('checkpoints:file', (_e, sha: string, rel: string) =>
-  fileAtCheckpoint(activeDaemon().repoRoot(), sha, rel),
-)
 ipcMain.handle('checkpoints:ranges', (_e, sha: string) =>
   checkpointChangedRanges(activeDaemon().repoRoot(), sha),
 )
@@ -2105,19 +2029,6 @@ ipcMain.handle(
   },
 )
 
-// Classifier IPCs — exposed so scripts/dashboard can use them too.
-ipcMain.handle('classify:ci', async (_e, rawLog: string) => {
-  const { classifyCiFailure } = await import('./ci-failure-classifier')
-  return classifyCiFailure(rawLog)
-})
-ipcMain.handle(
-  'classify:risk',
-  async (_e, input: Parameters<typeof import('./pr-risk-classifier').classifyRisk>[0]) => {
-    const { classifyRisk } = await import('./pr-risk-classifier')
-    return classifyRisk(input)
-  },
-)
-
 // AI fleet observability IPCs. Pull from the per-run AI ledger.
 registerObservabilityIpc({ isRemote: () => !!curRemote() })
 
@@ -2239,17 +2150,15 @@ ipcMain.handle('open:in-browser', (_e, url: string) => {
 // "Open in editor" — the configured editor (default Cursor). Opens a path; defaults
 // to the active session's repo root. Renderer-supplied paths are constrained to
 // the roots the UI legitimately surfaces (workspace, worktrees, the active repo,
-// TerMinal's config dir, configured note folders) so this can't be turned into
-// an arbitrary "open any file on disk in an app" primitive.
+// TerMinal's config dir) so this can't be turned into an arbitrary "open any
+// file on disk in an app" primitive.
 function editorOpenRoots(): (string | undefined)[] {
-  const s = readSettings()
   return [
     resolvedProjectsDir(),
     resolvedWorktreesDir(),
     repoRootOf(cur().cwd) || cur().cwd,
     activeDaemon().filesRoot(),
     terminalConfigDir(),
-    ...s.noteFolders.map((f) => f.path),
   ]
 }
 ipcMain.handle('open:in-editor', (_e, path?: string) => {
@@ -2280,23 +2189,6 @@ ipcMain.handle('notes:read', (_e, scope: NotesScope) => {
 ipcMain.handle('notes:write', (_e, scope: NotesScope, content: string) =>
   activeDaemon().notesWrite(scope, content),
 )
-function configuredNoteFolder(id: string) {
-  return readSettings().noteFolders.find((f) => f.id === id)
-}
-ipcMain.handle('notes:folder-list', (_e, id: string, rel: string) => {
-  const folder = configuredNoteFolder(id)
-  return folder ? listNoteFolder(folder.path, rel || '') : []
-})
-ipcMain.handle('notes:folder-read', (_e, id: string, rel: string) => {
-  const folder = configuredNoteFolder(id)
-  return folder
-    ? readNoteFolderFile(folder.path, rel)
-    : { ok: false, content: '', reason: 'note folder not found' }
-})
-ipcMain.handle('notes:folder-write', (_e, id: string, rel: string, content: string) => {
-  const folder = configuredNoteFolder(id)
-  return folder ? writeNoteFolderFile(folder.path, rel, content) : false
-})
 ipcMain.handle('knowledge:read', (_e, scope: KnowledgeScope) => {
   return readKnowledge(scope, activeDaemon().repoRoot())
 })

@@ -92,8 +92,5 @@ describe('settings refuses to PERSIST a non-http panel (ticket 102)', () => {
     expect(start).toBeGreaterThan(-1)
     const block = src.slice(start, start + 800)
     expect(block).toContain('isHttpUrl')
-    // The legacy single-URL migration is a write path too — it was the one that
-    // built a panel from a bare string with no validation at all.
-    expect(block).toMatch(/fleetAdminUrl[\s\S]{0,120}isHttpUrl/)
   })
 })

@@ -1,11 +1,9 @@
 import { ipcMain } from 'electron'
 import { listAllRuns } from '../cron-runs'
-import { scoreAgentRuns, scoreAllAgents } from '../agent-scorecard'
+import { scoreAgentRuns } from '../agent-scorecard'
 import type { AgentScorecard, ScorecardRun } from '../agent-scorecard'
 import { listDisabledDetail, setDisabled } from '../agents-disabled'
 import type { DisabledEntry } from '../agents-disabled'
-import { compactPersistentAgentMemory } from '../persistent-agents'
-import type { CompactionResult } from '../persistent-agents'
 
 // Read-mostly agent observability IPC: reliability scorecards computed from the
 // run stores already on disk, plus the disabled-agent roster and its one-click
@@ -25,9 +23,6 @@ export function registerAgentInsightsIpc(): void {
     return { ...scoreAgentRuns(runs), agentId }
   })
 
-  // Every agent that has run, busiest first — powers the roster's reliability column.
-  ipcMain.handle('agents:scorecards', (): AgentScorecard[] => scoreAllAgents(pool()))
-
   // Disabled roster with WHY/WHEN, and the re-enable.
   ipcMain.handle('agents:disabled-detail', (): DisabledEntry[] => listDisabledDetail())
   ipcMain.handle(
@@ -36,10 +31,5 @@ export function registerAgentInsightsIpc(): void {
       setDisabled(id, disabled, reason)
       return listDisabledDetail()
     },
-  )
-
-  // Manual compaction — the same pass a launch triggers automatically.
-  ipcMain.handle('persistent-agents:compact', (_e, id: string): Promise<CompactionResult> =>
-    compactPersistentAgentMemory(id),
   )
 }

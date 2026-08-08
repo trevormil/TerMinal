@@ -148,16 +148,6 @@ export function addSchedule(s: NewSchedule, now = Date.now()): Schedule {
   return sched
 }
 
-// Seed a capability-module schedule INERT. Idempotent on (repoRoot, agentId) so
-// re-seeding a module/profile never duplicates entries in the global store. Forces
-// enabled:false — launchd.syncSchedule skips registration, so no plist is written
-// until the user toggles it on from the Admin tab.
-export function seedSchedule(s: NewSchedule, now = Date.now()): Schedule {
-  const existing = readSchedules().find((x) => x.repoRoot === s.repoRoot && x.agentId === s.agentId)
-  if (existing) return existing
-  return addSchedule({ ...s, enabled: false }, now)
-}
-
 /**
  * Apply a FIELD-LEVEL patch to one schedule under the lock.
  *
