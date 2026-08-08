@@ -1971,7 +1971,14 @@ ipcMain.handle('repoState:migrate', (_e, repoRoot: string) => {
   } catch (e) {
     sweepError = e instanceof Error ? e.message : String(e)
   }
-  return { ...r, sweptCopies: swept, error: r.error || sweepError }
+  // A sweep-only failure must not mask a successful state migration — say
+  // what moved AND what failed, since both surfaces render only `error`.
+  const error =
+    r.error ||
+    (sweepError
+      ? `moved ${r.moved} state file(s), but the seed sweep failed (re-run to resume): ${sweepError}`
+      : undefined)
+  return { ...r, sweptCopies: swept, error }
 })
 ipcMain.handle('plugin:sync', () => installTmPlugin(tmPluginSrcDir()))
 

@@ -29,7 +29,14 @@ const run = (cwd: string, env: Record<string, string> = {}) => {
   const clean = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !/^(TERMINAL_|FORGE$)/.test(k)),
   )
-  return execFileSync('bash', [FORGE], { cwd, encoding: 'utf8', env: { ...clean, ...env } }).trim()
+  // ALWAYS sandbox the derivation root: without it, forge → tm-state-dir keys
+  // the fixture repos into the developer's real ~/.config/TerMinal/repos and
+  // (post-mkdir) leaves junk sidecar dirs behind on every run.
+  return execFileSync('bash', [FORGE], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...clean, TERMINAL_REPO_STATE_DIR: join(tmp, 'derived-state'), ...env },
+  }).trim()
 }
 
 describe('forge resolution without any per-repo seed', () => {

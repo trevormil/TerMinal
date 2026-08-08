@@ -46,6 +46,10 @@ case "$area" in
     ;;
   *)
     resolved="${TERMINAL_STATE_DIR:+$TERMINAL_STATE_DIR/$area}"
+    # File rels print where the file LIVES — ensure the parent exists so
+    # `echo gitlab > "$(tm-state-dir forge)"` works even in an app-spawned
+    # session whose injected sidecar root has never been written.
+    [ -n "$resolved" ] && mkdir -p "${TERMINAL_STATE_DIR}" 2>/dev/null || true
     ;;
 esac
 if [ -n "$resolved" ]; then
