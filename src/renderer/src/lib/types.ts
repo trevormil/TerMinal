@@ -600,6 +600,8 @@ export type SlackCfg = {
   defaultChannel: string
   channelPrefix: string
   autoCreateChannels: boolean
+  /** Slack member id (U…) auto-invited to bot-created channels. '' → skip. */
+  inviteUserId: string
 }
 // Mobile bridge (TerMinal Remote for iOS). Token + TLS cert live outside
 // settings.json — see src/main/bridge/identity.ts.

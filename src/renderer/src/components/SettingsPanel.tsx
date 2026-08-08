@@ -3820,6 +3820,26 @@ export function SettingsPanel({
                         />
                       </label>
                     </div>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                        Auto-invite member ID
+                      </span>
+                      <input
+                        defaultValue={s.slack.inviteUserId}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          if (v !== s.slack.inviteUserId) save({ slack: { inviteUserId: v } })
+                        }}
+                        placeholder="U0ABC123DEF"
+                        spellCheck={false}
+                        className={`${inp} font-mono`}
+                      />
+                      <span className="block text-[10.5px] text-zinc-600">
+                        Your Slack member ID (Profile → three-dot menu → Copy member ID). Invited to
+                        every channel the bot creates, so new categories appear in your sidebar
+                        without a channel-browser hunt.
+                      </span>
+                    </label>
                     <Toggle
                       on={s.slack.autoCreateChannels}
                       onToggle={() =>

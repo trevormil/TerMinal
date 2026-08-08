@@ -12,6 +12,7 @@ const cfg = {
   defaultChannel: '#terminal-inbox',
   channelPrefix: 'inbox',
   autoCreateChannels: true,
+  inviteUserId: '',
 }
 
 const item = {
@@ -69,6 +70,48 @@ describe('deliverSlackPost', () => {
     ])
     expect(calls[1].body.name).toBe('inbox-monitoring-certs')
     expect(calls[2].body.channel).toBe('C9')
+  })
+
+  test('auto-created channel invites the configured member so it appears in their sidebar', async () => {
+    const { calls, api } = fakeApi({
+      'chat.postMessage': [
+        { ok: false, error: 'channel_not_found' },
+        { ok: true, channel: 'C9', ts: '2.2' },
+      ],
+      'conversations.create': [{ ok: true, channel: { id: 'C9' } }],
+      'conversations.invite': [{ ok: true }],
+    })
+    const ref = await deliverSlackPost({ ...cfg, inviteUserId: 'U0TREVOR' }, item, api)
+    expect(ref).toEqual({ channelId: 'C9', ts: '2.2' })
+    const invite = calls.find((c) => c.method === 'conversations.invite')
+    expect(invite?.body).toEqual({ channel: 'C9', users: 'U0TREVOR' })
+  })
+
+  test('no inviteUserId → no invite call', async () => {
+    const { calls, api } = fakeApi({
+      'chat.postMessage': [
+        { ok: false, error: 'channel_not_found' },
+        { ok: true, channel: 'C9', ts: '2.2' },
+      ],
+      'conversations.create': [{ ok: true, channel: { id: 'C9' } }],
+    })
+    await deliverSlackPost(cfg, item, api)
+    expect(calls.some((c) => c.method === 'conversations.invite')).toBe(false)
+  })
+
+  test('a failed invite never blocks the post', async () => {
+    const { api } = fakeApi({
+      'chat.postMessage': [
+        { ok: false, error: 'channel_not_found' },
+        { ok: true, channel: 'C9', ts: '2.2' },
+      ],
+      'conversations.create': [{ ok: true, channel: { id: 'C9' } }],
+      'conversations.invite': [{ ok: false, error: 'already_in_channel' }],
+    })
+    expect(await deliverSlackPost({ ...cfg, inviteUserId: 'U0TREVOR' }, item, api)).toEqual({
+      channelId: 'C9',
+      ts: '2.2',
+    })
   })
 
   test('channel_not_found without autoCreate → falls back to the default channel once', async () => {

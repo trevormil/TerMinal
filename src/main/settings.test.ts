@@ -673,6 +673,7 @@ describe('slack inbox destination', () => {
       defaultChannel: '#terminal-inbox',
       channelPrefix: 'inbox',
       autoCreateChannels: true,
+      inviteUserId: '',
     })
   })
 
@@ -685,13 +686,20 @@ describe('slack inbox destination', () => {
 
   test('migrate carries slack cfg fields and drops wrong types', () => {
     const s = migrate({
-      slack: { botToken: 'xoxb-1', defaultChannel: '#ops', channelPrefix: '', autoCreateChannels: false },
+      slack: {
+        botToken: 'xoxb-1',
+        defaultChannel: '#ops',
+        channelPrefix: '',
+        autoCreateChannels: false,
+        inviteUserId: 'U123',
+      },
     })
     expect(s.slack).toEqual({
       botToken: 'xoxb-1',
       defaultChannel: '#ops',
       channelPrefix: '',
       autoCreateChannels: false,
+      inviteUserId: 'U123',
     })
     expect(migrate({ slack: { botToken: 42 } }).slack.botToken).toBe('')
   })

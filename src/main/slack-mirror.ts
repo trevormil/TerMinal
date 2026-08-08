@@ -48,6 +48,33 @@ function asResult(v: unknown): ApiResult {
   return v && typeof v === 'object' ? (v as ApiResult) : {}
 }
 
+/**
+ * Create a channel and, when configured, invite the operator into it — a
+ * bot-created channel appears in nobody's sidebar until joined, so without the
+ * invite every new category means a manual channel-browser hunt. Best-effort:
+ * already_in_channel (or any invite failure) never blocks the post.
+ * Returns the new channel id, or null.
+ */
+async function createChannel(cfg: SlackCfg, name: string, api: SlackApi): Promise<string | null> {
+  const created = asResult(
+    await api({ token: cfg.botToken, method: 'conversations.create', body: { name } }),
+  )
+  const id = (created.channel as { id?: string } | undefined)?.id
+  if (!created.ok || !id) return null
+  if (cfg.inviteUserId) {
+    try {
+      await api({
+        token: cfg.botToken,
+        method: 'conversations.invite',
+        body: { channel: id, users: cfg.inviteUserId },
+      })
+    } catch {
+      /* best effort */
+    }
+  }
+  return id
+}
+
 type SlackableHitl = Pick<
   HitlItem,
   | 'title'
@@ -88,15 +115,8 @@ export async function deliverSlackPost(
 
     let res = await post(`#${channel}`)
     if (!res.ok && res.error === 'channel_not_found' && cfg.autoCreateChannels) {
-      const created = asResult(
-        await api({
-          token: cfg.botToken,
-          method: 'conversations.create',
-          body: { name: channel },
-        }),
-      )
-      const id = (created.channel as { id?: string } | undefined)?.id
-      if (created.ok && id) res = await post(id)
+      const id = await createChannel(cfg, channel, api)
+      if (id) res = await post(id)
     }
     if (!res.ok && channel !== fallback) res = await post(`#${fallback}`)
     if (!res.ok || typeof res.channel !== 'string' || typeof res.ts !== 'string') return null
@@ -195,15 +215,8 @@ export async function testSlackDelivery(
       )
     let res = await post(`#${channel}`)
     if (!res.ok && res.error === 'channel_not_found' && cfg.autoCreateChannels) {
-      const created = asResult(
-        await api({
-          token: cfg.botToken,
-          method: 'conversations.create',
-          body: { name: channel },
-        }),
-      )
-      const id = (created.channel as { id?: string } | undefined)?.id
-      if (created.ok && id) res = await post(id)
+      const id = await createChannel(cfg, channel, api)
+      if (id) res = await post(id)
     }
     return res.ok ? { ok: true } : { ok: false, error: friendlySlackError(res.error) }
   } catch (e) {

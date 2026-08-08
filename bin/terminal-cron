@@ -124,7 +124,16 @@ function mirrorHitlToSlack(item) {
     let res = await post(`#${channel}`)
     if (!res?.ok && res?.error === 'channel_not_found' && cfg.autoCreateChannels) {
       const created = await slackApi(cfg.botToken, 'conversations.create', { name: channel })
-      if (created?.ok && created.channel?.id) res = await post(created.channel.id)
+      if (created?.ok && created.channel?.id) {
+        // Invite the operator: a bot-created channel appears in nobody's
+        // sidebar until joined. Best-effort — never blocks the post.
+        if (cfg.inviteUserId)
+          await slackApi(cfg.botToken, 'conversations.invite', {
+            channel: created.channel.id,
+            users: cfg.inviteUserId,
+          }).catch(() => {})
+        res = await post(created.channel.id)
+      }
     }
     if (!res?.ok && channel !== fallback) res = await post(`#${fallback}`)
     if (res?.ok && typeof res.channel === 'string' && typeof res.ts === 'string') {

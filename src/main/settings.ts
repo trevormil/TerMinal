@@ -85,6 +85,10 @@ export type SlackCfg = {
   defaultChannel: string // Uncategorized + fallback channel, '#' optional
   channelPrefix: string // derived-channel prefix; '' → bare category slug
   autoCreateChannels: boolean // create+join missing public channels on first post
+  // Slack member id (U…) auto-invited to every channel the bot creates. Bot-made
+  // channels don't appear in anyone's sidebar until joined; without this, each
+  // new category means a manual channel-browser hunt. '' → skip.
+  inviteUserId: string
 }
 // Outbound alert channels (notify-channels.ts). Telegram keeps its own block
 // above (telegram.notify is that channel's enable knob — inbound control lives
@@ -275,6 +279,7 @@ export function defaultSettings(): Settings {
       defaultChannel: '#terminal-inbox',
       channelPrefix: 'inbox',
       autoCreateChannels: true,
+      inviteUserId: '',
     },
     notifications: { matrix: {} }, // {} = ship defaults (shared/notifications DEFAULT_MATRIX)
     bridge: { enabled: false, port: DEFAULT_BRIDGE_PORT },
@@ -499,6 +504,7 @@ export function migrate(raw: unknown): Settings {
     if (typeof r.slack.channelPrefix === 'string') s.slack.channelPrefix = r.slack.channelPrefix
     if (typeof r.slack.autoCreateChannels === 'boolean')
       s.slack.autoCreateChannels = r.slack.autoCreateChannels
+    if (typeof r.slack.inviteUserId === 'string') s.slack.inviteUserId = r.slack.inviteUserId
   }
   if (r.appearance && typeof r.appearance === 'object') {
     if (
