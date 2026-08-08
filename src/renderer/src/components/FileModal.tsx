@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowUpRight, X } from 'lucide-react'
 import { CodeEditor } from './CodeEditor'
 import { FileViewer, hasViewer } from './FileViewer'
-import { needsBinaryRead, viewerKindFor } from '../../../shared/file-viewers'
+import { defaultsToSource, needsBinaryRead, viewerKindFor } from '../../../shared/file-viewers'
 import { langForPath, useLangsReady } from '../lib/lazyLang'
 import { navigateTo } from '../lib/nav'
 import { fileIcon } from '../lib/fileIcons'
@@ -51,7 +51,9 @@ export function FileModal({ path, onClose }: { path: string; onClose: () => void
   const readOnly = needsBinaryRead(kind)
 
   useEffect(() => {
-    setViewerSource(false)
+    // Editor-first for text-backed kinds (same rule as the Files tab): a .md
+    // opens editable, the rendered view is one toggle away.
+    setViewerSource(defaultsToSource(kind))
     if (readOnly) {
       setContent('')
       latest.current = { content: '', dirty: false }

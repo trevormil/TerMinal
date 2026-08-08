@@ -92,6 +92,14 @@ export const needsBinaryRead = (kind: ViewerKind): boolean =>
 export const hasSourceToggle = (kind: ViewerKind): boolean =>
   kind === 'markdown' || kind === 'csv' || kind === 'svg' || kind === 'json'
 
+/**
+ * Whether clicking a file should open the EDITOR rather than the rendered
+ * viewer. Every text-backed kind defaults to source — a .md must open as
+ * editable markdown, not a preview (the render stays one toggle away). Only
+ * kinds with no text behind them (image/pdf/binary) default to the viewer.
+ */
+export const defaultsToSource = (kind: ViewerKind): boolean => !needsBinaryRead(kind)
+
 const MIME: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',

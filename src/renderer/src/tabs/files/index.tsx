@@ -20,7 +20,7 @@ import {
 import { langForPath, useLangsReady } from '../../lib/lazyLang'
 import { FileTree, type FileTreeActions } from '../../components/FileTree'
 import { FileViewer, hasViewer } from '../../components/FileViewer'
-import { needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
+import { defaultsToSource, needsBinaryRead, viewerKindFor } from '../../../../shared/file-viewers'
 import { DiffView } from '../../components/MrDetail'
 import { BranchesPane, CommitDetailView, HistoryPane } from '../../components/GitViews'
 import {
@@ -296,10 +296,11 @@ function FilesTab({ ctx }: { ctx: TabContext }) {
   const activeFile = open.find((f) => f.path === activePath) || null
   const bump = () => setVersion((v) => v + 1)
 
-  // Opening a different file starts on its rendered view again — switching to a
-  // README shouldn't inherit "show source" from the CSV you were just reading.
+  // Opening a file always lands in the EDITOR when the content is text — a
+  // .md must not open as a preview (the render stays one toggle away). Only
+  // binary-backed kinds (image/pdf/binary) start on the rendered viewer.
   useEffect(() => {
-    setViewerSource(false)
+    setViewerSource(defaultsToSource(viewerKindFor(activePath || '')))
   }, [activePath])
 
   useEffect(() => {
