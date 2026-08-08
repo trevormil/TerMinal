@@ -209,7 +209,10 @@ function gitOut(root, args) {
 // optional port (stripped — ssh://git@ssh.github.com:443/owner/repo must not
 // yield "443/owner/repo"), else scp-like. Trailing slashes and .git dropped.
 function parseRemoteKey(url) {
-  const u = (url || '').trim().replace(/\/+$/, '').replace(/\.git$/, '')
+  const u = (url || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
   const m =
     u.match(/^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i) ||
     u.match(/^[\w.-]+@([^:/]+)[:/](.+)$/)
