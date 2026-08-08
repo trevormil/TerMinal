@@ -23,19 +23,22 @@ export function repoOrientationKey(repoRoot: string): string {
 
 /**
  * One-shot marker written by the new-project scaffold flow: the next open of
- * this repo shows the orientation even though the template seeds .agents/ and
- * a backlog (which would otherwise read as "established" below).
+ * this repo shows the orientation regardless of the freshness heuristic.
  */
 export function repoOrientationPendingKey(repoRoot: string): string {
   return `gt.repoOrientPending.${repoRoot}`
 }
 
 /**
- * Auto-show the per-repo orientation for a fresh local repo — one with
- * neither agents nor a backlog yet — or for one just created via the
- * new-project scaffold (justCreated). Established repos never get nagged,
- * and the user's dismissal is respected per repo. (The palette command
- * bypasses this and shows it on demand.)
+ * Auto-show the per-repo orientation for a fresh local repo — one with no
+ * backlog yet — or for one just created via the new-project scaffold
+ * (justCreated). Established repos (any tickets, in the sidecar or in-repo)
+ * never get nagged, and the user's dismissal is respected per repo. (The
+ * palette command bypasses this and shows it on demand.)
+ *
+ * hasAgents is deliberately NOT part of the gate: since defaults went global
+ * it is true for every local git repo, which made auto-show unreachable and
+ * silently skipped the provider-choice onboarding for every opened repo.
  */
 export function shouldAutoShowRepoOrientation(
   ctx: { repoRoot: string; hasAgents: boolean; hasBacklog: boolean; remote?: boolean },
@@ -43,6 +46,6 @@ export function shouldAutoShowRepoOrientation(
   opts?: { justCreated?: boolean },
 ): boolean {
   if (!ctx.repoRoot || ctx.remote) return false
-  if (!opts?.justCreated && (ctx.hasAgents || ctx.hasBacklog)) return false
+  if (!opts?.justCreated && ctx.hasBacklog) return false
   return !isDismissed(repoOrientationKey(ctx.repoRoot))
 }

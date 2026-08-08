@@ -1,0 +1,8 @@
+{
+  "id": "ci-watchdog",
+  "title": "CI watchdog",
+  "description": "Webhook plumbing for failed CI runs — invoked by a pipeline.failed trigger with CI_* env vars set, not run by hand from the Agents tab.",
+  "icon": "Siren",
+  "opensPr": false,
+  "inPlace": true
+}

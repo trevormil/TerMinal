@@ -60,7 +60,7 @@ export function buildFixtureRepo(repo: string): void {
   git(repo, 'remote', 'add', 'origin', `https://github.com/${slug}.git`)
 
   // Bootstrap markers. `classifyBootstrapStatus` (src/main/bootstrap.ts) looks
-  // for what bootstrap actually leaves behind: .agents and docs. Skills are
+  // for what bootstrap actually leaves behind: the docs skeleton. Skills are
   // global now and workflow state lives in the sidecar, so neither is a marker
   // — a fully-migrated repo has no in-repo copy of either. With a marker
   // missing, every screen carries a yellow "This repo is partially

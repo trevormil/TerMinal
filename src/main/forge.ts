@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { repoForCwd, ghEnvFor } from './repo'
+import { repoStatePathForRead } from './repo-state'
 import { readSettings, type ForgePref } from './settings'
 
 // The single seam between the app and the user's code-forge CLI. GitHub repos
@@ -31,7 +34,11 @@ export type ListResult = { items: RawMr[]; error?: string }
 export function forgeKindForHost(host: string, pref: ForgePref): ForgeKind {
   if (pref === 'github') return 'github'
   if (pref === 'gitlab') return 'gitlab'
-  return /(^|\.)github\.com$/i.test(host) ? 'github' : 'gitlab'
+  // A `github.` label anywhere in the host covers github.com AND GitHub
+  // Enterprise (github.mycorp.com) without matching lookalikes (notgithub.com).
+  // Everything else defaults to gitlab: glab speaks to arbitrary self-hosted
+  // instances while gh only speaks GitHub — same rule as plugin/bin/forge.
+  return /(^|\.)github\./i.test(host) ? 'github' : 'gitlab'
 }
 
 export function forgeMeta(kind: ForgeKind): ForgeMeta {
@@ -40,7 +47,26 @@ export function forgeMeta(kind: ForgeKind): ForgeMeta {
     : { kind, cli: 'glab', label: 'MR', sym: '!' }
 }
 
+// Per-repo override: the sidecar `forge` file (written by the legacy sweep or
+// `echo gitlab > "$(tm-state-dir forge)"`), else the legacy in-repo
+// .claude/forge. More specific than the app-global settings pref, so it wins —
+// this is what keeps the app and plugin/bin/forge answering identically for
+// the same repo (they read the same files in the same order).
+function forgeOverrideFor(repoRoot: string): ForgeKind | null {
+  for (const p of [repoStatePathForRead(repoRoot, 'forge'), join(repoRoot, '.claude', 'forge')]) {
+    try {
+      const v = readFileSync(p, 'utf8').trim()
+      if (v === 'github' || v === 'gitlab') return v
+    } catch {
+      /* absent */
+    }
+  }
+  return null
+}
+
 export function forgeFor(repoRoot: string): ForgeMeta {
+  const override = forgeOverrideFor(repoRoot)
+  if (override) return forgeMeta(override)
   const host = repoForCwd(repoRoot)?.host || ''
   return forgeMeta(forgeKindForHost(host, readSettings().forge))
 }

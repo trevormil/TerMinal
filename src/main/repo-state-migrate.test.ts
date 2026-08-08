@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { migrateRepoState, sidecarGitStatus } from './repo-state-migrate'
+import { migrateRepoState, pendingMigration, sidecarGitStatus } from './repo-state-migrate'
 import { clearRepoStateCache, repoStateRoot } from './repo-state'
 
 // Moving a user's tickets and reviews is the one irreversible-feeling step in
@@ -119,6 +119,49 @@ describe('migrateRepoState', () => {
     const res = migrateRepoState(repo)
     expect(res.moved).toBe(0)
     expect(res.error).toBeUndefined()
+  })
+
+  // `backlog/`, `sessions/`, `reports/` are common names in repos that have
+  // nothing to do with TerMinal (a data-science repo's reports/, an Express
+  // app's sessions/). Bare v1 dirs count as migratable state only on positive
+  // evidence of the TerMinal shape — otherwise one click relocated a repo's
+  // real data into the sidecar. Dot-dirs (.reviews/.checks) and .TerMinal/*
+  // are unambiguous and stay unconditional.
+  test('bare dirs that are not TerMinal-shaped are neither counted nor moved', () => {
+    seed('reports/q3-analysis.csv', 'data')
+    seed('sessions/user-session.log', 'log')
+    seed('backlog/roadmap.txt', 'notes')
+
+    expect(pendingMigration(repo)).toBe(0)
+    const res = migrateRepoState(repo)
+    expect(res.moved).toBe(0)
+    expect(readFileSync(join(repo, 'reports', 'q3-analysis.csv'), 'utf8')).toBe('data')
+    expect(readFileSync(join(repo, 'sessions', 'user-session.log'), 'utf8')).toBe('log')
+    expect(readFileSync(join(repo, 'backlog', 'roadmap.txt'), 'utf8')).toBe('notes')
+  })
+
+  test('TerMinal-shaped bare v1 dirs still count and move', () => {
+    seed('backlog/.next-id', '3')
+    seed('backlog/0002-legacy.md', 'v1 ticket')
+    seed('sessions/0001-demo/session.md', 'doc')
+
+    expect(pendingMigration(repo)).toBeGreaterThan(0)
+    const res = migrateRepoState(repo)
+    expect(res.moved).toBeGreaterThan(0)
+    const root = repoStateRoot(repo)
+    expect(readFileSync(join(root, 'backlog', '0002-legacy.md'), 'utf8')).toBe('v1 ticket')
+    expect(readFileSync(join(root, 'sessions', '0001-demo', 'session.md'), 'utf8')).toBe('doc')
+  })
+
+  test('a bare reports/ moves only alongside other TerMinal evidence', () => {
+    seed('reports/dead-code/abc1234.md', 'artifact')
+    // Alone: ambiguous — leave it.
+    expect(pendingMigration(repo)).toBe(0)
+    // With a TerMinal-shaped backlog beside it: clearly a v1 workflow repo.
+    seed('backlog/.next-id', '1')
+    expect(pendingMigration(repo)).toBeGreaterThan(1)
+    migrateRepoState(repo)
+    expect(existsSync(join(repo, 'reports'))).toBe(false)
   })
 })
 

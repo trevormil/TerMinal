@@ -12,7 +12,7 @@ each agent entry in `.agents/agents.json` that does not already have a matching
 - **`.agents/<id>.sh`** — executable bash body that `exec`s the prior
   `claude -p $prompt` / `codex exec $prompt` command. Default body is the
   single-LLM-call template — replace it with prechecks + escalation when you
-  want to save tokens (see `tm-agent-spec scripts` and `.agents/health.sh`).
+  want to save tokens (see `tm-agent-spec scripts` and ~/.config/TerMinal/scripts/health.sh, the global default (a repo may override at .agents/health.sh)).
 - **`.agents/<id>.json`** — sidecar metadata (title, description, icon,
   opensPr, engine, model, inPlace) — exactly what was previously the
   `agents.json` entry, minus `prompt`.

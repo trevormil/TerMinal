@@ -14,16 +14,21 @@ forge="$("$HOME/.config/TerMinal/plugin/bin/forge")"
 ```
 
 Resolution order (`$HOME/.config/TerMinal/plugin/bin/forge`):
-1. **Explicit override** — `.claude/forge` file containing `github` or `gitlab`
-   (the reliable choice, and required for self-hosted GitLab whose host doesn't
-   contain "gitlab", e.g. `git.example.com`).
-2. **`FORGE` env var**, if set.
-3. **Auto-detect** from `git remote get-url origin` (`github.com` → github;
-   a `*gitlab*` host → gitlab).
-4. **Default** `github`.
+1. **`FORGE` env var** — explicit per-invocation override.
+2. **Sidecar override** — the per-repo `forge` file in the project sidecar.
+   This is THE way to pin a repo's forge (required for self-hosted GitLab
+   whose host doesn't contain "gitlab", e.g. `git.example.com`). Set it with:
+   `echo gitlab > "$(tm-state-dir forge)"`.
+3. **Legacy `.claude/forge`** in the repo — no longer seeded (ADR-0023), still
+   honored where it exists. Never CREATE this file; use the sidecar.
+4. **Auto-detect** from `git remote get-url origin` (`*github*` → github;
+   `*gitlab*` → gitlab; an unrecognized self-hosted host → gitlab).
+5. **Default** `github` (no origin at all).
 
-Set the forge for a repo by writing one word to `.claude/forge` (the bootstrap
-seeds `github`; flip to `gitlab` for GitLab repos).
+Auto-detect covers github.com, GitHub Enterprise, gitlab.com, and any host
+with "gitlab" in it — only unrecognized self-hosted GitHub needs the sidecar
+override. The TerMinal app resolves the same files in the same order, so the
+app's MRs tab and the skills always agree.
 
 ## Terminology
 

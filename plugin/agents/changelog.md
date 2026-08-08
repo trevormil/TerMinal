@@ -1,7 +1,7 @@
 # changelog agent (in-repo contract)
 
 A scheduled agent that maintains **`CHANGELOG.md`** in [Keep a Changelog](https://keepachangelog.com)
-style. The agent is the **sole writer** of `CHANGELOG.md` per `.agents/owned.yml`
+style. The agent is the **sole writer** of `CHANGELOG.md` per `.agents/owned.yml` (where the repo keeps one)
 — no other agent (factory, stacked-mr, drift-auditor) ever amends it.
 
 **Workflow is uniform with every other scheduled agent**: spin its own worktree

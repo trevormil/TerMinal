@@ -99,8 +99,8 @@ const MODEL_FACING_TREES = [
   // longest model-facing prose we ship and the likeliest place for a literal
   // path to survive.
   'plugin/agents',
+  'plugin/scripts',
   '.agents',
-  'templates/project-template/.agents',
 ]
 
 const MODEL_FACING_FILES = ['CLAUDE.md', 'templates/project-template/CLAUDE.md']

@@ -96,15 +96,38 @@ for b in activity chunk-diff code-review-preflight compute-verdict \
          request-agent-artifact status; do
   migrate ".claude/bin/$b"
 done
+# Hooks still WIRED by settings.json / settings.local.json must stay (same
+# rule as the app's sweep): banking them leaves every tool call pointing at a
+# dead path and turns the merge gate off for plain checkouts. They become
+# sweepable once the settings entry is removed.
+hook_wired() { # <hook filename>
+  for sf in "$DST/.claude/settings.json" "$DST/.claude/settings.local.json"; do
+    [ -f "$sf" ] && grep -q ".claude/hooks/$1" "$sf" && return 0
+  done
+  return 1
+}
 for h in block-main-merge.sh remote-check.sh stop-notify.sh; do
-  migrate ".claude/hooks/$h"
+  hook_wired "$h" || migrate ".claude/hooks/$h"
 done
 # Codex stop hook: retired as a per-repo seed (the hook body ships with the
-# plugin). hooks.workflow.json was only ever a merge-by-hand seed artifact.
-migrate ".codex/hooks/stop-notify.sh"
+# plugin) — but a live .codex/hooks.json that still points at it keeps it.
+if ! { [ -f "$DST/.codex/hooks.json" ] && grep -q ".codex/hooks/stop-notify.sh" "$DST/.codex/hooks.json"; }; then
+  migrate ".codex/hooks/stop-notify.sh"
+fi
 migrate ".codex/hooks.workflow.json"
-# Forge selector: origin autodetect covers it now ($FORGE / sidecar override).
-migrate ".claude/forge"
+# Forge selector: preserve the choice into the sidecar (where plugin/bin/forge
+# and the app both read it) before banking the file. If the resolver isn't
+# available, keep the file in place rather than lose the choice.
+if [ -f "$DST/.claude/forge" ]; then
+  # tm-state-dir keys off the repo at its CWD — run it from the target repo.
+  sidecar_forge="$(cd "$DST" && "${TERMINAL_CONFIG_DIR:-$HOME/.config/TerMinal}/plugin/bin/tm-state-dir" forge 2>/dev/null || echo "")"
+  if [ -n "$sidecar_forge" ]; then
+    [ -f "$sidecar_forge" ] || cp "$DST/.claude/forge" "$sidecar_forge"
+    migrate ".claude/forge"
+  else
+    say "kept .claude/forge (sidecar resolver unavailable — launch TerMinal once, then re-run)"
+  fi
+fi
 rmdir "$DST/.claude/skills" "$DST/.claude/bin" "$DST/.claude/hooks" \
       "$DST/.codex/skills" "$DST/.codex/hooks" "$DST/.codex" 2>/dev/null || true
 # Drop settings.json hook entries that point at the removed scripts. If this

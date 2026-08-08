@@ -112,7 +112,9 @@ describe('skills', () => {
 })
 
 describe('no stale per-repo machinery paths', () => {
-  // .claude/forge is per-repo *config* (forge selector) and stays; everything
+  // .claude/forge is legacy (no longer seeded; the sweep banks it after
+  // preserving the choice into the sidecar) but still legitimately mentioned
+  // by the legacy-honoring resolution docs, so the regex skips it; everything
   // else under .claude/ was machinery that now lives in the plugin itself.
   const stale = /\.claude\/(bin|skills|hooks)[/\s`]/
 

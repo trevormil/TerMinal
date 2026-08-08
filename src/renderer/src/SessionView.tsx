@@ -250,7 +250,16 @@ function MigrateBanner({ repoRoot, active }: { repoRoot: string; active: boolean
   if (dismissed || state === 'unknown' || state === 'ok') return null
   const run = async () => {
     setState('running')
-    const r = await window.gt.repoState.migrate(repoRoot)
+    let r: Awaited<ReturnType<typeof window.gt.repoState.migrate>>
+    try {
+      r = await window.gt.repoState.migrate(repoRoot)
+    } catch (e) {
+      setDetail(e instanceof Error ? e.message : String(e))
+      setState('error')
+      return
+    }
+    // Let an open Settings panel (RepoStatePanel) refresh its counts too.
+    window.dispatchEvent(new Event('gt.repo-state.migrated'))
     if (r.error) {
       setDetail(r.error)
       setState('error')
