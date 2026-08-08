@@ -85,10 +85,19 @@ function slackApi(token, method, body) {
 // Post a filing to its category's channel (create-on-miss, default-channel
 // fallback), then stamp the message ref back onto the stored item so the app
 // can thread recurrences + react on resolve. Best-effort, never blocks filing.
+// Slack effects still in flight — drained by the stdin-end handler below.
+const pendingEffects = new Set()
+function trackEffect(promise) {
+  pendingEffects.add(promise)
+  promise.catch(() => {}).finally(() => pendingEffects.delete(promise))
+  return promise
+}
+
 function mirrorHitlToSlack(item, hitlFile) {
   const cfg = slackCfg()
   if (!cfg) return
-  ;(async () => {
+  trackEffect(
+    (async () => {
     const channel = slackChannelFor(item.category, cfg)
     const fallback = slackChannelFor(undefined, cfg)
     const marker = item.source === 'completion-hook' ? '✅' : '⛔'
@@ -116,7 +125,8 @@ function mirrorHitlToSlack(item, hitlFile) {
         ),
       )
     }
-  })().catch(() => {})
+    })().catch(() => {}),
+  )
 }
 
 // --- crash-safe shared-state writes (ticket 0068) ----------------------------
@@ -1165,6 +1175,20 @@ function resolveHitlTool(args) {
   })
   if (!wrote || !updated) return { ok: false }
   if (resolved && wasOpen) {
+    // Mirror the app's resolveHitl: a resolve stamps the checkmark on the
+    // item's Slack message, whichever surface the resolve came from. Slack's
+    // already_reacted error is success for our purposes; all best-effort.
+    if (updated.slackChannel && updated.slackTs) {
+      const cfg = slackCfg()
+      if (cfg)
+        trackEffect(
+          slackApi(cfg.botToken, 'reactions.add', {
+            channel: updated.slackChannel,
+            timestamp: updated.slackTs,
+            name: 'white_check_mark',
+          }).catch(() => {}),
+        )
+    }
     emitActivityRaw({
       kind: 'task-complete',
       title: `Inbox resolved · ${updated.title || 'Untitled'}`,
@@ -2539,4 +2563,15 @@ process.stdin.on('data', (chunk) => {
   }
 })
 
-process.stdin.on('end', () => process.exit(0))
+// Drain in-flight Slack effects before exiting: a one-shot `terminal-cli mcp`
+// invocation closes stdin the moment it has its JSON-RPC response, and a bare
+// process.exit would cut best-effort posts/reactions off mid-flight. Capped so
+// a hung socket can never wedge the process open.
+process.stdin.on('end', () => {
+  if (!pendingEffects.size) process.exit(0)
+  const bail = setTimeout(() => process.exit(0), 10_000)
+  Promise.allSettled([...pendingEffects]).then(() => {
+    clearTimeout(bail)
+    process.exit(0)
+  })
+})
