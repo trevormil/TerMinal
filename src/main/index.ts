@@ -281,6 +281,7 @@ import { listRemoteSessions } from './remote-sessions'
 import { collectRemoteRuns, collectRemoteHitl } from './remote-runs'
 import { listRepoArtifacts } from './run-artifacts'
 import { isExternallyOpenableUrl, isObsidianDeepLink } from '../shared/url-safety'
+import { experimentGate } from '../shared/experiments'
 import { appCsp, isAppUrl, navigationDecision } from './window-guard'
 
 // Only forward web/mail URLs to the OS. Non-http(s) schemes (file://, custom
@@ -2070,11 +2071,17 @@ ipcMain.handle(
 ipcMain.handle('bg:cancel', (_e, id: string) => (curRemote() ? false : cancelBgTask(id)))
 
 // Loops — long-running planner/generator/evaluator loops (LOOPS.md pattern).
+// Behind the `loops` experiment. Only CREATION is gated: it is the one handler
+// that starts work (cuts a worktree, spawns agents). list/get/state are reads
+// and stop only ever winds a loop down, so gating them would strand a loop
+// created while the flag was on with no way to see or stop it after a flip off.
 ipcMain.handle('loops:list', () => (curRemote() ? [] : listLoops()))
 ipcMain.handle('loops:get', (_e, id: string) => (curRemote() ? null : getLoop(id) || null))
 ipcMain.handle('loops:state', (_e, id: string) => (curRemote() ? null : readLoopState(id)))
 ipcMain.handle('loops:create', (_e, input: CreateLoopInput) => {
   if (curRemote()) return { error: 'remote' }
+  const gate = experimentGate(readSettings(), 'loops')
+  if (gate) return gate
   let repoRoot = input.repoRoot
   if (!repoRoot) {
     // default to the git top-level of the focused session's cwd

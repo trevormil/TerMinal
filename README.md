@@ -90,10 +90,11 @@ machine that renders offline.
   viewer (unified/split, per-file viewed-state), review findings and
   suggestions, forge CI status, and a merge button that is deliberately the
   only one in the app.
-- **Loops** for goal convergence. Pair a driver session that writes a gradable
-  contract and adversarially grades, with a worker session implementing in a
-  worktree — or run single-session mode where fresh evaluators grade a
-  long-lived generator. The generator never grades itself.
+- **Loops** for goal convergence (experimental — enable in Settings →
+  Experimental). Pair a driver session that writes a gradable contract and
+  adversarially grades, with a worker session implementing in a worktree — or run
+  single-session mode where fresh evaluators grade a long-lived generator. The
+  generator never grades itself.
 - **Observability** you can act on. Cross-repo throughput, cycle time
   (ticket-filed → PR-merged with stage splits and a funnel), success rates, an
   AI-spend explorer down to per-request payloads, and a `/factory` orchestrator
